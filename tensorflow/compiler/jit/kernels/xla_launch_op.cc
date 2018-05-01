@@ -37,8 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
-namespace gpu = perftools::gputools;
-
 namespace tensorflow {
 
 XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
@@ -51,9 +49,9 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   num_constant_args_ = constant_types.size();
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args_));
   if (device_type_ == DeviceType(DEVICE_CPU)) {
-    platform_id_ = gpu::host::kHostPlatformId;
+    platform_id_ = se::host::kHostPlatformId;
   } else if (device_type_ == DeviceType(DEVICE_GPU)) {
-    platform_id_ = gpu::cuda::kCudaPlatformId;
+    platform_id_ = se::cuda::kCudaPlatformId;
   } else {
     platform_id_ = nullptr;
   }
@@ -69,9 +67,9 @@ Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
     return Status::OK();
   }
 
-  auto platform = gpu::MultiPlatformManager::PlatformWithId(platform_id_);
+  auto platform = se::MultiPlatformManager::PlatformWithId(platform_id_);
   if (!platform.ok()) {
-    return StreamExecutorUtil::ConvertStatus(platform.status());
+    return platform.status();
   }
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform.ValueOrDie());
@@ -100,7 +98,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   ResourceMgr* rm = ctx->resource_manager();
   OP_REQUIRES(ctx, rm, errors::Internal("No resource manager."));
 
-  gpu::Stream* stream =
+  se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
   XlaCompilationCache* cache;
@@ -114,10 +112,12 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
+  const XlaDevice::Metadata* metadata;
+  Status s = XlaDevice::GetMetadata(ctx, &metadata);
+  bool allocate_xla_tensors = s.ok();
+
   // Get the platform_id_ for XLA_* devices.
   if (platform_id_ == nullptr) {
-    const XlaDevice::Metadata* metadata;
-    Status s = XlaDevice::GetMetadata(ctx, &metadata);
     if (s.ok()) {
       platform_id_ = metadata->platform()->id();
     }
@@ -128,46 +128,69 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
-  // Builds an XLA allocator for the device.
-  XlaAllocator xla_allocator(client->platform(), ctx);
+  XlaAllocator local_xla_allocator(client->backend().platform(),
+                                   ctx->device()->GetAllocator({}));
+  xla::DeviceMemoryAllocator* xla_allocator;
+  // If we are on an XlaDevice, use the underlying XLA platform's allocator
+  // directly. We could use the StreamExecutor's allocator which may
+  // theoretically be more correct, but XLA returns a nice OOM message in a
+  // Status and StreamExecutor does not.
+  //
+  // Importantly we can't use ctx->device()->GetAllocator() as the allocator
+  // (which local_xla_allocator above uses) as on an XlaDevice, this is a
+  // dummy allocator that returns XlaTensor objects. The XlaCompiler needs a
+  // real allocator to allocate real buffers.
+  if (allocate_xla_tensors) {
+    xla_allocator = client->backend().memory_allocator();
+  } else {
+    xla_allocator = &local_xla_allocator;
+  }
 
   XlaCompiler::Options options;
   options.client = client;
   options.device_type = &cache->device_type();
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
-  options.allow_cpu_custom_calls = (platform_id_ == gpu::host::kHostPlatformId);
-  options.device_allocator = &xla_allocator;
+  options.allow_cpu_custom_calls = (platform_id_ == se::host::kHostPlatformId);
+  options.device_allocator = xla_allocator;
+  // TODO(b/77671268): We don't set variable_representation_shape_fn here. This
+  // is restricted to Variables, but we need something like this to apply to
+  // normal Tensors too.
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
 
-  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, num_constant_args_,
+  std::map<int, Tensor> constant_args;
+  for (int i = 0; i < num_constant_args_; ++i) {
+    constant_args.insert({i, ctx->input(i)});
+  }
+  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, constant_args,
                                      variables, ctx, &kernel, &executable,
                                      /*compile_options=*/nullptr));
 
   VLOG(1) << "Executing XLA Computation...";
 
-  XlaComputationLaunchContext launch_context(num_resource_args_, client,
-                                             &xla_allocator);
+  XlaComputationLaunchContext launch_context(
+      num_resource_args_, client, xla_allocator, allocate_xla_tensors);
   launch_context.PopulateInputs(ctx, kernel, variables);
 
   // Execute the computation.
   VLOG(2) << "Executing computation.";
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
-  run_options.set_allocator(&xla_allocator);
+  run_options.set_allocator(xla_allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
+  run_options.set_rng_seed(ctx->step_id());
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
+
   auto run_result = executable->Run(launch_context.arguments(), run_options);
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
-  launch_context.PopulateOutputs(ctx, kernel,
-                                 run_result.ConsumeValueOrDie()->release());
+  launch_context.PopulateOutputs(ctx, kernel, run_result.ConsumeValueOrDie());
   VLOG(1) << "Done";
 }
 

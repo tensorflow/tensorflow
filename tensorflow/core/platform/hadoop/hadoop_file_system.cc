@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/posix/error.h"
@@ -108,6 +109,8 @@ class LibHDFS {
 // in the libhdfs documentation.
 #if defined(PLATFORM_WINDOWS)
     const char* kLibHdfsDso = "hdfs.dll";
+#elif defined(MACOS) || defined(TARGET_OS_MAC)
+    const char* kLibHdfsDso = "libhdfs.dylib";
 #else
     const char* kLibHdfsDso = "libhdfs.so";
 #endif
@@ -394,6 +397,11 @@ Status HadoopFileSystem::GetChildren(const string& dir,
   }
   hdfs_->hdfsFreeFileInfo(info, entries);
   return Status::OK();
+}
+
+Status HadoopFileSystem::GetMatchingPaths(const string& pattern,
+                                          std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status HadoopFileSystem::DeleteFile(const string& fname) {

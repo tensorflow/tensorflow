@@ -37,7 +37,14 @@ class BaseMeanOpModel : public SingleOpModel {
     return ExtractVector<T>(output_);
   }
 
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
+
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+  int Input() { return input_; }
 
  protected:
   int input_;
@@ -142,56 +149,64 @@ TEST(DynamicFloatMeanOpTest, Scale) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
 }
 
+// for quantized Add, the error shouldn't exceed step
+float GetTolerance(int min, int max) { return (max - min) / 255.0; }
+
 TEST(ConstUint8MeanOpTest, NotKeepDims) {
-  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
-                                         9,  10, 11, 12, 13, 14, 15, 16,
-                                         17, 18, 19, 20, 21, 22, 23, 24};
-  MeanOpConstModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {2}},
-                     {4}, {1, 0, -3, -3}, false);
-  m.SetInput(data);
+  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  std::initializer_list<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  MeanOpConstModel m({TensorType_UINT8, {1, 3, 2}, -1.0, 1.0},
+                     {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {1}, false);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({12, 13}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
+                                            {0.4, 0.4}, kQuantizedTolerance)));
 }
 
 TEST(ConstUint8MeanOpTest, KeepDims) {
-  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
-                                         9,  10, 11, 12, 13, 14, 15, 16,
-                                         17, 18, 19, 20, 21, 22, 23, 24};
-  MeanOpConstModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {3}},
-                     {2}, {0, 2}, true);
-  m.SetInput(data);
+  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  std::initializer_list<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  MeanOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
+                     {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {1}, true);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({10, 12, 14}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MeanOpTest, NotKeepDims) {
-  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
-                                         9,  10, 11, 12, 13, 14, 15, 16,
-                                         17, 18, 19, 20, 21, 22, 23, 24};
-  MeanOpDynamicModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {2}},
-                       {TensorType_INT32, {4}}, false);
-  std::initializer_list<int> axis = {1, 0, -3, -3};
+  float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
+  std::initializer_list<float> data = {1.3, -4.8, -3.6, 0.24};
+  MeanOpDynamicModel m({TensorType_UINT8, {2, 2}, -5.0, 2.0},
+                       {TensorType_UINT8, {2}, -5.0, 2.0},
+                       {TensorType_INT32, {1}}, false);
+  std::initializer_list<int> axis = {1};
   m.SetAxis(axis);
-  m.SetInput(data);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({12, 13}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear({-1.75, -1.68}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MeanOpTest, KeepDims) {
-  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
-                                         9,  10, 11, 12, 13, 14, 15, 16,
-                                         17, 18, 19, 20, 21, 22, 23, 24};
-  MeanOpDynamicModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {3}},
-                       {TensorType_INT32, {2}}, true);
-  std::initializer_list<int> axis = {0, 2};
+  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
+  std::initializer_list<float> data = {11.14, -0.14, 7.423, 0.879};
+  MeanOpDynamicModel m({TensorType_UINT8, {2, 2}, -10.0, 12.0},
+                       {TensorType_UINT8, {2}, -10.0, 12.0},
+                       {TensorType_INT32, {1}}, true);
+  std::initializer_list<int> axis = {0};
   m.SetAxis(axis);
-  m.SetInput(data);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({10, 12, 14}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear({9.2815, 0.3695}, kQuantizedTolerance)));
 }
 
 }  // namespace

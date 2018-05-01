@@ -446,10 +446,11 @@ class Conv2DOp : public BinaryOp<T> {
 #if !defined(USE_GEMM_FOR_CONV)
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
-template class LaunchConv2DOp<CPUDevice, float>;
+template struct LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
@@ -474,7 +475,7 @@ struct ConvAutoTuneGroup {
   static string name() { return "Conv"; }
 };
 typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
-                          perftools::gputools::dnn::AlgorithmConfig>
+                          se::dnn::AlgorithmConfig>
     AutoTuneConv;
 
 template <typename T>
@@ -483,9 +484,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     const Tensor& input_param, const Tensor& filter, int row_dilation,
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
     Tensor* output, TensorFormat data_format) {
-  using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmDesc;
-  using perftools::gputools::dnn::ProfileResult;
+  using se::dnn::AlgorithmConfig;
+  using se::dnn::AlgorithmDesc;
+  using se::dnn::ProfileResult;
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -513,7 +514,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
                                 output->template flat<T>().size());
 
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
@@ -542,7 +543,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
                                 output->template flat<T>().size());
 
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
@@ -628,24 +629,24 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   CHECK(padding_rows >= 0 && padding_cols >= 0)
       << "Negative row or col paddings: (" << padding_rows << ", "
       << padding_cols << ")";
-  perftools::gputools::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(in_batch)
       .set_feature_map_count(in_depths)
       .set_height(in_rows)
       .set_width(in_cols)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::BatchDescriptor output_desc;
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(out_batch)
       .set_height(out_rows)
       .set_width(out_cols)
       .set_feature_map_count(out_depths)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::FilterDescriptor filter_desc;
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(filter.dim_size(0))
       .set_input_filter_width(filter.dim_size(1))
       .set_input_feature_map_count(filter.dim_size(2))
       .set_output_feature_map_count(filter.dim_size(3));
-  perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
+  se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(row_dilation)
       .set_horizontal_dilation_rate(col_dilation)
       .set_vertical_filter_stride(row_stride)
@@ -709,7 +710,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
-        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
+        &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
@@ -810,6 +812,7 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);     \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
+DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
@@ -822,6 +825,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv2DOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    Conv2DOp<GPUDevice, double>);
 
 // To be used inside depthwise_conv_op.cc.
 template class LaunchConv2DOp<GPUDevice, float>;

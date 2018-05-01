@@ -823,7 +823,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
-    if (tensorflow::StringPiece(constant->name()).starts_with("constant")) {
+    if (tensorflow::str_util::StartsWith(constant->name(), "constant")) {
       constant_name = constant->name();
     } else {
       constant_name = StrCat("constant ", constant->name());
@@ -909,6 +909,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
@@ -1041,8 +1042,8 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
 
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
   // an add instruction.  In this case we render just the name.
-  if (tensorflow::StringPiece(instr->name())
-          .starts_with(HloOpcodeString(instr->opcode()))) {
+  if (tensorflow::str_util::StartsWith(instr->name(),
+                                       HloOpcodeString(instr->opcode()))) {
     return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
   string extended_opcode =

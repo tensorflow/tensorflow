@@ -64,7 +64,8 @@ HloModule& HloVerifiedTestBase::module() {
   return *module_;
 }
 
-void HloVerifiedTestBase::ParseAndVerifyModule(const char* hlo_text) {
+void HloVerifiedTestBase::ParseAndVerifyModule(
+    tensorflow::StringPiece hlo_text) {
   CHECK(!module_) << "Called ParseModule when test already has a module.";
   TF_ASSERT_OK_AND_ASSIGN(module_, tools::Parse(hlo_text));
   VerifyModule();

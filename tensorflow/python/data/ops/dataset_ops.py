@@ -121,7 +121,7 @@ class Dataset(object):
       An `Iterator` over the elements of this dataset.
 
     Raises:
-      RuntimeError: If eager execution is enabled.
+      RuntimeError: If eager execution is not enabled.
     """
     if context.executing_eagerly():
       return iterator_ops.EagerIterator(self)
@@ -563,7 +563,7 @@ class Dataset(object):
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
-        maximum number elements that will be buffered when prefetching.
+        maximum number of elements that will be buffered when prefetching.
 
     Returns:
       Dataset: A `Dataset`.
@@ -571,8 +571,12 @@ class Dataset(object):
     return PrefetchDataset(self, buffer_size)
 
   @staticmethod
-  def list_files(file_pattern, shuffle=None):
+  def list_files(file_pattern, shuffle=None, seed=None):
     """A dataset of all files matching a pattern.
+
+    NOTE: The default behavior of this method is to return filenames in
+    a non-deterministic random shuffled order. Pass a `seed` or `shuffle=False`
+    to get results in a deterministic order.
 
     Example:
       If we had the following files on our filesystem:
@@ -584,20 +588,18 @@ class Dataset(object):
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
-    NOTE: The order of the file names returned can be non-deterministic even
-    when `shuffle` is `False`.
-
     Args:
       file_pattern: A string or scalar string `tf.Tensor`, representing
         the filename pattern that will be matched.
       shuffle: (Optional.) If `True`, the file names will be shuffled randomly.
         Defaults to `True`.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+        random seed that will be used to create the distribution. See
+        @{tf.set_random_seed} for behavior.
 
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
     """
-    # TODO(b/73959787): Add a `seed` argument and make the `shuffle=False`
-    # behavior deterministic (e.g. by sorting the filenames).
     if shuffle is None:
       shuffle = True
     matching_files = gen_io_ops.matching_files(file_pattern)
@@ -607,7 +609,7 @@ class Dataset(object):
       # list of files might be empty.
       buffer_size = math_ops.maximum(
           array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
-      dataset = dataset.shuffle(buffer_size)
+      dataset = dataset.shuffle(buffer_size, seed=seed)
     return dataset
 
   def repeat(self, count=None):
@@ -1155,10 +1157,12 @@ class _GeneratorDataset(Dataset):
       if isinstance(ret, list):
         ret = tuple(ret)
 
-      # Convert any `SparseTensorValue`s to `SparseTensor`s.
+      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
+      # values to tensors.
       ret = nest.pack_sequence_as(ret, [
           sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(t)
+          for t in nest.flatten(ret)
       ])
 
       self._state_classes = sparse.get_classes(ret)
@@ -1167,11 +1171,9 @@ class _GeneratorDataset(Dataset):
       self._state_types = nest.pack_sequence_as(
           ret, [t.dtype for t in nest.flatten(ret)])
 
-      # Serialize any sparse tensors and convert result to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          ops.convert_to_tensor(t)
-          for t in nest.flatten(sparse.serialize_sparse_tensors(ret))
-      ])
+      # Serialize any sparse tensors.
+      ret = nest.pack_sequence_as(
+          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
       return nest.flatten(ret)
 
     self._init_func = tf_init_func
@@ -1214,10 +1216,12 @@ class _GeneratorDataset(Dataset):
       if isinstance(ret, list):
         ret = tuple(ret)
 
-      # Convert any `SparseTensorValue`s to `SparseTensor`s.
+      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
+      # values to tensors.
       ret = nest.pack_sequence_as(ret, [
           sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(t)
+          for t in nest.flatten(ret)
       ])
 
       self._output_classes = sparse.get_classes(ret)
@@ -1226,11 +1230,9 @@ class _GeneratorDataset(Dataset):
       self._output_types = nest.pack_sequence_as(
           ret, [t.dtype for t in nest.flatten(ret)])
 
-      # Serialize any sparse tensors and convert result to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          ops.convert_to_tensor(t)
-          for t in nest.flatten(sparse.serialize_sparse_tensors(ret))
-      ])
+      # Serialize any sparse tensors.
+      ret = nest.pack_sequence_as(
+          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
       return nest.flatten(ret)
 
     self._next_func = tf_next_func
@@ -1816,10 +1818,12 @@ class MapDataset(Dataset):
       if isinstance(ret, list):
         ret = tuple(ret)
 
-      # Convert any `SparseTensorValue`s to `SparseTensor`s.
+      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
+      # values to tensors.
       ret = nest.pack_sequence_as(ret, [
           sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(t)
+          for t in nest.flatten(ret)
       ])
 
       self._output_classes = sparse.get_classes(ret)
@@ -1828,11 +1832,9 @@ class MapDataset(Dataset):
       self._output_types = nest.pack_sequence_as(
           ret, [t.dtype for t in nest.flatten(ret)])
 
-      # Serialize any sparse tensors and convert result to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          ops.convert_to_tensor(t)
-          for t in nest.flatten(sparse.serialize_sparse_tensors(ret))
-      ])
+      # Serialize any sparse tensors.
+      ret = nest.pack_sequence_as(
+          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
       return nest.flatten(ret)
 
     self._map_func = tf_map_func
@@ -1950,47 +1952,13 @@ class FlatMapDataset(Dataset):
     return self._output_types
 
 
-class InterleaveDataset(Dataset):
+class InterleaveDataset(FlatMapDataset):
   """A `Dataset` that maps a function over its input and interleaves the result.
   """
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
-    super(InterleaveDataset, self).__init__()
-    self._input_dataset = input_dataset
-
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
-    def tf_map_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if _should_unpack_args(nested_args):
-        dataset = map_func(*nested_args)
-      else:
-        dataset = map_func(nested_args)
-
-      if not isinstance(dataset, Dataset):
-        raise TypeError("`map_func` must return a `Dataset` object.")
-
-      self._output_classes = dataset.output_classes
-      self._output_types = dataset.output_types
-      self._output_shapes = dataset.output_shapes
-
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    self._map_func = tf_map_func
-    self._map_func.add_to_graph(ops.get_default_graph())
-
+    super(InterleaveDataset, self).__init__(input_dataset, map_func)
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
@@ -1999,26 +1967,14 @@ class InterleaveDataset(Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.interleave_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,
+        self._map_func.captured_inputs,  # pylint: disable=protected-access
         self._cycle_length,
         self._block_length,
-        f=self._map_func,
+        f=self._map_func,  # pylint: disable=protected-access
         output_types=nest.flatten(
             sparse.as_dense_types(self.output_types, self.output_classes)),
         output_shapes=nest.flatten(
             sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
 
 
 class FilterDataset(Dataset):
@@ -2089,6 +2045,8 @@ class PrefetchDataset(Dataset):
     """See `Dataset.prefetch()` for details."""
     super(PrefetchDataset, self).__init__()
     self._input_dataset = input_dataset
+    if buffer_size is None:
+      buffer_size = -1  # This is the sentinel for auto-tuning.
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
 

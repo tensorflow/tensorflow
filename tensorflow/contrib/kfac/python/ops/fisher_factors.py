@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import contextlib
 
 import numpy as np
 import six
 
+from tensorflow.contrib.kfac.python.ops import linear_operator as lo
 from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as tf_ops
@@ -31,18 +33,24 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 from tensorflow.python.util import nest
 
+
 # Whether to initialize covariance estimators at a zero matrix (or the identity
 # matrix).
-INIT_COVARIANCES_AT_ZERO = False
+INIT_COVARIANCES_AT_ZERO = True
 
 # Whether to zero-debias the moving averages.
-ZERO_DEBIAS = False
+ZERO_DEBIAS = True
+
+# Whether to initialize inverse (and other such matrices computed from the cov
+# matrices) to the zero matrix (or the identity matrix).
+INIT_INVERSES_AT_ZERO = True
 
 # When the number of inverses requested from a FisherFactor exceeds this value,
 # the inverses are computed using an eigenvalue decomposition.
@@ -53,41 +61,99 @@ EIGENVALUE_DECOMPOSITION_THRESHOLD = 2
 # matrix powers. Must be nonnegative.
 EIGENVALUE_CLIPPING_THRESHOLD = 0.0
 
+# Used to subsample the flattened extracted image patches. The number of
+# outer products per row of the covariance matrix should not exceed this
+# value. This parameter is used only if `_SUB_SAMPLE_OUTER_PRODUCTS` is True.
+_MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW = 1
+
+# Used to subsample the inputs passed to the extract image patches. The batch
+# size of number of inputs to extract image patches is multiplied by this
+# factor. This parameter is used only if `_SUB_SAMPLE_INPUTS` is True.
+_INPUTS_TO_EXTRACT_PATCHES_FACTOR = 0.5
+
+# If True, then subsamples the tensor passed to compute the covaraince matrix.
+_SUB_SAMPLE_OUTER_PRODUCTS = False
+
+# If True, then subsamples the tensor passed to compute the covaraince matrix.
+_SUB_SAMPLE_INPUTS = False
+
+# TOWER_STRATEGY can be one of "concat" or "separate".  If "concat", the data
+# passed to the factors from the blocks will be concatenated across towers
+# (lazilly via PartitionedTensor objects).  Otherwise a tuple of tensors over
+# towers will be passed in, and the factors will iterate over this and do the
+# cov computations separately for each one, averaging the results together.
+TOWER_STRATEGY = "concat"
+
 
 def set_global_constants(init_covariances_at_zero=None,
                          zero_debias=None,
+                         init_inverses_at_zero=None,
                          eigenvalue_decomposition_threshold=None,
-                         eigenvalue_clipping_threshold=None):
+                         eigenvalue_clipping_threshold=None,
+                         max_num_outer_products_per_cov_row=None,
+                         sub_sample_outer_products=None,
+                         inputs_to_extract_patches_factor=None,
+                         sub_sample_inputs=None,
+                         tower_strategy=None):
   """Sets various global constants used by the classes in this module."""
   global INIT_COVARIANCES_AT_ZERO
   global ZERO_DEBIAS
+  global INIT_INVERSES_AT_ZERO
   global EIGENVALUE_DECOMPOSITION_THRESHOLD
   global EIGENVALUE_CLIPPING_THRESHOLD
+  global _MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW
+  global _SUB_SAMPLE_OUTER_PRODUCTS
+  global _INPUTS_TO_EXTRACT_PATCHES_FACTOR
+  global _SUB_SAMPLE_INPUTS
+  global TOWER_STRATEGY
 
   if init_covariances_at_zero is not None:
     INIT_COVARIANCES_AT_ZERO = init_covariances_at_zero
   if zero_debias is not None:
     ZERO_DEBIAS = zero_debias
+  if init_inverses_at_zero is not None:
+    INIT_INVERSES_AT_ZERO = init_inverses_at_zero
   if eigenvalue_decomposition_threshold is not None:
     EIGENVALUE_DECOMPOSITION_THRESHOLD = eigenvalue_decomposition_threshold
   if eigenvalue_clipping_threshold is not None:
     EIGENVALUE_CLIPPING_THRESHOLD = eigenvalue_clipping_threshold
+  if max_num_outer_products_per_cov_row is not None:
+    _MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW = max_num_outer_products_per_cov_row
+  if sub_sample_outer_products is not None:
+    _SUB_SAMPLE_OUTER_PRODUCTS = sub_sample_outer_products
+  if inputs_to_extract_patches_factor is not None:
+    _INPUTS_TO_EXTRACT_PATCHES_FACTOR = inputs_to_extract_patches_factor
+  if sub_sample_inputs is not None:
+    _SUB_SAMPLE_INPUTS = sub_sample_inputs
+  if tower_strategy is not None:
+    TOWER_STRATEGY = tower_strategy
 
 
 def inverse_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
-  return array_ops.diag(array_ops.ones(shape[0], dtype))
+  if INIT_INVERSES_AT_ZERO:
+    return array_ops.zeros(shape, dtype=dtype)
+  return linalg_ops.eye(num_rows=shape[0], dtype=dtype)
 
 
 def covariance_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
   if INIT_COVARIANCES_AT_ZERO:
-    return array_ops.diag(array_ops.zeros(shape[0], dtype))
-  return array_ops.diag(array_ops.ones(shape[0], dtype))
+    return array_ops.zeros(shape, dtype=dtype)
+  return linalg_ops.eye(num_rows=shape[0], dtype=dtype)
 
 
-def diagonal_covariance_initializer(shape, dtype, partition_info):  # pylint: disable=unused-argument
+def diagonal_covariance_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
   if INIT_COVARIANCES_AT_ZERO:
-    return array_ops.zeros(shape, dtype)
-  return array_ops.ones(shape, dtype)
+    return array_ops.zeros(shape, dtype=dtype)
+  return array_ops.ones(shape, dtype=dtype)
+
+
+@contextlib.contextmanager
+def place_on_device(device):
+  if device is not None and len(device):
+    with tf_ops.device(device):
+      yield
+  else:
+    yield
 
 
 def compute_cov(tensor, tensor_right=None, normalizer=None):
@@ -205,6 +271,58 @@ def graph_func_to_string(func):
   return list_to_string(func.func_id)
 
 
+def _subsample_for_cov_computation(array, name=None):
+  """Subsamples the first dimension of the array.
+
+  `array`(A) is a tensor of shape `[batch_size, dim_2]`. Then the covariance
+  matrix(A^TA) is of shape `dim_2 ** 2`. Subsample only if the number of outer
+  products per row of the covariance matrix is greater than
+  `_MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW`.
+
+  Args:
+    array: Tensor, of shape `[batch_size, dim_2]`.
+    name: `string`, Default(None)
+
+  Returns:
+    A tensor of shape `[max_samples, dim_2]`.
+
+  Raises:
+    ValueError: If array's is not matrix-shaped.
+    ValueError: If array's batch_size cannot be inferred.
+
+  """
+  with tf_ops.name_scope(name, "subsample", [array]):
+    array = tf_ops.convert_to_tensor(array)
+    if len(array.shape) != 2:
+      raise ValueError("Input param array must be a matrix.")
+
+    batch_size = array.shape.as_list()[0]
+    if batch_size is None:
+      raise ValueError("Unable to get batch_size from input param array.")
+
+    num_cov_rows = array.shape.as_list()[-1]
+    max_batch_size = int(_MAX_NUM_OUTER_PRODUCTS_PER_COV_ROW * num_cov_rows)
+    if batch_size <= max_batch_size:
+      return array
+
+    return _random_tensor_gather(array, max_batch_size)
+
+
+def _random_tensor_gather(array, max_size):
+  """Generates a random set of indices and gathers the value at the indcices.
+
+  Args:
+    array: Tensor, of shape `[batch_size, dim_2]`.
+    max_size: int, Number of indices to sample.
+
+  Returns:
+    A tensor of shape `[max_size, ...]`.
+  """
+  batch_size = array.shape.as_list()[0]
+  indices = random_ops.random_shuffle(math_ops.range(0, batch_size))[:max_size]
+  return array_ops.gather(array, indices)
+
+
 @six.add_metaclass(abc.ABCMeta)
 class FisherFactor(object):
   """Base class for objects modeling factors of approximate Fisher blocks.
@@ -257,6 +375,10 @@ class FisherFactor(object):
     pass
 
   @abc.abstractproperty
+  def _num_towers(self):
+    pass
+
+  @abc.abstractproperty
   def _dtype(self):
     """dtype for variable backing this factor."""
     pass
@@ -278,15 +400,17 @@ class FisherFactor(object):
           dtype=self._dtype)
 
   @abc.abstractmethod
-  def _compute_new_cov(self, idx=0):
+  def _compute_new_cov(self, source, tower):
     """Computes minibatch-estimated covariance for a single source.
 
     Args:
-      idx: int in [0, self._num_sources). Which source to use when estimating
-        covariance.
+      source: int in [0, self._num_sources). Which source to use when computing
+        the cov update.
+      tower: int in [0, self._num_towers). Which tower to use when computing
+        the cov update.
 
     Returns:
-      Tensor of same shape as self.get_cov_var().
+      Tensor of same shape as self.get_cov().
     """
     pass
 
@@ -298,14 +422,32 @@ class FisherFactor(object):
     Returns:
       An Op for updating the covariance Variable referenced by _cov.
     """
-    new_cov_contribs = tuple(self._compute_new_cov(idx)
-                             for idx in range(self._num_sources))
-    new_cov = math_ops.add_n(new_cov_contribs)
-    # Synchronize value across all TPU cores.
+    new_cov_contribs = []
+    for source in range(self._num_sources):
+      for tower in range(self._num_towers):
+        device = (self._get_data_device(tower)
+                  if TOWER_STRATEGY == "separate" else None)
+        with place_on_device(device):
+          new_cov_contribs.append(self._compute_new_cov(source, tower))
+
+    new_cov = math_ops.add_n(new_cov_contribs) / float(self._num_towers)
+
+    # Compute average of 'new_cov' across all TPU cores. On a TPU, each
+    # instance of 'new_cov' will be based on a different minibatch. This ensures
+    # that by the end of assign_moving_average(), all TPU cores see the same
+    # value for self._cov.
+    #
+    # Other implementations of make_covariance_update_op() that accumulate
+    # statistics in other variables should mimic this behavior.
     if utils.on_tpu():
       new_cov = utils.cross_replica_mean(new_cov)
+
     return moving_averages.assign_moving_average(
         self._cov, new_cov, ema_decay, zero_debias=ZERO_DEBIAS)
+
+  @abc.abstractmethod
+  def _get_data_device(self, tower):
+    pass
 
   @abc.abstractmethod
   def instantiate_inv_variables(self):
@@ -317,78 +459,43 @@ class FisherFactor(object):
     """Create and return update ops corresponding to registered computations."""
     pass
 
-  @abc.abstractmethod
   def get_cov(self):
-    """Get full covariance matrix.
-
-    Returns:
-      Tensor of shape [n, n]. Represents all parameter-parameter correlations
-      captured by this FisherFactor.
-    """
-    pass
-
-  def get_cov_var(self):
-    """Get variable backing this FisherFactor.
-
-    May or may not be the same as self.get_cov()
-
-    Returns:
-      Variable of shape self._cov_shape.
-    """
     return self._cov
 
   @abc.abstractmethod
-  def left_multiply_matpower(self, x, exp, damping_func):
-    """Left multiplies 'x' by matrix power of this factor (w/ damping applied).
-
-    This calculation is essentially:
-      (C + damping * I)**exp * x
-    where * is matrix-multiplication, ** is matrix power, I is the identity
-    matrix, and C is the matrix represented by this factor.
-
-    x can represent either a matrix or a vector.  For some factors, 'x' might
-    represent a vector but actually be stored as a 2D matrix for convenience.
-
-    Args:
-      x: Tensor. Represents a single vector. Shape depends on implementation.
-      exp: float.  The matrix exponent to use.
-      damping_func: A function that computes a 0-D Tensor or a float which will
-        be the damping value used.  i.e. damping = damping_func().
-
-    Returns:
-      Tensor of same shape as 'x' representing the result of the multiplication.
-    """
+  def get_cov_as_linear_operator(self):
     pass
 
   @abc.abstractmethod
-  def right_multiply_matpower(self, x, exp, damping_func):
-    """Right multiplies 'x' by matrix power of this factor (w/ damping applied).
+  def register_matpower(self, exp, damping_func):
+    pass
 
-    This calculation is essentially:
-      x * (C + damping * I)**exp
-    where * is matrix-multiplication, ** is matrix power, I is the identity
-    matrix, and C is the matrix represented by this factor.
+  @abc.abstractmethod
+  def register_cholesky(self, damping_func):
+    pass
 
-    Unlike left_multiply_matpower, x will always be a matrix.
+  @abc.abstractmethod
+  def register_cholesky_inverse(self, damping_func):
+    pass
 
-    Args:
-      x: Tensor. Represents a single vector. Shape depends on implementation.
-      exp: float.  The matrix exponent to use.
-      damping_func: A function that computes a 0-D Tensor or a float which will
-        be the damping value used.  i.e. damping = damping_func().
+  @abc.abstractmethod
+  def get_matpower(self, exp, damping_func):
+    pass
 
-    Returns:
-      Tensor of same shape as 'x' representing the result of the multiplication.
-    """
+  @abc.abstractmethod
+  def get_cholesky(self, damping_func):
+    pass
+
+  @abc.abstractmethod
+  def get_cholesky_inverse(self, damping_func):
     pass
 
 
-class InverseProvidingFactor(FisherFactor):
-  """Base class for FisherFactors that maintain inverses explicitly.
+class DenseSquareMatrixFactor(FisherFactor):
+  """Base class for FisherFactors that are stored as dense square matrices.
 
-  This class explicitly calculates and stores inverses of covariance matrices
-  provided by the underlying FisherFactor implementation. It is assumed that
-  vectors can be represented as 2-D matrices.
+  This class explicitly calculates and stores inverses of their `cov` matrices,
+  which must be square dense matrices.
 
   Subclasses must implement the _compute_new_cov method, and the _var_scope and
   _cov_shape properties.
@@ -407,7 +514,19 @@ class InverseProvidingFactor(FisherFactor):
     self._eigendecomp = None
     self._damping_funcs_by_id = {}  # {hashable: lambda}
 
-    super(InverseProvidingFactor, self).__init__()
+    self._cholesky_registrations = set()  # { hashable }
+    self._cholesky_inverse_registrations = set()  # { hashable }
+
+    self._cholesky_by_damping = {}  # { hashable: variable }
+    self._cholesky_inverse_by_damping = {}  # { hashable: variable }
+
+    super(DenseSquareMatrixFactor, self).__init__()
+
+  def get_cov_as_linear_operator(self):
+    assert self.get_cov().shape.ndims == 2
+    return lo.LinearOperatorFullMatrix(self.get_cov(),
+                                       is_self_adjoint=True,
+                                       is_square=True)
 
   def _register_damping(self, damping_func):
     damping_id = graph_func_to_id(damping_func)
@@ -432,14 +551,44 @@ class InverseProvidingFactor(FisherFactor):
         be the damping value used.  i.e. damping = damping_func().
     """
     if exp == 1.0:
-      # We don't register these.  The user shouldn't even be calling this
-      # function with exp = 1.0.
       return
 
     damping_id = self._register_damping(damping_func)
 
     if (exp, damping_id) not in self._matpower_registrations:
       self._matpower_registrations.add((exp, damping_id))
+
+  def register_cholesky(self, damping_func):
+    """Registers a Cholesky factor to be maintained and served on demand.
+
+    This creates a variable and signals make_inverse_update_ops to make the
+    corresponding update op.  The variable can be read via the method
+    get_cholesky.
+
+    Args:
+      damping_func: A function that computes a 0-D Tensor or a float which will
+        be the damping value used.  i.e. damping = damping_func().
+    """
+    damping_id = self._register_damping(damping_func)
+
+    if damping_id not in self._cholesky_registrations:
+      self._cholesky_registrations.add(damping_id)
+
+  def register_cholesky_inverse(self, damping_func):
+    """Registers an inverse Cholesky factor to be maintained/served on demand.
+
+    This creates a variable and signals make_inverse_update_ops to make the
+    corresponding update op.  The variable can be read via the method
+    get_cholesky_inverse.
+
+    Args:
+      damping_func: A function that computes a 0-D Tensor or a float which will
+        be the damping value used.  i.e. damping = damping_func().
+    """
+    damping_id = self._register_damping(damping_func)
+
+    if damping_id not in self._cholesky_inverse_registrations:
+      self._cholesky_inverse_registrations.add(damping_id)
 
   def instantiate_inv_variables(self):
     """Makes the internal "inverse" variable(s)."""
@@ -458,6 +607,32 @@ class InverseProvidingFactor(FisherFactor):
       assert (exp, damping_id) not in self._matpower_by_exp_and_damping
       self._matpower_by_exp_and_damping[(exp, damping_id)] = matpower
 
+    for damping_id in self._cholesky_registrations:
+      damping_func = self._damping_funcs_by_id[damping_id]
+      damping_string = graph_func_to_string(damping_func)
+      with variable_scope.variable_scope(self._var_scope):
+        chol = variable_scope.get_variable(
+            "cholesky_damp{}".format(damping_string),
+            initializer=inverse_initializer,
+            shape=self._cov_shape,
+            trainable=False,
+            dtype=self._dtype)
+      assert damping_id not in self._cholesky_by_damping
+      self._cholesky_by_damping[damping_id] = chol
+
+    for damping_id in self._cholesky_inverse_registrations:
+      damping_func = self._damping_funcs_by_id[damping_id]
+      damping_string = graph_func_to_string(damping_func)
+      with variable_scope.variable_scope(self._var_scope):
+        cholinv = variable_scope.get_variable(
+            "cholesky_inverse_damp{}".format(damping_string),
+            initializer=inverse_initializer,
+            shape=self._cov_shape,
+            trainable=False,
+            dtype=self._dtype)
+      assert damping_id not in self._cholesky_inverse_by_damping
+      self._cholesky_inverse_by_damping[damping_id] = cholinv
+
   def make_inverse_update_ops(self):
     """Create and return update ops corresponding to registered computations."""
     ops = []
@@ -475,7 +650,8 @@ class InverseProvidingFactor(FisherFactor):
 
     # We precompute these so we don't need to evaluate them multiple times (for
     # each matrix power that uses them)
-    damping_value_by_id = {damping_id: self._damping_funcs_by_id[damping_id]()
+    damping_value_by_id = {damping_id: math_ops.cast(
+        self._damping_funcs_by_id[damping_id](), self._dtype)
                            for damping_id in self._damping_funcs_by_id}
 
     if use_eig:
@@ -496,29 +672,91 @@ class InverseProvidingFactor(FisherFactor):
           self._matpower_by_exp_and_damping.items()):
         assert exp == -1
         damping = damping_value_by_id[damping_id]
-        ops.append(matpower.assign(utils.posdef_inv(self._cov, damping)))
+        ops.append(matpower.assign(utils.posdef_inv(self.get_cov(), damping)))
+
+    # TODO(b/77902055): If inverses are being computed with Cholesky's
+    # we can share the work. Instead this code currently just computes the
+    # Cholesky a second time. It does at least share work between requests for
+    # Cholesky's and Cholesky inverses with the same damping id.
+    for damping_id, cholesky_inv in self._cholesky_inverse_by_damping.items():
+      cholesky_ops = []
+
+      damping = damping_value_by_id[damping_id]
+      cholesky_value = utils.cholesky(self.get_cov(), damping)
+
+      if damping_id in self._cholesky_by_damping:
+        cholesky = self._cholesky_by_damping[damping_id]
+        cholesky_ops.append(cholesky.assign(cholesky_value))
+
+      identity = linalg_ops.eye(cholesky_value.shape.as_list()[0],
+                                dtype=cholesky_value.dtype)
+      cholesky_inv_value = linalg_ops.matrix_triangular_solve(cholesky_value,
+                                                              identity)
+      cholesky_ops.append(cholesky_inv.assign(cholesky_inv_value))
+
+      ops.append(control_flow_ops.group(*cholesky_ops))
+
+    for damping_id, cholesky in self._cholesky_by_damping.items():
+      if damping_id not in self._cholesky_inverse_by_damping:
+        damping = damping_value_by_id[damping_id]
+        cholesky_value = utils.cholesky(self.get_cov(), damping)
+        ops.append(cholesky.assign(cholesky_value))
 
     self._eigendecomp = False
     return ops
 
   def get_inverse(self, damping_func):
     # Just for backwards compatibility of some old code and tests
-    damping_id = graph_func_to_id(damping_func)
-    return self._matpower_by_exp_and_damping[(-1, damping_id)]
+    return self.get_matpower(-1, damping_func)
 
   def get_matpower(self, exp, damping_func):
     # Note that this function returns a variable which gets updated by the
     # inverse ops.  It may be stale / inconsistent with the latest value of
     # get_cov().
+    if exp != 1:
+      damping_id = graph_func_to_id(damping_func)
+      matpower = self._matpower_by_exp_and_damping[(exp, damping_id)]
+    else:
+      matpower = self.get_cov()
+      identity = linalg_ops.eye(matpower.shape.as_list()[0],
+                                dtype=matpower.dtype)
+      matpower += math_ops.cast(damping_func(), dtype=matpower.dtype)*identity
+
+    assert matpower.shape.ndims == 2
+    return lo.LinearOperatorFullMatrix(matpower,
+                                       is_non_singular=True,
+                                       is_self_adjoint=True,
+                                       is_positive_definite=True,
+                                       is_square=True)
+
+  def get_cholesky(self, damping_func):
+    # Note that this function returns a variable which gets updated by the
+    # inverse ops.  It may be stale / inconsistent with the latest value of
+    # get_cov().
     damping_id = graph_func_to_id(damping_func)
-    return self._matpower_by_exp_and_damping[(exp, damping_id)]
+    cholesky = self._cholesky_by_damping[damping_id]
+    assert cholesky.shape.ndims == 2
+    return lo.LinearOperatorFullMatrix(cholesky,
+                                       is_non_singular=True,
+                                       is_square=True)
+
+  def get_cholesky_inverse(self, damping_func):
+    # Note that this function returns a variable which gets updated by the
+    # inverse ops.  It may be stale / inconsistent with the latest value of
+    # get_cov().
+    damping_id = graph_func_to_id(damping_func)
+    cholesky_inv = self._cholesky_inverse_by_damping[damping_id]
+    assert cholesky_inv.shape.ndims == 2
+    return lo.LinearOperatorFullMatrix(cholesky_inv,
+                                       is_non_singular=True,
+                                       is_square=True)
 
   def get_eigendecomp(self):
     """Creates or retrieves eigendecomposition of self._cov."""
     # Unlike get_matpower this doesn't retrieve a stored variable, but instead
     # always computes a fresh version from the current value of get_cov().
     if not self._eigendecomp:
-      eigenvalues, eigenvectors = linalg_ops.self_adjoint_eig(self._cov)
+      eigenvalues, eigenvectors = linalg_ops.self_adjoint_eig(self.get_cov())
 
       # The matrix self._cov is positive semidefinite by construction, but the
       # numerical eigenvalues could be negative due to numerical errors, so here
@@ -529,45 +767,8 @@ class InverseProvidingFactor(FisherFactor):
 
     return self._eigendecomp
 
-  def get_cov(self):
-    # Variable contains full covariance matrix.
-    return self.get_cov_var()
 
-  def left_multiply_matpower(self, x, exp, damping_func):
-    if isinstance(x, tf_ops.IndexedSlices):
-      raise ValueError("Left-multiply not yet supported for IndexedSlices.")
-
-    if x.shape.ndims != 2:
-      raise ValueError(
-          "InverseProvidingFactors apply to matrix-shaped vectors. Found: %s."
-          % (x,))
-
-    if exp == 1:
-      return math_ops.matmul(self.get_cov(), x) + damping_func() * x
-
-    return math_ops.matmul(self.get_matpower(exp, damping_func), x)
-
-  def right_multiply_matpower(self, x, exp, damping_func):
-    if isinstance(x, tf_ops.IndexedSlices):
-      if exp == 1:
-        n = self.get_cov().shape[0]
-        damped_cov = self.get_cov() + damping_func() * array_ops.eye(n)
-        return utils.matmul_sparse_dense(x, damped_cov)
-
-      return utils.matmul_sparse_dense(x, self.get_matpower(exp, damping_func))
-
-    if x.shape.ndims != 2:
-      raise ValueError(
-          "InverseProvidingFactors apply to matrix-shaped vectors. Found: %s."
-          % (x,))
-
-    if exp == 1:
-      return math_ops.matmul(x, self.get_cov()) + damping_func() * x
-
-    return math_ops.matmul(x, self.get_matpower(exp, damping_func))
-
-
-class FullFactor(InverseProvidingFactor):
+class FullFactor(DenseSquareMatrixFactor):
   """FisherFactor for a full matrix representation of the Fisher of a parameter.
 
   Note that this uses the naive "square the sum estimator", and so is applicable
@@ -598,15 +799,24 @@ class FullFactor(InverseProvidingFactor):
     return len(self._params_grads)
 
   @property
+  def _num_towers(self):
+    return 1
+
+  @property
   def _dtype(self):
     return self._params_grads[0][0].dtype
 
-  def _compute_new_cov(self, idx=0):
+  def _compute_new_cov(self, source, tower):
+    assert tower == 0
+
     # This will be a very basic rank 1 estimate
-    params_grads_flat = utils.tensors_to_column(self._params_grads[idx])
+    params_grads_flat = utils.tensors_to_column(self._params_grads[source])
     return ((params_grads_flat * array_ops.transpose(
         params_grads_flat)) / math_ops.cast(self._batch_size,
                                             params_grads_flat.dtype))
+
+  def _get_data_device(self, tower):
+    return None
 
 
 class DiagonalFactor(FisherFactor):
@@ -617,12 +827,21 @@ class DiagonalFactor(FisherFactor):
   """
 
   def __init__(self):
-    self._damping_funcs_by_id = {}  # { hashable: lambda }
     super(DiagonalFactor, self).__init__()
+
+  def get_cov_as_linear_operator(self):
+    assert self._matrix_diagonal.shape.ndims == 1
+    return lo.LinearOperatorDiag(self._matrix_diagonal,
+                                 is_self_adjoint=True,
+                                 is_square=True)
 
   @property
   def _cov_initializer(self):
     return diagonal_covariance_initializer
+
+  @property
+  def _matrix_diagonal(self):
+    return array_ops.reshape(self.get_cov(), [-1])
 
   def make_inverse_update_ops(self):
     return []
@@ -630,28 +849,29 @@ class DiagonalFactor(FisherFactor):
   def instantiate_inv_variables(self):
     pass
 
-  def get_cov(self):
-    # self.get_cov() could be any shape, but it must have one entry per
-    # parameter. Flatten it into a vector.
-    cov_diag_vec = array_ops.reshape(self.get_cov_var(), [-1])
-    return array_ops.diag(cov_diag_vec)
-
-  def left_multiply_matpower(self, x, exp, damping_func):
-    matpower = (self.get_cov_var() + damping_func())**exp
-
-    if isinstance(x, tf_ops.IndexedSlices):
-      return utils.matmul_diag_sparse(array_ops.reshape(matpower, [-1]), x)
-
-    if x.shape != matpower.shape:
-      raise ValueError("x (%s) and cov (%s) must have same shape." %
-                       (x, matpower))
-    return matpower * x
-
-  def right_multiply_matpower(self, x, exp, damping_func):
-    raise NotImplementedError("Only left-multiply is currently supported.")
-
   def register_matpower(self, exp, damping_func):
     pass
+
+  def register_cholesky(self, damping_func):
+    pass
+
+  def register_cholesky_inverse(self, damping_func):
+    pass
+
+  def get_matpower(self, exp, damping_func):
+    matpower_diagonal = (self._matrix_diagonal
+                         + math_ops.cast(damping_func(), self._dtype))**exp
+    return lo.LinearOperatorDiag(matpower_diagonal,
+                                 is_non_singular=True,
+                                 is_self_adjoint=True,
+                                 is_positive_definite=True,
+                                 is_square=True)
+
+  def get_cholesky(self, damping_func):
+    return self.get_matpower(0.5, damping_func)
+
+  def get_cholesky_inverse(self, damping_func):
+    return self.get_matpower(-0.5, damping_func)
 
 
 class NaiveDiagonalFactor(DiagonalFactor):
@@ -693,13 +913,22 @@ class NaiveDiagonalFactor(DiagonalFactor):
     return len(self._params_grads)
 
   @property
+  def _num_towers(self):
+    return 1
+
+  @property
   def _dtype(self):
     return self._params_grads[0][0].dtype
 
-  def _compute_new_cov(self, idx=0):
-    params_grads_flat = utils.tensors_to_column(self._params_grads[idx])
+  def _compute_new_cov(self, source, tower):
+    assert tower == 0
+
+    params_grads_flat = utils.tensors_to_column(self._params_grads[source])
     return (math_ops.square(params_grads_flat) / math_ops.cast(
         self._batch_size, params_grads_flat.dtype))
+
+  def _get_data_device(self, tower):
+    return None
 
 
 class EmbeddingInputKroneckerFactor(DiagonalFactor):
@@ -720,8 +949,8 @@ class EmbeddingInputKroneckerFactor(DiagonalFactor):
     """Instantiate EmbeddingInputKroneckerFactor.
 
     Args:
-      input_ids: Tensor of shape [batch_size, input_size] and dtype int32.
-        Indices into embedding matrix.
+      input_ids: List of Tensors of shape [batch_size, input_size] and dtype
+        int32. Indices into embedding matrix. List index is tower.
       vocab_size: int or 0-D Tensor. Maximum value for entries in 'input_ids'.
       dtype: dtype for covariance statistics. Must be a floating point type.
         Defaults to float32.
@@ -745,14 +974,17 @@ class EmbeddingInputKroneckerFactor(DiagonalFactor):
     return 1
 
   @property
+  def _num_towers(self):
+    return len(self._input_ids)
+
+  @property
   def _dtype(self):
     return self._cov_dtype
 
-  def _compute_new_cov(self, idx=0):
-    if idx != 0:
-      raise ValueError("EmbeddingInputKroneckerFactor only supports idx = 0")
+  def _compute_new_cov(self, source, tower):
+    assert source == 0
 
-    input_ids = self._input_ids
+    input_ids = self._input_ids[tower]
 
     if len(input_ids.shape) > 2:
       raise ValueError(
@@ -782,6 +1014,9 @@ class EmbeddingInputKroneckerFactor(DiagonalFactor):
 
     return new_cov
 
+  def _get_data_device(self, tower):
+    return self._input_ids[tower].device
+
 
 class FullyConnectedDiagonalFactor(DiagonalFactor):
   r"""FisherFactor for a diagonal approx of a fully-connected layer's Fisher.
@@ -801,10 +1036,11 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     """Instantiate FullyConnectedDiagonalFactor.
 
     Args:
-      inputs: Tensor of shape [batch_size, input_size]. Inputs to this layer.
+      inputs: List of Tensors of shape [batch_size, input_size]. Inputs to this
+        layer.  List index is towers.
       outputs_grads: List of Tensors, each of shape [batch_size, output_size],
         which are the gradients of the loss with respect to the layer's
-        outputs. One Tensor for each "source".
+        outputs. First index is source, second is tower.
 
       has_bias: bool. If True, append '1' to each input.
     """
@@ -818,12 +1054,12 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
   @property
   def _var_scope(self):
     return "ff_diagfc_" + scope_string_from_params(
-        (self._inputs,) + tuple(self._outputs_grads))
+        tuple(self._inputs) + tuple(nest.flatten(self._outputs_grads)))
 
   @property
   def _cov_shape(self):
-    input_size = self._inputs.shape[1] + self._has_bias
-    output_size = self._outputs_grads[0].shape[1]
+    input_size = self._inputs[0].shape[1] + self._has_bias
+    output_size = self._outputs_grads[0][0].shape[1]
     return [input_size, output_size]
 
   @property
@@ -831,33 +1067,44 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     return len(self._outputs_grads)
 
   @property
+  def _num_towers(self):
+    return len(self._inputs)
+
+  @property
   def _dtype(self):
-    return self._outputs_grads[0].dtype
+    return self._outputs_grads[0][0].dtype
 
   def make_covariance_update_op(self, ema_decay):
-    inputs = self._inputs
 
-    if self._has_bias:
-      inputs = append_homog(inputs)
-    self._squared_inputs = math_ops.square(inputs)
+    self._squared_inputs = []
+    for tower in range(self._num_towers):
+      inputs = self._inputs[tower]
+
+      with place_on_device(self._get_data_device(tower)):
+        if self._has_bias:
+          inputs = append_homog(inputs)
+        self._squared_inputs.append(math_ops.square(inputs))
 
     return super(FullyConnectedDiagonalFactor, self).make_covariance_update_op(
         ema_decay)
 
-  def _compute_new_cov(self, idx=0):
-    batch_size = array_ops.shape(self._squared_inputs)[0]
-    outputs_grad = self._outputs_grads[idx]
+  def _compute_new_cov(self, source, tower):
+    batch_size = array_ops.shape(self._squared_inputs[tower])[0]
+    outputs_grad = self._outputs_grads[source][tower]
 
     # The well-known special formula that uses the fact that the entry-wise
     # square of an outer product is the outer-product of the entry-wise squares.
     # The gradient is the outer product of the input and the output gradients,
     # so we just square both and then take their outer-product.
     new_cov = math_ops.matmul(
-        self._squared_inputs,
+        self._squared_inputs[tower],
         math_ops.square(outputs_grad),
         transpose_a=True)
     new_cov /= math_ops.cast(batch_size, new_cov.dtype)
     return new_cov
+
+  def _get_data_device(self, tower):
+    return self._inputs[tower].device
 
 
 class ConvDiagonalFactor(DiagonalFactor):
@@ -875,11 +1122,12 @@ class ConvDiagonalFactor(DiagonalFactor):
     """Creates a ConvDiagonalFactor object.
 
     Args:
-      inputs: Tensor of shape [batch_size, height, width, in_channels].
-        Input activations to this layer.
+      inputs: List of Tensors of shape [batch_size, height, width, in_channels].
+        Input activations to this layer.  List index is towers.
       outputs_grads: List of Tensors, each of shape [batch_size,
         height, width, out_channels], which are the gradients of the loss
-        with respect to the layer's outputs. One Tensor for each "source".
+        with respect to the layer's outputs.  First index is source, second
+        index is tower.
       filter_shape: Tuple of 4 ints: (kernel_height, kernel_width, in_channels,
         out_channels). Represents shape of kernel used in this layer.
       strides: The stride size in this layer (1-D Tensor of length 4).
@@ -897,14 +1145,15 @@ class ConvDiagonalFactor(DiagonalFactor):
     """
     if not utils.is_data_format_channel_last(data_format):
       raise ValueError("Channel must be last.")
-    if inputs.shape.ndims != 4:
-      raise ValueError("inputs must be 4-D Tensor.")
-    if inputs.shape.as_list()[-1] != filter_shape[-2]:
+    if any(input_.shape.ndims != 4 for input_ in inputs):
+      raise ValueError("inputs must be a list of 4-D Tensors.")
+    if any(input_.shape.as_list()[-1] != filter_shape[-2] for input_ in inputs):
       raise ValueError("inputs and filter_shape must agree on in_channels.")
     for i, outputs_grad in enumerate(outputs_grads):
-      if outputs_grad.shape.ndims != 4:
+      if any(output_grad.shape.ndims != 4 for output_grad in outputs_grad):
         raise ValueError("outputs[%d] must be 4-D Tensor." % i)
-      if outputs_grad.shape.as_list()[-1] != filter_shape[-1]:
+      if any(output_grad.shape.as_list()[-1] != filter_shape[-1]
+             for output_grad in outputs_grad):
         raise ValueError(
             "outputs[%d] and filter_shape must agree on out_channels." % i)
     if len(strides) != 4:
@@ -927,7 +1176,7 @@ class ConvDiagonalFactor(DiagonalFactor):
   @property
   def _var_scope(self):
     return "ff_convdiag_" + scope_string_from_params(
-        (self._inputs,) + tuple(self._outputs_grads))
+        tuple(self._inputs) + tuple(nest.flatten(self._outputs_grads)))
 
   @property
   def _cov_shape(self):
@@ -942,8 +1191,12 @@ class ConvDiagonalFactor(DiagonalFactor):
     return len(self._outputs_grads)
 
   @property
+  def _num_towers(self):
+    return len(self._inputs)
+
+  @property
   def _dtype(self):
-    return self._outputs_grads[0].dtype
+    return self._inputs[0].dtype
 
   def make_covariance_update_op(self, ema_decay):
     filter_height, filter_width, _, _ = self._filter_shape
@@ -954,25 +1207,30 @@ class ConvDiagonalFactor(DiagonalFactor):
       rates = (1, 1, 1, 1)
     else:
       rates = tuple(self._dilations)
-    patches = array_ops.extract_image_patches(
-        self._inputs,
-        ksizes=[1, filter_height, filter_width, 1],
-        strides=self._strides,
-        rates=rates,
-        padding=self._padding)
 
-    if self._has_bias:
-      patches = append_homog(patches)
+    self._patches = []
+    for tower in range(self._num_towers):
+      with place_on_device(self._get_data_device(tower)):
+        patches = array_ops.extract_image_patches(
+            self._inputs[tower],
+            ksizes=[1, filter_height, filter_width, 1],
+            strides=self._strides,
+            rates=rates,
+            padding=self._padding)
 
-    self._patches = patches
+        if self._has_bias:
+          patches = append_homog(patches)
+
+        self._patches.append(patches)
 
     return super(ConvDiagonalFactor, self).make_covariance_update_op(ema_decay)
 
-  def _compute_new_cov(self, idx=0):
-    batch_size = array_ops.shape(self._patches)[0]
-    outputs_grad = self._outputs_grads[idx]
+  def _compute_new_cov(self, source, tower):
+    patches = self._patches[tower]
+    batch_size = array_ops.shape(patches)[0]
+    outputs_grad = self._outputs_grads[source][tower]
 
-    new_cov = self._convdiag_sum_of_squares(self._patches, outputs_grad)
+    new_cov = self._convdiag_sum_of_squares(patches, outputs_grad)
     new_cov /= math_ops.cast(batch_size, new_cov.dtype)
 
     return new_cov
@@ -985,8 +1243,11 @@ class ConvDiagonalFactor(DiagonalFactor):
                                                   outputs_grad)
     return math_ops.reduce_sum(math_ops.square(case_wise_gradients), axis=0)
 
+  def _get_data_device(self, tower):
+    return self._inputs[tower].device
 
-class FullyConnectedKroneckerFactor(InverseProvidingFactor):
+
+class FullyConnectedKroneckerFactor(DenseSquareMatrixFactor):
   """Kronecker factor for the input or output side of a fully-connected layer.
   """
 
@@ -996,9 +1257,9 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
     """Instantiate FullyConnectedKroneckerFactor.
 
     Args:
-      tensors: List of Tensors, each of shape [batch_size, n], one for each
-      source.  The Tensors are typically either a layer's inputs or its
-      output's gradients.
+      tensors: List of list of Tensors, each of shape [batch_size, n]. The
+        Tensors are typically either a layer's inputs or its output's gradients.
+        The first list index is source, the second is tower.
       has_bias: bool. If True, append '1' to each row.
     """
     # The tensor argument is either a tensor of input activations or a tensor of
@@ -1010,11 +1271,11 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
   @property
   def _var_scope(self):
     return "ff_fckron_" + scope_string_from_params(
-        tuple(self._tensors) + (self._has_bias,))
+        tuple(nest.flatten(self._tensors)) + (self._has_bias,))
 
   @property
   def _cov_shape(self):
-    size = self._tensors[0].shape[1] + self._has_bias
+    size = self._tensors[0][0].shape[1] + self._has_bias
     return [size, size]
 
   @property
@@ -1022,17 +1283,24 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
     return len(self._tensors)
 
   @property
-  def _dtype(self):
-    return self._tensors[0].dtype
+  def _num_towers(self):
+    return len(self._tensors[0])
 
-  def _compute_new_cov(self, idx=0):
-    tensor = self._tensors[idx]
+  @property
+  def _dtype(self):
+    return self._tensors[0][0].dtype
+
+  def _compute_new_cov(self, source, tower):
+    tensor = self._tensors[source][tower]
     if self._has_bias:
       tensor = append_homog(tensor)
     return compute_cov(tensor)
 
+  def _get_data_device(self, tower):
+    return self._tensors[0][tower].device
 
-class ConvInputKroneckerFactor(InverseProvidingFactor):
+
+class ConvInputKroneckerFactor(DenseSquareMatrixFactor):
   r"""Kronecker factor for the input side of a convolutional layer.
 
   Estimates E[ a a^T ] where a is the inputs to a convolutional layer given
@@ -1050,12 +1318,14 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
                dilation_rate=None,
                data_format=None,
                extract_patches_fn=None,
-               has_bias=False):
+               has_bias=False,
+               sub_sample_inputs=None,
+               sub_sample_patches=None):
     """Initializes ConvInputKroneckerFactor.
 
     Args:
-      inputs: Tensor of shape [batch_size, ..spatial_input_size.., in_channels].
-        Inputs to layer.
+      inputs: List of Tensors of shape [batch_size, ..spatial_input_size..,
+        in_channels]. Inputs to layer. List index is tower.
       filter_shape: List of ints. Contains [..spatial_filter_size..,
         in_channels, out_channels]. Shape of convolution kernel.
       padding: str. Padding method for layer. "SAME" or "VALID".
@@ -1070,6 +1340,10 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
         patches. One of "extract_convolution_patches", "extract_image_patches",
         "extract_pointwise_conv2d_patches".
       has_bias: bool. If True, append 1 to in_channel.
+      sub_sample_inputs: `bool`. If True, then subsample the inputs from which
+        the image patches are extracted. (Default: None)
+      sub_sample_patches: `bool`, If `True` then subsample the extracted
+        patches.(Default: None)
     """
     self._inputs = inputs
     self._filter_shape = filter_shape
@@ -1079,15 +1353,23 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     self._data_format = data_format
     self._extract_patches_fn = extract_patches_fn
     self._has_bias = has_bias
+    if sub_sample_inputs is None:
+      self._sub_sample_inputs = _SUB_SAMPLE_INPUTS
+    else:
+      self._sub_sample_inputs = sub_sample_inputs
 
+    if sub_sample_patches is None:
+      self._sub_sample_patches = _SUB_SAMPLE_OUTER_PRODUCTS
+    else:
+      self._sub_sample_patches = sub_sample_patches
     super(ConvInputKroneckerFactor, self).__init__()
 
   @property
   def _var_scope(self):
-    return "ff_convinkron_" + scope_string_from_params([
-        self._inputs, self._filter_shape, self._strides, self._padding,
-        self._dilation_rate, self._data_format, self._has_bias
-    ])
+    return "ff_convinkron_" + scope_string_from_params(
+        tuple(self._inputs) +
+        tuple((self._filter_shape, self._strides, self._padding,
+               self._dilation_rate, self._data_format, self._has_bias)))
 
   @property
   def _cov_shape(self):
@@ -1101,18 +1383,27 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     return 1
 
   @property
-  def _dtype(self):
-    return self._inputs.dtype
+  def _num_towers(self):
+    return len(self._inputs)
 
-  def _compute_new_cov(self, idx=0):
-    if idx != 0:
-      raise ValueError("ConvInputKroneckerFactor only supports idx = 0")
+  @property
+  def _dtype(self):
+    return self._inputs[0].dtype
+
+  def _compute_new_cov(self, source, tower):
+    assert source == 0
+
+    inputs = self._inputs[tower]
+    if self._sub_sample_inputs:
+      batch_size = inputs.shape.as_list()[0]
+      max_size = int(batch_size * _INPUTS_TO_EXTRACT_PATCHES_FACTOR)
+      inputs = _random_tensor_gather(inputs, max_size)
 
     # TODO(b/64144716): there is potential here for a big savings in terms of
     # memory use.
     if self._extract_patches_fn in [None, "extract_convolution_patches"]:
       patches = utils.extract_convolution_patches(
-          self._inputs,
+          inputs,
           self._filter_shape,
           padding=self._padding,
           strides=self._strides,
@@ -1120,7 +1411,7 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
           data_format=self._data_format)
 
     elif self._extract_patches_fn == "extract_image_patches":
-      assert self._inputs.shape.ndims == 4
+      assert inputs.shape.ndims == 4
       assert len(self._filter_shape) == 4
       assert len(self._strides) == 4, self._strides
       if self._dilation_rate is None:
@@ -1130,7 +1421,7 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
         assert len(rates) == 4
         assert rates[0] == rates[-1] == 1
       patches = array_ops.extract_image_patches(
-          self._inputs,
+          inputs,
           ksizes=[1] + list(self._filter_shape[0:-2]) + [1],
           strides=self._strides,
           rates=rates,
@@ -1140,7 +1431,7 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
       assert self._strides in [None, [1, 1, 1, 1], (1, 1, 1, 1)]
       assert self._filter_shape[0] == self._filter_shape[1] == 1
       patches = utils.extract_pointwise_conv2d_patches(
-          self._inputs, self._filter_shape, data_format=None)
+          inputs, self._filter_shape, data_format=None)
 
     else:
       raise NotImplementedError(self._extract_patches_fn)
@@ -1152,8 +1443,12 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     # |Delta| = number of spatial offsets, and J = number of input maps
     # for convolutional layer l.
     patches_flat = array_ops.reshape(patches, [-1, flatten_size])
+
     # We append a homogenous coordinate to patches_flat if the layer has
     # bias parameters. This gives us [[A_l]]_H from the paper.
+    if self._sub_sample_patches:
+      patches_flat = _subsample_for_cov_computation(patches_flat)
+
     if self._has_bias:
       patches_flat = append_homog(patches_flat)
     # We call compute_cov without passing in a normalizer. compute_cov uses
@@ -1165,8 +1460,11 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     # (Tilde omitted over A for clarity.)
     return compute_cov(patches_flat)
 
+  def _get_data_device(self, tower):
+    return self._inputs[tower].device
 
-class ConvOutputKroneckerFactor(InverseProvidingFactor):
+
+class ConvOutputKroneckerFactor(DenseSquareMatrixFactor):
   r"""Kronecker factor for the output side of a convolutional layer.
 
   Estimates E[ ds ds^T ] where s is the preactivations of a convolutional layer
@@ -1181,9 +1479,9 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     """Initializes ConvOutputKroneckerFactor.
 
     Args:
-      outputs_grads: list of Tensors. Each Tensor is of shape
-          [batch_size, ..spatial_input_size.., out_channels]. One Tensor per
-          source.
+      outputs_grads: List of list of Tensors. Each Tensor is of shape
+          [batch_size, ..spatial_input_size.., out_channels].  First list index
+          is source, the second is tower.
       data_format: None or str. Format of outputs_grads.
 
     Raises:
@@ -1191,13 +1489,14 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     """
     if not utils.is_data_format_channel_last(data_format):
       raise ValueError("Channel must be last.")
-    self._out_channels = outputs_grads[0].shape.as_list()[-1]
+    self._out_channels = outputs_grads[0][0].shape.as_list()[-1]
     self._outputs_grads = outputs_grads
     super(ConvOutputKroneckerFactor, self).__init__()
 
   @property
   def _var_scope(self):
-    return "ff_convoutkron_" + scope_string_from_params(self._outputs_grads)
+    return "ff_convoutkron_" + scope_string_from_params(
+        nest.flatten(self._outputs_grads))
 
   @property
   def _cov_shape(self):
@@ -1209,11 +1508,15 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     return len(self._outputs_grads)
 
   @property
-  def _dtype(self):
-    return self._outputs_grads[0].dtype
+  def _num_towers(self):
+    return len(self._outputs_grads[0])
 
-  def _compute_new_cov(self, idx=0):
-    outputs_grad = self._outputs_grads[idx]
+  @property
+  def _dtype(self):
+    return self._outputs_grads[0][0].dtype
+
+  def _compute_new_cov(self, source, tower):
+    outputs_grad = self._outputs_grads[source][tower]
 
     # reshaped_tensor below is the matrix DS_l defined in the KFC paper
     # (tilde omitted over S for clarity). It has shape M|T| x I, where
@@ -1226,28 +1529,30 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     # (Tilde omitted over S for clarity.)
     return compute_cov(reshaped_tensor)
 
+  def _get_data_device(self, tower):
+    return self._outputs_grads[0][tower].device
 
-class FullyConnectedMultiKF(InverseProvidingFactor):
+
+class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
   """Kronecker factor for a fully connected layer used multiple times."""
 
   def __init__(self,
-               tensor_lists,
+               tensors,
+               num_uses=None,
                has_bias=False):
     """Constructs a new `FullyConnectedMultiKF`.
 
     Args:
-      tensor_lists: 2D array (list of lists) of Tensors of shape
-        [batch_size, n]. Each of these tensors is usually a layer's inputs or
-        its output's gradients. The first dimension of the array is the source,
-        and the second is the use in the graph (which is sometimes a
-        "time-step").
+      tensors: List of list of Tensors of shape, each of shape
+        [num_uses * batch_size, n], and is a reshape version of a Tensor of
+        shape [num_uses, batch_size, n]. Each of these tensors is usually a
+        layer's inputs or its output's gradients. The first list index is
+        sources, the second is towers.
+      num_uses: int. The number of time-steps / uses.
       has_bias: bool. If True, '1' is appended to each row.
     """
 
-    self._tensor_lists = tensor_lists
-    self._has_bias = has_bias
-    self._num_timesteps = len(tensor_lists[0])
-    self._tensors = [None] * len(tensor_lists)
+    self._num_uses = num_uses
 
     self._cov_dt1 = None
     self._make_cov_dt1 = False
@@ -1256,29 +1561,38 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
     self._option1quants_registrations = set()
     self._option2quants_registrations = set()
 
-    super(FullyConnectedMultiKF, self).__init__()
+    super(FullyConnectedMultiKF, self).__init__(tensors=tensors,
+                                                has_bias=has_bias)
+
+  @property
+  def _num_timesteps(self):
+    return self._num_uses
 
   @property
   def _var_scope(self):
     return "ff_fc_multi_" + scope_string_from_params(
-        tuple(nest.flatten(self._tensor_lists)) + (self._has_bias,))
-
-  @property
-  def _num_sources(self):
-    return len(self._tensor_lists)
-
-  @property
-  def _dtype(self):
-    return self._tensor_lists[0][0].dtype
+        tuple(nest.flatten(self._tensors))
+        + (self._num_timesteps, self._has_bias,))
 
   def make_covariance_update_op(self, ema_decay):
 
     op = super(FullyConnectedMultiKF, self).make_covariance_update_op(ema_decay)
 
     if self._cov_dt1 is not None:
-      new_cov_dt1_contribs = tuple(self._compute_new_cov_dt1(idx)
-                                   for idx in range(self._num_sources))
-      new_cov_dt1 = math_ops.add_n(new_cov_dt1_contribs)
+      new_cov_dt1_contribs = []
+      for source in range(self._num_sources):
+        for tower in range(self._num_towers):
+          with place_on_device(self._get_data_device(tower)):
+            new_cov_dt1_contribs.append(self._compute_new_cov_dt1(source,
+                                                                  tower))
+
+      new_cov_dt1 = (math_ops.add_n(new_cov_dt1_contribs)
+                     / float(self._num_towers))
+
+      # See comments in FisherFactor.make_covariance_update_op() for details.
+      if utils.on_tpu():
+        new_cov_dt1 = utils.cross_replica_mean(new_cov_dt1)
+
       op2 = moving_averages.assign_moving_average(
           self._cov_dt1, new_cov_dt1, ema_decay, zero_debias=ZERO_DEBIAS)
 
@@ -1291,36 +1605,31 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
 
     return op
 
-  def _compute_new_cov(self, idx=0):
-    # Concatenate across time/replications
-    tensor = array_ops.concat(self._tensor_lists[idx], 0)
+  def _compute_new_cov_dt1(self, source, tower):  # pylint: disable=missing-docstring
+    tensor = self._tensors[source][tower]
     if self._has_bias:
+      # This appending is technically done twice (the other time is for
+      # _compute_new_cov())
       tensor = append_homog(tensor)
-    # We save these so they can be used by _compute_new_cov_dt1
-    self._tensors[idx] = tensor
-    return compute_cov(tensor)
 
-  def _compute_new_cov_dt1(self, idx=0):  # pylint: disable=missing-docstring
-    tensor = self._tensors[idx]
-    batch_size = array_ops.shape(self._tensor_lists[idx][0])[0]
-    # Is there a more elegant way to do this computation?
+    total_len = array_ops.shape(tensor)[0]
+    batch_size = total_len // self._num_timesteps
+
     tensor_present = tensor[:-batch_size, :]
     tensor_future = tensor[batch_size:, :]
+
     # We specify a normalizer for this computation to ensure a PSD Fisher
     # block estimate.  This is equivalent to padding with zeros, as was done
     # in Section B.2 of the appendix.
-    normalizer = self._num_timesteps * batch_size
     return compute_cov(
-        tensor_future, tensor_right=tensor_present, normalizer=normalizer)
+        tensor_future, tensor_right=tensor_present, normalizer=total_len)
 
-  @property
-  def _cov_shape(self):
-    size = self._tensor_lists[0][0].shape[1] + self._has_bias
-    return [size, size]
+  def _get_data_device(self, tower):
+    return self._tensors[0][tower].device
 
   @property
   def _vec_shape(self):
-    size = self._tensor_lists[0][0].shape[1] + self._has_bias
+    size = self._tensors[0][0].shape[1] + self._has_bias
     return [size]
 
   def get_option1quants(self, damping_func):
@@ -1445,6 +1754,7 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
                        psi_var) in self._option1quants_by_damping.items():
 
         damping = self._damping_funcs_by_id[damping_id]()
+        damping = math_ops.cast(damping, self._dtype)
 
         invsqrtC0 = math_ops.matmul(
             eigen_V * (eigen_e + damping)**(-0.5), eigen_V, transpose_b=True)
@@ -1473,6 +1783,7 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
                        mu_var) in self._option2quants_by_damping.items():
 
         damping = self._damping_funcs_by_id[damping_id]()
+        damping = math_ops.cast(damping, self._dtype)
 
         # compute C0^(-1/2)
         invsqrtC0 = math_ops.matmul(

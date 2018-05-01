@@ -21,7 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
+from tensorflow.contrib.kfac.python.ops import fisher_factors as ff
 from tensorflow.contrib.kfac.python.ops import layer_collection as lc
+from tensorflow.contrib.kfac.python.ops import linear_operator as lo
 from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -32,6 +34,19 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
+
+
+# We need to set these constants since the numerical values used in the tests
+# were chosen when these used to be the defaults.
+ff.set_global_constants(init_covariances_at_zero=False,
+                        zero_debias=False,
+                        init_inverses_at_zero=False)
+
+# TODO(b/78538100): As far as I can tell, all the tests that say "Make sure our
+# inverse is something other than the identity" are actually broken. They never
+# run the covariance update ops and so the inverse actually is the identity
+# (possible plus the damping term, which would still make it a multiple of the
+# identity).
 
 
 def _make_psd(dim):
@@ -46,8 +61,9 @@ class UtilsTest(test.TestCase):
   def testComputePiTracenorm(self):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
-      left_factor = array_ops.diag([1., 2., 0., 1.])
-      right_factor = array_ops.ones([2., 2.])
+      diag = ops.convert_to_tensor([1., 2., 0., 1.])
+      left_factor = lo.LinearOperatorDiag(diag)
+      right_factor = lo.LinearOperatorFullMatrix(array_ops.ones([2, 2]))
 
       # pi is the sqrt of the left trace norm divided by the right trace norm
       pi = fb.compute_pi_tracenorm(left_factor, right_factor)
@@ -63,7 +79,7 @@ class FullFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -72,7 +88,7 @@ class FullFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -81,7 +97,7 @@ class FullFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
 
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors(grads, 0.5)
@@ -91,7 +107,7 @@ class FullFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors((grads,), 0.5)
       block._factor.instantiate_cov_variables()
@@ -112,7 +128,7 @@ class FullFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
       block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
       grads = params**2
       block.instantiate_factors((grads,), 0.5)
       block._factor.instantiate_cov_variables()
@@ -133,7 +149,7 @@ class FullFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.FullFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
       grads = (array_ops.constant([2., 3.]), array_ops.constant(4.))
       damping = 0.5
       block.instantiate_factors((grads,), damping)
@@ -163,7 +179,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -172,7 +188,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -181,7 +197,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
 
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors(grads, 0.5)
@@ -191,7 +207,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors((grads,), 0.5)
       block._factor.instantiate_cov_variables()
@@ -210,7 +226,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
       grads = params**2
       block.instantiate_factors((grads,), 0.5)
       block._factor.instantiate_cov_variables()
@@ -228,7 +244,7 @@ class NaiveDiagonalFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
       block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
-      block.register_additional_minibatch(32)
+      block.register_additional_tower(32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       damping = 0.5
       block.instantiate_factors((grads,), damping)
@@ -245,7 +261,6 @@ class NaiveDiagonalFBTest(test.TestCase):
 
       full = sess.run(block.full_fisher_block())
       explicit = np.dot(np.linalg.inv(full + damping * np.eye(3)), v_flat)
-
       self.assertAllClose(output_flat, explicit)
 
 
@@ -324,8 +339,8 @@ class FullyConnectedDiagonalFBTest(test.TestCase):
 
     self.assertAllClose(expected_result, result)
 
-  def testRegisterAdditionalMinibatch(self):
-    """Ensure 1 big minibatch and 2 small minibatches are equivalent."""
+  def testRegisterAdditionalTower(self):
+    """Ensure 1 big tower and 2 small towers are equivalent."""
     multiply_result_big, multiply_inverse_result_big = self.runFisherBlockOps(
         self.w, [self.inputs], [self.outputs], [self.output_grads])
     multiply_result_small, multiply_inverse_result_small = (
@@ -376,7 +391,7 @@ class FullyConnectedDiagonalFBTest(test.TestCase):
       block = fb.FullyConnectedDiagonalFB(
           lc.LayerCollection(), has_bias=isinstance(params, (tuple, list)))
       for (i, o) in zip(inputs, outputs):
-        block.register_additional_minibatch(i, o)
+        block.register_additional_tower(i, o)
 
       block.instantiate_factors((output_grads,), damping=0.0)
       block._factor.instantiate_cov_variables()
@@ -402,7 +417,7 @@ class EmbeddingKFACFBTest(test.TestCase):
       # Add some examples.
       inputs = array_ops.constant([[0, 1], [1, 2], [2, 3]])
       outputs = array_ops.constant([[0.], [1.], [2.]])
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
 
       # Instantiate factor's variables. Ensure it doesn't fail.
       grads = outputs**2.
@@ -420,7 +435,7 @@ class EmbeddingKFACFBTest(test.TestCase):
       # Add some examples.
       inputs = array_ops.constant([[0, 1], [1, 2], [2, 3]])
       outputs = array_ops.constant([[0.], [1.], [2.]])
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
 
       # Instantiate factor's variables. Ensure it doesn't fail.
       grads = outputs**2.
@@ -461,7 +476,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       inputs = array_ops.constant([1., 2.])
       outputs = array_ops.constant([3., 4.])
       block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection())
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
 
       self.assertAllEqual([outputs], block.tensors_to_compute_grads())
 
@@ -471,7 +486,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       inputs = array_ops.constant([[1., 2.], [3., 4.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
       block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=True)
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
 
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
@@ -482,7 +497,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       inputs = array_ops.constant([[1., 2.], [3., 4.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
       block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
 
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
@@ -493,7 +508,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       inputs = array_ops.constant([[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
       block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
 
@@ -525,7 +540,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       inputs = array_ops.constant([[1., 2.], [3., 4.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
       block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
       block._input_factor.instantiate_cov_variables()
@@ -553,7 +568,7 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       outputs = array_ops.zeros([32, output_dim])
       params = array_ops.zeros([input_dim, output_dim])
       block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       grads = outputs**2
       damping = 0.  # This test is only valid without damping.
       block.instantiate_factors(((grads,),), damping)
@@ -689,8 +704,8 @@ class ConvDiagonalFBTest(test.TestCase):
 
     self.assertAllClose(expected_result, result, atol=1e-3)
 
-  def testRegisterAdditionalMinibatch(self):
-    """Ensure 1 big minibatch and 2 small minibatches are equivalent."""
+  def testRegisterAdditionalTower(self):
+    """Ensure 1 big tower and 2 small towers are equivalent."""
     multiply_result_big, multiply_inverse_result_big = self.runFisherBlockOps(
         self.w, [self.inputs], [self.outputs], [self.output_grads])
     multiply_result_small, multiply_inverse_result_small = (
@@ -751,7 +766,7 @@ class ConvDiagonalFBTest(test.TestCase):
       block = fb.ConvDiagonalFB(
           lc.LayerCollection(), params, strides=[1, 1, 1, 1], padding='SAME')
       for (i, o) in zip(inputs, outputs):
-        block.register_additional_minibatch(i, o)
+        block.register_additional_tower(i, o)
 
       block.instantiate_factors((output_grads,), damping=0.0)
       block._factor.instantiate_cov_variables()
@@ -775,7 +790,7 @@ class DepthwiseConvKFCBasicFBTest(test.TestCase):
       layer_collection = lc.LayerCollection()
       block = fb.DepthwiseConvKFCBasicFB(
           layer_collection, params=params, strides=[1, 1, 1, 1], padding='SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       grads = outputs**2
       block.instantiate_factors(([grads],), 0.5)
 
@@ -788,7 +803,7 @@ class DepthwiseConvKFCBasicFBTest(test.TestCase):
       layer_collection = lc.LayerCollection()
       block = fb.DepthwiseConvKFCBasicFB(
           layer_collection, params=params, strides=[1, 1, 1, 1], padding='SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       grads = outputs**2
       block.instantiate_factors(([grads],), 0.5)
       block._input_factor.instantiate_cov_variables()
@@ -825,7 +840,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       outputs = random_ops.random_normal((2, 2, 2))
       block = fb.ConvKFCBasicFB(
           lc.LayerCollection(), params=params, padding='SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
 
       self.assertAllEqual([outputs], block.tensors_to_compute_grads())
 
@@ -843,7 +858,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       outputs = random_ops.random_normal((2, 2, 2, 2))
       block = fb.ConvKFCBasicFB(
           lc.LayerCollection(), params=params, padding='SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
       block._input_factor.instantiate_cov_variables()
@@ -874,7 +889,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       outputs = random_ops.random_normal((2, 2, 2, 2))
       block = fb.ConvKFCBasicFB(
           lc.LayerCollection(), params=params, padding='SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       self.assertFalse(block._has_bias)
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
@@ -902,7 +917,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       outputs = random_ops.random_normal((2, 2, 2, 2))
       block = fb.ConvKFCBasicFB(
           lc.LayerCollection(), params=params, padding='SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       self.assertTrue(block._has_bias)
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
@@ -930,7 +945,7 @@ class ConvKFCBasicFBTest(test.TestCase):
       outputs = array_ops.zeros((2, 2, 2, 2))
       block = fb.ConvKFCBasicFB(
           lc.LayerCollection(), params=params, padding='SAME')
-      block.register_additional_minibatch(inputs, outputs)
+      block.register_additional_tower(inputs, outputs)
       grads = outputs**2
       damping = 0.  # This test is only valid without damping.
       block.instantiate_factors(((grads,),), damping)
@@ -964,7 +979,7 @@ class FullyConnectedSeriesFBTest(test.TestCase):
       inputs = array_ops.constant([1., 2.])
       outputs = array_ops.constant([3., 4.])
       block = fb.FullyConnectedSeriesFB(lc.LayerCollection())
-      block.register_additional_minibatch([inputs], [outputs])
+      block.register_additional_tower([inputs], [outputs])
       self.assertAllEqual([[outputs]], block.tensors_to_compute_grads())
 
   def testInstantiateFactorsHasBias(self):
@@ -975,7 +990,7 @@ class FullyConnectedSeriesFBTest(test.TestCase):
       block = fb.FullyConnectedSeriesFB(
           lc.LayerCollection(),
           has_bias=True)
-      block.register_additional_minibatch([inputs], [outputs])
+      block.register_additional_tower([inputs], [outputs])
       grads = outputs**2
       block.instantiate_factors((((grads,),),), 0.5)
 
@@ -987,7 +1002,7 @@ class FullyConnectedSeriesFBTest(test.TestCase):
       block = fb.FullyConnectedSeriesFB(
           lc.LayerCollection(),
           has_bias=False)
-      block.register_additional_minibatch([inputs], [outputs])
+      block.register_additional_tower([inputs], [outputs])
       grads = outputs**2
       block.instantiate_factors((((grads,),),), 0.5)
 

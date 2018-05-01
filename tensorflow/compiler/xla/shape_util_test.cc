@@ -624,6 +624,24 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   EXPECT_EQ(invocations, 5);
 }
 
+TEST(ShapeUtilTest, ForEachIndexParallel) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  int64 output[10][10];
+  int init = 5;
+  auto set_func = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+    output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
+                                  /*incr=*/{1, 1}, set_func);
+
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < 10; ++j) {
+      EXPECT_EQ(output[i][j], init + i + j);
+    }
+  }
+}
+
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1x1_to_1x1x1) {
   // All output dimensions should be unmodified. One of the input dimensions is
   // modified because the input rank is larger by one.
@@ -693,6 +711,16 @@ TEST(ShapeUtilTest, ReshapeIsBitcast_3x2x2_6x2_Dim1IsMostMinor) {
   EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {1, 0, 2}),
       ShapeUtil::MakeShapeWithLayout(F32, {6, 2}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, StripDegenerateDimensions) {
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::StripDegenerateDimensions(
+                                   ShapeUtil::MakeShape(F32, {3, 1, 2})),
+                               ShapeUtil::MakeShape(F32, {3, 2})));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::StripDegenerateDimensions(
+          ShapeUtil::MakeShapeWithSparseLayout(F32, {3, 1, 2}, 10)),
+      ShapeUtil::MakeShapeWithSparseLayout(F32, {3, 2}, 10)));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

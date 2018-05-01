@@ -334,7 +334,8 @@ struct AvgPoolMeanReducer {
   }
 
   template <typename Packet>
-  void reducePacketWithType(T, const Packet& p, Packet* accum) {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reducePacketWithType(
+      T, const Packet& p, Packet* accum) {
     Packet skip_mask =
         pequal(p, pset1<Packet>(-Eigen::NumTraits<T>::highest()));
     (*accum) = padd<Packet>(*accum, psel(p, pset1<Packet>(0), skip_mask));
@@ -480,11 +481,9 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
                              Eigen::type2index<3> > >::type reduction_dims;
 #endif
   return input
-      .extract_image_patches(
-          patchRows, patchCols, strideRows, strideCols, in_strideRows,
-          in_strideCols, padding_type,
-          -Eigen::NumTraits<typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type>::highest())
+      .extract_image_patches(patchRows, patchCols, strideRows, strideCols,
+                             in_strideRows, in_strideCols, padding_type,
+                             -Eigen::NumTraits<CoeffReturnType>::highest())
       .reduce(reduction_dims, mean_with_nan)
       .reshape(post_reduce_dims);
 }

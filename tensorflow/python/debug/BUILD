@@ -921,6 +921,7 @@ py_test(
     size = "small",
     srcs = ["cli/profile_analyzer_cli_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":debugger_cli_common",
         ":profile_analyzer_cli",
@@ -1002,6 +1003,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
+        "noasan",  # Times out due to size of test (b/73731462).
         "oss_serial",
     ],
 )
@@ -1095,16 +1097,4 @@ sh_test(
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

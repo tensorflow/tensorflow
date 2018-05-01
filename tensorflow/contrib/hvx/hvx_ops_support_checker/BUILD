@@ -10,17 +10,6 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-)
-
 tf_cc_binary(
     name = "hvx_ops_support_checker",
     testonly = 1,

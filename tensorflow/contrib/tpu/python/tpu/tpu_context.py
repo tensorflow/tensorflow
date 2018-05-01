@@ -24,6 +24,7 @@ import copy
 import numpy as np
 
 from tensorflow.contrib.tpu.python.tpu import device_assignment  as tpu_device_assignment
+from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.platform import tf_logging as logging
@@ -205,7 +206,13 @@ class _TPUContext(object):
     """Return true if input_fn is invoked per-core (other than per-host)."""
     mode = self._assert_mode()
     return (mode == model_fn_lib.ModeKeys.TRAIN and
-            not self._config.tpu_config.per_host_input_for_training)
+            (self._config.tpu_config.per_host_input_for_training is
+             tpu_config.InputPipelineConfig.PER_SHARD_V1))
+
+  def is_input_per_host_with_iterators(self):
+    """Return true if input_fn should be run in the per-host v2 config."""
+    return (self._config.tpu_config.per_host_input_for_training is
+            tpu_config.InputPipelineConfig.PER_HOST_V2)
 
   def is_running_on_cpu(self, is_export_mode=False):
     """Determines whether the input_fn and model_fn should be invoked on CPU.
@@ -271,7 +278,8 @@ class _TPUContext(object):
       return global_batch_size
 
     # On TPU
-    if self.is_input_sharded_per_core():
+    if self.is_input_sharded_per_core() or (
+        self.is_input_per_host_with_iterators()):
       # We prohibit per core input sharding for the model parallelism case,
       # therefore it is safe to use num_cores here.
       return global_batch_size // self.num_cores

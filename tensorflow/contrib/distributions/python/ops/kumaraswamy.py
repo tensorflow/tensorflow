@@ -44,18 +44,16 @@ _kumaraswamy_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 def _harmonic_number(x):
   """Compute the harmonic number from its analytic continuation.
 
-  Derivation from [1] and Euler's constant [2].
-  [1] -
-  https://en.wikipedia.org/wiki/Digamma_function#Relation_to_harmonic_numbers
-  [2] - https://en.wikipedia.org/wiki/Euler%E2%80%93Mascheroni_constant
-
+  Derivation from [here](
+  https://en.wikipedia.org/wiki/Digamma_function#Relation_to_harmonic_numbers)
+  and [Euler's constant](
+  https://en.wikipedia.org/wiki/Euler%E2%80%93Mascheroni_constant).
 
   Args:
     x: input float.
 
   Returns:
     z: The analytic continuation of the harmonic number for the input.
-
   """
   one = array_ops.ones([], dtype=x.dtype)
   return math_ops.digamma(x + one) - math_ops.digamma(one)
@@ -153,10 +151,11 @@ class Kumaraswamy(transformed_distribution.TransformedDistribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    concentration1 = ops.convert_to_tensor(
-        concentration1, name="concentration1")
-    concentration0 = ops.convert_to_tensor(
-        concentration0, name="concentration0")
+    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
+      concentration1 = ops.convert_to_tensor(
+          concentration1, name="concentration1")
+      concentration0 = ops.convert_to_tensor(
+          concentration0, name="concentration0")
     super(Kumaraswamy, self).__init__(
         distribution=uniform.Uniform(
             low=array_ops.zeros([], dtype=concentration1.dtype),

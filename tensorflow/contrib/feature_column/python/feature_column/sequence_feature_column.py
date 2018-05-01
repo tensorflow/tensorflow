@@ -166,6 +166,10 @@ def sequence_categorical_column_with_identity(
 
   Returns:
     A `_SequenceCategoricalColumn`.
+
+  Raises:
+    ValueError: if `num_buckets` is less than one.
+    ValueError: if `default_value` is not in range `[0, num_buckets)`.
   """
   return fc._SequenceCategoricalColumn(
       fc.categorical_column_with_identity(
@@ -205,6 +209,10 @@ def sequence_categorical_column_with_hash_bucket(
 
   Returns:
     A `_SequenceCategoricalColumn`.
+
+  Raises:
+    ValueError: `hash_bucket_size` is not greater than 1.
+    ValueError: `dtype` is neither string nor integer.
   """
   return fc._SequenceCategoricalColumn(
       fc.categorical_column_with_hash_bucket(
@@ -257,6 +265,13 @@ def sequence_categorical_column_with_vocabulary_file(
 
   Returns:
     A `_SequenceCategoricalColumn`.
+
+  Raises:
+    ValueError: `vocabulary_file` is missing or cannot be opened.
+    ValueError: `vocabulary_size` is missing or < 1.
+    ValueError: `num_oov_buckets` is a negative integer.
+    ValueError: `num_oov_buckets` and `default_value` are both specified.
+    ValueError: `dtype` is neither string nor integer.
   """
   return fc._SequenceCategoricalColumn(
       fc.categorical_column_with_vocabulary_file(
@@ -311,6 +326,12 @@ def sequence_categorical_column_with_vocabulary_list(
 
   Returns:
     A `_SequenceCategoricalColumn`.
+
+  Raises:
+    ValueError: if `vocabulary_list` is empty, or contains duplicate keys.
+    ValueError: `num_oov_buckets` is a negative integer.
+    ValueError: `num_oov_buckets` and `default_value` are both specified.
+    ValueError: if `dtype` is not integer or string.
   """
   return fc._SequenceCategoricalColumn(
       fc.categorical_column_with_vocabulary_list(
@@ -352,8 +373,17 @@ def sequence_numeric_column(
 
   Returns:
     A `_SequenceNumericColumn`.
+
+  Raises:
+    TypeError: if any dimension in shape is not an int.
+    ValueError: if any dimension in shape is not a positive integer.
+    ValueError: if `dtype` is not convertible to `tf.float32`.
   """
-  # TODO(b/73160931): Add validations.
+  shape = fc._check_shape(shape=shape, key=key)
+  if not (dtype.is_integer or dtype.is_floating):
+    raise ValueError('dtype must be convertible to float. '
+                     'dtype: {}, key: {}'.format(dtype, key))
+
   return _SequenceNumericColumn(
       key,
       shape=shape,

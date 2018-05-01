@@ -35,8 +35,11 @@ namespace {
 // Superclass of pooling ops.
 class PoolingOp : public XlaOpKernel {
  public:
-  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims,
+            const DataType reduction_type)
+      : XlaOpKernel(ctx),
+        num_spatial_dims_(num_spatial_dims),
+        reduction_type_(reduction_type) {
     if (ctx->num_inputs() == 1) {
       std::vector<int32> ksize_int;
       std::vector<int32> stride_int;
@@ -63,12 +66,10 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
   // Method that builds an initial value to use in reductions.
-  virtual xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b,
-                                               DataType data_type) = 0;
+  virtual xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) = 0;
 
   // The reduction operation to apply to each window.
-  virtual const xla::Computation* Reduction(XlaOpKernelContext* ctx,
-                                            DataType dtype) = 0;
+  virtual const xla::Computation* Reduction(XlaOpKernelContext* ctx) = 0;
 
   // A post-processing operation to apply on the outputs of the ReduceWindow.
   virtual xla::ComputationDataHandle PostProcessOutput(
@@ -76,9 +77,6 @@ class PoolingOp : public XlaOpKernel {
       DataType dtype, const TensorShape& input_shape) = 0;
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle input = ctx->Input(0);
-    const TensorShape input_shape = ctx->InputShape(0);
-
     std::vector<int64> ksize = ksize_;
     std::vector<int64> stride = stride_;
     if (ctx->num_inputs() != 1) {
@@ -106,16 +104,20 @@ class PoolingOp : public XlaOpKernel {
       stride.clear();
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &stride));
     }
+    const TensorShape input_shape = ctx->InputShape(0);
     OP_REQUIRES(ctx, input_shape.dims() == num_dims(),
                 errors::InvalidArgument("Input to ", type_string(),
                                         " operator must have ", num_dims(),
                                         " dimensions"));
 
-    const DataType type = input_type(0);
-    xla::ComputationDataHandle pooled = ctx->builder()->ReduceWindow(
-        input, InitValue(ctx->builder(), type), *Reduction(ctx, type), ksize,
-        stride, padding_);
-    ctx->SetOutput(0, PostProcessOutput(ctx, pooled, type, input_shape));
+    xla::ComputationBuilder* const b = ctx->builder();
+    auto input =
+        XlaHelpers::ConvertElementType(b, ctx->Input(0), reduction_type_);
+    auto reduce = ctx->builder()->ReduceWindow(
+        input, InitValue(b), *Reduction(ctx), ksize, stride, padding_);
+    auto pooled = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
+    ctx->SetOutput(0,
+                   PostProcessOutput(ctx, pooled, input_type(0), input_shape));
   }
 
  protected:
@@ -124,21 +126,21 @@ class PoolingOp : public XlaOpKernel {
   std::vector<int64> stride_;
   xla::Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
+  DataType reduction_type_;
 };
 
 class MaxPoolOp : public PoolingOp {
  public:
   MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims) {}
+      : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
+                  /*reduction_type=*/ctx->input_type(0)) {}
 
-  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b,
-                                       DataType data_type) override {
-    return XlaHelpers::MinValue(b, data_type);
+  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) override {
+    return XlaHelpers::MinValue(b, reduction_type_);
   }
 
-  const xla::Computation* Reduction(XlaOpKernelContext* ctx,
-                                    DataType dtype) override {
-    return ctx->GetOrCreateMax(dtype);
+  const xla::Computation* Reduction(XlaOpKernelContext* ctx) override {
+    return ctx->GetOrCreateMax(reduction_type_);
   }
 
   xla::ComputationDataHandle PostProcessOutput(
@@ -209,15 +211,17 @@ static xla::ComputationDataHandle AvgPoolDivideByCount(
     }
 
     // Build a matrix of all 1s, with the same width/height as the input.
+    const DataType accumulation_type = XlaHelpers::SumAccumulationType(dtype);
     auto ones = ctx->builder()->Broadcast(
-        XlaHelpers::One(ctx->builder(), dtype), input_dim_sizes);
+        XlaHelpers::One(ctx->builder(), accumulation_type), input_dim_sizes);
 
     // Perform a ReduceWindow with the same window size, strides, and padding
     // to count the number of contributions to each result element.
-    auto counts = ctx->builder()->ReduceWindow(
-        ones, XlaHelpers::Zero(ctx->builder(), dtype),
-        *ctx->GetOrCreateAdd(dtype), window_ksize, window_stride,
+    auto reduce = ctx->builder()->ReduceWindow(
+        ones, XlaHelpers::Zero(ctx->builder(), accumulation_type),
+        *ctx->GetOrCreateAdd(accumulation_type), window_ksize, window_stride,
         xla::Padding::kSame);
+    auto counts = XlaHelpers::ConvertElementType(ctx->builder(), reduce, dtype);
 
     return ctx->builder()->Div(output, counts, window_dims);
   }
@@ -226,16 +230,16 @@ static xla::ComputationDataHandle AvgPoolDivideByCount(
 class AvgPoolOp : public PoolingOp {
  public:
   AvgPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : PoolingOp(ctx, num_spatial_dims) {}
+      : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
+                  /*reduction_type=*/
+                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
 
-  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b,
-                                       DataType data_type) override {
-    return XlaHelpers::Zero(b, data_type);
+  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) override {
+    return XlaHelpers::Zero(b, reduction_type_);
   }
 
-  const xla::Computation* Reduction(XlaOpKernelContext* ctx,
-                                    DataType dtype) override {
-    return ctx->GetOrCreateAdd(dtype);
+  const xla::Computation* Reduction(XlaOpKernelContext* ctx) override {
+    return ctx->GetOrCreateAdd(reduction_type_);
   }
 
   xla::ComputationDataHandle PostProcessOutput(
@@ -455,14 +459,12 @@ class AvgPoolGradOp : public XlaOpKernel {
                  gradients_shape, filter_shape, out_backprop_shape, stride_,
                  padding_, data_format_, &dims));
 
+    // The input gradients are computed by a convolution of the output gradients
+    // and the filter, with some appropriate padding. See the comment at the top
+    // of conv_grad_ops.h for details.
+    xla::ComputationBuilder* const b = ctx->builder();
     auto out_backprop = ctx->Input(1);
-
-    // The input gradients are computed by a convolution of the output
-    // gradients
-    // and the filter, with some appropriate padding. See the comment at
-    // the top of conv_grad_ops.h for details.
-    DataType dtype = input_type(1);
-
+    auto dtype = input_type(1);
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
@@ -483,17 +485,18 @@ class AvgPoolGradOp : public XlaOpKernel {
       padding->set_interior_padding(dims.spatial_dims[i].stride - 1);
     }
 
-    auto zero = XlaHelpers::Zero(ctx->builder(), dtype);
-    auto padded_gradients =
-        ctx->builder()->Pad(out_backprop_div, zero, padding_config);
+    auto zero = XlaHelpers::Zero(b, dtype);
+    auto padded_gradients = b->Pad(out_backprop_div, zero, padding_config);
 
     // in_backprop = padded_gradients <conv> ones
     std::vector<int64> ones(num_dims(), 1LL);
-    xla::ComputationDataHandle in_backprop = ctx->builder()->ReduceWindow(
-        padded_gradients, zero, *ctx->GetOrCreateAdd(dtype), ksize_,
+    auto accumulation_type = XlaHelpers::SumAccumulationType(dtype);
+    auto in_backprop = b->ReduceWindow(
+        XlaHelpers::ConvertElementType(b, padded_gradients, accumulation_type),
+        XlaHelpers::Zero(b, accumulation_type),
+        *ctx->GetOrCreateAdd(accumulation_type), ksize_,
         /* window_strides=*/ones, xla::Padding::kValid);
-
-    ctx->SetOutput(0, in_backprop);
+    ctx->SetOutput(0, XlaHelpers::ConvertElementType(b, in_backprop, dtype));
   }
 
  protected:

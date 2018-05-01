@@ -28,7 +28,7 @@ py_library(
 
 tf_py_test(
     name = "lookup_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["lookup_ops_test.py"],
     additional_deps = [
         ":lookup_py",
@@ -47,16 +47,4 @@ tf_py_test(
     ],
     grpc_enabled = True,
     tags = ["no_windows"],  # TODO: needs investigation on Windows
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

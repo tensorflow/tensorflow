@@ -56,7 +56,7 @@ class CreatePythonApiTest(test.TestCase):
     del sys.modules[_MODULE_NAME]
 
   def testFunctionImportIsAdded(self):
-    imports = create_python_api.get_api_imports()
+    imports = create_python_api.get_api_init_text()
     expected_import = (
         'from test.tensorflow.test_module import test_op as test_op1')
     self.assertTrue(
@@ -69,14 +69,14 @@ class CreatePythonApiTest(test.TestCase):
         msg='%s not in %s' % (expected_import, str(imports)))
 
   def testClassImportIsAdded(self):
-    imports = create_python_api.get_api_imports()
+    imports = create_python_api.get_api_init_text()
     expected_import = 'from test.tensorflow.test_module import TestClass'
     self.assertTrue(
         'TestClass' in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
 
   def testConstantIsAdded(self):
-    imports = create_python_api.get_api_imports()
+    imports = create_python_api.get_api_init_text()
     expected = 'from test.tensorflow.test_module import _TEST_CONSTANT'
     self.assertTrue(expected in str(imports),
                     msg='%s not in %s' % (expected, str(imports)))

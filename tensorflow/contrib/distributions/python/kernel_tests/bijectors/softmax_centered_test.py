@@ -34,34 +34,9 @@ rng = np.random.RandomState(42)
 class SoftmaxCenteredBijectorTest(test.TestCase):
   """Tests correctness of the Y = g(X) = exp(X) / sum(exp(X)) transformation."""
 
-  def testBijectorScalar(self):
-    with self.test_session():
-      softmax = SoftmaxCentered()  # scalar by default
-      self.assertEqual("softmax_centered", softmax.name)
-      x = np.log([[2., 3, 4],
-                  [4., 8, 12]])
-      y = [[[2. / 3, 1. / 3],
-            [3. / 4, 1. / 4],
-            [4. / 5, 1. / 5]],
-           [[4. / 5, 1. / 5],
-            [8. / 9, 1. / 9],
-            [12. / 13, 1. / 13]]]
-      self.assertAllClose(y, softmax.forward(x).eval())
-      self.assertAllClose(x, softmax.inverse(y).eval())
-      self.assertAllClose(
-          -np.sum(np.log(y), axis=2),
-          softmax.inverse_log_det_jacobian(y).eval(),
-          atol=0.,
-          rtol=1e-7)
-      self.assertAllClose(
-          -softmax.inverse_log_det_jacobian(y).eval(),
-          softmax.forward_log_det_jacobian(x).eval(),
-          atol=0.,
-          rtol=1e-7)
-
   def testBijectorVector(self):
     with self.test_session():
-      softmax = SoftmaxCentered(event_ndims=1)
+      softmax = SoftmaxCentered()
       self.assertEqual("softmax_centered", softmax.name)
       x = np.log([[2., 3, 4], [4., 8, 12]])
       y = [[0.2, 0.3, 0.4, 0.1], [0.16, 0.32, 0.48, 0.04]]
@@ -69,18 +44,18 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
       self.assertAllClose(x, softmax.inverse(y).eval())
       self.assertAllClose(
           -np.sum(np.log(y), axis=1),
-          softmax.inverse_log_det_jacobian(y).eval(),
+          softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(),
           atol=0.,
           rtol=1e-7)
       self.assertAllClose(
-          -softmax.inverse_log_det_jacobian(y).eval(),
-          softmax.forward_log_det_jacobian(x).eval(),
+          -softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          softmax.forward_log_det_jacobian(x, event_ndims=1).eval(),
           atol=0.,
           rtol=1e-7)
 
   def testBijectorUnknownShape(self):
     with self.test_session():
-      softmax = SoftmaxCentered(event_ndims=1)
+      softmax = SoftmaxCentered()
       self.assertEqual("softmax_centered", softmax.name)
       x = array_ops.placeholder(shape=[2, None], dtype=dtypes.float32)
       real_x = np.log([[2., 3, 4], [4., 8, 12]])
@@ -92,38 +67,35 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
           feed_dict={y: real_y}))
       self.assertAllClose(
           -np.sum(np.log(real_y), axis=1),
-          softmax.inverse_log_det_jacobian(y).eval(
+          softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(
               feed_dict={y: real_y}),
           atol=0.,
           rtol=1e-7)
       self.assertAllClose(
-          -softmax.inverse_log_det_jacobian(y).eval(
+          -softmax.inverse_log_det_jacobian(y, event_ndims=1).eval(
               feed_dict={y: real_y}),
-          softmax.forward_log_det_jacobian(x).eval(
+          softmax.forward_log_det_jacobian(x, event_ndims=1).eval(
               feed_dict={x: real_x}),
           atol=0.,
           rtol=1e-7)
 
   def testShapeGetters(self):
     with self.test_session():
-      for x, y, b in ((tensor_shape.TensorShape([]),
-                       tensor_shape.TensorShape([2]),
-                       SoftmaxCentered(
-                           event_ndims=0, validate_args=True)),
-                      (tensor_shape.TensorShape([4]),
-                       tensor_shape.TensorShape([5]),
-                       SoftmaxCentered(
-                           event_ndims=1, validate_args=True))):
-        self.assertAllEqual(y, b.forward_event_shape(x))
-        self.assertAllEqual(y.as_list(),
-                            b.forward_event_shape_tensor(x.as_list()).eval())
-        self.assertAllEqual(x, b.inverse_event_shape(y))
-        self.assertAllEqual(x.as_list(),
-                            b.inverse_event_shape_tensor(y.as_list()).eval())
+      x = tensor_shape.TensorShape([4])
+      y = tensor_shape.TensorShape([5])
+      bijector = SoftmaxCentered(validate_args=True)
+      self.assertAllEqual(y, bijector.forward_event_shape(x))
+      self.assertAllEqual(y.as_list(),
+                          bijector.forward_event_shape_tensor(
+                              x.as_list()).eval())
+      self.assertAllEqual(x, bijector.inverse_event_shape(y))
+      self.assertAllEqual(x.as_list(),
+                          bijector.inverse_event_shape_tensor(
+                              y.as_list()).eval())
 
   def testBijectiveAndFinite(self):
     with self.test_session():
-      softmax = SoftmaxCentered(event_ndims=1)
+      softmax = SoftmaxCentered()
       x = np.linspace(-50, 50, num=10).reshape(5, 2).astype(np.float32)
       # Make y values on the simplex with a wide range.
       y_0 = np.ones(5).astype(np.float32)
@@ -132,7 +104,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
       y = np.array([y_0, y_1, y_2])
       y /= y.sum(axis=0)
       y = y.T  # y.shape = [5, 3]
-      assert_bijective_and_finite(softmax, x, y)
+      assert_bijective_and_finite(softmax, x, y, event_ndims=1)
 
 
 if __name__ == "__main__":

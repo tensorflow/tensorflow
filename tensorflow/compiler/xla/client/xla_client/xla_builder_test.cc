@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -39,7 +40,8 @@ class XlaBuilderTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(XlaComputation computation, b->Build());
     const HloModuleProto& proto = computation.proto();
     TF_ASSIGN_OR_RETURN(const auto& config,
-                        HloModule::CreateModuleConfigFromProto(proto));
+                        HloModule::CreateModuleConfigFromProto(
+                            proto, legacy_flags::GetDebugOptionsFromFlags()));
     return HloModule::CreateFromProto(proto, config);
   }
 
@@ -57,16 +59,16 @@ TEST_F(XlaBuilderTest, OnePlusTwo) {
   EXPECT_THAT(root, op::Add(op::Constant(), op::Constant()));
 }
 
-TEST_F(XlaBuilderTest, ParamPlusConstant) {
+TEST_F(XlaBuilderTest, ParamPlusConstantHasScalarBroadcast) {
   XlaBuilder b(TestName());
   auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {3, 5}), "x");
   b.Add(x, b.ConstantR0<float>(1.0));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Parameter(), op::Constant()));
+  EXPECT_THAT(root, op::Add(op::Parameter(), op::Broadcast(op::Constant())));
 }
 
-TEST_F(XlaBuilderTest, ParamPlusParam) {
+TEST_F(XlaBuilderTest, ParamPlusParamHasBroadcast) {
   XlaBuilder b(TestName());
   const auto& x_shape = ShapeUtil::MakeShape(S32, {2, 4, 6});
   const auto& y_shape = ShapeUtil::MakeShape(S32, {2, 4});
@@ -79,7 +81,7 @@ TEST_F(XlaBuilderTest, ParamPlusParam) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Parameter(0), op::Parameter(1)));
+  EXPECT_THAT(root, op::Add(op::Parameter(0), op::Broadcast(op::Parameter(1))));
 }
 
 TEST_F(XlaBuilderTest, XPlusX) {
@@ -131,6 +133,104 @@ TEST_F(XlaBuilderTest, Call) {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Add(op::Call(op::Parameter(), op::Parameter()),
                             op::Call(op::Constant(), op::Constant())));
+}
+
+TEST_F(XlaBuilderTest, BinopHasDegenerateBroadcast) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {1, 2, 3}), "x");
+  auto y = b.Parameter(1, ShapeUtil::MakeShape(F32, {1, 2, 1}), "y");
+  b.Add(x, y);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+
+  // Expected:
+  //
+  //  x: f32[1,2,3]  y: f32[1,2,1]
+  //      |               |
+  //      |          reshape: f32[1,2]
+  //      |               |
+  //      |          broadcast: f32[1,2,3]
+  //       \             /
+  //            add
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Parameter(0),
+                            op::Broadcast(op::Reshape(op::Parameter(1)))));
+}
+
+TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {2, 3}), "x");
+  auto y = b.Parameter(1, ShapeUtil::MakeShape(F32, {2, 1, 4}), "y");
+  b.Add(x, y, /*broadcast_dimensions=*/{0, 1});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+
+  // The binary operation has in-dim broadcast and degenerate broadcast, should
+  // first do the in-dim broadcast then convert the degnerate broadcast into a
+  // reshape and a broadcast.
+  //
+  // Expected:
+  //
+  //  x: f32[2,3]            y: f32[2,1,4]
+  //      |                        |
+  //  broadcast: f32[2,3,4]  reshape: f32[2,4]
+  //      |                        |
+  //      |                  broadcast: f32[2,3,4]
+  //       \                      /
+  //                 add
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Broadcast(op::Parameter(0)),
+                            op::Broadcast(op::Reshape(op::Parameter(1)))));
+}
+
+TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
+  XlaBuilder b1("b1");
+  auto p0 = b1.Parameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  XlaBuilder builder("main");
+  builder.Add(p0, p0);
+  auto statusor = builder.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Do not add XlaOp from builder b1 to builder main"));
+}
+
+TEST_F(XlaBuilderTest, ReshapeDefaultOrder) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {2, 3, 5, 7}), "x");
+  b.Reshape(x, /*new_sizes=*/{6, 35});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reshape(op::Parameter()));
+}
+
+TEST_F(XlaBuilderTest, ReshapeHasTranspose) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {2, 3, 5, 7}), "x");
+  b.Reshape(x, /*dimensions=*/{3, 2, 1, 0}, /*new_sizes=*/{6, 35});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reshape(op::Transpose(op::Parameter())));
+}
+
+TEST_F(XlaBuilderTest, Transpose) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  b.Transpose(x, /*permutation=*/{1, 0});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Transpose(op::Parameter()));
+}
+
+// TODO(b/65209188): Create a dedicated lowering for Xor.
+TEST_F(XlaBuilderTest, Xor) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(PRED, {}), "x");
+  auto y = b.Parameter(1, ShapeUtil::MakeShape(PRED, {}), "y");
+  b.Xor(x, y);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  LOG(ERROR) << module->ToString();
+  EXPECT_THAT(root,
+              op::Or(op::And(op::Not(op::Parameter(0)), op::Parameter(1)),
+                     op::And(op::Parameter(0), op::Not(op::Parameter(1)))));
 }
 
 }  // namespace

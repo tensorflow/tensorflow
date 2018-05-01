@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -67,6 +69,10 @@ bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
+
+bool IsCheckNumerics(const NodeDef& node) {
+  return node.op() == "CheckNumerics";
+}
 
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
@@ -212,6 +218,8 @@ bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
 
+bool IsNeg(const NodeDef& node) { return node.op() == "Neg"; }
+
 bool IsNoOp(const NodeDef& node) { return node.op() == "NoOp"; }
 
 bool IsNotEqual(const NodeDef& node) { return node.op() == "NotEqual"; }
@@ -238,7 +246,13 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
+bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
+bool IsRandomShuffle(const NodeDef& node) {
+  return node.op() == "RandomShuffle";
+}
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
@@ -275,6 +289,8 @@ bool IsReverse(const NodeDef& node) {
 
 bool IsReverseV2(const NodeDef& node) { return node.op() == "ReverseV2"; }
 
+bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
+
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
 bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
@@ -289,9 +305,7 @@ bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
 
 bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
 
-bool IsShuffle(const NodeDef& node) {
-  return node.op() == "Shuffle" || node.op() == "RandomShuffle";
-}
+bool IsShuffle(const NodeDef& node) { return node.op() == "Shuffle"; }
 
 bool IsSigmoidGrad(const NodeDef& node) { return node.op() == "SigmoidGrad"; }
 
@@ -305,7 +319,11 @@ bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
 
 bool IsSplitV(const NodeDef& node) { return node.op() == "SplitV"; }
 
+bool IsSqrt(const NodeDef& node) { return node.op() == "Sqrt"; }
+
 bool IsSqrtGrad(const NodeDef& node) { return node.op() == "SqrtGrad"; }
+
+bool IsSquare(const NodeDef& node) { return node.op() == "Square"; }
 
 bool IsSquaredDifference(const NodeDef& node) {
   return node.op() == "SquaredDifference";
@@ -356,6 +374,8 @@ bool IsTruncateDiv(const NodeDef& node) { return node.op() == "TruncateDiv"; }
 
 bool IsTruncateMod(const NodeDef& node) { return node.op() == "TruncateMod"; }
 
+bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
+
 bool IsVariable(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
@@ -394,12 +414,27 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
       return false;
     }
   }
+  return !ModifiesInputsInPlace(node);
+}
+
+bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
-      StringPiece(op_name).starts_with("Inplace")) {
+  string op_name = node.op();
+
+  // Ops that modify resource variables effectively modify one of their inputs.
+  if (op_name == "AssignVariableOp" || op_name == "AssignAddVariableOp" ||
+      op_name == "AssignSubVariableOp" || op_name == "ResourceScatterUpdate" ||
+      op_name == "ResourceScatterAdd" || op_name == "ResourceScatterSub" ||
+      op_name == "ResourceScatterMul" || op_name == "ResourceScatterDiv" ||
+      op_name == "ResourceScatterMin" || op_name == "ResourceScatterMax") {
     return false;
   }
-  return true;
+
+  std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
+  if (str_util::StrContains(op_name, "inplace")) {
+    return true;
+  }
+  return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
 }
 
 bool ModifiesFrameInfo(const NodeDef& node) {
@@ -423,20 +458,101 @@ OPDEF_PROPERTY_HELPER(Aggregate, aggregate)
 OPDEF_PROPERTY_HELPER(Commutative, commutative)
 
 bool IsInvolution(const NodeDef& node) {
-  const std::unordered_set<string> involution_ops{
-      "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"};
-  return involution_ops.count(node.op()) > 0;
+  static const std::unordered_set<string>* involution_ops =
+      CHECK_NOTNULL((new std::unordered_set<string>{
+          "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"}));
+  return involution_ops->count(node.op()) > 0;
 }
 
-bool IsValuePreserving(const NodeDef& node) {
+bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  const std::unordered_set<string> value_preserving_ops{
-      "Transpose",  "Reshape",      "Identity",        "InvertPermutation",
-      "Reverse",    "StopGradient", "PreventGradient", "CheckNumerics",
-      "ExpandDims", "Squeeze"};
-  return value_preserving_ops.count(node.op()) > 0;
+  static const std::unordered_set<string>* value_and_order_preserving_ops =
+      CHECK_NOTNULL((new const std::unordered_set<string>{
+          "CheckNumerics",
+          "DebugGradientIdentity",
+          "DeepCopy"
+          "Enter",
+          "Exit",
+          "ExpandDims",
+          "Identity",
+          "IdentityN",
+          "PreventGradient",
+          "Print",
+          "Reshape",
+          "Snapshot",
+          "Squeeze",
+          "StopGradient",
+      }));
+  return value_and_order_preserving_ops->count(node.op()) > 0;
+}
+
+bool IsValuePreserving(const NodeDef& node) {
+  static const std::unordered_set<string>* value_preserving_ops =
+      CHECK_NOTNULL((new std::unordered_set<string>{
+          "InvertPermutation",
+          "Reverse",
+          "Roll",
+          "Transpose",
+      }));
+  return IsValueAndOrderPreserving(node) ||
+         value_preserving_ops->count(node.op()) > 0;
+}
+
+bool IsUnaryElementWise(const NodeDef& node) {
+  static const std::unordered_set<string>* element_wise_ops =
+      CHECK_NOTNULL((new std::unordered_set<string>{
+          "Abs",
+          "Acos",
+          "Acosh",
+          "Asin",
+          "Asinh",
+          "Atan",
+          "Atan2",
+          "Atanh",
+          "Ceil",
+          "ComplexAbs",
+          "Conj",
+          "Cos",
+          "Cosh",
+          "Digamma",
+          "Elu"
+          "Erf",
+          "Erfc",
+          "Exp",
+          "Expm1",
+          "Floor",
+          "Inv",
+          "Invert",
+          "Isinf",
+          "Isnan",
+          "Isfinite",
+          "Lgamma",
+          "Log",
+          "Log1p",
+          "LogicalNot",
+          "Neg",
+          "Reciprocal",
+          "Relu",
+          "Relu6",
+          "Rint",
+          "Round",
+          "Selu",
+          "Rsqrt",
+          "Sigmoid",
+          "Sign",
+          "Sin",
+          "SinH",
+          "Softplus",
+          "Softsign",
+          "Sqrt",
+          "Square",
+          "Tan"
+          "Tanh",
+      }));
+  return element_wise_ops->count(node.op()) > 0 ||
+         (!IsIdentityN(node) && IsValueAndOrderPreserving(node));
 }
 
 bool HasOpDef(const NodeDef& node) {

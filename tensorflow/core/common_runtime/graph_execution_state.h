@@ -177,8 +177,14 @@ class GraphExecutionState {
   void SaveStatefulNodes(Graph* graph);
   void RestoreStatefulNodes(Graph* graph);
 
-  Status OptimizeGraph(const BuildGraphOptions& options,
-                       std::unique_ptr<Graph>* optimized_graph);
+  // Extract the subset of the graph that needs to be run, adding feed/fetch
+  // ops as needed.
+  Status PruneGraph(const BuildGraphOptions& options, Graph* graph,
+                    subgraph::RewriteGraphMetadata* out_rewrite_metadata);
+
+  Status OptimizeGraph(
+      const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+      std::unique_ptr<FunctionLibraryDefinition>* optimized_flib);
 
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned

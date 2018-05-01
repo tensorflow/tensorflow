@@ -439,9 +439,10 @@ def add_collection_def(meta_graph_def, key, graph=None,
       else:
         getattr(col_def, kind).value.extend([x for x in collection_list])
   except Exception as e:  # pylint: disable=broad-except
-    logging.warning("Error encountered when serializing %s.\n"
+    logging.warning("Issue encountered when serializing %s.\n"
                     "Type is unsupported, or the types of the items don't "
-                    "match field type in CollectionDef.\n%s", key, str(e))
+                    "match field type in CollectionDef. Note this is a warning "
+                    "and probably safe to ignore.\n%s", key, str(e))
     if key in meta_graph_def.collection_def:
       del meta_graph_def.collection_def[key]
     return
@@ -737,7 +738,9 @@ def import_scoped_meta_graph(meta_graph_or_file,
         import_scope or "", mark_as_used=False)
 
     importer.import_graph_def(
-        input_graph_def, name=(import_scope or ""), input_map=input_map,
+        input_graph_def,
+        name=(import_scope or scope_to_prepend_to_names),
+        input_map=input_map,
         producer_op_list=producer_op_list)
 
     # Restores all the other collections.

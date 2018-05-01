@@ -87,6 +87,7 @@ import json
 import os
 import shutil
 
+from six import text_type
 from google.cloud import datastore
 from six import text_type
 

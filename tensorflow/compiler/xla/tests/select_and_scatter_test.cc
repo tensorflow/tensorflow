@@ -19,11 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -50,7 +50,7 @@ class SelectAndScatterTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<SelectAndScatterTestParam> {
  public:
-  SelectAndScatterTest() : builder_(client_, TestName()) {
+  SelectAndScatterTest() : builder_(TestName()) {
     // Create S32 GE and ADD computations for select and scatter respectively.
     ge_s32_ = CreateScalarGeComputation(S32, &builder_);
     add_s32_ = CreateScalarAddComputation(S32, &builder_);
@@ -60,13 +60,13 @@ class SelectAndScatterTest
     min_f32_ = CreateScalarMinComputation(F32, &builder_);
   }
 
-  ComputationBuilder builder_;
-  Computation ge_s32_;
-  Computation add_s32_;
-  Computation ge_f32_;
-  Computation add_f32_;
-  Computation max_f32_;
-  Computation min_f32_;
+  XlaBuilder builder_;
+  XlaComputation ge_s32_;
+  XlaComputation add_s32_;
+  XlaComputation ge_f32_;
+  XlaComputation add_f32_;
+  XlaComputation max_f32_;
+  XlaComputation min_f32_;
 };
 
 XLA_TEST_P(SelectAndScatterTest, ParamTest) {
@@ -80,12 +80,11 @@ XLA_TEST_P(SelectAndScatterTest, ParamTest) {
   s.FillRandom(12.0f);
   auto source = builder_.ConstantFromArray(s);
 
-  auto select_and_scatter = builder_.SelectAndScatter(
-      operand, ge_f32_, GetParam().window_dimensions, GetParam().window_strides,
-      GetParam().padding_type, source, builder_.ConstantR0<float>(0.0f),
-      add_f32_);
+  builder_.SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
+                            GetParam().window_strides, GetParam().padding_type,
+                            source, builder_.ConstantR0<float>(0.0f), add_f32_);
 
-  ComputeAndCompare(&builder_, select_and_scatter, {}, ErrorSpec(1e-5));
+  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5));
 }
 
 INSTANTIATE_TEST_CASE_P(

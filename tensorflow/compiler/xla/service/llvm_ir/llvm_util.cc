@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -762,7 +763,7 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     fake_argv_storage.push_back("");
     for (const auto& it : options) {
       // Skip options the XLA backend itself consumes.
-      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
+      if (!tensorflow::str_util::StartsWith(it.first, "xla_")) {
         if (it.second.empty()) {
           fake_argv_storage.push_back(it.first);
         } else {

@@ -60,6 +60,7 @@ import functools
 import os
 import sys
 import time
+import urllib
 
 import six
 import tensorflow as tf
@@ -71,6 +72,8 @@ try:
   HAS_MATPLOTLIB = True
 except ImportError:
   HAS_MATPLOTLIB = False
+
+layers = tf.keras.layers
 
 
 def parse(line):
@@ -89,13 +92,35 @@ def parse(line):
   return rgb, chars, length
 
 
+def maybe_download(filename, work_directory, source_url):
+  """Download the data from source url, unless it's already here.
+
+  Args:
+    filename: string, name of the file in the directory.
+    work_directory: string, path to working directory.
+    source_url: url to download from if file doesn't exist.
+
+  Returns:
+    Path to resulting file.
+  """
+  if not tf.gfile.Exists(work_directory):
+    tf.gfile.MakeDirs(work_directory)
+  filepath = os.path.join(work_directory, filename)
+  if not tf.gfile.Exists(filepath):
+    temp_file_name, _ = urllib.request.urlretrieve(source_url)
+    tf.gfile.Copy(temp_file_name, filepath)
+    with tf.gfile.GFile(filepath) as f:
+      size = f.size()
+      print("Successfully downloaded", filename, size, "bytes.")
+  return filepath
+
+
 def load_dataset(data_dir, url, batch_size):
   """Loads the colors data at path into a PaddedDataset."""
 
   # Downloads data at url into data_dir/basename(url). The dataset has a header
   # row (color_name, r, g, b) followed by comma-separated lines.
-  path = tf.contrib.learn.datasets.base.maybe_download(
-      os.path.basename(url), data_dir, url)
+  path = maybe_download(os.path.basename(url), data_dir, url)
 
   # This chain of commands loads our data by:
   #   1. skipping the header; (.skip(1))
@@ -129,7 +154,7 @@ class RNNColorbot(tf.keras.Model):
 
     self.cells = self._add_cells(
         [tf.nn.rnn_cell.BasicLSTMCell(size) for size in rnn_cell_sizes])
-    self.relu = tf.layers.Dense(
+    self.relu = layers.Dense(
         label_dimension, activation=tf.nn.relu, name="relu")
 
   def call(self, inputs, training=False):
@@ -181,7 +206,7 @@ class RNNColorbot(tf.keras.Model):
 
   def _add_cells(self, cells):
     # "Magic" required for keras.Model classes to track all the variables in
-    # a list of tf.layers.Layer objects.
+    # a list of layers.Layer objects.
     # TODO(ashankar): Figure out API so user code doesn't have to do this.
     for i, c in enumerate(cells):
       setattr(self, "cell-%d" % i, c)

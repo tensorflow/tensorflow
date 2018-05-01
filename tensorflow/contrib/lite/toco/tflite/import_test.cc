@@ -36,12 +36,13 @@ class ImportTest : public ::testing::Test {
     return builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.data()),
                                  sizeof(T) * data.size());
   }
+
   Offset<Vector<Offset<::tflite::Buffer>>> BuildBuffers() {
     auto buf0 = ::tflite::CreateBuffer(builder_, CreateDataVector<float>({}));
-    auto buf1 =
-        ::tflite::CreateBuffer(builder_, CreateDataVector<float>({1.0f, 2.0f}));
+    auto buf1 = ::tflite::CreateBuffer(
+        builder_, CreateDataVector<float>({1.0f, 2.0f, 3.0f, 4.0f}));
     auto buf2 =
-        ::tflite::CreateBuffer(builder_, CreateDataVector<float>({3.0f}));
+        ::tflite::CreateBuffer(builder_, CreateDataVector<float>({3.0f, 4.0f}));
     return builder_.CreateVector(
         std::vector<Offset<::tflite::Buffer>>({buf0, buf1, buf2}));
   }
@@ -53,10 +54,10 @@ class ImportTest : public ::testing::Test {
         /*max=*/builder_.CreateVector<float>({0.2f}),
         /*scale=*/builder_.CreateVector<float>({0.3f}),
         /*zero_point=*/builder_.CreateVector<int64_t>({100ll}));
-    auto t1 = ::tflite::CreateTensor(builder_,
-                                     builder_.CreateVector<int>({1, 2, 3, 4}),
-                                     ::tflite::TensorType_FLOAT32, 1,
-                                     builder_.CreateString("tensor_one"), q);
+    auto t1 =
+        ::tflite::CreateTensor(builder_, builder_.CreateVector<int>({1, 2, 2}),
+                               ::tflite::TensorType_FLOAT32, 1,
+                               builder_.CreateString("tensor_one"), q);
     auto t2 =
         ::tflite::CreateTensor(builder_, builder_.CreateVector<int>({2, 1}),
                                ::tflite::TensorType_FLOAT32, 2,
@@ -65,14 +66,54 @@ class ImportTest : public ::testing::Test {
         std::vector<Offset<::tflite::Tensor>>({t1, t2}));
   }
 
+  Offset<Vector<Offset<::tflite::OperatorCode>>> BuildOpCodes(
+      std::initializer_list<::tflite::BuiltinOperator> op_codes) {
+    std::vector<Offset<::tflite::OperatorCode>> op_codes_vector;
+    for (auto op : op_codes) {
+      op_codes_vector.push_back(::tflite::CreateOperatorCode(builder_, op, 0));
+    }
+    return builder_.CreateVector(op_codes_vector);
+  }
+
   Offset<Vector<Offset<::tflite::OperatorCode>>> BuildOpCodes() {
-    auto c1 =
-        ::tflite::CreateOperatorCode(builder_, ::tflite::BuiltinOperator_CUSTOM,
-                                     builder_.CreateString("custom_op_one"));
-    auto c2 = ::tflite::CreateOperatorCode(
-        builder_, ::tflite::BuiltinOperator_CONV_2D, 0);
-    return builder_.CreateVector(
-        std::vector<Offset<::tflite::OperatorCode>>({c1, c2}));
+    return BuildOpCodes({::tflite::BuiltinOperator_MAX_POOL_2D,
+                         ::tflite::BuiltinOperator_CONV_2D});
+  }
+
+  Offset<Vector<Offset<::tflite::Operator>>> BuildOperators(
+      std::initializer_list<int> inputs, std::initializer_list<int> outputs) {
+    auto is = builder_.CreateVector<int>(inputs);
+    if (inputs.size() == 0) is = 0;
+    auto os = builder_.CreateVector<int>(outputs);
+    if (outputs.size() == 0) os = 0;
+    auto op = ::tflite::CreateOperator(
+        builder_, 0, is, os, ::tflite::BuiltinOptions_Conv2DOptions,
+        ::tflite::CreateConv2DOptions(builder_, ::tflite::Padding_VALID, 1, 1,
+                                      ::tflite::ActivationFunctionType_NONE)
+            .Union(),
+        /*custom_options=*/0, ::tflite::CustomOptionsFormat_FLEXBUFFERS);
+
+    return builder_.CreateVector(std::vector<Offset<::tflite::Operator>>({op}));
+  }
+
+  Offset<Vector<Offset<::tflite::Operator>>> BuildOperators() {
+    return BuildOperators({0}, {1});
+  }
+
+  Offset<Vector<Offset<::tflite::SubGraph>>> BuildSubGraphs(
+      Offset<Vector<Offset<::tflite::Tensor>>> tensors,
+      Offset<Vector<Offset<::tflite::Operator>>> operators,
+      int num_sub_graphs = 1) {
+    std::vector<int32_t> inputs = {0};
+    std::vector<int32_t> outputs = {1};
+    std::vector<Offset<::tflite::SubGraph>> v;
+    for (int i = 0; i < num_sub_graphs; ++i) {
+      v.push_back(::tflite::CreateSubGraph(
+          builder_, tensors, builder_.CreateVector(inputs),
+          builder_.CreateVector(outputs), operators,
+          builder_.CreateString("subgraph")));
+    }
+    return builder_.CreateVector(v);
   }
 
   // This is a very simplistic model. We are not interested in testing all the
@@ -83,14 +124,13 @@ class ImportTest : public ::testing::Test {
     auto buffers = BuildBuffers();
     auto tensors = BuildTensors();
     auto opcodes = BuildOpCodes();
-
-    auto subgraph = ::tflite::CreateSubGraph(builder_, tensors, 0, 0, 0);
-    std::vector<flatbuffers::Offset<::tflite::SubGraph>> subgraph_vector(
-        {subgraph});
-    auto subgraphs = builder_.CreateVector(subgraph_vector);
+    auto operators = BuildOperators();
+    auto subgraphs = BuildSubGraphs(tensors, operators);
     auto s = builder_.CreateString("");
-    builder_.Finish(::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
-                                          opcodes, subgraphs, s, buffers));
+
+    ::tflite::FinishModelBuffer(
+        builder_, ::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
+                                        opcodes, subgraphs, s, buffers));
 
     input_model_ = ::tflite::GetModel(builder_.GetBufferPointer());
   }
@@ -99,7 +139,6 @@ class ImportTest : public ::testing::Test {
                   builder_.GetSize());
   }
   flatbuffers::FlatBufferBuilder builder_;
-  // const uint8_t* buffer_ = nullptr;
   const ::tflite::Model* input_model_ = nullptr;
 };
 
@@ -116,7 +155,7 @@ TEST_F(ImportTest, LoadOperatorsTable) {
 
   details::OperatorsTable operators;
   details::LoadOperatorsTable(*input_model_, &operators);
-  EXPECT_THAT(operators, ElementsAre("custom_op_one", "CONV_2D"));
+  EXPECT_THAT(operators, ElementsAre("MAX_POOL_2D", "CONV_2D"));
 }
 
 TEST_F(ImportTest, Tensors) {
@@ -128,9 +167,9 @@ TEST_F(ImportTest, Tensors) {
   Array& a1 = model->GetArray("tensor_one");
   EXPECT_EQ(ArrayDataType::kFloat, a1.data_type);
   EXPECT_THAT(a1.GetBuffer<ArrayDataType::kFloat>().data,
-              ElementsAre(1.0f, 2.0f));
+              ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
   ASSERT_TRUE(a1.has_shape());
-  EXPECT_THAT(a1.shape().dims(), ElementsAre(1, 2, 3, 4));
+  EXPECT_THAT(a1.shape().dims(), ElementsAre(1, 2, 2));
 
   const auto& mm = a1.minmax;
   ASSERT_TRUE(mm.get());
@@ -143,13 +182,74 @@ TEST_F(ImportTest, Tensors) {
   EXPECT_EQ(100, q->zero_point);
 }
 
-TEST_F(ImportTest, NoSubGraphs) {
-  auto buffers = BuildBuffers();
+TEST_F(ImportTest, NoBuffers) {
+  auto buffers = 0;
+  auto tensors = BuildTensors();
   auto opcodes = BuildOpCodes();
-  auto subgraphs = 0;  // no subgraphs in this model
+  auto operators = BuildOperators();
+  auto subgraphs = BuildSubGraphs(tensors, operators);
   auto comment = builder_.CreateString("");
-  builder_.Finish(::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
-                                        opcodes, subgraphs, comment, buffers));
+  ::tflite::FinishModelBuffer(
+      builder_, ::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
+                                      subgraphs, comment, buffers));
+  EXPECT_DEATH(Import(ModelFlags(), InputModelAsString()),
+               "Missing 'buffers' section.");
+}
+
+TEST_F(ImportTest, NoInputs) {
+  auto buffers = BuildBuffers();
+  auto tensors = BuildTensors();
+  auto opcodes = BuildOpCodes();
+  auto operators = BuildOperators({}, {1});
+  auto subgraphs = BuildSubGraphs(tensors, operators);
+  auto comment = builder_.CreateString("");
+  ::tflite::FinishModelBuffer(
+      builder_, ::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
+                                      subgraphs, comment, buffers));
+  EXPECT_DEATH(Import(ModelFlags(), InputModelAsString()),
+               "Missing 'inputs' for operator.");
+}
+
+TEST_F(ImportTest, NoOutputs) {
+  auto buffers = BuildBuffers();
+  auto tensors = BuildTensors();
+  auto opcodes = BuildOpCodes();
+  auto operators = BuildOperators({0}, {});
+  auto subgraphs = BuildSubGraphs(tensors, operators);
+  auto comment = builder_.CreateString("");
+  ::tflite::FinishModelBuffer(
+      builder_, ::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
+                                      subgraphs, comment, buffers));
+  EXPECT_DEATH(Import(ModelFlags(), InputModelAsString()),
+               "Missing 'outputs' for operator.");
+}
+
+TEST_F(ImportTest, InvalidOpCode) {
+  auto buffers = BuildBuffers();
+  auto tensors = BuildTensors();
+  auto opcodes = BuildOpCodes({static_cast<::tflite::BuiltinOperator>(-1),
+                               ::tflite::BuiltinOperator_CONV_2D});
+  auto operators = BuildOperators();
+  auto subgraphs = BuildSubGraphs(tensors, operators);
+  auto comment = builder_.CreateString("");
+  ::tflite::FinishModelBuffer(
+      builder_, ::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
+                                      subgraphs, comment, buffers));
+  EXPECT_DEATH(Import(ModelFlags(), InputModelAsString()),
+               "Operator id '-1' is out of range.");
+}
+
+TEST_F(ImportTest, MultipleSubGraphs) {
+  auto buffers = BuildBuffers();
+  auto tensors = BuildTensors();
+  auto opcodes = BuildOpCodes();
+  auto operators = BuildOperators();
+  auto subgraphs = BuildSubGraphs(tensors, operators, 2);
+  auto comment = builder_.CreateString("");
+  ::tflite::FinishModelBuffer(
+      builder_, ::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
+                                      subgraphs, comment, buffers));
+
   input_model_ = ::tflite::GetModel(builder_.GetBufferPointer());
 
   EXPECT_DEATH(Import(ModelFlags(), InputModelAsString()),

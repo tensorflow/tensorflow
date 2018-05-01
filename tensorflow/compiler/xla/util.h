@@ -519,6 +519,25 @@ int64 FindIndex(const C& c, Value&& value) {
   auto it = c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
 }
+
+// Returns true if `x` fits in 32-bits.
+template <typename T>
+bool IsInt32(T x) {
+  // Following conversion rules: "the value is unchanged if it can be
+  // represented in the destination type (and bit-field width); otherwise, the
+  // value is implementation-defined."
+  return static_cast<int32>(x) == x;
+}
+
+template <typename T>
+Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+  // c_find returns a const_iterator which does not seem to work on gcc 4.8.4,
+  // and this breaks the ubuntu/xla_gpu build bot.
+  auto it = std::find(container->begin(), container->end(), value);
+  TF_RET_CHECK(it != container->end());
+  container->erase(it);
+  return Status::OK();
+}
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \

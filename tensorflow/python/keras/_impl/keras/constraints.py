@@ -24,6 +24,7 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -65,7 +66,8 @@ class MaxNorm(Constraint):
     self.axis = axis
 
   def __call__(self, w):
-    norms = K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True))
+    norms = K.sqrt(
+        math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
     desired = K.clip(norms, 0, self.max_value)
     return w * (desired / (K.epsilon() + norms))
 
@@ -79,7 +81,7 @@ class NonNeg(Constraint):
   """
 
   def __call__(self, w):
-    return w * K.cast(K.greater_equal(w, 0.), K.floatx())
+    return w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
 
 
 @tf_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
@@ -105,7 +107,9 @@ class UnitNorm(Constraint):
 
   def __call__(self, w):
     return w / (
-        K.epsilon() + K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True)))
+        K.epsilon() + K.sqrt(
+            math_ops.reduce_sum(
+                math_ops.square(w), axis=self.axis, keepdims=True)))
 
   def get_config(self):
     return {'axis': self.axis}
@@ -148,7 +152,8 @@ class MinMaxNorm(Constraint):
     self.axis = axis
 
   def __call__(self, w):
-    norms = K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True))
+    norms = K.sqrt(
+        math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True))
     desired = (
         self.rate * K.clip(norms, self.min_value, self.max_value) +
         (1 - self.rate) * norms)

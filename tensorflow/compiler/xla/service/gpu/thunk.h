@@ -51,6 +51,8 @@ class Thunk {
     kGemm,
     kInfeed,
     kKernel,
+    kMemset32BitValue,
+    kMemzero,
     kSequential,
     kTuple,
     kWhile,
@@ -83,8 +85,7 @@ class Thunk {
   // This value is not required to be constant for a given Thunk.  For example,
   // a Thunk that performs autotuning may return true for its first run and
   // false thereafter.
-  virtual bool ShouldHaltAllActivityBeforeRunning(
-      perftools::gputools::Stream* /*stream*/) {
+  virtual bool ShouldHaltAllActivityBeforeRunning(se::Stream* /*stream*/) {
     return false;
   }
 
@@ -102,8 +103,7 @@ class Thunk {
   // called after Initialize and can be called multiple times over Thunk's
   // lifetime. Stream argument must be non-null.
   virtual tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) = 0;
+      const BufferAllocations& buffer_allocations, se::Stream* stream) = 0;
 
  private:
   Kind kind_;

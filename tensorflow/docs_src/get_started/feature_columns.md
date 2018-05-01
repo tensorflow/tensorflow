@@ -138,7 +138,7 @@ The model will represent the buckets as follows:
 |< 1960               | [1, 0, 0, 0] |
 |>= 1960 but < 1980   | [0, 1, 0, 0] |
 |>= 1980 but < 2000   | [0, 0, 1, 0] |
-|> 2000               | [0, 0, 0, 1] |
+|>= 2000              | [0, 0, 0, 1] |
 
 Why would you want to split a number—a perfectly valid input to your
 model—into a categorical value? Well, notice that the categorization splits a
@@ -364,7 +364,7 @@ def make_dataset(latitude, longitude, labels):
     return tf.data.Dataset.from_tensor_slices((features, labels))
 
 
-# Bucketize the latitude and longitude usig the `edges`
+# Bucketize the latitude and longitude using the `edges`
 latitude_bucket_fc = tf.feature_column.bucketized_column(
     tf.feature_column.numeric_column('latitude'),
     list(atlanta.latitude.edges))

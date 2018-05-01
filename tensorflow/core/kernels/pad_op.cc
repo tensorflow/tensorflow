@@ -114,9 +114,12 @@ class PadOp : public OpKernel {
       Tensor collapsed_input;
       CHECK(collapsed_input.CopyFrom(in0, collapsed_input_shape));
       Tensor collapsed_output;
-      OP_REQUIRES_OK(context, context->allocate_temp(collapsed_input.dtype(),
-                                                     collapsed_output_shape,
-                                                     &collapsed_output));
+      AllocatorAttributes alloc_attrs;
+      alloc_attrs.set_on_host(context->input_memory_type(0) == HOST_MEMORY);
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(collapsed_input.dtype(),
+                                            collapsed_output_shape,
+                                            &collapsed_output, alloc_attrs));
       const Tensor& collapsed_paddings_ref = collapsed_paddings;
       typename TTypes<Tpadding>::ConstMatrix collapsed_paddings_matrix =
           collapsed_paddings_ref.matrix<Tpadding>();

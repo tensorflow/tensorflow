@@ -752,7 +752,8 @@ class MklLRNOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1001,7 +1002,8 @@ class MklLRNGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
     OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
     workspace_enabled_ = false;
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1043,7 +1045,6 @@ class MklLRNGradOp : public OpKernel {
       // Naming: diff_dst is input_gradient_tensor; src is orig_input_tensor.
       const Tensor& input_grad_tensor = MklGetInput(context, kIdxGradient);
       const Tensor& orig_input_tensor = MklGetInput(context, kIdxOrigInput);
-      const Tensor& orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
 
       // Get input sizes in MKL-DNN required NCHW format.
       // LRN does not have data_format attribute. But by default it has

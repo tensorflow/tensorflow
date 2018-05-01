@@ -54,10 +54,10 @@ def _covariance(x, diag):
   diagonal matrix just the diagonal is returned.
   """
   num_points = math_ops.to_float(array_ops.shape(x)[0])
-  x -= math_ops.reduce_mean(x, 0, keep_dims=True)
+  x -= math_ops.reduce_mean(x, 0, keepdims=True)
   if diag:
     cov = math_ops.reduce_sum(
-        math_ops.square(x), 0, keep_dims=True) / (num_points - 1)
+        math_ops.square(x), 0, keepdims=True) / (num_points - 1)
   else:
     cov = math_ops.matmul(x, x, transpose_a=True) / (num_points - 1)
   return cov
@@ -280,7 +280,7 @@ class GmmAlgorithm(object):
     self._define_score_samples()
 
   def _define_full_covariance_probs(self, shard_id, shard):
-    """Defines the full covariance probabilties per example in a class.
+    """Defines the full covariance probabilities per example in a class.
 
     Updates a matrix with dimension num_examples X num_classes.
 
@@ -313,7 +313,7 @@ class GmmAlgorithm(object):
     # TODO(xavigonzalvo): look into alternatives to log for
     # reparametrization of variance parameters.
     det_expanded = math_ops.reduce_sum(
-        math_ops.log(self._covs + 1e-3), 1, keep_dims=True)
+        math_ops.log(self._covs + 1e-3), 1, keepdims=True)
     diff = shard - self._means
     x2 = math_ops.square(diff)
     cov_expanded = array_ops.expand_dims(1.0 / (self._covs + 1e-3), 2)
@@ -344,21 +344,21 @@ class GmmAlgorithm(object):
   def _define_prior_log_prob_operation(self, shard_id):
     """Computes the prior probability of all samples.
 
-    Updates a vector where each item is the prior probabibility of an
+    Updates a vector where each item is the prior probability of an
     input example.
 
     Args:
       shard_id: id of current shard_id.
     """
     self._prior_probs[shard_id] = math_ops.reduce_logsumexp(
-        self._probs[shard_id], axis=1, keep_dims=True)
+        self._probs[shard_id], axis=1, keepdims=True)
 
   def _define_expectation_operation(self, shard_id):
     # Shape broadcasting.
     probs = array_ops.expand_dims(self._probs[shard_id], 0)
     # Membership weights are computed as:
-    # w_{ik} = \frac{\alpha_k f(\mathbf{y_i}|\mathbf{\theta}_k)}
-    #               {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}
+    # $$w_{ik} = \frac{\alpha_k f(\mathbf{y_i}|\mathbf{\theta}_k)}$$
+    # $$            {\sum_{m=1}^{K}\alpha_mf(\mathbf{y_i}|\mathbf{\theta}_m)}$$
     # where "i" is the i-th example, "k" is the k-th mixture, theta are
     # the model parameters and y_i the observations.
     # These are defined for each shard.
@@ -375,7 +375,7 @@ class GmmAlgorithm(object):
     """
     # Soft assignment of each data point to each of the two clusters.
     self._points_in_k[shard_id] = math_ops.reduce_sum(
-        self._w[shard_id], 0, keep_dims=True)
+        self._w[shard_id], 0, keepdims=True)
     # Partial means.
     w_mul_x = array_ops.expand_dims(
         math_ops.matmul(
@@ -397,7 +397,7 @@ class GmmAlgorithm(object):
     # Compute the effective number of data points assigned to component k.
     with ops.control_dependencies(self._w):
       points_in_k = array_ops.squeeze(
-          math_ops.add_n(self._points_in_k), squeeze_dims=[0])
+          math_ops.add_n(self._points_in_k), axis=[0])
       # Update alpha.
       if 'w' in self._params:
         final_points_in_k = points_in_k / num_batches
@@ -454,7 +454,7 @@ class GmmAlgorithm(object):
     for shard_id, prior_probs in enumerate(self._prior_probs):
       op.append(prior_probs + math_ops.log(self._w[shard_id]))
     self._scores = array_ops.squeeze(
-        math_ops.reduce_logsumexp(op, axis=2, keep_dims=True), axis=0)
+        math_ops.reduce_logsumexp(op, axis=2, keepdims=True), axis=0)
 
 
 def gmm(inp,

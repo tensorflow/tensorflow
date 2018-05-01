@@ -162,7 +162,7 @@ TEST_F(HloRematerializationTest, SingleComputation) {
                           HloRematerialization::RematerializeAndSchedule(
                               ByteSizeOf,
                               /*memory_limit_bytes=*/14 * 1024, module.get(),
-                              SchedulerAlgorithm::kAuto, &sequence));
+                              DefaultMemoryScheduler, &sequence));
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -195,7 +195,7 @@ TEST_F(HloRematerializationTest, SingleComputationNoRematerialization) {
                           HloRematerialization::RematerializeAndSchedule(
                               ByteSizeOf,
                               /*memory_limit_bytes=*/20 * 1024, module.get(),
-                              SchedulerAlgorithm::kAuto, &sequence));
+                              DefaultMemoryScheduler, &sequence));
 
   // No instructions should have been materialized.
   EXPECT_FALSE(changed);
@@ -236,7 +236,7 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
                           HloRematerialization::RematerializeAndSchedule(
                               ByteSizeOf,
                               /*memory_limit_bytes=*/17 * 1024, module.get(),
-                              SchedulerAlgorithm::kAuto, &sequence));
+                              DefaultMemoryScheduler, &sequence));
   EXPECT_TRUE(changed);
 
   // Only the entry computation should have a rematerialized instruction added.
@@ -272,7 +272,7 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
                           HloRematerialization::RematerializeAndSchedule(
                               ByteSizeOf,
                               /*memory_limit_bytes=*/15 * 1024, module.get(),
-                              SchedulerAlgorithm::kAuto, &sequence));
+                              DefaultMemoryScheduler, &sequence));
   EXPECT_TRUE(changed);
 
   // Both computations should have a rematerialized instruction added.
@@ -314,7 +314,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
                           HloRematerialization::RematerializeAndSchedule(
                               ByteSizeOf,
                               /*memory_limit_bytes=*/13 * 1024, module.get(),
-                              SchedulerAlgorithm::kAuto, &sequence));
+                              DefaultMemoryScheduler, &sequence));
   EXPECT_TRUE(changed);
 
   // All computations should have a rematerialized instruction added.
@@ -385,7 +385,7 @@ TEST_F(HloRematerializationTest, RngNotRematerialized) {
       bool changed, HloRematerialization::RematerializeAndSchedule(
                         ByteSizeOf,
                         /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_),
-                        module.get(), SchedulerAlgorithm::kAuto, &sequence));
+                        module.get(), DefaultMemoryScheduler, &sequence));
   EXPECT_TRUE(changed);
   // The rng should not have been rematerialized.
   EXPECT_EQ(count_rngs(entry_computation), 1);
@@ -480,7 +480,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
                           HloRematerialization::RematerializeAndSchedule(
                               ByteSizeOf,
                               /*memory_limit_bytes=*/22 * 1024, module.get(),
-                              SchedulerAlgorithm::kAuto, &sequence));
+                              DefaultMemoryScheduler, &sequence));
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
@@ -577,7 +577,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
                           HloRematerialization::RematerializeAndSchedule(
                               ByteSizeOf,
                               /*memory_limit_bytes=*/22 * 1024, module.get(),
-                              SchedulerAlgorithm::kAuto, &sequence));
+                              DefaultMemoryScheduler, &sequence));
   // Rematerialization should only occur if the rematerializable instruction has
   // no indirect uses.
   if (indirectly_used) {

@@ -155,6 +155,156 @@ void TF_Run_wrapper(TF_DeprecatedSession* session, const TF_Buffer* run_options,
   ClearDecrefCache();
 }
 
+namespace {
+void MakeCallableHelper(tensorflow::Session* session,
+                        const TF_Buffer* callable_options, int64_t* out_handle,
+                        TF_Status* out_status) {
+  tensorflow::CallableOptions callable_options_proto;
+  if (callable_options != nullptr &&
+      !callable_options_proto.ParseFromArray(callable_options->data,
+                                             callable_options->length)) {
+    Set_TF_Status_from_Status(
+        out_status,
+        errors::InvalidArgument("Unparseable CallableOptions proto"));
+    return;
+  }
+  tensorflow::Session::CallableHandle handle;
+  Status s = session->MakeCallable(callable_options_proto, &handle);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+    return;
+  }
+  *out_handle = handle;
+}
+}  // namespace
+
+void TF_DeprecatedSessionMakeCallable(TF_DeprecatedSession* session,
+                                      const TF_Buffer* callable_options,
+                                      int64_t* out_handle,
+                                      TF_Status* out_status) {
+  MakeCallableHelper(session->session, callable_options, out_handle,
+                     out_status);
+}
+void TF_SessionMakeCallable(TF_Session* session,
+                            const TF_Buffer* callable_options,
+                            int64_t* out_handle, TF_Status* out_status) {
+  MakeCallableHelper(session->session, callable_options, out_handle,
+                     out_status);
+}
+
+namespace {
+void RunCallableHelper(tensorflow::Session* session, int64_t handle,
+                       PyObject* feed_values, TF_Status* out_status,
+                       PyObjectVector* out_values, TF_Buffer* run_metadata) {
+  // Convert feed values to a vector of tensorflow::Tensor objects.
+  std::vector<Tensor> input_tensors;
+  Status s;
+  {
+    feed_values =
+        PySequence_Fast(feed_values, "feed_values must be a sequence");
+    if (feed_values == nullptr) return;
+    Safe_PyObjectPtr feed_values_holder(make_safe(feed_values));
+    Py_ssize_t len = PySequence_Fast_GET_SIZE(feed_values);
+    input_tensors.reserve(len);
+    for (Py_ssize_t i = 0; i < len; ++i) {
+      PyObject* elem = PySequence_Fast_GET_ITEM(feed_values, i);
+      if (!elem) {
+        Set_TF_Status_from_Status(
+            out_status, errors::Internal("Could not get feed value ", i));
+        return;
+      }
+      Tensor t;
+      s = NdarrayToTensor(elem, &t);
+      if (!s.ok()) {
+        Set_TF_Status_from_Status(out_status, s);
+        return;
+      }
+      input_tensors.push_back(std::move(t));
+    }
+  }
+
+  // Allocate a RunMetadata protobuf object to receive the metadata,
+  // if the caller is expecting any.
+  std::unique_ptr<RunMetadata> run_metadata_proto;
+  if (run_metadata != nullptr) {
+    run_metadata_proto.reset(new RunMetadata);
+  }
+
+  // Run the callable.
+  std::vector<Tensor> output_tensors;
+  Py_BEGIN_ALLOW_THREADS;
+  s = session->RunCallable(handle, input_tensors, &output_tensors,
+                           run_metadata_proto.get());
+  Py_END_ALLOW_THREADS;
+
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+    return;
+  }
+
+  // If requested, serialize the RunMetadata to pass it back to the caller.
+  if (run_metadata != nullptr) {
+    s = MessageToBuffer(*run_metadata_proto, run_metadata);
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+  }
+
+  // Convert results to NumPy arrays. Since this can fail, stage the
+  // results via a safe container that takes care of decreasing the
+  // reference count on failure.
+  std::vector<Safe_PyObjectPtr> py_outputs_safe;
+  py_outputs_safe.reserve(output_tensors.size());
+  for (const Tensor& output : output_tensors) {
+    PyObject* py_array;
+    s = TensorToNdarray(output, &py_array);
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    py_outputs_safe.push_back(make_safe(py_array));
+  }
+
+  // If we reach this point, we have successfully built a list of objects
+  // so we can release them from the safe container.
+  out_values->reserve(py_outputs_safe.size());
+  for (auto& output : py_outputs_safe) {
+    out_values->push_back(output.release());
+  }
+}
+}  // namespace
+
+void TF_DeprecatedSessionRunCallable(TF_DeprecatedSession* session,
+                                     int64_t handle, PyObject* feed_values,
+                                     TF_Status* out_status,
+                                     PyObjectVector* out_values,
+                                     TF_Buffer* run_metadata) {
+  RunCallableHelper(session->session, handle, feed_values, out_status,
+                    out_values, run_metadata);
+  ClearDecrefCache();
+}
+void TF_SessionRunCallable(TF_Session* session, int64_t handle,
+                           PyObject* feed_values, TF_Status* out_status,
+                           PyObjectVector* out_values,
+                           TF_Buffer* run_metadata) {
+  RunCallableHelper(session->session, handle, feed_values, out_status,
+                    out_values, run_metadata);
+  ClearDecrefCache();
+}
+
+void TF_DeprecatedSessionReleaseCallable(TF_DeprecatedSession* session,
+                                         int64_t handle,
+                                         TF_Status* out_status) {
+  Set_TF_Status_from_Status(out_status,
+                            session->session->ReleaseCallable(handle));
+}
+void TF_SessionReleaseCallable(TF_Session* session, int64_t handle,
+                               TF_Status* out_status) {
+  Set_TF_Status_from_Status(out_status,
+                            session->session->ReleaseCallable(handle));
+}
+
 // Wrapper for TF_PRunSetup that converts the arguments to appropriate types.
 // If *out_status is OK, the caller becomes the owner of *out_handle.
 void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
@@ -400,6 +550,15 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
   return control_inputs;
 }
 
+std::vector<TF_Operation*> TF_OperationGetControlOutputs_wrapper(
+    TF_Operation* oper) {
+  std::vector<TF_Operation*> control_outputs(
+      TF_OperationNumControlOutputs(oper));
+  TF_OperationGetControlOutputs(oper, control_outputs.data(),
+                                control_outputs.size());
+  return control_outputs;
+}
+
 std::vector<const char*> TF_OperationOutputConsumers_wrapper(
     TF_Output oper_out) {
   int num_consumers = TF_OperationOutputNumConsumers(oper_out);
@@ -468,15 +627,6 @@ void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
     return;
   }
   TF_GraphSetTensorShape(graph, output, dims.data(), dims.size(), status);
-}
-
-std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
-                                                    TF_Output output,
-                                                    int num_dims,
-                                                    TF_Status* status) {
-  std::vector<int64_t> dims(num_dims);
-  TF_GraphGetTensorShape(graph, output, dims.data(), num_dims, status);
-  return dims;
 }
 
 std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(

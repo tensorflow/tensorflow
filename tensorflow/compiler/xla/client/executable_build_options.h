@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
@@ -57,15 +58,36 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_generate_hlo_graph(string regex);
   const tensorflow::gtl::optional<string>& generate_hlo_graph() const;
 
+  // If set, specifies a dirpath to dump the end-of-optimization-pipeline HLO
+  // protobuf to (as in DebugOptions).
+  ExecutableBuildOptions& set_dump_optimized_hlo_proto_to(
+      tensorflow::StringPiece dirpath);
+  const tensorflow::gtl::optional<string>& dump_optimized_hlo_proto_to() const;
+
+  // If set, specifies a dirpath to dump the per-pass-in-pipeline HLO protobufs
+  // to (as in DebugOptions).
+  ExecutableBuildOptions& set_dump_per_pass_hlo_proto_to(
+      tensorflow::StringPiece dirpath);
+  const tensorflow::gtl::optional<string>& dump_per_pass_hlo_proto_to() const;
+
+  // If true, specifies that we should record an HLO profile during execution
+  // and log it after execution (as in DebugOptions). If nullopt the default is
+  // used.
+  ExecutableBuildOptions& set_hlo_profile(bool enabled);
+  tensorflow::gtl::optional<bool> hlo_profile() const;
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
 
  private:
+  tensorflow::gtl::optional<bool> hlo_profile_;
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
   tensorflow::gtl::optional<string> generate_hlo_graph_;
+  tensorflow::gtl::optional<string> dump_optimized_hlo_proto_to_;
+  tensorflow::gtl::optional<string> dump_per_pass_hlo_proto_to_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
 };
 

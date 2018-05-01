@@ -8,18 +8,6 @@ load(
     "tf_cuda_tests_tags",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 config_setting(
     name = "xsmm",
     licenses = ["notice"],
@@ -68,6 +56,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -85,6 +74,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",

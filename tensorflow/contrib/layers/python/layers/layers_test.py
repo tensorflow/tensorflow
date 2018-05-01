@@ -310,6 +310,17 @@ class BiasAddTest(test.TestCase):
 
 class ConvolutionTest(test.TestCase):
 
+  def testInvalidShape(self):
+    with self.test_session():
+      images_2d = random_ops.random_uniform((5, 7, 9, 3), seed=1)
+      with self.assertRaisesRegexp(
+          ValueError, 'Convolution expects input with rank 5, got 4'):
+        layers_lib.convolution3d(images_2d, 32, 3)
+      images_3d = random_ops.random_uniform((5, 6, 7, 9, 3), seed=1)
+      with self.assertRaisesRegexp(
+          ValueError, 'Convolution expects input with rank 4, got 5'):
+        layers_lib.convolution2d(images_3d, 32, 3)
+
   def testInvalidDataFormat(self):
     height, width = 7, 9
     with self.test_session():
@@ -3155,7 +3166,7 @@ class RepeatTests(test.TestCase):
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
       output = _layers.repeat(images, 3, layers_lib.conv2d, 32, [3, 3])
-      self.assertEqual(output.op.name, 'Repeat/convolution_3/Relu')
+      self.assertEqual(output.op.name, 'Repeat/convolution2d_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
 
   def testRepeatWithScope(self):
@@ -3749,7 +3760,7 @@ class StackTests(test.TestCase):
           layers_lib.convolution2d, [10, 20, 30],
           kernel_size=[3, 3],
           padding='SAME')
-      self.assertEqual(output.op.name, 'Stack/convolution_3/Relu')
+      self.assertEqual(output.op.name, 'Stack/convolution2d_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 30])
 
   def testStackWithScope(self):

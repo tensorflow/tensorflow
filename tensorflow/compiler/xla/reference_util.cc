@@ -18,7 +18,7 @@ limitations under the License.
 #include <array>
 #include <utility>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -90,7 +90,7 @@ std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
     Padding padding) {
   return ConvArray3DGeneralDimensionsDilated(
       lhs, rhs, kernel_stride, padding, 1, 1,
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(1));
+      XlaBuilder::CreateDefaultConvDimensionNumbers(1));
 }
 
 /*static*/ std::unique_ptr<Array3D<float>>
@@ -140,7 +140,7 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
     std::pair<int64, int64> kernel_stride, Padding padding) {
   return ConvArray4DGeneralDimensions(
       lhs, rhs, kernel_stride, padding,
-      ComputationBuilder::CreateDefaultConvDimensionNumbers());
+      XlaBuilder::CreateDefaultConvDimensionNumbers());
 }
 
 /* static */ std::unique_ptr<Array4D<float>>
@@ -572,7 +572,8 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module("ReferenceUtil");
+  HloModuleConfig config;
+  HloModule module("ReferenceUtil", config);
   auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;

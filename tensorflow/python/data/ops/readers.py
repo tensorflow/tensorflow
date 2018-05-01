@@ -22,7 +22,6 @@ from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -121,51 +120,14 @@ class _TFRecordDataset(dataset_ops.Dataset):
     return dtypes.string
 
 
-class ParallelInterleaveDataset(dataset_ops.Dataset):
+class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length,
                sloppy, buffer_output_elements, prefetch_input_elements):
     """See `tf.contrib.data.parallel_interleave()` for details."""
-    super(ParallelInterleaveDataset, self).__init__()
-    self._input_dataset = input_dataset
-
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
-    def tf_map_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if dataset_ops._should_unpack_args(nested_args):  # pylint: disable=protected-access
-        dataset = map_func(*nested_args)
-      else:
-        dataset = map_func(nested_args)
-
-      if not isinstance(dataset, dataset_ops.Dataset):
-        raise TypeError("`map_func` must return a `Dataset` object.")
-
-      self._output_classes = dataset.output_classes
-      self._output_types = dataset.output_types
-      self._output_shapes = dataset.output_shapes
-
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    self._map_func = tf_map_func
-    self._map_func.add_to_graph(ops.get_default_graph())
-
-    self._cycle_length = ops.convert_to_tensor(
-        cycle_length, dtype=dtypes.int64, name="cycle_length")
-    self._block_length = ops.convert_to_tensor(
-        block_length, dtype=dtypes.int64, name="block_length")
+    super(ParallelInterleaveDataset, self).__init__(input_dataset, map_func,
+                                                    cycle_length, block_length)
     self._sloppy = ops.convert_to_tensor(
         sloppy, dtype=dtypes.bool, name="sloppy")
     self._buffer_output_elements = convert.optional_param_to_tensor(
@@ -178,8 +140,9 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
         argument_default=2 * cycle_length)
 
   def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.parallel_interleave_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._input_dataset._as_variant_tensor(),
         self._map_func.captured_inputs,
         self._cycle_length,
         self._block_length,
@@ -191,18 +154,7 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
             sparse.as_dense_types(self.output_types, self.output_classes)),
         output_shapes=nest.flatten(
             sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
+    # pylint: enable=protected-access
 
 
 @tf_export("data.TFRecordDataset")

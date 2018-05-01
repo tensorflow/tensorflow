@@ -647,11 +647,11 @@ void RecordMutation(TF_Graph* graph, const TF_Operation& op,
   for (auto it : graph->sessions) {
     mutex_lock session_lock(it.first->mu);
     if (it.first->last_num_graph_nodes > op.node.id()) {
-      it.second = FailedPrecondition(
+      it.second = strings::StrCat(
           "Operation '", op.node.DebugString(), "' was changed by ",
           mutation_type,
-          " after it was run by a session. Nodes can be mutated "
-          "only before they are executed by a session. Either don't modify "
+          " after it was run by a session. This mutation will have no effect, "
+          "and will trigger an error in the future. Either don't modify "
           "nodes after running them or create a new session.");
     }
   }
@@ -722,10 +722,11 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     mutex_lock session_lock(session->mu);
     const Graph& graph = session->graph->graph;
 
-    status->status = session->graph->sessions[session];
-    if (!status->status.ok()) {
-      session->graph->mu.unlock();
-      return false;
+    const string& mutation_warning = session->graph->sessions[session];
+    if (!mutation_warning.empty()) {
+      // TODO(b/74949947): turn this back into an error status
+      LOG(WARNING) << mutation_warning;
+      session->graph->sessions[session].clear();
     }
 
     const auto num_nodes = graph.num_node_ids();
@@ -2475,7 +2476,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     TF_Session* new_session = new TF_Session(session, graph);
     if (graph != nullptr) {
       mutex_lock l(graph->mu);
-      graph->sessions[new_session] = Status::OK();
+      graph->sessions[new_session] = "";
     }
     return new_session;
   } else {
@@ -2541,7 +2542,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
 
   TF_Session* session = new TF_Session(bundle.session.release(), graph);
 
-  graph->sessions[session] = Status::OK();
+  graph->sessions[session] = "";
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
 #endif  // __ANDROID__

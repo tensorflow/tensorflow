@@ -49,12 +49,13 @@ namespace tensorrt {
 namespace convert {
 namespace {
 
-bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
+bool IsTensorRTCandidate(const tensorflow::Node* node) {
   // LINT.IfChange
   // TODO(jie): Segmentation shouldn't associated with op name.
   //            Split it into a registration for each kernel.
   static const std::set<string> candidate_ops = {
       "Identity",
+      "Snapshot",
       "Const",
       "Conv2D",
       "MaxPool",
@@ -74,7 +75,7 @@ bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
       // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
-  return candidate_ops.count(node_def.op());
+  return candidate_ops.count(node->type_string());
 }
 
 void GetSubGraphIncomingEdges(const tensorflow::Graph& graph,
@@ -84,10 +85,10 @@ void GetSubGraphIncomingEdges(const tensorflow::Graph& graph,
     const tensorflow::Node* node = graph.FindNodeId(node_id);
     for (const tensorflow::Edge* edge : node->in_edges()) {
       if (!subgraph_node_ids.count(edge->src()->id()) &&
-          !edge->src()->IsSource()) {
+          !edge->src()->IsSource() && !edge->IsControlEdge()) {
         incoming_edges->insert(edge);
       } else {
-        VLOG(2) << edge->src()->name() << " N, ";
+        VLOG(2) << node->name() << " -> " << edge->src()->name() << " N, ";
       }
     }
   }
@@ -100,30 +101,32 @@ void GetSubGraphOutgoingEdges(const tensorflow::Graph& graph,
     const tensorflow::Node* node = graph.FindNodeId(node_id);
     for (const tensorflow::Edge* edge : node->out_edges()) {
       if (!subgraph_node_ids.count(edge->dst()->id()) &&
-          !edge->dst()->IsSink()) {
-        VLOG(2) << edge->dst()->name() << " Y, ";
+          !edge->dst()->IsSink() && !edge->IsControlEdge()) {
+        VLOG(2) << node->name() << " -> " << edge->dst()->name() << " Y, ";
         outgoing_edges->insert(edge);
       } else {
-        VLOG(2) << edge->dst()->name() << " N, ";
+        VLOG(2) << node->name() << " -> " << edge->dst()->name() << " N, ";
       }
     }
   }
 }
 
-std::pair<string, int> ParseTensorName(string name, int default_idx = 0) {
+std::pair<string, int> ParseTensorName(const string& name,
+                                       int default_idx = 0) {
+  string name_no_idx = name;
   int idx = default_idx;
-  size_t sep = name.find_last_of(':');
+  const size_t sep = name_no_idx.find_last_of(':');
   if (sep != string::npos) {
-    name = name.substr(0, sep);
+    name_no_idx = name_no_idx.substr(0, sep);
     idx = std::stoi(name.substr(sep + 1));
   }
-  return std::make_pair(name, idx);
+  return std::make_pair(name_no_idx, idx);
 }
 
 std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
     const std::vector<string>& tensor_names) {
   std::unordered_map<string, std::vector<int>> result;
-  for (string const& tensor_name : tensor_names) {
+  for (const string& tensor_name : tensor_names) {
     string node_name;
     int index;
     std::tie(node_name, index) = ParseTensorName(tensor_name);
@@ -131,6 +134,7 @@ std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
   }
   return result;
 }
+
 // TODO(sami): convert references to pointers
 struct ConvertGraphParams {
   ConvertGraphParams(
@@ -404,16 +408,23 @@ tensorflow::Status ConvertGraphDefToTensorRT(
                          max_mem_per_engine, static_graph_properties,
                          &output_edge_map, precision_mode);
     if (precision_mode == INT8MODE) {
-      TF_RETURN_IF_ERROR(GetCalibNode(&p));
+      tensorflow::Status status = GetCalibNode(&p);
+      if (status != tensorflow::Status::OK()) {
+        LOG(WARNING) << "subgraph conversion error for subgraph_index:" << count
+                     << " due to: \"" << status.ToString()
+                     << "\" SKIPPING......( " << subgraph_node_names.size()
+                     << " nodes)";
+      }
     } else {
       tensorflow::Status status = ConvertSubGraphToTensorRT(&p);
       if (status != tensorflow::Status::OK()) {
         LOG(WARNING) << "subgraph conversion error for subgraph_index:" << count
-                     << " due to: \n"
-                     << status.ToString() << " SKIPPING......";
+                     << " due to: \"" << status.ToString()
+                     << "\" SKIPPING......( " << subgraph_node_names.size()
+                     << " nodes)";
       }
-      count++;
     }
+    count++;
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();

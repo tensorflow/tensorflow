@@ -60,7 +60,7 @@ def _query_tpu_system_metadata(master_address, run_config,
       with ops.Graph().as_default():
         with session_lib.Session(
             master_address,
-            config=_get_session_config_with_timeout(
+            config=get_session_config_with_timeout(
                 _PINGING_MASTER_TIMEOUT_IN_MS, run_config)) as sess:
           devices = sess.list_devices()
           for device in devices:
@@ -72,9 +72,9 @@ def _query_tpu_system_metadata(master_address, run_config,
               tpu_core_count += 1
           break
     except errors.DeadlineExceededError:
-      msg = ('Fail to connect Tensorflow master. It could be the TPU worker is '
-             'not ready (still under scheduling) or Tensorflow '
-             'master address is correct: got (%s).' %
+      msg = ('Failed to connect to the Tensorflow master. The TPU worker may '
+             'not be ready (still scheduling) or the Tensorflow master address '
+             'is incorrect: got (%s).' %
              (master_address))
 
       # TODO(xiejw): For local or grpc master we might not need retry logic
@@ -120,7 +120,8 @@ def _query_tpu_system_metadata(master_address, run_config,
     logging.info('*** Num TPU Workers: %d', metadata.num_hosts)
     logging.info('*** Num TPU Cores Per Worker: %d',
                  metadata.num_of_cores_per_host)
-    logging.info('*** Available Devices: %s', metadata.devices)
+    for device in metadata.devices:
+      logging.info('*** Available Device: %s', device)
   else:
     logging.info('Failed to find TPU: %s', metadata)
   return metadata
@@ -132,7 +133,7 @@ def _obtain_topology(master_address, run_config):
                  'for model parallelism. This might take a while.',
                  master_address)
     with ops.Graph().as_default():
-      session_config = _get_session_config_with_timeout(
+      session_config = get_session_config_with_timeout(
           _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS, run_config)
       with session_lib.Session(
           master_address, config=session_config) as sess:
@@ -145,7 +146,7 @@ def _obtain_topology(master_address, run_config):
             master_address))
 
 
-def _get_session_config_with_timeout(timeout_in_secs, run_config):
+def get_session_config_with_timeout(timeout_in_secs, run_config):
   cluster_def = None
   if run_config.session_config and run_config.session_config.cluster_def.job:
     cluster_def = run_config.session_config.cluster_def

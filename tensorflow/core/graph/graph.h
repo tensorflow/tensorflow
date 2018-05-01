@@ -124,7 +124,8 @@ class Node {
   // Inputs requested by the NodeDef.  For the actual inputs, use in_edges.
   const protobuf::RepeatedPtrField<string>& requested_inputs() const;
 
-  // Get the neighboring nodes via edges either in or out of this node.
+  // Get the neighboring nodes via edges either in or out of this node.  This
+  // includes control edges.
   gtl::iterator_range<NeighborIter> in_nodes() const;
   gtl::iterator_range<NeighborIter> out_nodes() const;
   const EdgeSet& in_edges() const { return in_edges_; }

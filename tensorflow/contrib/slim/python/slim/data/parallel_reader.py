@@ -115,8 +115,8 @@ class ParallelReader(io_ops.ReaderBase):
     reader needs to start reading from a new file since it has finished with
     the previous file).
 
-    A queue runner for enqueing in the `common_queue` is automatically added to
-    the TF QueueRunners collection.
+    A queue runner for enqueuing in the `common_queue` is automatically added
+    to the TF QueueRunners collection.
 
     Args:
       queue: A Queue or a mutable string Tensor representing a handle

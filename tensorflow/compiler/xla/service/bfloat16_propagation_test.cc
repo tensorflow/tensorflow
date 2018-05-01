@@ -426,8 +426,62 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
   EXPECT_TRUE(OutputsBF16(xpose));
 }
 
-// Tests that BF16 is propagated properly through while computations.
-TEST_F(BFloat16PropagationTest, PropagateThroughWhile) {
+// Tests that BF16 is propagated properly through a while computation with
+// non-tuple input/output.
+TEST_F(BFloat16PropagationTest, PropagateThroughSimpleWhile) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+
+  auto builder_cond = HloComputation::Builder("cond");
+  auto cond_param = builder_cond.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "cond_param"));
+  auto cond_dot = builder_cond.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, cond_param, cond_param));
+  auto cond_root = builder_cond.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt,
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_dot, {0, 0}, {1, 1}, {1, 1})),
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_dot, {1, 1}, {2, 2}, {1, 1}))));
+  auto cond = module->AddEmbeddedComputation(builder_cond.Build());
+
+  auto builder_body = HloComputation::Builder("body");
+  auto body_param = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "body_param"));
+  auto body_dot = builder_body.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, body_param, body_param));
+  auto body = module->AddEmbeddedComputation(builder_body.Build());
+
+  auto while_hlo = builder.AddInstruction(
+      HloInstruction::CreateWhile(shape, cond, body, add));
+
+  auto dot = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, while_hlo, while_hlo));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(cond_root->shape(), ShapeUtil::MakeShape(PRED, {})));
+  EXPECT_TRUE(OutputsBF16(add));
+  EXPECT_TRUE(OutputsBF16(body_dot));
+  EXPECT_TRUE(OutputsBF16(body_param));
+  EXPECT_TRUE(OutputsBF16(cond_param));
+  EXPECT_FALSE(OutputsBF16(dot));
+}
+
+// Tests that BF16 is propagated properly through while computations with
+// tuple-shaped input/output.
+TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
   auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
@@ -615,6 +669,46 @@ TEST_F(BFloat16PropagationTest, DoNotPropagateWhilesCallingSameComputation) {
   EXPECT_TRUE(OutputsBF16(cond0_add_rhs));
   EXPECT_TRUE(OutputsBF16(cond1_add_lhs));
   EXPECT_EQ(computation->root_instruction(), dot);
+}
+
+// Tests that if this pass turns an F32 -> BF16 conversion into a no-op (BF16 ->
+// BF16 conversion), then it will remove that conversion.
+TEST_F(BFloat16PropagationTest, NoopConversionRemoved) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {4, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32_shape, "param"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_shape, HloOpcode::kAdd, param, param));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_shape, HloOpcode::kAdd, param, param));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
+  HloInstruction* gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, tuple, 0));
+  HloInstruction* gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, tuple, 1));
+  HloInstruction* convert0 =
+      builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, gte0));
+  HloInstruction* convert1 =
+      builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, gte1));
+  HloInstruction* add2 = builder.AddInstruction(HloInstruction::CreateBinary(
+      bf16_shape, HloOpcode::kAdd, convert0, convert1));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), add2);
+  EXPECT_EQ(add2->operand(0), gte0);
+  EXPECT_EQ(add2->operand(1), gte1);
+  EXPECT_EQ(gte0->shape().element_type(), BF16);
+  EXPECT_EQ(gte1->shape().element_type(), BF16);
+  EXPECT_EQ(add0->shape().element_type(), BF16);
+  EXPECT_EQ(add1->shape().element_type(), BF16);
 }
 
 }  // namespace xla

@@ -487,6 +487,15 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   string data_format;
   Status s = c->GetAttr("data_format", &data_format);
 
+  std::vector<int32> dilations;
+  TF_RETURN_IF_ERROR(c->GetAttr("dilations", &dilations));
+
+  if (dilations.size() != 5) {
+    return errors::InvalidArgument(
+        "Conv3D requires the dilation attribute to contain 5 values, but got: ",
+        dilations.size());
+  }
+
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
   if (strides.size() != 5) {
@@ -496,6 +505,7 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   }
 
   int32 stride_planes, stride_rows, stride_cols;
+  int32 dilation_planes, dilation_rows, dilation_cols;
   if (s.ok() && data_format == "NCDHW") {
     // Convert input_shape to NDHWC.
     auto dim = [&](char dimension) {
@@ -504,12 +514,18 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
     input_shape =
         c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('2'), dim('C')}});
     stride_planes = strides[2];
-    stride_cols = strides[3];
-    stride_rows = strides[4];
+    stride_rows = strides[3];
+    stride_cols = strides[4];
+    dilation_planes = dilations[2];
+    dilation_cols = dilations[3];
+    dilation_rows = dilations[4];
   } else {
     stride_planes = strides[1];
     stride_rows = strides[2];
     stride_cols = strides[3];
+    dilation_planes = dilations[1];
+    dilation_cols = dilations[2];
+    dilation_rows = dilations[3];
   }
 
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
@@ -530,13 +546,15 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
   DimensionHandle output_planes, output_rows, output_cols;
 
-  TF_RETURN_IF_ERROR(
-      GetWindowedOutputSizeFromDims(c, in_planes_dim, filter_planes_dim,
-                                    stride_planes, padding, &output_planes));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, filter_rows_dim, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, filter_cols_dim, stride_cols, padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_planes_dim, filter_planes_dim, dilation_planes, stride_planes,
+      padding, &output_planes));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding,
+      &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding,
+      &output_cols));
 
   ShapeHandle output_shape;
   if (data_format == "NCDHW") {
@@ -1210,7 +1228,7 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
-Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
   ShapeHandle shape_x = c->input(0);
   ShapeHandle shape_y = c->input(1);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
@@ -1272,7 +1290,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
     }
   }
 
-  c->set_output(0, c->MakeShape(dims));
+  c->set_output(output_index, c->MakeShape(dims));
   return Status::OK();
 }
 

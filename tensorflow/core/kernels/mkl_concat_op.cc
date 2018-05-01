@@ -803,8 +803,10 @@ class MklConcatOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     TensorShape tf_shape_output;
     tf_shape_output.AddDim(dnn_shape_output.GetSerializeBufferSize());
-    context->allocate_output(GetTensorMetaDataIndex(0, context->num_outputs()),
-                             tf_shape_output, &output_tensor);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       GetTensorMetaDataIndex(0, context->num_outputs()),
+                       tf_shape_output, &output_tensor));
     dnn_shape_output.SerializeMklDnnShape(
         output_tensor->flat<uint8>().data(),
         output_tensor->flat<uint8>().size() * sizeof(uint8));

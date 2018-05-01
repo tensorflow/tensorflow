@@ -24,7 +24,6 @@ namespace xla {
 namespace cpu {
 namespace options {
 
-bool CpuParallelBackendRequested(const HloModuleConfig& config);
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(

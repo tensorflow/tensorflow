@@ -75,7 +75,7 @@ def run_graph(gdef, dumm_inp):
   return val
 
 
-# Use real data that is representatitive of the inference dataset
+# Use real data that is representative of the inference dataset
 # for calibration. For this test script it is random data.
 def run_calibration(gdef, dumm_inp):
   """Run given calibration graph multiple times."""

@@ -502,11 +502,11 @@ namespace {
 StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   tensorflow::str_util::RemoveLeadingWhitespace(s);
 
-  if (s->Consume("(")) {  // Tuple.
+  if (tensorflow::str_util::ConsumePrefix(s, "(")) {  // Tuple.
     std::vector<Shape> shapes;
     bool must_end = false;
     while (true) {
-      if (s->Consume(")")) {
+      if (tensorflow::str_util::ConsumePrefix(s, ")")) {
         break;
       } else if (must_end) {
         return InvalidArgument("Expected end of tuple; got: \"%s\"",
@@ -515,7 +515,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
       tensorflow::str_util::RemoveLeadingWhitespace(s);
-      must_end = !s->Consume(",");
+      must_end = !tensorflow::str_util::ConsumePrefix(s, ",");
     }
     return ShapeUtil::MakeTupleShape(shapes);
   }
@@ -824,6 +824,18 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return new_shape;
 }
 
+/* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,
+                                          ShapeIndexView index) {
+  const Shape* subshape = &shape;
+  for (auto i : index) {
+    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size()) {
+      return false;
+    }
+    subshape = &subshape->tuple_shapes(i);
+  }
+  return true;
+}
+
 /* static */ const Shape& ShapeUtil::GetSubshape(const Shape& shape,
                                                  ShapeIndexView index) {
   const Shape* return_shape = &shape;
@@ -893,10 +905,17 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
            std::is_permutation(minor_to_major.begin(), minor_to_major.end(),
                                dims.begin()));
   }
-  Shape stripped_shape =
-      shape.has_layout() ? MakeShapeWithLayout(shape.element_type(),
-                                               dimension_sizes, minor_to_major)
-                         : MakeShape(shape.element_type(), dimension_sizes);
+  Shape stripped_shape;
+  if (LayoutUtil::IsDenseArray(shape)) {
+    stripped_shape = MakeShapeWithLayout(shape.element_type(), dimension_sizes,
+                                         minor_to_major);
+  } else if (LayoutUtil::IsSparseArray(shape)) {
+    stripped_shape =
+        MakeShapeWithSparseLayout(shape.element_type(), dimension_sizes,
+                                  shape.layout().max_sparse_elements());
+  } else {
+    stripped_shape = MakeShape(shape.element_type(), dimension_sizes);
+  }
 
   VLOG(10) << "Original_shape: " << HumanStringWithLayout(shape);
   VLOG(10) << "Stripped_shape: " << HumanStringWithLayout(stripped_shape);
