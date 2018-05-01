@@ -294,7 +294,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout());
+      module->device_entry_computation_layout());
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(

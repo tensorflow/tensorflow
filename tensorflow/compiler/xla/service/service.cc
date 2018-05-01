@@ -296,8 +296,10 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ExecutionOptions* execution_options,
     const UserComputation* user_computation) {
   auto config = MakeUnique<HloModuleConfig>(program_shape);
-  auto* computation_layout = config->mutable_entry_computation_layout();
-
+  ComputationLayout* host_computation_layout =
+      config->mutable_host_entry_computation_layout();
+  ComputationLayout* device_computation_layout =
+      config->mutable_device_entry_computation_layout();
   if (program_shape.parameters_size() != argument_shapes.size()) {
     return InvalidArgument("computation takes %d parameters, but %zu given",
                            program_shape.parameters_size(),
@@ -322,9 +324,10 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
           ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            *argument_shapes[i]));
+    TF_RETURN_IF_ERROR(host_computation_layout->mutable_parameter_layout(i)
+                           ->CopyLayoutFromShape(*argument_shapes[i]));
+    TF_RETURN_IF_ERROR(device_computation_layout->mutable_parameter_layout(i)
+                           ->CopyLayoutFromShape(*argument_shapes[i]));
   }
   if (execution_options != nullptr &&
       execution_options->has_shape_with_output_layout()) {
@@ -333,10 +336,17 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
                                                      program_shape.result()));
     TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+        host_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+            shape_with_output_layout));
+    TF_RETURN_IF_ERROR(
+        device_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
   } else {
-    computation_layout->mutable_result_layout()->Clear();
+    // If the result layout is not set, then choose the default.
+    // TODO(b/29118294): Allow the compiler to choose a better layout in this
+    // case.
+    host_computation_layout->mutable_result_layout()->SetToDefaultLayout();
+    device_computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
 
   config->set_replica_count(options_.number_of_replicas());
@@ -488,6 +498,22 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   return std::move(executables);
 }
 
+Status Service::ValidateEntryComputationLayout(HloModule* module) {
+  const ComputationLayout& on_device =
+      module->device_entry_computation_layout();
+  for (int64 i = 0; i < on_device.parameter_count(); ++i) {
+    TF_RET_CHECK(ShapeUtil::Equal(
+        on_device.parameter_shape(i),
+        execute_backend_->transfer_manager()->HostShapeToDeviceShape(
+            module->host_entry_computation_layout().parameter_shape(i))));
+  }
+  TF_RET_CHECK(ShapeUtil::Equal(
+      module->device_entry_computation_layout().result_shape(),
+      execute_backend_->transfer_manager()->HostShapeToDeviceShape(
+          module->host_entry_computation_layout().result_shape())));
+  return tensorflow::Status::OK();
+}
+
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const VersionedComputationHandle& versioned_handle,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
@@ -526,6 +552,8 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(
       module, backend->compiler()->RunHloPasses(std::move(module), executor,
                                                 device_allocator));
+  // Check that on-host and on-device shapes are consistent.
+  TF_RETURN_IF_ERROR(ValidateEntryComputationLayout(module.get()));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       backend->compiler()->RunBackend(
@@ -889,7 +917,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
         CreateModuleConfig(*program_shape, replicated_arguments.front(),
                            request.execution_options(), user_computation));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
-            << module_config->entry_computation_layout().ToString();
+            << module_config->host_entry_computation_layout().ToString();
 
     // Adds to the vectors to build and execute the computations after the loop.
     all_arguments.push_back(replicated_arguments);
@@ -992,7 +1020,7 @@ tensorflow::Status Service::ExecuteGraphParallel(
                            /*user_computation=*/nullptr));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
-        << module_config->entry_computation_layout().ToString();
+        << module_config->host_entry_computation_layout().ToString();
 
     // Adds to the vectors to build and execute the computations after the loop.
     all_arguments.push_back(replicated_arguments);
@@ -1142,7 +1170,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
                          arg->execution_options(), user_computation));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
-          << module_config->entry_computation_layout().ToString();
+          << module_config->host_entry_computation_layout().ToString();
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
@@ -1212,6 +1240,8 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(
       module, backend->compiler()->RunHloPasses(std::move(module), executor,
                                                 device_allocator));
+  // Check that on-host and on-device shapes are consistent.
+  TF_RETURN_IF_ERROR(ValidateEntryComputationLayout(module.get()));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       backend->compiler()->RunBackend(
@@ -1313,7 +1343,7 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
                          arg->execution_options(), user_computation));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
-          << module_config->entry_computation_layout().ToString();
+          << module_config->host_entry_computation_layout().ToString();
 
   ExecutionProfile profile;
 

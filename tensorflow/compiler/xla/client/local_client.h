@@ -43,15 +43,6 @@ class LocalExecutable {
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ExecutableRunOptions run_options);
 
-  // Return the layout (contained in a shape) of the result produced by the
-  // computation.
-  const Shape& result_layout() const {
-    return executable_->module_config()
-        .entry_computation_layout()
-        .result_layout()
-        .shape();
-  }
-
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
 
