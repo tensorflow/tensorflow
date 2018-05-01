@@ -31,7 +31,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.8.0-rc0'
+_VERSION = '1.8.0-rc1'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -69,7 +69,7 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.8.0a0, < 1.9.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.9.0a0, < 1.10.0a0'
       break
 
 # weakref.finalize and enum were introduced in Python 3.4

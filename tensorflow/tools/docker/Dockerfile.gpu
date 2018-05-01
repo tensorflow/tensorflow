@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libcudnn7=7.0.5.15-1+cuda9.0 \
         libfreetype6-dev \
+        libhdf5-serial-dev \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \

@@ -609,7 +609,7 @@ enum {
    * Long short-term memory unit (LSTM) recurrent network layer.
    *
    * The default non-peephole implementation is based on:
-   * http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+   * http://www.bioinf.jku.at/publications/older/2604.pdf
    * S. Hochreiter and J. Schmidhuber. "Long Short-Term Memory". Neural
    * Computation, 9(8):1735-1780, 1997.
    *

@@ -490,7 +490,7 @@ Status GraphExecutionState::OptimizeGraph(
         cpu_device = device;
       }
     }
-    grappler::VirtualCluster cluster(device_map);
+    grappler::VirtualCluster cluster(device_map, device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
         item, rewrite_options, cpu_device, &cluster, &new_graph));

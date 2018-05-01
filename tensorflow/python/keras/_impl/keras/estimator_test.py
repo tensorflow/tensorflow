@@ -30,6 +30,7 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.applications import mobilenet
 from tensorflow.python.keras._impl.keras.optimizers import SGD
@@ -142,16 +143,20 @@ def randomize_io_type(array, name):
 
 
 def multi_inputs_multi_outputs_model():
-  # test multi-input layer
   a = keras.layers.Input(shape=(16,), name='input_a')
   b = keras.layers.Input(shape=(16,), name='input_b')
+  m = keras.layers.Input(shape=(8,), dtype='bool', name='input_m')
   dense = keras.layers.Dense(8, name='dense_1')
+
   a_2 = dense(a)
+  # Apply a mask
+  s_2 = keras.layers.Lambda(lambda k:
+                            K.switch(k[0], k[1], K.zeros_like(k[1])))([m, a_2])
   b_2 = dense(b)
-  merged = keras.layers.concatenate([a_2, b_2], name='merge')
+  merged = keras.layers.concatenate([s_2, b_2], name='merge')
   c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
   d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
-  model = keras.models.Model(inputs=[a, b], outputs=[c, d])
+  model = keras.models.Model(inputs=[a, b, m], outputs=[c, d])
   model.compile(
       loss='categorical_crossentropy',
       optimizer='rmsprop',
@@ -352,18 +357,27 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         test_samples=50,
         input_shape=(16,),
         num_classes=2)
+    np.random.seed(_RANDOM_SEED)
+    (input_m_train, _), (input_m_test, _) = testing_utils.get_test_data(
+        train_samples=_TRAIN_SIZE,
+        test_samples=50,
+        input_shape=(8,),
+        num_classes=2)
+
     c_train = keras.utils.to_categorical(c_train)
     c_test = keras.utils.to_categorical(c_test)
     d_train = keras.utils.to_categorical(d_train)
     d_test = keras.utils.to_categorical(d_test)
 
     def train_input_fn():
-      input_dict = {'input_a': a_train, 'input_b': b_train}
+      input_dict = {'input_a': a_train, 'input_b': b_train,
+                    'input_m': input_m_train > 0}
       output_dict = {'dense_2': c_train, 'dense_3': d_train}
       return input_dict, output_dict
 
     def eval_input_fn():
-      input_dict = {'input_a': a_test, 'input_b': b_test}
+      input_dict = {'input_a': a_test, 'input_b': b_test,
+                    'input_m': input_m_test > 0}
       output_dict = {'dense_2': c_test, 'dense_3': d_test}
       return input_dict, output_dict
 
