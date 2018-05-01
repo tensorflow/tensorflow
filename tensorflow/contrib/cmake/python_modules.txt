@@ -4,6 +4,8 @@ tensorflow
 tensorflow/core
 tensorflow/core/example
 tensorflow/core/framework
+tensorflow/core/kernels
+tensorflow/core/kernels/boosted_trees
 tensorflow/core/lib
 tensorflow/core/lib/core
 tensorflow/core/profiler
