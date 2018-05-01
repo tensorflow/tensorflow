@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 #include <poplar/exceptions.hpp>
@@ -280,8 +281,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  CompilerResources resources(module->config().seed() + 1,
-                              poplarExecutor->GetRandomGenMode());
+  uint64 seed = module->config().seed();
+  if (seed == 0) {
+    seed = tensorflow::random::New64();
+  }
+
+  CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode());
 
   HloComputation* entry = module->entry_computation();
 
