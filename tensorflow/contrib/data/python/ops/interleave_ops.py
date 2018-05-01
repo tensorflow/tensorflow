@@ -30,7 +30,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
-from tensorflow.python.platform import tf_logging as logging
 
 
 def parallel_interleave(map_func,
@@ -240,9 +239,4 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   selector_input = dataset_ops.Dataset.zip(
       (logits_ds, random_ops.RandomDataset(seed).batch(2))).map(select_dataset)
 
-  logging.warn('selector_input.output_types: %s', str(selector_input.output_types))
-  logging.warn('selector_input.output_shapes: %s', str(selector_input.output_shapes))
-  for i, dataset in enumerate(datasets):
-    logging.warn('dataset %i output_types: %s' % (i, str(dataset.output_types)))
-    logging.warn('dataset %i output_shapes: %s' % (i, str(dataset.output_shapes)))
   return DirectedInterleaveDataset(selector_input, datasets)

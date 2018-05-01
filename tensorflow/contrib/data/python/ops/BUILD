@@ -184,7 +184,6 @@ py_library(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
-        "//tensorflow/python:platform",
     ],
 )
 
