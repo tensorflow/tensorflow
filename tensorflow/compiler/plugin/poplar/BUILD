@@ -33,6 +33,7 @@ cc_library(
     srcs = [
         "driver/allocation_finder.cc",
         "driver/computation_flattener.cc",
+        "driver/expression_outliner.cc",
         "driver/fuse_ops.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
@@ -45,6 +46,7 @@ cc_library(
     hdrs = [
         "driver/allocation_finder.h",
         "driver/computation_flattener.h",
+        "driver/expression_outliner.h",
         "driver/fuse_ops.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
@@ -238,6 +240,17 @@ tf_cc_test(
 tf_cc_test(
     name = "hlo_matcher_test",
     srcs = ["tests/hlo_matcher_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+
+tf_cc_test(
+    name = "expression_outliner_test",
+    srcs = ["tests/expression_outliner_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -463,6 +476,7 @@ test_suite(
         "conditional_test",
         "while_loop_perf_test",
         "estimator_test",
+        "expression_outliner_test",
     ],
 )
 
@@ -487,6 +501,7 @@ test_suite(
         "monitored_session_test",
         "conditional_test",
         "estimator_test",
+        "expression_outliner_test",
     ],
 )
 

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
@@ -237,6 +238,7 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
   pipeline.AddPass<WideConstFinder>();
   pipeline.AddPass<FuseOps>();
   pipeline.AddPass<Outliner>();
+  pipeline.AddPass<ExpressionOutliner>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloDCE>();
 

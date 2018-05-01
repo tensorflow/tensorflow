@@ -17,6 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+
+using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -221,7 +224,6 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   std::vector<HloInstruction*> arguments(matched.parameters.size());
 
   for (HloInstruction* instruction_to_outline : to_outline) {
-
     if (outlined.find(instruction_to_outline) == outlined.end()) {
 
       auto* new_inst = builder.AddInstruction(instruction_to_outline->Clone());
@@ -237,21 +239,31 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
             for (int i=0; i<matched.parameters.size(); i++) {
               auto& param = matched.parameters[i];
               if (param.first == old_user &&
+                  old_user->operand_count() > param.second &&
                   old_user->operand(param.second) == old_operand) {
                 parameter_num = i;
                 break;
               }
+            }
+            if (parameter_num != -1) {
+              break;
             }
           }
 
           if (parameter_num != -1) {
             arguments[parameter_num] = old_operand;
             *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
-                parameter_num, old_operand->shape(), "arg"));
+                parameter_num, old_operand->shape(),
+                StrCat("arg_", parameter_num)));
           }
         }
 
-        TF_CHECK_OK(new_inst->ReplaceOperandWith(operand, *operand_slot));
+        if (*operand_slot != nullptr) {
+          TF_CHECK_OK(new_inst->ReplaceOperandWith(operand, *operand_slot));
+        } else {
+          LOG(FATAL) << "Replacement not found for  " << new_inst->name() << ":"
+                     << operand << " in outline " << outlined_computation_name;
+        }
       }
     }
   }
