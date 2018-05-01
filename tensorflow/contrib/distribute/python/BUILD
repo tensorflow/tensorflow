@@ -501,3 +501,34 @@ cuda_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
+
+py_library(
+    name = "input_ops",
+    srcs = ["input_ops.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+cuda_py_test(
+    name = "input_ops_test",
+    srcs = ["input_ops_test.py"],
+    additional_deps = [
+        ":input_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python:util",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)
