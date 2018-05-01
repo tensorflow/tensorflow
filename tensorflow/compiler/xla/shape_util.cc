@@ -905,10 +905,17 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
            std::is_permutation(minor_to_major.begin(), minor_to_major.end(),
                                dims.begin()));
   }
-  Shape stripped_shape =
-      shape.has_layout() ? MakeShapeWithLayout(shape.element_type(),
-                                               dimension_sizes, minor_to_major)
-                         : MakeShape(shape.element_type(), dimension_sizes);
+  Shape stripped_shape;
+  if (LayoutUtil::IsDenseArray(shape)) {
+    stripped_shape = MakeShapeWithLayout(shape.element_type(), dimension_sizes,
+                                         minor_to_major);
+  } else if (LayoutUtil::IsSparseArray(shape)) {
+    stripped_shape =
+        MakeShapeWithSparseLayout(shape.element_type(), dimension_sizes,
+                                  shape.layout().max_sparse_elements());
+  } else {
+    stripped_shape = MakeShape(shape.element_type(), dimension_sizes);
+  }
 
   VLOG(10) << "Original_shape: " << HumanStringWithLayout(shape);
   VLOG(10) << "Stripped_shape: " << HumanStringWithLayout(stripped_shape);

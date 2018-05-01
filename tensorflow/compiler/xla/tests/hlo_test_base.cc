@@ -93,11 +93,10 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
 }
 
 /* static */
-std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
+std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
-                               config);
+  return MakeUnique<HloModule>(name, VersionedComputationHandle(), config);
 }
 
 /*static*/ DebugOptions HloTestBase::GetDebugOptionsForTest() {

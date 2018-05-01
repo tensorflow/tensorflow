@@ -22,6 +22,7 @@ from __future__ import print_function
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.python.ops.linalg.linalg_impl import *
 from tensorflow.python.ops.linalg.linear_operator import *
+from tensorflow.python.ops.linalg.linear_operator_circulant import *
 from tensorflow.python.ops.linalg.linear_operator_composition import *
 from tensorflow.python.ops.linalg.linear_operator_diag import *
 from tensorflow.python.ops.linalg.linear_operator_full_matrix import *

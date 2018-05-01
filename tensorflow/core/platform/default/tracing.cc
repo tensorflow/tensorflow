@@ -15,21 +15,33 @@ limitations under the License.
 
 #include "tensorflow/core/platform/tracing.h"
 
+#include <cstdlib>
+
+#ifndef PLATFORM_WINDOWS
+#include <unistd.h>
+#endif
+
 namespace tensorflow {
-namespace port {
-
-void Tracing::RegisterEvent(EventCategory id, const char* name) {
-  // TODO(opensource): implement
+namespace tracing {
+namespace {
+bool TryGetEnv(const char* name, const char** value) {
+  *value = getenv(name);
+  return *value != nullptr && (*value)[0] != '\0';
 }
+}  // namespace
 
-void Tracing::Initialize() {}
+void EventCollector::SetCurrentThreadName(const char*) {}
 
-static bool DoInit() {
-  Tracing::Initialize();
-  return true;
+const char* GetLogDir() {
+  const char* dir;
+  if (TryGetEnv("TEST_TMPDIR", &dir)) return dir;
+  if (TryGetEnv("TMP", &dir)) return dir;
+  if (TryGetEnv("TMPDIR", &dir)) return dir;
+#ifndef PLATFORM_WINDOWS
+  dir = "/tmp";
+  if (access(dir, R_OK | W_OK | X_OK) == 0) return dir;
+#endif
+  return ".";  // Default to current directory.
 }
-
-static const bool dummy = DoInit();
-
-}  // namespace port
+}  // namespace tracing
 }  // namespace tensorflow

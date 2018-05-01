@@ -12,16 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for manipulating the loss collections.
-
-
-@@add_loss
-@@get_losses
-@@get_regularization_loss
-@@get_regularization_losses
-@@get_total_loss
-
-"""
+"""Utilities for manipulating the loss collections."""
 
 from __future__ import absolute_import
 from __future__ import division

@@ -33,13 +33,14 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.framework.python import ops as contrib_framework_ops
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -50,6 +51,13 @@ __all__ = ["rev_block", "RevBlock", "recompute_grad"]
 
 LAYER_RE = re.compile(".*revlayer_([0-9]*)/([fg])/.*")
 _USE_DEFAULT = "__rev_block_lib_default"
+_WRONG_VARS_ERR = """\
+The variables used on recompute were different than the variables originally
+used. The function wrapped with @recompute_grad likley creates its own variable
+scope with a default name and has been called twice in the same enclosing scope.
+To fix, ensure each call to the function happens in its own unique variable
+scope.
+"""
 
 
 def _acc_grads(*lists_of_grads):
@@ -146,7 +154,7 @@ def _scope_wrap(fn, scope):
 
   @functools.wraps(fn)
   def wrap(*args, **kwargs):
-    with variable_scope.variable_scope(scope):
+    with variable_scope.variable_scope(scope, use_resource=True):
       return fn(*args, **kwargs)
 
   return wrap
@@ -221,95 +229,95 @@ class RevBlock(base.Layer):
                  "build.")
     self.built = True
 
-  def _efficient_grad_fn(self, inputs, variables, ys, grad_ys):
-    """Custom gradient fn for a block of reversible residual layers."""
-    # Inputs have passed through an Identity. Recover the original Tensors to
-    # be able to match up side inputs.
-    assert [u"Identity"] == list(set([x.op.type for x in inputs]))
-    inputs = [x.op.inputs[0] for x in inputs]
-    side_inputs = inputs[2:]
-    del inputs
+  def _make_efficient_grad_fn(self, inputs_, ys_):
+    def _efficient_grad_fn(*grad_ys, **kwargs):
+      """Custom gradient fn for a block of reversible residual layers."""
+      inputs = inputs_
+      ys = ys_
+      variables = kwargs["variables"]
+      side_inputs = inputs[2:]
 
-    f_side_idxs = [None] * len(self.f_side_input)
-    g_side_idxs = [None] * len(self.g_side_input)
-    assert len(side_inputs) == len(self.f_side_input) + len(self.g_side_input)
+      f_side_idxs = [None] * len(self.f_side_input)
+      g_side_idxs = [None] * len(self.g_side_input)
+      assert len(side_inputs) == len(self.f_side_input) + len(self.g_side_input)
 
-    for i, t in enumerate(side_inputs):
-      if t in self.f_side_input:
-        f_side_idxs[self.f_side_input.index(t)] = i
-      elif t in self.g_side_input:
-        g_side_idxs[self.g_side_input.index(t)] = i
-      else:
-        assert False
+      for i, t in enumerate(side_inputs):
+        if t in self.f_side_input:
+          f_side_idxs[self.f_side_input.index(t)] = i
+        elif t in self.g_side_input:
+          g_side_idxs[self.g_side_input.index(t)] = i
+        else:
+          assert False
 
-    f_vars = [[] for _ in range(self.num_layers)]
-    g_vars = [[] for _ in range(self.num_layers)]
-    f_vars_idxs = [[] for _ in range(self.num_layers)]
-    g_vars_idxs = [[] for _ in range(self.num_layers)]
+      f_vars = [[] for _ in range(self.num_layers)]
+      g_vars = [[] for _ in range(self.num_layers)]
+      f_vars_idxs = [[] for _ in range(self.num_layers)]
+      g_vars_idxs = [[] for _ in range(self.num_layers)]
 
-    for i, ref in enumerate(variables):
-      # Use the name to identify the layer number and function (f or g)
-      regex = LAYER_RE.match(ref.name)
-      layer_no = int(regex.group(1))
-      fn_name = regex.group(2)
-      if fn_name == "f":
-        f_vars[layer_no].append(ref)
-        f_vars_idxs[layer_no].append(i)
-      else:
-        assert fn_name == "g"
-        g_vars[layer_no].append(ref)
-        g_vars_idxs[layer_no].append(i)
+      for i, ref in enumerate(variables):
+        # Use the name to identify the layer number and function (f or g)
+        regex = LAYER_RE.match(ref.name)
+        layer_no = int(regex.group(1))
+        fn_name = regex.group(2)
+        if fn_name == "f":
+          f_vars[layer_no].append(ref)
+          f_vars_idxs[layer_no].append(i)
+        else:
+          assert fn_name == "g"
+          g_vars[layer_no].append(ref)
+          g_vars_idxs[layer_no].append(i)
 
-    f_var_grads = []
-    g_var_grads = []
-    f_side_grads = []
-    g_side_grads = []
+      f_var_grads = []
+      g_var_grads = []
+      f_side_grads = []
+      g_side_grads = []
 
-    # Reverse variable containers to go backward
-    f_vars.reverse()
-    g_vars.reverse()
-    f = list(self.f)
-    g = list(self.g)
-    f.reverse()
-    g.reverse()
+      # Reverse variable containers to go backward
+      f_vars.reverse()
+      g_vars.reverse()
+      f = list(self.f)
+      g = list(self.g)
+      f.reverse()
+      g.reverse()
 
-    with variable_scope.variable_scope(self.scope_name, reuse=True):
-      for i in xrange(self.num_layers):
-        ys, grad_ys, f_ret, g_ret = _rev_layer_backward(
-            ys, grad_ys, f[i], g[i], f_vars[i], self.f_side_input, g_vars[i],
-            self.g_side_input)
+      with variable_scope.variable_scope(self.scope_name, reuse=True):
+        for i in xrange(self.num_layers):
+          ys, grad_ys, f_ret, g_ret = _rev_layer_backward(
+              ys, grad_ys, f[i], g[i], f_vars[i], self.f_side_input, g_vars[i],
+              self.g_side_input)
 
-        grad_f_vars, grad_f_side = f_ret
-        grad_g_vars, grad_g_side = g_ret
-        f_var_grads.append(grad_f_vars)
-        g_var_grads.append(grad_g_vars)
-        f_side_grads.append(grad_f_side)
-        g_side_grads.append(grad_g_side)
+          grad_f_vars, grad_f_side = f_ret
+          grad_g_vars, grad_g_side = g_ret
+          f_var_grads.append(grad_f_vars)
+          g_var_grads.append(grad_g_vars)
+          f_side_grads.append(grad_f_side)
+          g_side_grads.append(grad_g_side)
 
-    # Accumulate layer gradients for f_side_input and g_side_input
-    acc_f_side_grads = _acc_grads(*f_side_grads)
-    acc_g_side_grads = _acc_grads(*g_side_grads)
+      # Accumulate layer gradients for f_side_input and g_side_input
+      acc_f_side_grads = _acc_grads(*f_side_grads)
+      acc_g_side_grads = _acc_grads(*g_side_grads)
 
-    # Use the stored idxs to put gradients in the passed-in order.
-    side_input_grads = [None] * len(side_inputs)
-    variable_grads = [None] * len(variables)
+      # Use the stored idxs to put gradients in the passed-in order.
+      side_input_grads = [None] * len(side_inputs)
+      variable_grads = [None] * len(variables)
 
-    # Variable gradients were collected in reverse layer order. Reverse to match
-    # idxs.
-    f_var_grads.reverse()
-    g_var_grads.reverse()
-    for idxs, grads in list(zip(f_vars_idxs, f_var_grads)) + list(
-        zip(g_vars_idxs, g_var_grads)):
-      for i, grad in zip(idxs, grads):
-        variable_grads[i] = grad
+      # Variable gradients were collected in reverse layer order. Reverse to
+      # match idxs.
+      f_var_grads.reverse()
+      g_var_grads.reverse()
+      for idxs, grads in list(zip(f_vars_idxs, f_var_grads)) + list(
+          zip(g_vars_idxs, g_var_grads)):
+        for i, grad in zip(idxs, grads):
+          variable_grads[i] = grad
 
-    for i, grad in zip(f_side_idxs, acc_f_side_grads):
-      side_input_grads[i] = grad
-    for i, grad in zip(g_side_idxs, acc_g_side_grads):
-      side_input_grads[i] = grad
+      for i, grad in zip(f_side_idxs, acc_f_side_grads):
+        side_input_grads[i] = grad
+      for i, grad in zip(g_side_idxs, acc_g_side_grads):
+        side_input_grads[i] = grad
 
-    grad_x1, grad_x2 = grad_ys
-    return [grad_x1, grad_x2] + side_input_grads, variable_grads
+      grad_x1, grad_x2 = grad_ys
+      return [grad_x1, grad_x2] + side_input_grads, variable_grads
+    return _efficient_grad_fn
 
   def _forward(self, x1, x2):
     """Run forward through the reversible layers."""
@@ -317,10 +325,6 @@ class RevBlock(base.Layer):
     side_inputs = [self.f_side_input, self.g_side_input]
     flat_side_inputs = nest.flatten(side_inputs)
 
-    custom_grad_fn = (
-        self._efficient_grad_fn if self._use_efficient_backprop else None)
-
-    @_fn_with_custom_grad(custom_grad_fn)
     def _forward_wrap(x1_, x2_, *flat_side_inputs):
       f_side, g_side = nest.pack_sequence_as(side_inputs, flat_side_inputs)
       return _rev_block_forward(
@@ -333,7 +337,16 @@ class RevBlock(base.Layer):
           g_side_input=g_side,
           gate_outputs=self._use_efficient_backprop)
 
-    return _forward_wrap(x1, x2, *flat_side_inputs)
+    @custom_gradient.custom_gradient
+    def _forward_with_custom_grad(*args):
+      out = _forward_wrap(*args)  # pylint: disable=no-value-for-parameter
+      grad_fn = self._make_efficient_grad_fn(args, out)
+      return out, grad_fn
+
+    if self._use_efficient_backprop:
+      return _forward_with_custom_grad(x1, x2, *flat_side_inputs)
+    else:
+      return _forward_wrap(x1, x2, *flat_side_inputs)
 
   def _backward(self, y1, y2):
     """Run backward through the reversible layers."""
@@ -432,6 +445,10 @@ def enable_with_args(dec):
 def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   """Decorator that recomputes the function on the backwards pass.
 
+  To use this function, you must use `ResourceVariable`s (i.e.
+  `variable_scope(name, use_resource=True), which are the default in Eager mode
+  and when running on TPU.
+
   Args:
     fn: a function that takes Tensors (all as positional arguments) and returns
       a tuple of Tensors.
@@ -472,44 +489,55 @@ def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   if use_data_dep_ == _USE_DEFAULT:
     use_data_dep_ = _is_on_tpu()
 
-  cached_vs = []
-  cached_arg_scope = []
-
-  def grad_fn(inputs, variables, outputs, output_grads):
-    """Recompute outputs for gradient computation."""
-    del outputs
-    # Recompute outputs
-    with framework_ops.control_dependencies(output_grads):
-      if use_data_dep_:
-        inputs = _force_data_dependency(output_grads, inputs)
-      with contrib_framework_ops.arg_scope(cached_arg_scope[0]):
-        with variable_scope.variable_scope(cached_vs[0], reuse=True):
-          outputs = fn(*inputs)
-
-    if not (isinstance(outputs, list) or isinstance(outputs, tuple)):
-      outputs = [outputs]
-    outputs = list(outputs)
-    grads = gradients_impl.gradients(outputs, inputs + variables, output_grads)
-
-    if tupleize_grads:
-      if use_data_dep_:
-        grads = _tuple_with_data_dep(grads)
-      else:
-        grads = control_flow_ops.tuple(grads)
-
-    grad_inputs = grads[:len(inputs)]
-    grad_vars = grads[len(inputs):]
-    return grad_inputs, grad_vars
-
-  @_fn_with_custom_grad(grad_fn)
+  @custom_gradient.custom_gradient
   def fn_with_recompute(*args):
-    cached_vs.append(variable_scope.get_variable_scope())
-    # TODO(rsepassi): Rm conditional in TF 1.4
-    if hasattr(contrib_framework_ops, "current_arg_scope"):
-      cached_arg_scope.append(contrib_framework_ops.current_arg_scope())
-    else:
-      cached_arg_scope.append({})
-    return fn(*args)
+    """Wrapper for fn."""
+    # Forward pass
+    vs = variable_scope.get_variable_scope()
+    arg_scope = contrib_framework_ops.current_arg_scope()
+    with backprop.GradientTape() as tape:
+      outputs = fn(*args)
+    original_vars = set(tape.watched_variables())
+
+    # Backward pass
+    def grad_fn(*output_grads, **kwargs):
+      """Recompute outputs for gradient computation."""
+      variables = []
+      if original_vars:
+        variables = kwargs["variables"]
+      if set(variables) != original_vars:
+        raise ValueError(_WRONG_VARS_ERR)
+      del kwargs
+      inputs = list(args)
+      # Recompute outputs
+      with framework_ops.control_dependencies(output_grads):
+        if use_data_dep_:
+          inputs = _force_data_dependency(output_grads, inputs)
+        with contrib_framework_ops.arg_scope(arg_scope):
+          with variable_scope.variable_scope(vs, reuse=True):
+            with backprop.GradientTape() as tape:
+              outputs = fn(*inputs)
+            recompute_vars = set(tape.watched_variables())
+            if original_vars != recompute_vars:
+              raise ValueError(_WRONG_VARS_ERR)
+
+      if not (isinstance(outputs, list) or isinstance(outputs, tuple)):
+        outputs = [outputs]
+      outputs = list(outputs)
+      grads = gradients_impl.gradients(outputs, inputs + variables,
+                                       output_grads)
+
+      if tupleize_grads:
+        if use_data_dep_:
+          grads = _tuple_with_data_dep(grads)
+        else:
+          grads = control_flow_ops.tuple(grads)
+
+      grad_inputs = grads[:len(inputs)]
+      grad_vars = grads[len(inputs):]
+      return grad_inputs, grad_vars
+
+    return outputs, grad_fn
 
   return fn_with_recompute(*args)
 
@@ -534,107 +562,6 @@ def _underlying_variable_ref(t):
     return t
   else:
     return None
-
-
-def _fn_with_custom_grad(grad_fn, use_global_vars=False):
-  """Decorator to create a subgraph with a custom gradient function.
-
-  The subgraph created by the decorated function is NOT put in a Defun and so
-  does not suffer from the limitations of the Defun (all subgraph ops on the
-  same device, no summaries).
-
-  Args:
-    grad_fn: function with signature
-      (inputs, variables, outputs, output_grads) -> (grad_inputs, grad_vars),
-      all of which are lists of Tensors.
-    use_global_vars: if True, variables will be the global variables created.
-      If False, will be the trainable variables.
-
-  Returns:
-    Decorator for function such that the gradient is defined by grad_fn.
-  """
-
-  def dec(fn):
-
-    @functools.wraps(fn)
-    def wrapped(*args):
-      return _fn_with_custom_grad_internal(
-          fn, args, grad_fn, use_global_vars=use_global_vars)
-
-    return wrapped
-
-  return dec
-
-
-def _fn_with_custom_grad_internal(fn, inputs, grad_fn, use_global_vars=False):
-  """Create a subgraph with a custom gradient.
-
-  Args:
-    fn: function that takes inputs as arguments and produces 1 or more Tensors.
-    inputs: list<Tensor>, will be passed as fn(*inputs).
-    grad_fn: function with signature
-      (inputs, vars, outputs, output_grads) -> (grad_inputs, grad_vars),
-      all of which are lists of Tensors.
-    use_global_vars: if True, variables will be the global variables created.
-      If False, will be the trainable variables.
-
-  Returns:
-    fn(*inputs)
-  """
-  vs = variable_scope.get_variable_scope()
-  get_vars_fn = (
-      vs.global_variables if use_global_vars else vs.trainable_variables)
-  len_before_vars = len(get_vars_fn())
-  inputs = [array_ops.identity(x) for x in inputs]
-  outputs = fn(*inputs)
-  train_vars = get_vars_fn()[len_before_vars:]
-
-  if grad_fn is None:
-    return outputs
-
-  if not (isinstance(outputs, tuple) or isinstance(outputs, list)):
-    outputs = [outputs]
-  outputs = list(outputs)
-
-  defun_inputs = [inputs, train_vars, outputs]
-
-  def custom_grad_fn(op, *dys):
-    """Custom grad fn applying grad_fn for identity Defun."""
-    fn_inputs, fn_vars, fn_outputs = nest.pack_sequence_as(
-        defun_inputs, list(op.inputs))
-    fn_vars = [_underlying_variable_ref(v) for v in fn_vars]
-    dys = list(dys)
-    assert len(fn_outputs) == len(outputs)
-    assert len(fn_outputs) == len(dys)
-
-    grad_inputs, grad_vars = grad_fn(fn_inputs, fn_vars, fn_outputs, dys)
-    grad_outputs = [None] * len(fn_outputs)
-    return tuple(grad_inputs + grad_vars + grad_outputs)
-
-  # The Defun takes as input the original inputs, the trainable variables
-  # created in fn, and the outputs. In the forward it passes through the
-  # outputs. In the backwards, it produces gradients for the original inputs
-  # and the trainable variables.
-  in_types = [t.dtype for t in inputs]
-  out_types = [t.dtype for t in outputs]
-  var_types = [t.dtype for t in train_vars]
-
-  # Get a unique name for the Defun
-  with framework_ops.name_scope("identity_custom_grad") as ns:
-    defun_name = ns
-
-  @function.Defun(
-      *(in_types + var_types + out_types),
-      func_name=defun_name,
-      python_grad_func=custom_grad_fn,
-      shape_func=lambda _: [t.get_shape() for t in outputs])
-  def identity(*args):
-    _, _, outs = nest.pack_sequence_as(defun_inputs, args)
-    return tuple([array_ops.identity(t) for t in outs])
-
-  flat_inputs = nest.flatten(defun_inputs)
-  id_out = identity(*flat_inputs)
-  return id_out
 
 
 def _force_data_dependency(first_compute, then_compute):

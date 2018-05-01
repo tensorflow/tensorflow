@@ -85,7 +85,7 @@ def _OptimizerOptions():
         yield cfg
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionTest(test.TestCase):
   """Test methods for verifying Function support.
 
@@ -136,7 +136,8 @@ class FunctionTest(test.TestCase):
   def testTooManyOutputNames(self):
 
     @function.Defun(
-        dtypes.float32, func_name="MyIdentity",
+        dtypes.float32,
+        func_name="MyIdentity",
         out_names=["my_result1", "my_result2"])
     def MyIdentityFunc(a):
       return a
@@ -239,10 +240,11 @@ class FunctionTest(test.TestCase):
 
     inp = np.array([-1, 1, 2, -2], dtype=np.float32)
     feed = {x: inp}
-    cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L1,
-            do_function_inlining=True)))
+    cfg = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L1,
+                do_function_inlining=True)))
     with session.Session(graph=g, config=cfg) as sess:
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
@@ -334,18 +336,20 @@ class FunctionTest(test.TestCase):
       y = Foo(x)
       dx, = gradients_impl.gradients(y, [x])
 
-    cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L0,
-            do_common_subexpression_elimination=True,
-            do_function_inlining=True,
-            do_constant_folding=True)))
+    cfg = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L0,
+                do_common_subexpression_elimination=True,
+                do_function_inlining=True,
+                do_constant_folding=True)))
 
     with self.test_session(graph=g, config=cfg):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
 
   def _testZNoDepOnY(self, use_const_grad_ys):
+
     @function.Defun(dtypes.float32, dtypes.float32)
     def Foo(x, y):  # pylint: disable=unused-argument
       return x * 2
@@ -431,7 +435,6 @@ class FunctionTest(test.TestCase):
                                    "assertion failed.*-3"):
         self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
 
-  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testAssertWrapper(self):
 
     @function.Defun(dtypes.float32)
@@ -446,7 +449,6 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
-  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testWhileLoopCallsFunc(self):
     with self.test_session(use_gpu=True) as sess:
 
@@ -466,7 +468,6 @@ class FunctionTest(test.TestCase):
       ans = sess.run(loop)
       self.assertAllClose(ans, 131072.)
 
-  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testControlFlowStrictness(self):
     """Inlined functions must not execute in a untaken control flow branch."""
 
@@ -778,9 +779,9 @@ class FunctionTest(test.TestCase):
 
       @function.Defun()
       def Foo():
-        return control_flow_ops.while_loop(lambda i: i < 10,
-                                           lambda i: i + x,
+        return control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + x,
                                            [0])
+
       y = Foo()
 
     with self.test_session(graph=g) as sess:
@@ -793,9 +794,8 @@ class FunctionTest(test.TestCase):
 
       @function.Defun(dtypes.bool)
       def Foo(pred):
-        return control_flow_ops.cond(pred,
-                                     lambda: x,
-                                     lambda: x + 1)
+        return control_flow_ops.cond(pred, lambda: x, lambda: x + 1)
+
       y = Foo(True)
       z = Foo(False)
 
@@ -948,6 +948,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(len(f.signature.input_arg), 3)
 
   def testGradientWithIntegerFunctionArgument(self):
+
     @function.Defun(dtypes.int32, dtypes.float32)
     def Foo(t, x):
       return x[t]
@@ -962,8 +963,7 @@ class FunctionTest(test.TestCase):
     x = np.zeros((2,)).astype(np.float32)
     with session.Session(graph=g) as sess:
       self.assertAllClose(
-          np.array([1.0, 0.0]).astype(np.float32),
-          sess.run(dinp, {inp: x}))
+          np.array([1.0, 0.0]).astype(np.float32), sess.run(dinp, {inp: x}))
 
   def testFunctionMarkedStateful(self):
 
@@ -1053,8 +1053,85 @@ class FunctionTest(test.TestCase):
         self.assertEqual(44.0, sess.run(f_1))
         self.assertEqual((42.0, 44.0), sess.run((f_0, f_1)))
 
+  def testGuaranteedConstsAreCaptured(self):
+    var = variables.Variable(1.0)
+    const = array_ops.guarantee_const(var)
+    also_const = array_ops.identity(const)
+    still_const = array_ops.identity(also_const)
+    not_const = still_const + var
+    also_not_const = array_ops.placeholder(dtypes.float32)
 
-@test_util.with_c_api
+    @function.Defun()
+    def CapturesGuaranteedConst():
+      output = const + also_const + still_const + not_const + also_not_const
+      first, second, third, fourth, fifth = function.get_extra_args()
+      self.assertEqual("GuaranteeConst", first.consumers()[0].node_def.op)
+      self.assertEqual("GuaranteeConst", second.consumers()[0].node_def.op)
+      self.assertEqual("GuaranteeConst", third.consumers()[0].node_def.op)
+      self.assertNotEqual("GuaranteeConst", fourth.consumers()[0].node_def.op)
+      self.assertNotEqual("GuaranteeConst", fifth.consumers()[0].node_def.op)
+      return output
+
+    with self.test_session(use_gpu=False) as sess:
+      sess.run(var.initializer)
+      _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
+
+  def testSameFunctionDifferentGrads(self):
+
+    def PartOne(x):
+
+      # Default grad is dx = dy * 2
+      @function.Defun(dtypes.float32)
+      def Foo(x):
+        return x * 2
+
+      return Foo(x)
+
+    def PartTwo(x):
+
+      @function.Defun(dtypes.float32, dtypes.float32)
+      def Bar(x, dy):
+        return x + dy  # crazy backprop
+
+      @function.Defun(dtypes.float32, grad_func=Bar)
+      def Foo(x):
+        return x * 2
+
+      return Foo(x)
+
+    def PartThree(x):
+
+      def Bar(op, dy):
+        return op.inputs[0] * dy / 2  # crazy backprop
+
+      @function.Defun(dtypes.float32, python_grad_func=Bar)
+      def Foo(x):
+        return x * 2
+
+      return Foo(x)
+
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(100.)
+      x0 = x
+      y0 = PartOne(x0)
+      dx0, = gradients_impl.gradients(ys=[y0], xs=[x0])
+      x1 = x
+      y1 = PartTwo(x1)
+      dx1, = gradients_impl.gradients(ys=[y1], xs=[x1])
+      x2 = x
+      y2 = PartThree(x2)
+      dx2, = gradients_impl.gradients(ys=[y2], xs=[x2])
+
+    with self.test_session(graph=g) as sess:
+      v0, v1, v2 = sess.run([dx0, dx1, dx2])
+
+    self.assertAllEqual(v0, 2.)
+    self.assertAllEqual(v1, 101.)
+    self.assertAllEqual(v2, 50.)
+
+
+@test_util.with_c_shapes
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1251,12 +1328,13 @@ class FunctionsFromProtos(test.TestCase):
     @function.Defun(dtypes.int32, experimental_tag="tag_value")
     def FunctionWithAttr(i):
       return array_ops.identity(i)
+
     self.assertTrue("experimental_tag" in FunctionWithAttr.definition.attr)
-    self.assertEqual(
-        FunctionWithAttr.definition.attr["experimental_tag"].s, b"tag_value")
+    self.assertEqual(FunctionWithAttr.definition.attr["experimental_tag"].s,
+                     b"tag_value")
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionOverloadTest(test.TestCase):
 
   def testBasic(self):
@@ -1309,7 +1387,7 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionCaptureByValueTest(test.TestCase):
 
   def testCaptureByValue(self):
@@ -1339,7 +1417,7 @@ class FunctionCaptureByValueTest(test.TestCase):
       self.assertAllEqual(y.eval(), [[12.0]])
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1381,7 +1459,8 @@ class UnrollLSTMTest(test.TestCase):
       return Loop(cell, weights, inp)
 
     cell = function.Defun(dtypes.float32, dtypes.float32, dtypes.float32,
-                          dtypes.float32)(cell)
+                          dtypes.float32)(
+                              cell)
     if mode == "cell":
       # Just represent the LSTM as a function.
       return Loop(cell, weights, inp)
@@ -1475,17 +1554,18 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
     dtype = dtypes.float32
-    cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L0,
-            do_common_subexpression_elimination=True,
-            do_function_inlining=True,
-            do_constant_folding=True)))
+    cfg = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L0,
+                do_common_subexpression_elimination=True,
+                do_function_inlining=True,
+                do_constant_folding=True)))
     cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
     for noinline in [False, True]:
 
@@ -1543,10 +1623,6 @@ def Linear2(w1, b1, w2, b2, x):
   return Linear(w2, b2, Linear(w1, b1, x))
 
 
-# Set C API before defining module level functions
-ops._USE_C_API = True
-
-
 @function.Defun(*[dtypes.float32] * 3)
 def LinearWithCApi(w, b, x):
   return nn_ops.relu(math_ops.matmul(x, w) + b)
@@ -1557,25 +1633,9 @@ def Linear2WithCApi(w1, b1, w2, b2, x):
   return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
 
 
-# Unset C API after defining module level functions
-ops._USE_C_API = False
-
-
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
-    with ops.Graph().as_default():
-      a, b, c, d, e = [
-          constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
-      ]
-      y = Linear(a, b, c)
-      z = Linear2(a, b, c, d, e)
-      with session.Session() as sess:
-        self.assertAllEqual([[1]], sess.run(y))
-        self.assertAllEqual([[5]], sess.run(z))
-
-  @test_util.enable_c_api
-  def testBasicWithCApi(self):
     with ops.Graph().as_default():
       a, b, c, d, e = [
           constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
@@ -1587,7 +1647,7 @@ class ModuleFunctionTest(test.TestCase):
         self.assertAllEqual([[5]], sess.run(z))
 
 
-@test_util.with_c_api
+@test_util.with_c_shapes
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):

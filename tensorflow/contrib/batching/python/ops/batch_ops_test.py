@@ -250,7 +250,7 @@ class BatchOpsTest(test.TestCase):
   def testUnbatchGrad(self):
     """Tests that batch and unbatch are differentiable."""
     with self.test_session() as sess:
-      inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
+      inp = array_ops.placeholder(dtype=dtypes.float32, shape=[1])
       batched, index, id_t = batch_ops.batch(
           [inp], num_batch_threads=1, max_batch_size=2,
           batch_timeout_micros=36000000, grad_timeout_micros=1000000,

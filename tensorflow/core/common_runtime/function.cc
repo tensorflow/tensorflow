@@ -209,6 +209,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
+    bool invalidated = false;
     const Graph* graph = nullptr;                            // Owned by exec.
     const FunctionLibraryDefinition* overlay_lib = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
@@ -284,15 +285,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
 }
 
 FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
-  // The most common patterns of FLR usage don't require the caller to
-  // explicitly release handles. As a result, we try to unref each item until
-  // it's erased.
-  for (auto item : items_) {
-    if (item.second) {
-      while (!item.second->Unref()) {
-      }
-    }
-  }
+  for (auto p : items_) p.second->Unref();
 }
 
 // An asynchronous op kernel which executes an instantiated function
@@ -497,24 +490,30 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   options_copy.target = device_name_;
   const string key = Canonicalize(function_name, attrs, options_copy);
 
+  Handle found_handle = kInvalidHandle;
   {
     mutex_lock l(mu_);
-    *handle = parent_->GetHandle(key);
-    if (*handle != kInvalidHandle) {
+    found_handle = parent_->GetHandle(key);
+    if (found_handle != kInvalidHandle) {
       FunctionLibraryRuntime::LocalHandle handle_on_device =
-          parent_->GetHandleOnDevice(device_name_, *handle);
+          parent_->GetHandleOnDevice(device_name_, found_handle);
       if (handle_on_device == kInvalidLocalHandle) {
         return errors::Internal("LocalHandle not found for handle ", *handle,
                                 ".");
       }
-      auto item_handle = items_.find(handle_on_device);
-      if (item_handle == items_.end()) {
+      auto iter = items_.find(handle_on_device);
+      if (iter == items_.end()) {
         return errors::Internal("LocalHandle ", handle_on_device,
-                                " for handle ", *handle,
+                                " for handle ", found_handle,
                                 " not found in items.");
       }
-      item_handle->second->Ref();
-      return Status::OK();
+      Item* item = iter->second;
+      if (!item->invalidated) {
+        *handle = found_handle;
+        return Status::OK();
+      }
+      // *item is invalidated. Fall through and instantiate the given
+      // function_name/attrs/option again.
     }
   }
 
@@ -546,10 +545,10 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
 
   {
     mutex_lock l(mu_);
-    *handle = parent_->GetHandle(key);
-    if (*handle != kInvalidHandle) {
+    Handle found_handle_again = parent_->GetHandle(key);
+    if (found_handle_again != found_handle) {
       delete fbody;
-      items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
+      *handle = found_handle_again;
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
@@ -566,16 +565,12 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
     return parent_->ReleaseHandle(handle);
   }
-
   LocalHandle h = parent_->GetHandleOnDevice(device_name_, handle);
   CHECK_NE(h, kInvalidLocalHandle);
   mutex_lock l(mu_);
   CHECK_EQ(1, items_.count(h));
   Item* item = items_[h];
-  if (item->Unref()) {
-    items_.erase(h);
-    TF_RETURN_IF_ERROR(parent_->RemoveHandle(handle));
-  }
+  item->invalidated = true;  // Reinstantiate later.
   return Status::OK();
 }
 
@@ -736,6 +731,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   // computation is done and stored in *rets, we send the return values back
   // to the source_device (caller) so that the ProcFLR can receive them later.
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
+  item->Ref();
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
       source_device, target_device, "arg_", src_incarnation, args.size(),
       device_context, {}, rendezvous, remote_args,
@@ -747,6 +743,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
           s = frame->SetArgs(*remote_args);
         }
         if (!s.ok()) {
+          item->Unref();
           delete frame;
           delete remote_args;
           delete exec_args;
@@ -757,6 +754,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
             *exec_args, [item, frame, rets, done, source_device, target_device,
                          target_incarnation, rendezvous, device_context,
                          remote_args, exec_args](const Status& status) {
+              core::ScopedUnref unref(item);
               Status s = status;
               if (s.ok()) {
                 s = frame->ConsumeRetvals(rets);
@@ -842,11 +840,13 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  item->Ref();
   item->exec->RunAsync(
       // Executor args
       *exec_args,
       // Done callback.
       [item, frame, rets, done, exec_args](const Status& status) {
+        core::ScopedUnref unref(item);
         Status s = status;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
@@ -906,6 +906,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->runner = *run_opts.runner;
   exec_args->call_frame = frame;
 
+  item->Ref();
   item->exec->RunAsync(
       // Executor args
       *exec_args,
@@ -914,6 +915,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
           [item, frame, exec_args](DoneCallback done,
                                    // Start unbound arguments.
                                    const Status& status) {
+            core::ScopedUnref unref(item);
             delete exec_args;
             done(status);
           },

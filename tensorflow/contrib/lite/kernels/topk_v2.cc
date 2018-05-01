@@ -25,8 +25,8 @@ namespace builtin {
 namespace topk_v2 {
 constexpr int kInputTensor = 0;
 constexpr int kInputTopK = 1;
-constexpr int kOutputIndexes = 0;
-constexpr int kOutputValues = 1;
+constexpr int kOutputValues = 0;
+constexpr int kOutputIndexes = 1;
 
 namespace {
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {

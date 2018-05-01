@@ -21,6 +21,7 @@ import binascii
 import codecs
 import marshal
 import os
+import re
 import sys
 import time
 import types as python_types
@@ -28,6 +29,7 @@ import types as python_types
 import numpy as np
 import six
 
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -526,3 +528,31 @@ def to_list(x):
   if isinstance(x, list):
     return x
   return [x]
+
+
+def object_list_uid(object_list):
+  """Creates a single string from object ids."""
+  object_list = nest.flatten(object_list)
+  return ', '.join([str(abs(id(x))) for x in object_list])
+
+
+def to_snake_case(name):
+  intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
+  insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
+  # If the class is private the name starts with "_" which is not secure
+  # for creating scopes. We prefix the name with "private" in this case.
+  if insecure[0] != '_':
+    return insecure
+  return 'private' + insecure
+
+
+def is_all_none(iterable_or_element):
+  if not isinstance(iterable_or_element, (list, tuple)):
+    iterable = [iterable_or_element]
+  else:
+    iterable = iterable_or_element
+  # We cannot use Python's `any` because the iterable may return Tensors.
+  for element in iterable:
+    if element is not None:
+      return False
+  return True

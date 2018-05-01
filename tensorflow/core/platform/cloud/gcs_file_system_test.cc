@@ -1551,6 +1551,56 @@ TEST(GcsFileSystemTest, DeleteFile_NoObjectName) {
             fs.DeleteFile("gs://bucket/").code());
 }
 
+TEST(GcsFileSystemTest, DeleteFile_StatCacheRemoved) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "file.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
+                           "/bucket/o/file.txt\n"
+                           "Auth Token: fake_token\n"
+                           "Timeouts: 5 1 10\n"
+                           "Delete: yes\n",
+                           ""),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "file.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "", errors::NotFound("404"), 404),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=file.txt%2F"
+           "&maxResults=1\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{}")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      16 /* block size */, 16 /* max bytes */, 0 /* max staleness */,
+      3600 /* stat cache max age */, 0 /* stat cache max entries */,
+      0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, 0 /* initial retry delay*/,
+      kTestTimeoutConfig, nullptr /* gcs additional header */);
+
+  // Stats the file first so the stat is cached.
+  FileStatistics stat_before_deletion;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat_before_deletion));
+  EXPECT_EQ(1010, stat_before_deletion.length);
+
+  TF_EXPECT_OK(fs.DeleteFile("gs://bucket/file.txt"));
+
+  FileStatistics stat_after_deletion;
+  EXPECT_EQ(error::Code::NOT_FOUND,
+            fs.Stat("gs://bucket/file.txt", &stat_after_deletion).code());
+}
+
 TEST(GcsFileSystemTest, DeleteDir_Empty) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"

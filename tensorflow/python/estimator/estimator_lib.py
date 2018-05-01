@@ -47,45 +47,4 @@ from tensorflow.python.estimator.training import train_and_evaluate
 from tensorflow.python.estimator.training import TrainSpec
 
 
-from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
-
-_allowed_symbols = [
-    # Canned Estimators
-    'BaselineClassifier',
-    'BaselineRegressor',
-    'BoostedTreesClassifier',
-    'BoostedTreesRegressor',
-    'DNNClassifier',
-    'DNNRegressor',
-    'DNNLinearCombinedClassifier',
-    'DNNLinearCombinedRegressor',
-    'LinearClassifier',
-    'LinearRegressor',
-
-    # I/O
-    'classifier_parse_example_spec',
-    'regressor_parse_example_spec',
-    'inputs',
-    'export',
-
-    # Estimator
-    'Estimator',
-    'EstimatorSpec',
-    'ModeKeys',
-    'RunConfig',
-
-    # Training utilities
-    'train_and_evaluate',
-    'EvalSpec',
-    'TrainSpec',
-    'Exporter',
-    'LatestExporter',
-    'FinalExporter',
-
-    # Warm-starting
-    'WarmStartSettings',
-    'VocabInfo',
-]
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
