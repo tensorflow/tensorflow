@@ -399,12 +399,187 @@ ENTRY main {
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
+XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherV2) {
+  const string hlo_text = R"(
+HloModule FusedTensorFlowGatherV2
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  gather = s32[3,2] gather(operand, indices),
+      output_window_dims={0},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=1,
+      window_bounds={3, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[3,2] broadcast(one), dimensions={}
+  ROOT result = s32[3,2]{1,0} add(gather, one_broadcasted)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherMultipleBatchDims) {
+  const string hlo_text = R"(
+HloModule FusedTensorFlowGatherMultipleBatchDims
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,3,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=2,
+      window_bounds={3, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,3,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,3,2]{2,1,0} add(gather, one_broadcasted)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{0, 2}, {2, 1}});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherNdMultipleBatchDims) {
+  const string hlo_text = R"(
+HloModule FusedTensorFlowGatherNdMultipleBatchDims
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=2,
+      window_bounds={1, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, FusedTensorFlowGatherNd) {
+  const string hlo_text = R"(
+HloModule FusedTensorFlowGatherNd
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1,2}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest,
+           FusedTensorFlowGatherNdNonDefaultIndexVectorDim) {
+  const string hlo_text = R"(
+HloModule FusedTensorFlowGatherNd
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1,2}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, FusedDynamicSlice) {
+  const char* hlo_text = R"(
+HloModule FusedDynamicSlice
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  gather = s32[1,1] gather(operand, indices),
+      output_window_dims={0,1},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[1,1] broadcast(one), dimensions={}
+  ROOT result = s32[1,1]{1,0} add(gather, one_broadcasted)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({1, 1});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, FusedBatchDynamicSlice) {
+  const string hlo_text = R"(
+HloModule FusedBatchDynamicSlice
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,1,1] gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,1,1] broadcast(one), dimensions={}
+  ROOT result = s32[2,1,1]{2,1,0} add(gather, one_broadcasted)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{2, 1}, {1, 1}});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
 
-// TODO(b/30671675): Asynchronous execution on stream is not yet supported on
-// GPU and CPU_PARALLEL.
-XLA_TEST_F(GatherClientLibraryTest,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(Basic))) {
+XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   // We create this HLO, but using the XlaBuilder API.
   //
   // ENTRY main {

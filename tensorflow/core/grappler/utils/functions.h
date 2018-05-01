@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_UTILS_FUNCTIONS_H_
-#define TENSORFLOW_GRAPPLER_UTILS_FUNCTIONS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_FUNCTIONS_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_FUNCTIONS_H_
 
 #include <memory>
 #include <string>
@@ -162,6 +162,9 @@ class GrapplerFunctionItem : public GrapplerItem {
   GrapplerFunctionItem& SwapFunctionBody(GraphDef&& other);
 
  private:
+  friend Status ReplaceInputWithConst(const NodeDef&, int,
+                                      GrapplerFunctionItem*);
+
   AttrValueMap func_attr_;  // Attributes specific to function definition that
                             // produced this item (FuncDef.attr field).
 
@@ -189,11 +192,15 @@ bool HasParametrizedBody(const FunctionDef& func);
 bool IsParametrized(const FunctionDef& func);
 
 // Register GrapplerFunctionItem input arg expansion and function body outputs
-// in the GrapplerFunctionConnectivity.  Use function library definition to
+// in the GrapplerFunctionConnectivity. Use function library definition to
 // lookup function body nodes output names and ranges.
 Status RegisterGrapplerFunctionConnectivity(
     const GrapplerFunctionItem& item, const FunctionLibraryDefinition& flib,
     GrapplerFunctionConnectivity* connectivity);
+
+// Replace one of the function inputs with a constant.
+Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
+                             GrapplerFunctionItem* item);
 
 // Make a GrapplerFunctionItem from the function definition and function
 // instantiation attributes (caller node attributes). Returns error if the given
@@ -221,4 +228,4 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_UTILS_FUNCTIONS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_FUNCTIONS_H_

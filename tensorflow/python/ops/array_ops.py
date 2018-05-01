@@ -16,69 +16,6 @@
 """Support for manipulating tensors.
 
 See the @{$python/array_ops} guide.
-
-@@string_to_number
-@@to_double
-@@to_float
-@@to_bfloat16
-@@to_int32
-@@to_int64
-@@cast
-@@bitcast
-@@saturate_cast
-@@broadcast_dynamic_shape
-@@broadcast_static_shape
-@@shape
-@@shape_n
-@@size
-@@rank
-@@reshape
-@@squeeze
-@@expand_dims
-@@unravel_index
-@@meshgrid
-@@slice
-@@strided_slice
-@@split
-@@tile
-@@pad
-@@concat
-@@stack
-@@parallel_stack
-@@unstack
-@@reverse_sequence
-@@reverse
-@@reverse_v2
-@@transpose
-@@extract_image_patches
-@@space_to_batch_nd
-@@space_to_batch
-@@required_space_to_batch_paddings
-@@batch_to_space_nd
-@@batch_to_space
-@@space_to_depth
-@@depth_to_space
-@@gather
-@@gather_nd
-@@unique_with_counts
-@@scatter_nd
-@@dynamic_partition
-@@dynamic_stitch
-@@boolean_mask
-@@one_hot
-@@sequence_mask
-@@dequantize
-@@quantize
-@@quantize_v2
-@@quantized_concat
-@@setdiff1d
-@@guarantee_const
-@@fake_quant_with_min_max_args
-@@fake_quant_with_min_max_args_gradient
-@@fake_quant_with_min_max_vars
-@@fake_quant_with_min_max_vars_gradient
-@@fake_quant_with_min_max_vars_per_channel
-@@fake_quant_with_min_max_vars_per_channel_gradient
 """
 
 from __future__ import absolute_import
@@ -935,9 +872,9 @@ def stack(values, axis=0, name="stack"):
     except (TypeError, ValueError):
       pass  # Input list contains non-constant tensors
 
-  value_shape = ops.convert_to_tensor(values[0], name=name).get_shape()
-  if value_shape.ndims is not None:
-    expanded_num_dims = value_shape.ndims + 1
+  value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access
+  if value_shape is not None:
+    expanded_num_dims = len(value_shape) + 1
     if axis < -expanded_num_dims or axis >= expanded_num_dims:
       raise ValueError("axis = %d not in [%d, %d)" % (axis, -expanded_num_dims,
                                                       expanded_num_dims))
@@ -1781,8 +1718,10 @@ def placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={x: rand_array}))  # Will succeed.
   ```
 
-  @compatibility{eager} Placeholders are not compatible with eager execution.
-
+  @compatibility(eager)
+  Placeholders are not compatible with eager execution.
+  @end_compatibility
+  
   Args:
     dtype: The type of elements in the tensor to be fed.
     shape: The shape of the tensor to be fed (optional). If the shape is not

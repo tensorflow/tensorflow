@@ -77,7 +77,7 @@ py_test(
 py_test(
     name = "metric_ops_test",
     srcs = ["python/ops/metric_ops_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
     deps = [

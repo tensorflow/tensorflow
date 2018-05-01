@@ -26,7 +26,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/png/png_io.h"
-#include "tensorflow/core/platform/cpu_info.h"  // endian
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/png.h"
 

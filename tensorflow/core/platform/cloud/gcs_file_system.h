@@ -227,6 +227,9 @@ class GcsFileSystem : public FileSystem {
   Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
                            char* buffer, size_t* bytes_transferred);
 
+  // Clear all the caches related to the file with name `filename`.
+  void ClearFileCaches(const string& fname);
+
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<FileBlockCache> file_block_cache_;
@@ -253,18 +256,10 @@ class GcsFileSystem : public FileSystem {
 };
 
 /// Google Cloud Storage implementation of a file system with retry on failures.
-class RetryingGcsFileSystem : public RetryingFileSystem {
+class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
  public:
-  RetryingGcsFileSystem() : RetryingGcsFileSystem(new GcsFileSystem) {}
-
-  void SetStats(GcsStatsInterface* stats) { underlying_->SetStats(stats); }
-
- private:
-  explicit RetryingGcsFileSystem(GcsFileSystem* fs)
-      : RetryingFileSystem(std::unique_ptr<FileSystem>(fs)), underlying_(fs) {}
-
-  // TODO(b/74259157): Refactor RetryingFileSystem to avoid holding this ptr.
-  GcsFileSystem* underlying_;
+  RetryingGcsFileSystem()
+      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem)) {}
 };
 
 }  // namespace tensorflow
