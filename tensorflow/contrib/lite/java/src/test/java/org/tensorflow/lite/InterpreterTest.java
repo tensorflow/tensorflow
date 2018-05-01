@@ -195,8 +195,8 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "WrongInputName is not a valid name for any input. The indexes of the inputs"
-                  + " are {input=0}");
+              "'WrongInputName' is not a valid name for any input. Names of inputs and their "
+                  + "indexes are {input=0}");
     }
     int index = interpreter.getInputIndex("input");
     assertThat(index).isEqualTo(0);
@@ -212,8 +212,8 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "WrongOutputName is not a valid name for any output. The indexes of the outputs"
-                  + " are {MobilenetV1/Predictions/Softmax=0}");
+              "'WrongOutputName' is not a valid name for any output. Names of outputs and their"
+                  + " indexes are {MobilenetV1/Predictions/Softmax=0}");
     }
     int index = interpreter.getOutputIndex("MobilenetV1/Predictions/Softmax");
     assertThat(index).isEqualTo(0);
