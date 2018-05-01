@@ -4316,5 +4316,40 @@ class TruePositivesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((111.0, 37.0, 0.0), tp.eval())
 
 
+class SpecificityTest(test.TestCase):
+
+  def __init__(self, method_name="runTest"):
+    super(SpecificityTest, self).__init__(method_name)
+
+  def testSpecificity(self):
+    with self.test_session(use_gpu=True) as sess:
+      labels = array_ops.placeholder(dtypes_lib.float32, shape=(None,))
+      predictions = array_ops.placeholder(dtypes_lib.float32, shape=(None,))
+      specificity, update_specificity = metrics.specificity(
+          labels, predictions)
+      sess.run(variables.local_variables_initializer())
+
+      sess.run(update_specificity, feed_dict={
+          labels: [1.0, 1.0],
+          predictions: [1.0, 1.0]
+      })
+      s = specificity.eval()
+      self.assertEqual(s, 0)
+
+      sess.run(update_specificity, feed_dict={
+          labels: [0.0, 0.0],
+          predictions: [0.0, 1.0]
+      })
+      s = specificity.eval()
+      self.assertEqual(s, 0.5)
+
+      sess.run(update_specificity, feed_dict={
+          labels: [0.0, 0.0],
+          predictions: [0.0, 0.0]
+      })
+      s = specificity.eval()
+      self.assertEqual(s, 0.75)
+
+
 if __name__ == '__main__':
   test.main()
