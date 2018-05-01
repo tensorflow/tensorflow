@@ -30,6 +30,7 @@ bool IsAnyDiv(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
+bool IsAssign(const NodeDef& node);
 bool IsAtan2(const NodeDef& node);
 bool IsBetainc(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);

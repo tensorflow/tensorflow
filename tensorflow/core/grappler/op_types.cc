@@ -54,6 +54,10 @@ bool IsApproximateEqual(const NodeDef& node) {
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
+bool IsAssign(const NodeDef& node) {
+  return node.op() == "Assign" || node.op() == "AssignVariableOp";
+}
+
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
 bool IsAtan2(const NodeDef& node) { return node.op() == "Atan2"; }

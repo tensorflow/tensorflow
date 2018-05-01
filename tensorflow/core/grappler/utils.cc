@@ -435,7 +435,8 @@ void SimpleGraphView::DepthFirstSearch(
     std::set<int>* nodes_found) const {
   nodes_found->clear();
   const string& op_type = graph_->node(root_node).op();
-  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
+  if (!op_types_to_traverse.empty() &&
+      op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
   std::vector<int> stack;
@@ -446,7 +447,8 @@ void SimpleGraphView::DepthFirstSearch(
     stack.pop_back();
     nodes_found->insert(node_idx);
     const string& op_type = graph_->node(node_idx).op();
-    if (op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
+    if (op_types_to_traverse.empty() ||
+        op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
       for (auto output_idx : this->outputs(node_idx)) {
         if (nodes_found->find(output_idx) == nodes_found->end()) {
           stack.push_back(output_idx);

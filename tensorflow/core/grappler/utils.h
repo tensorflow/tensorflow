@@ -251,6 +251,7 @@ class SimpleGraphView {
   // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
   // walk continues to its children. It is assumed that *graph_ was not modified
   // after the call to Initialize().
+  // If `op_types_to_traverse` is empty the DFS will traverse any node type.
   void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
                         int node_idx, std::set<int>* nodes_found) const;
 
