@@ -658,6 +658,41 @@ class EstimatorTrainTest(test.TestCase):
         5, estimator._load_global_step_from_checkpoint_dir(
             warm_started_est.model_dir))
 
+  def test_warm_starts_from_savedmodel(self):
+    def _make_model_fn(x):
+      def _variable_creating_and_export_model_fn(features, labels, mode):
+        _, _ = features, labels
+        variable_scope.get_variable('x', initializer=x)
+        global_step = training.get_global_step()
+        return model_fn_lib.EstimatorSpec(
+            mode,
+            predictions={'y': constant_op.constant(1.0)},
+            loss=constant_op.constant(1.),
+            train_op=state_ops.assign_add(global_step, 1),
+            export_outputs={'test': export_output.ClassificationOutput(
+                constant_op.constant([4.2]), constant_op.constant(['label']))})
+      return _variable_creating_and_export_model_fn
+
+    est = estimator.Estimator(model_fn=_make_model_fn(42.))
+    est.train(dummy_input_fn, steps=10)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    tmpdir = tempfile.mkdtemp()
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn)
+
+    warm_started_est = estimator.Estimator(
+        model_fn=_make_model_fn(36.),
+        warm_start_from=export_dir)
+    warm_started_est.train(dummy_input_fn, steps=5)
+    # warm_start is called after the model_fn, so x should have the value
+    # from the SavedModel.
+    self.assertEqual(42., warm_started_est.get_variable_value('x'))
+
   def test_max_step(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
     est.train(dummy_input_fn, max_steps=5)

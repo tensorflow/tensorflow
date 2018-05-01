@@ -155,12 +155,12 @@ class Estimator(object):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
-      warm_start_from: Optional string filepath to a checkpoint to warm-start
-                       from, or a `tf.estimator.WarmStartSettings` object to
-                       fully configure warm-starting.  If the string filepath is
-                       provided instead of a `WarmStartSettings`, then all
-                       variables are warm-started, and it is assumed that
-                       vocabularies and Tensor names are unchanged.
+      warm_start_from: Optional string filepath to a checkpoint or SavedModel to
+                       warm-start from, or a `tf.estimator.WarmStartSettings`
+                       object to fully configure warm-starting.  If the string
+                       filepath is provided instead of a `WarmStartSettings`,
+                       then all variables are warm-started, and it is assumed
+                       that vocabularies and Tensor names are unchanged.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -1502,7 +1502,7 @@ def _get_default_warm_start_settings(warm_start_from):
 
   Args:
     warm_start_from: Either a string representing the filepath of a checkpoint
-      to initialize from, or an instance of WarmStartSettings.
+      or SavedModel to initialize from, or an instance of WarmStartSettings.
 
   Returns:
     Either None or an instance of WarmStartSettings.
@@ -1513,9 +1513,19 @@ def _get_default_warm_start_settings(warm_start_from):
   """
   if warm_start_from is None:
     return None
-  if isinstance(warm_start_from, six.string_types):
+  if isinstance(warm_start_from, (six.string_types, six.binary_type)):
+    # Infer that this is a SavedModel if export_path +
+    # 'variables/variables.index' exists, and if so, construct the
+    # WarmStartSettings pointing to export_path + 'variables/variables'.
+    if gfile.Exists(os.path.join(compat.as_bytes(warm_start_from),
+                                 compat.as_bytes('variables/variables.index'))):
+      logging.info('Warm-starting from a SavedModel')
+      return WarmStartSettings(ckpt_to_initialize_from=os.path.join(
+          compat.as_bytes(warm_start_from),
+          compat.as_bytes('variables/variables')))
     return WarmStartSettings(ckpt_to_initialize_from=warm_start_from)
   elif isinstance(warm_start_from, WarmStartSettings):
     return warm_start_from
   else:
-    raise ValueError('warm_start_from must be a string or a WarmStartSettings')
+    raise ValueError('warm_start_from must be a string or a WarmStartSettings, '
+                     'instead got {}'.format(type(warm_start_from)))
