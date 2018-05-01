@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
@@ -896,6 +897,8 @@ class DistributionStrategy(object):
       A `Tensor` on `destination`.
     """
     _require_cross_tower_context(self)
+    assert isinstance(destination, six.string_types)
+    destination = device_util.resolve(destination)
     return self._fetch(val, destination, fn)
 
   def _fetch(self, val, destination, fn):
