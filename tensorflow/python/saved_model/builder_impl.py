@@ -132,7 +132,8 @@ class SavedModelBuilder(object):
       if not file_io.file_exists(asset_destination_filepath):
         file_io.copy(asset_source_filepath, asset_destination_filepath)
 
-    tf_logging.info("Assets written to: %s", compat.as_text(assets_destination_dir))
+    tf_logging.info("Assets written to: %s",
+                    compat.as_text(assets_destination_dir))
 
   def _maybe_add_legacy_init_op(self, legacy_init_op=None):
     """Add legacy init op to the SavedModel.
