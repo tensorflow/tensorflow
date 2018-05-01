@@ -91,6 +91,34 @@ tensorflow::Status RecordResult(const ShapedBuffer& result,
   return tensorflow::Status::OK();
 }
 
+// Records the arguments used to invoke a computation in an HloSnapshot proto.
+tensorflow::Status RecordArguments(
+    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    se::StreamExecutor* executor, TransferManager* transfer_manager,
+    HloSnapshot* module) {
+  module->clear_arguments();
+  for (const ShapedBuffer* argument : arguments) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Literal> literal,
+        transfer_manager->TransferLiteralFromDevice(executor, *argument));
+    *module->add_arguments() = literal->ToProto();
+  }
+  return tensorflow::Status::OK();
+}
+
+// Records the result of a computation in a HloSnapshot proto.
+tensorflow::Status RecordResult(const ShapedBuffer& result,
+                                se::StreamExecutor* executor,
+                                TransferManager* transfer_manager,
+                                HloSnapshot* module) {
+  module->clear_result();
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Literal> literal,
+      transfer_manager->TransferLiteralFromDevice(executor, result));
+  *module->mutable_result() = literal->ToProto();
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 ServiceOptions& ServiceOptions::set_platform(se::Platform* platform) {
@@ -409,6 +437,28 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << Printf("BuildExecutable on service %p", this);
 
+  // Dump computation proto state if flag is set.
+  std::vector<std::unique_ptr<HloSnapshot>> hlo_snapshots;
+  for (int64 i = 0; i < module_protos.size(); ++i) {
+    const string& directory_path =
+        module_configs[i]->debug_options().xla_dump_computations_to();
+    const string& execution_directory_path =
+        module_configs[i]->debug_options().xla_dump_executions_to();
+    if (directory_path.empty() && execution_directory_path.empty()) {
+      continue;
+    }
+    auto hlo_snapshot = MakeUnique<HloSnapshot>();
+    *hlo_snapshot->mutable_hlo()->mutable_hlo_module() = *module_protos[i];
+    if (!directory_path.empty()) {
+      string filename =
+          Printf("computation_%lld__%s", module_protos[i]->id(),
+                 module_protos[i]->entry_computation_name().c_str());
+      TF_RETURN_IF_ERROR(
+          Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot));
+      hlo_snapshots.push_back(std::move(hlo_snapshot));
+    }
+  }
+
   VLOG(1) << "Computations:";
   for (const HloModuleProto* proto : module_protos) {
     VLOG(1) << proto->name();
@@ -428,6 +478,12 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
       std::vector<std::unique_ptr<Executable>> executables,
       backend->compiler()->Compile(std::move(modules), std::move(executors),
                                    device_allocator));
+
+  for (size_t i = 0; i < module_protos.size(); ++i) {
+    if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
+      executables[i]->set_hlo_snapshot(std::move(hlo_snapshots[i]));
+    }
+  }
 
   return std::move(executables);
 }
@@ -1132,6 +1188,22 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name().c_str());
 
+  // Dump computation proto state if flag is set.
+  auto hlo_snapshot = MakeUnique<HloSnapshot>();
+  const string& directory_path =
+      module_config->debug_options().xla_dump_computations_to();
+  const string& execution_directory_path =
+      module_config->debug_options().xla_dump_executions_to();
+  if (!directory_path.empty() || !execution_directory_path.empty()) {
+    *hlo_snapshot->mutable_hlo()->mutable_hlo_module() = module_proto;
+    if (!directory_path.empty()) {
+      string filename = Printf("computation_%lld__%s", module_proto.id(),
+                               module_proto.entry_computation_name().c_str());
+      TF_RETURN_IF_ERROR(
+          Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot));
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       HloModule::CreateFromProto(module_proto, *module_config));
 
@@ -1182,11 +1254,30 @@ tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
                       execute_backend_->default_stream_executor(),
                       /*device_allocator=*/nullptr));
 
+  if (executable->dumping_snapshot()) {
+    executable->hlo_snapshot()->set_execution_platform(
+        execute_backend_->platform()->Name());
+    TF_RETURN_IF_ERROR(RecordArguments(
+        replicated_arguments.front(),
+        execute_backend_->default_stream_executor(),
+        execute_backend_->transfer_manager(), executable->hlo_snapshot()));
+  }
+
   TF_ASSIGN_OR_RETURN(
       *result->mutable_output(),
       ExecuteAndRegisterResult(
           executable.get(), replicated_arguments, execute_backend_.get(),
           "result of " + arg->computation().name(), result->mutable_profile()));
+
+  if (executable->dumping_snapshot()) {
+    TF_ASSIGN_OR_RETURN(
+        const ShapedBuffer* result_buffer,
+        allocation_tracker_.ResolveForReplica(result->output(), 0));
+    TF_RETURN_IF_ERROR(RecordResult(
+        *result_buffer, execute_backend_->default_stream_executor(),
+        execute_backend_->transfer_manager(), executable->hlo_snapshot()));
+    TF_RETURN_IF_ERROR(executable->DumpHloSnapshot());
+  }
 
   VLOG(1) << "successfully completed 'execute-graph' request";
   return tensorflow::Status::OK();

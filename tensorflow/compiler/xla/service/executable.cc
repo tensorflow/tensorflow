@@ -143,6 +143,19 @@ Status Executable::DumpSessionModule() {
                                      *session_module_);
 }
 
+Status Executable::DumpHloSnapshot() {
+  TF_RET_CHECK(dumping_snapshot());
+  TF_RET_CHECK(hlo_snapshot_->has_hlo() &&
+               hlo_snapshot_->hlo().has_hlo_module());
+  const string& directory_path =
+      module_config().debug_options().xla_dump_executions_to();
+  const auto& module = hlo_snapshot_->hlo().hlo_module();
+  string filename = tensorflow::strings::Printf(
+      "computation_%lld__%s__execution_%lld", module.id(),
+      module.entry_computation_name().c_str(), ++execution_count_);
+  return Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot_);
+}
+
 /* static */ Status Executable::DumpToDirectory(
     const string& directory_path, string filename,
     const SessionModule& session_module) {
