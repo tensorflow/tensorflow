@@ -104,7 +104,7 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   AllocationFinder finder;
@@ -168,7 +168,7 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
 
   auto computation_main = builder_main.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEmbeddedComputation(std::move(computation_sub));
   hlo_module->AddEntryComputation(std::move(computation_main));
 
@@ -276,7 +276,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
 
   auto computation_main = builder_main.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEmbeddedComputation(std::move(computation_sub1));
   hlo_module->AddEmbeddedComputation(std::move(computation_sub2));
   hlo_module->AddEntryComputation(std::move(computation_main));
@@ -396,7 +396,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
 
   auto computation_main = builder_main.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEmbeddedComputation(std::move(computation_sub1));
   hlo_module->AddEmbeddedComputation(std::move(computation_sub2));
   hlo_module->AddEntryComputation(std::move(computation_main));
@@ -471,7 +471,7 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   AllocationFinder finder;
@@ -494,7 +494,7 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
 
 // Check it goes through Tuple/Detuple pairs
 TEST_F(AllocationFinderTest, CanTraverseTuples) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
 
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 2});
@@ -542,7 +542,7 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
 
 // Check it can start from tuple subshapes
 TEST_F(AllocationFinderTest, CanStartOnTuples) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
 
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 2});
@@ -585,7 +585,7 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
 
 // Check it goes through while instructions
 TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
 
   Shape counter_shape = ShapeUtil::MakeShape(S32, {});
   Shape input_shape = ShapeUtil::MakeShape(F32, {2});
@@ -722,7 +722,7 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   AllocationFinder finder;

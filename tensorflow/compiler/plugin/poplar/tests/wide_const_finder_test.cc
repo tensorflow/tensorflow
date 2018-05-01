@@ -49,7 +49,7 @@ TEST_F(WideConstFinderTest, ReplaceWideConstants) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(hlo_module->computation_count(), 1);
@@ -99,7 +99,7 @@ TEST_F(WideConstFinderTest, DontReplaceScalars) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(hlo_module->computation_count(), 1);

@@ -38,7 +38,7 @@ PoplarExecutable::PoplarExecutable(
 
 PoplarExecutable::~PoplarExecutable() {}
 
-StatusOr<ShapedBuffer>
+StatusOr<ScopedShapedBuffer>
 PoplarExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
@@ -83,9 +83,9 @@ PoplarExecutable::ExecuteOnStream(
     execution_profile_.set_compute_cycle_count(1);
   }
 
-  auto result_buffer = ShapedBuffer(result_shape(), result_shape(),
-                                    stream->parent()->platform(),
-                                    stream->parent()->device_ordinal());
+  ScopedShapedBuffer result_buffer(result_shape(), result_shape(),
+                                   run_options->allocator(),
+                                   stream->parent()->device_ordinal());
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.
@@ -107,7 +107,7 @@ PoplarExecutable::ExecuteOnStream(
   return std::move(result_buffer);
 }
 
-StatusOr<ShapedBuffer>
+StatusOr<ScopedShapedBuffer>
 PoplarExecutable::ExecuteAsyncOnStream(
         const ServiceExecutableRunOptions* run_options,
         tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {

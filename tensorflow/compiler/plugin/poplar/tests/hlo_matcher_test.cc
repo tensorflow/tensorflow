@@ -78,7 +78,7 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
 
@@ -112,7 +112,7 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
 
@@ -162,7 +162,7 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
 
@@ -224,7 +224,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
 
@@ -277,7 +277,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
 
@@ -325,7 +325,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
 
@@ -365,7 +365,7 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
 

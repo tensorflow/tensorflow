@@ -49,12 +49,12 @@ class PoplarExecutable : public Executable {
                    const std::vector<Shape>& parameter_shapes);
   ~PoplarExecutable() override;
 
-  StatusOr<ShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
           const ServiceExecutableRunOptions* run_options,
           tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
           HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
           const ServiceExecutableRunOptions* run_options,
           tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 

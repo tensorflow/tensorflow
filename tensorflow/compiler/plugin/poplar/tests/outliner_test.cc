@@ -94,7 +94,7 @@ TEST_F(OutlinerTest, Convolution) {
   auto computation = builder.Build();
 
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(hlo_module->computation_count(), 1);

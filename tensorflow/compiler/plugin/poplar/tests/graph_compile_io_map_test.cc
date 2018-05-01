@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -27,13 +27,11 @@ namespace poplarplugin {
  * which input tensors are also outputs.  This test checks that this map is
  * correct */
 
-class GraphCompileIoMapTest : public ClientLibraryTestBase {
+class GraphCompileIoMapTest : public HloTestBase {
 public:
  public:
   explicit GraphCompileIoMapTest(se::Platform* platform = nullptr)
-  : ClientLibraryTestBase(platform) {
-      mutable_debug_options()->add_xla_disable_hlo_passes("tuple-simplifier");
-  }
+  : HloTestBase() {}
   const OutputMap& GetMap(PoplarExecutable* e) {
     return e->output_map_;
   }
@@ -56,7 +54,7 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -101,7 +99,7 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -147,7 +145,7 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -206,7 +204,7 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -259,7 +257,7 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   auto computation = builder.Build();
 
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =

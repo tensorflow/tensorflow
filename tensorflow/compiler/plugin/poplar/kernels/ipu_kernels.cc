@@ -37,8 +37,7 @@ IpuSummaryOp::IpuSummaryOp(OpKernelConstruction* ctx)
 void IpuSummaryOp::Compute(OpKernelContext* ctx) {
 
   auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
-  OP_REQUIRES(ctx, platform.ok(),
-              StreamExecutorUtil::ConvertStatus(platform.status()));
+  OP_REQUIRES(ctx, platform.ok(), platform.status());
 
   auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 

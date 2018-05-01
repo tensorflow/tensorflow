@@ -76,7 +76,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
   auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
   if (!platform.ok()) {
-    return StreamExecutorUtil::ConvertStatus(platform.status());
+    return platform.status();
   }
 
   auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());

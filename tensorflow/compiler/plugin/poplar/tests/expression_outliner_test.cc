@@ -59,7 +59,7 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -102,7 +102,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -132,7 +132,7 @@ TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -176,7 +176,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPaths) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -219,7 +219,7 @@ TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -257,7 +257,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoSubgraphs) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -311,7 +311,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength1) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -362,7 +362,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength2) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -413,7 +413,7 @@ TEST_F(ExpressionOutlinerTest, OutlineThreePaths) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
@@ -466,7 +466,7 @@ TEST_F(ExpressionOutlinerTest, OutlineThreePathsEarlyExit) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   ExpressionOutliner eo;
