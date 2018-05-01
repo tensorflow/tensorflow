@@ -1127,8 +1127,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
     def creator(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      if kwargs.pop("tower_local_reduce_method", None) is not None:
-        kwargs["trainable"] = False
+      kwargs.pop("tower_local_reduce_method", None)
       return next_creator(*args, **kwargs)
 
     return _CurrentDistributionContext(
@@ -1138,7 +1137,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     """Does not set to resource variables."""
     def create_tower_local_variable(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      kwargs["tower_local_reduce_method"] = reduce_method
+      kwargs["trainable"] = False
       return next_creator(*args, **kwargs)
 
     _require_distribution_strategy_scope(self)
