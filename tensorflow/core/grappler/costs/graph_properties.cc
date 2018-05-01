@@ -382,7 +382,7 @@ class TopoQueue {
   std::set<const NodeDef*, CompareNodes> queue_;
 };
 
-// Merge and relax symbolic shapes.
+// Processes symbolic shapes.
 // Each symbolic shape or dimension is represented by a handle. Unlike the TF
 // shape refiner which creates new handles every time it processes an unknown
 // shape/dimension, the symbolic shape refiner assigns a specific handle to each
@@ -864,11 +864,8 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
   return Status::OK();
 }
 
-// If a Merge node has a NextIteration node as an input then that input will
-// try to forward an UnknownShape at graph construction time. However, the
-// Merge shape function will always propagate an UnknownShape if any of its
-// inputs are UnknownShapes. So we need to ignore the input from NextIteration
-// nodes to propagate any known shape from the Merge node.
+// Compute the output shape of the merge node as the union of the available
+// input shapes.
 Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
                                         const NodeDef* node,
                                         bool* new_shapes) const {
@@ -914,8 +911,7 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   return Status::OK();
 }
 
-// Manually propagate the input shape for Enter nodes and update any Merge node
-// outputs.
+// Manually propagate the input shape for Enter nodes.
 Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
                                     const NodeDef* node, bool* new_shapes) {
   auto enter_ctx = shape_refiner->GetContext(node);
@@ -955,6 +951,8 @@ Status GraphProperties::UpdateShapes(
     // Properly handle merge nodes.
     TF_RETURN_IF_ERROR(UpdateMergeNode(shape_refiner, n, new_shapes));
   } else if (IsEnqueue(*n)) {
+    // Make sure the shapes of enqueued tensors are propagated to the queue
+    // itself.
     TF_RETURN_IF_ERROR(
         UpdateEnqueue(n, resource_handles, shape_refiner, new_shapes));
   } else {
@@ -1209,7 +1207,6 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
 
     // Fill input properties.
     {
-      // CHECK_EQ(ctx->num_inputs(), node.num_inputs());
       auto& input_properties = input_properties_[node.name()];
 
       // Should always be empty, node names in graph are supposed to be unique.
@@ -1233,7 +1230,6 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
 
     // Fill output properties.
     {
-      // CHECK_EQ(ctx->num_outputs(), node->num_outputs());
       auto& output_properties = output_properties_[node.name()];
 
       // Should always be empty, node names in graph are supposed to be unique.
