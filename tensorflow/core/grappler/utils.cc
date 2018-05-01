@@ -361,8 +361,11 @@ inline void STLSortAndRemoveDuplicates(T* v) {
 }
 }  // namespace
 
-Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
-                                   bool dedup_outputs) {
+Status SimpleGraphView::Initialize(
+    const GraphDef& graph,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies,
+    bool dedup_inputs, bool dedup_outputs) {
   graph_ = &graph;
   const int num_nodes = graph.node_size();
   inputs_.clear();
@@ -379,6 +382,23 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
     const NodeDef& node = graph.node(node_idx);
     name_to_index_.emplace(node.name(), node_idx);
     index_to_name_.push_back(node.name());
+  }
+
+  if (extra_dependencies) {
+    for (const auto& dep : *extra_dependencies) {
+      auto itr_src = name_to_index_.find(dep.first->name());
+      if (itr_src == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent src ", dep.first->name());
+      }
+      auto itr_tgt = name_to_index_.find(dep.second->name());
+      if (itr_tgt == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent tgt ", dep.second->name());
+      }
+      const int src_idx = itr_src->second;
+      const int tgt_idx = itr_tgt->second;
+      inputs_[tgt_idx].push_back(src_idx);
+      outputs_[src_idx].push_back(tgt_idx);
+    }
   }
 
   // Build forward and reverse adjacency lists.

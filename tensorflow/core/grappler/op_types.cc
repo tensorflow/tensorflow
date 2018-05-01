@@ -250,6 +250,10 @@ bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
 
+bool IsQueue(const NodeDef& node) {
+  return str_util::EndsWith(node.op(), "QueueV2");
+}
+
 bool IsRandomShuffle(const NodeDef& node) {
   return node.op() == "RandomShuffle";
 }
