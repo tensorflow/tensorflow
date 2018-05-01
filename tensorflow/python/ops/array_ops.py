@@ -2451,6 +2451,98 @@ def _all_dimensions(x):
   return gen_math_ops._range(0, rank(x), 1)
 
 
+@tf_export("multi_one_hot")
+def multi_one_hot(indices, depth_list, on_values_list=None,
+                  off_values_list=None, name=None):
+  """Creates one-hot-encodings for multiple features (columns in a matrix)
+  and concatenates the resulting encodings
+
+  If `indices` is a matrix (batch) with shape `[d_m, d_n]`, the output
+  shape will be `[d_m, sum(depth_list)]`:
+
+  Example
+  =========
+  Suppose that we have two columns where the first represents an attribute
+  that can obtain two different values and the second may obtain three.
+  Three instances (rows) are then one-hot encoded in a single pass using
+  5.0 as hot-value for the first and 10.0 as the hot-value for the second
+  column
+
+  ```python
+    indices = tf.constant([[1, 2],
+                           [0, 1],
+                           [1, 0]])
+    depth_list = [2, 3]
+    on_values_list = [5.0, 10.0]
+    off_value_list = [0.0, 0.0]
+    result = tf.multi_one_hot(indices, depth_list,
+                              on_values_list,
+                              off_value_list)
+    # result: [3 x (2+3)] = [3 x 5]
+  ```
+
+  The output is `[3 x (2+3)]` which is `[3 x 5]`:
+
+  ```python
+    with tf.Session() as sess:
+        print(result.eval())
+
+    # [[0.0, 5.0, 0.0, 0.0, 10.0],   # one_hot(1) concat with one_hot(2)
+    #  [5.0, 0.0, 0.0, 10.0, 0.0],   # one_hot(0) concat with one_hot(1)
+    #  [0.0, 5.0, 10.0, 0.0, 0.0]]   # one_hot(1) concat with one_hot(0)
+  ```
+
+  Args:
+    indices: A two-dimensional `Tensor` with shape `[d_m, d_n]`
+    depth_list: A list of length `d_n` containing the depth for each column.
+    on_values_list: A list with the on_value for each column.
+    off_values_list: A list with the off_value for each column.
+    on_value: A list of scalars defining the hot-value to fill in multi_tensor
+             (default: 1)
+    off_value: A list of scalars defining the value to fill in the
+               remaining cells of multi_tensor (default: 0)
+    name: A name for the operation (optional)
+
+  Returns:
+    multi_tensor: The mutiple one-hot encoded Tensor.
+
+  Raises:
+    ValueError: If length of `depth_list` does match last dim. of indices
+  """
+  with ops.name_scope(name, "multi_one_hot",
+                      [indices, depth_list,
+                       on_values_list, off_values_list]) as name:
+    n_features = indices.get_shape()[-1]
+    if len(depth_list) != n_features:
+      raise ValueError("No. of features does not match length of the depth " \
+                       "list: {} != {}".format(len(depth_list), n_features))
+
+    on_exists = on_values_list is not None
+    off_exists = off_values_list is not None
+
+    # Pad values lists with None if their lengths are smaller than depth_list
+    if on_exists:
+      on_values_list += [None] * (n_features - len(on_values_list))
+    else:
+      on_values_list = [None] * n_features
+
+    if off_exists:
+      off_values_list += [None] * (n_features - len(off_values_list))
+    else:
+      off_values_list = [None] * n_features
+
+    tensor_list = [one_hot(indices[:, col],
+                           depth_list[col],
+                           on_values_list[col],
+                           off_values_list[col],
+                           dtype=dtypes.float32) \
+                   for col in range(n_features)]
+
+    multi_tensor = concat(tensor_list, axis=-1, name=name)
+
+    return multi_tensor
+
+
 @tf_export("sequence_mask")
 def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   """Returns a mask tensor representing the first N positions of each cell.
