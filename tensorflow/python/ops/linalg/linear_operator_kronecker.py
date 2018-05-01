@@ -28,6 +28,11 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.util.tf_export import tf_export
+
+__all__ = [
+    "LinearOperatorKronecker",
+]
 
 
 def _vec(x):
@@ -59,6 +64,7 @@ def _rotate_last_dim(x, rotate_right=False):
   return array_ops.transpose(x, transpose_perm)
 
 
+@tf_export("linalg.LinearOperatorKronecker")
 class LinearOperatorKronecker(linear_operator.LinearOperator):
   """Kronecker product between two `LinearOperators`.
 
