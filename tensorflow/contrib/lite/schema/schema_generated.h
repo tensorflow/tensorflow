@@ -4711,6 +4711,7 @@ struct ModelT : public flatbuffers::NativeTable {
   std::vector<std::unique_ptr<SubGraphT>> subgraphs;
   std::string description;
   std::vector<std::unique_ptr<BufferT>> buffers;
+  std::vector<int32_t> metadata_buffer;
   ModelT()
       : version(0) {
   }
@@ -4723,7 +4724,8 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_OPERATOR_CODES = 6,
     VT_SUBGRAPHS = 8,
     VT_DESCRIPTION = 10,
-    VT_BUFFERS = 12
+    VT_BUFFERS = 12,
+    VT_METADATA_BUFFER = 14
   };
   uint32_t version() const {
     return GetField<uint32_t>(VT_VERSION, 0);
@@ -4740,6 +4742,9 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<Buffer>> *buffers() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<Buffer>> *>(VT_BUFFERS);
   }
+  const flatbuffers::Vector<int32_t> *metadata_buffer() const {
+    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_METADATA_BUFFER);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_VERSION) &&
@@ -4754,6 +4759,8 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_BUFFERS) &&
            verifier.Verify(buffers()) &&
            verifier.VerifyVectorOfTables(buffers()) &&
+           VerifyOffset(verifier, VT_METADATA_BUFFER) &&
+           verifier.Verify(metadata_buffer()) &&
            verifier.EndTable();
   }
   ModelT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4779,6 +4786,9 @@ struct ModelBuilder {
   void add_buffers(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>> buffers) {
     fbb_.AddOffset(Model::VT_BUFFERS, buffers);
   }
+  void add_metadata_buffer(flatbuffers::Offset<flatbuffers::Vector<int32_t>> metadata_buffer) {
+    fbb_.AddOffset(Model::VT_METADATA_BUFFER, metadata_buffer);
+  }
   explicit ModelBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4797,8 +4807,10 @@ inline flatbuffers::Offset<Model> CreateModel(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<OperatorCode>>> operator_codes = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<SubGraph>>> subgraphs = 0,
     flatbuffers::Offset<flatbuffers::String> description = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>> buffers = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>> buffers = 0,
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> metadata_buffer = 0) {
   ModelBuilder builder_(_fbb);
+  builder_.add_metadata_buffer(metadata_buffer);
   builder_.add_buffers(buffers);
   builder_.add_description(description);
   builder_.add_subgraphs(subgraphs);
@@ -4813,14 +4825,16 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
     const std::vector<flatbuffers::Offset<OperatorCode>> *operator_codes = nullptr,
     const std::vector<flatbuffers::Offset<SubGraph>> *subgraphs = nullptr,
     const char *description = nullptr,
-    const std::vector<flatbuffers::Offset<Buffer>> *buffers = nullptr) {
+    const std::vector<flatbuffers::Offset<Buffer>> *buffers = nullptr,
+    const std::vector<int32_t> *metadata_buffer = nullptr) {
   return tflite::CreateModel(
       _fbb,
       version,
       operator_codes ? _fbb.CreateVector<flatbuffers::Offset<OperatorCode>>(*operator_codes) : 0,
       subgraphs ? _fbb.CreateVector<flatbuffers::Offset<SubGraph>>(*subgraphs) : 0,
       description ? _fbb.CreateString(description) : 0,
-      buffers ? _fbb.CreateVector<flatbuffers::Offset<Buffer>>(*buffers) : 0);
+      buffers ? _fbb.CreateVector<flatbuffers::Offset<Buffer>>(*buffers) : 0,
+      metadata_buffer ? _fbb.CreateVector<int32_t>(*metadata_buffer) : 0);
 }
 
 flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_fbb, const ModelT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -6207,6 +6221,7 @@ inline void Model::UnPackTo(ModelT *_o, const flatbuffers::resolver_function_t *
   { auto _e = subgraphs(); if (_e) { _o->subgraphs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->subgraphs[_i] = std::unique_ptr<SubGraphT>(_e->Get(_i)->UnPack(_resolver)); } } };
   { auto _e = description(); if (_e) _o->description = _e->str(); };
   { auto _e = buffers(); if (_e) { _o->buffers.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->buffers[_i] = std::unique_ptr<BufferT>(_e->Get(_i)->UnPack(_resolver)); } } };
+  { auto _e = metadata_buffer(); if (_e) { _o->metadata_buffer.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->metadata_buffer[_i] = _e->Get(_i); } } };
 }
 
 inline flatbuffers::Offset<Model> Model::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ModelT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -6222,13 +6237,15 @@ inline flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_f
   auto _subgraphs = _o->subgraphs.size() ? _fbb.CreateVector<flatbuffers::Offset<SubGraph>> (_o->subgraphs.size(), [](size_t i, _VectorArgs *__va) { return CreateSubGraph(*__va->__fbb, __va->__o->subgraphs[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _description = _o->description.empty() ? 0 : _fbb.CreateString(_o->description);
   auto _buffers = _o->buffers.size() ? _fbb.CreateVector<flatbuffers::Offset<Buffer>> (_o->buffers.size(), [](size_t i, _VectorArgs *__va) { return CreateBuffer(*__va->__fbb, __va->__o->buffers[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _metadata_buffer = _o->metadata_buffer.size() ? _fbb.CreateVector(_o->metadata_buffer) : 0;
   return tflite::CreateModel(
       _fbb,
       _version,
       _operator_codes,
       _subgraphs,
       _description,
-      _buffers);
+      _buffers,
+      _metadata_buffer);
 }
 
 inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions type) {
