@@ -214,9 +214,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   // Poplar Interface
 
-  Status InitializePoplarDevice(const tensorflow::IPUOptions::DeviceConfig&);
+  Status InitializePoplarDevice(void*,
+                                const tensorflow::IPUOptions::DeviceConfig&);
 
-  Status ClosePoplarDevice();
+  Status ClosePoplarDevice(void*);
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
@@ -290,7 +291,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   poplar::Device poplar_device_;
 
-  bool device_open_;
+  void* active_xla_device_;
 
   std::list<TensorControl*> allocations_;
 

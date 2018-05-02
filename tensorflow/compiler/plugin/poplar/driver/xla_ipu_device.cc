@@ -46,19 +46,20 @@ class IpuDevice : public XlaDevice {
             bool transfer_as_literal) :
       XlaDevice(options, attrs, device_ordinal, jit_device_name, platform,
                 transfer_as_literal),
-      ordinal_(device_ordinal) {}
+      ordinal_(device_ordinal),
+      poplar_platform_(static_cast<xp::PoplarPlatform*>(platform)) {}
+
+  Status Init(const tensorflow::IPUOptions& options) {
+    return poplar_platform_->ConfigurePoplarDevices(this, ordinal_, options);
+  }
 
   virtual ~IpuDevice() {
-    auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
-    if (!platform.ok()) {
-      return;
-    }
-    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
-    p->ClosePoplarDevice(ordinal_);
+    poplar_platform_->ClosePoplarDevice(this, ordinal_);
   }
 
  private:
   int ordinal_;
+  xp::PoplarPlatform* poplar_platform_;
 };
 
 class XlaIpuDeviceFactory : public DeviceFactory {
@@ -80,7 +81,6 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
   }
 
   auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
-  TF_RETURN_IF_ERROR(p->ConfigurePoplarDevices(options.config.ipu_options()));
 
   int visible_devices = p->VisibleDeviceCount();
   for (int ordinal=0; ordinal<visible_devices; ordinal++) {
@@ -122,6 +122,8 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
     auto* device = new IpuDevice(options, attrs, ordinal,
                                  DeviceType(DEVICE_IPU_XLA_JIT), p, false);
+
+    TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
 
     devices->push_back(device);
   }

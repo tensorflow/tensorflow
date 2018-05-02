@@ -109,7 +109,7 @@ se::host::HostStream *AsPoplarStream(se::Stream *stream) {
 PoplarExecutor::PoplarExecutor() :
     ordinal_(0),
     poplar_device_(poplar::Device::createCPUDevice()),
-    device_open_(true),
+    active_xla_device_(nullptr),
     profile_compilation_(false),
     profile_execution_(false),
     profile_io_(false) {}
@@ -241,9 +241,9 @@ se::DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
 }
 
 Status PoplarExecutor::InitializePoplarDevice(
-    const tensorflow::IPUOptions::DeviceConfig& cfg) {
+    void* device, const tensorflow::IPUOptions::DeviceConfig& cfg) {
 
-  TF_RETURN_IF_ERROR(ClosePoplarDevice());
+  TF_RETURN_IF_ERROR(ClosePoplarDevice(device));
 
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
@@ -276,6 +276,9 @@ Status PoplarExecutor::InitializePoplarDevice(
     }
     case tensorflow::IPUOptions::DeviceConfig::CPU:
       poplar_device_ = poplar::Device::createCPUDevice();
+      profile_compilation_ = false;
+      profile_execution_ = false;
+      profile_io_ = false;
       break;
     default:
       return Status{
@@ -287,18 +290,14 @@ Status PoplarExecutor::InitializePoplarDevice(
 
   random_type_ = cfg.random_type();
 
-  device_open_ = true;
+  active_xla_device_ = device;
   return Status::OK();
 }
 
-Status PoplarExecutor::ClosePoplarDevice() {
-  if (device_open_) {
-    //poplar_device_.release();
-    device_open_ = false;
-    profile_compilation_ = false;
-    profile_execution_ = false;
-    profile_io_ = false;
-    reports_.clear();
+Status PoplarExecutor::ClosePoplarDevice(void* device) {
+  if (device == active_xla_device_) {
+    poplar_device_.release();
+    active_xla_device_ = nullptr;
   }
   return Status::OK();
 }
@@ -497,6 +496,13 @@ PoplarExecutor::ExecuteEngine(
     xla::DeviceMemoryAllocator* allocator,
     const Args& args) {
 
+  if (active_xla_device_ == nullptr) {
+    return Status{
+        tensorflow::error::INTERNAL,
+        tensorflow::strings::Printf(
+            "Poplar device not opened for ordinal %d", ordinal_)};
+  }
+
   const auto& output_map = executable.OutputMapping();
   const auto& output_shape = executable.result_shape();
   const auto& engine = executable.Engine();
@@ -587,7 +593,6 @@ PoplarExecutor::ExecuteEngine(
       std::tie(retbuf, tensor_count) = AllocateOutputBuffer(allocator,
                                                             output_shape, 0,
                                                             output_map, args);
-
       engine->run(0);
 
       try {

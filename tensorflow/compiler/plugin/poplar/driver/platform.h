@@ -76,9 +76,9 @@ class PoplarPlatform : public se::Platform {
 
   // Poplar specific interface
 
-  Status ConfigurePoplarDevices(const tensorflow::IPUOptions& opts);
+  Status ConfigurePoplarDevices(void*, int, const tensorflow::IPUOptions& opts);
 
-  Status ClosePoplarDevice(int ordinal);
+  Status ClosePoplarDevice(void*, int);
 
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 

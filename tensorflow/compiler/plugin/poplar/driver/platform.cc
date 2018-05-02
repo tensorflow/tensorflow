@@ -102,27 +102,27 @@ void PoplarPlatform::UnregisterTraceListener(se::TraceListener* listener) {
 }
 
 Status
-PoplarPlatform::ConfigurePoplarDevices(const tensorflow::IPUOptions& opts) {
+PoplarPlatform::ConfigurePoplarDevices(void* device,
+                                       int ordinal,
+                                       const tensorflow::IPUOptions& opts) {
 
-  for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
-    se::StreamExecutor *executor;
-    TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+  se::StreamExecutor *executor;
+  TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
-    auto *e = static_cast<PoplarExecutor *>(executor->implementation());
+  auto *e = static_cast<PoplarExecutor *>(executor->implementation());
 
-    if (opts.device_config().size() > ordinal) {
-      TF_RETURN_IF_ERROR(
-          e->InitializePoplarDevice(opts.device_config(ordinal)));
-    } else {
-      tensorflow::IPUOptions::DeviceConfig default_config;
-      TF_RETURN_IF_ERROR(e->InitializePoplarDevice(default_config));
-    }
+  if (opts.device_config().size() > ordinal) {
+    TF_RETURN_IF_ERROR(
+        e->InitializePoplarDevice(device, opts.device_config(ordinal)));
+  } else {
+    tensorflow::IPUOptions::DeviceConfig default_config;
+    TF_RETURN_IF_ERROR(e->InitializePoplarDevice(device, default_config));
   }
 
   return Status::OK();
 }
 
-Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
+Status PoplarPlatform::ClosePoplarDevice(void* device, int ordinal) {
   if (ordinal >= VisibleDeviceCount()) {
     return Status(tensorflow::error::UNKNOWN, "Invalid ordinal value");
   }
@@ -131,7 +131,7 @@ Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
   TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
   auto *e = static_cast<PoplarExecutor *>(executor->implementation());
-  return e->ClosePoplarDevice();
+  return e->ClosePoplarDevice(device);
 }
 
 Status
