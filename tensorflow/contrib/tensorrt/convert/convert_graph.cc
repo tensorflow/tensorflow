@@ -342,6 +342,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   // optimization pass
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
+  item.graph = graph_def;
 
   tensorflow::DeviceProperties device_properties;
   device_properties.set_type("GPU");
