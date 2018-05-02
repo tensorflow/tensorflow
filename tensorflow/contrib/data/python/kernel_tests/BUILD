@@ -32,7 +32,7 @@ py_test(
 
 py_test(
     name = "bucketing_test",
-    size = "small",
+    size = "medium",
     srcs = ["bucketing_test.py"],
     srcs_version = "PY2AND3",
     deps = [
