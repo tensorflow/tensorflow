@@ -272,8 +272,7 @@ template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteFullyConnectedParams* params, OpData* data,
                            TfLiteTensor* input, TfLiteTensor* filter,
-                           TfLiteTensor* bias, TfLiteTensor* input_quantized,
-                           TfLiteTensor* output) {
+                           TfLiteTensor* bias, TfLiteTensor* output) {
   gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
 
   int32_t input_offset = -input->params.zero_point;
@@ -292,6 +291,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   } else if (kernel_type == kPie) {
     if (input->type == kTfLiteFloat32) {
       // Pie currently only supports quantized models and float inputs/outputs.
+      TfLiteTensor* input_quantized =
+          &context->tensors[node->temporaries->data[0]];
       return EvalPieQuantized(context, node, params, data, input, filter, bias,
                               input_quantized, output);
     } else {
@@ -346,15 +347,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TfLiteTensor* input_quantized = &context->tensors[node->temporaries->data[0]];
-
   switch (filter->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       return EvalFloat<kernel_type>(context, node, params, data, input, filter,
                                     bias, output);
     case kTfLiteUInt8:
       return EvalQuantized<kernel_type>(context, node, params, data, input,
-                                        filter, bias, input_quantized, output);
+                                        filter, bias, output);
     default:
       context->ReportError(context, "Type not currently supported.");
       return kTfLiteError;
