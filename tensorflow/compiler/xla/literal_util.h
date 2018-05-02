@@ -662,6 +662,10 @@ class Literal {
   // LayoutUtil::MaxSparseElements(SetSubshape(shape(), index).layout()).
   int64 sparse_element_count() const;
 
+  // Compute a hash for this literal.  This literal must not be a sparse tensor
+  // or a tuple containing a sparse tensor.
+  size_t Hash() const;
+
  protected:
   // Internal template helper for the Literal::CopySliceFrom(), matching its
   // arguments one by one.

@@ -195,6 +195,9 @@ class LayoutUtil {
   static bool AreDimensionsConsecutive(const Layout& layout,
                                        tensorflow::gtl::ArraySlice<int64> dims);
 
+  // Compute a hash for `layout`.
+  static size_t Hash(const Layout& layout);
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };
