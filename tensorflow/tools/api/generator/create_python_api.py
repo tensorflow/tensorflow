@@ -23,6 +23,7 @@ import collections
 import os
 import sys
 
+from tensorflow import python  # pylint: disable=unused-import
 from tensorflow.python.util import tf_decorator
 
 
@@ -158,7 +159,8 @@ def get_api_init_text():
 
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
-  for module in sys.modules.values():
+  module_list = list(sys.modules.values())
+  for module in module_list:
     # Only look at tensorflow modules.
     if (not module or not hasattr(module, '__name__') or
         'tensorflow.' not in module.__name__):
