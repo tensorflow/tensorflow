@@ -524,10 +524,12 @@ on your system:
   use the following command for CUDA Toolkit >= 8.0:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools</code>
-</pre>
+  <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools-8-0</code>
+</pre> 
 
-Add this path to the `LD_LIBRARY_PATH` environmental variable:
+(replace 8-0 with 9-0 or 9-1 depending on whether you have installed cuda 8.0, 9.0, or 9.1)
+
+Then add this path to the `LD_LIBRARY_PATH` environmental variable:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</code>
