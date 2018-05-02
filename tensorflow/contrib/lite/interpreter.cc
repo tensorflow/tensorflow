@@ -125,7 +125,8 @@ Interpreter::~Interpreter() {
 
   for (int i = 0; i < context_.tensors_size; i++) {
     TfLiteTensor* tensor = &context_.tensors[i];
-    if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
+    if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
+        tensor->delegate->FreeBufferHandle != nullptr) {
       tensor->delegate->FreeBufferHandle(tensor->delegate,
                                          &tensor->buffer_handle);
     }

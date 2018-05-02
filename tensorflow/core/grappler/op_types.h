@@ -21,7 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-
 bool IsAdd(const NodeDef& node);
 bool IsAddN(const NodeDef& node);
 bool IsAll(const NodeDef& node);
@@ -31,6 +30,7 @@ bool IsAnyDiv(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
+bool IsAssign(const NodeDef& node);
 bool IsAtan2(const NodeDef& node);
 bool IsBetainc(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
@@ -98,6 +98,7 @@ bool IsPolygamma(const NodeDef& node);
 bool IsPrint(const NodeDef& node);
 bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
+bool IsQueue(const NodeDef& node);
 bool IsRandomShuffle(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);

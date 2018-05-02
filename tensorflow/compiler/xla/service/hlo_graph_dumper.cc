@@ -804,7 +804,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // "{} (f32[42, 0, 10])".  The alternative, calling Literal::ToString(),
     // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
     // is just noise.
-    if (ShapeUtil::HasZeroElements(shape)) {
+    if (!ShapeUtil::IsTuple(shape) && ShapeUtil::HasZeroElements(shape)) {
       return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
     }
 

@@ -54,7 +54,7 @@ class ReverseSequenceOp : public XlaOpKernel {
                                 "), ", "(", seq_lens_shape.num_elements(),
                                 " vs. ", input_shape.dim_size(batch_dim_)));
 
-    xla::ComputationBuilder* builder = context->builder();
+    xla::XlaBuilder* builder = context->builder();
     const auto input = context->Input(0);
     const auto seq_lens = context->Input(1);
 
@@ -155,7 +155,7 @@ class ReverseSequenceOp : public XlaOpKernel {
     auto output = builder->GetTupleElement(loop_output, 2);
 
     // Mask out elements after the sequence length.
-    xla::ComputationDataHandle iota;
+    xla::XlaOp iota;
     OP_REQUIRES_OK(
         context, XlaHelpers::Iota(builder, seq_lens_type, max_seq_len, &iota));
     std::vector<int64> dims(input_shape.dims(), 1);

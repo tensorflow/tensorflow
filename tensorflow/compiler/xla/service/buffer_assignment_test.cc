@@ -1519,12 +1519,8 @@ TEST_F(BufferAssignmentTest, TrivialPeakBuffers) {
   // single logical buffer should be exactly the logical buffer in that
   // allocation.
   const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
-  int64 peak_size;
-  std::vector<const LogicalBuffer*> peak_buffers;
-
-  std::tie(peak_size, peak_buffers) =
-      mul_buffer.ComputePeakMemoryLogicalBuffers();
-  EXPECT_EQ(peak_size, ShapeUtil::ByteSizeOf(f32vec100_));
+  const std::vector<const LogicalBuffer*>& peak_buffers =
+      mul_buffer.PeakMemoryLogicalBuffers();
   ASSERT_EQ(peak_buffers.size(), 1);
   EXPECT_EQ(peak_buffers[0]->instruction(), mul);
 }
@@ -1555,6 +1551,7 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
       HloInstruction::CreateConcatenate(concat_shape, {rev, neg}, 0));
   // Make the root tiny so no interior nodes can share its buffer.
   auto root = builder.AddInstruction(HloInstruction::CreateSlice(
+
       ShapeUtil::MakeShape(F32, {1}), concat, {0}, {1}, {1}));
 
   auto module = CreateNewModule();
@@ -1569,18 +1566,79 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   EXPECT_TRUE(buffer.IsPreallocatedTempBuffer());
   ASSERT_EQ(buffer.assigned_buffers().size(), 4);
 
-  int64 peak_size;
-  std::vector<const LogicalBuffer*> peak_buffers;
-  std::tie(peak_size, peak_buffers) = buffer.ComputePeakMemoryLogicalBuffers();
+  const std::vector<const LogicalBuffer*>& peak_buffers =
+      buffer.PeakMemoryLogicalBuffers();
 
   // The peak live set should be concat and its inputs.
-  EXPECT_EQ(peak_size, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(F32, {400})));
   ASSERT_EQ(peak_buffers.size(), 3);
   std::vector<const HloInstruction*> peak_instructions;
   for (const LogicalBuffer* logical_buffer : peak_buffers) {
     peak_instructions.push_back(logical_buffer->instruction());
   }
   EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
+}
+
+TEST_F(BufferAssignmentTest, PeakBuffersWhile) {
+  auto module = CreateNewModule();
+  const Shape shape = ShapeUtil::MakeShape(F32, {123, 123});
+  HloComputation* condition;
+  {
+    auto b = HloComputation::Builder(TestName() + ".cond");
+    b.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+    b.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+    condition = module->AddEmbeddedComputation(b.Build());
+  }
+  HloComputation* body;
+  {
+    auto b = HloComputation::Builder(TestName() + ".body");
+    auto param =
+        b.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+    b.AddInstruction(
+        HloInstruction::CreateUnary(shape, HloOpcode::kNegate, param));
+    body = module->AddEmbeddedComputation(b.Build());
+  }
+  auto builder = HloComputation::Builder(TestName());
+  auto param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, param));
+  auto while_op = builder.AddInstruction(
+      HloInstruction::CreateWhile(shape, condition, body, copy));
+  // This broadcast should get a temporary allocation which is merged with the
+  // allocation for the while. Peak buffers should include the while and the
+  // broadcast.
+  auto bcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(F32, {123, 123, 123}), while_op, {0, 1}));
+  builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(F32, {123, 123, 123}), bcast, {0}));
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+  const BufferAllocation& buffer = GetTopLevelAllocation(*buffers, bcast);
+  const std::vector<const LogicalBuffer*>& peak_buffers =
+      buffer.PeakMemoryLogicalBuffers();
+  ASSERT_EQ(peak_buffers.size(), 2);
+
+  // The peak buffers should include the broadcast and one of the colocated
+  // buffers of the while (body param, condition param, body root, or the while
+  // itself).
+  const LogicalBuffer* bcast_buffer;
+  const LogicalBuffer* nonbcast_buffer;
+  if (peak_buffers[0]->instruction() == bcast) {
+    bcast_buffer = peak_buffers[0];
+    nonbcast_buffer = peak_buffers[1];
+  } else {
+    bcast_buffer = peak_buffers[1];
+    nonbcast_buffer = peak_buffers[0];
+  }
+  EXPECT_EQ(bcast_buffer->instruction(), bcast);
+  EXPECT_TRUE(
+      nonbcast_buffer->instruction() == copy ||
+      nonbcast_buffer->instruction() == while_op ||
+      nonbcast_buffer->instruction() == body->parameter_instruction(0) ||
+      nonbcast_buffer->instruction() == body->root_instruction() ||
+      nonbcast_buffer->instruction() == condition->parameter_instruction(0));
 }
 
 class WhileBufferAssignmentTest : public HloTestBase {

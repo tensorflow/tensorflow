@@ -657,5 +657,66 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_XTimesTwo) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(FunctionOptimizerTest, SpecializeFunction_PushDownConstInput) {
+  using test::function::NDef;
+
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+
+  // Mark MyMul as noinline.
+  (*mul_func.mutable_attr())["_noinline"].set_b(true);
+  std::vector<FunctionDef> function_library = {mul_func};
+
+  // Build a graph to compute y = MyMul(x, 2.0).
+  const Tensor kTwo = test::AsScalar<float>(2.0);
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("init", "NoOp", {}, {}, kDevice),
+       NDef("two", "Const", {"^init", "^x"},
+            {{"dtype", DT_FLOAT}, {"value", kTwo}}, kDevice),
+       NDef("y", "MyMul", {"x", "two"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, kDevice)},
+      function_library);
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Make sure that specialized function was added to the library and original
+  // function was removed.
+  ASSERT_EQ(1, output.library().function_size());
+
+  const FunctionDef& specialized = output.library().function(0);
+  EXPECT_EQ("MyMul_specialized_for_y", specialized.signature().name());
+  EXPECT_EQ(1, specialized.signature().input_arg_size());
+
+  // And 'y' node has control dependencies of a pushed down const node.
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "y" && count++) {
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+    }
+  }
+  EXPECT_EQ(1, count);
+
+  // And that graph evaluation yields the same result.
+  Tensor pi = test::AsScalar<float>(3.14f);
+  item.fetch = {"z"};
+  item.feed.emplace_back("x", pi);
+
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

@@ -364,7 +364,7 @@ class _RestructuredDataset(dataset_ops.Dataset):
         with the structure of `dataset`.
     """
     super(_RestructuredDataset, self).__init__()
-    self._dataset = dataset
+    self._input_dataset = dataset
 
     if not allow_unsafe_cast:
       # Validate that the types are compatible.
@@ -408,7 +408,7 @@ class _RestructuredDataset(dataset_ops.Dataset):
       self._output_classes = output_classes
 
   def _as_variant_tensor(self):
-    return self._dataset._as_variant_tensor()  # pylint: disable=protected-access
+    return self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
 
   @property
   def output_classes(self):
