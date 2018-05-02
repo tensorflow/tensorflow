@@ -994,15 +994,18 @@ class Estimator(object):
       summary.scalar('loss', estimator_spec.loss)
     ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
     worker_hooks.extend(hooks)
-    worker_hooks.extend([
-        training.NanTensorHook(estimator_spec.loss),
-        training.LoggingTensorHook(
-            {
-                'loss': estimator_spec.loss,
-                'step': global_step_tensor
-            },
-            every_n_iter=self._config.log_step_count_steps)
-    ])
+    worker_hooks.append(
+        training.NanTensorHook(estimator_spec.loss)
+    )
+    if self._config.log_step_count_steps is not None:
+      worker_hooks.append(
+          training.LoggingTensorHook(
+              {
+                  'loss': estimator_spec.loss,
+                  'step': global_step_tensor
+              },
+              every_n_iter=self._config.log_step_count_steps)
+      )
     worker_hooks.extend(estimator_spec.training_hooks)
 
     if not (estimator_spec.scaffold.saver or
