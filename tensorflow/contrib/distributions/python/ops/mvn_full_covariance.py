@@ -45,7 +45,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   The probability density function (pdf) is, with `@` as matrix multiplication,
 
   ```none
-  pdf(x; loc, covariance_matrix) = exp(-0.5 ||y||**2) / Z,
+  pdf(x; loc, covariance_matrix) = exp(-0.5 y) / Z,
   y = (x - loc)^T @ inv(covariance_matrix) @ (x - loc)
   Z = (2 pi)**(0.5 k) |det(covariance_matrix)|**(0.5).
   ```
@@ -54,8 +54,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
 
   * `loc` is a vector in `R^k`,
   * `covariance_matrix` is an `R^{k x k}` symmetric positive definite matrix,
-  * `Z` denotes the normalization constant, and,
-  * `||y||**2` denotes the squared Euclidean norm of `y`.
+  * `Z` denotes the normalization constant.
 
   Additional leading dimensions (if any) in `loc` and `covariance_matrix` allow
   for batch dimensions.

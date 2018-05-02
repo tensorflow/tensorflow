@@ -12,13 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdlib.h>
 #include <string.h>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/tensor_utils_impl.h"
+#include "tensorflow/contrib/lite/kernels/internal/round.h"
 
 #ifdef USE_NEON
 
@@ -245,6 +246,83 @@ void NeonClipVector(const float* vector, int v_size, float abs_limit,
   for (int v = postamble_start; v < v_size; v++) {
     result[v] = (abs_limit < vector[v]) ? abs_limit : vector[v];
     result[v] = (-abs_limit > result[v]) ? -abs_limit : result[v];
+  }
+}
+
+void NeonSymmetricQuantizeFloats(const float* values, const int size,
+                                 int8_t* quantized_values, float* min,
+                                 float* max, float* scaling_factor) {
+  // TODO(raziel): vectorize min/max calculation.
+  auto minmax = std::minmax_element(values, values + size);
+  *min = *minmax.first;
+  *max = *minmax.second;
+  const int kScale = 127;
+  const float range = std::max(std::abs(*min), std::abs(*max));
+  if (range == 0) {
+    memset(quantized_values, 0, size * sizeof(int8_t));
+    *scaling_factor = 1;
+    return;
+  }
+  *scaling_factor = kScale / range;
+
+  const int postamble_start =
+      size - (size & (2 * kFloatWeightsPerNeonLane - 1));
+
+  // Vectorized constants.
+  const float32x4_t q_factor_f32x4 = vmovq_n_f32(*scaling_factor);
+  const float32x4_t point5_f32x4 = vmovq_n_f32(0.5);
+  const float32x4_t zero_f32x4 = vmovq_n_f32(0.0);
+  const int32x4_t scale_i32x4 = vmovq_n_s32(kScale);
+  const int32x4_t neg_scale_i32x4 = vmovq_n_s32(-kScale);
+
+  for (int i = 0; i < postamble_start; i += 2 * kFloatWeightsPerNeonLane) {
+    // Implements the vectorized version of the following:
+    // const int32 quantized_value = static_cast<int32>(
+    //    std::round(*scaling_factor * values[i]));
+    // Since the vectorized round intrinsics (vrndqa_f32) is not supported
+    // on all Neon flavors, we use the following method for rounding: if (x
+    // < 0) (int)(x - 0.5) if (x >= 0) (int)(x + 0.5)
+    float32x4_t value0_f32x4 = vld1q_f32(&values[i]);
+    float32x4_t value1_f32x4 = vld1q_f32(&values[i + kFloatWeightsPerNeonLane]);
+    float32x4_t mul0_f32x4 = vmulq_f32(value0_f32x4, q_factor_f32x4);
+    float32x4_t mul1_f32x4 = vmulq_f32(value1_f32x4, q_factor_f32x4);
+
+    int32x4_t cmp_with_zero0_ui32x4 =
+        (int32x4_t)vcltq_f32(mul0_f32x4, zero_f32x4);  // NOLINT
+    int32x4_t cmp_with_zero1_ui32x4 =
+        (int32x4_t)vcltq_f32(mul1_f32x4, zero_f32x4);  // NOLINT
+
+    float32x4_t cmp_with_zero0_f32x4 = vcvtq_f32_s32(cmp_with_zero0_ui32x4);
+    float32x4_t cmp_with_zero1_f32x4 = vcvtq_f32_s32(cmp_with_zero1_ui32x4);
+    cmp_with_zero0_f32x4 = vaddq_f32(cmp_with_zero0_f32x4, point5_f32x4);
+    cmp_with_zero1_f32x4 = vaddq_f32(cmp_with_zero1_f32x4, point5_f32x4);
+
+    mul0_f32x4 = vaddq_f32(mul0_f32x4, cmp_with_zero0_f32x4);
+    mul1_f32x4 = vaddq_f32(mul1_f32x4, cmp_with_zero1_f32x4);
+
+    int32x4_t f2i0_i32x4 = vcvtq_s32_f32(mul0_f32x4);
+    int32x4_t f2i1_i32x4 = vcvtq_s32_f32(mul1_f32x4);
+
+    // Implements the vectorized version of the folowing block:
+    //  quantized_values[i] = std::min(kScale, std::max(-kScale,
+    //  quantized_value));
+    int32x4_t max0_i32x4 = vmaxq_s32(f2i0_i32x4, neg_scale_i32x4);
+    int32x4_t max1_i32x4 = vmaxq_s32(f2i1_i32x4, neg_scale_i32x4);
+    int32x4_t min0_i32x4 = vminq_s32(max0_i32x4, scale_i32x4);
+    int32x4_t min1_i32x4 = vminq_s32(max1_i32x4, scale_i32x4);
+
+    int16x4_t min0_16x4 = vmovn_s32(min0_i32x4);
+    int16x4_t min1_16x4 = vmovn_s32(min1_i32x4);
+
+    int16x8_t min_16x8 = vcombine_s16(min0_16x4, min1_16x4);
+    int8x8_t min_s8x8 = vqmovn_s16(min_16x8);
+    vst1_s8(&quantized_values[i], min_s8x8);
+  }
+
+  for (int i = postamble_start; i < size; ++i) {
+    const int32 quantized_value =
+        static_cast<int32>(TfLiteRound(*scaling_factor * values[i]));
+    quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
 }
 

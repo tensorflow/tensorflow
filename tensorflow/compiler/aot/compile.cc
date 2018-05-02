@@ -88,9 +88,8 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   // Converts the graph into an XLA computation, and compiles the
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
-  namespace gpu = perftools::gputools;
-  gpu::Platform* cpu_platform =
-      gpu::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
+  se::Platform* cpu_platform =
+      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
   xla::CompileOnlyClient* client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
           .ValueOrDie();
@@ -111,6 +110,7 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
+
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 

@@ -765,9 +765,9 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
     weighted_variance = math_ops.multiply(weighted_distsq, divisor)
 
     if not keep_dims:
-      weighted_mean = array_ops.squeeze(weighted_mean, squeeze_dims=axes)
+      weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
       weighted_variance = array_ops.squeeze(
-          weighted_variance, squeeze_dims=axes)
+          weighted_variance, axis=axes)
 
     if needs_cast:
       weighted_mean = math_ops.cast(weighted_mean, dtypes.float16)

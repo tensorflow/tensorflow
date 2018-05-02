@@ -16,30 +16,6 @@
 """Support for launching graphs and executing operations.
 
 See the @{$python/client} guide.
-
-@@Session
-@@InteractiveSession
-@@get_default_session
-@@OpError
-@@CancelledError
-@@UnknownError
-@@InvalidArgumentError
-@@DeadlineExceededError
-@@NotFoundError
-@@AlreadyExistsError
-@@PermissionDeniedError
-@@UnauthenticatedError
-@@ResourceExhaustedError
-@@FailedPreconditionError
-@@AbortedError
-@@OutOfRangeError
-@@UnimplementedError
-@@InternalError
-@@UnavailableError
-@@DataLossError
-@@exception_type_from_error_code
-@@error_code_from_exception_type
-@@raise_exception_on_not_ok_status
 """
 
 from __future__ import absolute_import

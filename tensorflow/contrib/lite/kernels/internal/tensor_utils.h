@@ -23,6 +23,14 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float Clip(float f, float abs_limit);
 
+// Quantizes a buffer of floating point values using a symmetric quantization
+// (i.e. linear quantization without an offset) to 8-bit signed integers.
+// It also outputs the range (min, max) of the floating point buffer, and the
+// scaling factor used to quantize the values.
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float* min, float* max,
+                             float* scaling_factor);
+
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector using a stride value provided in result_stride. 'result_stride' shows
 // how the number of elements between consecutive result values. For example
