@@ -478,6 +478,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data",
         "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
