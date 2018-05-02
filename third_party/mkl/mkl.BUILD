@@ -10,36 +10,29 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+filegroup(
     name = "mkl_headers",
     srcs = glob(["include/*"]),
-    includes = ["include"],
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name = "mkl_libs_linux",
-    srcs = [
-        "lib/libiomp5.so",
-        "lib/libmklml_intel.so",
-    ],
+load("@org_tensorflow//tensorflow:tensorflow.bzl",
+     "if_darwin",
+     "if_linux_x86_64",
+     "if_windows")
+
+filegroup(
+    name = "libmklml",
+    srcs = if_darwin(["lib/libmklml.dylib"])
+         + if_linux_x86_64(["lib/libmklml_intel.so"])
+         + if_windows(["lib/mklml.lib"]),
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name = "mkl_libs_darwin",
-    srcs = [
-        "lib/libiomp5.dylib",
-        "lib/libmklml.dylib",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "mkl_libs_windows",
-    srcs = [
-        "lib/libiomp5md.lib",
-        "lib/mklml.lib",
-    ],
+filegroup(
+    name = "libiomp5",
+    srcs = if_darwin(["lib/libiomp5.dylib"])
+         + if_linux_x86_64(["lib/libiomp5.so"])
+         + if_windows(["lib/libiomp5md.lib"]),
     visibility = ["//visibility:public"],
 )
