@@ -475,6 +475,38 @@ class SymbolicShapeRefiner {
               }
             }
           }
+        } else if (IsRank(*input)) {
+          if (c->inference_context->RankKnown(c->inference_context->input(0))) {
+            int32 rank =
+                c->inference_context->Rank(c->inference_context->input(0));
+            Tensor t(DT_INT32, {});
+            t.flat<int32>()(0) = rank;
+            const_values[dst_input] = t;
+            input_tensors[dst_input] = &const_values[dst_input];
+          }
+        } else if (IsSize(*input)) {
+          DimensionHandle size =
+              c->inference_context->NumElements(c->inference_context->input(0));
+          if (c->inference_context->ValueKnown(size)) {
+            int64 sz = c->inference_context->Value(size);
+            bool valid = false;
+            if (input->attr().at("T").type() == DT_INT32) {
+              if (sz < std::numeric_limits<int32>::max()) {
+                Tensor t(DT_INT32, {});
+                t.flat<int32>()(0) = sz;
+                const_values[dst_input] = t;
+                valid = true;
+              }
+            } else {
+              Tensor t(DT_INT64, {});
+              t.flat<int64>()(0) = sz;
+              const_values[dst_input] = t;
+              valid = true;
+            }
+            if (valid) {
+              input_tensors[dst_input] = &const_values[dst_input];
+            }
+          }
         }
 
         if (c->output_tensors_as_shapes.size() > src_output) {
