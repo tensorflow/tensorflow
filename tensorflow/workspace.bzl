@@ -355,24 +355,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1"
 
     tf_http_archive(
-        name = "protobuf_archive",
-        sha256 = PROTOBUF_SHA256,
-        strip_prefix = PROTOBUF_STRIP_PREFIX,
-        urls = PROTOBUF_URLS,
-    )
-
-    # We need to import the protobuf library under the names com_google_protobuf
-    # and com_google_protobuf_cc to enable proto_library support in bazel.
-    # Unfortunately there is no way to alias http_archives at the moment.
-    tf_http_archive(
         name = "com_google_protobuf",
-        sha256 = PROTOBUF_SHA256,
-        strip_prefix = PROTOBUF_STRIP_PREFIX,
-        urls = PROTOBUF_URLS,
-    )
-
-    tf_http_archive(
-        name = "com_google_protobuf_cc",
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
         urls = PROTOBUF_URLS,
@@ -885,20 +868,20 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # Needed by gRPC
     native.bind(
         name = "protobuf",
-        actual = "@protobuf_archive//:protobuf",
+        actual = "@com_google_protobuf//:protobuf",
     )
 
     # gRPC expects //external:protobuf_clib and //external:protobuf_compiler
     # to point to Protobuf's compiler library.
     native.bind(
         name = "protobuf_clib",
-        actual = "@protobuf_archive//:protoc_lib",
+        actual = "@com_google_protobuf//:protoc_lib",
     )
 
     # Needed by gRPC
     native.bind(
         name = "protobuf_headers",
-        actual = "@protobuf_archive//:protobuf_headers",
+        actual = "@com_google_protobuf//:protobuf_headers",
     )
 
     # Needed by Protobuf

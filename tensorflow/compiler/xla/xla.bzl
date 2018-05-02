@@ -13,10 +13,10 @@ def xla_proto_library(name, srcs=[], deps=[], visibility=None, testonly=0, **kwa
                    srcs=srcs,
                    deps=deps,
                    cc_libs = if_static(
-                       ["@protobuf_archive//:protobuf"],
-                       otherwise=["@protobuf_archive//:protobuf_headers"],
+                       ["@com_google_protobuf//:protobuf"],
+                       otherwise=["@com_google_protobuf//:protobuf_headers"],
                    ),
-                   protoc="@protobuf_archive//:protoc",
+                   protoc="@com_google_protobuf//:protoc",
                    testonly=testonly,
                    visibility=visibility,
                    **kwargs)

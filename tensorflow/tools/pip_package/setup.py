@@ -165,7 +165,7 @@ class InstallHeaders(Command):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
-    install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
+    install_dir = re.sub('/google/com_google_protobuf/src', '', install_dir)
 
     # Copy external code headers into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
@@ -230,7 +230,7 @@ else:
 headers = (
     list(find_files('*.h', 'tensorflow/core')) + list(
         find_files('*.h', 'tensorflow/stream_executor')) +
-    list(find_files('*.h', 'google/protobuf_archive/src')) + list(
+    list(find_files('*.h', 'google/com_google_protobuf/src')) + list(
         find_files('*', 'third_party/eigen3')) + list(
             find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +

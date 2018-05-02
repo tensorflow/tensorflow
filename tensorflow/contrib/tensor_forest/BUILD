@@ -42,7 +42,7 @@ cc_library(
         ":tree_utils",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )
@@ -387,7 +387,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -411,7 +411,7 @@ tf_cc_shared_object(
     deps = [
         ":forest_proto_impl",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

@@ -43,7 +43,7 @@ cc_library(
         "//tensorflow/core/platform/s3:aws_crypto",
         "//third_party/eigen3",
         "@aws",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )

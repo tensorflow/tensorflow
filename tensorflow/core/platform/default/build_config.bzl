@@ -1,6 +1,6 @@
 # Platform-specific build configurations.
 
-load("@protobuf_archive//:protobuf.bzl", "proto_gen")
+load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
@@ -127,7 +127,7 @@ def cc_proto_library(
         deps = [],
         cc_libs = [],
         include = None,
-        protoc = "@protobuf_archive//:protoc",
+        protoc = "@com_google_protobuf//:protoc",
         internal_bootstrap_hack = False,
         use_grpc_plugin = False,
         use_grpc_namespace = False,
@@ -227,7 +227,7 @@ def cc_proto_library(
     )
     native.cc_library(
         name = header_only_name,
-        deps = ["@protobuf_archive//:protobuf_headers"] + if_static([impl_name]),
+        deps = ["@com_google_protobuf//:protobuf_headers"] + if_static([impl_name]),
         hdrs = gen_hdrs,
         **kargs
     )
@@ -244,8 +244,8 @@ def py_proto_library(
         py_libs = [],
         py_extra_srcs = [],
         include = None,
-        default_runtime = "@protobuf_archive//:protobuf_python",
-        protoc = "@protobuf_archive//:protoc",
+        default_runtime = "@com_google_protobuf//:protobuf_python",
+        protoc = "@com_google_protobuf//:protoc",
         use_grpc_plugin = False,
         **kargs):
     """Bazel rule to create a Python protobuf library from proto source files
@@ -340,19 +340,19 @@ def tf_proto_library_cc(
         # libraries containing all the sources.
         proto_gen(
             name = cc_name + "_genproto",
-            protoc = "@protobuf_archive//:protoc",
+            protoc = "@com_google_protobuf//:protoc",
             visibility = ["//visibility:public"],
             deps = [s + "_genproto" for s in cc_deps],
         )
         native.cc_library(
             name = cc_name,
-            deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] + if_static([name + "_cc_impl"]),
+            deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_static([name + "_cc_impl"]),
             testonly = testonly,
             visibility = visibility,
         )
         native.cc_library(
             name = cc_name + "_impl",
-            deps = [s + "_impl" for s in cc_deps] + ["@protobuf_archive//:cc_wkt_protos"],
+            deps = [s + "_impl" for s in cc_deps] + ["@com_google_protobuf//:cc_wkt_protos"],
         )
 
         return
@@ -362,8 +362,8 @@ def tf_proto_library_cc(
         testonly = testonly,
         srcs = srcs,
         cc_libs = cc_libs + if_static(
-            ["@protobuf_archive//:protobuf"],
-            ["@protobuf_archive//:protobuf_headers"],
+            ["@com_google_protobuf//:protobuf"],
+            ["@com_google_protobuf//:protobuf_headers"],
         ),
         copts = if_not_windows([
             "-Wno-unknown-warning-option",
@@ -371,10 +371,10 @@ def tf_proto_library_cc(
             "-Wno-sign-compare",
         ]),
         default_header = default_header,
-        protoc = "@protobuf_archive//:protoc",
+        protoc = "@com_google_protobuf//:protoc",
         use_grpc_plugin = use_grpc_plugin,
         visibility = visibility,
-        deps = cc_deps + ["@protobuf_archive//:cc_wkt_protos"],
+        deps = cc_deps + ["@com_google_protobuf//:cc_wkt_protos"],
     )
 
 def tf_proto_library_py(
@@ -393,13 +393,13 @@ def tf_proto_library_py(
         # libraries containing all the sources.
         proto_gen(
             name = py_name + "_genproto",
-            protoc = "@protobuf_archive//:protoc",
+            protoc = "@com_google_protobuf//:protoc",
             visibility = ["//visibility:public"],
             deps = [s + "_genproto" for s in py_deps],
         )
         native.py_library(
             name = py_name,
-            deps = py_deps + ["@protobuf_archive//:protobuf_python"],
+            deps = py_deps + ["@com_google_protobuf//:protobuf_python"],
             testonly = testonly,
             visibility = visibility,
         )
@@ -409,12 +409,12 @@ def tf_proto_library_py(
         name = py_name,
         testonly = testonly,
         srcs = srcs,
-        default_runtime = "@protobuf_archive//:protobuf_python",
-        protoc = "@protobuf_archive//:protoc",
+        default_runtime = "@com_google_protobuf//:protobuf_python",
+        protoc = "@com_google_protobuf//:protoc",
         srcs_version = srcs_version,
         use_grpc_plugin = use_grpc_plugin,
         visibility = visibility,
-        deps = deps + py_deps + ["@protobuf_archive//:protobuf_python"],
+        deps = deps + py_deps + ["@com_google_protobuf//:protobuf_python"],
     )
 
 def tf_jspb_proto_library(**kwargs):
@@ -689,7 +689,7 @@ def tf_lib_proto_parsing_deps():
 
 def tf_lib_proto_compiler_deps():
     return [
-        "@protobuf_archive//:protoc_lib",
+        "@com_google_protobuf//:protoc_lib",
     ]
 
 def tf_additional_verbs_lib_defines():

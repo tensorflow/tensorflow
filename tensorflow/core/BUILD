@@ -426,7 +426,7 @@ cc_library(
         ":platform_base",
         ":platform_port",
         "//tensorflow/core/platform/default/build_config:protobuf",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -1661,9 +1661,9 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1694,9 +1694,9 @@ cc_library(
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1711,9 +1711,9 @@ cc_library(
         ":protos_all_cc_impl",
         ":stats_calculator_portable",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1752,7 +1752,7 @@ cc_library(
         ":protos_all_cc_impl",
         "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1776,9 +1776,9 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1800,9 +1800,9 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -2217,10 +2217,10 @@ cc_library(
         ":core_stringpiece",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
+        "@com_google_protobuf//:protobuf",
         "@snappy",
         "@zlib_archive//:zlib",
         "@double_conversion//:double-conversion",
-        "@protobuf_archive//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
 )
 
@@ -2548,10 +2548,10 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = [
             ":framework_internal_impl",
-            "@protobuf_archive//:protobuf",
+            "@com_google_protobuf//:protobuf",
         ],
         otherwise = [
-            "@protobuf_archive//:protobuf_headers",
+            "@com_google_protobuf//:protobuf_headers",
         ],
     ),
     alwayslink = 1,
@@ -2645,8 +2645,8 @@ tf_cuda_library(
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ] + if_static(
-        extra_deps = ["@protobuf_archive//:protobuf"],
-        otherwise = ["@protobuf_archive//:protobuf_headers"],
+        extra_deps = ["@com_google_protobuf//:protobuf"],
+        otherwise = ["@com_google_protobuf//:protobuf_headers"],
     ) + mkl_deps(),
     alwayslink = 1,
 )

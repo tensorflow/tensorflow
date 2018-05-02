@@ -67,7 +67,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "@boringssl//:ssl",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -86,7 +86,7 @@ cc_library(
         ":ignite_client",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )
