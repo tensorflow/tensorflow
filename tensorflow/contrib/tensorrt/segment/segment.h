@@ -63,7 +63,7 @@ tensorflow::Status SegmentGraph(
 // all the NodeDefs in that subgraph.
 // @return the status.
 tensorflow::Status SegmentGraph(
-    tensorflow::Graph* graph,
+    tensorflow::Graph* tf_graph,
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments);
 

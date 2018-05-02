@@ -30,13 +30,10 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
-#include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -206,7 +203,7 @@ static tensorflow::Status FillSubGraphEdgeSets(ConvertGraphParams* p) {
                              subgraph_outputs_set.begin(),
                              subgraph_outputs_set.end());
   return tensorflow::Status::OK();
-};
+}
 
 tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
   TF_RETURN_IF_ERROR(FillSubGraphEdgeSets(params));
@@ -345,18 +342,11 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   // optimization pass
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
-  tensorflow::GraphDef gdef;
 
-  // Layout optimization
-  item.graph = graph_def;
-  tensorflow::grappler::Cluster* cluster;
-
-  // virtual cluster
   tensorflow::DeviceProperties device_properties;
-
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
-  cluster =
+  tensorflow::grappler::Cluster* cluster =
       new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
 
   // single machine
@@ -366,6 +356,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   VLOG(2) << "gpus: " << num_gpus;
   tensorflow::RewriterConfig rw_cfg;
   tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  tensorflow::GraphDef gdef;
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster, item, &gdef));
   item.graph = gdef;
 
@@ -416,9 +407,12 @@ tensorflow::Status ConvertAfterShapes(
   for (auto s : segments) {
     total_num_nodes_in_segments += s.first.size();
   }
-  // We are creating the map here since cluster may not be available in all cases
+  // We create the map here since cluster may not be available in all cases.
   std::map<string, tensorflow::Device*> name_to_device_map;
   if (cluster) {
+    // TODO(aaroey): consider using DeviceSet::FindDeviceByName(), as in a
+    // distributed environment, devices from different workers can have same
+    // short name.
     for (const auto dm : cluster->GetDeviceSet()->devices()) {
       name_to_device_map[dm->name()] = dm;
     }

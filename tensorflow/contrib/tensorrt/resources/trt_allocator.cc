@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 
 #include "tensorflow/core/platform/logging.h"
+
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
+
 #if NV_TENSORRT_MAJOR > 2
 #include "cuda/include/cuda_runtime_api.h"
 
@@ -54,6 +56,7 @@ void TRTDeviceAllocator::free(void* memory) {
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
 #endif
 #endif
 #endif

@@ -28,6 +28,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+
 class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
  public:
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
@@ -37,17 +38,21 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
         maximum_batch_size_(-1),
         maximum_workspace_size_(-1) {
     VLOG(1) << "Constructing " << name_;
-  };
+  }
+
   string name() const override { return name_; };
+
   tensorflow::Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
                               config = nullptr) override;
 
   tensorflow::Status Optimize(tensorflow::grappler::Cluster* cluster,
                               const tensorflow::grappler::GrapplerItem& item,
                               GraphDef* optimized_graph) override;
+
   void Feedback(tensorflow::grappler::Cluster* cluster,
                 const tensorflow::grappler::GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
+
   void PrintDebugInfo(tensorflow::grappler::Cluster* cluster,
                       const tensorflow::grappler::GrapplerItem& item);
 
@@ -58,9 +63,11 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
   int maximum_batch_size_;
   int64_t maximum_workspace_size_;
 };
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
-#endif
-#endif
-#endif
+
+#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_TRT_OPTIMIZATION_PASS_H_
