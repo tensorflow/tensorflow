@@ -523,7 +523,7 @@ on your system:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools-8-0</code>
-</pre>
+</pre> 
 
 (replace 8-0 with 9-0 or 9-1 depending on whether you have installed cuda 8.0, 9.0, or 9.1)
 
