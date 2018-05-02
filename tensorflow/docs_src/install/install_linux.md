@@ -525,7 +525,7 @@ on your system:
   <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools-8-0</code>
 </pre>
 
-(replace 8-0 with 9-0 or 9-1 depending on whether you have cuda 8-0, 9-0, or 9-1)
+(replace 8-0 with 9-0 or 9-1 depending on whether you have installed cuda 8.0, 9.0, or 9.1)
 
 Then add this path to the `LD_LIBRARY_PATH` environmental variable:
 
