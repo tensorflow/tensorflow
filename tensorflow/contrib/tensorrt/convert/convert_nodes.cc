@@ -346,10 +346,11 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
       break;
     }
     case tensorflow::DataType::DT_HALF: {
-      Reorder2({k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
-               istrides, static_cast<Eigen::half*>(
-                             const_cast<void*>(oweights->GetValues())),
-               ostrides);
+      Reorder2(
+          {k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
+          istrides,
+          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
+          ostrides);
       break;
     }
     default:
@@ -481,7 +482,7 @@ class Converter {
     weights.SetValues(weight_store_->store_.back().data());
     return weights;
   }
-  bool isFP16() { return fp16_; };
+  bool isFP16() { return fp16_; }
   TRT_ShapedWeights get_temp_weights_like(const TRT_ShapedWeights& weights) {
     return this->get_temp_weights(weights.type_, weights.shape_);
   }
@@ -672,7 +673,7 @@ std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
     case OP_CATEGORY::RSQRT: {
       VLOG(2) << "RSQRT GETS DONE";
       return [](Eigen::half t) -> Eigen::half {
-        return Eigen::half(1.0 / sqrt(float(t)));
+        return Eigen::half(1.0 / sqrt(static_cast<float>(t)));
       };
     }
     case OP_CATEGORY::NEG:
@@ -2246,8 +2247,12 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   auto op_res = new tensorflow::tensorrt::TRTCalibrationResource();
   TF_CHECK_OK(op_rmgr->Create(calib_op_name, calib_op_name, op_res));
   op_res->logger_ = new tensorflow::tensorrt::Logger();
+  cudaSetDevice(s.cuda_gpu_id_);
   op_res->builder_ = nvinfer1::createInferBuilder(*(op_res->logger_));
-
+  op_res->allocator_ = s.allocator_;
+#if NV_TENSORRT_MAJOR > 3
+  op_res->builder_->setGpuAllocator(s.allocator_.get());
+#endif
   if (!op_res->builder_) {
     return tensorflow::errors::Internal(
         "failed to create TensorRT builder object");
@@ -2323,8 +2328,8 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
             << ", at node: " << node_name
             << "with output entry from shape_map: " << op_info_vec.size();
     // TODO(ben,jie): update TRT input format/dimension
-    nvinfer1::DimsCHW input_dim_psuedo_chw;
-    for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
+    nvinfer1::DimsCHW input_dim_pseudo_chw;
+    for (int i = 0; i < 3; i++) input_dim_pseudo_chw.d[i] = 1;
 
     // TODO(jie): TRT 3.x only support 4 dimensional input tensor.
     //            update the code once TRT 4.0 comes out.
@@ -2338,7 +2343,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       VLOG(2) << "dimension: " << i
               << " , size: " << op_info.shape().dim(i).size();
-      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
+      input_dim_pseudo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
     // TODO(ben,jie): proper way to restore input tensor name?
@@ -2349,7 +2354,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
 
     input_names.push_back(input_tensor_name);
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-        input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
+        input_tensor_name.c_str(), dtype, input_dim_pseudo_chw);
 
     if (!input_tensor)
       return tensorflow::errors::InvalidArgument(
@@ -2476,13 +2481,15 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   // Topological order is needed to build TRT network
 
   tensorflow::tensorrt::Logger trt_logger;
-
+  cudaSetDevice(s.cuda_gpu_id_);
   auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
   if (!trt_builder) {
     return tensorflow::errors::Internal(
         "Failed to create TensorRT builder object");
   }
-
+#if NV_TENSORRT_MAJOR > 3
+  trt_builder->setGpuAllocator(s.allocator_.get());
+#endif
   auto trt_network = infer_object(trt_builder->createNetwork());
   if (!trt_network) {
     return tensorflow::errors::Internal(
@@ -2565,8 +2572,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
             << ", at node: " << node_name
             << " with output entry from shape_map: " << op_info_vec.size();
     // TODO(ben,jie): update TRT input format/dimension
-    nvinfer1::DimsCHW input_dim_psuedo_chw;
-    for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
+    nvinfer1::DimsCHW input_dim_pseudo_chw;
+    for (int i = 0; i < 3; i++) input_dim_pseudo_chw.d[i] = 1;
 
     // TODO(jie): TRT 3.x only support 4 dimensional input tensor.
     //            update the code once TRT 4.0 comes out.
@@ -2580,7 +2587,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       VLOG(2) << "dimension: " << i
               << " , size: " << op_info.shape().dim(i).size();
-      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
+      input_dim_pseudo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
     // TODO(ben,jie): proper way to restore input tensor name?
@@ -2591,7 +2598,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
     input_names.push_back(input_tensor_name);
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-        input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
+        input_tensor_name.c_str(), dtype, input_dim_pseudo_chw);
 
     if (!input_tensor)
       return tensorflow::errors::InvalidArgument(
@@ -2707,9 +2714,11 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
                     .Attr("input_nodes", input_names)
                     .Attr("output_nodes", output_names)
                     .Attr("OutT", output_dtypes)
+                    .Device(s.device_name_)
                     .Finalize(s.trt_node);
 
-  VLOG(0) << status.ToString() << " finished op building";
+  VLOG(0) << status.ToString() << " finished op building for " << engine_name
+          << " on device " << s.device_name_;
 
   return tensorflow::Status::OK();
 }
