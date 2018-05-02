@@ -396,7 +396,6 @@ cc_library(
         ":toco_port",
         ":types_proto_cc",
         "//tensorflow/core:lib",
-        "//third_party/re2",
         "@com_google_absl//absl/strings",
         "@protobuf_archive//:protobuf_headers",
     ],
