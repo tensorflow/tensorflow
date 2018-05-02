@@ -257,8 +257,36 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   return kernel;
 }
 
+namespace {
+// Computes the maximum valid unroll factor for a given instruction.
+int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
+  int max_unroll_factor = hlo->GetModule()
+                              ->config()
+                              .debug_options()
+                              .xla_gpu_max_kernel_unroll_factor();
+
+  // Find the largest possible power of two to unroll by.
+  // TODO(kramerb): Make this smarter.
+  int64 num_elements = ShapeUtil::ElementsIn(hlo->shape());
+  for (int i = max_unroll_factor; i > 1; i /= 2) {
+    if (num_elements % i == 0) {
+      return i;
+    }
+  }
+
+  // Cannot unroll.
+  return 1;
+}
+}  // namespace
+
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
-  thunk_sequence_->emplace_back(BuildKernelThunk(hlo));
+  int unroll_factor = 1;
+  // Unfused elementwise operations are usually memory bound, unroll them.
+  if (hlo->IsElementwise()) {
+    unroll_factor = ComputeMaxUnrollFactor(hlo);
+  }
+
+  thunk_sequence_->emplace_back(BuildKernelThunk(hlo, unroll_factor));
   return IrEmitter::DefaultAction(hlo);
 }
 
@@ -537,23 +565,11 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  int max_unroll_factor = fusion->GetModule()
-                              ->config()
-                              .debug_options()
-                              .xla_gpu_max_kernel_unroll_factor();
-
-  // Find the largest possible power of two to unroll by.
-  // TODO(kramerb): Make this smarter.
   int unroll_factor = 1;
+  // TODO(kramerb): Unrolling multi-output loop fusions too.
   if (!fusion->IsMultiOutputFusion()) {
     CHECK(fusion->fusion_kind() == HloInstruction::FusionKind::kLoop);
-    int64 num_elements = ShapeUtil::ElementsIn(fusion->shape());
-    for (int i = max_unroll_factor; i > 1; i /= 2) {
-      if (num_elements % i == 0) {
-        unroll_factor = i;
-        break;
-      }
-    }
+    unroll_factor = ComputeMaxUnrollFactor(fusion);
   }
 
   thunk_sequence_->emplace_back(BuildKernelThunk(fusion, unroll_factor));
