@@ -65,6 +65,13 @@ class GraphOptimizationPass {
  public:
   virtual ~GraphOptimizationPass() {}
   virtual Status Run(const GraphOptimizationPassOptions& options) = 0;
+  void SetOptimizationPassName(string name) { _optimization_pass_name = name; }
+  string GetOptimizationPassName() { return _optimization_pass_name; }
+
+ private:
+  // The name of the opitmization pass, which is the same as the inherited class
+  // name.
+  string _optimization_pass_name;
 };
 
 // The key is a 'phase' number. Phases are executed in increasing
@@ -95,6 +102,10 @@ class OptimizationPassRegistry {
   // Returns the global registry of optimization passes.
   static OptimizationPassRegistry* Global();
 
+  // Prints registered optimization passes for debugging.
+  void LogGrouping(Grouping grouping, int vlog_level);
+  void LogAllGroupings(int vlog_level);
+
  private:
   std::map<Grouping, GraphOptimizationPasses> groups_;
 };
@@ -105,7 +116,9 @@ class OptimizationPassRegistration {
  public:
   OptimizationPassRegistration(OptimizationPassRegistry::Grouping grouping,
                                int phase,
-                               std::unique_ptr<GraphOptimizationPass> pass) {
+                               std::unique_ptr<GraphOptimizationPass> pass,
+                               string optimization_pass_name) {
+    pass->SetOptimizationPassName(optimization_pass_name);
     OptimizationPassRegistry::Global()->Register(grouping, phase,
                                                  std::move(pass));
   }
@@ -123,7 +136,8 @@ class OptimizationPassRegistration {
   static optimization_registration::OptimizationPassRegistration       \
       register_optimization_##ctr(                                     \
           grouping, phase,                                             \
-          std::unique_ptr<GraphOptimizationPass>(new optimization))
+          std::unique_ptr<GraphOptimizationPass>(new optimization()),  \
+          #optimization)
 
 }  // namespace tensorflow
 
