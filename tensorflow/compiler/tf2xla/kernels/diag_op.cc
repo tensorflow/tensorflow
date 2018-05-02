@@ -25,10 +25,10 @@ namespace tensorflow {
 namespace {
 
 // Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
-xla::StatusOr<xla::ComputationDataHandle> CreateDiagonal(
-    const xla::ComputationDataHandle& input, int64 last_dim_size,
+xla::StatusOr<xla::XlaOp> CreateDiagonal(
+    const xla::XlaOp& input, int64 last_dim_size,
     tensorflow::gtl::ArraySlice<int64> other_dims, XlaOpKernelContext* ctx,
-    xla::ComputationBuilder* builder) {
+    xla::XlaBuilder* builder) {
   // Create two matrices that have the following forms, and compare them:
   //
   // [[0, 0, 0, 0]            [[0, 1, 2, 3]
@@ -38,12 +38,11 @@ xla::StatusOr<xla::ComputationDataHandle> CreateDiagonal(
   //
   // This produces a predicate matrix of the right size, with "true" on the
   // diagonal.
-  xla::ComputationDataHandle iota;
+  xla::XlaOp iota;
   TF_RETURN_IF_ERROR(
       XlaHelpers::Iota(builder, DataType::DT_INT32, last_dim_size, &iota));
-  xla::ComputationDataHandle iota_broadcast =
-      builder->Broadcast(iota, {last_dim_size});
-  xla::ComputationDataHandle mask = builder->Eq(iota_broadcast, iota, {0});
+  xla::XlaOp iota_broadcast = builder->Broadcast(iota, {last_dim_size});
+  xla::XlaOp mask = builder->Eq(iota_broadcast, iota, {0});
 
   // If this is a batched diagonal, broadcast the mask across the other
   // dimensions.
@@ -65,8 +64,7 @@ xla::StatusOr<xla::ComputationDataHandle> CreateDiagonal(
   std::vector<int64> broadcast_dims(other_dims.begin(), other_dims.end());
   broadcast_dims.push_back(1LL);
   broadcast_dims.push_back(last_dim_size);
-  xla::ComputationDataHandle input_broadcast =
-      builder->Reshape(input, broadcast_dims);
+  xla::XlaOp input_broadcast = builder->Reshape(input, broadcast_dims);
 
   broadcast_dims[broadcast_dims.size() - 2] = last_dim_size;
   xla::PrimitiveType element_type;
@@ -74,7 +72,7 @@ xla::StatusOr<xla::ComputationDataHandle> CreateDiagonal(
       DataTypeToPrimitiveType(ctx->input_type(0), &element_type));
   auto broadcast_shape =
       xla::ShapeUtil::MakeShape(element_type, broadcast_dims);
-  xla::ComputationDataHandle zeros = Zeros(builder, broadcast_shape);
+  xla::XlaOp zeros = Zeros(builder, broadcast_shape);
 
   input_broadcast = builder->Add(input_broadcast, zeros);
   return builder->Select(mask, input_broadcast, zeros);
@@ -85,7 +83,7 @@ class DiagOp : public XlaOpKernel {
   explicit DiagOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
                 errors::InvalidArgument("Diag op must have at an input"));
@@ -96,7 +94,7 @@ class DiagOp : public XlaOpKernel {
                 errors::InvalidArgument("Expected 1 <= dims, got shape ",
                                         input_shape.DebugString()));
 
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaOp input = ctx->Input(0);
 
     // Picture:
     // tf.diag([1, 2, 3, 4]) ==> [[1, 0, 0, 0]
@@ -112,7 +110,7 @@ class DiagOp : public XlaOpKernel {
     auto diag_or_status =
         CreateDiagonal(input, size, /*other_dims=*/{}, ctx, builder);
     OP_REQUIRES_OK(ctx, diag_or_status.status());
-    xla::ComputationDataHandle diag = diag_or_status.ValueOrDie();
+    xla::XlaOp diag = diag_or_status.ValueOrDie();
 
     // Reshapes to the final shape.
     std::vector<int64> new_dims(dims.size() * 2);
@@ -131,7 +129,7 @@ class DiagPartOp : public XlaOpKernel {
   explicit DiagPartOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     const TensorShape input_shape = ctx->InputShape(0);
     auto dims = input_shape.dim_sizes();
@@ -158,7 +156,7 @@ class DiagPartOp : public XlaOpKernel {
       new_dims.push_back(dims[i]);
     }
 
-    xla::ComputationDataHandle diag = ctx->Input(0);
+    xla::XlaOp diag = ctx->Input(0);
 
     // TODO(b/30878775): use Slice with strides when supported, in place of
     // the Pad -> Reshape -> Slice.
@@ -199,7 +197,7 @@ class MatrixDiagOp : public XlaOpKernel {
   explicit MatrixDiagOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
                 errors::InvalidArgument("MatrixDiag op must have at an input"));
@@ -210,7 +208,7 @@ class MatrixDiagOp : public XlaOpKernel {
                 errors::InvalidArgument("Expected 1 <= dims, got shape ",
                                         input_shape.DebugString()));
 
-    xla::ComputationDataHandle diag = ctx->Input(0);
+    xla::XlaOp diag = ctx->Input(0);
 
     int last_dim = dims.size() - 1;
     int64 last_dim_size = input_shape.dim_size(last_dim);
@@ -232,7 +230,7 @@ class MatrixDiagPartOp : public XlaOpKernel {
   explicit MatrixDiagPartOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     const TensorShape input_shape = ctx->InputShape(0);
     auto dims = input_shape.dim_sizes();
@@ -241,7 +239,7 @@ class MatrixDiagPartOp : public XlaOpKernel {
                 errors::InvalidArgument("Expected 2 <= dims, got shape ",
                                         input_shape.DebugString()));
 
-    xla::ComputationDataHandle diag = ctx->Input(0);
+    xla::XlaOp diag = ctx->Input(0);
 
     int last_dim = dims.size() - 1;
     int64 last_dim_size = dims[last_dim];

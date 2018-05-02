@@ -211,11 +211,24 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 class SimpleGraphView {
  public:
+  // Build a graph view for the specified graphdef.
   Status Initialize(const GraphDef& graph) {
-    return Initialize(graph, true, true);
+    return Initialize(graph, nullptr, true, true);
   }
-  Status Initialize(const GraphDef& graph, bool dedup_inputs,
-                    bool dedup_outputs);
+  // Build a graph view for the specified graphdef augmented with the additional
+  // edges specified in 'extra_dependencies' if any. Note that
+  // extra_dependencies can be null.
+  Status Initialize(
+      const GraphDef& graph,
+      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+          extra_dependencies) {
+    return Initialize(graph, extra_dependencies, true, true);
+  }
+  Status Initialize(
+      const GraphDef& graph,
+      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+          extra_dependencies,
+      bool dedup_inputs, bool dedup_outputs);
 
   const GraphDef* graph() const { return graph_; }
   inline int num_nodes() const { return index_to_name_.size(); }
@@ -238,6 +251,7 @@ class SimpleGraphView {
   // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
   // walk continues to its children. It is assumed that *graph_ was not modified
   // after the call to Initialize().
+  // If `op_types_to_traverse` is empty the DFS will traverse any node type.
   void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
                         int node_idx, std::set<int>* nodes_found) const;
 

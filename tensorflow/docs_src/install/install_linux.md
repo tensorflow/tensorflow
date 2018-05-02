@@ -496,6 +496,8 @@ If you are new to machine learning, we recommend the following:
 *  [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course)
 *  @{$get_started/eager}
 
+If you are experienced with machine learning but new to TensorFlow, see
+@{$get_started/eager}.
 
 <a name="NVIDIARequirements"></a>
 ## TensorFlow GPU support

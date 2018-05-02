@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/lib/gtl/optional.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -1470,6 +1471,28 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
   out << ShapeUtil::HumanString(shape);
   return out;
+}
+
+/*static*/ size_t ShapeUtil::Hash(const Shape& shape) {
+  using tensorflow::hash;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = hash<PrimitiveType>()(shape.element_type());
+
+  if (shape.tuple_shapes().empty()) {
+    for (int64 dim : shape.dimensions()) {
+      hash_value = Hash64Combine(hash_value, hash<int64>()(dim));
+    }
+
+    hash_value = Hash64Combine(hash_value, LayoutUtil::Hash(shape.layout()));
+  } else {
+    hash_value = 0;
+    for (const Shape& subshape : shape.tuple_shapes()) {
+      hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(subshape));
+    }
+  }
+
+  return hash_value;
 }
 
 }  // namespace xla

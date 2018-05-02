@@ -53,7 +53,7 @@ class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {
-    LayoutAssignment layout_assignment(entry_computation_layout);
+    LayoutAssignment layout_assignment(*entry_computation_layout);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 };
@@ -285,7 +285,7 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   TF_CHECK_OK(computation_layout.mutable_result_layout()->CopyLayoutFromShape(
       result_shape));
 
-  LayoutAssignment layout_assignment(&computation_layout);
+  LayoutAssignment layout_assignment(computation_layout);
   AssignLayouts(module.get(), &computation_layout);
 
   // Layout assignment should have deep copied the result of the computation to
@@ -488,7 +488,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
  public:
   explicit OperandsMustBeTheSameLayoutAssignment(
       ComputationLayout* entry_computation_layout)
-      : LayoutAssignment(entry_computation_layout) {}
+      : LayoutAssignment(*entry_computation_layout) {}
 
  protected:
   Status PropagateBufferConstraint(
@@ -808,7 +808,7 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape());
-  LayoutAssignment layout_assignment(&computation_layout);
+  LayoutAssignment layout_assignment(computation_layout);
   Status error_status = layout_assignment.Run(module.get()).status();
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(

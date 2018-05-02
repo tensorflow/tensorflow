@@ -302,6 +302,11 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
     }
   }
 
+  bool IsInPreserveSet(const NodeDef& node) const {
+    return ctx().nodes_to_preserve->find(node.name()) !=
+           ctx().nodes_to_preserve->end();
+  }
+
  private:
   // Extended context required for ArithmeticOptimizer.
   const ArithmeticOptimizerContext ctx_ext_;
@@ -472,11 +477,6 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
   bool IsOnTheSameDevice(const OptimizedNodesGroup& group,
                          const NodeDef& node) const {
     return group.root_node->device() == node.device();
-  }
-
-  bool IsInPreserveSet(const NodeDef& node) const {
-    return ctx().nodes_to_preserve->find(node.name()) !=
-           ctx().nodes_to_preserve->end();
   }
 
   bool IsAlreadyOptimized(const NodeDef& node) const {
@@ -1340,65 +1340,143 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
 };
 
 // This optimization hoists the common prefix of unary ops of the inputs to
-// concat out of the concat.
-// For example: Concat([Exp(Sin(x)), Exp(Sin(y)), Exp(Sin(z))]) ->
-// Exp(Sin(Concat([x, y, z]))).
+// concat out of the concat, for example:
+//    Concat([Exp(Sin(x)), Exp(Sin(y)), Exp(Sin(z))])
+// becomes
+//    Exp(Sin(Concat([x, y, z]))).
+// Similarly, it will hoist the common postfix of unary ops into Split or
+// SplitV nodes, for example:
+//    [Exp(Sin(y)) for y in Split(x)]
+// becomes
+//    [y for y in Split(Exp(Sin(x))]
+//
 // TODO(rmlarsen): Support casting. We would have to change the type attribute
-// on the concat node.
-class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
+// on the concat/split node.
+// TODO(rmlarsen): Handle Enter/Exit.
+class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
  public:
-  explicit HoistCWiseUnaryFromConcatStage(
-      const GraphOptimizerContext& ctx,
-      const ArithmeticOptimizerContext& ctx_ext)
+  explicit HoistCWiseUnaryChainsStage(const GraphOptimizerContext& ctx,
+                                      const ArithmeticOptimizerContext& ctx_ext)
       : ArithmeticOptimizerStage("", ctx, ctx_ext) {}
 
-  ~HoistCWiseUnaryFromConcatStage() override = default;
+  ~HoistCWiseUnaryChainsStage() override = default;
+
+  struct ChainLink {
+    ChainLink() = default;
+    ChainLink(NodeDef* _node, int _port_origin)
+        : node(_node), port_origin(_port_origin) {}
+    NodeDef* node;    // Node in a chain.
+    int port_origin;  // Port on concat/split node from which this chain
+                      // originates.
+
+    bool operator<(const ChainLink& other) const {
+      if (port_origin < other.port_origin) {
+        return true;
+      } else if (port_origin > other.port_origin) {
+        return false;
+      } else {
+        return node->name() < other.node->name();
+      }
+    }
+  };
+
+  // We use an ordinary set sorted on port and node name, so the order, and
+  // hence the node name used for the hoisted chain, will be deterministic.
+  using ChainLinkSet = std::set<ChainLink>;
 
   bool IsSupported(const NodeDef* node) const override {
-    if (!IsConcat(*node)) return false;
-    const int n = node->attr().at("N").i();
-    return n > 1;
+    if (IsInPreserveSet(*node)) return false;
+    if (IsConcat(*node)) {
+      const int n = node->attr().at("N").i();
+      return n > 1;
+    } else if (IsSplit(*node) || IsSplitV(*node)) {
+      const int num_split = node->attr().at("num_split").i();
+      return num_split > 1 && !IsAlreadyOptimized(*node);
+    }
+    return false;
   }
 
-  Status TrySimplify(NodeDef* concat_node,
-                     string* simplified_node_name) override {
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    node_is_concat_ = IsConcat(*node);
     int prefix_length;
     std::set<string> ctrl_inputs;
+    ChainLinkSet tails;
     TF_RETURN_IF_ERROR(
-        FindCommonUnaryOpPrefix(*concat_node, &prefix_length, &ctrl_inputs));
-    if (prefix_length > 0) {
+        FindCommonUnaryOpChain(*node, &prefix_length, &tails, &ctrl_inputs));
+    if (prefix_length > 0 && !tails.empty()) {
       TF_RETURN_IF_ERROR(
-          HoistUnaryOpPrefix(prefix_length, &ctrl_inputs, concat_node));
-      AddToOptimizationQueue(concat_node);
+          HoistUnaryOpChain(prefix_length, tails, &ctrl_inputs, node));
     }
     return Status::OK();
   }
 
  private:
-  void RemoveControlInputs(std::set<string>* removed_ctrl_inputs,
-                           NodeDef* node) const {
-    const int num_inputs = node->input_size();
-    for (int idx = num_inputs - 1; idx >= 0; --idx) {
-      const string& input = node->input(idx);
-      if (IsControlInput(input)) {
-        removed_ctrl_inputs->insert(input);
-        ctx().node_map->RemoveOutput(NodeName(input), node->name());
-        node->mutable_input()->RemoveLast();
-      } else {
-        break;
+  // Returns the length of the common unary chain of ops that can be
+  // hoisted to the other side of concat or split.
+  Status FindCommonUnaryOpChain(const NodeDef& root_node, int* prefix_length,
+                                ChainLinkSet* tails,
+                                std::set<string>* ctrl_inputs) const {
+    *prefix_length = 0;
+    // Follow the chains starting at each concat input or split output as long
+    // as all the following conditions hold:
+    //   1. The ops in all chains are the same.
+    //   2. The ops are unary elemenwise op.
+    //   3. The op output has only a single consumer (concat only).
+    ChainLinkSet cur_tails;
+    TF_RETURN_IF_ERROR(InitializeChains(root_node, &cur_tails));
+    if (cur_tails.size() < 2) {
+      return Status::OK();
+    }
+    ctrl_inputs->clear();
+    bool stop = false;
+    while (!stop && !cur_tails.empty() &&
+           OpsAreSafeToHoist(root_node, cur_tails)) {
+      // We found one more link that can be hoisted.
+      ++(*prefix_length);
+      tails->swap(cur_tails);
+      GatherControlInputs(ctrl_inputs, *tails);
+
+      // Advance tail pointers to the next level.
+      TF_RETURN_IF_ERROR(AdvanceTails(*tails, &cur_tails, &stop));
+    }
+    return Status::OK();
+  }
+
+  // Hoists the chains to the other side of concat or split and attaches the
+  // control inputs gathered from them to the concat or split node.
+  Status HoistUnaryOpChain(const int prefix_length, const ChainLinkSet& tails,
+                           std::set<string>* ctrl_inputs, NodeDef* root_node) {
+    if (tails.empty()) {
+      return Status::OK();
+    }
+    AddControlInputs(ctrl_inputs, root_node);
+    AddToOptimizationQueue(root_node);
+    optimized_nodes_.insert(root_node->name());
+    if (node_is_concat_) {
+      return HoistChainForConcat(prefix_length, tails, root_node);
+    } else {
+      return HoistChainForSplit(prefix_length, tails, root_node);
+    }
+  }
+
+  void GatherControlInputs(std::set<string>* ctrl_inputs,
+                           const ChainLinkSet& ops) const {
+    for (const auto& link : ops) {
+      const NodeDef* node = link.node;
+      for (int i = node->input_size() - 1; i >= 0; --i) {
+        const string& input = node->input(i);
+        if (!IsControlInput(input)) break;
+        ctrl_inputs->insert(input);
       }
     }
   }
 
   void AddControlInputs(std::set<string>* new_ctrl_inputs,
                         NodeDef* node) const {
-    for (int idx = node->input_size() - 1; idx >= 0; --idx) {
-      const string& existing_input = node->input(idx);
-      if (IsControlInput(existing_input)) {
-        new_ctrl_inputs->erase(existing_input);
-      } else {
-        break;
-      }
+    for (int i = node->input_size() - 1; i >= 0; --i) {
+      const string& existing_input = node->input(i);
+      if (!IsControlInput(existing_input)) break;
+      new_ctrl_inputs->erase(existing_input);
     }
     for (const string& new_input : *new_ctrl_inputs) {
       ctx().node_map->AddOutput(NodeName(new_input), node->name());
@@ -1406,113 +1484,193 @@ class HoistCWiseUnaryFromConcatStage : public ArithmeticOptimizerStage {
     }
   }
 
-  // Returns the length of the common unary prefix chain of ops that can be
-  // hoisted out of concat.
-  Status FindCommonUnaryOpPrefix(const NodeDef& concat_node, int* prefix_length,
-                                 std::set<string>* ctrl_inputs) const {
-    *prefix_length = 0;
-    const int n = concat_node.attr().at("N").i();
-    // Follow the chains backwards from each concat input as long as all the
-    // following conditions hold:
-    //   1. The ops in all chains are the same.
-    //   2. The op is a unary elemenwise op.
-    //   3. The op output has only a single consumer.
-    std::vector<NodeDef*> tail(n, nullptr);
-    const int start = concat_node.op() == "Concat" ? 1 : 0;
-    const int end = start + n;
-    // Set up tail pointers to point to the immediate inputs to Concat.
-    for (int i = start; i < end; ++i) {
-      if (IsControlInput(concat_node.input(i))) {
-        return errors::FailedPrecondition("Got control input ",
-                                          concat_node.input(i),
-                                          " where normal input was expected.");
-      }
-      TF_RETURN_IF_ERROR(GetInputNode(concat_node.input(i), &tail[i - start]));
-    }
-
-    bool stop = false;
-    ctrl_inputs->clear();
-    while (!stop) {
-      const NodeDef* tail0 = tail[0];
-      if (!IsUnaryElementWise(*tail0)) break;
-      for (int chain = 0; chain < n; ++chain) {
-        // TODO(rmlarsen): Allow and hoist outgoing control edges.
-        if (tail[chain]->op() != tail0->op() ||
-            ctx().node_map->GetOutputs(tail[chain]->name()).size() > 1) {
-          stop = true;
-          break;
+  Status InitializeChains(const NodeDef& node, ChainLinkSet* tails) const {
+    if (node_is_concat_) {
+      // Handle concat nodes by looking backwards in the graph.
+      const int n = node.attr().at("N").i();
+      const int start = node.op() == "Concat" ? 1 : 0;
+      const int end = start + n;
+      // Set up tail pointers to point to the immediate inputs to Concat.
+      for (int input_port = start; input_port < end; ++input_port) {
+        if (IsControlInput(node.input(input_port))) {
+          return errors::FailedPrecondition(
+              "Got control input ", node.input(input_port),
+              " where normal input was expected.");
         }
+        NodeDef* tail;
+        TF_RETURN_IF_ERROR(GetInputNode(node.input(input_port), &tail));
+        tails->insert(ChainLink(tail, input_port));
       }
-      if (stop) break;
-      // We found one more op that can be hoisted.
-      ++(*prefix_length);
-      for (int chain = 0; chain < n; ++chain) {
-        RemoveControlInputs(ctrl_inputs, tail[chain]);
-      }
-      // Advance tail pointers to the next level.
-      for (int chain = 0; chain < n; ++chain) {
-        if (tail[chain]->input_size() == 0 ||
-            IsControlInput(tail[chain]->input(0))) {
-          stop = true;
-          break;
+      return Status::OK();
+    } else {
+      // Handle split nodes by looking forwards in the graph.
+      const auto& outputs = ctx().node_map->GetOutputs(node.name());
+      for (NodeDef* output : outputs) {
+        if (IsControlInput(output->input(0))) continue;
+        int port;
+        const string node_name = ParseNodeName(output->input(0), &port);
+        if (node_name == node.name()) {
+          tails->insert(ChainLink(output, port));
         } else {
-          NodeDef* new_tail = nullptr;
-          TF_RETURN_IF_ERROR(GetInputNode(tail[chain]->input(0), &new_tail));
-          tail[chain] = new_tail;
+          // This output node has a non-control input other than the split node,
+          // abort.
+          tails->clear();
+          return Status::OK();
         }
       }
     }
     return Status::OK();
   }
 
-  Status HoistUnaryOpPrefix(const int prefix_length,
-                            std::set<string>* ctrl_inputs,
-                            NodeDef* concat_node) {
-    const int n = concat_node->attr().at("N").i();
-    const int start = concat_node->op() == "Concat" ? 1 : 0;
-    const int end = start + n;
-    const std::set<NodeDef*> consumers =
-        ctx().node_map->GetOutputs(concat_node->name());
-    AddControlInputs(ctrl_inputs, concat_node);
-    for (int chain = 0; chain < (end - start); ++chain) {
-      NodeDef* tail = nullptr;
-      const string concat_input = concat_node->input(chain + start);
-      for (int distance = 0; distance < prefix_length; ++distance) {
-        if (distance == 0) {
-          TF_RETURN_IF_ERROR(GetInputNode(concat_input, &tail));
-        } else {
-          TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &tail));
+  bool OpsAreSafeToHoist(const NodeDef& root_node,
+                         const ChainLinkSet& ops) const {
+    if (ops.empty()) return true;
+    const NodeDef* op0 = ops.begin()->node;
+    if (!IsUnaryElementWise(*op0)) return false;
+    for (const auto& link : ops) {
+      const NodeDef* op = link.node;
+      if (op->device() != root_node.device() || op->op() != op0->op() ||
+          IsInPreserveSet(*op)) {
+        return false;
+      }
+      if (node_is_concat_ &&
+          ctx().node_map->GetOutputs(op->name()).size() > 1) {
+        // TODO(rmlarsen): Allow and hoist outgoing control edges.
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Status AdvanceTails(const ChainLinkSet& tails, ChainLinkSet* new_tails,
+                      bool* stop) const {
+    *stop = true;
+    new_tails->clear();
+    for (const auto& link : tails) {
+      const NodeDef* tail = link.node;
+      if (node_is_concat_) {
+        if (tail->input_size() == 0 || IsControlInput(tail->input(0))) {
+          return Status::OK();
+        }
+        NodeDef* new_tail;
+        TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &new_tail));
+        // Remember original port.
+        new_tails->insert(ChainLink(new_tail, link.port_origin));
+      } else {
+        for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
+          int port;
+          const string node_name = ParseNodeName(new_tail->input(0), &port);
+          if (node_name != tail->name()) {
+            return Status::OK();
+          }
+          // Skip control outputs.
+          if (port >= 0) {
+            // Remember original port.
+            new_tails->insert(ChainLink(new_tail, link.port_origin));
+          }
         }
       }
+    }
+    *stop = false;
+    return Status::OK();
+  }
 
+  Status HoistChainForConcat(const int prefix_length, const ChainLinkSet& tails,
+                             NodeDef* concat_node) {
+    const string& concat_name = concat_node->name();
+    const int first_input = concat_node->op() == "Concat" ? 1 : 0;
+    for (const auto& link : tails) {
+      NodeDef* tail = CHECK_NOTNULL(link.node);
+      const int concat_port = link.port_origin;
+      CHECK_GE(concat_port, 0);
+      CHECK_LT(concat_port, concat_node->input_size());
+      const string concat_input = concat_node->input(concat_port);
       // Hook the node following tail directly into the concat node.
       const string tail_input = tail->input(0);
-      concat_node->set_input(chain + start, tail_input);
-      ctx().node_map->UpdateInput(concat_node->name(), concat_input,
-                                  tail_input);
+      concat_node->set_input(concat_port, tail_input);
+      ctx().node_map->UpdateInput(concat_name, concat_input, tail_input);
 
-      if (chain == 0) {
-        // Reuse nodes in the first chain to process output of concat.
-        tail->set_input(0, concat_node->name());
-        ctx().node_map->UpdateInput(tail->name(), tail_input,
-                                    concat_node->name());
-
+      if (concat_port == first_input) {
         // Update the consumers of concat to consume the end of the chain
         // instead.
-        for (NodeDef* consumer : consumers) {
-          for (int idx = 0; idx < consumer->input_size(); ++idx) {
-            if (consumer->input(idx) == concat_node->name()) {
-              consumer->set_input(idx, concat_input);
-              ctx().node_map->UpdateInput(consumer->name(), concat_node->name(),
-                                          concat_input);
-            }
-          }
-          AddToOptimizationQueue(consumer);
-        }
+        UpdateConsumers(concat_node, concat_input);
+        // Reuse nodes in the first chain to process output of concat.
+        tail->set_input(0, concat_name);
+        ctx().node_map->UpdateInput(tail->name(), tail_input, concat_name);
       }
     }
     return Status::OK();
   }
+
+  Status HoistChainForSplit(const int prefix_length, const ChainLinkSet& tails,
+                            NodeDef* split_node) {
+    // Create a new chain before the split node to process the input tensor.
+    const string& split_name = split_node->name();
+    auto root_scope_and_name = ParseNodeScopeAndName(split_name);
+
+    // We use the first tail node in the set as a template to get the list of
+    // ops to apply (starting from the end).
+    NodeDef* cur_tail = tails.begin()->node;
+    NodeDef* cur_copy = AddCopyNode(
+        OptimizedNodeName(root_scope_and_name, cur_tail->name()), cur_tail);
+    cur_copy->clear_input();
+
+    // Update the split to take its input from the tail of the new chain.
+    const int value_slot = split_node->op() == "SplitV" ? 0 : 1;
+    const string orig_input = split_node->input(value_slot);
+    split_node->set_input(value_slot, cur_copy->name());
+    ctx().node_map->UpdateInput(split_node->name(), orig_input,
+                                cur_copy->name());
+    TF_RETURN_IF_ERROR(GetInputNode(cur_tail->input(0), &cur_tail));
+
+    // Now walk backwards creating the rest of the chain.
+    while (cur_tail != split_node) {
+      NodeDef* new_copy = AddCopyNode(
+          OptimizedNodeName(root_scope_and_name, cur_tail->name()), cur_tail);
+      new_copy->clear_input();
+      cur_copy->add_input(new_copy->name());
+      ctx().node_map->AddOutput(new_copy->name(), cur_copy->name());
+      cur_copy = new_copy;
+      TF_RETURN_IF_ERROR(GetInputNode(cur_tail->input(0), &cur_tail));
+    }
+    // Connect the original input to the head of the new chain.
+    cur_copy->add_input(orig_input);
+    ctx().node_map->UpdateOutput(NodeName(orig_input), split_name,
+                                 cur_copy->name());
+
+    // Connect all consumers of the tail nodes directly to the
+    // output port of Split from which the chain started.
+    for (const auto& link : tails) {
+      UpdateConsumers(link.node,
+                      link.port_origin == 0
+                          ? split_name
+                          : strings::StrCat(split_name, ":", link.port_origin));
+    }
+    return Status::OK();
+  }
+
+  // Update consumers of node to take new_input as input instead.
+  void UpdateConsumers(NodeDef* node, const string& new_input) {
+    const string& node_name = node->name();
+    const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
+    for (NodeDef* consumer : consumers) {
+      for (int i = 0; i < consumer->input_size(); ++i) {
+        if (consumer->input(i) == node_name) {
+          consumer->set_input(i, new_input);
+          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
+        }
+      }
+      AddToOptimizationQueue(consumer);
+    }
+  }
+
+  bool IsAlreadyOptimized(const NodeDef& node) const {
+    return optimized_nodes_.find(node.name()) != optimized_nodes_.end();
+  }
+
+ private:
+  bool node_is_concat_;
+  std::unordered_set<string> optimized_nodes_;
 };
 
 // Performs the conversion:
@@ -2200,8 +2358,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
-  if (options_.hoist_unary_out_of_concat)
-    pipeline.AddStage<HoistCWiseUnaryFromConcatStage>(ctx, ctx_ext);
+  if (options_.hoist_cwise_unary_chains)
+    pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)
     pipeline.AddStage<SqrtDivToRsqrtMulStage>(ctx, ctx_ext);
 
@@ -2304,5 +2462,5 @@ void ArithmeticOptimizer::Feedback(Cluster* /*cluster*/,
   // Nothing to do for ArithmeticOptimizer.
 }
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

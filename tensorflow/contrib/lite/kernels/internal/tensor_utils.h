@@ -31,16 +31,34 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float* min, float* max,
                              float* scaling_factor);
 
-// Multiply a matrix by a batch vector, and store results in a batch-size
-// vector using a stride value provided in result_stride. 'result_stride' shows
-// how the number of elements between consecutive result values. For example
-// result_stride = 1, will cause the output to look like this:
-// [O_1, 0_2, ... O_rows] in memory, but result_stride = 3, will cause it to be
-// arranged like this in memory: [O_1, x, x, 0_2, x, x, ..., O_rows]
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer, using a stride value
+// provided in result_stride (the number of elements between consecutive result
+// values). For example result_stride = 1, will cause the output to look like
+// this:
+// [O_1, 0_2, ... O_rows]
+// but result_stride = 3, will cause it to be arranged like this in memory:
+// [O_1, x, x, 0_2, x, x, ..., O_rows]
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
                                          int n_batch, float* result,
                                          int result_stride);
+
+// Same as the function above, but for values quantized using symmetric
+// quantization (e.g. by calling SymmetricQuantizeFloats).
+// The passed scaling factors is a buffer of the quantization scaling factors
+// that will be used to dequentize the products into the final result buffer.
+// These scaling factors are the multiplication of the matrix scaling factor
+// by the vector's scaling factor, one per batch (i.e. this allows quantizing
+// each batch in the batch-vector matrix independently).
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride);
 
 // Cwise product of two vectors.
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,

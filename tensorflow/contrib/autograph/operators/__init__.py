@@ -19,11 +19,19 @@ conditionals and loops, implemented in functional form, using for example
 closures for the body.
 """
 
+# Naming conventions:
+#  * operator names match the name usually used for the respective Python
+#    idiom; examples: for_stmt, list_append
+#  * operator arguments match either of:
+#    - the corresponding Python AST attribute (e.g. the condition of an if
+#      statement is called test) if the operator represents an AST construct
+#    - the names used in the Python docs, if the operator is a function (e.g.
+#      list_ and x for append, see
+#      https://docs.python.org/3.7/tutorial/datastructures.html)
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# TODO(mdan): Add a container for implementation-specific toggles (throughout).
-
-from tensorflow.contrib.autograph.operators.control_flow import for_loop
-from tensorflow.contrib.autograph.operators.control_flow import while_loop
+from tensorflow.contrib.autograph.operators.control_flow import for_stmt
+from tensorflow.contrib.autograph.operators.control_flow import while_stmt

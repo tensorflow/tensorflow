@@ -256,18 +256,14 @@ typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
   return root;
 }
 
-bool IsQueue(const NodeDef& node) {
-  return str_util::EndsWith(node.op(), "QueueV2");
+bool IsEnqueue(const NodeDef& n) {
+  return (n.op().find("Enqueue") != std::string::npos &&
+          n.op().find("EnqueueMany") == std::string::npos);
 }
 
-// Returns true if the node is an Enter op AND its input is a Queue.
-bool IsEnterWithQueue(const NodeDef& node, const GraphView& graph) {
-  if (IsEnter(node)) {
-    GraphView::InputPort input(&node, 0);
-    GraphView::OutputPort fanin = graph.GetRegularFanin(input);
-    return IsQueue(*fanin.node);
-  }
-  return false;
+bool IsDequeue(const NodeDef& n) {
+  return (n.op().find("Dequeue") != std::string::npos &&
+          n.op().find("DequeueMany") == std::string::npos);
 }
 
 bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
@@ -386,7 +382,7 @@ class TopoQueue {
   std::set<const NodeDef*, CompareNodes> queue_;
 };
 
-// Merge and relax symbolic shapes.
+// Processes symbolic shapes.
 // Each symbolic shape or dimension is represented by a handle. Unlike the TF
 // shape refiner which creates new handles every time it processes an unknown
 // shape/dimension, the symbolic shape refiner assigns a specific handle to each
@@ -428,7 +424,8 @@ class SymbolicShapeRefiner {
     }
     return it->second.inference_context.get();
   }
-  Status UpdateNode(const NodeDef* node, bool relax, bool* refined) {
+
+  Status UpdateNode(const NodeDef* node, bool* refined) {
     NodeContext* node_context = GetNodeContext(node);
     if (node_context == nullptr) {
       TF_RETURN_IF_ERROR(AddNode(node));
@@ -519,8 +516,12 @@ class SymbolicShapeRefiner {
       }
     }
 
+    // Make sure we schedule the fanout of resources (which have no input)
+    // whenever the resources are updated.
+    *refined |= inference_context->num_inputs() == 0;
+
     if (!*refined) {
-      // No input shape has changed, we're done
+      // No input shape has changed, we're done.
       return Status::OK();
     }
 
@@ -572,51 +573,6 @@ class SymbolicShapeRefiner {
              dim.dim_index;
     }
   };
-
-  // Compute the shape of the tensors outputed by node 'node' at output port
-  // 'port_index' as the intersection of shape1 and shape2.
-  ShapeHandle OutputAsIntersection(const NodeDef* node, int port_index,
-                                   ShapeHandle shape1, ShapeHandle shape2) {
-    if (shape1.SameHandle(shape2)) {
-      return shape1;
-    }
-    InferenceContext* ctx = GetContext(node);
-    ShapeHandle merged = shape1;
-    if (!ctx->RankKnown(shape2) && !ctx->RankKnown(shape1)) {
-      // Return either one since they're expected to represent the same value.
-      return shape1;
-    } else if (!ctx->RankKnown(shape2) && ctx->RankKnown(shape1)) {
-      return shape1;
-    } else if (ctx->RankKnown(shape2) && !ctx->RankKnown(shape1)) {
-      return shape2;
-    } else {
-      const int rank = ctx->Rank(shape1);
-      if (ctx->Rank(shape2) != rank) {
-        // We detected an inconsistency, return an unknown shape. This can
-        // happen in the fanout of a merge node since during the initial
-        // propagation we optimistically assume that all the inputs to the merge
-        // node have the same shape.
-        return GetUnknownOutputShape(node, port_index);
-      }
-      for (int d = 0; d < rank; ++d) {
-        if (!ctx->Dim(shape1, d).SameHandle(ctx->Dim(shape2, d))) {
-          if (ctx->Value(ctx->Dim(shape1, d)) !=
-              ctx->Value(ctx->Dim(shape2, d))) {
-            DimensionHandle new_dim;
-            if (ctx->Value(ctx->Dim(shape1, d)) < 0) {
-              new_dim = ctx->Dim(shape2, d);
-            } else if (ctx->Value(ctx->Dim(shape2, d)) < 0) {
-              new_dim = ctx->Dim(shape1, d);
-            } else {
-              new_dim = GetUnknownOutputDim(node, port_index, d);
-            }
-            TF_CHECK_OK(ctx->ReplaceDim(merged, d, new_dim, &merged));
-          }
-        }
-      }
-    }
-    return merged;
-  }
 
   // Compute the shape of the tensors outputed by node 'node' at output port
   // 'port_index' as the union of shape1 and shape2.
@@ -822,6 +778,7 @@ class SymbolicShapeRefiner {
         status.Update(SetUnknownShape(&node, output_port));
       }
     }
+
     return status;
   }
 
@@ -884,29 +841,6 @@ class SymbolicShapeManager {
   DisjointSet<shape_inference::DimensionHandle> dims_;
 };
 
-Status GraphProperties::MergeEnqueueShapesAndTypes(
-    SymbolicShapeRefiner* shape_refiner, const NodeDef* qnode,
-    const std::vector<ShapeAndType>& shapes_and_types,
-    std::vector<ShapeAndType>* queue_shapes_and_types) {
-  if (shapes_and_types.size() != queue_shapes_and_types->size()) {
-    return errors::InvalidArgument(
-        "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
-        "  vs ", queue_shapes_and_types->size());
-  }
-  for (size_t i = 0; i < shapes_and_types.size(); ++i) {
-    const ShapeAndType& a = shapes_and_types[i];
-    ShapeAndType& b = (*queue_shapes_and_types)[i];
-    if (a.dtype != b.dtype) {
-      return errors::InvalidArgument("Enqueue nodes mixed dtypes for tensor ",
-                                     i, ": ", DataTypeString(a.dtype), " vs ",
-                                     DataTypeString(b.dtype));
-    }
-
-    b.shape = shape_refiner->OutputAsIntersection(qnode, i, a.shape, b.shape);
-  }
-  return Status::OK();
-}
-
 Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
     SymbolicShapeRefiner* shape_refiner, const NodeDef* qnode,
     const std::vector<ShapeAndType>& shapes_and_types,
@@ -930,13 +864,10 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
   return Status::OK();
 }
 
-// If a Merge node has a NextIteration node as an input then that input will
-// try to forward an UnknownShape at graph construction time. However, the
-// Merge shape function will always propagate an UnknownShape if any of its
-// inputs are UnknownShapes. So we need to ignore the input from NextIteration
-// nodes to propagate any known shape from the Merge node.
+// Compute the output shape of the merge node as the union of the available
+// input shapes.
 Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
-                                        const NodeDef* node, bool relax,
+                                        const NodeDef* node,
                                         bool* new_shapes) const {
   InferenceContext* c = shape_refiner->GetContext(node);
   if (!c) {
@@ -955,15 +886,8 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   bool out_initialized = false;
   for (const GraphView::Edge fanin :
        shape_refiner->graph().GetFaninEdges(*node, false)) {
-    // Skip back edges during the initial propagation phase. This is equivalent
-    // to assuming that all the inputs to the merge nodes are fed by the same
-    // shape, and will be corrected as needed in the relaxation phase.
-    if (!relax && IsNextIteration(*fanin.src.node)) {
-      continue;
-    }
-
     InferenceContext* in = shape_refiner->GetContext(fanin.src.node);
-    if (!relax && !in) {
+    if (!in) {
       // Handling a loop for the first time, the back edge won't have any shape
       // info.
       continue;
@@ -976,11 +900,7 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
       out = input;
       continue;
     }
-    if (relax) {
-      out = shape_refiner->OutputAsUnion(node, 0, input, out);
-    } else {
-      out = shape_refiner->OutputAsIntersection(node, 0, input, out);
-    }
+    out = shape_refiner->OutputAsUnion(node, 0, input, out);
   }
 
   if (*new_shapes || !shape_refiner->EquivalentShapes(out, c->output(0))) {
@@ -991,14 +911,12 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   return Status::OK();
 }
 
-// Manually propagate the input shape for Enter nodes and update any Merge node
-// outputs.
+// Manually propagate the input shape for Enter nodes.
 Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
-                                    const NodeDef* node, bool relax,
-                                    bool* new_shapes) {
+                                    const NodeDef* node, bool* new_shapes) {
   auto enter_ctx = shape_refiner->GetContext(node);
   if (!enter_ctx) {
-    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(node, relax, new_shapes));
+    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(node, new_shapes));
     enter_ctx = shape_refiner->GetContext(node);
   }
 
@@ -1012,53 +930,56 @@ Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
     enter_ctx->set_output(0, input);
     *new_shapes = true;
   }
+  auto* outputs = in->output_handle_shapes_and_types(fanin.port_id);
+  if (outputs) {
+    enter_ctx->set_input_handle_shapes_and_types(0, *outputs);
+    enter_ctx->set_output_handle_shapes_and_types(0, *outputs);
+    *new_shapes = true;
+  }
   return Status::OK();
 }
 
-Status GraphProperties::UpdateShapes(SymbolicShapeRefiner* shape_refiner,
-                                     bool relax, const NodeDef* n,
-                                     bool* new_shapes) const {
+Status GraphProperties::UpdateShapes(
+    SymbolicShapeRefiner* shape_refiner,
+    const std::unordered_map<const NodeDef*, const NodeDef*>& resource_handles,
+    const NodeDef* n, bool* new_shapes) const {
   if (IsEnter(*n)) {
     // The Enter shape function always forwards an UnknownShape, so do the right
     // thing here.
-    TF_RETURN_IF_ERROR(UpdateEnter(shape_refiner, n, relax, new_shapes));
+    TF_RETURN_IF_ERROR(UpdateEnter(shape_refiner, n, new_shapes));
   } else if (IsMerge(*n)) {
     // Properly handle merge nodes.
-    TF_RETURN_IF_ERROR(UpdateMergeNode(shape_refiner, n, relax, new_shapes));
+    TF_RETURN_IF_ERROR(UpdateMergeNode(shape_refiner, n, new_shapes));
+  } else if (IsEnqueue(*n)) {
+    // Make sure the shapes of enqueued tensors are propagated to the queue
+    // itself.
+    TF_RETURN_IF_ERROR(
+        UpdateEnqueue(n, resource_handles, shape_refiner, new_shapes));
   } else {
     // Rely on regular TF shape refinement for all the other nodes.
-    bool updated = false;
-    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, relax, &updated));
-    if (updated) {
-      // We want to avoid propagating through loops on the merge pass because
-      // the shapes are not guaranteed to converge.
-      if (relax || !IsNextIteration(*n)) {
-        *new_shapes = true;
-      }
-    }
+    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
   }
   return Status::OK();
 }
 
 // Propagates the shapes in the transitive fan-out of <new_shapes>.
 Status GraphProperties::PropagateShapes(
-    SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
-    const std::unordered_map<const NodeDef*,
-                             std::unordered_set<const NodeDef*>>& resources,
+    SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes,
+    const std::unordered_map<const NodeDef*, const NodeDef*>& resource_handles,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
   // incorrect shape functions. The algoritm should converge in at most
   // num_nested_loops^2 * max_rank. We approximate max_rank with the constant 4.
   // The same applies to resources.
-  VLOG(1) << "Propagating (relax=" << relax << ") " << new_shapes->size()
-          << " new shapes through " << num_loops << " loops and "
-          << resources.size() << " resources" << std::endl;
+  VLOG(1) << "Propagating " << new_shapes->size() << " new shapes through "
+          << num_loops << " loops and " << resource_handles.size()
+          << " resources" << std::endl;
 
   const int64 max_loop_length = item_.graph.node_size();
   const int64 max_rank = 4;
   const int64 max_loop_iterations =
       max_rank * max_loop_length * std::max<int64>(1, num_loops * num_loops);
-  const int64 num_queues = resources.size();
+  const int64 num_queues = resource_handles.size();
   const int64 max_resource_iterations = num_queues * num_queues * max_rank;
 
   int64 num_resource_iterations = 0;
@@ -1068,21 +989,21 @@ Status GraphProperties::PropagateShapes(
            num_loop_iterations++ < max_loop_iterations) {
       const NodeDef* n = new_shapes->pop();
       bool updated = false;
-      TF_RETURN_IF_ERROR(UpdateShapes(shape_refiner, relax, n, &updated));
+      TF_RETURN_IF_ERROR(
+          UpdateShapes(shape_refiner, resource_handles, n, &updated));
       if (updated) {
-        for (const GraphView::InputPort fanout :
+        for (const GraphView::InputPort& fanout :
              shape_refiner->graph().GetFanouts(*n, false)) {
           new_shapes->push(fanout.node);
         }
+        // Make sure the corresponding queue nodes are (re)processed.
+        if (IsEnqueue(*n)) {
+          auto it = resource_handles.find(n);
+          if (it != resource_handles.end()) {
+            new_shapes->push(it->second);
+          }
+        }
       }
-    }
-
-    for (const auto& resource : resources) {
-      // Resources need special handling: since the enqueue nodes are in the
-      // fanout of the queues, we need to manually propagate the shapes from
-      // enqueue node to the corresponding queue.
-      TF_RETURN_IF_ERROR(UpdateResource(resource.first, resource.second,
-                                        shape_refiner, new_shapes));
     }
   } while (!new_shapes->empty() &&
            num_resource_iterations++ < max_resource_iterations);
@@ -1094,54 +1015,48 @@ Status GraphProperties::PropagateShapes(
   return Status::OK();
 }
 
-Status GraphProperties::UpdateResource(
-    const NodeDef* qnode,
-    const std::unordered_set<const NodeDef*>& queue_inputs,
-    SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes) {
-  // Proceed only if qnode is a queue or an Enter with queue input.
-  if (!IsQueue(*qnode) && !IsEnterWithQueue(*qnode, shape_refiner->graph())) {
+Status GraphProperties::UpdateEnqueue(
+    const NodeDef* enqueue_node,
+    const std::unordered_map<const NodeDef*, const NodeDef*>& resource_handles,
+    SymbolicShapeRefiner* shape_refiner, bool* new_shapes) {
+  auto ctx = shape_refiner->GetNodeContext(enqueue_node);
+  if (!ctx) {
+    TF_RETURN_IF_ERROR(shape_refiner->AddNode(enqueue_node));
+    ctx = CHECK_NOTNULL(shape_refiner->GetNodeContext(enqueue_node));
+  }
+
+  auto it = resource_handles.find(enqueue_node);
+  if (it == resource_handles.end()) {
+    // The corresponding queue was not found, there isn't much we can do.
     return Status::OK();
   }
+  const NodeDef* qnode = it->second;
   auto qctx = shape_refiner->GetContext(qnode);
   if (!qctx) {
     return Status::OK();
   }
   auto* queue_handle_data = qctx->output_handle_shapes_and_types(0);
 
-  // Merge all inputs into the enqueue node, regardless of which phase we
-  // are in.
-  std::vector<ShapeAndType> queue_shapes_and_types;
-  for (const auto& node : queue_inputs) {
-    auto ctx = shape_refiner->GetNodeContext(node);
-    if (!ctx) {
-      continue;
-    }
-    // TODO(bsteiner): handle EnqueueMany as well.
-    if (node->op().find("Enqueue") != std::string::npos &&
-        node->op().find("EnqueueMany") == std::string::npos) {
-      std::vector<ShapeAndType> shapes_and_types;
-      for (int i = 1; i < ctx->input_types.size(); ++i) {
-        shapes_and_types.push_back(
-            {ctx->inference_context->input(i), ctx->input_types[i]});
-      }
-      if (queue_shapes_and_types.empty()) {
-        queue_shapes_and_types = shapes_and_types;
-      } else {
-        TF_RETURN_IF_ERROR(RelaxEnqueueShapesAndMergeTypes(
-            shape_refiner, qnode, shapes_and_types, &queue_shapes_and_types));
-      }
-    }
+  // TODO(bsteiner): handle EnqueueMany as well.
+  std::vector<ShapeAndType> shapes_and_types;
+  for (int i = 1; i < ctx->input_types.size(); ++i) {
+    GraphView::InputPort inp(enqueue_node, i);
+    GraphView::OutputPort fanin = shape_refiner->graph().GetRegularFanin(inp);
+    InferenceContext* in = shape_refiner->GetContext(fanin.node);
+    ShapeHandle input = in->output(fanin.port_id);
+    ctx->inference_context->SetInput(i, input);
+    shapes_and_types.push_back({input, ctx->input_types[i]});
   }
 
-  if (queue_handle_data == nullptr ||
-      !shape_refiner->EquivalentShapesAndTypes(*queue_handle_data,
-                                               queue_shapes_and_types)) {
-    qctx->set_output_handle_shapes_and_types(0, queue_shapes_and_types);
-
-    for (const GraphView::InputPort fanout :
-         shape_refiner->graph().GetFanouts(*qnode, false)) {
-      new_shapes->push(fanout.node);
-    }
+  if (queue_handle_data == nullptr) {
+    qctx->set_output_handle_shapes_and_types(0, shapes_and_types);
+    *new_shapes = true;
+  } else {
+    TF_RETURN_IF_ERROR(RelaxEnqueueShapesAndMergeTypes(
+        shape_refiner, qnode, *queue_handle_data, &shapes_and_types));
+    *new_shapes |= !shape_refiner->EquivalentShapesAndTypes(*queue_handle_data,
+                                                            shapes_and_types);
+    qctx->set_output_handle_shapes_and_types(0, shapes_and_types);
   }
 
   return Status::OK();
@@ -1159,74 +1074,95 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
     }
   }
 
-  std::unordered_map<const NodeDef*, int> topo_order;
-  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(item_.graph, &topo_order));
-
-  GraphView graph_view(&item_.graph);
+  GraphView graph_view(const_cast<GraphDef*>(&item_.graph));
 
   // List the resources and the nodes using them. Also collect the Merge nodes,
   // fed nodes, and primary inputs.
-  std::unordered_map<const NodeDef*, std::unordered_set<const NodeDef*>>
+  std::unordered_map<const NodeDef*,
+                     std::pair<std::unordered_set<const NodeDef*>,
+                               std::unordered_set<const NodeDef*>>>
       resources;
   std::unordered_set<const NodeDef*> merge_nodes;
   std::unordered_set<const NodeDef*> fed_nodes;
   std::unordered_set<const NodeDef*> primary_inputs;
   int num_loops = 0;
   for (const NodeDef& node : item_.graph.node()) {
+    if (IsQueue(node)) {
+      for (const GraphView::InputPort& fanout :
+           graph_view.GetFanouts(node, false)) {
+        if (IsEnter(*fanout.node)) {
+          const NodeDef& enter = *fanout.node;
+          for (const GraphView::InputPort& fanout :
+               graph_view.GetFanouts(enter, false)) {
+            if (IsEnqueue(*fanout.node)) {
+              resources[&node].first.insert(fanout.node);
+            } else if (IsDequeue(*fanout.node)) {
+              resources[&node].second.insert(fanout.node);
+            }
+          }
+        } else {
+          if (IsEnqueue(*fanout.node)) {
+            resources[&node].first.insert(fanout.node);
+          } else if (IsDequeue(*fanout.node)) {
+            resources[&node].second.insert(fanout.node);
+          }
+        }
+      }
+    }
     if (NumNonControlInputs(node) == 0) {
       primary_inputs.insert(&node);
     } else if (IsMerge(node)) {
       merge_nodes.insert(&node);
     } else if (IsNextIteration(node)) {
       ++num_loops;
-    } else {
-      const OpRegistrationData* op_data;
-      TF_RETURN_IF_ERROR(function_library.LookUp(node.op(), &op_data));
-      DataTypeVector input_types;
-      DataTypeVector output_types;
-      TF_RETURN_IF_ERROR(InOutTypesForNode(node, op_data->op_def, &input_types,
-                                           &output_types));
-      for (int i = 0; i < input_types.size(); ++i) {
-        if (input_types[i] == DataType::DT_RESOURCE) {
-          GraphView::InputPort input(&node, i);
-          const GraphView::OutputPort resource =
-              graph_view.GetRegularFanin(input);
-          resources[resource.node].insert(&node);
-        }
-      }
     }
     if (fed_ports.find(node.name()) != fed_ports.end()) {
       fed_nodes.insert(&node);
     }
   }
 
-  SymbolicShapeRefiner refiner(graph_view, fed_ports);
-
-  // We propagate shapes through the graph in two phases. In the first phase, we
-  // exclusively merge shapes but we do not propagate shapes through the
-  // backedge of loops (i.e. the NextIteration node). Then on the second phase,
-  // we exclusively relax shapes and propagate shapes through loops until
-  // reaching fixed point.
-  for (int relax = 0; relax < 2; relax++) {
-    TopoQueue new_shapes(topo_order);
-    // Seed the propagation of shapes through merge nodes.
-    if (relax) {
-      for (const NodeDef* node : merge_nodes) {
-        new_shapes.push(node);
+  std::unordered_map<const NodeDef*, const NodeDef*> resource_handles;
+  std::vector<std::pair<const NodeDef*, const NodeDef*>> extra_deps;
+  for (const auto& resource : resources) {
+    for (const NodeDef* src : resource.second.first) {
+      resource_handles[src] = resource.first;
+      for (const NodeDef* tgt : resource.second.second) {
+        // Add control edges from enqueue to dequeue nodes to ensure they are
+        // processed in their logical order.
+        extra_deps.emplace_back(src, tgt);
       }
     }
-    // Also seed the propagation of shapes in the fanout of primary inputs.
-    for (const NodeDef* node : primary_inputs) {
-      new_shapes.push(node);
-    }
-    // Also seed the propagation of shapes in the fanout of fed nodes.
-    for (const NodeDef* node : fed_nodes) {
-      new_shapes.push(node);
-    }
-    // Propagate shapes normally.
-    TF_RETURN_IF_ERROR(
-        PropagateShapes(&refiner, relax, &new_shapes, resources, num_loops));
   }
+
+  std::unordered_map<const NodeDef*, int> topo_order;
+  Status s = ComputeTopologicalOrder(item_.graph, &topo_order, &extra_deps);
+  if (!s.ok()) {
+    if (extra_deps.empty()) {
+      return s;
+    } else {
+      // There is a loop between queues: we'll just use the graph topological
+      // order. This will make the shape inference less precise but since this
+      // isn't common it's not worth to figure out where to break the loop and
+      // do a proper relaxation.
+      TF_RETURN_IF_ERROR(
+          ComputeTopologicalOrder(item_.graph, &topo_order, nullptr));
+    }
+  }
+
+  SymbolicShapeRefiner refiner(graph_view, fed_ports);
+
+  TopoQueue new_shapes(topo_order);
+  // Also seed the propagation of shapes in the fanout of primary inputs.
+  for (const NodeDef* node : primary_inputs) {
+    new_shapes.push(node);
+  }
+  // Also seed the propagation of shapes in the fanout of fed nodes.
+  for (const NodeDef* node : fed_nodes) {
+    new_shapes.push(node);
+  }
+  // Propagate shapes normally.
+  TF_RETURN_IF_ERROR(
+      PropagateShapes(&refiner, &new_shapes, resource_handles, num_loops));
 
   // Track shapes globally across the graph.
   SymbolicShapeManager shape_manager;
@@ -1271,7 +1207,6 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
 
     // Fill input properties.
     {
-      // CHECK_EQ(ctx->num_inputs(), node.num_inputs());
       auto& input_properties = input_properties_[node.name()];
 
       // Should always be empty, node names in graph are supposed to be unique.
@@ -1295,7 +1230,6 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
 
     // Fill output properties.
     {
-      // CHECK_EQ(ctx->num_outputs(), node->num_outputs());
       auto& output_properties = output_properties_[node.name()];
 
       // Should always be empty, node names in graph are supposed to be unique.
