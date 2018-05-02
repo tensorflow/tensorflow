@@ -1027,6 +1027,7 @@ template struct functor::SwapDimension1And2InTensor3<GPUDevice, float2,
                                                      /*conjugate=*/true>;
 template struct functor::SwapDimension1And2InTensor3<GPUDevice, double2,
                                                      /*conjugate=*/true>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, Eigen::half>;
 
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint8>;
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint16>;
