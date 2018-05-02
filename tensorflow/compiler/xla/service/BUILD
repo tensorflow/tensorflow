@@ -2688,6 +2688,33 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "while_loop_constant_sinking",
+    srcs = ["while_loop_constant_sinking.cc"],
+    hdrs = ["while_loop_constant_sinking.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":while_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_constant_sinking_test",
+    srcs = ["while_loop_constant_sinking_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":while_loop_constant_sinking",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "despecializer",
     srcs = ["despecializer.cc"],
     hdrs = ["despecializer.h"],
