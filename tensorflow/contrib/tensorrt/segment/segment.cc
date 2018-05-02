@@ -47,14 +47,15 @@ class SimpleEdge {
         src_port_(src_port),
         dst_(dst),
         dst_port_(dst_port),
-        control_(is_control){};
+        control_(is_control) {}
+  ~SimpleEdge() {}
+
   SimpleNode* src() const { return src_; }
   SimpleNode* dst() const { return dst_; }
   int src_output() const { return src_port_; }
   int dst_input() const { return dst_port_; }
   int id() const { return id_; }
   bool IsControlEdge() const { return control_; }
-  ~SimpleEdge() {}
 
  private:
   int id_;
@@ -64,11 +65,13 @@ class SimpleEdge {
   int dst_port_;
   bool control_;
 };
+
 class SimpleNode {
  public:
   SimpleNode(const tensorflow::Node* node, const int id);
-  const std::vector<SimpleEdge*>& in_edges() const { return in_edges_; };
-  const std::vector<SimpleEdge*>& out_edges() const { return out_edges_; };
+
+  const std::vector<SimpleEdge*>& in_edges() const { return in_edges_; }
+  const std::vector<SimpleEdge*>& out_edges() const { return out_edges_; }
   std::vector<SimpleNode*> in_nodes() const {
     std::vector<SimpleNode*> res;
     res.reserve(in_edges_.size());
@@ -92,15 +95,18 @@ class SimpleNode {
 
 class SimpleGraph {
  public:
-  SimpleGraph(const tensorflow::Graph* g);
+  explicit SimpleGraph(const tensorflow::Graph* g);
+  ~SimpleGraph();
+
   void AddControlEdge(SimpleNode* src, SimpleNode* dst);
   void AddEdge(SimpleNode* src, int out_port, SimpleNode* dst, int in_port);
   void RemoveEdge(const SimpleEdge*);
   SimpleNode* FindNodeId(int node_id) {
-    if (node_id < 0 || node_id > (int)nodes_.size()) return nullptr;
+    if (node_id < 0 || node_id > static_cast<int>(nodes_.size())) {
+      return nullptr;
+    }
     return nodes_[node_id];
   }
-  ~SimpleGraph();
   int num_node_ids() const { return nodes_.size(); }
   const SimpleNode* source_node() const {
     return nodes_[tensorflow::Graph::kSourceId];
@@ -163,7 +169,7 @@ SimpleGraph::SimpleGraph(const tensorflow::Graph* g) : g_(g) {
 void SimpleGraph::AddEdge(SimpleNode* src, int out_port, SimpleNode* dst,
                           int in_port) {
   int i = edges_.size();
-  if (free_edge_ids_.size()) {
+  if (!free_edge_ids_.empty()) {
     auto it = free_edge_ids_.begin();
     i = *it;
     free_edge_ids_.erase(it);
@@ -275,7 +281,7 @@ bool CanContractEdge(const SimpleEdge* edge,
 }
 }  // namespace
 
-void ContractEdge(SimpleEdge* edge, std::unique_ptr<SimpleGraph>& graph,
+void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
                   std::vector<const SimpleEdge*>* remove_edges) {
   // Transfer all inputs and outputs of 'dst' to 'src' except edges
   // connecting the two.
@@ -352,7 +358,6 @@ tensorflow::Status SegmentGraph(
     tensorflow::Graph* tf_graph,
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
-
   auto graph = std::unique_ptr<SimpleGraph>(new SimpleGraph(tf_graph));
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
@@ -440,7 +445,7 @@ tensorflow::Status SegmentGraph(
         // don't visit them again.
         SimpleEdge* e = const_cast<SimpleEdge*>(contract_edge);
         std::vector<const SimpleEdge*> remove_edges;
-        ContractEdge(e, graph, &remove_edges);
+        ContractEdge(e, graph.get(), &remove_edges);
 
         for (const SimpleEdge* r : remove_edges) {
           contract_edges.erase(r);
@@ -466,7 +471,7 @@ tensorflow::Status SegmentGraph(
       if (tf_node->has_assigned_device_name()) {
         device_maps[u.ParentValue()->name()].insert(
             tf_node->assigned_device_name());
-      } else if (tf_node->requested_device().size() > 0) {
+      } else if (!tf_node->requested_device().empty()) {
         device_maps[u.ParentValue()->name()].insert(
             tf_node->requested_device());
       } else {
@@ -497,7 +502,7 @@ tensorflow::Status SegmentGraph(
     }
     // TODO(sami): Make segmenter placement aware once trtscopes are in place
     const auto& dev_itr = device_maps.find(itr.first);
-    if (dev_itr == device_maps.end() || dev_itr->second.size() == 0) {
+    if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
       VLOG(1) << "No device assigned to segment " << segments->size();
       segments->emplace_back(std::make_pair(segment_node_names, string()));
     } else if (dev_itr->second.size() > 1) {

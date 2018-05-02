@@ -38,7 +38,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // register input output node name in trt_sub_graph
   OP_REQUIRES_OK(context, context->GetAttr("input_nodes", &input_nodes_));
   OP_REQUIRES_OK(context, context->GetAttr("output_nodes", &output_nodes_));
-
 }
 
 void TRTEngineOp::Compute(OpKernelContext* context) {
@@ -49,15 +48,12 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
   if (!trt_execution_context_ptr_) {
     IRuntime* infer = nvinfer1::createInferRuntime(logger);
 #if NV_TENSORRT_MAJOR > 3
-    auto device=context->device();
-    auto dev_allocator=device->getAllocator(tensorflow::AllocatorAttributes())
-    // tensorflow::TfGpuId tf_gpu_id(
-    //     context->device()->tensorflow_gpu_device_info()->gpu_id);
-    // tensorflow::GPUOptions gpuoptions;
-    // auto pm = tensorflow::ProcessState::singleton();
-    // auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
+    auto device = context->device();
+    auto dev_allocator =
+        device->GetAllocator(tensorflow::AllocatorAttributes());
     if (!dev_allocator) {
-      LOG(FATAL) << "Can't find device allocator for gpu device" << tf_gpu_id;
+      LOG(FATAL) << "Can't find device allocator for gpu device "
+                 << device->name();
     }
     allocator_ = std::make_shared<TRTDeviceAllocator>(dev_allocator);
     infer->setGpuAllocator(allocator_.get());

@@ -88,7 +88,6 @@ cc_library(
         ":trt_logging",
         ":trt_resources",
         "//tensorflow/core:gpu_headers_lib",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([
@@ -212,7 +211,6 @@ tf_cuda_library(
         ":trt_logging",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
@@ -236,6 +234,9 @@ tf_cuda_library(
         ":segment",
         ":trt_logging",
         ":trt_resources",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core:framework",

@@ -17,15 +17,15 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_ENGINE_OP_H_
 
 #include <memory>
-#include <string>
 #include <vector>
+
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
-#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {

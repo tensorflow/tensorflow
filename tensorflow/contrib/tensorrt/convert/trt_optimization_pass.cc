@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/session_options.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -64,7 +63,7 @@ tensorflow::Status TRTOptimizationPass::Init(
     }
   }
   return tensorflow::Status::OK();
-};
+}
 
 void TRTOptimizationPass::PrintDebugInfo(
     tensorflow::grappler::Cluster* cluster,
@@ -217,8 +216,6 @@ void TRTOptimizationPass::Feedback(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item,
     const GraphDef& optimized_graph, double result) {}
-
-
 
 }  // namespace convert
 }  // namespace tensorrt

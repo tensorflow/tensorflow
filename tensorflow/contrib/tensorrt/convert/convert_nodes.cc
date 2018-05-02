@@ -482,7 +482,7 @@ class Converter {
     weights.SetValues(weight_store_->store_.back().data());
     return weights;
   }
-  bool isFP16() { return fp16_; };
+  bool isFP16() { return fp16_; }
   TRT_ShapedWeights get_temp_weights_like(const TRT_ShapedWeights& weights) {
     return this->get_temp_weights(weights.type_, weights.shape_);
   }
@@ -673,7 +673,7 @@ std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
     case OP_CATEGORY::RSQRT: {
       VLOG(2) << "RSQRT GETS DONE";
       return [](Eigen::half t) -> Eigen::half {
-        return Eigen::half(1.0 / sqrt(float(t)));
+        return Eigen::half(1.0 / sqrt(static_cast<float>(t)));
       };
     }
     case OP_CATEGORY::NEG:
@@ -2328,8 +2328,8 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
             << ", at node: " << node_name
             << "with output entry from shape_map: " << op_info_vec.size();
     // TODO(ben,jie): update TRT input format/dimension
-    nvinfer1::DimsCHW input_dim_psuedo_chw;
-    for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
+    nvinfer1::DimsCHW input_dim_pseudo_chw;
+    for (int i = 0; i < 3; i++) input_dim_pseudo_chw.d[i] = 1;
 
     // TODO(jie): TRT 3.x only support 4 dimensional input tensor.
     //            update the code once TRT 4.0 comes out.
@@ -2343,7 +2343,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       VLOG(2) << "dimension: " << i
               << " , size: " << op_info.shape().dim(i).size();
-      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
+      input_dim_pseudo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
     // TODO(ben,jie): proper way to restore input tensor name?
@@ -2354,7 +2354,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
 
     input_names.push_back(input_tensor_name);
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-        input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
+        input_tensor_name.c_str(), dtype, input_dim_pseudo_chw);
 
     if (!input_tensor)
       return tensorflow::errors::InvalidArgument(
@@ -2572,8 +2572,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
             << ", at node: " << node_name
             << " with output entry from shape_map: " << op_info_vec.size();
     // TODO(ben,jie): update TRT input format/dimension
-    nvinfer1::DimsCHW input_dim_psuedo_chw;
-    for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
+    nvinfer1::DimsCHW input_dim_pseudo_chw;
+    for (int i = 0; i < 3; i++) input_dim_pseudo_chw.d[i] = 1;
 
     // TODO(jie): TRT 3.x only support 4 dimensional input tensor.
     //            update the code once TRT 4.0 comes out.
@@ -2587,7 +2587,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       VLOG(2) << "dimension: " << i
               << " , size: " << op_info.shape().dim(i).size();
-      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
+      input_dim_pseudo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
     // TODO(ben,jie): proper way to restore input tensor name?
@@ -2598,7 +2598,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
     input_names.push_back(input_tensor_name);
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-        input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
+        input_tensor_name.c_str(), dtype, input_dim_pseudo_chw);
 
     if (!input_tensor)
       return tensorflow::errors::InvalidArgument(
