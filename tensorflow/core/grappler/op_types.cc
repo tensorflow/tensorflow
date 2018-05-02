@@ -54,6 +54,10 @@ bool IsApproximateEqual(const NodeDef& node) {
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
+bool IsAssign(const NodeDef& node) {
+  return node.op() == "Assign" || node.op() == "AssignVariableOp";
+}
+
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
 bool IsAtan2(const NodeDef& node) { return node.op() == "Atan2"; }
@@ -249,6 +253,10 @@ bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
+bool IsQueue(const NodeDef& node) {
+  return str_util::EndsWith(node.op(), "QueueV2");
+}
 
 bool IsRandomShuffle(const NodeDef& node) {
   return node.op() == "RandomShuffle";

@@ -211,6 +211,11 @@ class AssignVariableOp : public OpKernel {
  public:
   explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+    if (!c->GetAttr("_grappler_relax_allocator_constraints",
+                    &relax_constraints_)
+             .ok()) {
+      relax_constraints_ = false;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -228,8 +233,10 @@ class AssignVariableOp : public OpKernel {
               PersistentTensor unused;
               Tensor* tmp;
               AllocatorAttributes attr;
-              attr.set_gpu_compatible(true);
-              attr.set_nic_compatible(true);
+              if (!relax_constraints_) {
+                attr.set_gpu_compatible(true);
+                attr.set_nic_compatible(true);
+              }
               TF_RETURN_IF_ERROR(context->allocate_persistent(
                   dtype_, context->input(1).shape(), &unused, &tmp, attr));
               *(*ptr)->tensor() = *tmp;
@@ -245,8 +252,10 @@ class AssignVariableOp : public OpKernel {
 
     const Tensor& value = context->input(1);
     AllocatorAttributes attr;
-    attr.set_gpu_compatible(true);
-    attr.set_nic_compatible(true);
+    if (!relax_constraints_) {
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+    }
 
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
@@ -277,6 +286,7 @@ class AssignVariableOp : public OpKernel {
 
  private:
   DataType dtype_;
+  bool relax_constraints_;
 };
 
 template <typename Device>

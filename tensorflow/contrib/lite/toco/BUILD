@@ -364,6 +364,18 @@ cc_library(
     }),
 )
 
+tf_cc_test(
+    name = "import_tensorflow_test",
+    srcs = ["import_tensorflow_test.cc"],
+    deps = [
+        ":toco_tooling",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tooling_util",
     srcs = [

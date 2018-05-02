@@ -79,6 +79,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"Size", NC_METADATA},
         {"Shape", NC_METADATA},
         {"Rank", NC_METADATA},
+        {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
     });
 
 #undef REF_CLASS

@@ -42,7 +42,6 @@ android_binary(
     custom_package = "org.tensorflow.lite.demo",
     inline_constants = 1,
     manifest = "AndroidManifest.xml",
-    manifest_merger = "android",
     nocompress_extensions = [
         ".tflite",
     ],

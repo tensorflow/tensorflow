@@ -38,6 +38,7 @@ _allowed_symbols = [
     'binary_classification_head',
     'clip_gradients_by_norm',
     'forward_features',
+    'logistic_regression_head',
     'multi_class_head',
     'multi_head',
     'multi_label_head',

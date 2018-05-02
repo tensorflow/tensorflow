@@ -325,9 +325,7 @@ class Interpreter {
 
   void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
 
-  profiling::Profiler* GetProfiler(profiling::Profiler* profiler) {
-    return profiler_;
-  }
+  profiling::Profiler* GetProfiler() { return profiler_; }
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;

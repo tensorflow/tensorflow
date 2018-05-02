@@ -46,6 +46,7 @@ INPUT_FEATURES = np.array(
         [3.0, 20.0, 50.0, -100.0, 102.75],     # feature_2 quantized:[2,3,3,0,3]
     ],
     dtype=np.float32)
+
 CLASSIFICATION_LABELS = [[0.], [1.], [1.], [0.], [0.]]
 REGRESSION_LABELS = [[1.5], [0.3], [0.2], [2.], [5.]]
 FEATURES_DICT = {'f_%d' % i: INPUT_FEATURES[i] for i in range(NUM_FEATURES)}
@@ -101,16 +102,24 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
 
   def _assert_checkpoint(self, model_dir, global_step, finalized_trees,
                          attempted_layers):
+    self._assert_checkpoint_and_return_model(model_dir, global_step,
+                                             finalized_trees, attempted_layers)
+
+  def _assert_checkpoint_and_return_model(self, model_dir, global_step,
+                                          finalized_trees, attempted_layers):
     reader = checkpoint_utils.load_checkpoint(model_dir)
     self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
     serialized = reader.get_tensor('boosted_trees:0_serialized')
     ensemble_proto = boosted_trees_pb2.TreeEnsemble()
     ensemble_proto.ParseFromString(serialized)
+
     self.assertEqual(
         finalized_trees,
         sum([1 for t in ensemble_proto.tree_metadata if t.is_finalized]))
     self.assertEqual(attempted_layers,
                      ensemble_proto.growing_metadata.num_layers_attempted)
+
+    return ensemble_proto
 
   def testTrainAndEvaluateBinaryClassifier(self):
     input_fn = _make_train_input_fn(is_classification=True)
@@ -324,6 +333,55 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         [[0.353850], [0.254100], [0.106850], [0.712100], [1.012100]],
         [pred['predictions'] for pred in predictions])
+
+  def testTrainEvaluateAndPredictWithIndicatorColumn(self):
+    categorical = feature_column.categorical_column_with_vocabulary_list(
+        key='categorical', vocabulary_list=('bad', 'good', 'ok'))
+    feature_indicator = feature_column.indicator_column(categorical)
+    bucketized_col = feature_column.bucketized_column(
+        feature_column.numeric_column(
+            'an_uninformative_feature', dtype=dtypes.float32),
+        BUCKET_BOUNDARIES)
+
+    labels = np.array([[0.], [5.7], [5.7], [0.], [0.]], dtype=np.float32)
+    # Our categorical feature defines the labels perfectly
+    input_fn = numpy_io.numpy_input_fn(
+        x={
+            'an_uninformative_feature': np.array([1, 1, 1, 1, 1]),
+            'categorical': np.array(['bad', 'good', 'good', 'ok', 'bad']),
+        },
+        y=labels,
+        batch_size=5,
+        shuffle=False)
+
+    # Train depth 1 tree.
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=[bucketized_col, feature_indicator],
+        n_batches_per_layer=1,
+        n_trees=1,
+        learning_rate=1.0,
+        max_depth=1)
+
+    num_steps = 1
+    est.train(input_fn, steps=num_steps)
+    ensemble = self._assert_checkpoint_and_return_model(
+        est.model_dir, global_step=1, finalized_trees=1, attempted_layers=1)
+
+    # We learnt perfectly.
+    eval_res = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertAllClose(eval_res['loss'], 0)
+
+    predictions = list(est.predict(input_fn))
+    self.assertAllClose(
+        labels,
+        [pred['predictions'] for pred in predictions])
+
+    self.assertEqual(3, len(ensemble.trees[0].nodes))
+
+    # Check that the split happened on 'good' value, which will be encoded as
+    # feature with index 2 (0-numeric, 1 - 'bad')
+    self.assertEqual(2, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
+    self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
 
 
 class ModelFnTests(test_util.TensorFlowTestCase):
