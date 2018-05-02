@@ -1507,6 +1507,7 @@ def tf_py_wrap_cc(name,
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps=[], data=[], **kwargs):
   native.py_test(
+      # TODO(jlebar): Ideally we'd use tcmalloc here.,
       deps=select({
           "//conditions:default": deps,
           clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
