@@ -133,19 +133,27 @@ def Quantize(graph,
           bits=activation_bits,
           producer_scope=scope,
           consumer_scope=scope)
-      _InsertQuantOp(
-          add_context,
-          'add_quant',
-          layer_match.bypass_op,
-          input_to_ops_map.ConsumerOperations(layer_match.bypass_op),
-          is_training,
-          moving_avg=True,
-          ema_decay=ema_decay,
-          quant_delay=quant_delay,
-          vars_collection=vars_collection,
-          bits=activation_bits,
-          producer_scope=scope,
-          consumer_scope=scope)
+      # Make sure the op following this isn't an activation. In which case, we
+      # shouldn't quantize it, since the activation will be Fused into the
+      # Add at inference time.
+      consumers = input_to_ops_map.ConsumerOperations(layer_match.bypass_op)
+      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+        logging.info('Skipping %s, because its followed by an activation.',
+                     layer_match.bypass_op.name)
+      else:
+        _InsertQuantOp(
+            add_context,
+            'add_quant',
+            layer_match.bypass_op,
+            input_to_ops_map.ConsumerOperations(layer_match.bypass_op),
+            is_training,
+            moving_avg=True,
+            ema_decay=ema_decay,
+            quant_delay=quant_delay,
+            vars_collection=vars_collection,
+            bits=activation_bits,
+            producer_scope=scope,
+            consumer_scope=scope)
 
     # Quantize bypass ops that occur after the activation.
     if layer_match.post_activation_bypass_op is not None:
@@ -153,19 +161,27 @@ def Quantize(graph,
           r'^(.*)/([^/]+)', layer_match.post_activation_bypass_op.name).group(1)
       # If `scope` is given, only quantize it if the producer is in the right
       # scope.
-      _InsertQuantOp(
-          post_activation_bypass_context,
-          'post_activation_bypass_quant',
-          layer_match.post_activation_bypass_op,
-          input_to_ops_map.ConsumerOperations(
-              layer_match.post_activation_bypass_op),
-          is_training,
-          moving_avg=True,
-          ema_decay=ema_decay,
-          quant_delay=quant_delay,
-          vars_collection=vars_collection,
-          bits=activation_bits,
-          producer_scope=scope)
+      # Make sure the op following this isn't an activation. In which case, we
+      # shouldn't quantize it, since the activation will be Fused into the
+      # Add at inference time.
+      consumers = input_to_ops_map.ConsumerOperations(
+          layer_match.post_activation_bypass_op)
+      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+        logging.info('Skipping %s, because its followed by an activation.',
+                     layer_match.post_activation_bypass_op.name)
+      else:
+        _InsertQuantOp(
+            post_activation_bypass_context,
+            'post_activation_bypass_quant',
+            layer_match.post_activation_bypass_op,
+            consumers,
+            is_training,
+            moving_avg=True,
+            ema_decay=ema_decay,
+            quant_delay=quant_delay,
+            vars_collection=vars_collection,
+            bits=activation_bits,
+            producer_scope=scope)
 
 
 def _FindLayersToQuantize(graph):

@@ -25,7 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import template as template_ops
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [
@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-class RealNVP(bijector_lib.Bijector):
+class RealNVP(bijector.Bijector):
   """RealNVP "affine coupling layer" for vector-valued events.
 
   Real NVP models a normalizing flow on a `D`-dimensional distribution via a

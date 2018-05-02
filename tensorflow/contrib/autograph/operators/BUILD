@@ -22,6 +22,7 @@ py_library(
         "__init__.py",
         "control_flow.py",
         "data_structures.py",
+        "dispatch_context.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],

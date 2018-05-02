@@ -320,42 +320,50 @@ Status LoopInvariantNodeMotionOptimizer::RevertInvariantNodes() {
   return Status::OK();
 }
 
-Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(NodeDef* node) {
-  auto consumers = node_map_->GetOutputs(node->name());
-  invariant_nodes_.insert(std::make_pair(node, consumers.size()));
-  for (auto* consumer : consumers) {
-    if (invariant_nodes_.count(consumer) || ModifiesFrameInfo(*consumer)) {
-      continue;
-    }
-    bool is_invariant = true;
-    for (const auto& input : consumer->input()) {
-      if (!IsControlInput(input)) {
-        const string name = NodeName(input);
-        auto* producer = node_map_->GetNode(name);
-        if (!invariant_nodes_.count(producer)) {
-          if (IsConstant(*producer)) {
-            invariant_nodes_.insert(
-                std::make_pair(producer, node_map_->GetOutputs(name).size()));
-          } else {
-            is_invariant = false;
-            break;
+Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(
+    NodeDef* start_node) {
+  std::vector<NodeDef*> stack;
+  stack.reserve(32);
+  stack.push_back(start_node);
+  while (!stack.empty()) {
+    NodeDef* node = stack.back();
+    stack.pop_back();
+    auto consumers = node_map_->GetOutputs(node->name());
+    invariant_nodes_.emplace(node, consumers.size());
+    for (auto* consumer : consumers) {
+      if (invariant_nodes_.count(consumer) || ModifiesFrameInfo(*consumer)) {
+        continue;
+      }
+      bool is_invariant = true;
+      for (const auto& input : consumer->input()) {
+        if (!IsControlInput(input)) {
+          const string name = NodeName(input);
+          auto* producer = node_map_->GetNode(name);
+          if (!invariant_nodes_.count(producer)) {
+            if (IsConstant(*producer)) {
+              invariant_nodes_.insert(
+                  std::make_pair(producer, node_map_->GetOutputs(name).size()));
+            } else {
+              is_invariant = false;
+              break;
+            }
           }
         }
       }
-    }
-    if (is_invariant) {
-      std::set<NodeDef*> producers;
-      for (const auto& input : consumer->input()) {
-        auto* producer = node_map_->GetNode(input);
-        producers.insert(producer);
-      }
-      for (auto* producer : producers) {
-        auto iter = invariant_nodes_.find(producer);
-        if (iter != invariant_nodes_.end()) {
-          --iter->second;
+      if (is_invariant) {
+        std::set<NodeDef*> producers;
+        for (const auto& input : consumer->input()) {
+          auto* producer = node_map_->GetNode(input);
+          producers.insert(producer);
         }
+        for (auto* producer : producers) {
+          auto iter = invariant_nodes_.find(producer);
+          if (iter != invariant_nodes_.end()) {
+            --iter->second;
+          }
+        }
+        stack.push_back(consumer);
       }
-      TF_RETURN_IF_ERROR(FindInvariantNodes(consumer));
     }
   }
   return Status::OK();

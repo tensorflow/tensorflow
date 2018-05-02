@@ -97,6 +97,13 @@ void ClipVector(const float* vector, int v_size, float abs_limit,
   NEON_OR_PORTABLE(ClipVector, vector, v_size, abs_limit, result);
 }
 
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float* min, float* max,
+                             float* scaling_factor) {
+  NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values, min,
+                   max, scaling_factor);
+}
+
 void VectorShiftLeft(float* vector, int v_size, float shift_value) {
   NEON_OR_PORTABLE(VectorShiftLeft, vector, v_size, shift_value);
 }

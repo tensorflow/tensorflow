@@ -319,10 +319,34 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
   use_grpc_plugin = None
   if cc_grpc_version:
     use_grpc_plugin = True
+
+  cc_deps = tf_deps(protodeps, "_cc")
+  cc_name = name + "_cc"
+  if not srcs:
+    # This is a collection of sub-libraries. Build header-only and impl
+    # libraries containing all the sources.
+    proto_gen(
+        name = cc_name + "_genproto",
+        deps = [s + "_genproto" for s in cc_deps],
+        protoc = "@protobuf_archive//:protoc",
+        visibility=["//visibility:public"],
+    )
+    native.cc_library(
+        name = cc_name,
+        deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] +
+               if_static([name + "_cc_impl"]),
+    )
+    native.cc_library(
+        name = cc_name + "_impl",
+        deps = [s + "_impl" for s in cc_deps] + ["@protobuf_archive//:cc_wkt_protos"],
+    )
+
+    return
+
   cc_proto_library(
-      name = name + "_cc",
+      name = cc_name,
       srcs = srcs,
-      deps = tf_deps(protodeps, "_cc") + ["@protobuf_archive//:cc_wkt_protos"],
+      deps = cc_deps + ["@protobuf_archive//:cc_wkt_protos"],
       cc_libs = cc_libs + if_static(
           ["@protobuf_archive//:protobuf"],
           ["@protobuf_archive//:protobuf_headers"]
@@ -341,11 +365,28 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
 
 def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
                         testonly=0, srcs_version="PY2AND3", use_grpc_plugin=False):
+  py_deps = tf_deps(protodeps, "_py")
+  py_name = name + "_py"
+  if not srcs:
+    # This is a collection of sub-libraries. Build header-only and impl
+    # libraries containing all the sources.
+    proto_gen(
+        name = py_name + "_genproto",
+        deps = [s + "_genproto" for s in py_deps],
+        protoc = "@protobuf_archive//:protoc",
+        visibility=["//visibility:public"],
+    )
+    native.py_library(
+        name = py_name,
+        deps = py_deps + ["@protobuf_archive//:protobuf_python"])
+
+    return
+
   py_proto_library(
-      name = name + "_py",
+      name = py_name,
       srcs = srcs,
       srcs_version = srcs_version,
-      deps = deps + tf_deps(protodeps, "_py") + ["@protobuf_archive//:protobuf_python"],
+      deps = deps + py_deps + ["@protobuf_archive//:protobuf_python"],
       protoc = "@protobuf_archive//:protoc",
       default_runtime = "@protobuf_archive//:protobuf_python",
       visibility = visibility,
@@ -391,6 +432,23 @@ def tf_proto_library(name, srcs = [], has_services = None,
       visibility = visibility,
       use_grpc_plugin = has_services,
   )
+
+# A list of all files under platform matching the pattern in 'files'. In
+# contrast with 'tf_platform_srcs' below, which seletive collects files that
+# must be compiled in the 'default' platform, this is a list of all headers
+# mentioned in the platform/* files.
+def tf_platform_hdrs(files):
+  return native.glob(["platform/*/" + f for f in files])
+
+def tf_platform_srcs(files):
+  base_set = ["platform/default/" + f for f in files]
+  windows_set = base_set + ["platform/windows/" + f for f in files]
+  posix_set = base_set + ["platform/posix/" + f for f in files]
+  return select({
+    "//tensorflow:windows" : native.glob(windows_set),
+    "//tensorflow:windows_msvc" : native.glob(windows_set),
+    "//conditions:default" : native.glob(posix_set),
+  })
 
 def tf_additional_lib_hdrs(exclude = []):
   windows_hdrs = native.glob([
@@ -447,7 +505,6 @@ def tf_additional_proto_hdrs():
 
 def tf_additional_proto_srcs():
   return [
-      "platform/default/logging.cc",
       "platform/default/protobuf.cc",
   ]
 
@@ -469,25 +526,6 @@ def tf_protos_grappler():
   return if_static(
       extra_deps=tf_protos_grappler_impl(),
       otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
-
-def tf_env_time_hdrs():
-  return [
-      "platform/env_time.h",
-  ]
-
-def tf_env_time_srcs():
-  win_env_time = native.glob([
-    "platform/windows/env_time.cc",
-    "platform/env_time.cc",
-  ], exclude = [])
-  return select({
-    "//tensorflow:windows" : win_env_time,
-    "//tensorflow:windows_msvc" : win_env_time,
-    "//conditions:default" : native.glob([
-        "platform/posix/env_time.cc",
-        "platform/env_time.cc",
-      ], exclude = []),
-  })
 
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]

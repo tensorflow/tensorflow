@@ -243,14 +243,14 @@ static Status DeallocateTempBuffers(
   return Status::OK();
 }
 
-StatusOr<ShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
+StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
     std::vector<bool>* buffers_in_result) {
   se::Stream* stream = run_options->stream();
-  ShapedBuffer result_buffer(
+  ScopedShapedBuffer result_buffer(
       /*on_host_shape=*/result_shape(), /*on_device_shape=*/result_shape(),
-      stream->parent()->platform(), stream->parent()->device_ordinal());
+      run_options->allocator(), stream->parent()->device_ordinal());
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.
@@ -281,7 +281,7 @@ StatusOr<ShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
   return std::move(result_buffer);
 }
 
-StatusOr<ShapedBuffer> CpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -300,7 +300,7 @@ StatusOr<ShapedBuffer> CpuExecutable::ExecuteOnStream(
 
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_ASSIGN_OR_RETURN(
-      ShapedBuffer result_buffer,
+      ScopedShapedBuffer result_buffer,
       CreateResultShapedBuffer(run_options, buffers, &buffers_in_result));
 
   // Free all buffers not in the result.
@@ -310,7 +310,7 @@ StatusOr<ShapedBuffer> CpuExecutable::ExecuteOnStream(
   return std::move(result_buffer);
 }
 
-StatusOr<ShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   if (hlo_profiling_enabled()) {
@@ -330,7 +330,7 @@ StatusOr<ShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
 
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_ASSIGN_OR_RETURN(
-      ShapedBuffer result_buffer,
+      ScopedShapedBuffer result_buffer,
       CreateResultShapedBuffer(run_options, buffers, &buffers_in_result));
 
   LogLiveAddresses(buffers, buffers_in_result);

@@ -29,11 +29,9 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-inline perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
-                                                           uint64 size) {
-  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory),
-                                                size * sizeof(T));
-  perftools::gputools::DeviceMemory<T> typed(wrapped);
+inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 

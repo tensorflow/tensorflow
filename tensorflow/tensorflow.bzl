@@ -37,20 +37,25 @@ def src_to_test_name(src):
 def full_path(relative_paths):
   return [native.package_name() + "/" + relative for relative in relative_paths]
 
+def _add_tfcore_prefix(src):
+  if src.startswith("//"):
+    return src
+  return "//tensorflow/core:" + src
+
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
   return [
-      "//tensorflow/core:" + p for p in core_proto_sources_relative
+      _add_tfcore_prefix(p) for p in core_proto_sources_relative
   ]
 
 # Returns the list of pb.h and proto.h headers that are generated for
 # tf_android_core_proto_sources().
 def tf_android_core_proto_headers(core_proto_sources_relative):
   return ([
-      "//tensorflow/core/" + p.replace(".proto", ".pb.h")
+      _add_tfcore_prefix(p).replace(":", "/").replace(".proto", ".pb.h")
       for p in core_proto_sources_relative
   ] + [
-      "//tensorflow/core/" + p.replace(".proto", ".proto.h")
+      _add_tfcore_prefix(p).replace(":", "/").replace(".proto", ".proto.h")
       for p in core_proto_sources_relative
   ])
 
@@ -504,7 +509,9 @@ def tf_gen_op_wrappers_cc(name,
 #   hidden: Optional list of ops names to make private in the Python module.
 #     It is invalid to specify both "hidden" and "op_whitelist".
 #   visibility: passed to py_library.
-#   deps: list of dependencies for the generated target.
+#   deps: list of dependencies for the intermediate tool used to generate the
+#     python target. NOTE these `deps` are not applied to the final python
+#     library target itself.
 #   require_shape_functions: leave this as False.
 #   hidden_file: optional file that contains a list of op names to make private
 #     in the generated Python module. Each op name should be on a line by
@@ -1672,22 +1679,36 @@ def cuda_py_tests(name,
 #
 # Return a struct with fields (hdrs, srcs) containing the names of the
 # generated files.
-def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs):
+def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps=[], deps=[], visibility=None):
   out_hdrs = (
       [p.replace(".proto", ".pb_text.h")
        for p in srcs] + [p.replace(".proto", ".pb_text-impl.h") for p in srcs])
   out_srcs = [p.replace(".proto", ".pb_text.cc") for p in srcs]
   native.genrule(
-      name=name,
-      srcs=srcs + [clean_dep("//tensorflow/tools/proto_text:placeholder.txt")],
+      name=name + "_srcs",
+      srcs=srcs + protodeps + [clean_dep("//tensorflow/tools/proto_text:placeholder.txt")],
       outs=out_hdrs + out_srcs,
+      visibility=visibility,
       cmd=
       "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) "
       + "$(@D) " + srcs_relative_dir + " $(SRCS)",
       tools=[
           clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions")
       ],)
-  return struct(hdrs=out_hdrs, srcs=out_srcs)
+
+  native.filegroup(
+      name=name + "_hdrs",
+      srcs=out_hdrs,
+      visibility=visibility,
+  )
+
+  native.cc_library(
+      name=name,
+      srcs=out_srcs,
+      hdrs=out_hdrs,
+      visibility=visibility,
+      deps = deps,
+  )
 
 def tf_genrule_cmd_append_to_srcs(to_append):
   return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +

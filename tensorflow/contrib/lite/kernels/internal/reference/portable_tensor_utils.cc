@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdlib.h>
 #include <string.h>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
+#include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
 namespace tflite {
@@ -25,6 +27,28 @@ float PortableClip(float f, float abs_limit) {
   float result = (abs_limit < f) ? abs_limit : f;
   result = (-abs_limit > result) ? -abs_limit : result;
   return result;
+}
+
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float* min,
+                                     float* max, float* scaling_factor) {
+  auto minmax = std::minmax_element(values, values + size);
+  *min = *minmax.first;
+  *max = *minmax.second;
+  const int kScale = 127;
+  const float range = std::max(std::abs(*min), std::abs(*max));
+  if (range == 0) {
+    memset(quantized_values, 0, size * sizeof(int8_t));
+    *scaling_factor = 1;
+    return;
+  }
+  *scaling_factor = kScale / range;
+  for (int i = 0; i < size; ++i) {
+    const int32_t quantized_value =
+        static_cast<int32_t>(TfLiteRound(*scaling_factor * values[i]));
+    // Clamp: just in case some odd numeric offset.
+    quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
+  }
 }
 
 void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,

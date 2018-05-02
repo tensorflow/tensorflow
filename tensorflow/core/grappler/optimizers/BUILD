@@ -112,7 +112,6 @@ tf_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
     shard_count = 5,
-    tags = ["noasan"],
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
@@ -244,6 +243,7 @@ cc_library(
     deps = [
         ":graph_optimizer",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

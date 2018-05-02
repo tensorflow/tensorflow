@@ -84,7 +84,7 @@ if (NOT WIN32)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
-    set (systmelib_ZLIB ON)
+    set (systemlib_ZLIB ON)
   endif (systemlib_ALL)
 endif()
 
@@ -172,19 +172,20 @@ if (tensorflow_OPTIMIZE_FOR_NATIVE_ARCH)
   endif()
 endif()
 
+include(CheckCXXCompilerFlag)
+
+# OpenMP Support
+CHECK_CXX_COMPILER_FLAG("-fopenmp" GCC_OPENMP_SUPPORT)
+if (GCC_OPENMP_SUPPORT)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+endif()
+CHECK_CXX_COMPILER_FLAG("/openmp" MSVC_OPENMP_SUPPORT)
+if (MSVC_OPENMP_SUPPORT)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /openmp")
+endif()
+
 # MSVC SIMD instructions
 if (tensorflow_WIN_CPU_SIMD_OPTIONS)
-  include(CheckCXXCompilerFlag)
-  if (tensorflow_ENABLE_MKL_SUPPORT)
-    add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
-    if (NOT tensorflow_ENABLE_MKLDNN_SUPPORT)
-      add_definitions(-DINTEL_MKL_ML)
-    endif()
-  endif()
-  CHECK_CXX_COMPILER_FLAG("-fopenmp" COMPILER_OPT_OPENMP_SUPPORT)
-  if (COMPILER_OPT_OPENMP_SUPPORT)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-  endif()
   if (WIN32)
     CHECK_CXX_COMPILER_FLAG(${tensorflow_WIN_CPU_SIMD_OPTIONS} COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
     if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
@@ -214,6 +215,7 @@ include(protobuf)
 include(re2)
 include(cub)
 include(sqlite)
+include(double_conversion)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -234,6 +236,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${protobuf_STATIC_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
+    ${double_conversion_STATIC_LIBRARIES}
 )
 
 if (systemlib_ZLIB)
@@ -261,6 +264,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     fft2d
     re2
     sqlite_copy_headers_to_destination
+    double_conversion
 )
 
 include_directories(
@@ -283,6 +287,7 @@ include_directories(
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
     ${sqlite_INCLUDE_DIR}
+    ${double_conversion_INCLUDE_DIR}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)
@@ -319,10 +324,13 @@ if(HAIKU)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
 endif()
 
+# MKL Support
 if (tensorflow_ENABLE_MKL_SUPPORT)
+  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
   if (WIN32)
     find_path(MKL_HOME_PLATFORM mkl
       PATHS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      $ENV{MKLROOT} $ENV{MKLROOT}/../ $ENV{MKLROOT}/../../
       PATH_SUFFIXES windows)
     set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
     set(MKL_LINK_DIRS
@@ -341,6 +349,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     # Fix me: complete the path on linux
     find_path(MKL_HOME_PLATFORM mkl
       HINTS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      $ENV{MKLROOT} $ENV{MKLROOT}/../ $ENV{MKLROOT}/../../
       PATH_SUFFIXES linux)
     set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
     set(MKL_LINK_DIRS) # incompleted
@@ -353,6 +362,8 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn)
     include_directories(${mkldnn_INCLUDE_DIRS})
+  else (tensorflow_ENABLE_MKLDNN_SUPPORT)
+    add_definitions(-DINTEL_MKL_ML)
   endif()
 endif (tensorflow_ENABLE_MKL_SUPPORT)
 
@@ -467,6 +478,10 @@ if (tensorflow_ENABLE_GPU)
   include_directories(${tensorflow_source_dir}/third_party/gpus)
   # add cuda libraries to tensorflow_EXTERNAL_LIBRARIES
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CUDA_LIBRARIES})
+  if(NOT WIN32)
+    # add gomp to tensorflow_EXTERNAL_LIBRARIES, needed by libcusolver.so
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES gomp)
+  endif()
 
   # NOTE(mrry): Update these flags when the version of CUDA or cuDNN used
   # in the default build is upgraded.

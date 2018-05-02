@@ -550,7 +550,7 @@ Service::ExecuteParallelAndRegisterResult(
     // Stream executors for the replicas of the current computation.
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
-    std::vector<ShapedBuffer> result_buffers;
+    std::vector<ScopedShapedBuffer> result_buffers;
     for (int64 replica = 0; replica < replicas.size(); ++replica) {
       TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
                           backend->BorrowStream(replicas[replica]));
@@ -574,7 +574,6 @@ Service::ExecuteParallelAndRegisterResult(
       ExecutableRunOptions options;
       options.set_stream(streams.back().get());
       options.set_allocator(backend->memory_allocator());
-      options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
       options.set_intra_op_thread_pool(
           backend->eigen_intra_op_thread_pool_device());
       options.set_device_assignment(&device_assignment);
@@ -582,7 +581,7 @@ Service::ExecuteParallelAndRegisterResult(
                                               backend->StreamBorrower());
 
       // Asynchronously launch the computation.
-      TF_ASSIGN_OR_RETURN(ShapedBuffer result,
+      TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
                               &run_options, arguments[i][replica]));
 
@@ -688,12 +687,12 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_stream(stream.get());
     options.set_device_ordinal(stream->parent()->device_ordinal());
     options.set_allocator(backend->memory_allocator());
-    options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
-    run_options.emplace_back(options, backend->StreamBorrower(),
-                             backend->inter_op_thread_pool());
+    run_options.emplace_back(
+        options, backend->StreamBorrower(),
+        /*xla_intra_op_thread_pool=*/backend->eigen_intra_op_thread_pool());
   }
 
   if (options_.number_of_replicas() == 1) {
@@ -1234,20 +1233,19 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
     streams.push_back(std::move(stream));
   }
 
-  std::vector<ShapedBuffer> result_buffers;
+  std::vector<ScopedShapedBuffer> result_buffers;
   for (size_t i = 0; i < streams.size(); ++i) {
     const auto& stream = streams[i];
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_allocator(execute_backend_->memory_allocator());
-    options.set_inter_op_thread_pool(execute_backend_->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         execute_backend_->eigen_intra_op_thread_pool_device());
 
     ServiceExecutableRunOptions service_options(
         options, execute_backend_->StreamBorrower());
 
-    TF_ASSIGN_OR_RETURN(ShapedBuffer this_result_buffer,
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer this_result_buffer,
                         executable->ExecuteAsyncOnStream(
                             &service_options, replicated_arguments[i]));
 
@@ -1347,11 +1345,11 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
   }
 
   // Allocate memory in each replica and transfer the data to all replicas.
-  std::vector<ShapedBuffer> replicated_buffers;
+  std::vector<ScopedShapedBuffer> replicated_buffers;
   for (se::StreamExecutor* executor : replicas) {
     TF_ASSIGN_OR_RETURN(
-        ShapedBuffer shaped_buffer,
-        execute_backend_->transfer_manager()->AllocateShapedBuffer(
+        ScopedShapedBuffer shaped_buffer,
+        execute_backend_->transfer_manager()->AllocateScopedShapedBuffer(
             shape, execute_backend_->memory_allocator(),
             executor->device_ordinal()));
     TF_RETURN_IF_ERROR(

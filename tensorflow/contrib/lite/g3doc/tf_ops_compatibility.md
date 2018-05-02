@@ -132,7 +132,6 @@ TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
-*   [tf.floor](https://www.tensorflow.org/api_docs/python/tf/floor)
 *   [tf.gather](https://www.tensorflow.org/api_docs/python/tf/gather)
 *   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
 *   [tf.slice](https://www.tensorflow.org/api_docs/python/tf/slice)
@@ -251,6 +250,17 @@ Inputs {
 }
 Outputs {
   0: result of computing element-wise exponential of the input tensor
+}
+```
+
+**FLOOR**
+
+```
+inputs {
+  0: tensor
+}
+outputs: {
+  0: result of computing element-wise floor of the input tensor
 }
 ```
 
