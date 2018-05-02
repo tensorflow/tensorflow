@@ -8,6 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 
 # TODO: Use tf_gen_op_wrapper_py to generate the code which should
 # have already been generated in python/avro_record_dataset.py
@@ -18,6 +19,14 @@ tf_custom_op_py_library(
     dso = [":python/_avro_record_dataset.so",
            ":python/_parse_avro_record.so",
            ":python/libavro.so"
+    ],
+    kernels = [
+        ":avro_record_dataset_op_lib",
+        ":parse_avro_record_op_lib",
+    ],
+    deps = [
+         ":avro_record_dataset",
+         ":parse_avro_record",
     ],
     srcs_version = "PY2",
     visibility = ["//visibility:public"],
@@ -43,13 +52,42 @@ tf_custom_op_library(
 
 tf_custom_op_library(
     name = "python/_parse_avro_record.so",
-    srcs = ["ops/parse_avro_record.cc",
-            "ops/avro_helper.cc",
-            "ops/avro_helper.h"],
+    srcs = ["ops/parse_avro_record.cc"],
     deps = [
         "@avro_c//:avro_c",
     ]
 )
+
+tf_gen_op_libs(
+    op_lib_names = ["avro_record_dataset"],
+    deps = [
+         "@avro_c//:avro_c",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "avro_record_dataset",
+    deps = [
+         ":avro_record_dataset_op_lib",
+         "@avro_c//:avro_c",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["parse_avro_record"],
+    deps = [
+         "@avro_c//:avro_c",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "parse_avro_record",
+    deps = [
+         ":parse_avro_record_op_lib",
+         "@avro_c//:avro_c",
+    ],
+)
+
 
 filegroup(
     name = "all_files",
