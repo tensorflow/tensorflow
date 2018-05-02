@@ -1634,6 +1634,7 @@ TEST_F(BufferAssignmentTest, PeakBuffersWhile) {
   }
   EXPECT_EQ(bcast_buffer->instruction(), bcast);
   EXPECT_TRUE(
+      nonbcast_buffer->instruction() == copy ||
       nonbcast_buffer->instruction() == while_op ||
       nonbcast_buffer->instruction() == body->parameter_instruction(0) ||
       nonbcast_buffer->instruction() == body->root_instruction() ||
