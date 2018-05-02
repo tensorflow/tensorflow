@@ -868,7 +868,7 @@ class CursesUI(base_ui.BaseUI):
             # Sleep for a bit.
             curses.napms(self._MOUSE_SCROLL_DELAY_MS)
             scroll_command = self._scroll_bar.get_click_command(mouse_y)
-            if scroll_command is not None:
+            if scroll_command in (_SCROLL_UP_A_LINE, _SCROLL_DOWN_A_LINE):
               self._scroll_output(scroll_command)
 
             # Check to see if different mouse event is in queue.
