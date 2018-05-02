@@ -147,6 +147,9 @@ class HloModuleGroupMetadata {
   // the module in the module vector.
   int64 GetModuleId(const HloModule* module) const;
 
+  // Returns the number of modules for devices (excluding the host module).
+  int64 GetDeviceModulesCount() const;
+
   // Returns the companion instructions for the given instruction.
   //
   // Precondition: IsCompanionWhile(instruction) is true.

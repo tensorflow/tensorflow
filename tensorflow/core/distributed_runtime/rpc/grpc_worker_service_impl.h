@@ -83,9 +83,12 @@ enum class GrpcWorkerMethod {
   kRecvTensor,
   kLogging,
   kTracing,
+  kCompleteGroup,
+  kCompleteInstance,
+  kGetStepSequence,
 };
 static const int kGrpcNumWorkerMethods =
-    static_cast<int>(GrpcWorkerMethod::kTracing) + 1;
+    static_cast<int>(GrpcWorkerMethod::kGetStepSequence) + 1;
 
 const char* GrpcWorkerMethodName(GrpcWorkerMethod id);
 

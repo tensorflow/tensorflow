@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -2146,6 +2147,27 @@ string Literal::GetR1U8AsString() const {
 /* static */ const LiteralView LiteralView::Create(
     const Literal& literal, const ShapeIndex& view_root) {
   return LiteralView(literal, view_root);
+}
+
+size_t Literal::Hash() const {
+  using tensorflow::Hash64;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = ShapeUtil::Hash(shape());
+
+  ShapeUtil::ForEachSubshape(
+      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsTuple(subshape)) {
+          return;
+        }
+
+        CHECK(LayoutUtil::IsDense(subshape.layout()));
+        hash_value = Hash64Combine(
+            hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
+                               size_bytes(index)));
+      });
+
+  return hash_value;
 }
 
 LiteralView::LiteralView(const Literal& literal, const ShapeIndex& view_root) {

@@ -140,17 +140,25 @@ class Executable {
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
-  const Shape& result_shape() const {
-    return hlo_module_->config().entry_computation_layout().result_shape();
+  const Shape& host_result_shape() const {
+    return hlo_module_->config().host_entry_computation_layout().result_shape();
   }
 
-  // Dumping helpers.
+  // TODO(b/74197823): Delete the session module dumping helpers.
   void set_session_module(std::unique_ptr<xla::SessionModule> session_module) {
     session_module_ = std::move(session_module);
   }
   bool dumping() const { return session_module_ != nullptr; }
   SessionModule* session_module() const { return session_module_.get(); }
   Status DumpSessionModule();
+
+  // Dumping helpers.
+  void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
+    hlo_snapshot_ = std::move(hlo_snapshot);
+  }
+  bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
+  HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
+  Status DumpHloSnapshot();
 
   // Dump session_module to directory_path/filename.
   static Status DumpToDirectory(const string& directory_path, string filename,
@@ -173,6 +181,9 @@ class Executable {
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;
+
+  // HloSnapshot this was compiled from. Null if not dumping executions.
+  std::unique_ptr<HloSnapshot> hlo_snapshot_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

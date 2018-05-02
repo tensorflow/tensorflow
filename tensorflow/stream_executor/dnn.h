@@ -543,6 +543,10 @@ class ConvolutionDescriptor {
     pad_alignment_ = pad_alignment;
     return *this;
   }
+  ConvolutionDescriptor& set_group_count(int group_count) {
+    group_count_ = group_count;
+    return *this;
+  }
   int64 zero_padding_height() const {
     return GetDim(zero_padding_, DimIndex::Y);
   }
@@ -566,6 +570,7 @@ class ConvolutionDescriptor {
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
   int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
   PadAlignment pad_alignment() const { return pad_alignment_; }
+  int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
 
   std::vector<int64> strides() const { return filter_strides_; }
@@ -578,6 +583,7 @@ class ConvolutionDescriptor {
   std::vector<int64> filter_strides_;
   std::vector<int64> dilation_rates_;
   PadAlignment pad_alignment_;
+  int group_count_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.

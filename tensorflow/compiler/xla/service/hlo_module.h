@@ -98,12 +98,20 @@ class HloModule {
     return entry_computation_;
   }
 
-  ComputationLayout* mutable_entry_computation_layout() {
-    return config_.mutable_entry_computation_layout();
+  ComputationLayout* mutable_host_entry_computation_layout() {
+    return config_.mutable_host_entry_computation_layout();
   }
 
-  const ComputationLayout& entry_computation_layout() const {
-    return config_.entry_computation_layout();
+  const ComputationLayout& host_entry_computation_layout() const {
+    return config_.host_entry_computation_layout();
+  }
+
+  ComputationLayout* mutable_device_entry_computation_layout() {
+    return config_.mutable_device_entry_computation_layout();
+  }
+
+  const ComputationLayout& device_entry_computation_layout() const {
+    return config_.device_entry_computation_layout();
   }
 
   const VersionedComputationHandle& entry_computation_handle() const {

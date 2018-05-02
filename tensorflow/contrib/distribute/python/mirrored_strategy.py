@@ -321,7 +321,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""
-    assert isinstance(destination, six.string_types)
     if isinstance(val, values.TowerLocalVariable):
       val = self.reduce(val.reduce_method, val, destinations=destination)
       with ops.device(destination):

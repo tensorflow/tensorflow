@@ -388,7 +388,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
+If you are new to TensorFlow, see @{$get_started/eager}.
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
