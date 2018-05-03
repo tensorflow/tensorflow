@@ -36,8 +36,7 @@ Status OptimizationPassRegistry::RunGrouping(
     for (auto& phase : group->second) {
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
-        VLOG(1) << "Running optimization pass: "
-                << pass->GetOptimizationPassName();
+        VLOG(1) << "Running optimization pass: " << pass->name();
         Status s = pass->Run(options);
         if (!s.ok()) return s;
       }
@@ -52,8 +51,7 @@ void OptimizationPassRegistry::LogGrouping(Grouping grouping, int vlog_level) {
     for (auto& phase : group->second) {
       for (auto& pass : phase.second) {
         VLOG(vlog_level) << "Registered optimization pass grouping " << grouping
-                         << " phase " << phase.first << ": "
-                         << pass->GetOptimizationPassName();
+                         << " phase " << phase.first << ": " << pass->name();
       }
     }
   }
