@@ -18,11 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# normally we should do import tensorflow as tf and then
-# tf.placeholder, tf.constant, tf.nn.conv2d etc but
-# it looks like internal builds don't like it so
-# importing every module individually
-
 from tensorflow.contrib import tensorrt
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session

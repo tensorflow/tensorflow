@@ -78,7 +78,7 @@ tf_kernel_library(
     ],
     gpu_srcs = [
         "inc_op_kernel.h",
-        "inc_op_kernel.cu.cc"
+        "inc_op_kernel.cu.cc",
     ],
     deps = [
         "//tensorflow/contrib/tensorrt:trt_plugins",
@@ -119,5 +119,9 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:tf_optimizer",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
