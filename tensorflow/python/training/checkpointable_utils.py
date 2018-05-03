@@ -159,6 +159,44 @@ def add_variable(checkpointable, name, shape=None, dtype=dtypes.float32,
       initializer=initializer, getter=_default_getter)
 
 
+def object_metadata(save_path):
+  """Retrieves information about the objects in a checkpoint.
+
+  Example usage:
+
+  ```python
+  object_graph = tf.contrib.checkpoint.object_metadata(
+      tf.train.latest_checkpoint(checkpoint_directory))
+  ckpt_variable_names = set()
+  for node in object_graph.nodes:
+    for attribute in node.attributes:
+      ckpt_variable_names.add(attribute.full_name)
+  ```
+
+  Args:
+    save_path: The path to the checkpoint, as returned by `save` or
+      `tf.train.latest_checkpoint`.
+  Returns:
+    A parsed `tf.contrib.checkpoint.CheckpointableObjectGraph` protocol buffer.
+  Raises:
+    ValueError: If an object graph was not found in the checkpoint.
+  """
+  reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+  try:
+    object_graph_string = reader.get_tensor(
+        checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
+  except errors_impl.NotFoundError:
+    raise ValueError(
+        ('The specified checkpoint "%s" does not appear to be object-based (it '
+         'is missing the key "%s"). Likely it was created with a name-based '
+         'saver and does not contain an object dependency graph.') % (
+             save_path, checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
+  object_graph_proto = (
+      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+  object_graph_proto.ParseFromString(object_graph_string)
+  return object_graph_proto
+
+
 def _breadth_first_checkpointable_traversal(root_checkpointable):
   """Find shortest paths to all variables owned by dependencies of root."""
   bfs_sorted = []
