@@ -476,28 +476,40 @@ bool IsInvolution(const NodeDef& node) {
   return involution_ops->count(node.op()) > 0;
 }
 
+bool IsValueAndOrderAndShapePreserving(const NodeDef& node) {
+  if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
+    return true;
+  }
+  static const std::unordered_set<string>*
+      value_and_order_and_shape_preserving_ops =
+          CHECK_NOTNULL((new const std::unordered_set<string>{
+              "CheckNumerics",
+              "DebugGradientIdentity",
+              "DeepCopy"
+              "Enter",
+              "Exit",
+              "Identity",
+              "IdentityN",
+              "PreventGradient",
+              "Print",
+              "Snapshot",
+              "StopGradient",
+          }));
+  return value_and_order_and_shape_preserving_ops->count(node.op()) > 0;
+}
+
 bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
   static const std::unordered_set<string>* value_and_order_preserving_ops =
       CHECK_NOTNULL((new const std::unordered_set<string>{
-          "CheckNumerics",
-          "DebugGradientIdentity",
-          "DeepCopy"
-          "Enter",
-          "Exit",
           "ExpandDims",
-          "Identity",
-          "IdentityN",
-          "PreventGradient",
-          "Print",
-          "Reshape",
           "Snapshot",
           "Squeeze",
-          "StopGradient",
       }));
-  return value_and_order_preserving_ops->count(node.op()) > 0;
+  return value_and_order_preserving_ops->count(node.op()) > 0 ||
+         IsValueAndOrderAndShapePreserving(node);
 }
 
 bool IsValuePreserving(const NodeDef& node) {
@@ -564,7 +576,7 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Tanh",
       }));
   return element_wise_ops->count(node.op()) > 0 ||
-         (!IsIdentityN(node) && IsValueAndOrderPreserving(node));
+         (!IsIdentityN(node) && IsValueAndOrderAndShapePreserving(node));
 }
 
 bool HasOpDef(const NodeDef& node) {

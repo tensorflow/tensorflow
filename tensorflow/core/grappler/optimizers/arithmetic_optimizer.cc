@@ -1400,6 +1400,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       return n > 1;
     } else if (IsSplit(*node) || IsSplitV(*node)) {
       const int num_split = node->attr().at("num_split").i();
+      if (NumNonControlOutputs(*node, *ctx().node_map) > num_split) {
+        // TODO(rmlarsen): Remove this constraint when we have optimizations
+        // in place for merging slices into splits.
+        return false;
+      }
       return num_split > 1 && !IsAlreadyOptimized(*node);
     }
     return false;
@@ -1458,13 +1463,13 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     if (tails.empty()) {
       return Status::OK();
     }
-    AddControlInputs(ctrl_inputs, root_node);
     AddToOptimizationQueue(root_node);
     optimized_nodes_.insert(root_node->name());
     if (node_is_concat_) {
+      AddControlInputs(ctrl_inputs, root_node);
       return HoistChainForConcat(prefix_length, tails, root_node);
     } else {
-      return HoistChainForSplit(prefix_length, tails, root_node);
+      return HoistChainForSplit(prefix_length, tails, ctrl_inputs, root_node);
     }
   }
 
@@ -1542,9 +1547,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
           IsInPreserveSet(*op)) {
         return false;
       }
-      if (node_is_concat_ &&
-          ctx().node_map->GetOutputs(op->name()).size() > 1) {
-        // TODO(rmlarsen): Allow and hoist outgoing control edges.
+      if (ctx().node_map->GetOutputs(op->name()).size() > 1) {
+        // TODO(rmlarsen): Allow outgoing control edges.
         return false;
       }
     }
@@ -1612,6 +1616,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   }
 
   Status HoistChainForSplit(const int prefix_length, const ChainLinkSet& tails,
+                            std::set<string>* ctrl_inputs,
                             NodeDef* split_node) {
     // Create a new chain before the split node to process the input tensor.
     const string& split_name = split_node->name();
@@ -1646,6 +1651,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     cur_copy->add_input(orig_input);
     ctx().node_map->UpdateOutput(NodeName(orig_input), split_name,
                                  cur_copy->name());
+    // Make sure all the control inputs are satisfied before running the first
+    // node in the new chain.
+    AddControlInputs(ctrl_inputs, cur_copy);
 
     // Connect all consumers of the tail nodes directly to the
     // output port of Split from which the chain started.

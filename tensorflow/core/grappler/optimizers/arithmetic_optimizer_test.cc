@@ -2320,16 +2320,16 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
     EXPECT_NE(node.name(), "cos_exp_b2");
 
     if (node.name() == "split1") {
-      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("axis", node.input(0));
       EXPECT_EQ("ArithmeticOptimizer/_sin_a_split1", node.input(1));
-      EXPECT_EQ("^ctrl1", node.input(2));
       found++;
     }
     if (node.name() == "ArithmeticOptimizer/_sin_a_split1") {
       EXPECT_EQ("Sin", node.op());
-      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^ctrl1", node.input(1));
       found++;
     }
     if (node.name() == "id_a") {
@@ -2349,8 +2349,11 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
     }
     if (node.name() == "ArithmeticOptimizer/_exp_a2_split2") {
       EXPECT_EQ("Exp", node.op());
-      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ(4, node.input_size());
       EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^ctrl1", node.input(1));
+      EXPECT_EQ("^ctrl2", node.input(2));
+      EXPECT_EQ("^ctrl3", node.input(3));
       found++;
     }
     if (node.name() == "ArithmeticOptimizer/_cos_exp_a2_split2") {
@@ -2360,13 +2363,10 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
       found++;
     }
     if (node.name() == "split2") {
-      EXPECT_EQ(6, node.input_size());
+      EXPECT_EQ(3, node.input_size());
       EXPECT_EQ("ArithmeticOptimizer/_cos_exp_a2_split2", node.input(0));
       EXPECT_EQ("size_splits2", node.input(1));
       EXPECT_EQ("axis", node.input(2));
-      EXPECT_EQ("^ctrl1", node.input(3));
-      EXPECT_EQ("^ctrl2", node.input(4));
-      EXPECT_EQ("^ctrl3", node.input(5));
       found++;
     }
     if (node.name() == "id_a2") {

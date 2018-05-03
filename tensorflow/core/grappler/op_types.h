@@ -174,6 +174,10 @@ bool ModifiesInputsInPlace(const NodeDef& node);
 // own inverse such that f(f(x)) == x.
 bool IsInvolution(const NodeDef& node);
 
+// Returns true if the op preserves the order and value of elements
+// and shape of its first input tensor.
+bool IsValueAndOrderAndShapePreserving(const NodeDef& node);
+
 // Returns true if the op preserves the order and value of elements in its
 // first input tensor and possible changes its shape.
 bool IsValueAndOrderPreserving(const NodeDef& node);
