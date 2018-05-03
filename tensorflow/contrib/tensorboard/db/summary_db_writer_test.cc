@@ -131,6 +131,7 @@ TEST_F(SummaryDbWriterTest, WriteHistogram_VerifyTensorValues) {
   writer_->Unref();
   writer_ = nullptr;
 
+  // TODO(nickfelt): implement QueryTensor() to encapsulate this
   // Verify the data
   string result = QueryString("SELECT data FROM Tensors");
   const double* val = reinterpret_cast<const double*>(result.data());
