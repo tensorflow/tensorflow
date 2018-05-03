@@ -35,6 +35,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+from tensorflow.python.eager import context as _context
 
 
 __all__ = ["Decoder", "dynamic_decode"]
@@ -192,9 +193,11 @@ def dynamic_decode(decoder,
     return False
 
   with variable_scope.variable_scope(scope, "decoder") as varscope:
-    # Properly cache variable values inside the while_loop
-    if varscope.caching_device is None:
-      varscope.set_caching_device(lambda op: op.device)
+    _ctx = _context._context
+    if _ctx is None or not _ctx._eager_context.is_eager:
+      # Properly cache variable values inside the while_loop
+      if varscope.caching_device is None:
+        varscope.set_caching_device(lambda op: op.device)
 
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(
