@@ -259,7 +259,6 @@ cc_library(
         "segment/segment.h",
         "segment/union_find.h",
     ],
-    linkstatic = 1,
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
@@ -295,7 +294,6 @@ tf_cuda_library(
         "plugin/trt_plugin_factory.h",
         "plugin/trt_plugin_utils.h",
     ],
-    linkstatic = 1,
     deps = [
         "//tensorflow/core:platform_base",
     ] + if_tensorrt([

@@ -34,7 +34,13 @@ namespace tensorrt {
 
 class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
  public:
-  static PluginFactoryTensorRT* GetInstance();
+  // TODO(aaroey): this static method has to be inlined to make the singleton a
+  // unique global symbol. Find a way to fix it.
+  static PluginFactoryTensorRT* GetInstance() {
+    static PluginFactoryTensorRT* factory_instance =
+        new PluginFactoryTensorRT();
+    return factory_instance;
+  }
 
   // Deserialization method
   PluginTensorRT* createPlugin(const char* layer_name, const void* serial_data,

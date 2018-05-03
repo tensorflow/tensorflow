@@ -86,20 +86,12 @@ tf_custom_op_py_library(
 )
 
 py_library(
-    name = "inc_op_py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":inc_op",
-        ":inc_op_loader",
-    ],
-)
-
-py_library(
     name = "init_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":inc_op_py",
+        ":inc_op",
+        ":inc_op_loader",
     ],
 )
 
