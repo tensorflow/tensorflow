@@ -233,7 +233,8 @@ class Layer(base_layer.Layer):
             getter=vs.get_variable)
 
         if regularizer:
-          if context.executing_eagerly() or _should_add_regularizer(variable, existing_variables):
+          if context.executing_eagerly() or _should_add_regularizer(
+              variable, existing_variables):
             self._handle_weight_regularization(name, variable, regularizer)
 
         if init_graph is not None:
@@ -355,11 +356,12 @@ def _add_elements_to_collection(elements, collection_list):
         collection.append(element)
 
 def _should_add_regularizer(variable, existing_variable_set):
+  result = True
   if isinstance(variable, tf_variables.PartitionedVariable):
-    for var in variable._variable_list:
+    for var in variable._get_variable_list():
       if var in existing_variable_set:
-        return False
-    return True
+        result = False
+        break
   else:
-    return variable not in existing_variable_set
-
+    result = variable not in existing_variable_set
+  return result
