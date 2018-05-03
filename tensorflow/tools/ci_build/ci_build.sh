@@ -126,7 +126,7 @@ echo ""
 
 # Build the docker container.
 echo "Building container (${DOCKER_IMG_NAME})..."
-docker build -t ${DOCKER_IMG_NAME} \
+docker build ${CI_DOCKER_EXTRA_BUILD_PARAMS} -t ${DOCKER_IMG_NAME} \
     -f "${DOCKERFILE_PATH}" "${DOCKER_CONTEXT_PATH}"
 
 # Check docker build status
