@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy
+
 from tensorflow.contrib import tensorrt
+from tensorflow.contrib.tensorrt import custom_plugin_examples
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
@@ -27,12 +30,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.framework import errors
-import numpy
-
-# import custom_op as plugin op
-# the python api handles registration to the plugin factory
-from tensorflow.contrib.tensorrt import custom_plugin_examples
 
 
 def get_plugin_graph_def():

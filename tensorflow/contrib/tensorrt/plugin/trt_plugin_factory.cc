@@ -21,12 +21,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-PluginFactoryTensorRT* PluginFactoryTensorRT::GetInstance() {
-  static PluginFactoryTensorRT* factory_instance =
-      new PluginFactoryTensorRT();
-  return factory_instance;
-}
-
 PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layer_name,
                                                     const void* serial_data,
                                                     size_t serial_length) {
