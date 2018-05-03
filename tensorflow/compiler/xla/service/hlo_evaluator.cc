@@ -1604,8 +1604,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             // Evaluate computation with specified literal operands.
             auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
             auto result_val_literal = Literal::CreateR0<ReturnT>(result_val);
-            std::vector<const Literal*> args = {curr_val_literal.get(),
-                                                result_val_literal.get()};
+            std::vector<const Literal*> args = {result_val_literal.get(),
+                                                curr_val_literal.get()};
 
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*function, args)
@@ -1804,7 +1804,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 const auto result_val_literal =
                     Literal::CreateR0<ReturnT>(result_val);
                 const std::vector<const Literal*> args = {
-                    curr_val_literal.get(), result_val_literal.get()};
+                    result_val_literal.get(), curr_val_literal.get()};
                 std::unique_ptr<Literal> computed_result =
                     embedded_evaluator.Evaluate<const Literal*>(*function, args)
                         .ConsumeValueOrDie();
@@ -1851,6 +1851,34 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);
     return Status::OK();
+  }
+
+  // Enable CLZ only for int32 and uint32.
+  template <
+      typename NativeT,
+      typename std::enable_if<
+          (std::is_floating_point<NativeT>::value ||
+           std::is_integral<NativeT>::value || is_complex_t<NativeT>::value) &&
+          !(std::is_same<NativeT, uint32>::value ||
+            std::is_same<NativeT, int32>::value)>::type* = nullptr>
+  Status HandleClz(HloInstruction* clz) {
+    return InvalidArgument("Unsupported type for Clz");
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, uint32>::value ||
+                std::is_same<NativeT, int32>::value>::type* = nullptr>
+  Status HandleClz(HloInstruction* clz) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[clz],
+                        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
+                          return 31 - tensorflow::Log2Floor(elem_operand);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleClz(HloInstruction* clz) override {
+    return HandleClz<ElementwiseT>(clz);
   }
 
   template <typename NativeT, typename std::enable_if<std::is_floating_point<
@@ -2508,6 +2536,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     } break;
     case F16:
       return Unimplemented("unhandled primitive type: F16.");
+    case BF16: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<bfloat16>(compare->shape(), opcode,
+                                            lhs_literal, rhs_literal));
+    } break;
     case F32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
@@ -2935,9 +2968,10 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
 }
 
 Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
+  HloModuleConfig config;
   // Attach cloned computation to an empty HLO module so the existing ones are
   // not modified.
-  HloModule empty_hlo_module("EmptyModuleForFusion");
+  HloModule empty_hlo_module("EmptyModuleForFusion", config);
   auto cloned_fused_computation =
       fusion->fused_instructions_computation()->Clone(
           /*suffix=*/"clone_with_layout", &empty_hlo_module);

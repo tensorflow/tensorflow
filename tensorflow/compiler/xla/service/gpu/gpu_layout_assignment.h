@@ -27,7 +27,8 @@ namespace gpu {
 // layout constraints for operands and results of library calls.
 class GpuLayoutAssignment : public LayoutAssignment {
  public:
-  explicit GpuLayoutAssignment(ComputationLayout* entry_computation_layout)
+  explicit GpuLayoutAssignment(
+      const ComputationLayout& entry_computation_layout)
       : LayoutAssignment(entry_computation_layout) {}
   ~GpuLayoutAssignment() override {}
 

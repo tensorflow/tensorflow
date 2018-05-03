@@ -96,11 +96,11 @@ def _eager_metrics_fn(model, outputs, targets):
           model.metrics_names.append(metric_name)
 
       with backend.name_scope(metric_name):
-        metric_result = metric_fn(outputs[i], targets[i])
+        metric_result = metric_fn(targets[i], outputs[i])
         metric_names.append(metric_name)
         metric_results.append(backend.mean(metric_result))
 
-  return metric_names, metric_results
+  return metric_results
 
 
 def _model_loss(model, inputs, targets, sample_weights=None, training=False):
@@ -150,8 +150,13 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
       with backend.name_scope(model.output_names[i] + '_loss'):
         output_loss = weighted_masked_fn(
-            outs[i], targets[i], weights, mask=mask)
-      loss_metrics.append(backend.mean(output_loss))
+            targets[i], outs[i], weights, mask=mask)
+      # If the number of outputs is 1 then we don't append the loss metric
+      # associated with each model output. When there are multiple outputs
+      # associated with a model, each output's loss is calculated and returned
+      # as part of the loss_metrics.
+      if len(model.outputs) > 1:
+        loss_metrics.append(backend.mean(output_loss))
 
       loss_weight = model.loss_weights_list[i]
       if total_loss is None:
@@ -274,7 +279,7 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
       model, inputs, targets, sample_weights=sample_weights, training=True)
   if not isinstance(outs, list):
     outs = [outs]
-  _, metrics_results = _eager_metrics_fn(
+  metrics_results = _eager_metrics_fn(
       model, outs, targets)
   if not isinstance(loss, list):
     loss = [loss]
@@ -304,7 +309,7 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
       model, inputs, targets, sample_weights=sample_weights, training=False)
   if not isinstance(outs, list):
     outs = [outs]
-  _, metrics_results = _eager_metrics_fn(
+  metrics_results = _eager_metrics_fn(
       model, outs, targets)
   if not isinstance(loss, list):
     loss = [loss]
@@ -498,34 +503,12 @@ def fit_loop(
         for l, o in zip(out_labels, outs):
           batch_logs[l] = o
         # Required for Eager mode
-        metrics_names, metrics_results = _eager_metrics_fn(
-            model, outs, targets_batch)
+        metrics_results = _eager_metrics_fn(model, outs, targets_batch)
         batch_logs['loss'] = tensor_util.constant_value(backend.mean(loss))
-
-        # TODO(anjalisridhar): Move this to compile to avoid duplicate code.
-        # In graph mode we set the metric names in compile. However in
-        # Eager mode we calculate the metrics for each batch in fit_loop.
-        # We could calculate the metric names and functions in compile.
-        # This would avoid setting the callback parameters separately.
-        # We need to do this for the first iteration alone
-        for m in metrics_names:
-          if m not in callback_metrics:
-            callback_metrics.append(m)
-
-        callbacks.set_params({
-            'batch_size': batch_size,
-            'epochs': epochs,
-            'steps': steps_per_epoch,
-            'samples': num_train_samples,
-            'verbose': verbose,
-            'do_validation': do_validation,
-            'metrics': callback_metrics or [],
-        })
 
         for k, v in zip(model.metrics_names,
                         [backend.mean(loss)] + loss_metrics + metrics_results):
           batch_logs[k] = tensor_util.constant_value(v)
-
         callbacks.on_batch_end(batch_index, batch_logs)
         if callback_model.stop_training:
           break
@@ -611,7 +594,7 @@ def test_loop(model, inputs, targets,
           targets_batch,
           sample_weights=sample_weights_batch,
           training=False)
-      _, metrics_results = _eager_metrics_fn(model, loss_outs, targets_batch)
+      metrics_results = _eager_metrics_fn(model, loss_outs, targets_batch)
       batch_outs = []
       for _, v in zip(model.metrics_names,
                       [backend.mean(loss)] + loss_metrics + metrics_results):

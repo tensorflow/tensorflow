@@ -1758,19 +1758,7 @@ def make_strided_slice_tests(zip_path):
           "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
           "constant_indices": [False, True],
       },
-      #
-      {
-          "dtype": [tf.float32],
-          "index_type": [tf.int32],
-          "input_shape": [[12, 2, 2, 5]],
-          "begin": [[0]],
-          "end": [[1]],
-          "strides": [[1]],
-          "begin_mask": [0],
-          "end_mask": [0],
-          "shrink_axis_mask": [1],
-          "constant_indices": [True],
-      },
+      # TODO(b/73170889) Restore test paramaters removed in cl/191608113.
       # 2-D
       {
           "dtype": [tf.float32, tf.int32, tf.int64],
@@ -1783,6 +1771,19 @@ def make_strided_slice_tests(zip_path):
           "end_mask": [None, 1, 2],
           "shrink_axis_mask": [None, 1, 2, 3, -1],
           "constant_indices": [False, True],
+      },
+      # 1-D Exhaustive
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4]],
+          "begin": [[-100], [-3], [-2], [-1], [0], [1], [2], [3], [100]],
+          "end": [[-100], [-3], [-2], [-1], [0], [1], [2], [3], [100]],
+          "strides": [-2, -1, 1, 2],
+          "begin_mask": [0, 1],
+          "end_mask": [0, 1],
+          "shrink_axis_mask": [0],
+          "constant_indices": [False],
       },
       # Negative strides
       {
@@ -2032,6 +2033,33 @@ def make_less_tests(zip_path):
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_floor_tests(zip_path):
+  """Make a set of tests to do floor."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the floor op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.floor(input_value)
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
 
 # Toco binary path provided by the generate rule.
 bin_path = None

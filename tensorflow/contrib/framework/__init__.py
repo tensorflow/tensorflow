@@ -72,7 +72,9 @@ See the @{$python/contrib.framework} guide.
 @@variable
 @@VariableDeviceChooser
 @@convolutional_delta_orthogonal
+@@convolutional_orthogonal_1d
 @@convolutional_orthogonal_2d
+@@convolutional_orthogonal_3d
 @@zero_initializer
 
 @@load_checkpoint
@@ -106,6 +108,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.framework.python.framework import *
+from tensorflow.contrib.framework.python.framework import nest
 from tensorflow.contrib.framework.python.ops import *
 # pylint: enable=unused-import,wildcard-import
 
@@ -118,9 +121,26 @@ from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
 from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.ops.array_ops import broadcast_to
 from tensorflow.python.ops.init_ops import convolutional_delta_orthogonal
+from tensorflow.python.ops.init_ops import convolutional_orthogonal_1d
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d
+from tensorflow.python.ops.init_ops import convolutional_orthogonal_3d
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['nest', 'broadcast_to']
+_nest_allowed_symbols = [
+    'assert_same_structure',
+    'is_sequence',
+    'flatten',
+    'flatten_dict_items',
+    'pack_sequence_as',
+    'map_structure',
+    'assert_shallow_structure',
+    'flatten_up_to',
+    'map_structure_up_to',
+    'get_traverse_shallow_structure',
+    'yield_flat_paths',
+    'flatten_with_joined_string_paths',
+]
 
+remove_undocumented(nest.__name__, allowed_exception_list=_nest_allowed_symbols)
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

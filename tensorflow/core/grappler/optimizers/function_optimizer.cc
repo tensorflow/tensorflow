@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -29,64 +30,336 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
 
-class FunctionInliningContext {
- public:
-  explicit FunctionInliningContext(const GrapplerItem& item,
-                                   RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level),
-        functions_(InliningCandidates(item)),
-        function_library_(FunctionLibraryDefinition(OpRegistry::Global(),
-                                                    item.graph.library())) {}
+// Mark functions that were created as a result of function specialization.
+constexpr char kGrapplerSpecializedFuncAttr[] = "_GrapplerSpecializedFunc";
 
-  const FunctionLibraryDefinition& FunctionLibrary() const {
+constexpr char kNoInlineAttr[] = "_noinline";
+
+bool AttrIsTrue(const FunctionDef& func, const string& attr) {
+  return func.attr().count(attr) != 0 && func.attr().at(attr).b();
+}
+
+bool MarkedSpecialized(const FunctionDef& func) {
+  return AttrIsTrue(func, kGrapplerSpecializedFuncAttr);
+}
+
+bool MarkedNoInline(const FunctionDef& func) {
+  return AttrIsTrue(func, kNoInlineAttr);
+}
+
+// Find unique name for the specialized function. Collision can happen if
+// specialized function is instantiated for the nodes with the same name (e.g.
+// inside function body of two different functions).
+string UniqueSpecializedFunctionName(const FunctionDef& func,
+                                     const NodeDef& func_node,
+                                     const FunctionLibraryDefinition& flib) {
+  using str_util::StringReplace;
+  using strings::StrCat;
+
+  string specialized_name = StrCat(func.signature().name(), "_specialized_for_",
+                                   StringReplace(func_node.name(), "/", "_",
+                                                 /*replace_all*/ true));
+  string unique_name = specialized_name;
+
+  int idx = 0;
+  while (flib.Find(unique_name)) {
+    unique_name = strings::StrCat(specialized_name, "_", ++idx);
+  }
+  return unique_name;
+}
+
+class FunctionOptimizerContext {
+ public:
+  explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
+                                    const GrapplerItem& item)
+      : function_library_(OpRegistry::Global(), item.graph.library()) {
+    InitializeTrulyConstNodes(item);
+    InitializeInlinedFunctions(opt_level, item);
+  }
+
+  const FunctionLibraryDefinition& function_library() const {
     return function_library_;
   }
 
-  bool HasInlinedFunctions() const { return !functions_.empty(); }
+  FunctionLibraryDefinition* mutable_function_library() {
+    return &function_library_;
+  }
+
+  bool IsInlinedFunction(const string& name) const {
+    return inlined_functions_.count(name) > 0;
+  }
+
+  bool IsTrulyConst(const string& name) const {
+    return TrulyConstNode(name) != nullptr;
+  }
+
+  const NodeDef* TrulyConstNode(const string& name) const {
+    return gtl::FindWithDefault(truly_const_nodes_, name, nullptr);
+  }
 
   // Find inlining candidate by name. Return nullptr if not found.
   const FunctionDef* FindInlinedFunction(const string& name) const {
-    auto it = functions_.find(name);
-    if (it != functions_.end()) {
-      return it->second;
-    } else {
-      return nullptr;
-    }
+    return gtl::FindWithDefault(inlined_functions_, name, nullptr);
   }
 
  private:
-  std::unordered_map<string, const FunctionDef*> InliningCandidates(
-      const GrapplerItem& item) const {
-    std::unordered_map<string, const FunctionDef*> functions;
-    for (const FunctionDef& func : item.graph.library().function()) {
-      // Don't inline functions marked as noinline
-      if (func.attr().count("_noinline") != 0 &&
-          func.attr().at("_noinline").b() &&
-          opt_level_ != RewriterConfig::AGGRESSIVE) {
-        continue;
+  void InitializeTrulyConstNodes(const GrapplerItem& item) {
+    std::unordered_set<string> feed_nodes;
+    for (const auto& feed : item.feed) {
+      feed_nodes.insert(NodeName(feed.first));
+    }
+
+    for (const NodeDef& node : item.graph.node()) {
+      if (IsConstant(node) && feed_nodes.count(node.name()) == 0) {
+        truly_const_nodes_[node.name()] = &node;
       }
+    }
+  }
+
+  void InitializeInlinedFunctions(RewriterConfig::Toggle opt_level,
+                                  const GrapplerItem& item) {
+    bool aggressive = opt_level == RewriterConfig::AGGRESSIVE;
+
+    for (const FunctionDef& func : item.graph.library().function()) {
       // Can't create IdentityN nodes with no input or output: skip these
       // functions for now.
       if (func.signature().input_arg_size() == 0 ||
           func.signature().output_arg_size() == 0) {
         continue;
       }
-      functions[func.signature().name()] = &func;
+      bool marked_noinline = MarkedNoInline(func);
+      bool marked_specialized = MarkedSpecialized(func);
+
+      if (!marked_specialized && (!marked_noinline || aggressive)) {
+        inlined_functions_[func.signature().name()] = &func;
+      }
     }
-    return functions;
   }
 
-  RewriterConfig::Toggle opt_level_;
-  std::unordered_map<string, const FunctionDef*> functions_;
   FunctionLibraryDefinition function_library_;
+  // Functions that can be inlined into optimized graph.
+  std::unordered_map<string, const FunctionDef*> inlined_functions_;
+  // Nodes that are Const and not in feed.
+  std::unordered_map<string, const NodeDef*> truly_const_nodes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionInliningContext);
+  TF_DISALLOW_COPY_AND_ASSIGN(FunctionOptimizerContext);
 };
+
+bool HasTrulyConstInputs(const NodeDef& node,
+                         const FunctionOptimizerContext& ctx) {
+  const auto is_truly_const = [&ctx](const string& input) {
+    return ctx.IsTrulyConst(NodeName(input));
+  };
+  return std::any_of(node.input().begin(), node.input().end(), is_truly_const);
+}
+
+// Return trimmed FunctionDefLibrary with functions that are reachable from
+// the optimized graph.
+FunctionDefLibrary TrimFunctionLibrary(const FunctionLibraryDefinition& flib,
+                                       const GraphDef& optimized_graph) {
+  // Functions that are reachable from the optimized graph.
+  std::unordered_set<string> keep_funcs;
+
+  std::vector<const FunctionDef*> func_queue;
+  func_queue.reserve(flib.num_functions());
+
+  // Add registered and not already processed functions to the queue by name.
+  const auto add_to_func_queue = [&](const string& func_name) {
+    const FunctionDef* func = flib.Find(func_name);
+    if (func && keep_funcs.find(func_name) == keep_funcs.end()) {
+      func_queue.push_back(func);
+    }
+  };
+
+  // Find all the functions that are reachable from the given node.
+  const auto add_node_to_func_queue = [&](const NodeDef& node) {
+    // Node itself can be a call to the function.
+    add_to_func_queue(node.op());
+
+    // Or node can have an attribute referencing a function.
+    for (const auto& attr : node.attr()) {
+      const auto& attr_value = attr.second;
+
+      // 1. AttrValue.func
+      if (attr_value.has_func()) {
+        add_to_func_queue(attr_value.func().name());
+      }
+
+      // 2. AttrValue.ListValue.func
+      if (attr_value.has_list()) {
+        for (const auto& func : attr_value.list().func()) {
+          add_to_func_queue(func.name());
+        }
+      }
+    }
+  };
+
+  // Add all functions that are directly called from the optimized graph.
+  const auto& graph_nodes = optimized_graph.node();
+  std::for_each(graph_nodes.begin(), graph_nodes.end(), add_node_to_func_queue);
+
+  // Process all reachable functions.
+  while (!func_queue.empty()) {
+    const FunctionDef* func = func_queue.back();
+    func_queue.pop_back();
+
+    const string& func_name = func->signature().name();
+    keep_funcs.insert(func_name);
+
+    // Find all the functions called from the function body.
+    const auto& func_body = func->node_def();
+    std::for_each(func_body.begin(), func_body.end(), add_node_to_func_queue);
+
+    // Check if the function has a registered gradient.
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
+  }
+
+  FunctionDefLibrary lib;
+  for (const string& func_name : keep_funcs) {
+    const FunctionDef* func = CHECK_NOTNULL(flib.Find(func_name));
+    *lib.add_function() = *func;
+
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) {
+      GradientDef* gd = lib.add_gradient();
+      gd->set_function_name(func_name);
+      gd->set_gradient_func(grad_func_name);
+    }
+  }
+
+  VLOG(3) << "Trimmed function library: " << keep_funcs.size() << " functions ("
+          << static_cast<int>(keep_funcs.size() - flib.num_functions()) << ")";
+
+  return lib;
+}
+
+// Push all constant inputs of an instantiating node into the function body.
+Status PushDownConstInputs(const NodeDef& func_node,
+                           const FunctionOptimizerContext& ctx,
+                           GrapplerFunctionItem* item,
+                           std::unordered_set<string>* const_inputs,
+                           std::unordered_set<string>* control_deps) {
+  // Record node control dependencies in the control_deps set.
+  const auto record_control_deps = [&](const NodeDef* const_input) {
+    for (int i = const_input->input_size() - 1; i >= 0; --i) {
+      const string& input = const_input->input(i);
+      if (IsControlInput(input))
+        control_deps->insert(input);
+      else
+        break;
+    }
+  };
+
+  for (int i = func_node.input_size() - 1; i >= 0; --i) {
+    const string& input = func_node.input(i);
+    if (IsControlInput(input)) continue;
+
+    const string node_name = NodeName(input);
+    if (ctx.IsTrulyConst(node_name)) {
+      VLOG(3) << "Push const into function body: input=" << input;
+      const auto* const_input = CHECK_NOTNULL(ctx.TrulyConstNode(node_name));
+      const_inputs->insert(input);
+      record_control_deps(const_input);
+      TF_RETURN_IF_ERROR(ReplaceInputWithConst(*const_input, i, item));
+    }
+  }
+
+  return Status::OK();
+}
+
+// Remove inputs that were pushed into the function body, and attach their
+// control dependencies to the function caller node.
+void RemovePushedDownConstInputs(const std::unordered_set<string>& const_inputs,
+                                 const std::unordered_set<string>& control_deps,
+                                 NodeDef* specialized_func_node) {
+  // Nothing to do if it was no const inputs to the function node.
+  if (const_inputs.empty()) return;
+
+  // Keep only non-const inputs.
+  std::vector<string> keep_inputs;
+  const auto& inputs = specialized_func_node->input();
+  std::copy_if(inputs.begin(), inputs.end(), std::back_inserter(keep_inputs),
+               [&](const string& input) {
+                 return const_inputs.find(input) == const_inputs.end();
+               });
+
+  specialized_func_node->clear_input();
+  for (const auto& keep : keep_inputs) specialized_func_node->add_input(keep);
+
+  // Attach control dependencies of pushed down const input to the caller node.
+  if (!control_deps.empty()) {
+    std::unordered_set<string> existing_control_deps;
+
+    for (const string& input : keep_inputs) {
+      existing_control_deps.insert(AsControlDependency(NodeName(input)));
+    }
+
+    for (const string& ctrl : control_deps) {
+      if (existing_control_deps.find(ctrl) == existing_control_deps.end()) {
+        VLOG(3) << "Forward control dependency to function caller node: input="
+                << ctrl;
+        specialized_func_node->add_input(ctrl);
+      }
+    }
+  }
+}
+
+Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
+                          FunctionOptimizerContext* ctx,
+                          GraphDef* optimized_graph) {
+  VLOG(2) << "Specialize function instantiation: "
+          << SummarizeNodeDef(func_node);
+
+  const std::unordered_map<string, AttrValue> func_attr(
+      func_node.attr().begin(), func_node.attr().end());
+
+  const auto& flib = ctx->function_library();
+
+  // Make a GrapplerFunctionItem and convert it back to FunctionDef after
+  // pushing all constant inputs into the function body.
+  GrapplerFunctionItem item;
+  TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, func_attr, flib, &item));
+
+  // Push const inputs into the function body, and keep track of their control
+  // dependencies.
+  std::unordered_set<string> const_inputs;
+  std::unordered_set<string> control_deps;
+  TF_RETURN_IF_ERROR(PushDownConstInputs(func_node, *ctx, &item, &const_inputs,
+                                         &control_deps));
+
+  // TODO(ezhulenev): Push down known input shapes.
+  FunctionDef specialized_func;
+  TF_RETURN_IF_ERROR(MakeFunctionDef(item, flib, &specialized_func));
+
+  // Find a name for specialized function.
+  const string specialized_func_name =
+      UniqueSpecializedFunctionName(func, func_node, flib);
+
+  specialized_func.mutable_signature()->set_name(specialized_func_name);
+  auto* specialized_attr = specialized_func.mutable_attr();
+  (*specialized_attr)[kGrapplerSpecializedFuncAttr].set_b(true);
+
+  // Add specialized function to the library.
+  TF_RETURN_IF_ERROR(
+      ctx->mutable_function_library()->AddFunctionDef(specialized_func));
+
+  // Add a function call node for the specialized function.
+  NodeDef* specialized_func_node = optimized_graph->add_node();
+  *specialized_func_node = func_node;
+  specialized_func_node->set_op(specialized_func_name);
+
+  // Update specialized node to remove inputs for pushed down consts.
+  RemovePushedDownConstInputs(const_inputs, control_deps,
+                              specialized_func_node);
+  return Status::OK();
+}
 
 // Copy input/output argument type to the type_list. Return error if argument
 // type is not explicitly defined, and not specified in function attributes.
@@ -148,14 +421,16 @@ Status HookInlinedFunctionOutputs(
 }
 
 Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
-                      const FunctionInliningContext& ctx,
+                      const FunctionOptimizerContext& ctx,
                       GraphDef* optimized_graph) {
+  VLOG(2) << "Inline function instantiation: " << SummarizeNodeDef(func_node);
+
   const std::unordered_map<string, AttrValue> func_attr(
       func_node.attr().begin(), func_node.attr().end());
 
   GrapplerFunctionItem item;
   Status item_status =
-      MakeGrapplerFunctionItem(func, func_attr, ctx.FunctionLibrary(), &item);
+      MakeGrapplerFunctionItem(func, func_attr, ctx.function_library(), &item);
 
   if (!item_status.ok()) {
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
@@ -283,6 +558,8 @@ class SymbolicGradientEnv {
 
 Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
                               GraphDef* inlined_graph) {
+  VLOG(2) << "Inline symbolic gradient: " << SummarizeNodeDef(node);
+
   GraphDef graph_def;
 
   // Create a node to anchor the gradient inputs
@@ -378,39 +655,67 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
 
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
-  FunctionInliningContext function_inlining_ctx(item, opt_level_);
+  VLOG(1) << "Optimize Grappler item: id=" << item.id;
 
   // Nothing to do here.
-  if (!function_inlining_ctx.HasInlinedFunctions()) {
+  if (item.graph.library().function_size() == 0) {
+    VLOG(3) << "Skip Grappler item with empty function library";
     *optimized_graph = item.graph;
     return Status::OK();
   }
 
+  FunctionOptimizerContext ctx(opt_level_, item);
   SymbolicGradientEnv env(item.graph.versions().producer(),
                           item.graph.library());
 
+  bool inline_gradients = options_.enable_symbolic_gradient_inlining;
+  bool inline_func = options_.enable_function_inlining;
+  bool specialize_func = options_.enable_function_specialization;
+
   for (const NodeDef& node : item.graph.node()) {
-    if (node.op() == "SymbolicGradient") {
-      TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, &env, optimized_graph));
-      continue;
+    const string func_name = node.op();
+
+    if (func_name == "SymbolicGradient" && inline_gradients) {
+      // Inline symbolic gradients only if the corresponding function is inlined
+      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
+      string f_name = f_attr != nullptr ? f_attr->func().name() : "";
+      if (ctx.IsInlinedFunction(f_name)) {
+        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, &env, optimized_graph));
+        continue;
+      }
     }
 
-    const FunctionDef* func =
-        function_inlining_ctx.FindInlinedFunction(node.op());
+    const FunctionDef* func = ctx.function_library().Find(func_name);
     if (func != nullptr) {
-      TF_RETURN_IF_ERROR(
-          InlineFunction(node, *func, function_inlining_ctx, optimized_graph));
-    } else {
-      *optimized_graph->add_node() = node;
+      if (inline_func && ctx.IsInlinedFunction(func_name)) {
+        // Inline function body into the optimized graph}
+        TF_RETURN_IF_ERROR(InlineFunction(node, *func, ctx, optimized_graph));
+        continue;
+      }
+
+      // Do not specialize if function has custom gradient.
+      const string grad_func = ctx.function_library().FindGradient(func_name);
+
+      if (specialize_func && grad_func.empty() &&
+          (IsParametrized(*func) || HasTrulyConstInputs(node, ctx))) {
+        // TODO(ezhulenev): Specialize function call if input has a known shape.
+        // Specialize function body for its instantiation attributes and inputs.
+        TF_RETURN_IF_ERROR(
+            SpecializeFunction(node, *func, &ctx, optimized_graph));
+        continue;
+      }
     }
+
+    // If we reached this point, node was not handled by any of the stages
+    // (inline, specialize), simply add a copy to the graph.
+    *optimized_graph->add_node() = node;
   }
 
-  // TODO(bsteiner): specialize the implementation of functions that can't be
-  // inlined based on the context in which they're instantiated.
-
-  // TODO(bsteiner): trim the library to remove unused function definitions
   *optimized_graph->mutable_versions() = item.graph.versions();
-  *optimized_graph->mutable_library() = item.graph.library();
+  *optimized_graph->mutable_library() =
+      options_.enable_trim_function_library
+          ? TrimFunctionLibrary(ctx.function_library(), *optimized_graph)
+          : ctx.function_library().ToProto();
 
   return Status::OK();
 }

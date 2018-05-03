@@ -157,8 +157,10 @@ InferenceContext::~InferenceContext() {}
 
 Status InferenceContext::Run(
     const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
+  ForgetMerges();
   Status s = fn(this);
   if (!s.ok()) {
+    ForgetMerges();
     return AttachContext(s);
   }
 #ifndef NDEBUG

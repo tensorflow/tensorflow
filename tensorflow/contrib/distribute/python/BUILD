@@ -42,6 +42,7 @@ cuda_py_test(
     srcs = ["values_test.py"],
     additional_deps = [
         ":mirrored_strategy",
+        ":multi_worker_test_base",
         ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -56,6 +57,9 @@ cuda_py_test(
         "//tensorflow/python:device_util",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:model_fn",
+    ],
+    tags = [
+        "no_pip",
     ],
 )
 
@@ -131,6 +135,7 @@ py_library(
     deps = [
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":tpu_strategy",
         "//tensorflow/contrib/optimizer_v2:training",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
@@ -216,6 +221,24 @@ cuda_py_test(
 )
 
 py_library(
+    name = "multi_worker_test_base",
+    testonly = 1,
+    srcs = ["multi_worker_test_base.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
     name = "step_fn",
     srcs = ["step_fn.py"],
     visibility = ["//tensorflow:internal"],
@@ -225,21 +248,50 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "minimize_loss_test",
-    srcs = ["minimize_loss_test.py"],
-    additional_deps = [
-        ":combinations",
-        ":single_loss_example",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
+py_library(
+    name = "tpu_strategy",
+    srcs = ["tpu_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":one_device_strategy",
+        ":values",
+        "//tensorflow/contrib/tpu",
+        "//tensorflow/contrib/tpu:tpu_py",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "minimize_loss_test_lib",
+    testonly = 1,
+    srcs = ["minimize_loss_test.py"],
+    deps = [
+        ":combinations",
+        ":mirrored_strategy",
+        ":single_loss_example",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "minimize_loss_test",
+    srcs = ["minimize_loss_test.py"],
+    additional_deps = [
+        ":minimize_loss_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
@@ -297,6 +349,7 @@ py_library(
     srcs = ["single_loss_example.py"],
     deps = [
         ":step_fn",
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",
@@ -446,5 +499,36 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+    ],
+)
+
+py_library(
+    name = "input_ops",
+    srcs = ["input_ops.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+cuda_py_test(
+    name = "input_ops_test",
+    srcs = ["input_ops_test.py"],
+    additional_deps = [
+        ":input_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python:util",
+    ],
+    tags = [
+        "no_pip",
     ],
 )

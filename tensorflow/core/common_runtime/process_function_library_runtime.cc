@@ -144,7 +144,8 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
   Device* device = flr->device();
   string device_type = device->parsed_name().type;
-  if (device_type == "CPU" || device_type == "TPU_SYSTEM") {
+  if (device_type == "CPU" || device_type == "TPU_SYSTEM" ||
+      device_type == "TPU") {
     // "TPU_SYSTEM" indicates that `device` is a CPU.
     return Status::OK();
   }
@@ -181,12 +182,7 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
     const string& function_key, const string& device_name,
     FunctionLibraryRuntime::LocalHandle local_handle) {
   mutex_lock l(mu_);
-  FunctionLibraryRuntime::Handle h =
-      gtl::FindWithDefault(table_, function_key, kInvalidHandle);
-  if (h != kInvalidHandle) {
-    if (function_data_.count(h) != 0) return h;
-  }
-  h = next_handle_;
+  auto h = next_handle_;
   FunctionData* fd = new FunctionData(device_name, local_handle);
   function_data_[h] = std::unique_ptr<FunctionData>(fd);
   table_[function_key] = h;
@@ -197,12 +193,7 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
 FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::GetHandle(
     const string& function_key) const {
   mutex_lock l(mu_);
-  FunctionLibraryRuntime::Handle h =
-      gtl::FindWithDefault(table_, function_key, kInvalidHandle);
-  if (h != kInvalidHandle) {
-    if (function_data_.count(h) == 0) return kInvalidHandle;
-  }
-  return h;
+  return gtl::FindWithDefault(table_, function_key, kInvalidHandle);
 }
 
 bool ProcessFunctionLibraryRuntime::IsInstantiatedOnDevice(
@@ -269,13 +260,6 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "ProcessFLR Instantiate [success]: " << function_name
           << " on: " << options.target << " with handle: " << *handle
           << " (this: " << this << ")";
-  return Status::OK();
-}
-
-Status ProcessFunctionLibraryRuntime::RemoveHandle(
-    FunctionLibraryRuntime::Handle handle) {
-  mutex_lock l(mu_);
-  function_data_.erase(handle);
   return Status::OK();
 }
 

@@ -24,8 +24,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace se = perftools::gputools;
-
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;

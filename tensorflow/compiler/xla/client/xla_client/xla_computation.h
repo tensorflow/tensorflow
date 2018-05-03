@@ -48,6 +48,10 @@ class XlaComputation {
 
   const HloModuleProto& proto() const { return proto_; }
 
+  // Requests that we snapshot the computation into a serializable protocol
+  // buffer form.
+  StatusOr<std::unique_ptr<HloSnapshot>> Snapshot() const;
+
   // Returns true if this object is a null Computation.
   bool IsNull() const { return unique_id_ == -1; }
 

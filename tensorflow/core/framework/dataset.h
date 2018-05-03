@@ -364,7 +364,7 @@ class IteratorBase {
  protected:
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
+  // `RepeatDatasetOp::Dataset`.
   Status SaveParent(IteratorStateWriter* writer,
                     const std::unique_ptr<IteratorBase>& parent) {
     return parent->SaveInternal(writer);
@@ -372,7 +372,7 @@ class IteratorBase {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
+  // `RepeatDatasetOp::Dataset`.
   Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
                        const std::unique_ptr<IteratorBase>& parent) {
     return parent->RestoreInternal(ctx, reader);
@@ -521,7 +521,7 @@ class DatasetIterator : public IteratorBase {
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
-    port::Tracing::TraceMe activity(params_.prefix);
+    tracing::ScopedActivity activity(params_.prefix);
     Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(

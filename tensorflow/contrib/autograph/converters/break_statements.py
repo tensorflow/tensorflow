@@ -18,104 +18,108 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gast
-
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
-class BreakCanonicalizationTransformer(transformer.Base):
+# Tags for local state.
+BREAK_USED = 'break_used'
+CONTROL_VAR_NAME = 'control_var_name'
+
+
+class BreakStatementTransformer(transformer.Base):
   """Canonicalizes break statements into additional conditionals."""
 
-  def __init__(self, context):
-    super(BreakCanonicalizationTransformer, self).__init__(context)
-    # This is a stack structure, to correctly process nested loops.
-    # Each item is a list [break_used, break_variable_name]
-    self.break_uses = []
-
-  def _create_break_check(self):
-    template = """
-      (not var_name)
-    """
-    expr, = templates.replace(template, var_name=self.break_uses[-1][1])
-    return expr.value
-
-  def _create_break_trigger(self):
-    template = """
-      var_name = True
-    """
-    block = templates.replace(template, var_name=self.break_uses[-1][1])
-    block.append(gast.Continue())
-    return block
-
-  def _create_break_init(self):
-    template = """
-      var_name = False
-    """
-    assign, = templates.replace(template, var_name=self.break_uses[-1][1])
-    return assign
-
-  # TODO(mdan): Surely the transformer supports this better?
-  def _manual_visit_list(self, block):
-    new_block = []
-    for n in block:
-      new_n = self.visit(n)
-      if isinstance(new_n, list):
-        new_block.extend(new_n)
-      else:
-        new_block.append(new_n)
-    return new_block
-
-  def visit_While(self, node):
-    self.generic_visit(node.test)
-    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-
-    break_var = self.context.namer.new_symbol('break_requested',
-                                              scope.referenced)
-    self.break_uses.append([False, break_var])
-    node.body = self._manual_visit_list(node.body)
-    if self.break_uses[-1][0]:
-      node.test = gast.BoolOp(gast.And(), [
-          node.test,
-          gast.UnaryOp(gast.Not(), gast.Name(break_var, gast.Load(), None))
-      ])
-      final_nodes = [self._create_break_init(), node]
-    else:
-      final_nodes = node
-    self.break_uses.pop()
-
-    for n in node.orelse:
-      self.generic_visit(n)
-    return final_nodes
-
-  def visit_For(self, node):
-    self.generic_visit(node.target)
-    self.generic_visit(node.iter)
-    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-
-    break_var = self.context.namer.new_symbol('break_requested',
-                                              scope.referenced)
-    self.break_uses.append([False, break_var])
-    node.body = self._manual_visit_list(node.body)
-    if self.break_uses[-1][0]:
-      extra_cond = templates.replace_as_expression(
-          'not var_name', var_name=break_var)
-      anno.setanno(node, 'extra_cond', extra_cond)
-      final_nodes = [self._create_break_init(), node]
-    else:
-      final_nodes = node
-    self.break_uses.pop()
-
-    for n in node.orelse:
-      self.generic_visit(n)
-    return final_nodes
+  def _track_body(self, nodes, break_var):
+    self.enter_local_scope()
+    self.set_local(CONTROL_VAR_NAME, break_var)
+    nodes = self.visit_block(nodes)
+    break_used = self.get_local(BREAK_USED, False)
+    self.exit_local_scope()
+    return nodes, break_used
 
   def visit_Break(self, node):
-    self.break_uses[-1][0] = True
-    return self._create_break_trigger()
+    self.set_local(BREAK_USED, True)
+    var_name = self.get_local(CONTROL_VAR_NAME)
+    # TODO(mdan): This will fail when expanded inside a top-level else block.
+    template = """
+      var_name = True
+      continue
+    """
+    return templates.replace(template, var_name=var_name)
+
+  def _guard_if_present(self, block, var_name):
+    """Prevents the block from executing if var_name is set."""
+    if not block:
+      return block
+    template = """
+        if not var_name:
+          block
+      """
+    node = templates.replace(
+        template,
+        var_name=var_name,
+        block=block)
+    return node
+
+  def visit_While(self, node):
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    break_var = self.context.namer.new_symbol('break__', scope.referenced)
+
+    node.test = self.visit(node.test)
+    node.body, break_used = self._track_body(node.body, break_var)
+    # A break in the else clause applies to the containing scope.
+    node.orelse = self.visit_block(node.orelse)
+
+    if break_used:
+      template = """
+        var_name = False
+        while test and not var_name:
+          body
+        else:
+          orelse
+      """
+      # Python's else clause only triggers if the loop exited cleanly (e.g.
+      # break did not trigger).
+      node = templates.replace(
+          template,
+          var_name=break_var,
+          test=node.test,
+          body=node.body,
+          orelse=self._guard_if_present(node.orelse, break_var))
+
+    return node
+
+  def visit_For(self, node):
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    break_var = self.context.namer.new_symbol('break__', scope.referenced)
+
+    node.target = self.visit(node.target)
+    node.iter = self.visit(node.iter)
+    node.body, break_used = self._track_body(node.body, break_var)
+    # A break in the else clause applies to the containing scope.
+    node.orelse = self.visit_block(node.orelse)
+
+    if break_used:
+      node.orelse = self._guard_if_present(node.orelse, break_var)
+      template = """
+        var_name = False
+        for_stmt
+      """
+      # Python's else clause only triggers if the loop exited cleanly (e.g.
+      # break did not trigger).
+      node = templates.replace(
+          template,
+          var_name=break_var,
+          for_stmt=node)
+      extra_test = templates.replace_as_expression(
+          'not var_name', var_name=break_var)
+      anno.setanno(node[1], 'extra_test', extra_test)
+
+    return node
 
 
 def transform(node, context):
-  return BreakCanonicalizationTransformer(context).visit(node)
+  return BreakStatementTransformer(context).visit(node)

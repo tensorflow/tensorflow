@@ -36,7 +36,6 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
-from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _sorted(dict_):
@@ -758,21 +757,3 @@ def flatten_with_joined_string_paths(structure, separator="/"):
 
 
 _pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
-
-
-_allowed_symbols = [
-    "assert_same_structure",
-    "is_sequence",
-    "flatten",
-    "flatten_dict_items",
-    "pack_sequence_as",
-    "map_structure",
-    "assert_shallow_structure",
-    "flatten_up_to",
-    "map_structure_up_to",
-    "get_traverse_shallow_structure",
-    "yield_flat_paths",
-    "flatten_with_joined_string_paths",
-]
-
-remove_undocumented(__name__, _allowed_symbols)

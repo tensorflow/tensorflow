@@ -52,6 +52,7 @@ class MasterSession : public core::RefCounted {
       std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
       std::unique_ptr<DeviceSet> device_set,
+      std::vector<string> filtered_worker_list,
       StatsPublisherFactory stats_publisher_factory);
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
@@ -129,6 +130,10 @@ class MasterSession : public core::RefCounted {
 
   // The device set used by this session.
   std::unique_ptr<DeviceSet> devices_;
+
+  // The (partial device) names of remote worker tasks that this
+  // session will contact.
+  const std::vector<string> filtered_worker_list_;
 
   StatsPublisherFactory stats_publisher_factory_;
 
@@ -212,7 +217,6 @@ class MasterSession : public core::RefCounted {
   // workers.
   Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
 
-  // TODO(b/36574172): Always use Create/DeleteWorkerSession.
   bool should_delete_worker_sessions_ = false;
   Status DeleteWorkerSessions();
 

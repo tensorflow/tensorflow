@@ -112,6 +112,22 @@ cuda_py_test(
     tags = ["no_windows"],
 )
 
+cuda_py_test(
+    name = "reduce_benchmark_test",
+    srcs = ["reduce_benchmark_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_benchmark",
+    ],
+)
+
 tf_py_test(
     name = "bincount_op_test",
     size = "small",
@@ -592,7 +608,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "matrix_solve_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matrix_solve_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -918,6 +934,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "string_strip_op_test",
+    size = "small",
+    srcs = ["string_strip_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
     name = "substr_op_test",
     size = "small",
     srcs = ["substr_op_test.py"],
@@ -1190,6 +1220,9 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
+    tags = [
+        "noasan",  # times out
+    ],
 )
 
 cuda_py_test(
@@ -1549,6 +1582,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
     grpc_enabled = True,
     tags = ["no_windows"],
@@ -1614,6 +1648,11 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+    shard_count = 4,
+    tags = [
+        "noasan",
+        "notap",
     ],
 )
 
@@ -2881,7 +2920,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    shard_count = 10,
+    shard_count = 20,
     tags = ["no_windows_gpu"],
 )
 

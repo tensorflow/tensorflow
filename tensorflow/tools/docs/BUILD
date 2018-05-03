@@ -103,10 +103,11 @@ py_test(
     data = ["//tensorflow:docs_src"],
     srcs_version = "PY2AND3",
     tags = [
-        # No reason to run sanitizers for this test.
+        # No reason to run sanitizers or fastbuild for this test.
         "noasan",
         "nomsan",
         "notsan",
+        "optonly",
     ],
     deps = [
         ":generate_lib",

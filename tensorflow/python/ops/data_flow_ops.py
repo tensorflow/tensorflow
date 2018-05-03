@@ -571,7 +571,7 @@ class QueueBase(object):
           name=name)
 
   def is_closed(self, name=None):
-    """ Returns true if queue is closed.
+    """Returns true if queue is closed.
 
     This operation returns true if the queue is closed and false if the queue
     is open.
@@ -1563,7 +1563,7 @@ class BaseStagingArea(object):
     of the staging area.
 
     Args:
-      vals: A tensor, a list or tuple of tensors, or a dictionary..
+      vals: A tensor, a list or tuple of tensors, or a dictionary.
 
     Returns:
       A (tensors, indices) tuple where `tensors` is a list of `Tensor` objects
@@ -1582,7 +1582,7 @@ class BaseStagingArea(object):
                          (sorted(vals.keys()), sorted(self._names)))
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
-      vals, indices, n = zip(*[(vals[k], i, k)
+      vals, indices, _ = zip(*[(vals[k], i, k)
                                for i, k in enumerate(self._names)
                                if k in vals])
     else:
@@ -1612,7 +1612,7 @@ class BaseStagingArea(object):
     for val, i in zip(vals, indices):
       dtype, shape = self._dtypes[i], self._shapes[i]
       # Check dtype
-      if not val.dtype == dtype:
+      if val.dtype != dtype:
         raise ValueError("Datatypes do not match. '%s' != '%s'" %
                          (str(val.dtype), str(dtype)))
 
@@ -1626,7 +1626,7 @@ class BaseStagingArea(object):
 
   def _create_device_transfers(self, tensors):
     """Encode inter-device transfers if the current device
-    is not the same as the Staging Area's device
+    is not the same as the Staging Area's device.
     """
 
     if not isinstance(tensors, (tuple, list)):
@@ -1739,11 +1739,6 @@ class StagingArea(BaseStagingArea):
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
-      capacity: (Optional.) Maximum number of elements.
-        An integer. If zero, the Staging Area is unbounded
-      memory_limit: (Optional.) Maximum number of bytes of all tensors
-        in the Staging Area.
-        An integer. If zero, the Staging Area is unbounded
       shapes: (Optional.) Constraints on the shapes of tensors in an element.
         A list of shape tuples or None. This list is the same length
         as dtypes.  If the shape of any tensors in the element are constrained,
@@ -1754,6 +1749,11 @@ class StagingArea(BaseStagingArea):
       shared_name: (Optional.) A name to be used for the shared object. By
         passing the same name to two different python objects they will share
         the underlying staging area. Must be a string.
+      capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
+      memory_limit: (Optional.) Maximum number of bytes of all tensors
+        in the Staging Area.
+        An integer. If zero, the Staging Area is unbounded
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -1782,7 +1782,7 @@ class StagingArea(BaseStagingArea):
     """
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
-      
+
       if not isinstance(values, (list, tuple, dict)):
         values = [values]
 
@@ -1911,7 +1911,8 @@ class StagingArea(BaseStagingArea):
 
 
 class MapStagingArea(BaseStagingArea):
-  """A `MapStagingArea` is a TensorFlow data structure that stores tensors across multiple steps, and exposes operations that can put and get tensors.
+  """A `MapStagingArea` is a TensorFlow data structure that stores tensors
+  across multiple steps, and exposes operations that can put and get tensors.
 
   Each `MapStagingArea` element is a (key, value) pair.
   Only int64 keys are supported, other types should be
@@ -2375,7 +2376,7 @@ class RecordInput(object):
       return records
     else:
       with ops.name_scope(self._name):
-        batch_list = [[] for i in six.moves.range(self._batches)]
+        batch_list = [[] for _ in six.moves.range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
         records = [array_ops.reshape(record, []) for record in records]
         for index, protobuf in zip(six.moves.range(len(records)), records):

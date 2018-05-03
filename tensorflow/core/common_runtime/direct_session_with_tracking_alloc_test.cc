@@ -102,9 +102,9 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(2, shape.dim(0).size());
         EXPECT_EQ(1, shape.dim(1).size());
         if (node->name() == y->name()) {
-          EXPECT_EQ(3, cm->AllocationId(node, 0));
+          EXPECT_EQ(7, cm->AllocationId(node, 0));
         } else {
-          EXPECT_EQ(4, cm->AllocationId(node, 0));
+          EXPECT_EQ(8, cm->AllocationId(node, 0));
         }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));

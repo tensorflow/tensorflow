@@ -28,7 +28,6 @@ limitations under the License.
 #if TOCO_SUPPORT_PORTABLE_PROTOS
 #include "third_party/protobuf/src/google/protobuf/text_format.h"
 #endif  // TOCO_SUPPORT_PORTABLE_PROTOS
-#include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
@@ -57,7 +56,11 @@ string LogName(const Operator& op);
 
 string ArrayDataTypeName(ArrayDataType data_type);
 
-bool IsInputArray(const Model& model, const string& name);
+// Returns true if the given array is specified as a model input array.
+bool IsInputArray(const Model& model, const string& array_name);
+// Returns true if the given array is specified as a model output array.
+bool IsOutputArray(const Model& model, const string& array_name);
+
 bool IsArrayConsumed(const Model& model, const string& name);
 int CountTrueOutputs(const Model& model, const Operator& op);
 
@@ -175,17 +178,6 @@ void CloneArray(Model* model, const string& source_array_name,
 
 void ResolveModelFlags(const ModelFlags& model_flags, Model* model);
 
-template <ArrayDataType A>
-void GetQuantizationParamsFromMinMax(const MinMax& minmax,
-                                     QuantizationParams* quantization_params) {
-  using Integer = DataType<A>;
-  const double rmin = minmax.min;
-  const double rmax = minmax.max;
-
-  *quantization_params =
-      ::tflite::ChooseQuantizationParams<Integer>(rmin, rmax);
-}
-
 template <typename T>
 T ConvertOperator(Operator* o, OperatorType type) {
   if (o != nullptr && o->type == type) {
@@ -196,8 +188,6 @@ T ConvertOperator(Operator* o, OperatorType type) {
 }
 
 void CheckIsReadyForQuantization(const Model& model);
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max);
 
 bool ReshapeIsEquivalentToTranspose(const Model& model,
                                     const TensorFlowReshapeOperator* op,
@@ -303,6 +293,35 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 void FinishBuildingRNNStates(Model* model);
 
 void UseArraysExtraInfo(Model* model, bool quantize_output);
+
+// Calculates the number of elements in tensor given a shape. Shape elements
+// are assumed to be of type T, while the result total is of type U. If U
+// doesn't have enough range to represent the sum of elements, an error is
+// returned.
+template <typename T, typename U>
+port::Status NumElements(const std::vector<T>& shape, U* num_elements) {
+  static_assert(
+      std::numeric_limits<T>::max() <= std::numeric_limits<uint64_t>::max(),
+      "vector type exceed capabilities of NumElements");
+
+  *num_elements = 1;
+  for (const T& dim : shape) {
+    if (dim < 0) {
+      // TensorFlow's shapes sometimes include -1 to represent an "unknown"
+      // size but TOCO isn't able to create arrays of unknown sizes and will
+      // crash in RequiredBufferSizeForShape().
+      return port::Status(false,
+                          "Tensor shape should not include negative values");
+    }
+    if (static_cast<uint64_t>(dim) >
+        std::numeric_limits<U>::max() / *num_elements) {
+      *num_elements = 0;
+      return port::Status(false, "Tensor shape is too large");
+    }
+    *num_elements *= dim;
+  }
+  return port::Status::OK();
+}
 
 }  // namespace toco
 

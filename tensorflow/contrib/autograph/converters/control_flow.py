@@ -78,7 +78,7 @@ class ControlFlowTransformer(transformer.Base):
   def _create_cond_expr(self, results, test, body_name, orelse_name):
     if results is not None:
       template = """
-        results = autograph_utils.run_cond(test, body_name, orelse_name)
+        results = ag__.utils.run_cond(test, body_name, orelse_name)
       """
       return templates.replace(
           template,
@@ -88,7 +88,7 @@ class ControlFlowTransformer(transformer.Base):
           orelse_name=orelse_name)
     else:
       template = """
-        autograph_utils.run_cond(test, body_name, orelse_name)
+        ag__.utils.run_cond(test, body_name, orelse_name)
       """
       return templates.replace(
           template, test=test, body_name=body_name, orelse_name=orelse_name)
@@ -207,7 +207,7 @@ class ControlFlowTransformer(transformer.Base):
       def body_name(state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = __ops.while_loop(
+      state_ast_tuple = ag__.while_stmt(
           test_name, body_name, (state,), (extra_deps,))
     """
     node = templates.replace(
@@ -252,31 +252,31 @@ class ControlFlowTransformer(transformer.Base):
       state_ast_tuple = gast.Tuple([n.ast() for n in state], None)
 
     node_body = ast_util.rename_symbols(node.body, ssf_map)
-    if anno.hasanno(node, 'extra_cond'):
-      extra_cond = anno.getanno(node, 'extra_cond')
-      extra_cond = ast_util.rename_symbols(extra_cond, ssf_map)
+    if anno.hasanno(node, 'extra_test'):
+      extra_test = anno.getanno(node, 'extra_test')
+      extra_test = ast_util.rename_symbols(extra_test, ssf_map)
     else:
-      extra_cond = parser.parse_expression('True')
+      extra_test = parser.parse_expression('True')
 
     template = """
-      def extra_cond_name(state_ssf):
-        return extra_cond_expr
+      def extra_test_name(state_ssf):
+        return extra_test_expr
       def body_name(iterate, state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = __ops.for_loop(
-          iterated, extra_cond_name, body_name, (state,))
+      state_ast_tuple = ag__.for_stmt(
+          iter_, extra_test_name, body_name, (state,))
     """
     node = templates.replace(
         template,
         state=state,
         state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
-        iterated=node.iter,
+        iter_=node.iter,
         iterate=node.target,
-        extra_cond_name=self.context.namer.new_symbol('extra_cond',
+        extra_test_name=self.context.namer.new_symbol('extra_test',
                                                       all_referenced),
-        extra_cond_expr=extra_cond,
+        extra_test_expr=extra_test,
         body_name=self.context.namer.new_symbol('loop_body', all_referenced),
         body=node_body)
 

@@ -309,6 +309,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "eager_test",
+    size = "small",
+    srcs = ["eager_test.py"],
+    disabled_backends = [
+        # TODO(b/78199195) Support XLA CPU devices in eager runtime
+        "cpu",
+        "cpu_ondemand",
+        # TODO(b/78468222) Enable GPU backend
+        "gpu",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
@@ -340,7 +359,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "ftrl_test",
-    size = "small",
+    size = "medium",
     srcs = ["ftrl_test.py"],
     deps = [
         ":xla_test",
@@ -736,6 +755,7 @@ tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
+    tags = ["noasan"],  # times out, http://b/78599043
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -798,13 +818,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
-    ],
-    # TODO(b/62961789): Test fails with SIGABRT
-    tags = [
-        "manual",
-        "notap",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -900,6 +917,18 @@ tf_xla_py_test(
     srcs = ["fake_quant_ops_test.py"],
     deps = [
         ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "placeholder_test",
+    size = "small",
+    srcs = ["placeholder_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],

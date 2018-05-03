@@ -93,9 +93,18 @@ string ArrayDataTypeName(ArrayDataType data_type) {
   }
 }
 
-bool IsInputArray(const Model& model, const string& name) {
+bool IsInputArray(const Model& model, const string& array_name) {
   for (const auto& input_array : model.flags.input_arrays()) {
-    if (input_array.name() == name) {
+    if (array_name == input_array.name()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsOutputArray(const Model& model, const string& array_name) {
+  for (const auto& output_array : model.flags.output_arrays()) {
+    if (array_name == output_array) {
       return true;
     }
   }
@@ -106,10 +115,8 @@ bool IsArrayConsumed(const Model& model, const string& name) {
   if (GetOpWithInput(model, name)) {
     return true;
   }
-  for (const string& model_output : model.flags.output_arrays()) {
-    if (model_output == name) {
-      return true;
-    }
+  if (IsOutputArray(model, name)) {
+    return true;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (rnn_state.back_edge_source_array() == name) {
@@ -379,6 +386,7 @@ string HelpfulOperatorTypeName(const Operator& op) {
 bool OperatorSupportsFusedActivation(OperatorType type) {
   switch (type) {
     case OperatorType::kConcatenation:
+    case OperatorType::kFakeQuant:
     case OperatorType::kGather:
     case OperatorType::kSlice:
     case OperatorType::kSqueeze:
@@ -817,11 +825,6 @@ void FixNoOrphanedArray(Model* model) {
 void CheckEachArray(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = array_entry.second;
-    if (array->has_shape()) {
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
-      }
-    }
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
     CHECK(!array->buffer || !array->alloc);
@@ -831,6 +834,10 @@ void CheckEachArray(const Model& model) {
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
       CHECK(array->has_shape());
+      // Constant buffer should has a valid shape.
+      for (int d : array->shape().dims()) {
+        CHECK_GE(d, 1);
+      }
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
                RequiredBufferSizeForShape(array->shape()));
@@ -1064,16 +1071,38 @@ void FixEdgeArrays(Model* model) {
   }
 }
 
+namespace {
+void CopyArrayAttribs(const Array& source_array, Array* target_array) {
+  target_array->data_type = source_array.data_type;
+  target_array->final_data_type = source_array.final_data_type;
+  target_array->copy_shape(source_array.shape());
+
+  if (source_array.minmax) {
+    target_array->GetOrCreateMinMax() = source_array.GetMinMax();
+  } else {
+    target_array->minmax.reset();
+  }
+
+  if (source_array.quantization_params) {
+    target_array->GetOrCreateQuantizationParams() =
+        source_array.GetQuantizationParams();
+  } else {
+    target_array->quantization_params.reset();
+  }
+}
+}  // namespace
+
 void InsertCopyOperator(Model* model, const string& source_array_name,
                         const string& target_array_name) {
+  // Reshape to the same size. This should be a no-op.
+  const Array& source_array = model->GetArray(source_array_name);
+  std::vector<int> shape = source_array.shape().dims();
+
   // Drop constant data from the target array as the copy will be done at
   // runtime.
   Array& target_array = model->GetOrCreateArray(target_array_name);
   target_array.buffer.reset();
-
-  // Reshape to the same size. This should be a no-op.
-  const Array& source_array = model->GetArray(source_array_name);
-  std::vector<int> shape = source_array.shape().dims();
+  CopyArrayAttribs(source_array, &target_array);
 
   // Insert copy operator.
   auto* copy_op = new TensorFlowReshapeOperator;
@@ -1089,6 +1118,7 @@ void CloneArray(Model* model, const string& source_array_name,
   CHECK(!model->HasArray(target_array_name));
   const Array& source_array = model->GetArray(source_array_name);
   Array& target_array = model->GetOrCreateArray(target_array_name);
+  CopyArrayAttribs(source_array, &target_array);
 
   if (source_array.minmax) {
     const auto& smm = source_array.GetMinMax();
@@ -1374,20 +1404,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     }
     input_minmax.min = (qmin - mean_value) / std_value;
     input_minmax.max = (qmax - mean_value) / std_value;
-    if (input_array.minmax) {
-      if (input_array_proto.has_mean_value() ||
-          input_array_proto.has_std_value()) {
-        const double width = input_minmax.max - input_minmax.min;
-        const double kMinMaxAllowedDiff = 1e-6 * width;
-        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
-                  kMinMaxAllowedDiff &&
-              std::abs(input_minmax.max - input_array.minmax->max) <
-                  kMinMaxAllowedDiff)
-            << input_minmax.min << ", " << input_minmax.max
-            << " != " << input_array.minmax->min << ", "
-            << input_array.minmax->max;
-      }
-    } else {
+    if (!input_array.minmax) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
@@ -1443,28 +1460,6 @@ void CheckIsReadyForQuantization(const Model& model) {
   }
 }
 
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max) {
-  for (const auto& op : model->operators) {
-    for (const auto& input : op->inputs) {
-      auto& input_array = model->GetArray(input);
-      if (!input_array.minmax && !input_array.buffer) {
-        auto& minmax = input_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-    for (const auto& output : op->outputs) {
-      auto& output_array = model->GetArray(output);
-      if (!output_array.minmax && !output_array.buffer) {
-        auto& minmax = output_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-  }
-}
-
 int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
     case ArrayDataType::kBool:
@@ -1513,13 +1508,8 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
   if (model.IsOptionalArray(array_name)) return false;
   // The model's input and output arrays are externally allocated.
   // They are not transient arrays.
-  if (IsInputArray(model, array_name)) {
+  if (IsInputArray(model, array_name) || IsOutputArray(model, array_name)) {
     return false;
-  }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return false;
-    }
   }
   const auto& array = &model.GetArray(array_name);
   // An array with a constant buffer isn't a transient array.
@@ -1898,15 +1888,8 @@ int AxesCount(AxesOrder axes_order) {
 }
 
 bool IsDiscardableArray(const Model& model, const string& array_name) {
-  for (const auto& input_array : model.flags.input_arrays()) {
-    if (array_name == input_array.name()) {
-      return false;
-    }
-  }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return false;
-    }
+  if (IsInputArray(model, array_name) || IsOutputArray(model, array_name)) {
+    return false;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
@@ -1960,8 +1943,8 @@ void CheckFinalDataTypesSatisfied(const Model& model) {
       CHECK(array.final_data_type == array.data_type)
           << "Array \"" << array_entry.first
           << "\" has mis-matching actual and final data types ("
-          << static_cast<int>(array.data_type) << ","
-          << static_cast<int>(array.final_data_type) << ").";
+          << ArrayDataTypeName(array.data_type) << ","
+          << ArrayDataTypeName(array.final_data_type) << ").";
     }
   }
 }

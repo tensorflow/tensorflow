@@ -804,7 +804,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // "{} (f32[42, 0, 10])".  The alternative, calling Literal::ToString(),
     // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
     // is just noise.
-    if (ShapeUtil::HasZeroElements(shape)) {
+    if (!ShapeUtil::IsTuple(shape) && ShapeUtil::HasZeroElements(shape)) {
       return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
     }
 
@@ -909,6 +909,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
@@ -956,7 +957,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
-    case HloOpcode::kBroadcastDimOne:
       // De-emphasize nodes which broadcast a scalar within a fusion node --
       // these are essentially free.
       if (instr->IsFused() &&

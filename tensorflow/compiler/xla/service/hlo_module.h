@@ -55,7 +55,6 @@ class HloModule {
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
   // cache. A default configuration is created for this module.
-  explicit HloModule(const string& name);
   explicit HloModule(const string& name, const HloModuleConfig& config);
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -99,12 +98,20 @@ class HloModule {
     return entry_computation_;
   }
 
-  ComputationLayout* mutable_entry_computation_layout() {
-    return config_.mutable_entry_computation_layout();
+  ComputationLayout* mutable_host_entry_computation_layout() {
+    return config_.mutable_host_entry_computation_layout();
   }
 
-  const ComputationLayout& entry_computation_layout() const {
-    return config_.entry_computation_layout();
+  const ComputationLayout& host_entry_computation_layout() const {
+    return config_.host_entry_computation_layout();
+  }
+
+  ComputationLayout* mutable_device_entry_computation_layout() {
+    return config_.mutable_device_entry_computation_layout();
+  }
+
+  const ComputationLayout& device_entry_computation_layout() const {
+    return config_.device_entry_computation_layout();
   }
 
   const VersionedComputationHandle& entry_computation_handle() const {

@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -29,8 +30,7 @@ limitations under the License.
 
 typedef struct cublasContext *cublasHandle_t;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 
@@ -117,18 +117,13 @@ class CUDABlas : public blas::BlasSupport {
       int batch_count, ScratchAllocator *scratch_allocator);
 
   // Helper function for implementing DoBlasGemmWithAlgorithm.
-  //
-  // We take alpha and beta by const reference because T might be Eigen::half,
-  // and we want to avoid pulling in a dependency on Eigen.  When we pass the
-  // references to cublas, we essentially reinterpret_cast to __half, which is
-  // safe because Eigen::half inherits from __half.
   template <typename InT, typename OutT, typename CompT>
   bool DoBlasGemmWithAlgorithmImpl(
       Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const CompT &alpha, const DeviceMemory<InT> &a,
-      int lda, const DeviceMemory<InT> &b, int ldb, const CompT &beta,
-      DeviceMemory<OutT> *c, int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
+      uint64 n, uint64 k, const HostOrDeviceScalar<CompT> &alpha,
+      const DeviceMemory<InT> &a, int lda, const DeviceMemory<InT> &b, int ldb,
+      const HostOrDeviceScalar<CompT> &beta, DeviceMemory<OutT> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
@@ -162,7 +157,6 @@ class CUDABlas : public blas::BlasSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_

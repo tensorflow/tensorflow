@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <unordered_set>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
@@ -49,8 +50,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-
-namespace se = ::perftools::gputools;
 
 namespace tensorflow {
 
@@ -121,7 +120,7 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
 
   auto platform = se::MultiPlatformManager::PlatformWithName(platform_name);
   if (!platform.ok()) {
-    return StreamExecutorUtil::ConvertStatus(platform.status());
+    return platform.status();
   }
 
   const DeviceAttributes attrs = Device::BuildDeviceAttributes(
@@ -181,9 +180,15 @@ XlaDevice::XlaDevice(const SessionOptions& options,
       jit_device_name_(jit_device_name),
       xla_allocator_(nullptr),
       platform_(platform),
-      transfer_as_literal_(transfer_as_literal) {}
+      transfer_as_literal_(transfer_as_literal) {
+  VLOG(1) << "Created XLA device " << jit_device_name;
+}
 
-XlaDevice::~XlaDevice() {}
+XlaDevice::~XlaDevice() {
+  if (gpu_device_info_ != nullptr) {
+    gpu_device_info_->default_context->Unref();
+  }
+}
 
 xla::LocalClient* XlaDevice::client() const {
   // We lazily create the client because the platform commits to the
@@ -191,9 +196,8 @@ xla::LocalClient* XlaDevice::client() const {
   // don't want to do it until we get a chance to hook the platform up
   // to a simulator.
 
-  // For now GetOrCreateLocalClient always returns success when passed
-  // a non-null platform. If that changes we may have to plumb in some
-  // way to pass Status back.
+  // TODO(b/78468222): This can fail, at least when the backend is GPU and
+  // there is no GPU on the host.
   return xla::ClientLibrary::GetOrCreateLocalClient(platform_).ValueOrDie();
 }
 
@@ -218,14 +222,31 @@ xla::StatusOr<se::Stream*> XlaDevice::GetStream() {
   return stream_.get();
 }
 
+Status XlaDevice::CreateAndSetGpuDeviceInfo() {
+  if (gpu_device_info_ == nullptr) {
+    TF_ASSIGN_OR_RETURN(se::Stream * stream, GetStream());
+    // Call GetAllocator for the side-effect of ensuring the allocator
+    // is created.
+    GetAllocator({});
+    // XlaDevice owns both gpu_device_info_ and
+    // gpu_device_info_->default_context.
+    gpu_device_info_ = absl::make_unique<GpuDeviceInfo>();
+    gpu_device_info_->stream = stream;
+    gpu_device_info_->default_context =
+        new XlaDeviceContext(stream, client(), transfer_as_literal_);
+    set_tensorflow_gpu_device_info(gpu_device_info_.get());
+  }
+
+  return Status::OK();
+}
+
 Status XlaDevice::FillContextMap(const Graph* graph,
                                  DeviceContextMap* device_context_map) {
   VLOG(1) << "XlaDevice::FillContextMap";
   device_context_map->resize(graph->num_node_ids());
   TF_ASSIGN_OR_RETURN(se::Stream * stream, GetStream());
-  // Call GetAllocator for the side-effect of ensuring the allocator and
-  // XlaTensorInfoManager is created.
-  (void)GetAllocator({});
+  // Call GetAllocator for the side-effect of ensuring the allocator is created.
+  GetAllocator({});
   auto ctx = new XlaDeviceContext(stream, client(), transfer_as_literal_);
   for (Node* n : graph->nodes()) {
     VLOG(2) << n->id() << " : " << n->type_string() << " : " << n->name();
@@ -239,11 +260,10 @@ Status XlaDevice::FillContextMap(const Graph* graph,
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(1) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  // When TraceMe profiling is off (which is the default), the
-  // following TraceMe constructor is simply a conditional test of
-  // false value. Measurements show that its overhead is negligible.
-  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string(),
-                                  op_kernel->IsExpensive());
+  // When Xprof profiling is off (which is the default), constructing the
+  // activity is simple enough that its overhead is negligible.
+  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
+                                   op_kernel->IsExpensive());
   op_kernel->Compute(context);
 }
 
@@ -251,8 +271,8 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
   VLOG(1) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string(),
-                                  op_kernel->IsExpensive());
+  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
+                                   op_kernel->IsExpensive());
   op_kernel->ComputeAsync(context, done);
 }
 

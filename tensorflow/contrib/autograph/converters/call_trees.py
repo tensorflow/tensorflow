@@ -198,7 +198,7 @@ class CallTreeTransformer(transformer.Base):
   def _wrap_to_py_func_no_return(self, node):
     # TODO(mdan): Properly handle varargs, etc.
     template = """
-      autograph_utils.wrap_py_func(func, None, (args,), kwargs, True)
+      ag__.utils.wrap_py_func(func, None, (args,), kwargs, True)
     """
     return templates.replace(
         template,
@@ -209,7 +209,7 @@ class CallTreeTransformer(transformer.Base):
   def _wrap_to_py_func_single_return(self, node, dtype):
     # TODO(mdan): Properly handle varargs, etc.
     template = """
-      autograph_utils.wrap_py_func(func, dtype, (args,), kwargs, False)
+      ag__.utils.wrap_py_func(func, dtype, (args,), kwargs, False)
     """
     return templates.replace_as_expression(
         template,
@@ -237,15 +237,13 @@ class CallTreeTransformer(transformer.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      autograph_api.converted_call(func, True, False, {}, args)
+      ag__.converted_call(func, True, False, {}, args)
     """
     call_expr = templates.replace(template, func=node.func, args=node.args)
     new_call = call_expr[0].value
     # TODO(mdan): Improve the template mechanism to better support this.
     new_call.keywords = node.keywords
     return new_call
-
-  # pylint:disable=invalid-name
 
   def visit_Expr(self, node):
     if isinstance(node.value, gast.Call):
@@ -294,14 +292,16 @@ class CallTreeTransformer(transformer.Base):
         raise NotImplementedError(
             'py_func with return values (unknown function)')
     else:
-      if self.context.recursive:
+      if ast_util.matches(node, 'super(_)'):
+        # super() calls are preserved. The class conversion mechanism will
+        # ensure that they return the correct value.
+        pass
+      elif self.context.recursive:
         node = self._insert_dynamic_conversion(node)
       else:
         # Unresolved functions are allowed in non-recursive mode.
         pass
     return node
-
-  # pylint:enable=invalid-name
 
 
 def transform(node, context, uncompiled_modules, nocompile_decorators):

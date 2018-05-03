@@ -861,8 +861,7 @@ INSTANTIATE_TEST_CASE_P(
 class R4ReduceWindowAnyDimsTest : public R4ReduceWindowTest {};
 
 // TODO(b/72234705): Fix the test cases failed on CPU and GPU.
-XLA_TEST_P(R4ReduceWindowAnyDimsTest,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt)))) {
+XLA_TEST_P(R4ReduceWindowAnyDimsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt))) {
   DoIt();
 }
 
@@ -1151,7 +1150,7 @@ class R2ReduceWindowFailingCpuGpuBf16Test : public R2ReduceWindowTest {};
 
 // TODO(b/72234705): Fix the test cases failed on CPU and GPU.
 XLA_TEST_P(R2ReduceWindowFailingCpuGpuBf16Test,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt))) {
   DoIt();
 }
 
@@ -1433,6 +1432,23 @@ ENTRY R3Window {
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
+TEST_F(HloTestBase, ReduceWindowIdentity) {
+  const string& hlo_string = R"(
+HloModule ReduceWindowIdentity
+identity.pad_to_reduce_window {
+  param0 = f32[] parameter(0)
+  ROOT param1 = f32[] parameter(1)
+}
+ENTRY reduce-window-identity {
+  operand = f32[1,32,64]{2,1,0} parameter(0)
+  constant.4466 = f32[] constant(0)
+  ROOT reduce-window = f32[1,33,64]{2,1,0} reduce-window(operand, constant.4466),     window={size=1x1x1 pad=0_0x1_0x0_0}, to_apply=identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, tensorflow::gtl::nullopt));
 }
 
 }  // namespace

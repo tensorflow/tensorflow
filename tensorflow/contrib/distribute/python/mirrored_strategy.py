@@ -140,10 +140,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       g.add_to_collections(collections, result)
     return result
 
-  def distribute_dataset(self, dataset):
-    per_device_dataset = values.PerDeviceDataset(
-        dataset, self._devices, self._prefetch_on_device)
-    return per_device_dataset.make_one_shot_iterator()
+  def distribute_dataset(self, dataset_fn):
+    return values.PerDeviceDataset(
+        self._call_dataset_fn(dataset_fn), self._devices,
+        self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
@@ -321,7 +321,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""
-    assert isinstance(destination, six.string_types)
     if isinstance(val, values.TowerLocalVariable):
       val = self.reduce(val.reduce_method, val, destinations=destination)
       with ops.device(destination):

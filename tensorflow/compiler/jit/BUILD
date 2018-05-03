@@ -180,6 +180,7 @@ cc_library(
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -257,19 +258,6 @@ cc_library(
 )
 
 cc_library(
-    name = "graph_to_functiondef",
-    srcs = ["graph_to_functiondef.cc"],
-    hdrs = ["graph_to_functiondef.h"],
-    visibility = [":friends"],
-    deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "create_xla_launch_op",
     srcs = [
         "create_xla_launch_op.cc",
@@ -299,7 +287,6 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":graph_to_functiondef",
         ":shape_inference_helpers",
         ":union_find",
         "//tensorflow/compiler/jit/graphcycles",
@@ -318,6 +305,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
     ],
 )
 
@@ -346,28 +334,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "graph_to_functiondef_test",
-    size = "small",
-    srcs = [
-        "graph_to_functiondef_test.cc",
-    ],
-    deps = [
-        ":graph_to_functiondef",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
     name = "compilation_passes_test",
     size = "small",
     srcs = [
@@ -377,7 +343,6 @@ tf_cc_test(
     deps = [
         ":common",
         ":compilation_passes",
-        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

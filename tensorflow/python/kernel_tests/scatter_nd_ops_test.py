@@ -364,6 +364,42 @@ class ScatterNdTest(test.TestCase):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
 
+  def testString(self):
+    indices = constant_op.constant([[4], [3], [1], [7]],
+                                   dtype=dtypes.int32)
+    updates = constant_op.constant(["four", "three", "one", "seven"],
+                                   dtype=dtypes.string)
+    expected = np.array([b"", b"one", b"", b"three", b"four",
+                         b"", b"", b"seven"])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by same value.
+    indices = constant_op.constant([[4], [3], [3], [7]],
+                                   dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "b", "c"],
+                                   dtype=dtypes.string)
+    expected = np.array([b"", b"", b"", b"bb", b"a", b"", b"", b"c"])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by different value.
+    indices = constant_op.constant([[4], [3], [3], [7]],
+                                   dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "c", "d"],
+                                   dtype=dtypes.string)
+    expected = [np.array([b"", b"", b"", b"bc", b"a", b"", b"", b"d"]),
+                np.array([b"", b"", b"", b"cb", b"a", b"", b"", b"d"])]
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertTrue(np.array_equal(result, expected[0]) or
+                      np.array_equal(result, expected[1]))
+
   def testRank3ValidShape(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
@@ -583,6 +619,10 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
     input_ = (input_ if input_ is not None else array_ops.zeros(
         shape, dtype=updates.dtype))
     return array_ops.scatter_nd_non_aliasing_add(input_, indices, updates)
+
+  def testString(self):
+    # Not supported yet.
+    pass
 
 
 if __name__ == "__main__":

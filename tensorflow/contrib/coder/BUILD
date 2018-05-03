@@ -1,5 +1,5 @@
 # Description:
-#   Contains entropy coding related modules.
+#   Contains tools related to data compression.
 
 package(default_visibility = [
     "//learning/brain:__subpackages__",
@@ -54,19 +54,27 @@ tf_gen_op_libs(
     ],
 )
 
+cc_library(
+    name = "range_coder_ops_util",
+    srcs = ["kernels/range_coder_ops_util.cc"],
+    hdrs = ["kernels/range_coder_ops_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "range_coder_ops",
     srcs = [
         "kernels/range_coder_ops.cc",
-        "kernels/range_coder_ops_util.cc",
-    ],
-    hdrs = [
-        "kernels/range_coder_ops_util.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":coder_ops_op_lib",
         ":range_coder",
+        ":range_coder_ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -152,10 +160,21 @@ tf_gen_op_wrapper_py(
     deps = [":coder_ops_op_lib"],
 )
 
+py_library(
+    name = "coder_py",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":coder_ops_py",
+        ":entropybottleneck_py",
+    ],
+)
+
 tf_custom_op_py_library(
     name = "coder_ops_py",
     srcs = [
-        "__init__.py",
         "python/ops/coder_ops.py",
     ],
     dso = [
@@ -185,4 +204,45 @@ tf_py_test(
         "//tensorflow/python:random_ops",
     ],
     main = "python/ops/coder_ops_test.py",
+)
+
+py_library(
+    name = "entropybottleneck_py",
+    srcs = [
+        "python/layers/entropybottleneck.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":coder_ops_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:engine",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "entropybottleneck_py_test",
+    srcs = [
+        "python/layers/entropybottleneck_test.py",
+    ],
+    additional_deps = [
+        ":entropybottleneck_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python:training",
+    ],
+    main = "python/layers/entropybottleneck_test.py",
 )
