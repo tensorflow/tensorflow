@@ -19,8 +19,9 @@ limitations under the License.
 #include <memory>
 #include <mutex>
 #include <unordered_map>
-#include "trt_plugin.h"
-#include "trt_plugin_utils.h"
+
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_utils.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -54,12 +55,12 @@ class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
 
  protected:
   std::unordered_map<string,
-                     std::pair<PluginDeserializeFunc, PluginConstructFunc> >
+                     std::pair<PluginDeserializeFunc, PluginConstructFunc>>
       plugin_registry_;
 
   // TODO(jie): Owned plugin should be associated with different sessions;
   //            should really hand ownership of plugins to resource management;
-  std::vector<std::unique_ptr<PluginTensorRT> > owned_plugins_;
+  std::vector<std::unique_ptr<PluginTensorRT>> owned_plugins_;
   std::mutex instance_m_;
 };
 

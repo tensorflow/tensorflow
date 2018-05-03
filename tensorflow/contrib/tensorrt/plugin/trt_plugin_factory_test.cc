@@ -81,7 +81,7 @@ StubPlugin* CreateStubPluginDeserialize(const void* serialized_data,
   return new StubPlugin(serialized_data, length);
 }
 
-class PluginTest : public ::testing::Test {
+class TrtPluginFactoryTest : public ::testing::Test {
  public:
   bool RegisterStubPlugin() {
     if (PluginFactoryTensorRT::GetInstance()->IsPlugin(
@@ -94,7 +94,7 @@ class PluginTest : public ::testing::Test {
   }
 };
 
-TEST_F(PluginTest, Registration) {
+TEST_F(TrtPluginFactoryTest, Registration) {
   EXPECT_FALSE(
       PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::kPluginName));
   EXPECT_TRUE(RegisterStubPlugin());
@@ -103,7 +103,7 @@ TEST_F(PluginTest, Registration) {
       PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::kPluginName));
 }
 
-TEST_F(PluginTest, CreationDeletion) {
+TEST_F(TrtPluginFactoryTest, CreationDeletion) {
   EXPECT_TRUE(RegisterStubPlugin());
   ASSERT_TRUE(
       PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::kPluginName));

@@ -282,7 +282,7 @@ tf_cc_test(
     ],
 )
 
-# Library for the plugin factory 
+# Library for the plugin factory
 tf_cuda_library(
     name = "trt_plugins",
     srcs = [
@@ -304,9 +304,13 @@ tf_cuda_library(
 )
 
 tf_cuda_cc_test(
-    name = "trt_plugins_test",
+    name = "trt_plugin_factory_test",
     size = "small",
-    srcs = ["plugin/trt_plugins_test.cc"],
+    srcs = ["plugin/trt_plugin_factory_test.cc"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":trt_plugins",
         "//tensorflow/core:test",

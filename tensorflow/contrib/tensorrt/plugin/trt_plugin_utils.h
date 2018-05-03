@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS
 
 #include <functional>
+
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 #include "tensorflow/core/platform/types.h"
 

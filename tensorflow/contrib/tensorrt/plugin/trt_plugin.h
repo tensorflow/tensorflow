@@ -19,6 +19,7 @@ limitations under the License.
 #include <iostream>
 #include <unordered_map>
 #include <vector>
+
 #include "tensorflow/core/platform/types.h"
 
 #if GOOGLE_CUDA
@@ -35,9 +36,11 @@ namespace tensorrt {
 // PluginDeserializeFunc & PluginConstructFunc through PluginFactoryTensorRT
 class PluginTensorRT : public nvinfer1::IPlugin {
  public:
-  PluginTensorRT() {};
+  PluginTensorRT() {}
   PluginTensorRT(const void* serialized_data, size_t length);
+
   virtual const string& GetPluginName() const = 0;
+
   virtual bool Finalize() = 0;
 
   virtual bool SetAttribute(const string& key, const void* ptr,
@@ -53,6 +56,7 @@ class PluginTensorRT : public nvinfer1::IPlugin {
                               const size_t size);
 
   virtual size_t getSerializationSize() override;
+
   virtual void serialize(void* buffer) override;
 
  protected:
