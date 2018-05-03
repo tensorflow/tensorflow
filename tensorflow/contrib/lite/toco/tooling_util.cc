@@ -260,6 +260,23 @@ Operator* GetFirstOpWithInput(const Model& model, const string& array_name) {
   return it == model.operators.end() ? nullptr : it->get();
 }
 
+void ReplaceArrayUsage(Model* model, const string& old_array_name,
+                       const string& new_array_name) {
+  for (auto& op_it : model->operators) {
+    Operator* op = op_it.get();
+    for (size_t i = 0; i < op->inputs.size(); ++i) {
+      if (op->inputs[i] == old_array_name) {
+        op->inputs[i] = new_array_name;
+      }
+    }
+    for (size_t i = 0; i < op->outputs.size(); ++i) {
+      if (op->outputs[i] == old_array_name) {
+        op->outputs[i] = new_array_name;
+      }
+    }
+  }
+}
+
 string FormatArraysList(const Model& model, const std::vector<string>& list) {
   if (list.empty()) {
     return "[]";
@@ -646,6 +663,65 @@ bool IsConstantParameterArray(const Model& model, const string& name) {
   }
 
   return !!model.GetArray(name).buffer;
+}
+
+namespace {
+template <ArrayDataType A>
+bool CompareArrayBuffers(const Array& lhs_array, const Array& rhs_array) {
+  CHECK(lhs_array.data_type == rhs_array.data_type) << "Data types must match";
+  CHECK(lhs_array.buffer) << "LHS must be constant";
+  CHECK(rhs_array.buffer) << "RHS must be constant";
+  const auto& lhs_data = lhs_array.GetBuffer<A>().data;
+  const auto& rhs_data = rhs_array.GetBuffer<A>().data;
+  CHECK_EQ(lhs_data.size(), rhs_data.size())
+      << "Buffer sizes must match in element count";
+  for (int i = 0; i < lhs_data.size(); ++i) {
+    if (lhs_data[i] != rhs_data[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
+bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array) {
+  bool attrs_equal =
+      lhs_array.shape() == rhs_array.shape() &&
+      lhs_array.data_type == rhs_array.data_type &&
+      lhs_array.final_data_type == rhs_array.final_data_type &&
+      lhs_array.minmax == rhs_array.minmax &&
+      lhs_array.quantization_params == rhs_array.quantization_params;
+  if (!attrs_equal) {
+    return false;
+  }
+  switch (lhs_array.data_type) {
+    case ArrayDataType::kBool:
+      return CompareArrayBuffers<ArrayDataType::kBool>(lhs_array, rhs_array);
+    case ArrayDataType::kFloat:
+      return CompareArrayBuffers<ArrayDataType::kFloat>(lhs_array, rhs_array);
+    case ArrayDataType::kInt8:
+      return CompareArrayBuffers<ArrayDataType::kInt8>(lhs_array, rhs_array);
+    case ArrayDataType::kUint8:
+      return CompareArrayBuffers<ArrayDataType::kUint8>(lhs_array, rhs_array);
+    case ArrayDataType::kInt16:
+      return CompareArrayBuffers<ArrayDataType::kInt16>(lhs_array, rhs_array);
+    case ArrayDataType::kUint16:
+      return CompareArrayBuffers<ArrayDataType::kUint16>(lhs_array, rhs_array);
+    case ArrayDataType::kInt32:
+      return CompareArrayBuffers<ArrayDataType::kInt32>(lhs_array, rhs_array);
+    case ArrayDataType::kUint32:
+      return CompareArrayBuffers<ArrayDataType::kUint32>(lhs_array, rhs_array);
+    case ArrayDataType::kInt64:
+      return CompareArrayBuffers<ArrayDataType::kInt64>(lhs_array, rhs_array);
+    case ArrayDataType::kUint64:
+      return CompareArrayBuffers<ArrayDataType::kUint64>(lhs_array, rhs_array);
+    case ArrayDataType::kString:
+      return CompareArrayBuffers<ArrayDataType::kString>(lhs_array, rhs_array);
+    default:
+      LOG(FATAL) << "Unsupported data type: "
+                 << ArrayDataTypeName(lhs_array.data_type);
+      return false;
+  }
 }
 
 namespace {
@@ -1068,6 +1144,60 @@ void FixEdgeArrays(Model* model) {
           AvailableArrayName(*model, output_array_name + "_copy");
       CloneArray(model, output_array_name, intermediate_array_name);
       InsertCopyOperator(model, intermediate_array_name, output_array_name);
+    }
+  }
+}
+
+void DedupeConstantArrays(Model* model, size_t min_size) {
+  // Walk all 0..N and compare with the remaining n+1..N.
+  // This lets us avoid N^2 comparisions and erase duplicate arrays while
+  // iterating.
+  const auto& array_map = model->GetArrayMap();
+  for (auto lhs_array_it = array_map.begin(); lhs_array_it != array_map.end();
+       ++lhs_array_it) {
+    const auto& lhs_array_name = lhs_array_it->first;
+    const auto& lhs_array = *lhs_array_it->second;
+    if (!IsConstantParameterArray(*model, lhs_array_name)) {
+      // Not a constant array; skip.
+      continue;
+    }
+    ArrayDataType final_data_type =
+        lhs_array.final_data_type != ArrayDataType::kNone
+            ? lhs_array.final_data_type
+            : lhs_array.data_type;
+    size_t array_byte_size =
+        lhs_array.buffer->Length() * ElementSize(final_data_type);
+    if (array_byte_size < min_size) {
+      // Too small; skip.
+      continue;
+    }
+
+    auto next_lhs_array_it = lhs_array_it;
+    ++next_lhs_array_it;
+    for (auto rhs_array_it = next_lhs_array_it;
+         rhs_array_it != array_map.end();) {
+      const auto& rhs_array_name = rhs_array_it->first;
+      const auto& rhs_array = *rhs_array_it->second;
+      ++rhs_array_it;
+      if (!IsConstantParameterArray(*model, rhs_array_name)) {
+        // Not a constant array; skip.
+        continue;
+      }
+      if (!IsDiscardableArray(*model, rhs_array_name)) {
+        // Can't remove the array as it's not discardable (such as an IO edge).
+        continue;
+      }
+      if (!CompareConstantArrays(lhs_array, rhs_array)) {
+        // Arrays aren't equal; skip.
+        continue;
+      }
+
+      // Arrays can be deduped!
+      VLOG(1) << "Deduplicating arrays; using " << lhs_array_name
+              << " in place of " << rhs_array_name;
+      ReplaceArrayUsage(model, rhs_array_name, lhs_array_name);
+      // Note: rhs_array_it above is already incremented so this is safe.
+      model->EraseArray(rhs_array_name);
     }
   }
 }
