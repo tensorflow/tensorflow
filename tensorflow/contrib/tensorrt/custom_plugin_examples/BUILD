@@ -24,24 +24,48 @@ load(
 )
 
 tf_gen_op_libs(
-    op_lib_names = [
-        "inc_op",
-    ],
+    op_lib_names = ["inc_op"],
 )
 
 tf_gen_op_wrapper_py(
     name = "inc_op",
-    deps = [
-        ":inc_op_op_lib",
-    ],
+    deps = [":inc_op_op_lib"],
 )
 
 tf_custom_op_library(
     name = "_inc_op.so",
-    srcs = ["ops/inc_op.cc"],
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
+    srcs = [
+        "inc_op_kernel.h",
+        "inc_op_plugin.cc",
+        "inc_op_plugin.h",
+        "ops/inc_op.cc",
     ],
+    gpu_srcs = [
+        "inc_op_kernel.h",
+        "inc_op_kernel.cu.cc",
+    ],
+    deps = [
+        "//tensorflow/contrib/tensorrt:trt_plugins",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
+tf_kernel_library(
+    name = "inc_op_plugin_kernel",
+    srcs = ["inc_op_plugin.cc"],
+    hdrs = [
+        "inc_op_plugin.h",
+    ],
+    gpu_srcs = [
+        "inc_op_kernel.h",
+        "inc_op_kernel.cu.cc",
+    ],
+    deps = [
+        "//tensorflow/contrib/tensorrt:trt_plugins",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]) + tf_custom_op_library_additional_deps(),
 )
 
 tf_custom_op_py_library(
@@ -70,41 +94,12 @@ py_library(
     ],
 )
 
-tf_kernel_library(
-    name = "inc_op_plugin_kernel",
-    srcs = ["inc_op_plugin.cc"],
-    hdrs = [
-        "inc_op_plugin.h",
-    ],
-    gpu_srcs = [
-        "inc_op_kernel.h",
-        "inc_op_kernel.cu.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/tensorrt:trt_plugins",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
-    ]) + tf_custom_op_library_additional_deps(),
-)
-
-tf_py_wrap_cc(
-    name = "plugin_wrap",
-    srcs = ["plugin_wrap.i"],
-    copts = tf_copts(),
-    deps = [
-        ":inc_op_plugin_kernel",
-        "//tensorflow/core:framework_lite",
-        "//util/python:python_headers",
-    ],
-)
-
 py_library(
     name = "init_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":inc_op_py",
-        ":plugin_wrap",
     ],
 )
 

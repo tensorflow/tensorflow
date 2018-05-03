@@ -24,6 +24,7 @@ limitations under the License.
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
 
+
 namespace tensorflow {
 namespace tensorrt {
 

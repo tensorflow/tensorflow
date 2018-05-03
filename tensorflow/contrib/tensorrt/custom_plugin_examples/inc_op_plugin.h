@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cassert>
 #include <cstring>
+
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 
 #if GOOGLE_CUDA
@@ -91,10 +92,6 @@ class IncOpPlugin : public PluginTensorRT {
  private:
   const string plugin_name_;
 };
-
-IncOpPlugin* CreateIncPlugin();
-IncOpPlugin* CreateIncPluginDeserialize(const void*, size_t);
-bool RegisterIncOpPlugin();
 
 }  // namespace tensorrt
 }  // namespace tensorflow
