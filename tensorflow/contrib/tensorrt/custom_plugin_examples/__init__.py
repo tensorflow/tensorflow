@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.tensorrt.custom_plugin_examples.ops import gen_inc_op
-from tensorflow.contrib.tensorrt.custom_plugin_examples.plugin_wrap import inc_op_register
 from tensorflow.contrib.tensorrt.custom_plugin_examples import inc_op as import_inc_op_so
 
 inc_op = gen_inc_op.inc_plugin_trt
-inc_op_register()

@@ -31,12 +31,7 @@ IncOpPlugin* CreateIncPluginDeserialize(const void* buffer, size_t length) {
   return new IncOpPlugin(buffer, length);
 }
 
-bool RegisterIncOpPlugin() {
-  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(kPluginName))
-    return false;
-  return PluginFactoryTensorRT::GetInstance()->RegisterPlugin(
-      kPluginName, CreateIncPluginDeserialize, CreateIncPlugin);
-}
+REGISTER_TRT_PLUGIN(kPluginName, CreateIncPluginDeserialize, CreateIncPlugin);
 
 IncOpPlugin::IncOpPlugin() : plugin_name_(kPluginName) {}
 
