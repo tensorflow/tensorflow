@@ -1183,6 +1183,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     Tensor t{DT_DOUBLE, {k, 3}};
     auto data = t.flat<double>();
     for (int i = 0, j = 0; i < k; ++i) {
+      // TODO(nickfelt): reconcile with TensorBoard's data_compat.py
       // From summary.proto
       // Parallel arrays encoding the bucket boundaries and the bucket values.
       // bucket(i) is the count for the bucket i.  The range for
