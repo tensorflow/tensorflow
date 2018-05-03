@@ -588,7 +588,7 @@ class _TrainingExecutor(object):
     # max_steps, the evaluator will send the final export signal. There is a
     # small chance that the Estimator.train stopping logic sees a different
     # global_step value (due to global step race condition and the fact the
-    # saver sees a larger value for checkpoing saving), which does not end
+    # saver sees a larger value for checkpoint saving), which does not end
     # the training. When the training ends, a new checkpoint is generated, which
     # triggers the listener again. So, it could be the case the final export is
     # triggered twice.
