@@ -1541,7 +1541,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
                          const ChainLinkSet& ops) const {
     if (ops.empty()) return true;
     const NodeDef* op0 = ops.begin()->node;
-    if (!IsUnaryElementWise(*op0)) return false;
+    if (ModifiesFrameInfo(*op0) || !IsUnaryElementWise(*op0)) return false;
     for (const auto& link : ops) {
       const NodeDef* op = link.node;
       if (op->device() != root_node.device() || op->op() != op0->op() ||
