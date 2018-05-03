@@ -109,7 +109,7 @@ KNOWN_BUGS = {
 
 
 class ExtraTocoOptions(object):
-  """Additonal toco options besides input, output, shape."""
+  """Additional toco options besides input, output, shape."""
 
   def __init__(self):
     # Whether to ignore control dependency nodes.
