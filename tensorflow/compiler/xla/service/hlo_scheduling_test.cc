@@ -77,7 +77,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
-  auto size_fn = [](const LogicalBuffer& buffer) {
+  auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
@@ -124,7 +124,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       SequentialHloOrdering::HloModuleSequence sequence,
-      CreateMemoryMinimizingSequence(*module, [](const LogicalBuffer& buffer) {
+      CreateMemoryMinimizingSequence(*module, [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
   // Verify that all instructions are in the sequence.
@@ -160,7 +160,7 @@ ENTRY root {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           tools::Parse(module_str));
 
-  auto size_fn = [](const LogicalBuffer& buffer) {
+  auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
   TF_ASSERT_OK_AND_ASSIGN(
