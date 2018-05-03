@@ -1602,6 +1602,7 @@ def reduce_average(input_tensor,
       be x-D (in which case its rank x must equal the length of `axis`.
       And the length of each dimension must be the size of `input_tensor`
       along the corresponding axis) or of the same shape as `input_tensor`.
+      Must have the same type as `input_tensor`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
 
