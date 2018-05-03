@@ -31,7 +31,7 @@ namespace poplarplugin {
 
 class SubComputationVisitor : public FullVisitor {
 public:
-  SubComputationVisitor(poplar::Graph* graph,
+  SubComputationVisitor(poplar::Graph& graph,
                         CompilerResources& res,
                         const ArgVectors& inputs);
 

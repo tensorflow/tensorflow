@@ -39,7 +39,7 @@ namespace xla {
 namespace poplarplugin {
 
 SubComputationVisitor::SubComputationVisitor(
-        poplar::Graph* graph,
+        poplar::Graph& graph,
         CompilerResources& res,
         const ArgVectors& inputs)
         : FullVisitor(graph, res) {
@@ -101,12 +101,12 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
       if (resources_.tensor_allocation_map.count(src) > 0 &&
           t.containsConstant()) {
         poplar::Tensor out;
-        TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, src, shapes[i], resources_));
+        TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, src, shapes[i], resources_));
         inputs.push_back(out);
         TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
       } else {
         auto name = se::port::StrCat(inst->name(), "_in_", i);
-        poplar::Tensor out = graph_->clone(t, name);
+        poplar::Tensor out = graph_.clone(t, name);
         inputs.push_back(out);
         TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
       }

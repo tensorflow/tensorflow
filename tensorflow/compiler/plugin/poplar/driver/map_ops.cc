@@ -22,6 +22,8 @@
 #include <poplar/Engine.hpp>
 #include <popops/AllTrue.hpp>
 
+using tensorflow::str_util::StartsWith;
+
 namespace xla {
 namespace poplarplugin {
 
@@ -42,7 +44,7 @@ GetOrCompileSubComputation(poplar::Graph &graph,
   auto compiled = res.computation_map.emplace(
           std::piecewise_construct,
           std::forward_as_tuple(comp),
-          std::forward_as_tuple(&graph, res, inputs));
+          std::forward_as_tuple(graph, res, inputs));
   TF_RETURN_IF_ERROR(comp->Accept(&(res.computation_map.at(comp))));
 
   return compiled.first;
@@ -104,7 +106,7 @@ CreateParallelMap(poplar::Graph &graph,
     inputs.push_back(t);
   }
 
-  MapVisitor visitor(&graph, res, inputs, output);
+  MapVisitor visitor(graph, res, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
   auto outputs = visitor.outputs();
@@ -133,30 +135,43 @@ CreateCallOp(poplar::Graph &graph,
     args.push_back(t);
   }
 
-  ComputationMap::iterator subcomp_visitor;
-  TF_ASSIGN_OR_RETURN(subcomp_visitor,
-                      GetOrCompileSubComputation(graph, res, args, comp));
+  if (StartsWith(comp->name(), "__inline"))
+  {
+    InlineCallVisitor inline_visitor(graph, res, args);
+    TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
-  for (int64 o = 0; o < op_count; o++) {
-    auto& inputs = subcomp_visitor->second.inputs()[o];
-    if (inputs.size() != args[o].size()) {
-      return Status(tensorflow::error::FAILED_PRECONDITION,
-                    "Mismatched number of inputs");
+    seq.add(inline_visitor.sequence);
+
+    for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
+                                         inline_visitor.outputs()[i]));
     }
-    for (int64 i = 0; i < inputs.size(); i++) {
-      if (subcomp_visitor->second.input_valid(o, i)) {
-        seq.add(poplar::program::Copy(args[o][i], inputs[i]));
+  } else {
+    ComputationMap::iterator subcomp_visitor;
+    TF_ASSIGN_OR_RETURN(subcomp_visitor,
+                        GetOrCompileSubComputation(graph, res, args, comp));
+
+    for (int64 o = 0; o < op_count; o++) {
+      auto& inputs = subcomp_visitor->second.inputs()[o];
+      if (inputs.size() != args[o].size()) {
+        return Status(tensorflow::error::FAILED_PRECONDITION,
+                      "Mismatched number of inputs");
+      }
+      for (int64 i = 0; i < inputs.size(); i++) {
+        if (subcomp_visitor->second.input_valid(o, i)) {
+          seq.add(poplar::program::Copy(args[o][i], inputs[i]));
+        }
       }
     }
-  }
 
-  seq.add(subcomp_visitor->second.sequence);
+    seq.add(subcomp_visitor->second.sequence);
 
-  for (size_t i=0; i<subcomp_visitor->second.outputs().size(); i++) {
-    auto name = se::port::StrCat(inst->name(), "_out_", i);
-    poplar::Tensor o = graph.clone(subcomp_visitor->second.outputs()[i], name);
-    seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
+    for (size_t i=0; i<subcomp_visitor->second.outputs().size(); i++) {
+      auto name = se::port::StrCat(inst->name(), "_out_", i);
+      poplar::Tensor o = graph.clone(subcomp_visitor->second.outputs()[i], name);
+      seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
+    }
   }
 
   return seq;
@@ -180,7 +195,7 @@ CreateFusionOp(poplar::Graph &graph,
     inputs.push_back(t);
   }
 
-  InlineCallVisitor inline_visitor(&graph, res, inputs);
+  InlineCallVisitor inline_visitor(graph, res, inputs);
   TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
   seq.add(inline_visitor.sequence);

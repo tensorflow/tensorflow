@@ -31,10 +31,10 @@ namespace poplarplugin {
 
 class MapVisitor : public BaseVisitor {
 public:
-  MapVisitor(poplar::Graph* graph,
-                   CompilerResources& res,
-                   const ArgVector& inputs,
-                   const xla::Shape& shape);
+  MapVisitor(poplar::Graph& graph,
+             CompilerResources& res,
+             const ArgVector& inputs,
+             const xla::Shape& shape);
 
 
   Status HandleParameter(HloInstruction* inst) override;

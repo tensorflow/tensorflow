@@ -51,7 +51,7 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
-FullVisitor::FullVisitor(poplar::Graph* graph,
+FullVisitor::FullVisitor(poplar::Graph& graph,
                          CompilerResources& res)
         : BaseVisitor(graph, res) {}
 
@@ -73,7 +73,7 @@ Status FullVisitor::HandleDot(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateMatMulOp(*graph_,
+                      CreateMatMulOp(graph_,
                                      resources_,
                                      inst,
                                      GetOutputShape(inst),
@@ -86,7 +86,7 @@ Status FullVisitor::HandleConvolution(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateConv2D(*graph_,
+                      CreateConv2D(graph_,
                                    resources_,
                                    inst,
                                    GetOutputShape(inst),
@@ -109,7 +109,7 @@ Status FullVisitor::HandleReduce(HloInstruction* inst) {
   if (IsReducableArtithmetic(inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
-                        CreateSimpleReduction(*graph_,
+                        CreateSimpleReduction(graph_,
                                               resources_,
                                               inst,
                                               GetOutputShape(inst),
@@ -200,7 +200,7 @@ Status FullVisitor::HandleDynamicSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateDynamicSliceOp(*graph_,
+                      CreateDynamicSliceOp(graph_,
                                            resources_,
                                            inst,
                                            GetOutputShape(inst),
@@ -213,7 +213,7 @@ Status FullVisitor::HandleDynamicUpdateSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateDynamicSliceUpdateOp(*graph_,
+                      CreateDynamicSliceUpdateOp(graph_,
                                                  resources_,
                                                  inst,
                                                  GetOutputShape(inst),
@@ -227,7 +227,7 @@ Status FullVisitor::HandleReduceWindow(HloInstruction* inst) {
   if (IsPoplibsPool(inst, inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
-                        CreatePoplibsWindowReduction(*graph_,
+                        CreatePoplibsWindowReduction(graph_,
                                                      resources_,
                                                      inst,
                                                      GetOutputShape(inst),
@@ -238,7 +238,7 @@ Status FullVisitor::HandleReduceWindow(HloInstruction* inst) {
   if (IsReducableArtithmetic(inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
-                        CreateSimpleWindowReduction(*graph_,
+                        CreateSimpleWindowReduction(graph_,
                                                     resources_,
                                                     inst,
                                                     GetOutputShape(inst),
@@ -255,7 +255,7 @@ Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
     VLOG(1) << "Processing " << inst->name();
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
-                        CreateSimpleSelectAndScatter(*graph_,
+                        CreateSimpleSelectAndScatter(graph_,
                                                      resources_,
                                                      inst,
                                                      GetOutputShape(inst),
@@ -270,7 +270,7 @@ Status FullVisitor::HandleWhile(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateWhileOp(*graph_,
+                      CreateWhileOp(graph_,
                                     resources_,
                                     inst,
                                     GetOutputShape(inst),

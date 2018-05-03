@@ -75,7 +75,7 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"zero_pad", CreateZeroPadOp},
 };
 
-BaseVisitor::BaseVisitor(poplar::Graph* graph,
+BaseVisitor::BaseVisitor(poplar::Graph& graph,
                          CompilerResources& res)
         : graph_(graph),
           resources_(res) {}
@@ -94,7 +94,7 @@ Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateUnaryElementwiseOp(*graph_,
+                      CreateUnaryElementwiseOp(graph_,
                                                resources_,
                                                inst,
                                                GetOutputShape(inst),
@@ -107,7 +107,7 @@ Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateBinaryElementwiseOp(*graph_,
+                      CreateBinaryElementwiseOp(graph_,
                                                 resources_,
                                                 inst,
                                                 GetOutputShape(inst),
@@ -120,7 +120,7 @@ Status BaseVisitor::HandleConvert(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateCastOp(*graph_,
+                      CreateCastOp(graph_,
                                    resources_,
                                    inst,
                                    GetOutputShape(inst),
@@ -135,7 +135,7 @@ Status BaseVisitor::HandleCopy(HloInstruction* inst) {
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
-  out = graph_->clone(in);
+  out = graph_.clone(in);
   sequence.add(poplar::program::Copy(in, out));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -146,7 +146,7 @@ Status BaseVisitor::HandleClamp(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateClampOp(*graph_,
+                      CreateClampOp(graph_,
                                     resources_,
                                     inst,
                                     GetOutputShape(inst),
@@ -159,7 +159,7 @@ Status BaseVisitor::HandleSelect(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateSelectOp(*graph_,
+                      CreateSelectOp(graph_,
                                      resources_,
                                      inst,
                                      GetOutputShape(inst),
@@ -210,7 +210,7 @@ Status BaseVisitor::HandleSort(HloInstruction* inst) {
 Status BaseVisitor::HandleConstant(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, AddConstantTensor(*graph_,
+  TF_ASSIGN_OR_RETURN(t, AddConstantTensor(graph_,
                                            std::make_pair(inst, 0),
                                            GetOutputShape(inst),
                                            inst->literal(),
@@ -253,7 +253,7 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateFusionOp(*graph_,
+                      CreateFusionOp(graph_,
                                      resources_,
                                      inst,
                                      GetOutputShape(inst),
@@ -275,7 +275,7 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
     if (fused_call_map.count(name) == 1) {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
-                          fused_call_map.at(name)(*graph_,
+                          fused_call_map.at(name)(graph_,
                                                   resources_,
                                                   inst,
                                                   GetOutputShape(inst),
@@ -290,7 +290,7 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
   } else {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
-                        CreateCallOp(*graph_,
+                        CreateCallOp(graph_,
                                      resources_,
                                      inst,
                                      GetOutputShape(inst),
@@ -342,7 +342,7 @@ Status BaseVisitor::HandleMap(HloInstruction* inst) {
   if (simple_parallel) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
-                        CreateParallelMap(*graph_,
+                        CreateParallelMap(graph_,
                                           resources_,
                                           inst,
                                           GetOutputShape(inst),
@@ -364,7 +364,7 @@ Status BaseVisitor::HandleWhile(HloInstruction* inst) {
 Status BaseVisitor::HandleConditional(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
-                      CreateIfOp(*graph_,
+                      CreateIfOp(graph_,
                                  resources_,
                                  inst,
                                  GetOutputShape(inst),

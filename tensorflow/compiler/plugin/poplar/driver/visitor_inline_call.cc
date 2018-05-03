@@ -35,7 +35,7 @@ namespace xla {
 namespace poplarplugin {
 
 InlineCallVisitor::InlineCallVisitor(
-        poplar::Graph* graph,
+        poplar::Graph& graph,
         CompilerResources& res,
         const ArgVectors& inputs)
         : FullVisitor(graph, res),

@@ -105,7 +105,7 @@ static std::string GetPathToGraphProgFile() {
 
 class EntryVisitor : public FullVisitor {
 public:
-  EntryVisitor(poplar::Graph* graph,
+  EntryVisitor(poplar::Graph& graph,
                CompilerResources& resources,
                uint64 num_parameters)
           : FullVisitor(graph, resources),
@@ -133,7 +133,7 @@ public:
     for (unsigned i=0; i<shapes.size(); i++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out,
-                          AddTensor(*graph_, std::make_pair(inst,i), shapes[i],
+                          AddTensor(graph_, std::make_pair(inst,i), shapes[i],
                                     resources_));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
 
@@ -145,7 +145,7 @@ public:
         }
       }
 
-      graph_->createHostWrite(
+      graph_.createHostWrite(
           GetInputCopyHandle(inst->parameter_number(), i), out, opt);
     }
     return Status::OK();
@@ -178,7 +178,7 @@ public:
       }
 
       poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
-      graph_->createHostRead(GetOutputCopyHandle(o), out, opt);
+      graph_.createHostRead(GetOutputCopyHandle(o), out, opt);
     }
 
     if (inst->opcode() == HloOpcode::kParameter) {
@@ -320,7 +320,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::vector<const HloInstruction*> instruction_order;
   TF_ASSIGN_OR_RETURN(instruction_order, Scheduler::schedule(entry));
 
-  EntryVisitor visitor(&graph, resources, entry->num_parameters());
+  EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {
     TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
   }

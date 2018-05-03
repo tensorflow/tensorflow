@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-MapVisitor::MapVisitor(poplar::Graph* graph,
+MapVisitor::MapVisitor(poplar::Graph& graph,
                        CompilerResources& res,
                        const ArgVector& inputs,
                        const xla::Shape& shape)

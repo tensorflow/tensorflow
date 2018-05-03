@@ -31,7 +31,7 @@ namespace poplarplugin {
 
 class InlineCallVisitor : public FullVisitor {
 public:
-  InlineCallVisitor(poplar::Graph* graph,
+  InlineCallVisitor(poplar::Graph& graph,
                     CompilerResources& res,
                     const ArgVectors& inputs);
 

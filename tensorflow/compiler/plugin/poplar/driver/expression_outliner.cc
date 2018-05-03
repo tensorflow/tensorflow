@@ -156,7 +156,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule *module) {
         match.parameters.push_back(pr);
       }
 
-      OutlineExpressionFromComputation(match, "arithmetic", 0);
+      OutlineExpressionFromComputation(match, "__inline_arithmetic", 0);
     }
   }
 
