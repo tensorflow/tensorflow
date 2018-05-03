@@ -63,7 +63,7 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
 
   tensorflow::IPUOptions opts;
   auto *p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
@@ -108,7 +108,7 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
 
   tensorflow::IPUOptions opts;
   auto *p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
@@ -154,7 +154,7 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
 
   tensorflow::IPUOptions opts;
   auto *p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
@@ -213,7 +213,7 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
 
   tensorflow::IPUOptions opts;
   auto *p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
@@ -266,7 +266,7 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
 
   tensorflow::IPUOptions opts;
   auto *p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 

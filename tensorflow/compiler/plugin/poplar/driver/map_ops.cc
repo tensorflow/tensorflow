@@ -326,10 +326,11 @@ CreateWhileOp(poplar::Graph &graph,
     }
   }
   cond_seq.add(cond->second.sequence);
-  popops::allTrue(graph, cond_outputs[0], cond_seq, inst->name());
+  poplar::Tensor pred =
+      popops::allTrue(graph, cond_outputs[0], cond_seq, inst->name());
 
   // Main
-  main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, body_seq));
+  main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, pred, body_seq));
 
   for (unsigned int i=0; i<param_count; i++) {
     auto name = se::port::StrCat(inst->name(), "_out_", i);
@@ -367,8 +368,8 @@ CreateIfOp(poplar::Graph &graph,
                       GetOrCompileSubComputation(graph, res, false_inputs,
                                                  inst->false_computation()));
 
-  poplar::program::Sequence cond_seq;
-  popops::allTrue(graph, pred, cond_seq, inst->name());
+  poplar::program::Sequence seq;
+  poplar::Tensor scalar_pred = popops::allTrue(graph, pred, seq, inst->name());
 
   if (true_body->second.inputs().size() != 1 ||
       false_body->second.inputs().size() != 1) {
@@ -408,7 +409,8 @@ CreateIfOp(poplar::Graph &graph,
     false_seq.add(poplar::program::Copy(false_body->second.outputs()[i], out));
   }
 
-  return poplar::program::If(cond_seq, true_seq, false_seq);
+  seq.add(poplar::program::If(scalar_pred, true_seq, false_seq));
+  return seq;
 }
 
 }

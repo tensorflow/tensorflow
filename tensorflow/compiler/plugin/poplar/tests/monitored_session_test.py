@@ -14,6 +14,8 @@ from tensorflow.python.training import monitored_session as ms
 class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
 
     def testMonitoredSession(self):
+        tf.set_random_seed(1)
+
         with tf.device("/device:IPU:0"):
             pa = tf.placeholder(tf.float32, [2,2], name="a")
             pb = tf.placeholder(tf.float32, [2,2], name="b")
@@ -31,6 +33,7 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
             self.assertAllClose(result, [[2.,1.],[5.,6.]])
 
     def testTrainingLoop(self):
+        tf.set_random_seed(1)
 
         # Model
         with tf.device("/device:IPU:0"):
@@ -67,6 +70,8 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
             self.assertTrue(measured_loss < 5.0)
 
     def testMonitoredSessionStopAtStepHook(self):
+      tf.set_random_seed(1)
+
       with tf.device("/device:IPU:0"):
         pa = tf.placeholder(tf.float32, [2,2], name="a")
         pb = tf.placeholder(tf.float32, [2,2], name="b")
