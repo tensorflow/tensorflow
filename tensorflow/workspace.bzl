@@ -452,11 +452,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/a5108a08ceab35886a7df07c86f96aedd3d94bb7.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/a5108a08ceab35886a7df07c86f96aedd3d94bb7.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/b3f6a6a61625296bb532a65c0bf51b91b05b3361.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/b3f6a6a61625296bb532a65c0bf51b91b05b3361.tar.gz",
       ],
-      sha256 = "79cae03ebbdfd812bb69c460e1325ca069b5c576f7c7071f8216cf2b0975e36f",
-      strip_prefix = "llvm-a5108a08ceab35886a7df07c86f96aedd3d94bb7",
+      sha256 = "93895b289a78a47a1e75652e12a1b9a6c119f086a509b00e0084cf2bb944b709",
+      strip_prefix = "llvm-b3f6a6a61625296bb532a65c0bf51b91b05b3361",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
