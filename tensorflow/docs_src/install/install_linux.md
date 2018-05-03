@@ -520,8 +520,8 @@ on your system:
 * [GPU drivers](http://nvidia.com/driver) that support your version of the CUDA
   Toolkit.
 * The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
-  library provides advanced profiling support. To install this library,
-  use the following command for CUDA Toolkit >= 8.0:
+  library provides advanced profiling support. It is installed by default; if for some 
+  reason it hasn't been installed use the following command for CUDA Toolkit >= 8.0:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools-8-0</code>
