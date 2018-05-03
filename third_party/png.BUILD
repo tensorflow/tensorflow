@@ -28,6 +28,8 @@ cc_library(
         "pngwrite.c",
         "pngwtran.c",
         "pngwutil.c",
+        "powerpc/filter_vsx_intrinsics.c",
+        "powerpc/powerpc_init.c"
     ],
     hdrs = [
         "png.h",
