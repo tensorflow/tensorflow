@@ -657,7 +657,7 @@ class _TrainingExecutor(object):
           hooks=train_hooks)
 
       if not self._continuous_eval_listener.before_eval():
-        logging.info('Exiting training and evaluation lopp, as requested by '
+        logging.info('Exiting training and evaluation loop, as requested by '
                      '_ContinuousEvalListener.before_eval.')
         break
 
