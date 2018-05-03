@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -41,15 +42,6 @@ class LocalExecutable {
   StatusOr<ScopedShapedBuffer> Run(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ExecutableRunOptions run_options);
-
-  // Return the layout (contained in a shape) of the result produced by the
-  // computation.
-  const Shape& result_layout() const {
-    return executable_->module_config()
-        .entry_computation_layout()
-        .result_layout()
-        .shape();
-  }
 
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }

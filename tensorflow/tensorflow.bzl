@@ -509,7 +509,9 @@ def tf_gen_op_wrappers_cc(name,
 #   hidden: Optional list of ops names to make private in the Python module.
 #     It is invalid to specify both "hidden" and "op_whitelist".
 #   visibility: passed to py_library.
-#   deps: list of dependencies for the generated target.
+#   deps: list of dependencies for the intermediate tool used to generate the
+#     python target. NOTE these `deps` are not applied to the final python
+#     library target itself.
 #   require_shape_functions: leave this as False.
 #   hidden_file: optional file that contains a list of op names to make private
 #     in the generated Python module. Each op name should be on a line by

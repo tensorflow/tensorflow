@@ -288,7 +288,7 @@ class LayoutAssignment : public HloPassInterface {
   // If channel_constraints is nullptr, no kSend or kRecvs must be contained
   // within any module passed to `Run`.
   explicit LayoutAssignment(
-      ComputationLayout* entry_computation_layout,
+      const ComputationLayout& entry_computation_layout,
       ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
   tensorflow::StringPiece name() const override { return "layout-assignment"; }
@@ -402,7 +402,7 @@ class LayoutAssignment : public HloPassInterface {
   // necessary conditions.
   Status CheckLayouts(HloModule* module);
 
-  ComputationLayout* entry_computation_layout_;
+  const ComputationLayout& entry_computation_layout_;
 
  protected:
   // Sets up the copy instruction according to the characteristic (sharding,

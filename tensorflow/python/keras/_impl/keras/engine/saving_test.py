@@ -22,6 +22,7 @@ import os
 import shutil
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -42,7 +43,7 @@ except ImportError:
   h5py = None
 
 
-class TestWeightSavingAndLoading(test.TestCase):
+class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
   def test_weight_loading(self):
     with self.test_session():
@@ -180,6 +181,41 @@ class TestWeightSavingAndLoading(test.TestCase):
     model = keras.models.Model(x, y)
     _ = keras.engine.saving.preprocess_weights_for_loading(
         model, model.weights, original_keras_version='1')
+
+  @parameterized.named_parameters(
+      ('gru', keras.layers.GRU, {
+          'units': 2,
+          'input_shape': (3, 5)
+      }),
+      ('gru_with_reset_after', keras.layers.GRU, {
+          'units': 2,
+          'input_shape': (3, 5),
+          'reset_after': True
+      }),
+      ('lstm', keras.layers.LSTM, {
+          'units': 2,
+          'input_shape': (3, 5)
+      }),
+      ('cudnngru', keras.layers.CuDNNGRU, {
+          'units': 2,
+          'input_shape': (3, 5)
+      }),
+      ('cudnnlstm', keras.layers.CuDNNLSTM, {
+          'units': 2,
+          'input_shape': (3, 5)
+      }))
+  def test_preprocess_weights_for_loading_rnn_should_be_idempotent(
+      self, layer_class, layer_args):
+    with self.test_session():
+      layer = layer_class(**layer_args)
+      layer.build(input_shape=layer_args.get('input_shape'))
+      weights1 = layer.get_weights()
+      weights2 = keras.engine.saving.preprocess_weights_for_loading(
+          layer, weights1)
+      _ = [
+          self.assertAllClose(x, y, rtol=1e-05)
+          for (x, y) in zip(weights1, weights2)
+      ]
 
   def test_sequential_weight_loading(self):
     if h5py is None:

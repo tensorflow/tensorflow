@@ -38,8 +38,8 @@ class LRNOp : public XlaOpKernel {
     OP_REQUIRES(ctx, in_shape.dims() == 4,
                 errors::InvalidArgument("in must be 4-dimensional"));
 
-    xla::ComputationBuilder* builder = ctx->builder();
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp input = ctx->Input(0);
 
     // sqr_sum[a, b, c, d] =
     //    sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
@@ -111,10 +111,10 @@ class LRNGradOp : public XlaOpKernel {
             "input_grads, input_image, and out_image should have the same "
             "shape"));
 
-    xla::ComputationBuilder* builder = ctx->builder();
-    xla::ComputationDataHandle in_grads = ctx->Input(0);
-    xla::ComputationDataHandle in_image = ctx->Input(1);
-    xla::ComputationDataHandle out_image = ctx->Input(2);
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp in_grads = ctx->Input(0);
+    xla::XlaOp in_image = ctx->Input(1);
+    xla::XlaOp out_image = ctx->Input(2);
 
     // This code is ported from tensorflow/core/kernels/lrn_op.cc. In Python
     // pseudo-code, the Eigen code does this for each spatial position:
@@ -166,7 +166,7 @@ class LRNGradOp : public XlaOpKernel {
     auto dy_reduced =
         XlaHelpers::ConvertElementType(builder, dy_reduce, input_type(0));
 
-    xla::ComputationDataHandle gradients = builder->Add(
+    xla::XlaOp gradients = builder->Add(
         builder->Mul(in_image, dy_reduced),
         builder->Mul(in_grads,
                      builder->Pow(norm, builder->ConstantR0<float>(-beta_))));

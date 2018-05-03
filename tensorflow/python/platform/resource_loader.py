@@ -12,14 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Resource management library.
-
-@@get_data_files_path
-@@get_path_to_datafile
-@@get_root_dir_with_all_resources
-@@load_resource
-@@readahead_file_path
-"""
+"""Resource management library."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

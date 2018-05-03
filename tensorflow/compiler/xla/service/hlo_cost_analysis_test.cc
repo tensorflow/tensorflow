@@ -370,8 +370,8 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
         HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract, mul, clamp));
     auto tuple = HloInstruction::CreateTuple({sub, sub, mul, c1});
 
-    HloModule module(TestName());
-    auto* computation = module.AddEntryComputation(builder.Build());
+    auto module = CreateNewModule();
+    auto* computation = module->AddEntryComputation(builder.Build());
     auto* fusion = computation->CreateFusionInstruction(
         {sub, mul, exp, clamp, add}, HloInstruction::FusionKind::kLoop);
 
@@ -412,8 +412,8 @@ TEST_F(FusionCostAnalysis, NoLayout) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       shape_with_layout, HloOpcode::kAdd, c1, broadcast));
 
-  HloModule module(TestName());
-  auto* computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
   auto* fusion = computation->CreateFusionInstruction(
       {add, broadcast}, HloInstruction::FusionKind::kLoop);
 

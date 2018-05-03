@@ -17,8 +17,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -119,7 +120,7 @@ Status ParseOneProfileOutputLine(
 
 // Returns void so that we can ASSERT.
 void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
-                            const Computation& computation,
+                            const XlaComputation& computation,
                             const Shape& lhs_arg_shape,
                             const Shape& rhs_arg_shape) {
   LocalService* service = ClientLibrary::GetXlaService(client->platform());
@@ -185,7 +186,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   TF_ASSERT_OK_AND_ASSIGN(LocalClient * client,
                           ClientLibrary::GetOrCreateLocalClient(platform));
 
-  ComputationBuilder builder(client, TestName());
+  XlaBuilder builder(TestName());
   auto result = builder.Tanh(builder.Add(
       builder.Parameter(0, ShapeUtil::MakeShape(F32, {m, k}), "dot_lhs"),
       builder.Parameter(1, ShapeUtil::MakeShape(F32, {k, n}), "dot_rhs")));
@@ -251,18 +252,18 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
   TF_ASSERT_OK_AND_ASSIGN(LocalClient * client,
                           ClientLibrary::GetOrCreateLocalClient(platform));
 
-  Computation condition;
+  XlaComputation condition;
   {
-    ComputationBuilder builder(client, "condition");
+    XlaBuilder builder("condition");
     auto state = builder.Parameter(0, while_result_shape, "state");
     auto iteration = builder.GetTupleElement(state, 0);
     builder.Gt(builder.ConstantR0<int32>(5), iteration);
     TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
-  Computation body;
+  XlaComputation body;
   {
-    ComputationBuilder builder(client, "body");
+    XlaBuilder builder("body");
     auto state = builder.Parameter(0, while_result_shape, "state");
     auto matrix = builder.GetTupleElement(state, 1);
     auto next_iteration = builder.Add(builder.GetTupleElement(state, 0),
@@ -271,7 +272,7 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
     TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
-  ComputationBuilder builder(client, TestName());
+  XlaBuilder builder(TestName());
   auto initial_while_state =
       builder.Tuple({builder.ConstantR0<int32>(0),
                      builder.Parameter(0, matrix_shape, "initial_value")});

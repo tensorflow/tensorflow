@@ -102,9 +102,6 @@ tf_gen_op_libs(
         "trt_engine_op",
         "trt_calib_op",
     ],
-    deps = if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
-    ]),
 )
 
 tf_cuda_library(
@@ -138,6 +135,12 @@ tf_custom_op_py_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
+    kernels = [
+        ":trt_engine_op_kernel",
+        ":trt_engine_op_op_lib",
+        ":trt_calib_op_op_lib",
+        ":trt_shape_function",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/util:util_py",
@@ -194,10 +197,12 @@ tf_py_wrap_cc(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
+        "resources/trt_allocator.cc",
         "resources/trt_int8_calibrator.cc",
         "resources/trt_resource_manager.cc",
     ],
     hdrs = [
+        "resources/trt_allocator.h",
         "resources/trt_int8_calibrator.h",
         "resources/trt_resource_manager.h",
         "resources/trt_resources.h",
@@ -218,18 +223,24 @@ tf_cuda_library(
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
+        "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
         "convert/convert_graph.h",
         "convert/convert_nodes.h",
+        "convert/trt_optimization_pass.h",
     ],
     deps = [
         ":segment",
         ":trt_logging",
         ":trt_resources",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -238,8 +249,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/optimizers:constant_folding",
-        "//tensorflow/core/grappler/optimizers:layout_optimizer",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),

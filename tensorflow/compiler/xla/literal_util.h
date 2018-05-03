@@ -74,6 +74,10 @@ class Literal {
   Literal(const Literal& other) = delete;
   Literal& operator=(const Literal& other) = delete;
   Literal(Literal&& other);
+  // 'allocate_arrays' indicates whether to allocate memory for the arrays in
+  // the shape. If false, buffer pointers inside of the Literal::Pieces are set
+  // to nullptr.
+  Literal(const Shape& shape, bool allocate_arrays);
   Literal& operator=(Literal&& other);
 
   // Literals are equal if they have compatible shapes and the same data
@@ -658,12 +662,11 @@ class Literal {
   // LayoutUtil::MaxSparseElements(SetSubshape(shape(), index).layout()).
   int64 sparse_element_count() const;
 
- protected:
-  // 'allocate_arrays' indicates whether to allocate memory for the arrays in
-  // the shape. If false, buffer pointers inside of the Literal::Pieces are set
-  // to nullptr.
-  Literal(const Shape& shape, bool allocate_arrays);
+  // Compute a hash for this literal.  This literal must not be a sparse tensor
+  // or a tuple containing a sparse tensor.
+  size_t Hash() const;
 
+ protected:
   // Internal template helper for the Literal::CopySliceFrom(), matching its
   // arguments one by one.
   template <typename NativeT>

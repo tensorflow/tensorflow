@@ -138,7 +138,7 @@ The model will represent the buckets as follows:
 |< 1960               | [1, 0, 0, 0] |
 |>= 1960 but < 1980   | [0, 1, 0, 0] |
 |>= 1980 but < 2000   | [0, 0, 1, 0] |
-|> 2000               | [0, 0, 0, 1] |
+|>= 2000              | [0, 0, 0, 1] |
 
 Why would you want to split a number—a perfectly valid input to your
 model—into a categorical value? Well, notice that the categorization splits a

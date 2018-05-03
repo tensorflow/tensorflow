@@ -15,136 +15,6 @@
 """Basic arithmetic operators.
 
 See the @{$python/math_ops} guide.
-
-@@add
-@@subtract
-@@multiply
-@@scalar_mul
-@@div
-@@divide
-@@truediv
-@@floordiv
-@@realdiv
-@@truncatediv
-@@floor_div
-@@truncatemod
-@@floormod
-@@mod
-@@cross
-@@add_n
-@@abs
-@@negative
-@@sign
-@@reciprocal
-@@square
-@@round
-@@sqrt
-@@rsqrt
-@@pow
-@@exp
-@@expm1
-@@log
-@@log1p
-@@sinh
-@@cosh
-@@asinh
-@@acosh
-@@atanh
-@@ceil
-@@floor
-@@maximum
-@@minimum
-@@cos
-@@sin
-@@lbeta
-@@tan
-@@acos
-@@asin
-@@atan
-@@atan2
-@@lgamma
-@@digamma
-@@erf
-@@erfc
-@@squared_difference
-@@igamma
-@@igammac
-@@zeta
-@@polygamma
-@@betainc
-@@rint
-@@diag
-@@diag_part
-@@trace
-@@transpose
-@@eye
-@@matrix_diag
-@@matrix_diag_part
-@@matrix_band_part
-@@matrix_set_diag
-@@matrix_transpose
-@@matmul
-@@norm
-@@matrix_determinant
-@@matrix_inverse
-@@cholesky
-@@cholesky_solve
-@@matrix_solve
-@@matrix_triangular_solve
-@@matrix_solve_ls
-@@qr
-@@self_adjoint_eig
-@@self_adjoint_eigvals
-@@svd
-@@tensordot
-@@complex
-@@conj
-@@imag
-@@angle
-@@real
-@@fft
-@@ifft
-@@fft2d
-@@ifft2d
-@@fft3d
-@@ifft3d
-@@reduce_sum
-@@reduce_prod
-@@reduce_min
-@@reduce_max
-@@reduce_mean
-@@reduce_all
-@@reduce_any
-@@reduce_logsumexp
-@@count_nonzero
-@@accumulate_n
-@@einsum
-@@bincount
-@@cumsum
-@@cumprod
-@@segment_sum
-@@segment_prod
-@@segment_min
-@@segment_max
-@@segment_mean
-@@to_complex128
-@@to_complex64
-@@unsorted_segment_sum
-@@unsorted_segment_max
-@@unsorted_segment_mean
-@@unsorted_segment_min
-@@unsorted_segment_prod
-@@unsorted_segment_sqrt_n
-@@sparse_segment_sum
-@@sparse_segment_mean
-@@sparse_segment_sqrt_n
-@@argmin
-@@argmax
-@@setdiff1d
-@@where
-@@unique
-@@edit_distance
-@@invert_permutation
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1898,6 +1768,7 @@ def reduce_logsumexp(input_tensor,
                                                     "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
+  input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(
         input_tensor,
@@ -1910,13 +1781,13 @@ def reduce_logsumexp(input_tensor,
             array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
-            gen_math_ops.exp(input_tensor - my_max),
+            gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
             axis,
             keepdims=keepdims,
             reduction_indices=reduction_indices))
     if not keepdims:
       my_max = array_ops.reshape(my_max, array_ops.shape(result))
-    result += my_max
+    result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
@@ -2616,6 +2487,12 @@ def reduced_shape(input_shape, axes):
   """
   # Example:
   # cast needed for SparseTensor reductions
+  if context.executing_eagerly():
+    input_shape = input_shape.numpy()
+    axes = axes.numpy()
+    input_shape[axes] = 1
+    return input_shape
+
   input_shape = to_int32(input_shape)  # [2, 3, 5, 7]
   axes = to_int32(axes)  # [1, 2]
 

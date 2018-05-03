@@ -144,7 +144,8 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
   Device* device = flr->device();
   string device_type = device->parsed_name().type;
-  if (device_type == "CPU" || device_type == "TPU_SYSTEM") {
+  if (device_type == "CPU" || device_type == "TPU_SYSTEM" ||
+      device_type == "TPU") {
     // "TPU_SYSTEM" indicates that `device` is a CPU.
     return Status::OK();
   }

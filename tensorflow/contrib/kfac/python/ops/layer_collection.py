@@ -182,7 +182,7 @@ class LayerCollection(object):
     self._graph = graph or ops.get_default_graph()
     self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
-    self._default_generic_approximation = APPROX_FULL_NAME
+    self._default_generic_approximation = APPROX_DIAGONAL_NAME
     self._default_embedding_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
     self._default_conv2d_approximation = APPROX_KRONECKER_NAME

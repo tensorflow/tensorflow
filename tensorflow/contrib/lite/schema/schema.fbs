@@ -78,7 +78,7 @@ enum BuiltinOperator : byte {
   // DEPTH_TO_SPACE = 5,
   DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
-  // FLOOR = 8,
+  FLOOR = 8,
   FULLY_CONNECTED = 9,
   HASHTABLE_LOOKUP = 10,
   L2_NORMALIZATION = 11,
@@ -485,6 +485,8 @@ table Model {
   // their buffer.
   buffers:[Buffer];
 
+  // Metadata about the model.  Indirects into the existings buffers list.
+  metadata_buffer:[int];
 }
 
 root_type Model;

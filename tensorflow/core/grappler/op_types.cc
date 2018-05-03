@@ -54,6 +54,10 @@ bool IsApproximateEqual(const NodeDef& node) {
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
+bool IsAssign(const NodeDef& node) {
+  return node.op() == "Assign" || node.op() == "AssignVariableOp";
+}
+
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
 bool IsAtan2(const NodeDef& node) { return node.op() == "Atan2"; }
@@ -250,6 +254,14 @@ bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
 
+bool IsQueue(const NodeDef& node) {
+  return str_util::EndsWith(node.op(), "QueueV2");
+}
+
+bool IsRandomShuffle(const NodeDef& node) {
+  return node.op() == "RandomShuffle";
+}
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }
@@ -285,6 +297,8 @@ bool IsReverse(const NodeDef& node) {
 
 bool IsReverseV2(const NodeDef& node) { return node.op() == "ReverseV2"; }
 
+bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
+
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
 bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
@@ -299,9 +313,7 @@ bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
 
 bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
 
-bool IsShuffle(const NodeDef& node) {
-  return node.op() == "Shuffle" || node.op() == "RandomShuffle";
-}
+bool IsShuffle(const NodeDef& node) { return node.op() == "Shuffle"; }
 
 bool IsSigmoidGrad(const NodeDef& node) { return node.op() == "SigmoidGrad"; }
 
@@ -314,6 +326,8 @@ bool IsSoftsignGrad(const NodeDef& node) { return node.op() == "SoftsignGrad"; }
 bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
 
 bool IsSplitV(const NodeDef& node) { return node.op() == "SplitV"; }
+
+bool IsSqrt(const NodeDef& node) { return node.op() == "Sqrt"; }
 
 bool IsSqrtGrad(const NodeDef& node) { return node.op() == "SqrtGrad"; }
 

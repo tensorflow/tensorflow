@@ -278,14 +278,14 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
   run_options.set_device_ordinal(device);
   run_options.set_stream(stream);
   run_options.set_allocator(backend().memory_allocator());
-  run_options.set_inter_op_thread_pool(backend().inter_op_thread_pool());
   run_options.set_intra_op_thread_pool(
       backend().eigen_intra_op_thread_pool_device());
   if (device_assignment != nullptr) {
     run_options.set_device_assignment(device_assignment);
   }
-  return ServiceExecutableRunOptions(run_options, backend().StreamBorrower(),
-                                     backend().inter_op_thread_pool());
+  return ServiceExecutableRunOptions(
+      run_options, backend().StreamBorrower(),
+      /*xla_intra_op_thread_pool=*/backend().eigen_intra_op_thread_pool());
 }
 
 Backend& HloRunner::backend() {

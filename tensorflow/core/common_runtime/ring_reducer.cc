@@ -92,6 +92,8 @@ RingReducer::RingReducer(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
   CHECK_GT(num_subdivs_, 0);
 }
 
+RingReducer::~RingReducer() { group_size_tensor_ready_.WaitForNotification(); }
+
 string RingReducer::TensorDebugString(Tensor tensor) {
   const DeviceBase::GpuDeviceInfo* gpu_device_info =
       ctx_->device()->tensorflow_gpu_device_info();

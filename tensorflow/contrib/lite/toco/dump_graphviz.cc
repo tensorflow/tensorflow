@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 
+#include <cmath>
 #include <memory>
 #include <set>
 #include <unordered_set>
@@ -63,6 +64,7 @@ struct NodeProperties {
   // color will be chosen for the 'fontcolor' for the inside text
   // label, see Color::TextColorString.
   Color color;
+  float log2_buffer_size;
 };
 
 // All colors in this file are from:
@@ -162,9 +164,12 @@ NodeProperties GetPropertiesForArray(const Model& model,
     }
     node_properties.label += "]";
 
+    int buffer_size = RequiredBufferSizeForShape(array.shape());
+    node_properties.log2_buffer_size =
+        std::log2(static_cast<float>(buffer_size));
+
     if (array.buffer) {
       const auto& array = model.GetArray(array_name);
-      int buffer_size = RequiredBufferSizeForShape(array.shape());
       if (buffer_size <= 4) {
         AppendF(&node_properties.label, " = ");
         if (array.shape().dimensions_count() > 0) {
@@ -194,6 +199,8 @@ NodeProperties GetPropertiesForArray(const Model& model,
         AppendF(&node_properties.label, "}");
       }
     }
+  } else {
+    node_properties.log2_buffer_size = 0.0f;
   }
 
   if (array.minmax) {
@@ -325,12 +332,18 @@ std::vector<const Operator*> OperatorsToDump(const Model& model) {
 
 void DumpGraphviz(const Model& model, string* output_file_contents) {
   AppendF(output_file_contents, "digraph Computegraph {\n");
+  // 'nslimit' is a graphviz (dot) paramater that limits the iterations during
+  // the layout phase. Omitting it allows infinite iterations, causing some
+  // complex graphs to never finish. A value of 125 produces good graphs
+  // while allowing complex graphs to finish.
+  AppendF(output_file_contents, "\t nslimit=125;\n");
 
   constexpr char kNodeFormat[] =
       "\t \"%s\" [label=\"%s\", shape=%s, style=filled, fillcolor=\"#%s\", "
       "fontcolor = \"#%sDD\"];\n";
 
-  constexpr char kEdgeFormat[] = "\t \"%s\" -> \"%s\";\n";
+  constexpr char kEdgeFormat[] =
+      "\t \"%s\" -> \"%s\" [penwidth=%f, weight=%f];\n";
 
   constexpr char kRNNBackEdgeFormat[] =
       "\t \"%s\" -> \"%s\" [color=\"#0F9D58\"];\n";
@@ -358,7 +371,22 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
                 array_properties.color.FillColorString().c_str(),
                 array_properties.color.TextColorString().c_str());
       }
-      AppendF(output_file_contents, kEdgeFormat, input, operator_id);
+
+      // Draw lines that transport more data thicker (Otherwise, where would the
+      // data fit? right?).
+      float line_width =
+          std::max(0.5f, array_properties.log2_buffer_size / 3.0f);
+      // Keep edges that transport more data shorter than those with less.
+      float weight = std::max(1.0f, array_properties.log2_buffer_size);
+      if (!IsInputArray(model, input) &&
+          GetOpWithOutput(model, input) == nullptr) {
+        // Give the main line of data flow a straighter path by penalizing edges
+        // to standalone buffers. Weights are generally very large buffers that
+        // otherwise skew the layout without this.
+        weight = 1.0f;
+      }
+      AppendF(output_file_contents, kEdgeFormat, input, operator_id, line_width,
+              weight);
       already_added_arrays.insert(input);
     }
     // Add nodes and edges for all outputs of the operator.
@@ -374,7 +402,16 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
                 array_properties.color.FillColorString().c_str(),
                 array_properties.color.TextColorString().c_str());
       }
-      AppendF(output_file_contents, kEdgeFormat, operator_id, output);
+
+      // See comments above regarding weight and line_width calculations.
+      float line_width =
+          std::max(0.5f, array_properties.log2_buffer_size / 3.0f);
+      float weight = std::max(1.0f, array_properties.log2_buffer_size);
+      if (!IsArrayConsumed(model, output)) {
+        weight = 1.0f;
+      }
+      AppendF(output_file_contents, kEdgeFormat, operator_id, output,
+              line_width, weight);
       already_added_arrays.insert(output);
     }
   }

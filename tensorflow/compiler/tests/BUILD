@@ -755,6 +755,7 @@ tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
+    tags = ["noasan"],  # times out, http://b/78599043
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -817,13 +818,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
-    ],
-    # TODO(b/62961789): Test fails with SIGABRT
-    tags = [
-        "manual",
-        "notap",
+        "//tensorflow/python:variables",
     ],
 )
 

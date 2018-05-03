@@ -584,9 +584,9 @@ class MakeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
+    core::ScopedUnref unref(iterator_resource);
     OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
                             dataset->MakeIterator("Iterator")));
-    iterator_resource->Unref();
   }
 };
 

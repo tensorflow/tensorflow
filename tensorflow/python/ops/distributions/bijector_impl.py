@@ -23,6 +23,7 @@ import collections
 import contextlib
 import re
 
+import numpy as np
 import six
 
 from tensorflow.python.framework import dtypes
@@ -146,15 +147,21 @@ class Bijector(object):
   for transforming a `Distribution` generated `Tensor`. A `Bijector` is
   characterized by three operations:
 
-  1. Forward\
+  1. Forward
+
      Useful for turning one random outcome into another random outcome from a
      different distribution.
-  2. Inverse\
+
+  2. Inverse
+
      Useful for "reversing" a transformation to compute one probability in
      terms of another.
-  3. `log_det_jacobian(x)`\
+
+  3. `log_det_jacobian(x)`
+
      "The log of the determinant of the matrix of all first-order partial
-     derivatives of the inverse function."\
+     derivatives of the inverse function."
+
      Useful for inverting a transformation to compute one probability in terms
      of another. Geometrically, the Jacobian determinant is the volume of the
      transformation and is used to scale the probability.
@@ -520,6 +527,8 @@ class Bijector(object):
       ValueError:  If a member of `graph_parents` is not a `Tensor`.
     """
     self._graph_parents = graph_parents or []
+    forward_min_event_ndims = get_static_value(forward_min_event_ndims)
+    inverse_min_event_ndims = get_static_value(inverse_min_event_ndims)
 
     if forward_min_event_ndims is None and inverse_min_event_ndims is None:
       raise ValueError("Must specify at least one of `forward_min_event_ndims` "
@@ -795,33 +804,37 @@ class Bijector(object):
         return self._constant_ildj_map[event_ndims]
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
-      if not self._is_injective:  # No caching for non-injective
-        ildjs = self._inverse_log_det_jacobian(y, **kwargs)
-        return tuple(self._reduce_jacobian_det_over_event(
-            y, ildj, self.inverse_min_event_ndims, event_ndims)
-                     for ildj in ildjs)
-      mapping = self._lookup(y=y, kwargs=kwargs)
-      if mapping.ildj_map is not None and event_ndims in mapping.ildj_map:
-        return mapping.ildj_map[event_ndims]
-      try:
-        x = None  # Not needed; leave cache as is.
-        ildj = self._inverse_log_det_jacobian(y, **kwargs)
-        ildj = self._reduce_jacobian_det_over_event(
-            y, ildj, self.inverse_min_event_ndims, event_ndims)
-      except NotImplementedError as original_exception:
+      with ops.control_dependencies(self._check_valid_event_ndims(
+          min_event_ndims=self.inverse_min_event_ndims,
+          event_ndims=event_ndims)):
+        if not self._is_injective:  # No caching for non-injective
+          ildjs = self._inverse_log_det_jacobian(y, **kwargs)
+          return tuple(self._reduce_jacobian_det_over_event(
+              y, ildj, self.inverse_min_event_ndims, event_ndims)
+                       for ildj in ildjs)
+        mapping = self._lookup(y=y, kwargs=kwargs)
+        if mapping.ildj_map is not None and event_ndims in mapping.ildj_map:
+          return mapping.ildj_map[event_ndims]
         try:
-          x = mapping.x if mapping.x is not None else self._inverse(y, **kwargs)
-          ildj = -self._forward_log_det_jacobian(x, **kwargs)
+          x = None  # Not needed; leave cache as is.
+          ildj = self._inverse_log_det_jacobian(y, **kwargs)
           ildj = self._reduce_jacobian_det_over_event(
-              x, ildj, self.forward_min_event_ndims, event_ndims)
-        except NotImplementedError:
-          raise original_exception
+              y, ildj, self.inverse_min_event_ndims, event_ndims)
+        except NotImplementedError as original_exception:
+          try:
+            x = (mapping.x if mapping.x is not None
+                 else self._inverse(y, **kwargs))
+            ildj = -self._forward_log_det_jacobian(x, **kwargs)
+            ildj = self._reduce_jacobian_det_over_event(
+                x, ildj, self.forward_min_event_ndims, event_ndims)
+          except NotImplementedError:
+            raise original_exception
 
-      mapping = mapping.merge(x=x, ildj_map={event_ndims: ildj})
-      self._cache(mapping)
-      if self.is_constant_jacobian:
-        self._constant_ildj_map[event_ndims] = ildj
-      return ildj
+        mapping = mapping.merge(x=x, ildj_map={event_ndims: ildj})
+        self._cache(mapping)
+        if self.is_constant_jacobian:
+          self._constant_ildj_map[event_ndims] = ildj
+        return ildj
 
   def inverse_log_det_jacobian(
       self, y, event_ndims, name="inverse_log_det_jacobian"):
@@ -852,9 +865,7 @@ class Bijector(object):
         `self.dtype`.
       NotImplementedError: if `_inverse_log_det_jacobian` is not implemented.
     """
-    with ops.control_dependencies(self._check_valid_event_ndims(
-        min_event_ndims=self.inverse_min_event_ndims, event_ndims=event_ndims)):
-      return self._call_inverse_log_det_jacobian(y, event_ndims, name)
+    return self._call_inverse_log_det_jacobian(y, event_ndims, name)
 
   def _forward_log_det_jacobian(self, x):
     """Subclass implementation of `forward_log_det_jacobian` public function.
@@ -876,38 +887,46 @@ class Bijector(object):
         "forward_log_det_jacobian not implemented.")
 
   def _call_forward_log_det_jacobian(self, x, event_ndims, name, **kwargs):
+    if not self._is_injective:
+      raise NotImplementedError(
+          "forward_log_det_jacobian cannot be implemented for non-injective "
+          "transforms.")
     with self._name_scope(name, [x]):
-      if event_ndims in self._constant_ildj_map:
-        # Need "-1. *" to avoid invalid-unary-operand-type linter warning.
-        return -1. * self._constant_ildj_map[event_ndims]
-      x = ops.convert_to_tensor(x, name="x")
-      self._maybe_assert_dtype(x)
-      if not self._is_injective:
-        fldjs = self._forward_log_det_jacobian(x, **kwargs)  # No caching.
-        return tuple(self._reduce_jacobian_det_over_event(
-            x, fldj, self.forward_min_event_ndims, event_ndims)
-                     for fldj in fldjs)
-      mapping = self._lookup(x=x, kwargs=kwargs)
-      if mapping.ildj_map is not None and event_ndims in mapping.ildj_map:
-        return -mapping.ildj_map[event_ndims]
-      try:
-        y = None  # Not needed; leave cache as is.
-        ildj = -self._forward_log_det_jacobian(x, **kwargs)
-        ildj = self._reduce_jacobian_det_over_event(
-            x, ildj, self.forward_min_event_ndims, event_ndims)
-      except NotImplementedError as original_exception:
+      with ops.control_dependencies(self._check_valid_event_ndims(
+          min_event_ndims=self.forward_min_event_ndims,
+          event_ndims=event_ndims)):
+        if event_ndims in self._constant_ildj_map:
+          # Need "-1. *" to avoid invalid-unary-operand-type linter warning.
+          return -1. * self._constant_ildj_map[event_ndims]
+        x = ops.convert_to_tensor(x, name="x")
+        self._maybe_assert_dtype(x)
+        if not self._is_injective:
+          fldjs = self._forward_log_det_jacobian(x, **kwargs)  # No caching.
+          return tuple(self._reduce_jacobian_det_over_event(
+              x, fldj, self.forward_min_event_ndims, event_ndims)
+                       for fldj in fldjs)
+        mapping = self._lookup(x=x, kwargs=kwargs)
+        if mapping.ildj_map is not None and event_ndims in mapping.ildj_map:
+          return -mapping.ildj_map[event_ndims]
         try:
-          y = mapping.y if mapping.y is not None else self._forward(x, **kwargs)
-          ildj = self._inverse_log_det_jacobian(y, **kwargs)
+          y = None  # Not needed; leave cache as is.
+          ildj = -self._forward_log_det_jacobian(x, **kwargs)
           ildj = self._reduce_jacobian_det_over_event(
-              y, ildj, self.inverse_min_event_ndims, event_ndims)
-        except NotImplementedError:
-          raise original_exception
-      mapping = mapping.merge(y=y, ildj_map={event_ndims: ildj})
-      self._cache(mapping)
-      if self.is_constant_jacobian:
-        self._constant_ildj_map[event_ndims] = ildj
-      return -ildj
+              x, ildj, self.forward_min_event_ndims, event_ndims)
+        except NotImplementedError as original_exception:
+          try:
+            y = (mapping.y if mapping.y is not None
+                 else self._forward(x, **kwargs))
+            ildj = self._inverse_log_det_jacobian(y, **kwargs)
+            ildj = self._reduce_jacobian_det_over_event(
+                y, ildj, self.inverse_min_event_ndims, event_ndims)
+          except NotImplementedError:
+            raise original_exception
+        mapping = mapping.merge(y=y, ildj_map={event_ndims: ildj})
+        self._cache(mapping)
+        if self.is_constant_jacobian:
+          self._constant_ildj_map[event_ndims] = ildj
+        return -ildj
 
   def forward_log_det_jacobian(
       self, x, event_ndims, name="forward_log_det_jacobian"):
@@ -933,13 +952,7 @@ class Bijector(object):
         nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented, or
         this is a non-injective bijector.
     """
-    if not self._is_injective:
-      raise NotImplementedError(
-          "forward_log_det_jacobian cannot be implemented for non-injective "
-          "transforms.")
-    with ops.control_dependencies(self._check_valid_event_ndims(
-        min_event_ndims=self.forward_min_event_ndims, event_ndims=event_ndims)):
-      return self._call_forward_log_det_jacobian(x, event_ndims, name)
+    return self._call_forward_log_det_jacobian(x, event_ndims, name)
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):
@@ -981,12 +994,14 @@ class Bijector(object):
   def _reduce_jacobian_det_over_event(
       self, y, ildj, min_event_ndims, event_ndims):
     """Reduce jacobian over event_ndims - min_event_ndims."""
+    assert_static(min_event_ndims)
+
     if not self.is_constant_jacobian:
       return math_ops.reduce_sum(
           ildj,
           self._get_event_reduce_dims(min_event_ndims, event_ndims))
 
-    # In this case, we need to tile the jacobian over the event and reduce.
+    # In this case, we need to tile the Jacobian over the event and reduce.
     y_rank = array_ops.rank(y)
     y_shape = array_ops.shape(y)[
         y_rank - event_ndims : y_rank - min_event_ndims]
@@ -997,47 +1012,60 @@ class Bijector(object):
         axis=self._get_event_reduce_dims(min_event_ndims, event_ndims))
     # The multiplication by ones can change the inferred static shape so we try
     # to recover as much as possible.
-    if (isinstance(event_ndims, int) and
-        y.get_shape().ndims and ildj.get_shape().ndims):
-      y_shape = y.get_shape()
-      y_shape = y_shape[y_shape.ndims - event_ndims :
-                        y_shape.ndims - min_event_ndims]
-      ildj_shape = ildj.get_shape()
-      broadcast_shape = array_ops.broadcast_static_shape(
-          ildj_shape, y_shape)
+    event_ndims_ = get_static_value(event_ndims)
+    if (event_ndims_ is not None and
+        y.shape.ndims is not None and
+        ildj.shape.ndims is not None):
+      y_shape = y.shape[y.shape.ndims - event_ndims_ :
+                        y.shape.ndims - min_event_ndims]
+      broadcast_shape = array_ops.broadcast_static_shape(ildj.shape, y_shape)
       reduced_ildj.set_shape(
           broadcast_shape[: broadcast_shape.ndims - (
-              event_ndims - min_event_ndims)])
+              event_ndims_ - min_event_ndims)])
 
     return reduced_ildj
 
   def _get_event_reduce_dims(self, min_event_ndims, event_ndims):
     """Compute the reduction dimensions given event_ndims."""
-    min_event_ndims_ = (min_event_ndims if isinstance(min_event_ndims, int)
-                        else tensor_util.constant_value(min_event_ndims))
-    event_ndims_ = (event_ndims if isinstance(event_ndims, int)
-                    else tensor_util.constant_value(event_ndims))
+    assert_static(min_event_ndims)
+    event_ndims_ = get_static_value(event_ndims, np.int32)
 
-    if min_event_ndims_ is not None and event_ndims_ is not None:
-      return [-index for index in range(1, event_ndims_ - min_event_ndims_ + 1)]
+    if event_ndims_ is not None:
+      return [-index for index in range(1, event_ndims_ - min_event_ndims + 1)]
     else:
       reduce_ndims = event_ndims - min_event_ndims
       return math_ops.range(-reduce_ndims, 0)
 
   def _check_valid_event_ndims(self, min_event_ndims, event_ndims):
     """Check whether event_ndims is atleast min_event_ndims."""
-    min_event_ndims_ = (min_event_ndims if isinstance(min_event_ndims, int)
-                        else tensor_util.constant_value(min_event_ndims))
-    event_ndims_ = (event_ndims if isinstance(event_ndims, int)
-                    else tensor_util.constant_value(event_ndims))
-
-    if min_event_ndims_ is not None and event_ndims_ is not None:
-      if min_event_ndims_ > event_ndims_:
+    assert_static(min_event_ndims)
+    event_ndims_ = get_static_value(event_ndims, np.int32)
+    assertions = []
+    if event_ndims_ is not None:
+      if min_event_ndims > event_ndims_:
         raise ValueError("event_ndims ({}) must be larger than "
                          "min_event_ndims ({})".format(
-                             event_ndims_, min_event_ndims_))
-      return []
+                             event_ndims_, min_event_ndims))
+    elif self.validate_args:
+      assertions += [
+          check_ops.assert_greater_equal(event_ndims, min_event_ndims)]
+    return assertions
 
-    if self.validate_args:
-      return [check_ops.assert_greater_equal(event_ndims, min_event_ndims)]
-    return []
+
+def get_static_value(x, dtype=None):
+  """Helper which returns static value; casting when dtype is preferred."""
+  if x is None:
+    return x
+  try:
+    x_ = tensor_util.constant_value(x)
+  except TypeError:
+    x_ = x
+  if x_ is None or dtype is None:
+    return x_
+  return np.array(x_, dtype)
+
+
+def assert_static(x):
+  """Helper which asserts that input arg is known statically."""
+  if x is None or type(x) != type(get_static_value(x)):  # pylint: disable=unidiomatic-typecheck
+    raise TypeError("Input must be known statically.")

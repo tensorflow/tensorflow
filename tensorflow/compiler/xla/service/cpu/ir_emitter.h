@@ -530,6 +530,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
 
+  llvm::GlobalVariable* EmitGlobalForLiteral(const Literal& literal);
+
   const HloModuleConfig& hlo_module_config_;
 
   bool is_top_level_computation_;
@@ -538,6 +540,20 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   int64 external_global_constant_counter_ = 0;
   ExternalConstantPool* external_constant_pool_;
+
+  struct LiteralPtrHashFunctor {
+    size_t operator()(const Literal* literal) const { return literal->Hash(); }
+  };
+
+  struct LiteralPtrEqualityFunctor {
+    bool operator()(const Literal* lhs, const Literal* rhs) const {
+      return *lhs == *rhs;
+    }
+  };
+
+  tensorflow::gtl::FlatMap<const Literal*, llvm::GlobalVariable*,
+                           LiteralPtrHashFunctor, LiteralPtrEqualityFunctor>
+      emitted_literals_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };
