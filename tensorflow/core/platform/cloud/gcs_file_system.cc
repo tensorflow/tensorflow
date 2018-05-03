@@ -1397,8 +1397,7 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   // on the server side, we can't just retry the whole RenameFile operation
   // because the source object is already gone.
   return RetryingUtils::DeleteWithRetries(
-      std::bind(&GcsFileSystem::DeleteFile, this, src),
-      initial_retry_delay_usec_);
+      [this, &src]() { return DeleteFile(src); }, initial_retry_delay_usec_);
 }
 
 Status GcsFileSystem::IsDirectory(const string& fname) {
@@ -1454,7 +1453,7 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
     // and therefore RetryingFileSystem won't pay attention to the failures,
     // we need to make sure these failures are properly retried.
     const auto& delete_file_status = RetryingUtils::DeleteWithRetries(
-        std::bind(&GcsFileSystem::DeleteFile, this, full_path),
+        [this, &full_path]() { return DeleteFile(full_path); },
         initial_retry_delay_usec_);
     if (!delete_file_status.ok()) {
       if (IsDirectory(full_path).ok()) {
