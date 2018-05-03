@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
 
+#include <vector>
+
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/stream_executor.h"
+
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
+#include "cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -34,6 +40,42 @@ void IncrementKernel(const float* d_input, float inc, float* d_output,
   VecInc<<<threads_per_block, blocks_per_grid, 0, stream>>>(d_input, inc,
                                                             d_output, count);
 }
+
+// Note: this kernel definition is not needed in the plugin_test rule, but it is
+// required for correctness of the TF program, i.e. if not using plugin or when
+// run with trt optimization pass, the test should work.
+class IncPluginTRT : public OpKernel {
+ public:
+  explicit IncPluginTRT(OpKernelConstruction* context) : OpKernel(context) {
+    std::vector<float> inc_list;
+    OP_REQUIRES_OK(context, context->GetAttr("inc", &inc_list));
+    OP_REQUIRES(context, inc_list.size() == 1,
+                errors::InvalidArgument(
+                    "The increment list should contain single element."));
+    inc_ = inc_list[0];
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input_tensor = context->input(0);
+    const TensorShape& input_shape = input_tensor.shape();
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, input_shape, &output_tensor));
+    const cudaStream_t* stream = CHECK_NOTNULL(
+        reinterpret_cast<const cudaStream_t*>(context->op_device_context()
+                                                  ->stream()
+                                                  ->implementation()
+                                                  ->CudaStreamMemberHack()));
+    IncrementKernel(input_tensor.flat<float>().data(), inc_,
+                    output_tensor->flat<float>().data(),
+                    input_shape.num_elements(), *stream);
+  }
+
+ private:
+  float inc_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("IncPluginTRT").Device(DEVICE_GPU), IncPluginTRT);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

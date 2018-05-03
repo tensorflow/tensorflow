@@ -28,7 +28,7 @@ namespace tensorrt {
 // Logger for GIE info/warning/errors
 class Logger : public nvinfer1::ILogger {
  public:
-  Logger(string name = "DefaultLogger") : name_(name) {};
+  Logger(string name = "DefaultLogger") : name_(name) {}
   void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
 
  private:

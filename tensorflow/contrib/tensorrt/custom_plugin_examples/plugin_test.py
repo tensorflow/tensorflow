@@ -39,6 +39,7 @@ import numpy
 # the python api handles registration to the plugin factory
 from tensorflow.contrib.tensorrt import custom_plugin_examples
 
+
 def get_plugin_graph_def():
   """Create a simple graph and return its graph_def."""
   g = ops.Graph()
@@ -49,14 +50,15 @@ def get_plugin_graph_def():
     v = nn_ops.max_pool(
         relu, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
 
-    # insert custom_op in the graph 
+    # insert custom_op in the graph
     v = custom_plugin_examples.inc_op(v, inc=[16.5], name="plugin_test")
 
-    v = v*2.0
+    v = v * 2.0
     v = nn.relu(v)
     v = nn.relu(v)
     array_ops.squeeze(v, name="output")
   return g.as_graph_def()
+
 
 def run_graph(gdef, dumm_inp):
   """Run given graphdef once."""
@@ -74,6 +76,7 @@ def run_graph(gdef, dumm_inp):
     val = sess.run(out, {inp: dumm_inp})
   return val
 
+
 if "__main__" in __name__:
   inp_dims = (5, 24, 24, 2)
   dummy_input = numpy.ones(inp_dims).astype(numpy.float32)
@@ -88,8 +91,7 @@ if "__main__" in __name__:
       max_batch_size=inp_dims[0],
       max_workspace_size_bytes=1 << 25,
       precision_mode="FP32",
-      minimum_segment_size=2
-  )
+      minimum_segment_size=2)
   o2 = run_graph(trt_graph, dummy_input)
   if o2.reshape([-1])[0] == 35:
     print("pass")

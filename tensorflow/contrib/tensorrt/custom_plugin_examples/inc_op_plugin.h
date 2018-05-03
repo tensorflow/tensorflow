@@ -29,13 +29,17 @@ namespace tensorrt {
 
 class IncOpPlugin : public PluginTensorRT {
  public:
-  static const string plugin_name_;
-  IncOpPlugin() {};
+  IncOpPlugin();
+
   IncOpPlugin(const void* serialized_data, size_t length);
+
   const string& GetPluginName() const override { return plugin_name_; };
+
   bool Finalize() override { return true; };
+
   bool SetAttribute(const string& key, const void* ptr,
                     const size_t size) override;
+
   bool GetAttribute(const string& key, const void** ptr,
                     size_t* size) const override;
 
@@ -71,14 +75,11 @@ class IncOpPlugin : public PluginTensorRT {
   }
 
   void serialize(void* buffer) override {
-    // serializa parent stuff
-    //   OpName
+    // Serialize parent data.
     PluginTensorRT::serialize(buffer);
-
-    // incremented buffer after parent serialization;
+    // Incremented buffer after parent serialization.
     buffer =
         static_cast<char*>(buffer) + PluginTensorRT::getSerializationSize();
-
     std::memcpy(buffer, &inc_, sizeof(float));
     buffer = static_cast<char*>(buffer) + sizeof(float);
   }
@@ -86,6 +87,9 @@ class IncOpPlugin : public PluginTensorRT {
  protected:
   float inc_;
   nvinfer1::Dims dim_;
+
+ private:
+  const string plugin_name_;
 };
 
 IncOpPlugin* CreateIncPlugin();

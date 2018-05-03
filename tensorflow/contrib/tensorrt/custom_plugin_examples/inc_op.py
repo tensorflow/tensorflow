@@ -18,13 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import platform
-import os
 
 if platform.system() != "Windows":
+  # pylint: disable=g-import-not-at-top
   from tensorflow.contrib.util import loader
   from tensorflow.python.platform import resource_loader
+  # pylint: enable=g-import-not-at-top
 
   _inc_op = loader.load_op_library(
-      os.path.join(os.path.dirname(os.path.realpath(__file__)),"_inc_op.so"))
+      resource_loader.get_path_to_datafile("_inc_op.so"))
 else:
   raise RuntimeError("Windows not supported")
