@@ -2145,7 +2145,7 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   if (!status.ok() || !calib_res->calibrator_) {
     return tensorflow::errors::FailedPrecondition(
         "You must run calibration"
-        " and inference conversion in the same proces");
+        " and inference conversion in the same process");
   }
 
   calib_res->calibrator_->setDone();

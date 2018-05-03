@@ -281,8 +281,8 @@ class LayoutAssignment : public HloPassInterface {
   // the case that no particular layout is requested.
   //
   // channel_constraints is both an input and output. Any sends or recvs that
-  // are present in channel_constraints will be layed out as constrained. Any
-  // unconstrained sends or recvs will be layed out as locally optimal and their
+  // are present in channel_constraints will be laid out as constrained. Any
+  // unconstrained sends or recvs will be laid out as locally optimal and their
   // layout will be added as a constraint to channel_constraints.
   //
   // If channel_constraints is nullptr, no kSend or kRecvs must be contained

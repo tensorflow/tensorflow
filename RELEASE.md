@@ -236,7 +236,7 @@ Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, ç”°ä¼
   * Add `complex64` support to XLA compiler.
   * `bfloat` support is now added to XLA infrastructure.
   * Make `ClusterSpec` propagation work with XLA devices.
-  * Use a determinisitic executor to generate XLA graph.
+  * Use a deterministic executor to generate XLA graph.
 * `tf.contrib`:
   * `tf.contrib.distributions`:
     * Add `tf.contrib.distributions.Autoregressive`.

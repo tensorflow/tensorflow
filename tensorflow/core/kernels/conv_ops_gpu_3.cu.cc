@@ -595,7 +595,7 @@ constexpr bool TileSizeOnNonLongSideFrontier(int TileLongSide,
   // For a tile size combination (longside, shortside), lying on the frontier
   // implies that (longside, shortside) is on or within the frontier but
   // (longside*2, shortside) or (longside, shortside+1) is not. With the above
-  // critereon, we simply need to use !TileSizeOnLongSideFrontier to ensure that
+  // criterion, we simply need to use !TileSizeOnLongSideFrontier to ensure that
   // it is not on the long side frontier.
   return !TileSizeOutsideFrontier(TileLongSide, TileShortSide, size_of_t) &&
          (TileSizeOutsideFrontier(TileLongSide * 2, TileShortSide, size_of_t) ||

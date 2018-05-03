@@ -574,7 +574,6 @@ class SymbolicShapeRefiner {
     }
   };
 
-  // Compute the shape of the tensors outputed by node 'node' at output port
   // 'port_index' as the union of shape1 and shape2.
   ShapeHandle OutputAsUnion(const NodeDef* node, int port_index,
                             ShapeHandle shape1, ShapeHandle shape2) {
@@ -968,7 +967,7 @@ Status GraphProperties::PropagateShapes(
     const std::unordered_map<const NodeDef*, const NodeDef*>& resource_handles,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
-  // incorrect shape functions. The algoritm should converge in at most
+  // incorrect shape functions. The algorithm should converge in at most
   // num_nested_loops^2 * max_rank. We approximate max_rank with the constant 4.
   // The same applies to resources.
   VLOG(1) << "Propagating " << new_shapes->size() << " new shapes through "

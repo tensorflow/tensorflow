@@ -677,7 +677,7 @@ def copy_with_input_replacements(sgv, replacement_ts,
 
 
 def _add_control_flow_ops(ops, control_ios):
-  """Complete `ops` so that the tranformed graph is valid.
+  """Complete `ops` so that the transformed graph is valid.
 
   Partially copying a graph can lead to a malformed graph. For instance,
   copying half of a while construct is likely to result in an invalid graph.
