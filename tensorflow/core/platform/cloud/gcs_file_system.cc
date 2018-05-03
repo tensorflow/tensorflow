@@ -103,7 +103,7 @@ constexpr char kResolveCacheSecs[] = "GCS_RESOLVE_REFRESH_SECS";
 // The environment variable to configure the http request's connection timeout.
 constexpr char kRequestConnectionTimeout[] =
     "GCS_REQUEST_CONNECTION_TIMEOUT_SECS";
-// The environment varaible to configure the http request's idle timeout.
+// The environment variable to configure the http request's idle timeout.
 constexpr char kRequestIdleTimeout[] = "GCS_REQUEST_IDLE_TIMEOUT_SECS";
 // The environment variable to configure the overall request timeout for
 // metadata requests.

@@ -734,7 +734,7 @@ class DistributionStrategy(object):
     `fn` may call `tf.get_tower_context()` to access methods such as
     `tower_id()` and `merge_call()`.
 
-    `merge_call()` is used to communicate betwen the towers and
+    `merge_call()` is used to communicate between the towers and
     re-enter the cross-tower context. All towers pause their execution
     having encountered a `merge_call()` call. After that the
     `merge_fn`-function is executed. Its results are then unwrapped and

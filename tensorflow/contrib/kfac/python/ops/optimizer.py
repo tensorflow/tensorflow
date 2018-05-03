@@ -66,7 +66,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           the local approximation with the Fisher information matrix, and to
           regularize the update direction by making it closer to the gradient.
           If damping is adapted during training then this value is used for
-          initializing damping varaible.
+          initializing damping variable.
           (Higher damping means the update looks more like a standard gradient
           update - see Tikhonov regularization.)
       layer_collection: The layer collection object, which holds the fisher
@@ -195,7 +195,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       min_damping: `float`(Optional), Minimum value the damping parameter
         can take. Default value 1e-5.
       damping_adaptation_decay: `float`(Optional), The `damping` parameter is
-        multipled by the `damping_adaptation_decay` every
+        multiplied by the `damping_adaptation_decay` every
         `damping_adaptation_interval` number of iterations. Default value 0.99.
       damping_adaptation_interval: `int`(Optional), Number of steps in between
         updating the `damping` parameter. Default value 5.

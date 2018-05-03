@@ -1492,7 +1492,7 @@ def tf_py_wrap_cc(name,
 # This macro is for running python tests against system installed pip package
 # on Windows.
 #
-# py_test is built as an exectuable python zip file on Windows, which contains all
+# py_test is built as an executable python zip file on Windows, which contains all
 # dependencies of the target. Because of the C++ extensions, it would be very
 # inefficient if the py_test zips all runfiles, plus we don't need them when running
 # tests against system installed pip package. So we'd like to get rid of the deps

@@ -1814,7 +1814,7 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // requiring a power-of-two representation interval. Thus, we should right
 // away quantize this array to a power-of-two interval; otherwise,
 // implementation will need to rescale that, losing any benefit that a tighter
-// representation interval might otherwise yield, while introducting some
+// representation interval might otherwise yield, while introducing some
 // numerical error and computational overhead.
 //
 // Now, Logistic and Tanh

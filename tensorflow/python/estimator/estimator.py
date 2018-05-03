@@ -883,7 +883,7 @@ class Estimator(object):
             model_fn_lib.ModeKeys.TRAIN,
             self.config)
 
-        # TODO(anjalisridhar): Figure out how to resolve the folowing scaffold
+        # TODO(anjalisridhar): Figure out how to resolve the following scaffold
         # parameters: init_feed_dict, init_fn.
         scaffold_list = self._distribution.unwrap(
             grouped_estimator_spec.scaffold)
