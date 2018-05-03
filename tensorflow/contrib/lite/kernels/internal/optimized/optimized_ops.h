@@ -3355,7 +3355,7 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
                           const int32 output_zeropoint,
                           const float output_scale) {
   // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization paramaters for all the inputs to the concat
+  // that have the quantization parameters for all the inputs to the concat
   // operator.
   gemmlowp::ScopedProfilingLabel label("Concatenation");
   TFLITE_DCHECK_GT(inputs_count, 1);

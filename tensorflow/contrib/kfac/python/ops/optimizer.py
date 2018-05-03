@@ -114,7 +114,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     self._estimation_mode = estimation_mode
     self._colocate_gradients_with_ops = colocate_gradients_with_ops
 
-    # The below paramaters are required only if damping needs to be adapated.
+    # The below parameters are required only if damping needs to be adapated.
     # These parameters can be set by calling
     # set_damping_adaptation_params() explicitly.
     self._damping_adaptation_decay = 0.95
