@@ -804,11 +804,16 @@ class SymbolicShapeRefiner {
           int64 start = slice_offset->dtype() == DT_INT32
                             ? slice_offset->flat<int32>()(0)
                             : slice_offset->flat<int64>()(0);
-          int64 end = start + (slice_size->dtype() == DT_INT32
-                                   ? slice_size->flat<int32>()(0)
-                                   : slice_size->flat<int64>()(0));
+          int64 size =
+              (slice_size->dtype() == DT_INT32 ? slice_size->flat<int32>()(0)
+                                               : slice_size->flat<int64>()(0));
           ShapeHandle result;
-          TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          if (size == -1) {
+            TF_RETURN_IF_ERROR(ic->Subshape(input, start, &result));
+          } else {
+            int64 end = start + size;
+            TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          }
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = result;
         }
