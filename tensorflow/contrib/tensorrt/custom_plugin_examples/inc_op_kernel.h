@@ -18,11 +18,11 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
+#include "cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-__global__ void VecInc(float* vec, float inc, float* dest, int n);
 void IncrementKernel(const float* d_input, float inc, float* d_output,
                      int count, cudaStream_t stream);
 

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -20,8 +22,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
@@ -30,34 +30,49 @@ namespace test {
 
 class StubPlugin : public PluginTensorRT {
  public:
-  static const string plugin_name_;
-  StubPlugin() {};
+  static const char* kPluginName;
+
+  StubPlugin() : plugin_name_(kPluginName) {}
+
   StubPlugin(const void* serialized_data, size_t length)
-      : PluginTensorRT(serialized_data, length) {};
-  const string& GetPluginName() override { return plugin_name_; };
-  virtual bool Finalize() { return true; };
+      : PluginTensorRT(serialized_data, length) {}
+
+  const string& GetPluginName() override { return plugin_name_; }
+
+  virtual bool Finalize() { return true; }
+
   virtual bool SetAttribute(const string& key, const void* ptr,
                             const size_t size) {
     return true;
-  };
+  }
+
   virtual bool GetAttribute(const string& key, const void* ptr, size_t& size) {
     return true;
-  };
+  }
+
   int getNbOutputs() const override { return 1; }
+
   nvinfer1::Dims getOutputDimensions(int index, const nvinfer1::Dims* inputs,
                                      int nbInputDims) override {
     return inputs[0];
   }
+
   int initialize() override { return 0; }
+
   void terminate() override {}
+
   size_t getWorkspaceSize(int maxBatchSize) const override { return 0; }
+
   int enqueue(int batch_size, const void* const* inputs, void** outputs,
               void* workspace, cudaStream_t stream) override {
     return 0;
   }
+
+ private:
+  const string plugin_name_;
 };
 
-const string StubPlugin::plugin_name_ = "StubPlugin";
+const char* StubPlugin::kPluginName = "StubPlugin";
 
 StubPlugin* CreateStubPlugin() { return new StubPlugin(); }
 
@@ -70,32 +85,32 @@ class PluginTest : public ::testing::Test {
  public:
   bool RegisterStubPlugin() {
     if (PluginFactoryTensorRT::GetInstance()->IsPlugin(
-            StubPlugin::plugin_name_)) {
+            StubPlugin::kPluginName)) {
       return true;
     }
     return PluginFactoryTensorRT::GetInstance()->RegisterPlugin(
-        StubPlugin::plugin_name_, CreateStubPluginDeserialize,
+        StubPlugin::kPluginName, CreateStubPluginDeserialize,
         CreateStubPlugin);
   }
 };
 
 TEST_F(PluginTest, Registration) {
   EXPECT_FALSE(
-      PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::plugin_name_));
+      PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::kPluginName));
   EXPECT_TRUE(RegisterStubPlugin());
 
   ASSERT_TRUE(
-      PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::plugin_name_));
+      PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::kPluginName));
 }
 
 TEST_F(PluginTest, CreationDeletion) {
   EXPECT_TRUE(RegisterStubPlugin());
   ASSERT_TRUE(
-      PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::plugin_name_));
+      PluginFactoryTensorRT::GetInstance()->IsPlugin(StubPlugin::kPluginName));
 
   PluginFactoryTensorRT::GetInstance()->DestroyPlugins();
   ASSERT_TRUE(PluginFactoryTensorRT::GetInstance()->CreatePlugin(
-      StubPlugin::plugin_name_));
+      StubPlugin::kPluginName));
   ASSERT_EQ(1, PluginFactoryTensorRT::GetInstance()->CountOwnedPlugins());
   PluginFactoryTensorRT::GetInstance()->DestroyPlugins();
   ASSERT_EQ(0, PluginFactoryTensorRT::GetInstance()->CountOwnedPlugins());

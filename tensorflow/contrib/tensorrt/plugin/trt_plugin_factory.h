@@ -31,18 +31,14 @@ namespace tensorrt {
 
 class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
  public:
-  // deserialization method
+  static PluginFactoryTensorRT* GetInstance();
+
+  // Deserialization method
   PluginTensorRT* createPlugin(const char* layer_name, const void* serial_data,
                                size_t serial_length) override;
 
-  // plugin construction, PluginFactoryTensorRT owns the plugin;
+  // Plugin construction, PluginFactoryTensorRT owns the plugin.
   PluginTensorRT* CreatePlugin(const string& op_name);
-
-  static PluginFactoryTensorRT* GetInstance() {
-    static PluginFactoryTensorRT* factory_instance =
-        new PluginFactoryTensorRT();
-    return factory_instance;
-  }
 
   bool RegisterPlugin(const string& op_name,
                       PluginDeserializeFunc deserialize_func,

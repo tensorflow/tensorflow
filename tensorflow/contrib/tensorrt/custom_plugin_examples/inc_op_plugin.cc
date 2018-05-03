@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
-#include <iostream>
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
+#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #if GOOGLE_CUDA
@@ -24,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-const string IncOpPlugin::plugin_name_ = "IncPluginTRT";
+const char* kPluginName = "IncPluginTRT";
 
 IncOpPlugin* CreateIncPlugin() { return new IncOpPlugin(); }
 
@@ -33,14 +32,16 @@ IncOpPlugin* CreateIncPluginDeserialize(const void* buffer, size_t length) {
 }
 
 bool RegisterIncOpPlugin() {
-  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(IncOpPlugin::plugin_name_))
+  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(kPluginName))
     return false;
   return PluginFactoryTensorRT::GetInstance()->RegisterPlugin(
-      IncOpPlugin::plugin_name_, CreateIncPluginDeserialize, CreateIncPlugin);
+      kPluginName, CreateIncPluginDeserialize, CreateIncPlugin);
 }
 
+IncOpPlugin::IncOpPlugin() : plugin_name_(kPluginName) {}
+
 IncOpPlugin::IncOpPlugin(const void* serialized_data, size_t length)
-    : PluginTensorRT(serialized_data, length) {
+    : PluginTensorRT(serialized_data, length), plugin_name_(kPluginName) {
   // account for the consumed pointer.
   size_t consumed_data = PluginTensorRT::getSerializationSize();
   assert(length - consumed_data >= sizeof(float));
