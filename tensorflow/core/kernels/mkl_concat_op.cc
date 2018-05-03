@@ -14,6 +14,7 @@ limitations under the License.
 
 #include <limits>
 #include <vector>
+#include <unordered_map>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -617,11 +618,6 @@ class MklConcatOp : public OpKernel {
       if (concat_dim < 0) concat_dim = expected_dims + concat_dim;
 
       for (auto& s : input_shapes) {
-        if (s == expected_shape) {
-          ++i;
-          continue;
-        }
-
         TensorShape s_shape =
             s.IsMklTensor() ? s.GetTfShape() : input_tensors[i].shape();
         size_t s_dims = s_shape.dims();
@@ -664,19 +660,12 @@ class MklConcatOp : public OpKernel {
 
       // Call Eigen library
       if (invoke_eigen) {
-        TensorShapeList tf_input_shapes;
-        i = 0;
-        for (auto& s : input_shapes) {
-          TensorShape s_shape =
-              s.IsMklTensor() ? s.GetTfShape() : input_tensors[i].shape();
-          tf_input_shapes.push_back(s_shape);
-          ++i;
-        }
-        CallEigenVersion(context, input_tensors, tf_input_shapes);
+        CallEigenVersion(context, input_tensors, input_shapes);
         return;
       }
 
       memory::dims dst_dims;
+
       if (are_all_mkl_inputs)
         dst_dims = TFShapeToMklDnnDims(input_shapes[0].GetTfShape());
       else
@@ -688,26 +677,60 @@ class MklConcatOp : public OpKernel {
       std::vector<memory::primitive_desc> srcs_pd;
       std::vector<MklDnnData<T>> srcs(N, MklDnnData<T>(&cpu_engine));
       int64 dst_concat_dim_size = 0;
-      for (int k = 0; k < N; k++) {
-        bool is_mkl_tensor = input_shapes[k].IsMklTensor();
-        memory::dims src_dims;
 
-        // Same comment as dst_dims for src_dims.
-        src_dims = (is_mkl_tensor)
-                       ? TFShapeToMklDnnDims(input_shapes[k].GetTfShape())
-                       : TFShapeToMklDnnDims(input_tensors[k].shape());
+      bool isMklReorderNeeded = false;
+      memory::format mkl_common_format = memory::format::any;
+      if (are_all_mkl_inputs) {
+        mkl_common_format =
+            FindMklCommonFormat(input_shapes, concat_dim,
+               &isMklReorderNeeded, &dst_concat_dim_size);
 
-        dst_concat_dim_size += src_dims[concat_dim];
-        auto src_md =
-            is_mkl_tensor ? input_shapes[k].GetMklLayout() :
-                          // It does not matter what data format we use here
-                          // (NHWC or NCHW). We just need to ensure that output
-                          // of Concat uses same data format as input.
-                memory::desc(src_dims, MklDnnType<T>(), memory::format::nchw);
+        if (!isMklReorderNeeded) {
+          // All MKL tensors have a same format. Reorder is not needed.
+          for (int k = 0; k < N; k++) {
+            if (input_tensors[k].NumElements() == 0)
+              continue;
 
-        srcs[k].SetUsrMem(src_md, &input_tensors[k]);
-        auto src_mpd = srcs[k].GetUsrMemPrimDesc();
-        srcs_pd.push_back(src_mpd);
+            auto src_md = input_shapes[k].GetMklLayout();
+            srcs[k].SetUsrMem(src_md, &input_tensors[k]);
+            auto src_mpd = srcs[k].GetUsrMemPrimDesc();
+            srcs_pd.push_back(src_mpd);
+          }
+        } else {
+          // MKL tensors have different formats.
+          // Reorder them to most common format.
+          for (int k = 0; k < N; k++) {
+            if (input_tensors[k].NumElements() == 0)
+              continue;
+
+            auto src_dims = TFShapeToMklDnnDims(input_shapes[k].GetTfShape());
+            auto src_md = input_shapes[k].GetMklLayout();
+            srcs[k].SetUsrMem(src_md, &input_tensors[k]);
+
+            if (src_md.data.format != mkl_common_format)
+              src_md = memory::desc(src_dims, MklDnnType<T>(),
+                           mkl_common_format);
+
+            srcs_pd.push_back(memory::primitive_desc(src_md, cpu_engine));
+          }
+        }
+      } else {  // All TF inputs
+        for (int k = 0; k < N; k++) {
+          if (input_tensors[k].NumElements() == 0)
+            continue;
+
+          memory::dims src_dims = TFShapeToMklDnnDims(input_tensors[k].shape());
+          dst_concat_dim_size += src_dims[concat_dim];
+
+          // It does not matter what data format to be used (NHWC versus NCHW).
+          // We just need to ensure that output uses same data format as inputs.
+          auto src_md =
+              memory::desc(src_dims, MklDnnType<T>(), memory::format::nchw);
+
+          srcs[k].SetUsrMem(src_md, &input_tensors[k]);
+          auto src_mpd = srcs[k].GetUsrMemPrimDesc();
+          srcs_pd.push_back(src_mpd);
+        }
       }
       dst_dims[concat_dim] = dst_concat_dim_size;
 
@@ -720,22 +743,30 @@ class MklConcatOp : public OpKernel {
         auto orig_tf_format = input_shapes[0].GetTfDataFormat();
         dst_dims_in_nchw = MklDnnDimsInNCHW(
             dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
-        // We will set the output in the same format as input to avoid layout
-        // conversions.
-        // Currently we are setting dst format same as input format.
-        // See if we can make this choice in a better way.
+        // Set the output format same as the most common format of inputs
+        // to avoid layout conversions.
         dst_md = memory::desc(
-            dst_dims_in_nchw, MklDnnType<T>(),
-            (memory::format)input_shapes[0].GetMklLayout().data.format);
+            dst_dims_in_nchw, MklDnnType<T>(), mkl_common_format);
       } else {
-        // Again, format does not matter here. We just need to make it same as
-        // input format.
+        // All inputs are TF tensors.
+        // Set the output format same as input format (nchw).
         dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nchw);
       }
 
       std::vector<primitive::at> inputs;
-      for (int k = 0; k < input_tensors.size(); k++)
-        inputs.push_back(srcs[k].GetOpMem());
+      std::vector<primitive> net;
+      if (isMklReorderNeeded) {
+        for (int k = 0; k < input_tensors.size(); k++) {
+          if (input_tensors[k].NumElements() > 0) {
+            srcs[k].CheckReorderToOpMem(srcs_pd[k], &net);
+          }
+        }
+      }
+      for (int k = 0; k < input_tensors.size(); k++) {
+        if (input_tensors[k].NumElements() > 0) {
+          inputs.push_back(srcs[k].GetOpMem());
+        }
+      }
 
       // If all inputs are in MKL format, then meaning of concat_dim needs to
       // change. Value of concat_dim is tied to input Tensorflow data format
@@ -772,7 +803,6 @@ class MklConcatOp : public OpKernel {
       dst.SetUsrMem(dst_md, dst_tensor);
 
       auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
-      std::vector<primitive> net;
       net.push_back(concat_op);
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
@@ -786,15 +816,27 @@ class MklConcatOp : public OpKernel {
   }
 
   void CallEigenVersion(OpKernelContext* context, const OpInputList& values,
-                        const TensorShapeList& input_shapes) {
+                        const MklDnnShapeList& input_shapes) {
     CHECK_EQ(values.size(), input_shapes.size());
 
     std::vector<Tensor> converted_values;
-    for (int i = 0; i < input_shapes.size(); i++)
-      converted_values.push_back(values[i]);
+    TensorShapeList tf_input_shapes;
+    for (int i = 0; i < input_shapes.size(); i++) {
+      if (input_shapes[i].IsMklTensor()) {
+        // do conversion from MKL to TF
+        Tensor tmp_tensor =
+            ConvertMklToTF<T>(context, values[i], input_shapes[i]);
+        converted_values.push_back(tmp_tensor);
+        tf_input_shapes.push_back(input_shapes[i].GetTfShape());
+      } else {
+        // no conversion since it is TF tensor already
+        converted_values.push_back(values[i]);
+        tf_input_shapes.push_back(values[i].shape());
+      }
+    }
 
     // Call Eigen concat.
-    eigen_concat_op_.Compute(context, converted_values, input_shapes);
+    eigen_concat_op_.Compute(context, converted_values, tf_input_shapes);
 
     // Set output Mkl tensor for this op.
     MklDnnShape dnn_shape_output;
@@ -810,6 +852,55 @@ class MklConcatOp : public OpKernel {
     dnn_shape_output.SerializeMklDnnShape(
         output_tensor->flat<uint8>().data(),
         output_tensor->flat<uint8>().size() * sizeof(uint8));
+  }
+
+  // This method finds the most commom format accross all MKL inputs
+  // Inputs:
+  //   1. input_shapes: shapes of input (MKL) tensors.
+  //   2. concat_dim: concat dimension.
+  // Outputs:
+  //   1. is_reorder_needed is set to true if inputs have difference formats
+  //      It is set to false otherwise.
+  //   2. concat_dim_size is the size of concat_dim.
+  // Return:
+  //   return the common MKL format.
+  memory::format FindMklCommonFormat(const MklDnnShapeList& input_shapes,
+      int concat_dim, bool* is_reorder_needed, int64* concat_dim_size) {
+    *is_reorder_needed = false;
+    *concat_dim_size = 0;
+    std::unordered_map<memory::format, int> occurrence_map;
+    if (input_shapes.size() == 0)
+      return memory::format::any;
+
+    // Compute ocurrences of each format of all inputs.
+    for (int k=0; k <input_shapes.size(); k++) {
+      auto src_dims = TFShapeToMklDnnDims(input_shapes[k].GetTfShape());
+      *concat_dim_size += src_dims[concat_dim];
+      memory::format fmt = (memory::format)
+          input_shapes[k].GetMklLayout().data.format;
+      occurrence_map[fmt] += 1;
+    }
+
+    if (occurrence_map.size() == 1) {
+       // this means that all inputs have a same format
+       // return it with is_reorder_needed set false.
+       return (memory::format)
+           input_shapes[0].GetMklLayout().data.format;
+    }
+
+    // Input tensors have different formats. Thus, reorder is needed.
+    // We pick up the most common format to minimize the total
+    // number of input reorder.
+    memory::format commonest_format = memory::format::any;
+    int max_occurrence = 0;
+    *is_reorder_needed = true;
+    for (auto item : occurrence_map) {
+      if (item.second > max_occurrence) {
+        commonest_format = item.first;
+        max_occurrence = item.second;
+      }
+    }
+    return commonest_format;
   }
 };
 

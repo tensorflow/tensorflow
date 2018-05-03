@@ -706,15 +706,40 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
   return output_tensor;
 }
 #else
+using mkldnn::stream;
+template <typename T> class MklDnnData;
+
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
                              const MklDnnShape& mkl_shape) {
+  if (!mkl_shape.IsMklTensor())
+    return mkl_tensor;  // return input since it is already TF tensor
+
   Tensor output_tensor;
-  TensorShape output_shape;
+  TensorShape output_shape = mkl_shape.GetTfShape();;
 
-  TF_CHECK_OK(
-      Status(error::Code::UNIMPLEMENTED, "Unimplemented conversion function"));
+  // Allocate output tensor.
+  context->allocate_temp(DataTypeToEnum<T>::v(), output_shape, &output_tensor);
 
+  auto cpu_engine = engine(engine::cpu, 0);
+  MklDnnData<T> input(&cpu_engine);
+
+  // Get Mkl layout of input tensor.
+  auto input_mkl_md = mkl_shape.GetMklLayout();
+  auto output_tf_md = mkl_shape.GetTfLayout();
+  auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
+  input.SetUsrMem(input_mkl_md, &mkl_tensor);
+
+  // reorder
+  if (input.IsReorderNeeded(output_tf_pd)) {
+    std::vector<primitive> net;
+    CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net),
+             true);
+    stream(stream::kind::eager).submit(net).wait();
+  } else {
+    // If not, just forward input tensor to output tensor.
+    CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
+  }
   return output_tensor;
 }
 #endif
