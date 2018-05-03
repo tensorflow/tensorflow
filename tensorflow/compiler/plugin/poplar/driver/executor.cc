@@ -284,8 +284,15 @@ Status PoplarExecutor::InitializePoplarDevice(
       return Status{
           tensorflow::error::INTERNAL,
           tensorflow::strings::Printf(
-              "unrecognized poplar device type for ordinal %d: %d", ordinal_,
+              "Unrecognized poplar device type for ordinal %d: %d", ordinal_,
               type)};
+  }
+
+  if (!poplar_device_.tryToAcquire()) {
+    return Status{
+        tensorflow::error::INTERNAL,
+        tensorflow::strings::Printf(
+            "Unable to acquire poplar device type for ordinal %d", ordinal_)};
   }
 
   random_type_ = cfg.random_type();
@@ -495,13 +502,6 @@ PoplarExecutor::ExecuteEngine(
     const xla::poplarplugin::PoplarExecutable& executable,
     xla::DeviceMemoryAllocator* allocator,
     const Args& args) {
-
-  if (active_xla_device_ == nullptr) {
-    return Status{
-        tensorflow::error::INTERNAL,
-        tensorflow::strings::Printf(
-            "Poplar device not opened for ordinal %d", ordinal_)};
-  }
 
   const auto& output_map = executable.OutputMapping();
   const auto& output_shape = executable.result_shape();
