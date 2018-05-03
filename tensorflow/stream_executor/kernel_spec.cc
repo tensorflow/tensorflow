@@ -18,11 +18,11 @@ limitations under the License.
 namespace stream_executor {
 
 KernelLoaderSpec::KernelLoaderSpec(port::StringPiece kernelname)
-    : kernelname_(kernelname.ToString()) {}
+    : kernelname_(std::string(kernelname)) {}
 
 OnDiskKernelLoaderSpec::OnDiskKernelLoaderSpec(port::StringPiece filename,
                                                port::StringPiece kernelname)
-    : KernelLoaderSpec(kernelname), filename_(filename.ToString()) {}
+    : KernelLoaderSpec(kernelname), filename_(std::string(filename)) {}
 
 CudaPtxOnDisk::CudaPtxOnDisk(port::StringPiece filename,
                              port::StringPiece kernelname)
@@ -161,7 +161,7 @@ OpenCLTextOnDisk::OpenCLTextOnDisk(port::StringPiece filename,
 
 OpenCLTextInMemory::OpenCLTextInMemory(port::StringPiece text,
                                        port::StringPiece kernelname)
-    : KernelLoaderSpec(kernelname), text_(text.ToString()) {}
+    : KernelLoaderSpec(kernelname), text_(std::string(text)) {}
 
 OpenCLBinaryOnDisk::OpenCLBinaryOnDisk(port::StringPiece filename,
                                        port::StringPiece kernelname)

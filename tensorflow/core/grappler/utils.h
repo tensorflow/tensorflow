@@ -139,7 +139,7 @@ inline StringPiece ParseNodeNameAsStringPiece(const string& name,
 
 // Returns the node name and position in a single call.
 inline string ParseNodeName(const string& name, int* position) {
-  return ParseNodeNameAsStringPiece(name, position).ToString();
+  return std::string(ParseNodeNameAsStringPiece(name, position));
 }
 
 // Add a prefix to a node name with a custom delimiter.
