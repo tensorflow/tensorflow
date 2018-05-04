@@ -375,6 +375,9 @@ Returns x * y element-wise.
 REGISTER_OP("Div").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+REGISTER_OP("UnsafeDiv").BINARY_MORE().SetShapeFn(
+    shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("FloorDiv")
     .BINARY_MORE()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
