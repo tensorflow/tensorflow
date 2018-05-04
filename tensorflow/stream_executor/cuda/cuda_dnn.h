@@ -48,7 +48,7 @@ class CudnnSupport : public dnn::DnnSupport {
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
-      int num_layers, int hidden_size, int input_size,
+      int num_layers, int hidden_size, int input_size, int batch_size,
       dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
       dnn::RnnMode rnn_mode, dnn::DataType data_type,
       const dnn::AlgorithmConfig& algorithm_config, float dropout, uint64 seed,
@@ -639,7 +639,7 @@ class CudnnSupport : public dnn::DnnSupport {
   // Guards the enqueueing of DNN operations via the dnn_handle_ below, and
   // access to current_dnn_stream_.
   //
-  // This is a public member because we need to add thread safty annotations in
+  // This is a public member because we need to add thread safety annotations in
   // the cudnn wrapper functions in the cc file, which need to access this
   // mutex (the annotations require C++ permission checks).
   mutex dnn_handle_mutex_;

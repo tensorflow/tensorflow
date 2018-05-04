@@ -294,6 +294,35 @@ void FinishBuildingRNNStates(Model* model);
 
 void UseArraysExtraInfo(Model* model, bool quantize_output);
 
+// Calculates the number of elements in tensor given a shape. Shape elements
+// are assumed to be of type T, while the result total is of type U. If U
+// doesn't have enough range to represent the sum of elements, an error is
+// returned.
+template <typename T, typename U>
+port::Status NumElements(const std::vector<T>& shape, U* num_elements) {
+  static_assert(
+      std::numeric_limits<T>::max() <= std::numeric_limits<uint64_t>::max(),
+      "vector type exceed capabilities of NumElements");
+
+  *num_elements = 1;
+  for (const T& dim : shape) {
+    if (dim < 0) {
+      // TensorFlow's shapes sometimes include -1 to represent an "unknown"
+      // size but TOCO isn't able to create arrays of unknown sizes and will
+      // crash in RequiredBufferSizeForShape().
+      return port::Status(false,
+                          "Tensor shape should not include negative values");
+    }
+    if (static_cast<uint64_t>(dim) >
+        std::numeric_limits<U>::max() / *num_elements) {
+      *num_elements = 0;
+      return port::Status(false, "Tensor shape is too large");
+    }
+    *num_elements *= dim;
+  }
+  return port::Status::OK();
+}
+
 }  // namespace toco
 
 #endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_

@@ -350,6 +350,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_DEQUANTIZE:
     case BuiltinOperator_PRELU:
+    case BuiltinOperator_FLOOR:
       break;
     case BuiltinOperator_CAST: {
       TfLiteCastParams* params = MallocPOD<TfLiteCastParams>();

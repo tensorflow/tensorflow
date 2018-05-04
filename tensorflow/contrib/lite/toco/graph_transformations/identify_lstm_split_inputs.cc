@@ -138,10 +138,9 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
   CreateOptionalArray(model, &(lstm_cell_op->inputs[kProjectionBiasTensor]),
                       base_name + "proj_bias");
 
-  // Reorder LstmCell's outputs.
-  lstm_cell_op->outputs.resize(LstmCellOperator::NUM_OUTPUTS);
-  lstm_cell_op->outputs[kScratchBufferTensor] =
-      curr_op->outputs[LstmCellOperator::CONCAT_TEMP];
+  // Reorder and resize LstmCell's outputs.
+  lstm_cell_op->outputs.resize(
+      ExtendedLstmCellOutputs::kExtendedLstmOutputCount);
   lstm_cell_op->outputs[kOutputStateTensor] =
       curr_op->outputs[LstmCellOperator::ACTIV_TEMP];
   lstm_cell_op->outputs[kCellStateTensor] =

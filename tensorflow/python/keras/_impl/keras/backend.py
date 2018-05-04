@@ -2998,7 +2998,7 @@ def rnn(step_function,
       constants: a list of constant values passed at each step.
       unroll: whether to unroll the RNN or to use a symbolic loop
           (`while_loop` or `scan` depending on backend).
-      input_length: Unused; exists for API compatibility.
+      input_length: If specified, assume time dimension is of this length.
 
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
@@ -3016,7 +3016,6 @@ def rnn(step_function,
       ValueError: if `mask` is provided (not `None`) but states is not provided
           (`len(states)` == 0).
   """
-  del input_length
   ndim = len(inputs.get_shape())
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
@@ -3194,6 +3193,7 @@ def rnn(step_function,
         cond=lambda time, *_: time < time_steps,
         body=_step,
         loop_vars=(time, output_ta) + states,
+        maximum_iterations=input_length,
         parallel_iterations=32,
         swap_memory=True)
     last_time = final_outputs[0]

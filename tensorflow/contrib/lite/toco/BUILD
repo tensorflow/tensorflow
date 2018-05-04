@@ -308,6 +308,7 @@ cc_library(
         ":toco_port",
         ":tooling_util",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
+        "//tensorflow/contrib/lite/kernels/internal:strided_slice_logic",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -361,6 +362,18 @@ cc_library(
         # Placeholder for internal darwin rule.
         "//conditions:default": [],
     }),
+)
+
+tf_cc_test(
+    name = "import_tensorflow_test",
+    srcs = ["import_tensorflow_test.cc"],
+    deps = [
+        ":toco_tooling",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(

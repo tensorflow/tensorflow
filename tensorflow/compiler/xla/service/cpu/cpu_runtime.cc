@@ -37,6 +37,7 @@ extern const char* const kEigenMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenMatMulF32";
 extern const char* const kEigenMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenMatMulF64";
+extern const char* const kMKLConvF32SymbolName = "__xla_cpu_runtime_MKLConvF32";
 extern const char* const kMKLMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLMatMulF32";
 extern const char* const kMKLMatMulF64SymbolName =

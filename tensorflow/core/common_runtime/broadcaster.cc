@@ -80,7 +80,7 @@ void Broadcaster::Run(StatusCallback done) {
 // continuing to occupy its current position.  Hence we calculate as
 // though each device's rank is actually r+1, then subtract 1 again to
 // get the descendent ranks.  If the source is not rank 0 then its
-// decendents include both {0,1} and the descendents of its current
+// descendants include both {0,1} and the descendents of its current
 // position.  Where a non-0-rank source is a descendent of another
 // device, no send to it is necessary.
 
@@ -115,7 +115,7 @@ void Broadcaster::TreeSendTo(const CollectiveParams& cp,
   DCHECK_NE(successor_rank, my_rank);
   if (cp.is_source && source_rank != 0) {
     // The source sends to rank 0,1 in addition to its positional
-    // decendents.
+    // descendants.
     if (cp.group.group_size > 1) {
       targets->push_back(0);
     }

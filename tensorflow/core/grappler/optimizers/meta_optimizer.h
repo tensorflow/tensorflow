@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -69,7 +69,6 @@ class MetaOptimizer : public GraphOptimizer {
   struct GraphOptimizationResult {
     explicit GraphOptimizationResult(const string& id) : id(id) {}
     string id;
-    bool is_optimized = false;
     std::vector<OptimizerResult> results;
   };
 
@@ -91,4 +90,4 @@ Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_

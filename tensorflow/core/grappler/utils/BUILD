@@ -128,6 +128,7 @@ cc_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core/grappler:grappler_item",

@@ -14,33 +14,7 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""Sparse Tensor Representation. See the @{$python/sparse_ops} guide.
-
-@@SparseTensor
-@@SparseTensorValue
-@@sparse_to_dense
-@@sparse_tensor_to_dense
-@@sparse_to_indicator
-@@sparse_merge
-@@sparse_concat
-@@sparse_reorder
-@@sparse_reshape
-@@sparse_slice
-@@sparse_split
-@@sparse_retain
-@@sparse_reset_shape
-@@sparse_fill_empty_rows
-@@sparse_transpose
-@@sparse_reduce_max
-@@sparse_reduce_max_sparse
-@@sparse_reduce_sum
-@@sparse_reduce_sum_sparse
-@@sparse_add
-@@sparse_softmax
-@@sparse_tensor_dense_matmul
-@@sparse_maximum
-@@sparse_minimum
-"""
+"""Sparse Tensor Representation. See the @{$python/sparse_ops} guide."""
 
 from __future__ import absolute_import
 from __future__ import division

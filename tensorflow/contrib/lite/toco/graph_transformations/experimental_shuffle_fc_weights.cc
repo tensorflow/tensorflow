@@ -55,16 +55,25 @@ bool ExperimentalShuffleFCWeights::Run(Model* model, std::size_t op_index) {
   // Exit if, based on the known shapes, this FC op is not a GEMV.
   // The shuffling of FC weights is only useful to enable fast GEMV paths.
   const Shape& input_shape = input_array.shape();
-  for (int i = 0; i < input_shape.dimensions_count() - 1; i++) {
+  for (int i = 1; i < input_shape.dimensions_count() - 1; i++) {
     if (input_shape.dims(i) != 1) {
       // The input activations, shaped as a matrix, have multiple columns.
       // This FC op isn't a matrix*vector multiplication.
       AddMessageF(
           "Not applying experimental shuffling to the weights of %s because "
-          "it's not a matrix*vector product",
+          "the input shape is not 1D or 2D (possibly with additional inner "
+          "dimensions of size 1)",
           LogName(*op));
       return false;
     }
+  }
+  if (input_shape.dims(0) != 1 && input_shape.dims(0) != 4) {
+    AddMessageF(
+        "Not applying experimental shuffling to the weights of %s because "
+        "the input shape's leading dimension, i.e. the 'batch size', is not "
+        "equal to 1 or 4",
+        LogName(*op));
+    return false;
   }
   // Exit if the weights shape isn't an integral multiple of the shuffled
   // block shape, 4x16. We don't want to have to write code dealing with
@@ -129,6 +138,20 @@ bool ExperimentalShuffleFCWeights::Run(Model* model, std::size_t op_index) {
   fc_op->experimental_shuffled_weights = true;
   AddMessageF("Applied experimental shuffling to the weights of %s",
               LogName(*op));
+  // Add a second output array to this FC op, serving as a workspace to perform
+  // runtime shuffling/xoring of its input activations.
+  CHECK_EQ(fc_op->outputs.size(), 1);
+  const string& shuffled_input_workspace_array_name =
+      AvailableArrayName(*model, fc_op->inputs[0] + "_shuffled");
+  fc_op->outputs.push_back(shuffled_input_workspace_array_name);
+  auto& shuffled_input_workspace_array =
+      model->GetOrCreateArray(shuffled_input_workspace_array_name);
+  shuffled_input_workspace_array.data_type = input_array.data_type;
+  *shuffled_input_workspace_array.mutable_shape() = input_array.shape();
+  shuffled_input_workspace_array.GetOrCreateMinMax() = input_array.GetMinMax();
+  shuffled_input_workspace_array.GetOrCreateQuantizationParams() =
+      input_array.GetQuantizationParams();
+
   return true;
 }
 

@@ -281,14 +281,14 @@ class LayoutAssignment : public HloPassInterface {
   // the case that no particular layout is requested.
   //
   // channel_constraints is both an input and output. Any sends or recvs that
-  // are present in channel_constraints will be layed out as constrained. Any
-  // unconstrained sends or recvs will be layed out as locally optimal and their
+  // are present in channel_constraints will be laid out as constrained. Any
+  // unconstrained sends or recvs will be laid out as locally optimal and their
   // layout will be added as a constraint to channel_constraints.
   //
   // If channel_constraints is nullptr, no kSend or kRecvs must be contained
   // within any module passed to `Run`.
   explicit LayoutAssignment(
-      ComputationLayout* entry_computation_layout,
+      const ComputationLayout& entry_computation_layout,
       ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
   tensorflow::StringPiece name() const override { return "layout-assignment"; }
@@ -402,7 +402,7 @@ class LayoutAssignment : public HloPassInterface {
   // necessary conditions.
   Status CheckLayouts(HloModule* module);
 
-  ComputationLayout* entry_computation_layout_;
+  const ComputationLayout& entry_computation_layout_;
 
  protected:
   // Sets up the copy instruction according to the characteristic (sharding,

@@ -5,7 +5,7 @@ Construct and execute TensorFlow graphs in Go.
 [![GoDoc](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go?status.svg)](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
 
 > *WARNING*: The API defined in this package is not stable and can change
-> without notice. The same goes for the awkward package path
+> without notice. The same goes for the package path:
 > (`github.com/tensorflow/tensorflow/tensorflow/go`).
 
 ## Quickstart

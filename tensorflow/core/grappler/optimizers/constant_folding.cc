@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/setround.h"
@@ -1574,21 +1575,103 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
       continue;
     }
 
-    // Remove Shuffle or Reverse op over scalar values.
-    if (use_shape_info &&
-        !properties->GetInputProperties(node->name()).empty() &&
-        (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
+    // Remove Shuffle or Transpose op over dimensions of size 1.
+    if (use_shape_info && (IsShuffle(*node) || IsTranspose(*node)) &&
+        properties->GetInputProperties(node->name()).size() >= 2) {
+      const auto& shape =
+          properties->GetInputProperties(node->name())[0].shape();
+      if (shape.unknown_rank()) {
+        // Not optimizable.
+        continue;
+      }
+      const auto& p = properties->GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(p.shape()) && p.has_value()) {
+        Tensor perm(p.dtype(), p.shape());
+        if (!perm.FromProto(p.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         p.value().DebugString());
+        }
+        std::vector<int> permutation;
+        for (int j = 0; j < perm.NumElements(); ++j) {
+          if (perm.dtype() == DT_INT64) {
+            permutation.push_back(perm.vec<int64>()(j));
+          } else {
+            permutation.push_back(perm.vec<int>()(j));
+          }
+        }
+        if (permutation.size() != shape.dim_size()) {
+          // Number of elements in perm should be same as dim_size. Skip if not.
+          continue;
+        }
+        // The node is replaceable iff
+        // dim_size == 0 || all dims have size 1 ||
+        // all dims with > 1 size are not permuted.
+        bool replaceable = true;
+        for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
+          replaceable &= shape.dim(j).size() == 1 || j == permutation[j];
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, optimized_graph);
+          continue;
+        }
+      }
+    }
+
+    // Remove RandomShuffle op if it is scalar or first dimension is of size 1.
+    if (use_shape_info && IsRandomShuffle(*node) &&
+        !properties->GetInputProperties(node->name()).empty()) {
       const auto& shape =
           properties->GetInputProperties(node->name())[0].shape();
       // The node is replaceable iff
-      // unknown_rank == false && (dim_size == 0 || all dims have size 1)
-      bool replaceable = !shape.unknown_rank();
-      for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
-        replaceable &= shape.dim(j).size() == 1;
-      }
-      if (replaceable) {
+      // unknown_rank == false && (dim_size == 0 || first dim is of size 1)
+      if (!shape.unknown_rank() &&
+          (shape.dim_size() == 0 || shape.dim(0).size() == 1)) {
         ReplaceOperationWithIdentity(0, node, optimized_graph);
         continue;
+      }
+    }
+
+    // Remove Reverse op over dimensions with size 1.
+    if (use_shape_info && node->op() == "ReverseV2" &&
+        properties->GetInputProperties(node->name()).size() >= 2) {
+      const auto& shape =
+          properties->GetInputProperties(node->name())[0].shape();
+      if (shape.unknown_rank()) {
+        // Not optimizable.
+        continue;
+      }
+      const auto& a = properties->GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(a.shape()) && a.has_value()) {
+        Tensor axis(a.dtype(), a.shape());
+        if (!axis.FromProto(a.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         a.value().DebugString());
+        }
+        std::set<int> target_axes;
+        for (int j = 0; j < axis.NumElements(); ++j) {
+          // value of axis can be negative.
+          if (axis.dtype() == DT_INT64) {
+            target_axes.insert(
+                (axis.vec<int64>()(j) + shape.dim_size()) % shape.dim_size());
+          } else {
+            target_axes.insert(
+                (axis.vec<int>()(j) + shape.dim_size()) % shape.dim_size());
+          }
+        }
+
+        // The node is replaceable iff
+        // unknown_rank == false &&
+        // (dim_size == 0 || all dims have size 1 ||
+        //  all dims with > 1 size are not in target_axes)
+        bool replaceable = !shape.unknown_rank();
+        for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
+          replaceable &= shape.dim(j).size() == 1 ||
+                         target_axes.find(j) == target_axes.end();
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, optimized_graph);
+          continue;
+        }
       }
     }
 
