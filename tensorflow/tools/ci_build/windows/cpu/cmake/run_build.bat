@@ -35,6 +35,12 @@ IF DEFINED DISABLE_FORCEINLINE (ECHO DISABLE_FORCEINLINE is set to %DISABLE_FORC
 SET CMAKE_DIR=%REPO_ROOT%\tensorflow\contrib\cmake
 SET MSBUILD_EXE="C:\Program Files (x86)\MSBuild\14.0\Bin\msbuild.exe"
 
+:: clcache (see https://github.com/frerich/clcache)
+%PY_EXE% -m pip install git+https://github.com/frerich/clcache.git
+set CC=clcache
+set CXX=clcache
+set USE_CLCACHE=1
+
 :: Run cmake to create Visual Studio Project files.
 %CMAKE_EXE% %CMAKE_DIR% -A x64 -DSWIG_EXECUTABLE=%SWIG_EXE% -DPYTHON_EXECUTABLE=%PY_EXE% -DCMAKE_BUILD_TYPE=Release -DPYTHON_LIBRARIES=%PY_LIB% -Dtensorflow_BUILD_PYTHON_TESTS=%BUILD_PYTHON_TESTS% -Dtensorflow_BUILD_CC_TESTS=%BUILD_CC_TESTS% -Dtensorflow_TF_NIGHTLY=%TF_NIGHTLY% -Dtensorflow_DISABLE_EIGEN_FORCEINLINE=%DISABLE_FORCEINLINE% -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
 
