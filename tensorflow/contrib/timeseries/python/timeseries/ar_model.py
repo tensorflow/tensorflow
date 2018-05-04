@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import distributions
 
+from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.contrib.timeseries.python.timeseries import model
 from tensorflow.contrib.timeseries.python.timeseries import model_utils
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import PredictionFeatures
@@ -29,6 +30,9 @@ from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras._impl.keras.engine import sequential
+from tensorflow.python.keras._impl.keras.engine import training
+from tensorflow.python.keras._impl.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -40,12 +44,150 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 
 
+class FlatPredictionModel(training.Model):
+  """Flattens input and output windows and puts them through dense layers.
+
+  This model does not operate on its own, but rather is a plugin to
+  `ARModel`. See `ARModel`'s constructor documentation
+  (`prediction_model_factory`) for a usage example.
+  """
+
+  def __init__(self,
+               num_features,
+               input_window_size,
+               output_window_size,
+               hidden_layer_sizes=None):
+    """Construct the flat prediction model.
+
+    Args:
+      num_features: number of input features per time step.
+      input_window_size: Number of past time steps of data to look at when doing
+        the regression.
+      output_window_size: Number of future time steps to predict. Note that
+        setting it to > 1 empirically seems to give a better fit.
+      hidden_layer_sizes: list of sizes of hidden layers.
+    """
+    super(FlatPredictionModel, self).__init__()
+    self._input_flatten = core.Flatten()
+    self._output_flatten = core.Flatten()
+    if hidden_layer_sizes:
+      self._hidden_layers = sequential.Sequential([
+          core.Dense(layer_size, activation=nn_ops.relu)
+          for layer_size in hidden_layer_sizes])
+    else:
+      self._hidden_layers = None
+    self._mean_transform = core.Dense(num_features * output_window_size,
+                                      name="predicted_mean")
+    self._covariance_transform = core.Dense(num_features * output_window_size,
+                                            name="log_sigma_square")
+    self._prediction_shape = [-1, output_window_size, num_features]
+
+  def call(self, input_window_features, output_window_features):
+    """Compute predictions from input and output windows.
+
+    Args:
+      input_window_features: A floating point Tensor with shape [batch size,
+        input window size, input features]. The batch dimension may not have
+        static shape information, but the window size and number of input
+        features are known at graph construction time and recorded in the static
+        shape information for the `input_window_features` `Tensor`. Note that
+        `input_window_size` may be zero.
+      output_window_features: A floating point Tensor with shape [batch size,
+        output window size, output features]. As with `input_window_features`,
+        the last two dimensions have static shape information. If there are no
+        output features, the size of the last dimension will be zero.
+    Returns:
+      A dictionary of predictions with keys "mean" and "covariance" (only
+      diagonal covariances are currently supported). Each has shape
+      [batch size, output window size, num_features], where num_features is the
+      same as the constructor argument.
+    """
+    if input_window_features.shape[1].value == 0:
+      # TODO(allenl): Make reshape()'s static shape information work on
+      # zero-size Tensors? Currently this special case is required because
+      # otherwise the Dense layers get unknown last dimensions.
+      activation = self._output_flatten(output_window_features)
+    elif output_window_features.shape[2].value == 0:
+      activation = self._input_flatten(input_window_features)
+    else:
+      activation = array_ops.concat(
+          [self._input_flatten(input_window_features),
+           self._output_flatten(output_window_features)],
+          axis=1)
+    if self._hidden_layers:
+      activation = self._hidden_layers(activation)
+    predicted_mean = array_ops.reshape(
+        self._mean_transform(activation),
+        self._prediction_shape)
+    predicted_covariance = array_ops.reshape(
+        gen_math_ops.exp(self._covariance_transform(activation)),
+        self._prediction_shape)
+    return {"mean": predicted_mean,
+            "covariance": predicted_covariance}
+
+
+class LSTMPredictionModel(training.Model):
+  """A simple encoder/decoder model using an LSTM.
+
+  This model does not operate on its own, but rather is a plugin to
+  `ARModel`. See `ARModel`'s constructor documentation
+  (`prediction_model_factory`) for a usage example.
+  """
+
+  def __init__(self,
+               num_features,
+               input_window_size,
+               output_window_size,
+               num_units=128):
+    """Construct the LSTM prediction model.
+
+    Args:
+      num_features: number of input features per time step.
+      input_window_size: Number of past time steps of data to look at when doing
+        the regression.
+      output_window_size: Number of future time steps to predict. Note that
+        setting it to > 1 empirically seems to give a better fit.
+      num_units: The number of units in the encoder and decoder LSTM cells.
+    """
+    super(LSTMPredictionModel, self).__init__()
+    self._encoder = lstm_ops.LSTMBlockFusedCell(
+        num_units=num_units, name="encoder")
+    self._decoder = lstm_ops.LSTMBlockFusedCell(
+        num_units=num_units, name="decoder")
+    self._mean_transform = core.Dense(num_features,
+                                      name="mean_transform")
+    self._covariance_transform = core.Dense(num_features,
+                                            name="covariance_transform")
+
+  def call(self, input_window_features, output_window_features):
+    """Compute predictions from input and output windows."""
+    # Convert to time major
+    input_window_features = array_ops.transpose(input_window_features,
+                                                [1, 0, 2])
+    output_window_features = array_ops.transpose(output_window_features,
+                                                 [1, 0, 2])
+    _, encoder_state = self._encoder(
+        input_window_features, dtype=self.dtype)
+    decoder_output, _ = self._decoder(
+        output_window_features, dtype=self.dtype,
+        initial_state=encoder_state)
+
+    # Switch back to batch major
+    decoder_output = array_ops.transpose(decoder_output, [1, 0, 2])
+    predicted_mean = self._mean_transform(decoder_output)
+    predicted_covariance = gen_math_ops.exp(
+        self._covariance_transform(decoder_output))
+    return {"mean": predicted_mean,
+            "covariance": predicted_covariance}
+
+
 class ARModel(model.TimeSeriesModel):
   """Auto-regressive model, both linear and non-linear.
 
   Features to the model include time and values of input_window_size timesteps,
-  and times for output_window_size timesteps. These are passed through zero or
-  more hidden layers, and then fed to a loss function (e.g. squared loss).
+  and times for output_window_size timesteps. These are passed through a
+  configurable prediction model, and then fed to a loss function (e.g. squared
+  loss).
 
   Note that this class can also be used to regress against time only by setting
   the input_window_size to zero.
@@ -58,9 +200,9 @@ class ARModel(model.TimeSeriesModel):
                input_window_size,
                output_window_size,
                num_features,
+               prediction_model_factory=FlatPredictionModel,
                num_time_buckets=10,
                loss=NORMAL_LIKELIHOOD_LOSS,
-               hidden_layer_sizes=None,
                exogenous_feature_columns=None):
     """Constructs an auto-regressive model.
 
@@ -73,6 +215,22 @@ class ARModel(model.TimeSeriesModel):
       output_window_size: Number of future time steps to predict. Note that
         setting it to > 1 empirically seems to give a better fit.
       num_features: number of input features per time step.
+      prediction_model_factory: A callable taking arguments `num_features`,
+        `input_window_size`, and `output_window_size` and returning a
+        `tf.keras.Model`. The `Model`'s `call()` takes two arguments: an input
+        window and an output window, and returns a dictionary of
+        predictions. See `FlatPredictionModel` for an example. Example usage:
+
+        ```python
+        model = ar_model.ARModel(
+          periodicities=2, num_features=3,
+          prediction_model_factory=functools.partial(
+              FlatPredictionModel,
+              hidden_layer_sizes=[10, 10]))
+        ```
+
+        The default model computes predictions as a linear function of flattened
+        input and output windows.
       num_time_buckets: Number of buckets into which to divide (time %
         periodicity) for generating time based features.
       loss: Loss function to use for training. Currently supported values are
@@ -81,18 +239,15 @@ class ARModel(model.TimeSeriesModel):
         SQUARED_LOSS, the evaluation loss is reported based on un-scaled
         observations and predictions, while the training loss is computed on
         normalized data (if input statistics are available).
-      hidden_layer_sizes: list of sizes of hidden layers.
       exogenous_feature_columns: A list of `tf.feature_column`s (for example
           `tf.feature_column.embedding_column`) corresponding to exogenous
           features which provide extra information to the model but are not part
           of the series to be predicted. Passed to
           `tf.feature_column.input_layer`.
     """
+    self._model_factory = prediction_model_factory
     self.input_window_size = input_window_size
     self.output_window_size = output_window_size
-    if hidden_layer_sizes is None:
-      hidden_layer_sizes = []
-    self.hidden_layer_sizes = hidden_layer_sizes
     self.window_size = self.input_window_size + self.output_window_size
     self.loss = loss
     super(ARModel, self).__init__(
@@ -114,6 +269,19 @@ class ARModel(model.TimeSeriesModel):
       assert p > 0
     assert len(self._periods) or self.input_window_size
     assert output_window_size > 0
+
+  def initialize_graph(self, input_statistics=None):
+    super(ARModel, self).initialize_graph(input_statistics=input_statistics)
+    self._model_scope = variable_scope.variable_scope(
+        # The trailing slash means we strip all enclosing variable_scopes, which
+        # unfortunately is necessary because the model gets called inside and
+        # outside a "while" scope (for prediction and training respectively),
+        # and the variables names need to match.
+        "model/", use_resource=True)
+    self._model_instance = self._model_factory(
+        num_features=self.num_features,
+        input_window_size=self.input_window_size,
+        output_window_size=self.output_window_size)
 
   def get_start_state(self):
     # State which matches the format we'll return later. Typically this will not
@@ -166,17 +334,6 @@ class ARModel(model.TimeSeriesModel):
     return array_ops.reshape(predicted_mean,
                              [-1, self.output_window_size, self.num_features])
 
-  def _create_hidden_stack(self, activation, activation_size):
-    activations = []
-    for layer_number, layer_size in enumerate(self.hidden_layer_sizes):
-      # TODO(agarwal): Migrate to fully_connected in tf slim
-      activation = model_utils.fully_connected(
-          activation, activation_size, layer_size,
-          name="layer_{}".format(layer_number))
-      activation_size = layer_size
-      activations.append((activation, activation_size))
-    return activations
-
   def prediction_ops(self, times, values, exogenous_regressors):
     """Compute model predictions given input data.
 
@@ -195,7 +352,7 @@ class ARModel(model.TimeSeriesModel):
       self.num_features].
     """
     times.get_shape().assert_is_compatible_with([None, self.window_size])
-    activations = []
+    batch_size = array_ops.shape(times)[0]
     if self.input_window_size:
       values.get_shape().assert_is_compatible_with(
           [None, self.input_window_size, self.num_features])
@@ -203,39 +360,66 @@ class ARModel(model.TimeSeriesModel):
       exogenous_regressors.get_shape().assert_is_compatible_with(
           [None, self.window_size, self.exogenous_size])
     # Create input features.
-    activation_components = []
+    input_window_features = []
+    input_feature_size = 0
+    output_window_features = []
+    output_feature_size = 0
     if self._periods:
       _, time_features = self._compute_time_features(times)
-      activation_size = self.window_size * self._buckets * len(self._periods)
-      activation_components.append(
-          array_ops.reshape(time_features, [-1, activation_size]))
-    else:
-      activation_size = 0
+      num_time_features = self._buckets * len(self._periods)
+      time_features = array_ops.reshape(
+          time_features,
+          [batch_size,
+           self.window_size,
+           num_time_features])
+      input_time_features, output_time_features = array_ops.split(
+          time_features, (self.input_window_size, self.output_window_size),
+          axis=1)
+      input_feature_size += num_time_features
+      output_feature_size += num_time_features
+      input_window_features.append(input_time_features)
+      output_window_features.append(output_time_features)
     if self.input_window_size:
       inp = array_ops.slice(values, [0, 0, 0], [-1, self.input_window_size, -1])
-      inp_size = self.input_window_size * self.num_features
-      inp = array_ops.reshape(inp, [-1, inp_size])
-      activation_components.append(inp)
-      activation_size += inp_size
+      input_window_features.append(
+          array_ops.reshape(
+              inp,
+              [batch_size, self.input_window_size, self.num_features]))
+      input_feature_size += self.num_features
     if self.exogenous_size:
-      exogenous_size = self.window_size * self.exogenous_size
-      activation_size += exogenous_size
-      exogenous_flattened = array_ops.reshape(
-          exogenous_regressors, [-1, exogenous_size])
-      activation_components.append(exogenous_flattened)
-    assert activation_size
-    assert activation_components
-    activation = array_ops.concat(activation_components, axis=1)
-    activations.append((activation, activation_size))
-    # Create hidden layers.
-    activations += self._create_hidden_stack(activation, activation_size)
-    # Create mean and convariance ops.
-    predicted_mean = self._predicted_mean_op(activations)
-    predicted_covariance = self._predicted_covariance_op(activations,
-                                                         self.num_features)
-    return {"activations": activations,
-            "mean": predicted_mean,
-            "covariance": predicted_covariance}
+      input_exogenous_features, output_exogenous_features = array_ops.split(
+          exogenous_regressors,
+          (self.input_window_size, self.output_window_size),
+          axis=1)
+      input_feature_size += self.exogenous_size
+      output_feature_size += self.exogenous_size
+      input_window_features.append(input_exogenous_features)
+      output_window_features.append(output_exogenous_features)
+    assert input_window_features
+    input_window_features = array_ops.concat(input_window_features, axis=2)
+    if output_window_features:
+      output_window_features = array_ops.concat(output_window_features, axis=2)
+    else:
+      output_window_features = array_ops.zeros(
+          [batch_size, self.output_window_size, 0],
+          dtype=self.dtype)
+    static_batch_size = times.get_shape()[0].value
+    input_window_features.set_shape(
+        [static_batch_size, self.input_window_size, input_feature_size])
+    output_window_features.set_shape(
+        [static_batch_size, self.output_window_size, output_feature_size])
+    return self._output_window_predictions(input_window_features,
+                                           output_window_features)
+
+  def _output_window_predictions(
+      self, input_window_features, output_window_features):
+    with self._model_scope:
+      predictions = self._model_instance(
+          input_window_features, output_window_features)
+      result_shape = [None, self.output_window_size, self.num_features]
+      for v in predictions.values():
+        v.set_shape(result_shape)
+      return predictions
 
   def loss_op(self, targets, prediction_ops):
     """Create loss_op."""
@@ -286,6 +470,8 @@ class ARModel(model.TimeSeriesModel):
       values are Tensors of shape [batch_size, predict window size,
       num_features] and correspond to the values passed in `TIMES`.
     """
+    if not self._graph_initialized:
+      self.initialize_graph()
     predict_times = math_ops.cast(
         ops.convert_to_tensor(features[PredictionFeatures.TIMES]), dtypes.int32)
     exogenous_regressors = self._process_exogenous_features(
@@ -701,9 +887,9 @@ class AnomalyMixtureARModel(ARModel):
                input_window_size,
                output_window_size,
                num_features,
+               prediction_model_factory=FlatPredictionModel,
                anomaly_distribution=GAUSSIAN_ANOMALY,
                num_time_buckets=10,
-               hidden_layer_sizes=None,
                exogenous_feature_columns=None):
     assert (anomaly_prior_probability < 1.0 and
             anomaly_prior_probability > 0.0)
@@ -719,7 +905,7 @@ class AnomalyMixtureARModel(ARModel):
         input_window_size=input_window_size,
         output_window_size=output_window_size,
         loss=ARModel.NORMAL_LIKELIHOOD_LOSS,
-        hidden_layer_sizes=hidden_layer_sizes,
+        prediction_model_factory=prediction_model_factory,
         exogenous_feature_columns=exogenous_feature_columns)
 
   def _create_anomaly_ops(self, times, values, prediction_ops_dict):
