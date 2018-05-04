@@ -309,7 +309,7 @@ class FunctionTest(test.TestCase):
     def g(x):
       return backprop.gradients_function(f, [0])(x)[0]
 
-    self.assertAllEqual(2, g(constant_op.constant(2)))
+    self.assertAllEqual(2, g(constant_op.constant(2.)))
 
   def testGraphModeEagerGradError(self):
     with context.graph_mode():

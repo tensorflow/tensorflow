@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
@@ -39,7 +38,7 @@ namespace {
 class ClientTest : public ClientLibraryTestBase {};
 
 XLA_TEST_F(ClientTest, ExecuteWithLayout) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
   for (const std::vector<int64>& execute_layout : layouts) {
@@ -71,7 +70,7 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
 }
 
 XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   b.Tuple({b.ConstantR2<int32>({{1, 2}, {3, 4}}),
            b.ConstantR2<int32>({{10, 20}, {30, 40}})});
@@ -109,8 +108,7 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
                                      /*minor_to_major=*/{1, 0})));
 }
 
-XLA_TEST_F(ClientTest,
-        DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(ExecuteParallel))) {
+XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 

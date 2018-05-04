@@ -65,7 +65,7 @@ struct SpecialCaseCopyPolicy {
   // output tuple.
   bool copy_root_replicated_buffers = false;
   // If true, insert a copy if a buffer coming from a constant or a parameter
-  // is found wihtin the output tuple.
+  // is found within the output tuple.
   bool copy_parameters_and_constants = false;
 };
 

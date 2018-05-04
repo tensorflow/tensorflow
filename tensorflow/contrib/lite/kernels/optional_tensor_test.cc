@@ -95,9 +95,6 @@ class LSTMOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    scratch_buffer_ = AddOutput(TensorType_FLOAT32);
-    // TODO(ghodrat): Modify these states when we have a permanent solution for
-    // persistent buffer.
     output_state_ = AddOutput(TensorType_FLOAT32);
     cell_state_ = AddOutput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
@@ -235,7 +232,6 @@ class LSTMOpModel : public SingleOpModel {
   int output_;
   int output_state_;
   int cell_state_;
-  int scratch_buffer_;
 
   int n_batch_;
   int n_input_;

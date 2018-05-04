@@ -267,6 +267,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/variable_scope_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
+      # Flaky on Windows cpu with py36 (b/73556968)
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/sparse_reshape_op_test.py"
       # Windows file management related issues.
       "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"
       # training tests

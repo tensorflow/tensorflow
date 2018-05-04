@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -69,7 +69,7 @@ class XlaCompilationDevice : public LocalDevice {
 
 // A XlaExpression wraps an XLA computation. Each Tensor on an
 // XlaCompilationDevice contains an XlaExpression, and the shape of the Tensor
-// matches the shape of the subcomputation in the ComputationDataHandle. Each
+// matches the shape of the subcomputation in the XlaOp. Each
 // expression is either a constant, or a function of previously-compiled
 // expressions.
 class XlaExpression {
@@ -78,8 +78,8 @@ class XlaExpression {
 
   // handle() stores the XLA handle of the computation that the
   // expression represents.
-  void set_handle(const xla::ComputationDataHandle& h);
-  const xla::ComputationDataHandle& handle() const { return handle_; }
+  void set_handle(const xla::XlaOp& h);
+  const xla::XlaOp& handle() const { return handle_; }
 
   void set_constant_value(Tensor value);
   bool has_constant_value() const { return has_constant_value_; }
@@ -90,7 +90,7 @@ class XlaExpression {
 
  private:
   // The XLA handle of the expression's computation.
-  xla::ComputationDataHandle handle_;
+  xla::XlaOp handle_;
 
   // If this expression is a constant with a known value, 'constant_value' is a
   // host-memory Tensor containing the value. Used to avoid invoking XLA for

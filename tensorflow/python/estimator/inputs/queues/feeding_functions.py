@@ -52,7 +52,7 @@ def _fill_array(arr, seq, fillvalue=0):
   If length of seq is less than arr padded length, fillvalue used.
   Args:
     arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].
-    seq: Non-padded list of data sampels of shape
+    seq: Non-padded list of data samples of shape
       [batch_size, ..., padded_dim(None)]
     fillvalue: Default fillvalue to use.
   """

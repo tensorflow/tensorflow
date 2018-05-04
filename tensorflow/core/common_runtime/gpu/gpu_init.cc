@@ -26,21 +26,14 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 
 Status ValidateGPUMachineManager() {
-  auto result = gpu::MultiPlatformManager::PlatformWithName("CUDA");
-  if (!result.ok()) {
-    return StreamExecutorUtil::ConvertStatus(result.status());
-  }
-
-  return Status::OK();
+  return se::MultiPlatformManager::PlatformWithName("CUDA").status();
 }
 
-gpu::Platform* GPUMachineManager() {
-  auto result = gpu::MultiPlatformManager::PlatformWithName("CUDA");
+se::Platform* GPUMachineManager() {
+  auto result = se::MultiPlatformManager::PlatformWithName("CUDA");
   if (!result.ok()) {
     LOG(FATAL) << "Could not find Platform with name CUDA";
     return nullptr;

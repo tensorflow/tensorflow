@@ -140,10 +140,6 @@ class Backend {
   // be equivalent to an executable compiled for the other.
   StatusOr<bool> devices_equivalent(int device_ordinal_a, int device_ordinal_b);
 
-  // For the host platform, returns the threadpool to use when scheduling
-  // parallel operators. For other platforms, returns NULL.
-  tensorflow::thread::ThreadPool* inter_op_thread_pool() const;
-
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.
   const Eigen::ThreadPoolDevice* eigen_intra_op_thread_pool_device() const;
@@ -177,9 +173,6 @@ class Backend {
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;
-
-  // For the CPU backend, a threadpool for scheduling parallel operators.
-  std::unique_ptr<tensorflow::thread::ThreadPool> inter_op_thread_pool_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
   std::unique_ptr<EigenThreadPoolWrapper> intra_op_thread_pool_wrapper_;

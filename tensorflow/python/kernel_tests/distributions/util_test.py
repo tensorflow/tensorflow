@@ -703,7 +703,7 @@ class FillTriangularTest(test.TestCase):
       raise ValueError("Invalid shape.")
     n = np.int32(n)
     # We can't do: `x[..., -(n**2-m):]` because this doesn't correctly handle
-    # `m == n == 1`. Hence, we do absoulte indexing.
+    # `m == n == 1`. Hence, we do absolute indexing.
     x_tail = x[..., (m - (n * n - m)):]
     y = np.concatenate(
         [x, x_tail[..., ::-1]] if upper else [x_tail, x[..., ::-1]],

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -75,7 +76,7 @@ class AdaptiveSharedBatchScheduler
           AdaptiveSharedBatchScheduler<TaskType>> {
  public:
   ~AdaptiveSharedBatchScheduler() {
-    // Finish processing batches before destorying other class members.
+    // Finish processing batches before destroying other class members.
     batch_thread_pool_.reset();
   }
 

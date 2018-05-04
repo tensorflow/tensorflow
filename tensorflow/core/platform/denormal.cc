@@ -15,8 +15,9 @@ limitations under the License.
 
 #include <tuple>
 
-#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
 // If we're on gcc 4.8 or older, there's a known bug that prevents the use of

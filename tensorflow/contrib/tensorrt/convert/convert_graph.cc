@@ -24,6 +24,9 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
+#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -31,8 +34,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
-#include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -111,20 +113,22 @@ void GetSubGraphOutgoingEdges(const tensorflow::Graph& graph,
   }
 }
 
-std::pair<string, int> ParseTensorName(string name, int default_idx = 0) {
+std::pair<string, int> ParseTensorName(const string& name,
+                                       int default_idx = 0) {
+  string name_no_idx = name;
   int idx = default_idx;
-  size_t sep = name.find_last_of(':');
+  const size_t sep = name_no_idx.find_last_of(':');
   if (sep != string::npos) {
-    name = name.substr(0, sep);
+    name_no_idx = name_no_idx.substr(0, sep);
     idx = std::stoi(name.substr(sep + 1));
   }
-  return std::make_pair(name, idx);
+  return std::make_pair(name_no_idx, idx);
 }
 
 std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
     const std::vector<string>& tensor_names) {
   std::unordered_map<string, std::vector<int>> result;
-  for (string const& tensor_name : tensor_names) {
+  for (const string& tensor_name : tensor_names) {
     string node_name;
     int index;
     std::tie(node_name, index) = ParseTensorName(tensor_name);
@@ -132,6 +136,7 @@ std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
   }
   return result;
 }
+
 // TODO(sami): convert references to pointers
 struct ConvertGraphParams {
   ConvertGraphParams(
@@ -141,7 +146,8 @@ struct ConvertGraphParams {
       size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
       const tensorflow::grappler::GraphProperties& current_graph_properties,
       std::unordered_map<string, std::pair<int, string>>* output_edges,
-      int engine_precision_mode)
+      int engine_precision_mode, const string& device_name,
+      std::shared_ptr<nvinfer1::IGpuAllocator> allocator, int cuda_gpu_id)
       : graph(inp_graph),
         output_names(output_node_names),
         subgraph_node_ids(subgraph_node_id_numbers),
@@ -149,7 +155,10 @@ struct ConvertGraphParams {
         max_workspace_size_bytes(max_consumed_workspace_size_bytes),
         graph_properties(current_graph_properties),
         output_edge_map(output_edges),
-        precision_mode(engine_precision_mode) {}
+        precision_mode(engine_precision_mode),
+        device_name_(device_name),
+        allocator_(allocator),
+        cuda_gpu_id_(cuda_gpu_id) {}
   tensorflow::Graph& graph;
   const std::vector<string>& output_names;
   const std::set<int>& subgraph_node_ids;
@@ -158,6 +167,9 @@ struct ConvertGraphParams {
   const tensorflow::grappler::GraphProperties& graph_properties;
   std::unordered_map<string, std::pair<int, string>>* output_edge_map;
   int precision_mode;
+  string device_name_;
+  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
+  int cuda_gpu_id_;
   std::vector<std::pair<int, int>> subgraph_inputs;
   std::vector<std::pair<int, int>> subgraph_outputs;
   tensorflow::EdgeSet subgraph_incoming_edges;
@@ -191,7 +203,7 @@ static tensorflow::Status FillSubGraphEdgeSets(ConvertGraphParams* p) {
                              subgraph_outputs_set.begin(),
                              subgraph_outputs_set.end());
   return tensorflow::Status::OK();
-};
+}
 
 tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
   TF_RETURN_IF_ERROR(FillSubGraphEdgeSets(params));
@@ -200,7 +212,8 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
                    params->subgraph_inputs, params->subgraph_outputs,
                    params->max_batch_size, params->max_workspace_size_bytes,
                    params->graph_properties, params->output_edge_map,
-                   &trt_node_def, params->precision_mode);
+                   &trt_node_def, params->precision_mode, params->device_name_,
+                   params->allocator_, params->cuda_gpu_id_);
   TF_RETURN_IF_ERROR(InjectCalibrationNode(s));
   tensorflow::Status status;
   tensorflow::Node* trt_node = params->graph.AddNode(trt_node_def, &status);
@@ -230,7 +243,8 @@ tensorflow::Status ConvertSubGraphToTensorRT(ConvertGraphParams* params) {
                    params->subgraph_inputs, params->subgraph_outputs,
                    params->max_batch_size, params->max_workspace_size_bytes,
                    params->graph_properties, params->output_edge_map,
-                   &trt_node_def, params->precision_mode);
+                   &trt_node_def, params->precision_mode, params->device_name_,
+                   params->allocator_, params->cuda_gpu_id_);
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(s));
   tensorflow::Status status;
   tensorflow::Node* trt_node = params->graph.AddNode(trt_node_def, &status);
@@ -328,19 +342,12 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   // optimization pass
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
-  tensorflow::GraphDef gdef;
-
-  // Layout optimization
   item.graph = graph_def;
-  tensorflow::grappler::LayoutOptimizer optimizer;
-  tensorflow::grappler::Cluster* cluster;
 
-  // virtual cluster
   tensorflow::DeviceProperties device_properties;
-
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
-  cluster =
+  tensorflow::grappler::Cluster* cluster =
       new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
 
   // single machine
@@ -348,26 +355,37 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
   VLOG(2) << "cpu_cores: " << num_cpu_cores;
   VLOG(2) << "gpus: " << num_gpus;
-
-  TF_RETURN_IF_ERROR(optimizer.Optimize(cluster, item, &gdef));
-
-  // constant folding
+  tensorflow::RewriterConfig rw_cfg;
+  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  tensorflow::GraphDef gdef;
+  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster, item, &gdef));
   item.graph = gdef;
-  tensorflow::grappler::ConstantFolding fold(nullptr);
-  TF_RETURN_IF_ERROR(fold.Optimize(nullptr, item, &gdef));
 
   // AJ refactoring shape inference through grappler/GraphProperties.
   tensorflow::grappler::GraphProperties static_graph_properties(item);
-  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(false));
+  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   // Build full graph
+
+  return ConvertAfterShapes(gdef, output_names, max_batch_size,
+                            max_workspace_size_bytes, new_graph_def,
+                            precision_mode, minimum_segment_size,
+                            static_graph_properties, nullptr);
+}
+
+tensorflow::Status ConvertAfterShapes(
+    const tensorflow::GraphDef& gdef, const std::vector<string>& output_names,
+    size_t max_batch_size, size_t max_workspace_size_bytes,
+    tensorflow::GraphDef* new_graph_def, int precision_mode,
+    int minimum_segment_size,
+    const tensorflow::grappler::GraphProperties& graph_properties,
+    const tensorflow::grappler::Cluster* cluster) {
+  // Segment the graph into subgraphs that can be converted to TensorRT
+  tensorflow::tensorrt::segment::SegmentOptions segment_options;
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
                                              gdef.library());
   tensorflow::Graph graph(flib);
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToGraph(
       tensorflow::GraphConstructorOptions(), gdef, &graph));
-
-  // Segment the graph into subgraphs that can be converted to TensorRT
-  tensorflow::tensorrt::segment::SegmentOptions segment_options;
 
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
   for (auto node : output_names) {
@@ -378,7 +396,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   segment_options.minimum_segment_size = minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      gdef, IsTensorRTCandidate, segment_options, &segments));
+      &graph, IsTensorRTCandidate, segment_options, &segments));
   if (segments.size() > 1) {
     VLOG(0) << "MULTIPLE tensorrt candidate conversion: " << segments.size();
   }
@@ -388,9 +406,21 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   int count = 0;
   float total_num_nodes_in_segments = 0.;
   for (auto s : segments) {
-    total_num_nodes_in_segments += s.size();
+    total_num_nodes_in_segments += s.first.size();
   }
-  for (const std::set<string>& subgraph_node_names : segments) {
+  // We create the map here since cluster may not be available in all cases.
+  std::map<string, tensorflow::Device*> name_to_device_map;
+  if (cluster) {
+    // TODO(aaroey): consider using DeviceSet::FindDeviceByName(), as in a
+    // distributed environment, devices from different workers can have same
+    // short name.
+    for (const auto dm : cluster->GetDeviceSet()->devices()) {
+      name_to_device_map[dm->name()] = dm;
+    }
+  }
+  for (const auto& segment_nodes_and_device : segments) {
+    const std::set<string>& subgraph_node_names =
+        segment_nodes_and_device.first;
     std::set<int> subgraph_node_ids;
     size_t max_mem_per_engine =
         max_workspace_size_bytes *
@@ -400,10 +430,40 @@ tensorflow::Status ConvertGraphDefToTensorRT(
       oss << " " << node_name;
       subgraph_node_ids.insert(node_map.at(node_name)->id());
     }
-    VLOG(2) << "Subgraph nodes" << oss.str();
+    VLOG(1) << "Subgraph nodes at device " << segment_nodes_and_device.second
+            << " : " << oss.str();
+    auto target_device =
+        name_to_device_map.find(segment_nodes_and_device.second);
+    std::shared_ptr<nvinfer1::IGpuAllocator> allocator(0);
+
+    int cuda_device_id = 0;
+    if (target_device != name_to_device_map.end()) {
+      tensorflow::TfGpuId tf_gpu_id(target_device->second->parsed_name().id);
+      CudaGpuId cuda_gpu_id;
+      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      if (!s.ok()) {
+        LOG(ERROR)
+            << "Cuda device identification failed, using device 0. Error= "
+            << s;
+      } else {
+        cuda_device_id = cuda_gpu_id.value();
+      }
+      tensorflow::GPUOptions gpuoptions;
+      // we need to us PM here since in python path there is no way to get to
+      // allocators
+      auto pm = tensorflow::ProcessState::singleton();
+      // this should be instantiated by now
+      auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
+      VLOG(1) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
+              << " cuda device= " << cuda_device_id << " at " << dev_allocator;
+      allocator = std::make_shared<TRTDeviceAllocator>(dev_allocator);
+    } else {  // device unknown or not available
+      allocator = std::make_shared<TRTCudaAllocator>();
+    }
     ConvertGraphParams p(graph, output_names, subgraph_node_ids, max_batch_size,
-                         max_mem_per_engine, static_graph_properties,
-                         &output_edge_map, precision_mode);
+                         max_mem_per_engine, graph_properties, &output_edge_map,
+                         precision_mode, segment_nodes_and_device.second,
+                         allocator, cuda_device_id);
     if (precision_mode == INT8MODE) {
       tensorflow::Status status = GetCalibNode(&p);
       if (status != tensorflow::Status::OK()) {

@@ -237,7 +237,7 @@ function get_cuda_capability_version() {
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 
 # Determine if the machine is a Mac
-OPT_FLAG=""
+OPT_FLAG="--test_output=errors"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   DO_DOCKER=0
 

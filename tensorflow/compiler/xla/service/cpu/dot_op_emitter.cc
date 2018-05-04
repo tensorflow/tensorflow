@@ -1070,7 +1070,8 @@ static bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   // 1) be matrices with no padding, and
   // 2) have an allowed element type.
   PrimitiveType output_primitive_type = output_shape.element_type();
-  return (output_primitive_type == F32 || output_primitive_type == F16) &&
+  return (output_primitive_type == F64 || output_primitive_type == F32 ||
+          output_primitive_type == F16) &&
          IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape);
 }

@@ -825,11 +825,6 @@ void FixNoOrphanedArray(Model* model) {
 void CheckEachArray(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = array_entry.second;
-    if (array->has_shape()) {
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
-      }
-    }
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
     CHECK(!array->buffer || !array->alloc);
@@ -839,6 +834,10 @@ void CheckEachArray(const Model& model) {
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
       CHECK(array->has_shape());
+      // Constant buffer should has a valid shape.
+      for (int d : array->shape().dims()) {
+        CHECK_GE(d, 1);
+      }
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
                RequiredBufferSizeForShape(array->shape()));
@@ -1405,20 +1404,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     }
     input_minmax.min = (qmin - mean_value) / std_value;
     input_minmax.max = (qmax - mean_value) / std_value;
-    if (input_array.minmax) {
-      if (input_array_proto.has_mean_value() ||
-          input_array_proto.has_std_value()) {
-        const double width = input_minmax.max - input_minmax.min;
-        const double kMinMaxAllowedDiff = 1e-6 * width;
-        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
-                  kMinMaxAllowedDiff &&
-              std::abs(input_minmax.max - input_array.minmax->max) <
-                  kMinMaxAllowedDiff)
-            << input_minmax.min << ", " << input_minmax.max
-            << " != " << input_array.minmax->min << ", "
-            << input_array.minmax->max;
-      }
-    } else {
+    if (!input_array.minmax) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
