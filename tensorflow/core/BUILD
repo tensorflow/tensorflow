@@ -583,7 +583,7 @@ tf_gpu_library(
         "public/version.h",
         "util/activation_mode.h",
         "util/bcast.h",
-        "util/cuda_kernel_helper.h",
+        "util/gpu_kernel_helper.h",
         "util/device_name_utils.h",
         "util/env_var.h",
         "util/events_writer.h",
@@ -3404,9 +3404,9 @@ tf_cc_test_gpu(
 )
 
 tf_gpu_only_cc_test(
-    name = "util_cuda_kernel_helper_test",
+    name = "util_gpu_kernel_helper_test",
     srcs = [
-        "util/cuda_kernel_helper_test.cu.cc",
+        "util/gpu_kernel_helper_test.cu.cc",
     ],
     deps = [
         ":test",
