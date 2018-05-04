@@ -14,4 +14,4 @@ the following documents:
     designed for production environments. TensorFlow Serving provides
     out-of-the-box integration with TensorFlow models.
     [Source code for TensorFlow Serving](https://github.com/tensorflow/serving)
-    is available on Github.
+    is available on GitHub.
