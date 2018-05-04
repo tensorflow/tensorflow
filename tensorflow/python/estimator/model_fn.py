@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import nest
@@ -52,6 +53,13 @@ class ModeKeys(object):
 
 LOSS_METRIC_KEY = 'loss'
 AVERAGE_LOSS_METRIC_KEY = 'average_loss'
+
+# Mapping of the modes to appropriate tag_constants that are used for saving.
+EXPORT_TAG_MAP = {
+    ModeKeys.PREDICT: [tag_constants.SERVING],
+    ModeKeys.TRAIN: [tag_constants.TRAINING],
+    ModeKeys.EVAL: [tag_constants.EVAL],
+}
 
 
 @tf_export('estimator.EstimatorSpec')
