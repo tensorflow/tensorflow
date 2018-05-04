@@ -32,9 +32,13 @@ LogicalBuffer::LogicalBuffer(HloInstruction* instruction,
 LogicalBuffer::~LogicalBuffer() {}
 
 string LogicalBuffer::ToString() const {
+  string color_string;
+  if (has_color()) {
+    color_string = tensorflow::strings::StrCat(" @", color().value());
+  }
   return tensorflow::strings::StrCat(instruction_->name(), "[",
                                      tensorflow::str_util::Join(index_, ","),
-                                     "](#", id(), " @", color().value(), ")");
+                                     "](#", id(), color_string, ")");
 }
 
 }  // namespace xla

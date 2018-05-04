@@ -367,10 +367,14 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
                                         const ShapeIndex& index) const {
   CHECK(IsTuple());
 
-  ShapeTree<HloSharding> sub_shape_tree(ShapeUtil::GetSubshape(shape, index),
-                                        Replicate());
+  Shape sub_shape = ShapeUtil::GetSubshape(shape, index);
+  ShapeTree<HloSharding> sub_shape_tree(sub_shape, Replicate());
   sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
-  return Tuple(sub_shape_tree);
+  if (ShapeUtil::IsTuple(sub_shape)) {
+    return Tuple(sub_shape_tree);
+  } else {
+    return sub_shape_tree.element({});
+  }
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {

@@ -365,8 +365,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArrayFree(node->temporaries);
   node->temporaries = TfLiteIntArrayCreate(2);
   node->temporaries->data[0] = *scratch_tensor_index;
-  TfLiteTensor* fw_scratch_buffer =
-      &context->tensors[node->temporaries->data[0]];
+  TfLiteTensor* fw_scratch_buffer = GetTemporary(context, node, /*index=*/0);
   fw_scratch_buffer->type = input->type;
   fw_scratch_buffer->allocation_type = kTfLiteArenaRw;
 
@@ -434,8 +433,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Create a scratch buffer tensor.
   node->temporaries->data[1] = *(scratch_tensor_index) + 1;
-  TfLiteTensor* bw_scratch_buffer =
-      &context->tensors[node->temporaries->data[1]];
+  TfLiteTensor* bw_scratch_buffer = GetTemporary(context, node, /*index=*/1);
   bw_scratch_buffer->type = input->type;
   bw_scratch_buffer->allocation_type = kTfLiteArenaRw;
 

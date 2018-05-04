@@ -123,6 +123,7 @@ bool IsShape(const NodeDef& node);
 bool IsShapeN(const NodeDef& node);
 bool IsShuffle(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
+bool IsSnapshot(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
@@ -186,6 +187,10 @@ bool IsValueAndOrderPreserving(const NodeDef& node);
 // first input tensor and possible changes its shape. More precisely, this
 // function returns true if the op commutes with all element-wise operations.
 bool IsValuePreserving(const NodeDef& node);
+
+// Returns true if node is idempotent w.r.t. its first input, i.e. if
+// Op(Op(x, y, z), y, z) = Op(x, y, z).
+bool IsIdempotent(const NodeDef& node);
 
 bool IsUnaryElementWise(const NodeDef& node);
 
