@@ -1197,7 +1197,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         train_op=train_op)
 
 
-def _regression_head_with_mean_squared_error_loss(
+def _regression_head(
     weight_column=None,
     label_dimension=1,
     loss_reduction=losses.Reduction.SUM,

@@ -235,7 +235,7 @@ def regression_head(weight_column=None,
   Raises:
     ValueError: If `label_dimension` or `loss_reduction` is invalid.
   """
-  return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
+  return head_lib._regression_head(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
@@ -297,7 +297,7 @@ def poisson_regression_head(
   def _poisson_loss(labels, logits):
     return nn.log_poisson_loss(
         targets=labels, log_input=logits, compute_full_loss=compute_full_loss)
-  return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
+  return head_lib._regression_head(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
@@ -360,8 +360,7 @@ def logistic_regression_head(
         labels, n_classes=2, message='Labels must be in range [0, 1]')
     return nn.sigmoid_cross_entropy_with_logits(
         labels=labels, logits=logits)
-  # TODO(roumposg): Rename to _regression_head, since it supports loss_fn arg.
-  return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
+  return head_lib._regression_head(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=1,
       loss_reduction=loss_reduction,

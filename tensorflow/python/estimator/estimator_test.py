@@ -1116,6 +1116,52 @@ class EstimatorEvaluateTest(test.TestCase):
     # initialized (since there is no checkpoint).
     self.assertEqual(3., metrics['metric'])
 
+  def test_no_checkpoint_uses_init_with_warm_starting(self):
+    def _make_model_fn(x):
+      def _variable_creating_and_export_model_fn(features, labels, mode):
+        _, _ = features, labels
+        x_var = variable_scope.get_variable('x', initializer=x)
+        global_step = training.get_global_step()
+        return model_fn_lib.EstimatorSpec(
+            mode,
+            predictions={'y': constant_op.constant(1.0)},
+            loss=constant_op.constant(1.),
+            eval_metric_ops={'metric': metrics_lib.mean(x_var + 1)},
+            train_op=state_ops.assign_add(global_step, 1),
+            export_outputs={'test': export_output.ClassificationOutput(
+                constant_op.constant([4.2]), constant_op.constant(['label']))})
+      return _variable_creating_and_export_model_fn
+
+    first_est = estimator.Estimator(model_fn=_make_model_fn(42.))
+    first_est.train(dummy_input_fn, steps=10)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    tmpdir = tempfile.mkdtemp()
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    exported_path = first_est.export_savedmodel(export_dir_base,
+                                                serving_input_receiver_fn)
+
+    # Test that we can pass either warm_start_from as an external checkpoint
+    # or an exported SavedModel.
+    est = estimator.Estimator(model_fn=_make_model_fn(52.),
+                              warm_start_from=exported_path)
+    metrics = est.evaluate(dummy_input_fn, steps=1)
+    # Metric value here is set to 1 + the value of the Variable that is
+    # warm-started from the SavedModel of the first model (42.), as opposed to
+    # the initialization in the new model_fn (52.).
+    self.assertEqual(43., metrics['metric'])
+
+    est = estimator.Estimator(model_fn=_make_model_fn(62.),
+                              warm_start_from=first_est.model_dir)
+    metrics = est.evaluate(dummy_input_fn, steps=1)
+    # Metric value here is set to 1 + the value of the Variable that is
+    # warm-started from a checkpoint of the first model (42.), as opposed to
+    # the initialization in the new model_fn (52.).
+    self.assertEqual(43., metrics['metric'])
+
   def test_scores(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops,
@@ -1382,6 +1428,49 @@ class EstimatorPredictTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     # Expected prediction value is 1 + the value of the Variable that is newly
     # initialized (since there is no checkpoint).
+    self.assertEqual(4., next(est.predict(dummy_input_fn)))
+
+  def test_no_checkpoint_uses_init_with_warm_starting(self):
+    def _make_model_fn(x):
+      def _variable_creating_and_export_model_fn(features, labels, mode):
+        _, _ = features, labels
+        x_var = variables.Variable([[x]], name='x')
+        return model_fn_lib.EstimatorSpec(
+            mode,
+            predictions=math_ops.add(x_var, 1.),
+            loss=constant_op.constant(1.),
+            train_op=state_ops.assign_add(training.get_global_step(), 1),
+            export_outputs={'test': export_output.ClassificationOutput(
+                constant_op.constant([4.2]),
+                constant_op.constant(['label']))})
+      return _variable_creating_and_export_model_fn
+
+    first_est = estimator.Estimator(model_fn=_make_model_fn(3.))
+    first_est.train(dummy_input_fn, steps=10)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    tmpdir = tempfile.mkdtemp()
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    exported_path = first_est.export_savedmodel(export_dir_base,
+                                                serving_input_receiver_fn)
+
+    # Test that we can pass either warm_start_from as an external checkpoint
+    # or an exported SavedModel.
+    est = estimator.Estimator(model_fn=_make_model_fn(30.),
+                              warm_start_from=exported_path)
+    # Prediction here is set to 1 + the value of the Variable that is
+    # warm-started from the SavedModel of the first model (3.), as opposed to
+    # the initialization in the new model_fn (30.).
+    self.assertEqual(4., next(est.predict(dummy_input_fn)))
+
+    est = estimator.Estimator(model_fn=_make_model_fn(40.),
+                              warm_start_from=first_est.model_dir)
+    # Prediction here is set to 1 + the value of the Variable that is
+    # warm-started from a checkpoint of the first model (3.), as opposed to
+    # the initialization in the new model_fn (40.).
     self.assertEqual(4., next(est.predict(dummy_input_fn)))
 
   def test_no_trained_model_invalid_checkpoint_path(self):
