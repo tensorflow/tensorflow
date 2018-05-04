@@ -89,13 +89,15 @@ class FuncRegistry(object):
   def __init__(self):
     self._lock = threading.Lock()
     self._unique_id = 0  # GUARDED_BY(self._lock)
-    self._funcs = {}
+    # Only store weakrefs to the funtions. The strong reference is stored in
+    # the graph.
+    self._funcs = weakref.WeakValueDictionary()
 
   def insert(self, func):
     """Registers `func` and returns a unique token for this entry."""
     token = self._next_unique_token()
     # Store a weakref to the function
-    self._funcs[token] = weakref.ref(func, lambda: self.remove(token))
+    self._funcs[token] = func
     return token
 
   def remove(self, token):
@@ -147,13 +149,9 @@ class FuncRegistry(object):
     Raises:
       ValueError: if no function is registered for `token`.
     """
-    func = self._funcs[token]
+    func = self._funcs.get(token, None)
     if func is None:
       raise ValueError("callback %s is not found" % token)
-    # Resolve weakref
-    func = func()
-    if func is None:
-      raise ValueError("callback %s was deleted" % token)
     if isinstance(func, EagerFunc):
       return func(on_gpu, args)
     else:
@@ -214,8 +212,9 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
   if not hasattr(graph, "_py_funcs_used_in_graph"):
     graph._py_funcs_used_in_graph = []
 
-  # When `graph` is destroyed, elements in _cleanup_py_funcs_used_in_graph
-  # will be destroyed and all referenced funcs can be garbage collected.
+  # Store a reference to the function in the graph to ensure it stays alive
+  # as long as the graph lives. When the graph is destroyed, the function
+  # is left to the garbage collector for destruction as well.
   graph._py_funcs_used_in_graph.append(func)
   # pylint: enable=protected-access
 
