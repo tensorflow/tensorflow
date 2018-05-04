@@ -75,6 +75,13 @@ namespace xla {
       [this, arg, result]() { return service_->Execute(arg, result); });
 }
 
+::grpc::Status GRPCService::ExecuteGraph(::grpc::ServerContext* /*context*/,
+                                         const ExecuteGraphRequest* arg,
+                                         ExecuteResponse* result) {
+  return DelegateRPC(
+      [this, arg, result]() { return service_->ExecuteGraph(arg, result); });
+}
+
 ::grpc::Status GRPCService::ExecuteAsync(::grpc::ServerContext* context,
                                          const ExecuteAsyncRequest* arg,
                                          ExecuteAsyncResponse* result) {

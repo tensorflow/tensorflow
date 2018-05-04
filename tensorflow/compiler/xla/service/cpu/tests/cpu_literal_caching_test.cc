@@ -20,9 +20,9 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 namespace {
-class CpuExternalConstantsTest : public CpuCodegenTest {};
+class CpuDuplicateConstantsTest : public CpuCodegenTest {};
 
-TEST_F(CpuExternalConstantsTest, RepeatedArrayConstants) {
+TEST_F(CpuDuplicateConstantsTest, RepeatedArrayConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
   const string hlo_text = R"(
@@ -56,6 +56,10 @@ ENTRY main {
 }
 )";
 
+  // TODO(b/78879738): The fake "f32[] constant(1)" root is only needed to work
+  // around b/78879738.  Once b/78879738 is fixed, we can set one of the
+  // outfeeds as the root.
+
   string filecheck_pattern = R"(
 CHECK: private constant [2 x [3 x [2 x float]]]
 CHECK-NOT: private constant [2 x [3 x [2 x float]]]
@@ -73,7 +77,7 @@ CHECK-NOT: private constant [2 x [3 x [2 x float]]]
                                 /*match_optimized_ir=*/false);
 }
 
-TEST_F(CpuExternalConstantsTest, RepeatedTupleConstants) {
+TEST_F(CpuDuplicateConstantsTest, RepeatedTupleConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
   const string hlo_text = R"(
@@ -100,6 +104,10 @@ ENTRY main {
   ROOT root = f32[] constant(1)
 }
 )";
+
+  // TODO(b/78879738): The fake "f32[] constant(1)" root is only needed to work
+  // around b/78879738.  Once b/78879738 is fixed, we can set one of the
+  // outfeeds as the root.
 
   string filecheck_pattern = R"(
 CHECK: private constant [2 x float]

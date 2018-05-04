@@ -21,6 +21,7 @@ py_library(
     srcs = ["values.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":input_ops",
         ":prefetching_ops_v2",
         "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/eager/python:datasets",

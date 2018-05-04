@@ -73,7 +73,7 @@ class LinearOperatorCirculantBaseTest(object):
       x = np.zeros([domain_dimension])
       # x is a basis vector.
       x[m] = 1.0
-      fft_x = math_ops.fft(x)
+      fft_x = math_ops.fft(x.astype(np.complex64))
       h_convolve_x = math_ops.ifft(spectrum * fft_x)
       matrix_rows.append(h_convolve_x)
     matrix = array_ops.stack(matrix_rows, axis=-1)
@@ -91,7 +91,7 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
 
   @property
   def _dtypes_to_test(self):
-    # This operator will always be complex because, although the specturm is
+    # This operator will always be complex because, although the spectrum is
     # real, the matrix will not be real.
     return [dtypes.complex64]
 
@@ -408,7 +408,7 @@ class LinearOperatorCirculant2DBaseTest(object):
         x = np.zeros(block_shape)
         # x is a basis vector.
         x[n0, n1] = 1.0
-        fft_x = math_ops.fft2d(x)
+        fft_x = math_ops.fft2d(x.astype(np.complex64))
         h_convolve_x = math_ops.ifft2d(spectrum * fft_x)
         # We want the flat version of the action of the operator on a basis
         # vector, not the block version.

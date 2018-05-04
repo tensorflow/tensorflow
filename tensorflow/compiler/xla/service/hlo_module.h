@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
@@ -137,6 +138,10 @@ class HloModule {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
   }
+
+  // Returns the computation in this module that has the name `name`.  Returns
+  // null if there is no such computation.
+  HloComputation* GetComputationWithName(tensorflow::StringPiece name);
 
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }

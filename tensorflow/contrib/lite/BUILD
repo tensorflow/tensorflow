@@ -92,6 +92,8 @@ cc_library(
     deps = [":context"],
 )
 
+exports_files(["builtin_ops.h"])
+
 cc_library(
     name = "string",
     hdrs = [

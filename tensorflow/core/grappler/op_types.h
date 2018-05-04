@@ -100,6 +100,7 @@ bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
 bool IsQueue(const NodeDef& node);
 bool IsRandomShuffle(const NodeDef& node);
+bool IsRank(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu6Grad(const NodeDef& node);
@@ -116,6 +117,7 @@ bool IsRsqrtGrad(const NodeDef& node);
 bool IsSelect(const NodeDef& node);
 bool IsSeluGrad(const NodeDef& node);
 bool IsSend(const NodeDef& node);
+bool IsSize(const NodeDef& node);
 bool IsSlice(const NodeDef& node);
 bool IsShape(const NodeDef& node);
 bool IsShapeN(const NodeDef& node);
@@ -171,6 +173,10 @@ bool ModifiesInputsInPlace(const NodeDef& node);
 // Returns true if the op is an element-wise involution, i.e. if it is its
 // own inverse such that f(f(x)) == x.
 bool IsInvolution(const NodeDef& node);
+
+// Returns true if the op preserves the order and value of elements
+// and shape of its first input tensor.
+bool IsValueAndOrderAndShapePreserving(const NodeDef& node);
 
 // Returns true if the op preserves the order and value of elements in its
 // first input tensor and possible changes its shape.

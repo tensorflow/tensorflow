@@ -158,7 +158,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   std::reverse(sub_dirs.begin(), sub_dirs.end());
 
   // Now create the directories.
-  string built_path = remaining_dir.ToString();
+  string built_path = std::string(remaining_dir);
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
     Status status = CreateDir(io::CreateURI(scheme, host, built_path));

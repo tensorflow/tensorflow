@@ -72,11 +72,23 @@ NNAPIDelegate::~NNAPIDelegate() {
 // Adds the tensors of the interpreter to the NN API model.
 // Returns the number of operands added.
 uint32_t addTensorOperands(tflite::Interpreter* interpreter,
-                           ANeuralNetworksModel* nn_model) {
+                           ANeuralNetworksModel* nn_model,
+                           const std::vector<uint32_t>& skip_list) {
   uint32_t next_id = 0;
   for (size_t i = 0; i < interpreter->tensors_size(); i++) {
+    // skip temporaries tensors.
+    bool shouldSkip = false;
+    for (auto skip_idx : skip_list) {
+      if (i == skip_idx) {
+        shouldSkip = true;
+        break;
+      }
+    }
+    if (shouldSkip) continue;
+
     int32_t nn_type = 0;
-    float scale = 1.0f;
+    // NNAPI requires 32-bit float scale to be zero, tflite doesn't care
+    float scale = 0.0f;
     int32_t zeroPoint = 0;
     TfLiteTensor* tensor = interpreter->tensor(i);
     switch (tensor->type) {
@@ -116,11 +128,11 @@ uint32_t addTensorOperands(tflite::Interpreter* interpreter,
       if (const NNAPIAllocation* alloc = dynamic_cast<const NNAPIAllocation*>(
               static_cast<const Allocation*>(tensor->allocation))) {
         CHECK_NN(ANeuralNetworksModel_setOperandValueFromMemory(
-            nn_model, i, alloc->memory(), alloc->offset(tensor->data.raw),
+            nn_model, next_id, alloc->memory(), alloc->offset(tensor->data.raw),
             tensor->bytes));
       } else {
         CHECK_NN(ANeuralNetworksModel_setOperandValue(
-            nn_model, i, tensor->data.raw, tensor->bytes));
+            nn_model, next_id, tensor->data.raw, tensor->bytes));
       }
     }
     ++next_id;
@@ -253,6 +265,10 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
         nn_op_type = ANEURALNETWORKS_ADD;
         add_add_params();
         break;
+      case tflite::BuiltinOperator_MUL:
+        nn_op_type = ANEURALNETWORKS_MUL;
+        add_add_params();
+        break;
       case tflite::BuiltinOperator_AVERAGE_POOL_2D:
         add_pooling_params(node.builtin_data);
         nn_op_type = ANEURALNETWORKS_AVERAGE_POOL_2D;
@@ -330,7 +346,6 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_L2_NORMALIZATION:
       case tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION:
-      case tflite::BuiltinOperator_MUL:
       case tflite::BuiltinOperator_PAD:
       case tflite::BuiltinOperator_RESIZE_BILINEAR:
       case tflite::BuiltinOperator_CALL:
@@ -381,7 +396,19 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
   if (!nn_model_) {
     CHECK_NN(ANeuralNetworksModel_create(&nn_model_));
 
-    uint32_t next_id = addTensorOperands(interpreter, nn_model_);
+    // Find all the temporary tensors and put them in a skip_list.
+    std::vector<uint32_t> skip_list;
+    for (size_t i = 0; i < interpreter->nodes_size(); i++) {
+      const auto* node_and_registration = interpreter->node_and_registration(i);
+      const TfLiteNode& node = node_and_registration->first;
+      if (node.temporaries != nullptr) {
+        for (int j = 0; j < node.temporaries->size; j++) {
+          skip_list.push_back(static_cast<uint32_t>(node.temporaries->data[j]));
+        }
+      }
+    }
+
+    uint32_t next_id = addTensorOperands(interpreter, nn_model_, skip_list);
     AddOpsAndParams(interpreter, nn_model_, next_id);
     CHECK_NN(ANeuralNetworksModel_identifyInputsAndOutputs(
         nn_model_, static_cast<uint32_t>(interpreter->inputs().size()),

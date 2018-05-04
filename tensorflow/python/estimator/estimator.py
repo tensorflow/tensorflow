@@ -50,6 +50,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
+from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
@@ -493,7 +494,6 @@ class Estimator(object):
       if not checkpoint_path:
         logging.info('Could not find trained model in model_dir: {}, running '
                      'initialization to predict.'.format(self._model_dir))
-
       with ops.Graph().as_default() as g:
         random_seed.set_random_seed(self._config.tf_random_seed)
         self._create_and_assert_global_step(g)
@@ -501,6 +501,10 @@ class Estimator(object):
             input_fn, model_fn_lib.ModeKeys.PREDICT)
         estimator_spec = self._call_model_fn(
             features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
+
+        # Call to warm_start has to be after model_fn is called.
+        self._maybe_warm_start(checkpoint_path)
+
         predictions = self._extract_keys(
             estimator_spec.predictions, predict_keys)
         all_hooks = list(input_hooks)
@@ -982,9 +986,7 @@ class Estimator(object):
     if self._warm_start_settings:
       logging.info('Warm-starting with WarmStartSettings: %s' %
                    (self._warm_start_settings,))
-      # pylint: disable=protected-access
       warm_starting_util.warm_start(*self._warm_start_settings)
-      # pylint: enable=protected-access
     # Check if the user created a loss summary, and add one if they didn't.
     # We assume here that the summary is called 'loss'. If it is not, we will
     # make another one with the name 'loss' to ensure it shows up in the right
@@ -994,15 +996,18 @@ class Estimator(object):
       summary.scalar('loss', estimator_spec.loss)
     ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
     worker_hooks.extend(hooks)
-    worker_hooks.extend([
-        training.NanTensorHook(estimator_spec.loss),
-        training.LoggingTensorHook(
-            {
-                'loss': estimator_spec.loss,
-                'step': global_step_tensor
-            },
-            every_n_iter=self._config.log_step_count_steps)
-    ])
+    worker_hooks.append(
+        training.NanTensorHook(estimator_spec.loss)
+    )
+    if self._config.log_step_count_steps is not None:
+      worker_hooks.append(
+          training.LoggingTensorHook(
+              {
+                  'loss': estimator_spec.loss,
+                  'step': global_step_tensor
+              },
+              every_n_iter=self._config.log_step_count_steps)
+      )
     worker_hooks.extend(estimator_spec.training_hooks)
 
     if not (estimator_spec.scaffold.saver or
@@ -1086,6 +1091,9 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.config)
 
+      # Call to warm_start has to be after model_fn is called.
+      self._maybe_warm_start(checkpoint_path)
+
       if model_fn_lib.LOSS_METRIC_KEY in estimator_spec.eval_metric_ops:
         raise ValueError(
             'Metric with name "%s" is not allowed, because Estimator ' % (
@@ -1122,6 +1130,12 @@ class Estimator(object):
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
     return eval_results
+
+  def _maybe_warm_start(self, checkpoint_path):
+    if not checkpoint_path and self._warm_start_settings:
+      logging.info('Warm-starting with WarmStartSettings: %s' %
+                   (self._warm_start_settings,))
+      warm_starting_util.warm_start(*self._warm_start_settings)
 
 
 def create_per_tower_ready_op(scaffold):
@@ -1522,7 +1536,8 @@ def _get_default_warm_start_settings(warm_start_from):
       logging.info('Warm-starting from a SavedModel')
       return WarmStartSettings(ckpt_to_initialize_from=os.path.join(
           compat.as_bytes(warm_start_from),
-          compat.as_bytes('variables/variables')))
+          compat.as_bytes('{}/{}'.format(constants.VARIABLES_DIRECTORY,
+                                         constants.VARIABLES_FILENAME))))
     return WarmStartSettings(ckpt_to_initialize_from=warm_start_from)
   elif isinstance(warm_start_from, WarmStartSettings):
     return warm_start_from

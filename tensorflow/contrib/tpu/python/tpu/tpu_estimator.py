@@ -459,11 +459,9 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     session.run(self._init_ops,
                 options=config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000))
 
-    logging.info('Start infeed thread controller')
     self._infeed_controller = self._create_infeed_controller(
         name='InfeedController', target=self._run_infeed, args=(session,))
 
-    logging.info('Start outfeed thread controller')
     self._outfeed_controller = _OpQueueContext(
         name='OutfeedController', target=self._run_outfeed, args=(session,))
 
@@ -1553,7 +1551,7 @@ class _OutfeedHostCallHook(session_run_hook.SessionRunHook):
 
 
 class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
-  """"Calculate and report the number of examples/sec during training."""
+  """Calculate and report global_step/sec and examples/sec during runtime."""
 
   def __init__(self,
                batch_size,
@@ -1569,12 +1567,18 @@ class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
         summary_writer=summary_writer)
 
   def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
-    examples_per_sec = self._batch_size * elapsed_steps / elapsed_time
+    global_step_per_sec = elapsed_steps / elapsed_time
+    examples_per_sec = self._batch_size * global_step_per_sec
     if self._summary_writer is not None:
-      example_summary = Summary(value=[
-          Summary.Value(tag='examples_sec', simple_value=examples_per_sec)
+      global_step_summary = Summary(value=[
+          Summary.Value(tag='global_step/sec', simple_value=global_step_per_sec)
       ])
+      example_summary = Summary(value=[
+          Summary.Value(tag='examples/sec', simple_value=examples_per_sec)
+      ])
+      self._summary_writer.add_summary(global_step_summary, global_step)
       self._summary_writer.add_summary(example_summary, global_step)
+    logging.info('global_step/sec: %g', global_step_per_sec)
     logging.info('examples/sec: %g', examples_per_sec)
 
 
@@ -1844,6 +1848,12 @@ class TPUEstimator(estimator_lib.Estimator):
     # config.model_dir.
     model_function = self._augment_model_fn(model_fn, batch_axis)
 
+    # Overwrite log_step_count_steps to disable TensorLoggingHook and
+    # StepCounterHook from being created in Estimator. TPUEstimator already
+    # added equivalent hooks in _augment_model_fn above.
+    self._log_every_n_steps = config.log_step_count_steps
+    config = config.replace(log_step_count_steps=None)
+
     # Passing non-None params as wrapped model_fn has it.
     params = params or {}
     super(TPUEstimator, self).__init__(
@@ -2039,39 +2049,50 @@ class TPUEstimator(estimator_lib.Estimator):
           host_ops = host_call.create_tpu_hostcall()
           if host_ops is None:
             host_ops = []
-
           shutdown_hooks = []
           if os.environ.get('TF_TPU_GRACEFUL_SHUTDOWN', '0') != '0':
             shutdown_hooks.append(session_support.GracefulShutdownHook())
-
-          hooks = [
+          with ops.control_dependencies([loss]):
+            global_step = array_ops.identity(training.get_global_step())
+          hooks = input_hooks + shutdown_hooks
+          logging_hook_frequency = (    # Divide and round up
+              (self._log_every_n_steps +
+               self._config.tpu_config.iterations_per_loop - 1) //
+              self._config.tpu_config.iterations_per_loop)
+          hooks.extend([
               TPUInfeedOutfeedSessionHook(
                   ctx,
                   enqueue_ops,
                   host_ops,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator)),
-              ExamplesPerSecondHook(
-                  ctx.global_batch_size, output_dir=self.model_dir),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
                       'loss': array_ops.identity(loss),
-                      'step': training.get_global_step()
+                      'step': global_step,
                   },
-                  every_n_secs=30)
-          ] + input_hooks + shutdown_hooks
+                  every_n_iter=logging_hook_frequency)
+          ])
+          examples_hook = ExamplesPerSecondHook(
+              ctx.global_batch_size,
+              output_dir=self.model_dir,
+              every_n_steps=self._log_every_n_steps)
+          examples_hook._set_steps_per_run(   # pylint: disable=protected-access
+              self._config.tpu_config.iterations_per_loop)
+          hooks.append(examples_hook)
 
           chief_hooks = []
           if (self._config.save_checkpoints_secs or
               self._config.save_checkpoints_steps):
-            chief_hooks.append(
-                training.CheckpointSaverHook(
-                    self.model_dir,
-                    save_secs=self._config.save_checkpoints_secs,
-                    save_steps=self._config.save_checkpoints_steps,
-                    steps_per_run=self._config.tpu_config.iterations_per_loop,
-                    scaffold=scaffold))
+            checkpoint_hook = training.CheckpointSaverHook(
+                self.model_dir,
+                save_secs=self._config.save_checkpoints_secs,
+                save_steps=self._config.save_checkpoints_steps,
+                scaffold=scaffold)
+            checkpoint_hook._set_steps_per_run(   # pylint: disable=protected-access
+                self._config.tpu_config.iterations_per_loop)
+            chief_hooks.append(checkpoint_hook)
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
           with ops.control_dependencies([loss]):
             update_ops = _sync_variables_ops()
