@@ -872,7 +872,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   // attributes.
   ops.emplace_back(
       new SimpleOperator<AddNOperator>("ADDN", OperatorType::kAddN));
-  ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
       "RSQRT", OperatorType::kTensorFlowRsqrt));
   // Simple Operators.
@@ -901,7 +900,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "MINIMUM", OperatorType::kTensorFlowMinimum));
   ops.emplace_back(new SimpleOperator<TensorFlowLessOperator>(
       "LESS", OperatorType::kTensorFlowLess));
-
+  ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   return ops;
 }
 }  // namespace
