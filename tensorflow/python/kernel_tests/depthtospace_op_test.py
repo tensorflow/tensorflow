@@ -96,6 +96,24 @@ class DepthToSpaceTest(test.TestCase):
     x_out = [batch_output_elt(i) for i in range(batch_size)]
     self._testOne(x_np, block_size, x_out)
 
+  def testBatchSize0(self):
+    block_size = 2
+    batch_size = 0
+    input_nhwc = array_ops.ones([batch_size, 2, 3, 12])
+    x_out = array_ops.ones([batch_size, 4, 6, 3])
+
+    with self.test_session(use_gpu=False):
+      # test NHWC (default) on CPU
+      x_tf = array_ops.depth_to_space(input_nhwc, block_size)
+      self.assertAllEqual(x_tf.shape, x_out.shape)
+      x_tf.eval()
+    if test.is_gpu_available():
+      with self.test_session(use_gpu=True):
+        # test NHWC (default) on GPU
+        x_tf = array_ops.depth_to_space(input_nhwc, block_size)
+        self.assertAllEqual(x_tf.shape, x_out.shape)
+        x_tf.eval()
+
   # Tests for different width and height.
   def testNonSquare(self):
     x_np = [[[[1, 10, 2, 20, 3, 30, 4, 40]],

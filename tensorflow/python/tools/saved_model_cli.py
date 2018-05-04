@@ -38,10 +38,15 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.platform import app  # pylint: disable=unused-import
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import loader
 from tensorflow.python.tools import saved_model_utils
+
+# Set of ops to blacklist.
+_OP_BLACKLIST = set(['WriteFile', 'ReadFile'])
 
 
 def _show_tag_sets(saved_model_dir):
@@ -190,14 +195,14 @@ def _show_all(saved_model_dir):
   """
   tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
   for tag_set in sorted(tag_sets):
-    tag_set = ', '.join(tag_set)
-    print('\nMetaGraphDef with tag-set: \'' + tag_set +
-          '\' contains the following SignatureDefs:')
+    print("\nMetaGraphDef with tag-set: '%s' "
+          "contains the following SignatureDefs:" % ', '.join(tag_set))
 
+    tag_set = ','.join(tag_set)
     signature_def_map = get_signature_def_map(saved_model_dir, tag_set)
     for signature_def_key in sorted(signature_def_map.keys()):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
-      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, 
+      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
 
 
@@ -240,6 +245,27 @@ def get_signature_def_map(saved_model_dir, tag_set):
   """
   meta_graph = saved_model_utils.get_meta_graph_def(saved_model_dir, tag_set)
   return meta_graph.signature_def
+
+
+def scan_meta_graph_def(meta_graph_def):
+  """Scans meta_graph_def and reports if there are ops on blacklist.
+
+  Print ops if they are on black list, or print success if no blacklisted ops
+  found.
+
+  Args:
+    meta_graph_def: MetaGraphDef protocol buffer.
+  """
+  all_ops_set = set(
+      meta_graph_lib.ops_used_by_graph_def(meta_graph_def.graph_def))
+  blacklisted_ops = _OP_BLACKLIST & all_ops_set
+  if blacklisted_ops:
+    # TODO(yifeif): print more warnings
+    print('MetaGraph with tag set %s contains the following blacklisted ops:' %
+          meta_graph_def.meta_info_def.tags, blacklisted_ops)
+  else:
+    print('MetaGraph with tag set %s does not contain blacklisted ops.' %
+          meta_graph_def.meta_info_def.tags)
 
 
 def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
@@ -518,7 +544,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(filename)
+    data = np.load(file_io.FileIO(filename, mode='r'))
 
     # When a variable_name key is specified for the input file
     if variable_name:
@@ -607,6 +633,21 @@ def run(args):
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
                                  tensor_key_feed_dict, args.outdir,
                                  args.overwrite, tf_debug=args.tf_debug)
+
+
+def scan(args):
+  """Function triggered by scan command.
+
+  Args:
+    args: A namespace parsed from command line.
+  """
+  if args.tag_set:
+    scan_meta_graph_def(
+        saved_model_utils.get_meta_graph_def(args.dir, args.tag_set))
+  else:
+    saved_model = reader.read_saved_model(args.dir)
+    for meta_graph_def in saved_model.meta_graphs:
+      scan_meta_graph_def(meta_graph_def)
 
 
 def create_parser():
@@ -729,6 +770,26 @@ def create_parser():
            'intermediate Tensors and runtime GraphDefs while running the '
            'SavedModel.')
   parser_run.set_defaults(func=run)
+
+  # scan command
+  scan_msg = ('Usage example:\n'
+              'To scan for blacklisted ops in SavedModel:\n'
+              '$saved_model_cli scan --dir /tmp/saved_model\n'
+              'To scan a specific MetaGraph, pass in --tag_set\n')
+  parser_scan = subparsers.add_parser(
+      'scan',
+      description=scan_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_scan.add_argument(
+      '--dir',
+      type=str,
+      required=True,
+      help='directory containing the SavedModel to execute')
+  parser_scan.add_argument(
+      '--tag_set',
+      type=str,
+      help='tag-set of graph in SavedModel to scan, separated by \',\'')
+  parser_scan.set_defaults(func=scan)
 
   return parser
 

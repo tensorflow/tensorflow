@@ -63,6 +63,7 @@ limitations under the License.
 // brain namespace because we are defining 'extern "C"' functions.
 using tensorflow::AllocationDescription;
 using tensorflow::DataType;
+using tensorflow::ExtendSessionGraphHelper;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
 using tensorflow::mutex_lock;
@@ -640,17 +641,17 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
 }
 
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
-                    const char* mutation_type)
-    EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+                    const char* mutation_type) {
   // If any session has already run this node_id, mark this session as
   // unrunnable.
   for (auto it : graph->sessions) {
+    mutex_lock session_lock(it.first->mu);
     if (it.first->last_num_graph_nodes > op.node.id()) {
-      it.second = FailedPrecondition(
+      it.second = strings::StrCat(
           "Operation '", op.node.DebugString(), "' was changed by ",
           mutation_type,
-          " after it was run by a session. Nodes can be mutated "
-          "only before they are executed by a session. Either don't modify "
+          " after it was run by a session. This mutation will have no effect, "
+          "and will trigger an error in the future. Either don't modify "
           "nodes after running them or create a new session.");
     }
   }
@@ -713,16 +714,19 @@ Status LoadLibrary(const char* library_filename, void** result,
 // TODO(josh11b,mrry): Change Session to be able to use a Graph*
 // directly, instead of requiring us to serialize to a GraphDef and
 // call Session::Extend().
-bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(session->mu) {
+bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
   if (session->graph != nullptr) {
+    // Take the graph lock before the session lock to avoid deadlock. This is
+    // safe since session->graph does not change.
     session->graph->mu.lock();
+    mutex_lock session_lock(session->mu);
     const Graph& graph = session->graph->graph;
 
-    status->status = session->graph->sessions[session];
-    if (!status->status.ok()) {
-      session->graph->mu.unlock();
-      return false;
+    const string& mutation_warning = session->graph->sessions[session];
+    if (!mutation_warning.empty()) {
+      // TODO(b/74949947): turn this back into an error status
+      LOG(WARNING) << mutation_warning;
+      session->graph->sessions[session].clear();
     }
 
     const auto num_nodes = graph.num_node_ids();
@@ -2472,7 +2476,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     TF_Session* new_session = new TF_Session(session, graph);
     if (graph != nullptr) {
       mutex_lock l(graph->mu);
-      graph->sessions[new_session] = Status::OK();
+      graph->sessions[new_session] = "";
     }
     return new_session;
   } else {
@@ -2538,7 +2542,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
 
   TF_Session* session = new TF_Session(bundle.session.release(), graph);
 
-  graph->sessions[session] = Status::OK();
+  graph->sessions[session] = "";
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
 #endif  // __ANDROID__
@@ -2571,12 +2575,9 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
-  {
-    mutex_lock l(session->mu);
-    if (session->extend_before_run &&
-        !tensorflow::ExtendSessionGraphHelper(session, status)) {
-      return;
-    }
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
+    return;
   }
 
   TF_Run_Setup(noutputs, output_values, status);
@@ -2612,12 +2613,9 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
                          const char** handle, TF_Status* status) {
   *handle = nullptr;
 
-  {
-    mutex_lock l(session->mu);
-    if (session->extend_before_run &&
-        !tensorflow::ExtendSessionGraphHelper(session, status)) {
-      return;
-    }
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
+    return;
   }
 
   std::vector<string> input_names(ninputs);
@@ -2659,12 +2657,9 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
-  {
-    mutex_lock l(session->mu);
-    if (session->extend_before_run &&
-        !tensorflow::ExtendSessionGraphHelper(session, status)) {
-      return;
-    }
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
+    return;
   }
 
   TF_Run_Setup(noutputs, output_values, status);

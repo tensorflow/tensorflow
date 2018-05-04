@@ -290,8 +290,16 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
         Note - using this argument, it is easy to provide settings which break
         otherwise perfectly good models. Use with care.
     """
-    super(RunConfig, self).__init__(
-        master=master, evaluation_master=evaluation_master)
+    # Neither parent class calls super().__init__(), so here we have to
+    # manually call their __init__() methods.
+    ClusterConfig.__init__(
+        self, master=master, evaluation_master=evaluation_master)
+    # For too long this code didn't call:
+    #   core_run_config.RunConfig.__init__(self)
+    # so instead of breaking compatibility with that assumption, we
+    # just manually initialize this field:
+    self._train_distribute = None
+    self._device_fn = None
 
     gpu_options = config_pb2.GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)

@@ -49,6 +49,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kAbs;
     case UNOP_CEIL:
       return HloOpcode::kCeil;
+    case UNOP_CLZ:
+      return HloOpcode::kClz;
     case UNOP_COS:
       return HloOpcode::kCos;
     case UNOP_EXP:
@@ -1284,8 +1286,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
     TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
   }
 
-  if (tensorflow::StringPiece(custom_call_request.call_target_name())
-          .starts_with("$")) {
+  if (tensorflow::str_util::StartsWith(custom_call_request.call_target_name(),
+                                       "$")) {
     return InvalidArgument(
         "Invalid custom_call_target \"%s\": Call targets that start with '$' "
         "are reserved for internal use.",
@@ -3491,7 +3493,6 @@ void ComputationLowerer::Visit(
       HloInstruction* operand = lookup_instruction(trace_request.operand());
       hlo_instruction = add_instruction(
           HloInstruction::CreateTrace(trace_request.tag(), operand));
-      operand->set_tracing(hlo_instruction);
       break;
     }
 

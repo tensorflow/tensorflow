@@ -55,11 +55,52 @@ _BIAS_VARIABLE_NAME = "bias"
 _WEIGHTS_VARIABLE_NAME = "kernel"
 
 
+# TODO(jblespiau): Remove this function when we are sure there are no longer
+# any usage (even if protected, it is being used). Prefer assert_like_rnncell.
 def _like_rnncell(cell):
   """Checks that a given object is an RNNCell by using duck typing."""
   conditions = [hasattr(cell, "output_size"), hasattr(cell, "state_size"),
                 hasattr(cell, "zero_state"), callable(cell)]
   return all(conditions)
+
+
+# This can be used with self.assertRaisesRegexp for assert_like_rnncell.
+ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
+
+
+def assert_like_rnncell(cell_name, cell):
+  """Raises a TypeError if cell is not like an RNNCell.
+
+  NOTE: Do not rely on the error message (in particular in tests) which can be
+  subject to change to increase readability. Use
+  ASSERT_LIKE_RNNCELL_ERROR_REGEXP.
+
+  Args:
+    cell_name: A string to give a meaningful error referencing to the name
+      of the functionargument.
+    cell: The object which should behave like an RNNCell.
+
+  Raises:
+    TypeError: A human-friendly exception.
+  """
+  conditions = [
+      hasattr(cell, "output_size"),
+      hasattr(cell, "state_size"),
+      hasattr(cell, "zero_state"),
+      callable(cell),
+  ]
+  errors = [
+      "'output_size' property is missing",
+      "'state_size' property is missing",
+      "'zero_state' method is missing",
+      "is not callable"
+  ]
+
+  if not all(conditions):
+
+    errors = [error for error, cond in zip(errors, conditions) if not cond]
+    raise TypeError("The argument {!r} ({}) is not an RNNCell: {}.".format(
+        cell_name, cell, ", ".join(errors)))
 
 
 def _concat(prefix, suffix, static=False):
@@ -311,10 +352,17 @@ class BasicRNNCell(LayerRNNCell):
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such
       cases.
+    dtype: Default dtype of the layer (default of `None` means use the type
+      of the first input). Required when `build` is called before `call`.
   """
 
-  def __init__(self, num_units, activation=None, reuse=None, name=None):
-    super(BasicRNNCell, self).__init__(_reuse=reuse, name=name)
+  def __init__(self,
+               num_units,
+               activation=None,
+               reuse=None,
+               name=None,
+               dtype=None):
+    super(BasicRNNCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -372,6 +420,8 @@ class GRUCell(LayerRNNCell):
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such
       cases.
+    dtype: Default dtype of the layer (default of `None` means use the type
+      of the first input). Required when `build` is called before `call`.
   """
 
   def __init__(self,
@@ -380,8 +430,9 @@ class GRUCell(LayerRNNCell):
                reuse=None,
                kernel_initializer=None,
                bias_initializer=None,
-               name=None):
-    super(GRUCell, self).__init__(_reuse=reuse, name=name)
+               name=None,
+               dtype=None):
+    super(GRUCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -490,8 +541,14 @@ class BasicLSTMCell(LayerRNNCell):
   that follows.
   """
 
-  def __init__(self, num_units, forget_bias=1.0,
-               state_is_tuple=True, activation=None, reuse=None, name=None):
+  def __init__(self,
+               num_units,
+               forget_bias=1.0,
+               state_is_tuple=True,
+               activation=None,
+               reuse=None,
+               name=None,
+               dtype=None):
     """Initialize the basic LSTM cell.
 
     Args:
@@ -509,11 +566,13 @@ class BasicLSTMCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
+      dtype: Default dtype of the layer (default of `None` means use the type
+        of the first input). Required when `build` is called before `call`.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
       `CudnnCompatibleLSTMCell` instead.
     """
-    super(BasicLSTMCell, self).__init__(_reuse=reuse, name=name)
+    super(BasicLSTMCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -558,9 +617,9 @@ class BasicLSTMCell(LayerRNNCell):
     Args:
       inputs: `2-D` tensor with shape `[batch_size, input_size]`.
       state: An `LSTMStateTuple` of state tensors, each shaped
-        `[batch_size, self.state_size]`, if `state_is_tuple` has been set to
+        `[batch_size, num_units]`, if `state_is_tuple` has been set to
         `True`.  Otherwise, a `Tensor` shaped
-        `[batch_size, 2 * self.state_size]`.
+        `[batch_size, 2 * num_units]`.
 
     Returns:
       A pair containing the new hidden state, and the new state (either a
@@ -627,7 +686,7 @@ class LSTMCell(LayerRNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=None, num_proj_shards=None,
                forget_bias=1.0, state_is_tuple=True,
-               activation=None, reuse=None, name=None):
+               activation=None, reuse=None, name=None, dtype=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -660,11 +719,13 @@ class LSTMCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
+      dtype: Default dtype of the layer (default of `None` means use the type
+        of the first input). Required when `build` is called before `call`.
 
       When restoring from CudnnLSTM-trained checkpoints, use
       `CudnnCompatibleLSTMCell` instead.
     """
-    super(LSTMCell, self).__init__(_reuse=reuse, name=name)
+    super(LSTMCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -724,10 +785,14 @@ class LSTMCell(LayerRNNCell):
         shape=[input_depth + h_depth, 4 * self._num_units],
         initializer=self._initializer,
         partitioner=maybe_partitioner)
+    if self.dtype is None:
+      initializer = init_ops.zeros_initializer
+    else:
+      initializer = init_ops.zeros_initializer(dtype=self.dtype)
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],
-        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+        initializer=initializer)
     if self._use_peepholes:
       self._w_f_diag = self.add_variable("w_f_diag", shape=[self._num_units],
                                          initializer=self._initializer)
@@ -914,8 +979,8 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
-    if not _like_rnncell(cell):
-      raise TypeError("The parameter cell is not a RNNCell.")
+    assert_like_rnncell("cell", cell)
+
     if (dropout_state_filter_visitor is not None
         and not callable(dropout_state_filter_visitor)):
       raise TypeError("dropout_state_filter_visitor must be callable")
@@ -1165,7 +1230,16 @@ class DeviceWrapper(RNNCell):
 
 @tf_export("nn.rnn_cell.MultiRNNCell")
 class MultiRNNCell(RNNCell):
-  """RNN cell composed sequentially of multiple simple cells."""
+  """RNN cell composed sequentially of multiple simple cells.
+
+  Example:
+
+  ```python
+  num_units = [128, 64]
+  cells = [BasicLSTMCell(num_units=n) for n in num_units]
+  stacked_rnn_cell = MultiRNNCell(cells)
+  ```
+  """
 
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.

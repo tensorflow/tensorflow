@@ -20,11 +20,12 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
-#include "tensorflow/contrib/lite/schema/schema_generated.h"
+#include "tensorflow/contrib/lite/profiling/profiler.h"
 
 namespace tflite {
 
@@ -48,6 +49,10 @@ constexpr TfLiteType typeToTfLiteType<float>() {
 template <>
 constexpr TfLiteType typeToTfLiteType<unsigned char>() {
   return kTfLiteUInt8;
+}
+template <>
+constexpr TfLiteType typeToTfLiteType<bool>() {
+  return kTfLiteBool;
 }
 
 // Forward declare since NNAPIDelegate uses Interpreter.
@@ -134,18 +139,34 @@ class Interpreter {
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
-  TfLiteStatus SetTensorParametersReadOnly(
+  inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantizationParams quantization,
+      const char* buffer, size_t bytes,
+      const Allocation* allocation = nullptr) {
+    return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
+                                       dims.data(), quantization, buffer, bytes,
+                                       allocation);
+  };
+
+  TfLiteStatus SetTensorParametersReadOnly(
+      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      const int* dims, TfLiteQuantizationParams quantization,
       const char* buffer, size_t bytes, const Allocation* allocation = nullptr);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
-  TfLiteStatus SetTensorParametersReadWrite(
+  inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
-      const std::vector<int>& dims, TfLiteQuantizationParams quantization);
+      const std::vector<int>& dims, TfLiteQuantizationParams quantization) {
+    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
+                                        dims.data(), quantization);
+  }
+  TfLiteStatus SetTensorParametersReadWrite(
+      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      const int* dims, TfLiteQuantizationParams quantization);
 
   // Functions to access tensor data
 
@@ -168,10 +189,10 @@ class Interpreter {
   }
 
   // Return the number of tensors in the model.
-  int tensors_size() const { return context_.tensors_size; }
+  size_t tensors_size() const { return context_.tensors_size; }
 
   // Return the number of ops in the model.
-  int nodes_size() const { return nodes_and_registration_.size(); }
+  size_t nodes_size() const { return nodes_and_registration_.size(); }
 
   // WARNING: Experimental interface, subject to change
   const std::vector<int>& execution_plan() const { return execution_plan_; }
@@ -193,7 +214,7 @@ class Interpreter {
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
-      int node_index) {
+      int node_index) const {
     if (node_index >= nodes_and_registration_.size() || node_index < 0)
       return nullptr;
     return &nodes_and_registration_[node_index];
@@ -257,13 +278,54 @@ class Interpreter {
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate,
+                                       bool allow_dynamic_tensors = false);
 
-  // WARNING: This is a deprecated interface and will be removed as soon as
-  // possible.  Please do not use it.
-  // TODO(impjdi): Remove this interface after resolving dependencies.
-  void set_model(const Model* model) { model_ = const_cast<Model*>(model); }
-  Model* model() const { return model_; }
+  // Ensure the data in `tensor.data` is readable. In case delegate is used,
+  // it might require to copy the data from delegate buffer to raw memory.
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
+    TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
+    TfLiteTensor* tensor = &tensors_[tensor_index];
+    if (tensor->data_is_stale) {
+      TF_LITE_ENSURE(&context_, tensor->delegate != nullptr);
+      TF_LITE_ENSURE(&context_,
+                     tensor->buffer_handle != kTfLiteNullBufferHandle);
+      // This can be null if the delegate doesn't use its own buffer.
+      TF_LITE_ENSURE(&context_,
+                     tensor->delegate->CopyFromBufferHandle != nullptr);
+      tensor->delegate->CopyFromBufferHandle(tensor->delegate,
+                                             tensor->buffer_handle,
+                                             tensor->data.raw, tensor->bytes);
+      tensor->data_is_stale = false;
+    }
+    return kTfLiteOk;
+  }
+
+  // Set the delegate buffer handle to a tensor. It can be called in the
+  // following cases:
+  // 1. Set the buffer handle to a tensor that's not being written by a
+  //    delegate. For example, feeding an OpenGL texture as the input of the
+  //    inference graph.
+  // 2. Set the buffer handle to a tensor that uses the same delegate.
+  //    For example, set an OpenGL texture as the output of inference, while
+  //    the node which produces output is an OpenGL delegate node.
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus SetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle buffer_handle,
+                               TfLiteDelegate* delegate);
+
+  // Get the delegate buffer handle, and the delegate which can process the
+  // buffer handle.
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus GetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle* buffer_handle,
+                               TfLiteDelegate** delegate);
+
+  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+
+  profiling::Profiler* GetProfiler() { return profiler_; }
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
@@ -272,6 +334,18 @@ class Interpreter {
   // allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
   // pointers to existing tensors.
   static constexpr int kTensorsCapacityHeadroom = 16;
+
+  // Set if buffer handle output is allowed.
+  //
+  // When using hardware delegation, Interpreter will make the data of output
+  // tensors available in `tensor->data` by default. If the application can
+  // consume the buffer handle directly (e.g. reading output from OpenGL
+  // texture), it can set this flag to false, so Interpreter won't copy the data
+  // from buffer handle to CPU memory.
+  // WARNING: This is an experimental API and subject to change.
+  void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
+    allow_buffer_handle_output_ = allow_buffer_handle_output;
+  }
 
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
@@ -330,7 +404,7 @@ class Interpreter {
   // Compute the number of bytes required to represent a tensor with dimensions
   // specified by the array dims (of length dims_size). Returns the status code
   // and bytes.
-  TfLiteStatus BytesRequired(TfLiteType type, const int* dims, int dims_size,
+  TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                              size_t* bytes);
 
   // Request an tensor be resized implementation. If the given tensor is of
@@ -355,14 +429,15 @@ class Interpreter {
   // Entry point for C API ReplaceSubgraphsWithDelegateKernels
   static TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
       TfLiteContext* context, TfLiteRegistration registration,
-      const TfLiteIntArray* nodes_to_replace);
+      const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
 
   // Update the execution graph to replace some of the nodes with stub
   // nodes. Specifically any node index that has `nodes[index]==1` will be
   // slated for replacement with a delegate kernel specified by registration.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
-      TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace);
+      TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
+      TfLiteDelegate* delegate);
 
   // WARNING: This is an experimental interface that is subject to change.
   // Gets the internal pointer to a TensorFlow lite node by node_index.
@@ -390,12 +465,26 @@ class Interpreter {
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
   // more tensors won't invalidate the pointer to existing tensors.
   void EnsureTensorsVectorCapacity() {
-    const int required_capacity = tensors_size() + kTensorsCapacityHeadroom;
+    const size_t required_capacity = tensors_size() + kTensorsCapacityHeadroom;
     if (required_capacity > tensors_.capacity()) {
       tensors_.reserve(required_capacity);
       context_.tensors = tensors_.data();
     }
   }
+
+  // The state of the Interpreter.
+  enum State {
+    // The interpreter isn't ready to be invoked.
+    // `AllocateTensor` need to be called to enter an invokable state.
+    kStateUninvokable = 0,
+    // The interpreter is ready to be invoked.
+    kStateInvokable,
+    // The interpreter is ready to be invoked, and graph can't be further
+    // modified. The interpreter will enter this state when calling
+    // `ModifyGraphWithDelegate` with `allow_dynamic_tensors=false`.
+    kStateInvokableAndImmutable,
+  };
+  State state_ = kStateUninvokable;
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -412,10 +501,6 @@ class Interpreter {
   // the tensor array.
   bool consistent_ = true;
 
-  // Whether the model is safe to invoke (if any errors occurred this
-  // will be false).
-  bool invokable_ = false;
-
   // Array of indices representing the tensors that are inputs to the
   // interpreter.
   std::vector<int> inputs_;
@@ -431,7 +516,7 @@ class Interpreter {
   // During Invoke(), Interpreter will allocate input tensors first, which are
   // known to be fixed size. Then it will allocate outputs from nodes as many
   // as possible. When there is a node that produces dynamic sized tensor.
-  // Intepreter will stop allocating tensors, set the value of next allocate
+  // Interpreter will stop allocating tensors, set the value of next allocate
   // node id, and execute the node to generate the output tensor before continue
   // to allocate successors. This process repeats until all nodes are executed.
   // NOTE: this relies on the order of nodes that is in topological order.
@@ -453,10 +538,10 @@ class Interpreter {
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
-  // WARNING: This is a deprecated interface and will be removed as soon as
-  // possible.  Please do not use it.
-  // TODO(impjdi): Remove this interface after resolving dependencies.
-  Model* model_ = nullptr;
+  bool allow_buffer_handle_output_ = false;
+
+  // Profiler for this interpreter instance.
+  profiling::Profiler* profiler_;
 };
 
 }  // namespace tflite

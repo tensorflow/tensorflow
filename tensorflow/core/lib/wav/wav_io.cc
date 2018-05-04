@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -81,13 +81,38 @@ inline float Int16SampleToFloat(int16 data) {
   return data * kMultiplier;
 }
 
+}  // namespace
+
+// Handles moving the data index forward, validating the arguments, and avoiding
+// overflow or underflow.
+Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+                       int* new_offset) {
+  if (old_offset < 0) {
+    return errors::InvalidArgument("Negative offsets are not allowed: ",
+                                   old_offset);
+  }
+  if (old_offset > max_size) {
+    return errors::InvalidArgument("Initial offset is outside data range: ",
+                                   old_offset);
+  }
+  *new_offset = old_offset + increment;
+  if (*new_offset > max_size) {
+    return errors::InvalidArgument("Data too short when trying to read string");
+  }
+  // See above for the check that the input offset is positive. If it's negative
+  // here then it means that there's been an overflow in the arithmetic.
+  if (*new_offset < 0) {
+    return errors::InvalidArgument("Offset too large, overflowed: ",
+                                   *new_offset);
+  }
+  return Status::OK();
+}
+
 Status ExpectText(const string& data, const string& expected_text,
                   int* offset) {
-  const int new_offset = *offset + expected_text.size();
-  if (new_offset > data.size()) {
-    return errors::InvalidArgument("Data too short when trying to read ",
-                                   expected_text);
-  }
+  int new_offset;
+  TF_RETURN_IF_ERROR(
+      IncrementOffset(*offset, expected_text.size(), data.size(), &new_offset));
   const string found_text(data.begin() + *offset, data.begin() + new_offset);
   if (found_text != expected_text) {
     return errors::InvalidArgument("Header mismatch: Expected ", expected_text,
@@ -97,39 +122,15 @@ Status ExpectText(const string& data, const string& expected_text,
   return Status::OK();
 }
 
-template <class T>
-Status ReadValue(const string& data, T* value, int* offset) {
-  const int new_offset = *offset + sizeof(T);
-  if (new_offset > data.size()) {
-    return errors::InvalidArgument("Data too short when trying to read value");
-  }
-  if (port::kLittleEndian) {
-    memcpy(value, data.data() + *offset, sizeof(T));
-  } else {
-    *value = 0;
-    const uint8* data_buf =
-        reinterpret_cast<const uint8*>(data.data() + *offset);
-    int shift = 0;
-    for (int i = 0; i < sizeof(T); ++i, shift += 8) {
-      *value = *value | (data_buf[i] << shift);
-    }
-  }
-  *offset = new_offset;
-  return Status::OK();
-}
-
 Status ReadString(const string& data, int expected_length, string* value,
                   int* offset) {
-  const int new_offset = *offset + expected_length;
-  if (new_offset > data.size()) {
-    return errors::InvalidArgument("Data too short when trying to read string");
-  }
+  int new_offset;
+  TF_RETURN_IF_ERROR(
+      IncrementOffset(*offset, expected_length, data.size(), &new_offset));
   *value = string(data.begin() + *offset, data.begin() + new_offset);
   *offset = new_offset;
   return Status::OK();
 }
-
-}  // namespace
 
 Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                              size_t num_channels, size_t num_frames,
@@ -272,6 +273,11 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
     TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &chunk_id, &offset));
     uint32 chunk_size;
     TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &chunk_size, &offset));
+    if (chunk_size > std::numeric_limits<int32>::max()) {
+      return errors::InvalidArgument(
+          "WAV data chunk '", chunk_id, "' is too large: ", chunk_size,
+          " bytes, but the limit is ", std::numeric_limits<int32>::max());
+    }
     if (chunk_id == kDataChunkId) {
       if (was_data_found) {
         return errors::InvalidArgument("More than one data chunk found in WAV");
@@ -279,6 +285,12 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
       was_data_found = true;
       *sample_count = chunk_size / bytes_per_sample;
       const uint32 data_count = *sample_count * *channel_count;
+      int unused_new_offset = 0;
+      // Validate that the data exists before allocating space for it
+      // (prevent easy OOM errors).
+      TF_RETURN_IF_ERROR(IncrementOffset(offset, sizeof(int16) * data_count,
+                                         wav_string.size(),
+                                         &unused_new_offset));
       float_values->resize(data_count);
       for (int i = 0; i < data_count; ++i) {
         int16 single_channel_value = 0;

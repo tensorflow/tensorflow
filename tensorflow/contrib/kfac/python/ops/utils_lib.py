@@ -40,6 +40,9 @@ _allowed_symbols = [
     "fwd_gradients",
     "ensure_sequence",
     "batch_execute",
+    "extract_convolution_patches",
+    "extract_pointwise_conv2d_patches",
+    "is_data_format_channel_last",
     "matmul_sparse_dense",
     "matmul_diag_sparse",
 ]

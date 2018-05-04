@@ -53,7 +53,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
                            RelocationModel relocation_model);
   ~CpuAotCompilationOptions() override;
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
   // The triple used for compilation, similar to clang's -target flag.
   const string& triple() const { return triple_; }
@@ -76,9 +76,15 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
-  CpuAotCompilationResult(ObjectFileData object_file_data,
-                          BufferSizes buffer_sizes, int64 result_buffer_index);
+  CpuAotCompilationResult(
+      ObjectFileData object_file_data, BufferSizes buffer_sizes,
+      int64 result_buffer_index,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
+
+  HloProfilePrinterData* hlo_profile_printer_data() const {
+    return hlo_profile_printer_data_.get();
+  }
 
   const ObjectFileData& object_file_data() const { return object_file_data_; }
   const BufferSizes& buffer_sizes() const { return buffer_sizes_; }
@@ -97,6 +103,10 @@ class CpuAotCompilationResult : public AotCompilationResult {
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
   const int64 result_buffer_index_;
+
+  // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
+  // otherwise is nullptr.
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
 };
 
 // CPU-targeting implementation of the XLA Compiler interface.
@@ -112,25 +122,23 @@ class CpuCompiler : public LLVMCompiler {
   // Bring in
   // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
   //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+  //     std::vector<std::vector<se::StreamExecutor*>>
   //        stream_execs)
   using LLVMCompiler::Compile;
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec,
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                      const AotCompilationOptions& options) override;
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 

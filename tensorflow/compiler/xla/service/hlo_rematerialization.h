@@ -66,12 +66,12 @@ class HloRematerialization {
   // code generation.
   static StatusOr<bool> RematerializeAndSchedule(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
-      HloModule* hlo_module, SchedulerAlgorithm scheduler_algorithm,
+      HloModule* hlo_module, MemorySchedulerAlgorithm scheduler_algorithm,
       SequentialHloOrdering::HloModuleSequence* sequence,
       RematerializationSizes* sizes = nullptr);
 
  protected:
-  HloRematerialization(SchedulerAlgorithm scheduler_algorithm,
+  HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
                        const ShapeSizeFunction& size_function)
       : scheduler_algorithm_(scheduler_algorithm),
         size_function_(size_function) {}
@@ -108,7 +108,7 @@ class HloRematerialization {
       const HloInstruction* instruction) const;
 
   // Selects an algorithm to use for HLO scheduling.
-  SchedulerAlgorithm scheduler_algorithm_;
+  MemorySchedulerAlgorithm scheduler_algorithm_;
 
   // Function which computes the size of the top-level buffer of a shape.
   const ShapeSizeFunction size_function_;

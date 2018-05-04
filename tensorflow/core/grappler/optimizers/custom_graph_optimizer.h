@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CUSTOM_GRAPH_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_CUSTOM_GRAPH_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CUSTOM_GRAPH_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CUSTOM_GRAPH_OPTIMIZER_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -26,10 +27,11 @@ namespace grappler {
 class CustomGraphOptimizer : public GraphOptimizer {
  public:
   virtual ~CustomGraphOptimizer() {}
-  virtual Status Init() = 0;
+  virtual Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
+                          config = nullptr) = 0;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_CUSTOM_GRAPH_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CUSTOM_GRAPH_OPTIMIZER_H_

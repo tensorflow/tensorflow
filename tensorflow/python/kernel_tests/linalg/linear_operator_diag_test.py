@@ -34,7 +34,8 @@ class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
+  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+    shape = list(build_info.shape)
     diag = linear_operator_test_util.random_sign_uniform(
         shape[:-1], minval=1., maxval=2., dtype=dtype)
     if use_placeholder:

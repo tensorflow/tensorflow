@@ -121,6 +121,8 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle) {
+  VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
+          << " (this: " << this << ")";
   WorkerInterface* wi =
       worker_session_->worker_cache->CreateWorker(options.target);
 
@@ -143,6 +145,7 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
 
   RegisterGraphRequest req;
   req.set_session_handle(worker_session_->session_name);
+  req.set_create_worker_session_called(create_worker_session_called_);
   *req.mutable_graph_def() = gdef;
   req.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -154,6 +157,9 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   *handle = function_data_.size();
   function_data_.push_back(FunctionData(resp.graph_handle(), options.target, wi,
                                         send_keys, recv_keys));
+  VLOG(1) << "CFLR::Instantiate: [Success] " << function_name << " on "
+          << options.target << " (this: " << this << ")"
+          << " with handle: " << *handle;
   return Status::OK();
 }
 
@@ -177,6 +183,7 @@ void ClusterFunctionLibraryRuntime::Run(
 
   RunGraphRequest* req = new RunGraphRequest;
   req->set_session_handle(worker_session_->session_name);
+  req->set_create_worker_session_called(create_worker_session_called_);
   req->set_graph_handle(function_data->graph_handle);
   // Borrowed from master_session.cc
   const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);

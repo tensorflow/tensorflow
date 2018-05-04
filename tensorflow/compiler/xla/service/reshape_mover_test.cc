@@ -458,57 +458,6 @@ TEST_F(ReshapeMoverTest, ScalarReshapeNotMovedAcrossSelect) {
   EXPECT_EQ(select, computation->root_instruction());
 }
 
-// Tree looks like:
-//
-// param0 [1,128,1]
-//  |
-// reshape [128,1]          constant [128,1024]
-//   \                         /
-//     multiply w/implicit broadcast [128,1024]
-//
-// The reshape mover would like to sink the reshape below the multiply.
-//
-// Previously we would attempt to insert a reshape of the constant to [1,128,1]
-// (which is unsound, because it has a different number of elements) as
-// preparation for sinking the reshape.
-//
-// To eliminate the unsoundness, we outlaw reshape sinking when one of the
-// operands is implicitly broadcast in the elementwise consumer.
-//
-// TODO(b/37799338) However, it would be possible in this case to do a more
-// in-depth analysis to get reshape movement to occur:
-//
-// 1. Note that the broadcast dimension (logical dimension 1) in the operands
-//    would map back to logical dimension 2 in the param0 node.
-// 2. Match rank of the constant to the param0 node (by prepending a trivial 1
-//    dimension).
-// 3. Reshape to [128,1024] at the root.
-//
-// But this is not currently done.
-TEST_F(ReshapeMoverTest, ImplicitlyBroadcastReshapeIsNotMovedBug37787999) {
-  HloComputation::Builder builder(TestName());
-  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {1, 128, 1}), "param0"));
-  auto reshape = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(F32, {128, 1}), param0));
-  Array2D<float> a(128, 1024);
-  auto literal = Literal::CreateR2FromArray2D<float>(a);
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(std::move(literal)));
-  auto multiply = builder.AddInstruction(HloInstruction::CreateBinary(
-      constant->shape(), HloOpcode::kMultiply, constant, reshape));
-
-  auto computation = module().AddEntryComputation(builder.Build());
-  EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Constant(), op::Reshape(param0)));
-
-  EXPECT_FALSE(ReshapeMover().Run(&module()).ValueOrDie());
-
-  EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Constant(), op::Reshape(param0)));
-  EXPECT_EQ(multiply, computation->root_instruction());
-}
-
 // Tree looks like this:
 //
 // add1
@@ -558,6 +507,96 @@ TEST_F(ReshapeMoverTest, MultiplePasses) {
   EXPECT_THAT(
       computation->root_instruction(),
       op::Reshape(op::Add(param2, op::Reshape(op::Add(param0, param1)))));
+}
+
+TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
+  const string hlo_string = R"(
+    HloModule TransposeMulInversedTransposeModule
+    ENTRY TransposeMulInversedTranspose {
+      src0 = f32[20,8]{1,0} parameter(0)
+      transpose0 = f32[8,20]{1,0} transpose(src0), dimensions={1,0}
+      src1 = f32[] parameter(1)
+      broadcast0 = f32[8,20]{1,0} broadcast(src1), dimensions={}
+      ROOT multiply0 = f32[8,20]{1,0} multiply(transpose0, broadcast0)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(module().entry_computation()->root_instruction(),
+              op::Transpose(op::Multiply()));
+}
+
+TEST_F(ReshapeMoverTest, ReshapeWithUsersOutsideCandidatesNotSink) {
+  const string hlo_string = R"(
+    HloModule ReshapeWithUsersOutsideCandidates
+    ENTRY ReshapeWithMultipleUsers {
+      param0 = f32[20,8]{1,0} parameter(0)
+      reshape0 = f32[8,20]{1,0} reshape(param0)
+      param1 = f32[] parameter(1)
+      broadcast0 = f32[8,20]{1,0} broadcast(param1), dimensions={}
+      param2 = f32[20,8]{1,0} parameter(2)
+      reshape1 = f32[8,20]{1,0} reshape(param2)
+      param3 = f32[20,8]{1,0} parameter(3)
+      reshape2 = f32[8,20]{1,0} reshape(param3)
+      param4 = f32[8,20]{1,0} parameter(4)
+      add0 = f32[8,20]{1,0} add(reshape0, broadcast0)
+      add1 = f32[8,20]{1,0} add(reshape0, reshape1)
+      add2 = f32[8,20]{1,0} add(reshape1, param4)
+      ROOT tuple = (f32[8,20]{1,0},f32[8,20]{1,0},
+        f32[8,20]{1,0}) tuple(add0, add1, add2)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink1) {
+  const string hlo_string = R"(
+    HloModule ReshapeNoUsersOutsideCandidates1
+    ENTRY ReshapeWithMultipleUsers1 {
+      param0 = f32[20,8]{1,0} parameter(0)
+      reshape0 = f32[8,20]{1,0} reshape(param0)
+      param1 = f32[] parameter(1)
+      broadcast0 = f32[8,20]{1,0} broadcast(param1), dimensions={}
+      param2 = f32[20,8]{1,0} parameter(2)
+      reshape1 = f32[8,20]{1,0} reshape(param2)
+      param3 = f32[20,8]{1,0} parameter(3)
+      reshape2 = f32[8,20]{1,0} reshape(param3)
+      add0 = f32[8,20]{1,0} add(reshape0, broadcast0)
+      add1 = f32[8,20]{1,0} add(reshape0, reshape1)
+      add2 = f32[8,20]{1,0} add(reshape1, reshape2)
+      ROOT tuple = (f32[8,20]{1,0},f32[8,20]{1,0},
+        f32[8,20]{1,0}) tuple(add0, add1, add2)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module().entry_computation()->root_instruction(),
+              op::Tuple(op::Reshape(), op::Reshape(), op::Reshape()));
+}
+
+TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink2) {
+  const string hlo_string = R"(
+    HloModule ReshapeNoUsersOutsideCandidates2
+    ENTRY ReshapeWithMultipleUsers2 {
+      param0 = f32[20,8]{1,0} parameter(0)
+      reshape0 = f32[8,20]{1,0} reshape(param0)
+      ROOT add0 = f32[8,20]{1,0} add(reshape0, reshape0)
+    }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ReshapeMover().Run(&module()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module().entry_computation()->root_instruction(),
+              op::Reshape(op::Add()));
 }
 
 }  // namespace

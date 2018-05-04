@@ -34,7 +34,7 @@ limitations under the License.
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/CodeGen/CommandFlags.def"
+#include "llvm/CodeGen/CommandFlags.inc"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -491,7 +491,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
-    tensorflow::port::Tracing::TraceMe annotation(
+    tensorflow::tracing::ScopedActivity activity(
         "Compiling IR", llvm_ir::AsString(module->getName()),
         /*is_expensive=*/true);
     XLA_SCOPED_LOGGING_TIMER("Compile module " +

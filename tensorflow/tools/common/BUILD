@@ -44,14 +44,3 @@ py_test(
         "//tensorflow/python:platform_test",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-)

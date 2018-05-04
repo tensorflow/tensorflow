@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/kernels/eigen_support.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/cblas_conv.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/multithreaded_conv.h"
@@ -43,6 +44,8 @@ namespace conv {
 enum KernelType {
   kReference,
   kGenericOptimized,  // Neon-free
+  // kMultithreadOptimized is a mixture of an Eigen-based kernel when threads
+  // are available and kGenericOptimized when we must use only one thread.
   kMultithreadOptimized,
   // The kernel uses use CBLAS interface for matrix multiplication.
   // It's fast when an optimized CBLAS implementation is available (e.g. Apple
@@ -61,7 +64,7 @@ struct OpData {
 
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
-  // be represented as a fixed point multipler plus a left shift.
+  // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
   int output_shift;
   // The range of the fused activation layer. For example for kNone and
@@ -75,6 +78,8 @@ struct OpData {
   bool need_hwcn_weights;
   bool have_weights_been_transposed;
   bool need_im2col;
+
+  bool run_multithreaded_kernel;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -83,10 +88,12 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // to carry information from Prepare() to Eval().
   auto* data = new OpData;
   gemm_support::IncrementUsageCounter(context);
+  eigen_support::IncrementUsageCounter(context);
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
+  eigen_support::DecrementUsageCounter(context);
   gemm_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
@@ -137,7 +144,8 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   // buffer to store the results.
   // This path is only used for float processing, so only create the buffer if
   // we're running with that data type.
-  data->need_hwcn_weights = (input->type == kTfLiteFloat32);
+  data->need_hwcn_weights =
+      (input->type == kTfLiteFloat32 && data->run_multithreaded_kernel);
 
   int temporaries_count = 0;
   if (data->need_im2col) {
@@ -164,6 +172,8 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  data->run_multithreaded_kernel = context->recommended_num_threads != 1;
 
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, node));
 
@@ -215,22 +225,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
-  auto computeOutSize = [padding](int imageSize, int filterSize,
-                                  int stride) -> int {
+  auto computeOutSize = [padding](int imageSize, int filterSize, int stride,
+                                  int dilationRate) -> int {
+    int effectiveFilterSize = (filterSize - 1) * dilationRate + 1;
     return padding == kTfLitePaddingSame
                ? (imageSize + stride - 1) / stride
                : padding == kTfLitePaddingValid
-                     ? (imageSize - filterSize + stride) / stride
+                     ? (imageSize - effectiveFilterSize + stride) / stride
                      : 0;
   };
 
-  int outWidth = computeOutSize(width, filter_width, params->stride_width);
-  int outHeight = computeOutSize(height, filter_height, params->stride_height);
+  int outWidth = computeOutSize(width, filter_width, params->stride_width,
+                                params->dilation_width_factor);
+  int outHeight = computeOutSize(height, filter_height, params->stride_height,
+                                 params->dilation_height_factor);
 
   data->padding.height =
-      ComputePadding(params->stride_height, height, filter_height, outHeight);
+      ComputePadding(params->stride_height, params->dilation_height_factor,
+                     height, filter_height, outHeight);
   data->padding.width =
-      ComputePadding(params->stride_width, width, filter_width, outWidth);
+      ComputePadding(params->stride_width, params->dilation_width_factor, width,
+                     filter_width, outWidth);
 
   TF_LITE_ENSURE(context, hasBias);
 
@@ -365,28 +380,40 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
                                 &output_activation_max);
-
-  switch (kernel_type) {
+  KernelType effective_kernel_type;
+  if (((kernel_type == kMultithreadOptimized) ||
+       (kernel_type == kCblasOptimized)) &&
+      ((params->dilation_width_factor != 1) ||
+       (params->dilation_height_factor != 1))) {
+    // kMultithreadOptimized and kCblasOptimized do not support dilation.
+    // Therefore, fallback to optimized.
+    effective_kernel_type = kGenericOptimized;
+  } else {
+    effective_kernel_type = kernel_type;
+  }
+  switch (effective_kernel_type) {
     case kReference: {
-      reference_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
-                          GetTensorData<float>(filter), GetTensorDims(filter),
-                          GetTensorData<float>(bias), GetTensorDims(bias),
-                          params->stride_width, params->stride_height, 1, 1,
-                          data->padding.width, data->padding.height,
-                          output_activation_min, output_activation_max,
-                          GetTensorData<float>(output), GetTensorDims(output),
-                          GetTensorData<float>(im2col), GetTensorDims(im2col));
+      reference_ops::Conv(
+          GetTensorData<float>(input), GetTensorDims(input),
+          GetTensorData<float>(filter), GetTensorDims(filter),
+          GetTensorData<float>(bias), GetTensorDims(bias), params->stride_width,
+          params->stride_height, params->dilation_width_factor,
+          params->dilation_height_factor, data->padding.width,
+          data->padding.height, output_activation_min, output_activation_max,
+          GetTensorData<float>(output), GetTensorDims(output),
+          GetTensorData<float>(im2col), GetTensorDims(im2col));
       break;
     }
     case kGenericOptimized: {
-      optimized_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
-                          GetTensorData<float>(filter), GetTensorDims(filter),
-                          GetTensorData<float>(bias), GetTensorDims(bias),
-                          params->stride_width, params->stride_height, 1, 1,
-                          data->padding.width, data->padding.height,
-                          output_activation_min, output_activation_max,
-                          GetTensorData<float>(output), GetTensorDims(output),
-                          GetTensorData<float>(im2col), GetTensorDims(im2col));
+      optimized_ops::Conv(
+          GetTensorData<float>(input), GetTensorDims(input),
+          GetTensorData<float>(filter), GetTensorDims(filter),
+          GetTensorData<float>(bias), GetTensorDims(bias), params->stride_width,
+          params->stride_height, params->dilation_width_factor,
+          params->dilation_height_factor, data->padding.width,
+          data->padding.height, output_activation_min, output_activation_max,
+          GetTensorData<float>(output), GetTensorDims(output),
+          GetTensorData<float>(im2col), GetTensorDims(im2col));
       break;
     }
     case kMultithreadOptimized: {
@@ -449,8 +476,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // separate ops to avoid dispatch overhead here.
   switch (input->type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
-      EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
-                             im2col, hwcn_weights, output);
+      if (data->run_multithreaded_kernel) {
+        EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
+                               im2col, hwcn_weights, output);
+      } else {
+        EvalFloat<kGenericOptimized>(context, node, params, data, input, filter,
+                                     bias, im2col, hwcn_weights, output);
+      }
       break;
     case kTfLiteUInt8:
       EvalQuantized<kernel_type>(context, node, params, data, input, filter,

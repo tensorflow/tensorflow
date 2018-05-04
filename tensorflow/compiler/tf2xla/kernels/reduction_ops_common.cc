@@ -24,25 +24,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
+                               DataType reduction_type)
+    : XlaOpKernel(ctx), reduction_type_(reduction_type) {
   const DataType dt = BaseType(input_type(0));
   OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, DT_INT32}, {dt}));
 
   OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
 }
 
-// Return the base case for the reduction. Defaults to zero.
-xla::ComputationDataHandle XlaReductionOp::InitialValue(
-    xla::ComputationBuilder* builder) {
-  return XlaHelpers::Zero(builder, input_type(0));
-}
-
 // Unless BuildFinalizer is overridden the reduction has no
 // finalizer.
-xla::ComputationDataHandle XlaReductionOp::BuildFinalizer(
-    xla::ComputationBuilder* builder,
-    const xla::ComputationDataHandle& reduce_output,
-    int64 num_elements_reduced) {
+xla::XlaOp XlaReductionOp::BuildFinalizer(xla::XlaBuilder* builder,
+                                          const xla::XlaOp& reduce_output,
+                                          int64 num_elements_reduced) {
   return reduce_output;
 }
 
@@ -100,36 +95,26 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   string desc = ctx->op_kernel().name();
 
-  // Call virtual method to get the initial value.
-  const xla::ComputationDataHandle initial = InitialValue(ctx->builder());
+  xla::XlaBuilder* const b = ctx->builder();
   // Construct the builder for the reduction lambda.
-  xla::ComputationBuilder r(ctx->builder()->client(),
-                            strings::StrCat(desc, "-reduction"));
+  xla::XlaBuilder r(strings::StrCat(desc, "-reduction"));
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
+  TF_CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
+
+  auto data = b->ConvertElementType(ctx->Input(0), type);
+  // Call virtual method to get the initial value.
+  auto initial = b->ConvertElementType(InitialValue(b), type);
   // Make two scalar parameters of the desired type for the lambda.
-  xla::ComputationDataHandle rx =
-      r.Parameter(0, xla::ShapeUtil::MakeShape(type, {}), "x");
-  xla::ComputationDataHandle ry =
-      r.Parameter(1, xla::ShapeUtil::MakeShape(type, {}), "y");
-
-  auto data = ctx->Input(0);
-
+  auto rx = r.Parameter(0, xla::ShapeUtil::MakeShape(type, {}), "x");
+  auto ry = r.Parameter(1, xla::ShapeUtil::MakeShape(type, {}), "y");
   // Call virtual method to build the reduction lambda.
   BuildReducer(&r, rx, ry);
-  xla::Computation reduction_computation = r.Build().ConsumeValueOrDie();
-  xla::ComputationDataHandle reduce =
-      ctx->builder()->Reduce(data, initial, reduction_computation, xla_axes);
+  xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
 
-  xla::ComputationDataHandle finalized =
-      BuildFinalizer(ctx->builder(), reduce, num_elements_reduced);
-
-  xla::ComputationDataHandle result;
-  if (keep_dims_) {
-    result = ctx->builder()->Reshape(finalized, final_shape);
-  } else {
-    result = finalized;
-  }
+  auto reduce = b->Reduce(data, initial, reduction_computation, xla_axes);
+  auto deconverted = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
+  auto finalized = BuildFinalizer(b, deconverted, num_elements_reduced);
+  auto result = keep_dims_ ? b->Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);
 }
 

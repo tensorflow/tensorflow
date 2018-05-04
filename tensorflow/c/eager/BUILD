@@ -27,6 +27,13 @@ tf_cuda_library(
             ":runtime",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:eager_executor",
+            "//tensorflow/core/common_runtime/eager:execute",
+            "//tensorflow/core/common_runtime/eager:kernel_and_device",
+            "//tensorflow/core/common_runtime/eager:tensor_handle",
+            "//tensorflow/core/common_runtime/eager:copy_to_device_node",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -41,6 +48,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }) + [
+        "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -54,11 +62,18 @@ tf_cuda_library(
         ":runtime",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:kernel_and_device",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
 
@@ -93,6 +108,7 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/c:c_api",
             "//tensorflow/core:core_cpu",
+            "//tensorflow/core/common_runtime/eager:kernel_and_device",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",

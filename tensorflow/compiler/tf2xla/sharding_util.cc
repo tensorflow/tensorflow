@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -65,8 +66,8 @@ ParseShardingFromDevice(
   if (explicit_sharding.has_value()) {
     return explicit_sharding;
   } else if (!parsed_device.has_type || !parsed_device.has_id ||
-             !StringPiece(parsed_device.type)
-                  .contains(kDeviceSuffixReplicatedCore)) {
+             !str_util::StrContains(parsed_device.type,
+                                    kDeviceSuffixReplicatedCore)) {
     return tensorflow::gtl::optional<xla::OpSharding>();
   } else {
     const int core = parsed_device.id;

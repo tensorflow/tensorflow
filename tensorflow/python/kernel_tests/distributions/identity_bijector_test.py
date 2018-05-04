@@ -27,14 +27,19 @@ class IdentityBijectorTest(test.TestCase):
   """Tests correctness of the Y = g(X) = X transformation."""
 
   def testBijector(self):
-    with self.test_session():
-      bijector = identity_bijector.Identity()
-      self.assertEqual("identity", bijector.name)
-      x = [[[0.], [1.]]]
-      self.assertAllEqual(x, bijector.forward(x).eval())
-      self.assertAllEqual(x, bijector.inverse(x).eval())
-      self.assertAllEqual(0., bijector.inverse_log_det_jacobian(x).eval())
-      self.assertAllEqual(0., bijector.forward_log_det_jacobian(x).eval())
+    bijector = identity_bijector.Identity(validate_args=True)
+    self.assertEqual("identity", bijector.name)
+    x = [[[0.], [1.]]]
+    self.assertAllEqual(x, self.evaluate(bijector.forward(x)))
+    self.assertAllEqual(x, self.evaluate(bijector.inverse(x)))
+    self.assertAllEqual(
+        0.,
+        self.evaluate(
+            bijector.inverse_log_det_jacobian(x, event_ndims=3)))
+    self.assertAllEqual(
+        0.,
+        self.evaluate(
+            bijector.forward_log_det_jacobian(x, event_ndims=3)))
 
   def testScalarCongruency(self):
     with self.test_session():

@@ -33,7 +33,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import ftrl
-from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -157,17 +156,11 @@ def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
         units=head.logits_dimension, feature_columns=feature_columns)
     logits = logit_fn(features=features)
 
-    def _train_op_fn(loss):
-      """Returns the op to optimize the loss."""
-      return optimizer.minimize(
-          loss,
-          global_step=training_util.get_global_step())
-
     return head.create_estimator_spec(
         features=features,
         mode=mode,
         labels=labels,
-        train_op_fn=_train_op_fn,
+        optimizer=optimizer,
         logits=logits)
 
 

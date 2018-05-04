@@ -45,14 +45,13 @@ class AllocationTracker {
   // Registers a shaped buffer of device memory, and returns a corresponding
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
-  StatusOr<GlobalDataHandle> Register(
-      std::unique_ptr<ShapedBuffer> shaped_buffer, const string& tag);
+  StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
+                                      const string& tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
-      std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-      const string& tag);
+      std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag);
 
   // Unregister the allocation for the given data handle.
   Status Unregister(const GlobalDataHandle& data);
@@ -77,7 +76,7 @@ class AllocationTracker {
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    perftools::gputools::DeviceMemoryBase device_memory;
+    se::DeviceMemoryBase device_memory;
 
     // The device that the memory is allocated on.
     int device_ordinal;
@@ -88,28 +87,28 @@ class AllocationTracker {
   };
 
   // Internal helper which resolves the given GlobalDataHandle to a
-  // ShapedBuffer.
+  // list of ScopedShapedBuffers.
   StatusOr<std::vector<const ShapedBuffer*>> ResolveInternal(
       const GlobalDataHandle& data) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Internal helper which registers a vector of shaped buffers, one per
-  // replica.
+  // replica.  ShapedBufferTy is either ScopedShapedBuffer or ShapedBuffer.  If
+  // it's ShapedBuffer, all of the given buffers must already be tracked by this
+  // object -- presumably this is a call from DeconstructTuple.
+  template <typename ShapedBufferTy>
   StatusOr<GlobalDataHandle> RegisterInternal(
-      std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
-      const string& tag) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  // Resets the shaped buffers corresponding to the given handle.
-  Status Reset(const GlobalDataHandle& data) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      std::vector<ShapedBufferTy> replicated_buffers, const string& tag)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Adds the given device address to the allocation tracker, or if it already
-  // exists, then increment it's reference count.
-  void AddAllocationOrIncrementRefCount(
-      perftools::gputools::DeviceMemoryBase device_memory, int device_ordinal)
+  // exists, then increment its reference count.
+  void AddAllocationOrIncrementRefCount(se::DeviceMemoryBase device_memory,
+                                        int device_ordinal)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
-  Status DecrementRefCount(perftools::gputools::DeviceMemoryBase device_memory,
+  Status DecrementRefCount(se::DeviceMemoryBase device_memory,
                            int device_ordinal) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // A map from device memory opaque value to allocation. One such map is
@@ -132,6 +131,21 @@ class AllocationTracker {
 
   // A map from data handle to a vector of shaped buffers that represent the
   // buffers for different replicas.
+  //
+  // The ShapedBuffers in this map's vectors need to be unique_ptrs, because our
+  // public API returns pointers to them.  We expect the concrete class to be
+  // ShapedBuffer and never ScopedShapedBuffer; deallocation of buffers is
+  // handled by opaque_to_allocation_map_.
+  //
+  // The elements of the vectors need to be unique_ptrs because we return
+  // pointers to them.  (In theory we could use std::list or something instead,
+  // but we also want to be able to null out these elements.)
+  //
+  // The reason that the elements can't be unique_ptr<ScopedShapedBuffer>s is
+  // the existence of DeconstructTuple().  This function allows us to create a
+  // non-owning "view" into a tuple's sub-buffers.  The sub-buffers are then
+  // free'd when both the view *and* the original tuple are Unregistered.  This
+  // refcounting is managed in opaque_to_allocation_map_.
   tensorflow::gtl::FlatMap<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
       handle_to_shaped_buffers_ GUARDED_BY(mutex_);
 

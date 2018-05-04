@@ -80,10 +80,9 @@ if [[ ! -z "${OPTIMIZE_FOR_GRAPH}" ]]; then
         fi
     else
         echo "${PRNT_SLCTV_BIN} found. Using it"
-        ${PRNT_SLCTV_BIN} --graphs=${OPTIMIZE_FOR_GRAPH} > ${TOP_SRCDIR}/tensorflow/core/framework/ops_to_register.h
-
     fi
 
+    ${PRNT_SLCTV_BIN} --graphs=${OPTIMIZE_FOR_GRAPH} > ${TOP_SRCDIR}/tensorflow/core/framework/ops_to_register.h
 fi
 
 if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
@@ -111,7 +110,7 @@ if [[ -z "${BUILD_ARCH}" ]]; then
     TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
 else
     # arch specified so build just that
-    TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios -a ${BUILD_ARCH}`
+    TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios -a "${BUILD_ARCH}"`
 fi
 export HOST_NSYNC_LIB TARGET_NSYNC_LIB
 

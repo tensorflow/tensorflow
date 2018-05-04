@@ -417,9 +417,18 @@ class SparseSplitHandler(InequalitySplitHandler):
     return (are_splits_ready, partition_ids, gains, split_infos)
 
 
-@function.Defun(dtypes.bool, dtypes.bool, dtypes.float32, dtypes.float32,
-                dtypes.int32, dtypes.float32, dtypes.float32, dtypes.float32,
-                dtypes.float32, dtypes.float32)
+@function.Defun(
+    dtypes.bool,
+    dtypes.bool,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.int32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    noinline=True)
 def dense_make_stats_update(is_active, are_buckets_ready, float_column,
                             quantile_buckets, example_partition_ids, gradients,
                             hessians, weights, empty_gradients, empty_hessians):
@@ -452,9 +461,20 @@ def dense_make_stats_update(is_active, are_buckets_ready, float_column,
           gradients, hessians)
 
 
-@function.Defun(dtypes.bool, dtypes.bool, dtypes.int64, dtypes.float32,
-                dtypes.int64, dtypes.float32, dtypes.int32, dtypes.float32,
-                dtypes.float32, dtypes.float32, dtypes.float32, dtypes.float32)
+@function.Defun(
+    dtypes.bool,
+    dtypes.bool,
+    dtypes.int64,
+    dtypes.float32,
+    dtypes.int64,
+    dtypes.float32,
+    dtypes.int32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    noinline=True)
 def sparse_make_stats_update(
     is_active, are_buckets_ready, sparse_column_indices, sparse_column_values,
     sparse_column_shape, quantile_buckets, example_partition_ids, gradients,

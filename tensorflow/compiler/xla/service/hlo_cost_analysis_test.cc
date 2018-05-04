@@ -186,12 +186,14 @@ TEST_F(HloCostAnalysisTest, Map) {
 TEST_F(HloCostAnalysisTest, Convolution) {
   ComputationBuilder builder(client_, "convolution");
   auto input = builder.Parameter(
-      0, ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
-                                    /*x_dim=*/20}),
+      0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
       "input");
   auto kernel = builder.Parameter(
-      1, ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
-                                    /*x_dim=*/3}),
+      1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
       "kernel");
   auto result = builder.Conv(input, kernel, {1, 1}, Padding::kValid);
 
@@ -368,8 +370,8 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
         HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract, mul, clamp));
     auto tuple = HloInstruction::CreateTuple({sub, sub, mul, c1});
 
-    HloModule module(TestName());
-    auto* computation = module.AddEntryComputation(builder.Build());
+    auto module = CreateNewModule();
+    auto* computation = module->AddEntryComputation(builder.Build());
     auto* fusion = computation->CreateFusionInstruction(
         {sub, mul, exp, clamp, add}, HloInstruction::FusionKind::kLoop);
 
@@ -410,8 +412,8 @@ TEST_F(FusionCostAnalysis, NoLayout) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       shape_with_layout, HloOpcode::kAdd, c1, broadcast));
 
-  HloModule module(TestName());
-  auto* computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
   auto* fusion = computation->CreateFusionInstruction(
       {add, broadcast}, HloInstruction::FusionKind::kLoop);
 
@@ -438,6 +440,33 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
   EXPECT_EQ(analysis.flop_count(), 0);
   EXPECT_EQ(analysis.transcendental_count(), 0);
   EXPECT_EQ(analysis.bytes_accessed(), kPointerSize * 2);
+}
+
+TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {
+  ComputationBuilder builder(client_, "BaseDilatedConvolution");
+  auto input = builder.Parameter(
+      0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
+      "input");
+  auto kernel = builder.Parameter(
+      1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
+      "kernel");
+
+  auto result = builder.ConvGeneralDilated(
+      input, kernel, /*window_strides=*/{1, 1}, /*padding=*/{{1, 1}, {1, 1}},
+      /*lhs_dilation=*/{3, 5}, /*rhs_dilation=*/{7, 11},
+      ComputationBuilder::CreateDefaultConvDimensionNumbers(2));
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.flop_count(), 1472);
 }
 
 }  // namespace

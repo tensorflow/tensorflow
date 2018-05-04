@@ -1,6 +1,9 @@
 index.md
 
+### Beginners
 eager.md
+get_started_for_beginners.md
+premade_estimators.md
 
 ### Estimators
 get_started_for_beginners.md: For Beginners

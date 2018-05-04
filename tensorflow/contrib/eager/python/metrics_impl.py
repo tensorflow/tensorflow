@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -29,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import checkpointable
 
@@ -109,6 +109,18 @@ class Metric(checkpointable.CheckpointableBase):
       pos = scope.name.rfind(scope_name)
       self._name = name + scope.name[pos + len(scope_name):]
       self._scope = scope
+
+    # Ensures that if the user calls build directly we still set self._built to
+    # True to prevent variables from being recreated.
+    self._build = self.build
+
+    def actual_build(*args, **kwargs):
+      self._build(*args, **kwargs)
+      self._built = True
+    self.build = actual_build
+    self.build.__doc__ = self._build.__doc__
+
+    # Captures construction scope for proper initialization.
     if context.executing_eagerly():
       self._construction_scope = context.eager_mode
     else:

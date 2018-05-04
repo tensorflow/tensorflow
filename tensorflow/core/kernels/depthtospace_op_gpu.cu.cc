@@ -158,6 +158,9 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NHWC> {
 
     const int total_count =
         batch_size * output_height * output_width * output_depth;
+    if (total_count == 0) {
+      return;
+    }
     CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
     D2S_NHWC<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
         config.virtual_thread_count, input.data(), block_size, batch_size,
@@ -188,6 +191,9 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       const int output_width = output.dimension(3);
       const int output_depth_by_input_area = output_depth * input_area;
       const int total_count = batch_size * output_depth_by_input_area;
+      if (total_count == 0) {
+        return;
+      }
       CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
       switch (block_size) {
         case 2:
@@ -213,6 +219,9 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
 
     // Other block sizes are processed by the generic kernel.
     const int total_count = batch_size * input_depth_by_input_area;
+    if (total_count == 0) {
+      return;
+    }
     auto config = GetCudaLaunchConfig(total_count, d);
     D2S_NCHW<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
         config.virtual_thread_count, input.data(), block_size, input_width,

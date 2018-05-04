@@ -473,6 +473,8 @@ _CODE_TO_EXCEPTION_CLASS = {
     DATA_LOSS: DataLossError,
 }
 
+c_api.PyExceptionRegistry_Init(_CODE_TO_EXCEPTION_CLASS)
+
 _EXCEPTION_CLASS_TO_CODE = dict((
     (class_, code) for (code, class_) in _CODE_TO_EXCEPTION_CLASS.items()))
 
@@ -499,6 +501,7 @@ def _make_specific_exception(node_def, op, message, error_code):
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
+# TODO(b/77295559): expand use of TF_Status* SWIG typemap and deprecate this.
 @tf_export("errors.raise_exception_on_not_ok_status")  # pylint: disable=invalid-name
 class raise_exception_on_not_ok_status(object):
   """Context manager to check for C API status."""

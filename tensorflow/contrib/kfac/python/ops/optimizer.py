@@ -50,8 +50,9 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
                name="KFAC",
                estimation_mode="gradients",
                colocate_gradients_with_ops=True,
-               cov_devices=None,
-               inv_devices=None):
+               batch_size=None,
+               placement_strategy=None,
+               **kwargs):
     """Initializes the KFAC optimizer with the given settings.
 
     Args:
@@ -65,7 +66,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           the local approximation with the Fisher information matrix, and to
           regularize the update direction by making it closer to the gradient.
           If damping is adapted during training then this value is used for
-          initializing damping varaible.
+          initializing damping variable.
           (Higher damping means the update looks more like a standard gradient
           update - see Tikhonov regularization.)
       layer_collection: The layer collection object, which holds the fisher
@@ -91,12 +92,13 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       colocate_gradients_with_ops: Whether we should request gradients we
           compute in the estimator be colocated with their respective ops.
           (Default: True)
-      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
-          computations will be placed on these devices in a round-robin fashion.
-          Can be None, which means that no devices are specified.
-      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
-          computations will be placed on these devices in a round-robin fashion.
-          Can be None, which means that no devices are specified.
+      batch_size: The size of the mini-batch. Only needed when momentum_type
+          == 'qmodel' or when automatic adjustment is used.  (Default: None)
+      placement_strategy: string, Device placement strategy used when creating
+        covariance variables, covariance ops, and inverse ops.
+        (Default: `None`)
+      **kwargs: Arguments to be passesd to specific placement
+        strategy mixin. Check `placement.RoundRobinPlacementMixin` for example.
 
     Raises:
       ValueError: If the momentum type is unsupported.
@@ -105,12 +107,14 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       ValueError: If momentum is non-zero and momentum_type is not 'regular'
           or 'adam'.
     """
+    # Parameters to be passed to the Fisher estimator:
+    self._variables = var_list or tf_variables.trainable_variables
+    self._cov_ema_decay = cov_ema_decay
+    self._layers = layer_collection
+    self._estimation_mode = estimation_mode
+    self._colocate_gradients_with_ops = colocate_gradients_with_ops
 
-    variables = var_list
-    if variables is None:
-      variables = tf_variables.trainable_variables()
-
-    # The below paramaters are required only if damping needs to be adapated.
+    # The below parameters are required only if damping needs to be adapated.
     # These parameters can be set by calling
     # set_damping_adaptation_params() explicitly.
     self._damping_adaptation_decay = 0.95
@@ -130,17 +134,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     self._q_model_change = None
     self._update_damping_op = None
 
-    self._layers = layer_collection
-    self._fisher_est = est.FisherEstimator(
-        lambda: self.damping,
-        variables,
-        cov_ema_decay,
-        layer_collection,
-        estimation_mode=estimation_mode,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
-        cov_devices=cov_devices,
-        inv_devices=inv_devices)
-
     momentum_type = momentum_type.lower()
     legal_momentum_types = ["regular", "adam", "qmodel"]
 
@@ -148,20 +141,30 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       raise ValueError("Unsupported momentum type {}. Must be one of {}."
                        .format(momentum_type, legal_momentum_types))
     if momentum_type != "regular" and norm_constraint is not None:
-      raise ValueError("Update clipping is only supported with momentum"
+      raise ValueError("Update clipping is only supported with momentum "
                        "type 'regular'.")
     if momentum_type not in ["regular", "adam"] and momentum != 0:
       raise ValueError("Momentum must be unspecified if using a momentum_type "
                        "other than 'regular' or 'adam'.")
 
+    # Extra parameters of the optimizer
     self._momentum = momentum
     self._momentum_type = momentum_type
     self._norm_constraint = norm_constraint
+    self._batch_size = batch_size
+    self._placement_strategy = placement_strategy
 
-    # this is a bit of a hack
-    # TODO(duckworthd): Handle this in a better way (e.g. pass it in?)
-    self._batch_size = array_ops.shape(layer_collection.losses[0].inputs)[0]
-    self._losses = layer_collection.losses
+    with variable_scope.variable_scope(name):
+      self._fisher_est = est.make_fisher_estimator(
+          placement_strategy=placement_strategy,
+          variables=self._variables,
+          cov_ema_decay=self._cov_ema_decay,
+          damping=self.damping,
+          layer_collection=self._layers,
+          exps=(-1,),
+          estimation_mode=self._estimation_mode,
+          colocate_gradients_with_ops=self._colocate_gradients_with_ops,
+          **kwargs)
 
     super(KfacOptimizer, self).__init__(learning_rate, name=name)
 
@@ -178,6 +181,10 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     style rule described in Section 6.5 of "Optimizing Neural Networks with
     Kronecker-factored Approximate Curvature".
 
+    Note that this function creates Tensorflow variables which store a few
+    scalars and are accessed by the ops which update the damping (as part
+    of the training op returned by the minimize() method).
+
     Args:
       is_chief: `Boolean`, `True` if the worker is chief.
       prev_train_batch: Training data used to minimize loss in the previous
@@ -188,7 +195,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       min_damping: `float`(Optional), Minimum value the damping parameter
         can take. Default value 1e-5.
       damping_adaptation_decay: `float`(Optional), The `damping` parameter is
-        multipled by the `damping_adaptation_decay` every
+        multiplied by the `damping_adaptation_decay` every
         `damping_adaptation_interval` number of iterations. Default value 0.99.
       damping_adaptation_interval: `int`(Optional), Number of steps in between
         updating the `damping` parameter. Default value 5.
@@ -199,6 +206,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     """
     if self._adapt_damping:
       raise ValueError("Damping adaptation parameters already set.")
+
     with variable_scope.variable_scope(self.get_name()):
       self._adapt_damping = True
       self._is_chief = is_chief
@@ -220,30 +228,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           "damping", initializer=self._damping_constant, trainable=False)
 
   @property
-  def cov_update_thunks(self):
-    return self._fisher_est.cov_update_thunks
-
-  @property
-  def cov_update_ops(self):
-    return self._fisher_est.cov_update_ops
-
-  @property
-  def cov_update_op(self):
-    return self._fisher_est.cov_update_op
-
-  @property
-  def inv_update_thunks(self):
-    return self._fisher_est.inv_update_thunks
-
-  @property
-  def inv_update_ops(self):
-    return self._fisher_est.inv_update_ops
-
-  @property
-  def inv_update_op(self):
-    return self._fisher_est.inv_update_op
-
-  @property
   def variables(self):
     return self._fisher_est.variables
 
@@ -258,25 +242,67 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
   def damping_adaptation_interval(self):
     return self._damping_adaptation_interval
 
+  def make_vars_and_create_op_thunks(self):
+    """Make vars and create op thunks.
+
+    Returns:
+      cov_update_thunks: List of cov update thunks. Corresponds one-to-one with
+        the list of factors given by the "factors" property.
+      inv_update_thunks: List of inv update thunks. Corresponds one-to-one with
+        the list of factors given by the "factors" property.
+    """
+    scope = self.get_name() + "/" + self._fisher_est.name
+    return self._fisher_est.make_vars_and_create_op_thunks(scope=scope)
+
+  def create_ops_and_vars_thunks(self):
+    """Create thunks that make the ops and vars on demand.
+
+    This function returns 4 lists of thunks: cov_variable_thunks,
+    cov_update_thunks, inv_variable_thunks, and inv_update_thunks.
+
+    The length of each list is the number of factors and the i-th element of
+    each list corresponds to the i-th factor (given by the "factors" property).
+
+    Note that the execution of these thunks must happen in a certain
+    partial order.  The i-th element of cov_variable_thunks must execute
+    before the i-th element of cov_update_thunks (and also the i-th element
+    of inv_update_thunks).  Similarly, the i-th element of inv_variable_thunks
+    must execute before the i-th element of inv_update_thunks.
+
+    TL;DR (oversimplified): Execute the thunks according to the order that
+    they are returned.
+
+    Returns:
+      cov_variable_thunks: A list of thunks that make the cov variables.
+      cov_update_thunks: A list of thunks that make the cov update ops.
+      inv_variable_thunks: A list of thunks that make the inv variables.
+      inv_update_thunks: A list of thunks that make the inv update ops.
+    """
+    scope = self.get_name() + "/" + self._fisher_est.name
+    return self._fisher_est.create_ops_and_vars_thunks(scope=scope)
+
   def minimize(self, *args, **kwargs):
-    kwargs["var_list"] = kwargs.get("var_list") or self.variables
-    if set(kwargs["var_list"]) != set(self.variables):
-      raise ValueError("var_list doesn't match with set of Fisher-estimating "
-                       "variables.")
-    if self._adapt_damping and self._is_chief:
-      global_step = kwargs.get("global_step", None)
-      if not global_step:
-        raise KeyError("global_step needs to be passed to optimizer.minimize "
-                       "if damping parameter is adapted.")
-      update_damping_op = self._update_damping(self._prev_train_batch,
-                                               global_step)
-      with ops.control_dependencies([update_damping_op]):
-        loss = args[0]
-        loss_assign_op = state_ops.assign(self._prev_loss, loss)
-        train_op = super(KfacOptimizer, self).minimize(*args, **kwargs)
-        return control_flow_ops.group(loss_assign_op, train_op)
-    else:
-      return super(KfacOptimizer, self).minimize(*args, **kwargs)
+    # Should this variable scope encompass everything below?  Or will the super-
+    # class make another copy of the same name scope?
+    with variable_scope.variable_scope(self.get_name()):
+      kwargs["var_list"] = kwargs.get("var_list") or self.variables
+      if set(kwargs["var_list"]) != set(self.variables):
+        raise ValueError("var_list doesn't match with set of Fisher-estimating "
+                         "variables.")
+      if self._adapt_damping and self._is_chief:
+        global_step = kwargs.get("global_step", None)
+        if not global_step:
+          raise KeyError("global_step needs to be passed to optimizer.minimize "
+                         "if damping parameter is adapted.")
+        update_damping_op = self._update_damping(self._prev_train_batch,
+                                                 global_step)
+        with ops.control_dependencies([update_damping_op]):
+          loss = args[0]
+          loss_assign_op = state_ops.assign(self._prev_loss, loss)
+          train_op = super(KfacOptimizer, self).minimize(*args, **kwargs)
+          return control_flow_ops.group(loss_assign_op, train_op)
+      else:
+        return super(KfacOptimizer, self).minimize(*args, **kwargs)
 
   def compute_gradients(self, *args, **kwargs):
     # args[1] could be our var_list
@@ -285,6 +311,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     else:
       kwargs["var_list"] = kwargs.get("var_list") or self.variables
       var_list = kwargs["var_list"]
+
     if set(var_list) != set(self.variables):
       raise ValueError("var_list doesn't match with set of Fisher-estimating "
                        "variables.")
@@ -450,12 +477,12 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
                     = qmodel(alpha*precon_grad + mu*prev_update) - L(theta).
     """
 
-    cmvpc = cmvp.CurvatureMatrixVectorProductComputer(self._losses, variables)
+    cmvpc = cmvp.CurvatureMatrixVectorProductComputer(self._layers.losses,
+                                                      variables)
 
     # compute the matrix-vector products with the transposed Fisher factor
     fft_precon_grads = cmvpc.multiply_fisher_factor_transpose(precon_grads)
     fft_prev_updates = cmvpc.multiply_fisher_factor_transpose(prev_updates)
-
     batch_size = math_ops.cast(
         self._batch_size, dtype=fft_precon_grads[0].dtype)
 
@@ -639,7 +666,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     # Go through variable and update its associated part of the velocity vector.
     return [_update_velocity(vec, var) for vec, var in vecs_and_vars]
 
-  # TODO(b/73448937): Move all update damping code to a separate class/function.
   def _update_damping(self, prev_batch, global_step):
     """Adapts damping parameter. Check KFAC (Section 6.5) for the details.
 

@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -48,6 +49,12 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
       self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllEqual(x[0] * 6,
                           math_ops.accumulate_n([tf_x[0]] * 6).eval())
+
+  def testUnknownShape(self):
+    with self.test_session(use_gpu=True):
+      x0 = array_ops.placeholder(dtype=dtypes_lib.int32, shape=[None])
+      acc = math_ops.accumulate_n([x0, x0], shape=[None])
+      self.assertAllEqual([2, 4], acc.eval(feed_dict={x0: [1, 2]}))
 
   def testGrad(self):
     np.random.seed(42)

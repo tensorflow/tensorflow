@@ -398,7 +398,7 @@ TEST_F(FoldOldBatchNormsTest, TestFoldFusedBatchNorms) {
 }
 
 TEST_F(FoldOldBatchNormsTest, TestFoldFusedBatchNormsWithConcat) {
-  // Test axis is not 3, so all weigths and offsets are fused to each of inputs
+  // Test axis is not 3, so all weights and offsets are fused to each of inputs
   // of conv2d.
   TestFoldFusedBatchNormsWithConcat(/*split=*/true);
   // Test axis = 3, BatchNorm weights and offsets will be split before fused

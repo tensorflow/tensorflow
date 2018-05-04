@@ -52,20 +52,10 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

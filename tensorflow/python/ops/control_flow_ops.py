@@ -15,36 +15,6 @@
 """Control Flow Operations.
 
 See the @{$python/control_flow_ops} guide.
-
-@@identity
-@@identity_n
-@@tuple
-@@group
-@@no_op
-@@count_up_to
-@@cond
-@@case
-@@while_loop
-@@logical_and
-@@logical_not
-@@logical_or
-@@logical_xor
-@@equal
-@@not_equal
-@@less
-@@less_equal
-@@greater
-@@greater_equal
-@@where
-@@is_finite
-@@is_inf
-@@is_nan
-@@verify_tensor_all_finite
-@@check_numerics
-@@add_check_numerics_ops
-@@Assert
-@@Print
-@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -196,7 +166,7 @@ def _Identity(data, name=None):
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
-      return gen_array_ops._ref_identity(data, name=name)
+      return gen_array_ops.ref_identity(data, name=name)
     else:
       return array_ops.identity(data, name=name)
   else:
@@ -264,10 +234,10 @@ def _Enter(data,
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
-      result = gen_control_flow_ops._ref_enter(
+      result = gen_control_flow_ops.ref_enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     else:
-      result = gen_control_flow_ops._enter(
+      result = gen_control_flow_ops.enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     if use_input_shape:
       result.set_shape(data.get_shape())
@@ -282,7 +252,7 @@ def _Enter(data,
         parallel_iterations=parallel_iterations,
         use_input_shape=use_input_shape,
         name=name)
-    indices = gen_control_flow_ops._enter(
+    indices = gen_control_flow_ops.enter(
         data.indices,
         frame_name,
         is_constant,
@@ -293,7 +263,7 @@ def _Enter(data,
     if isinstance(data, ops.IndexedSlices):
       dense_shape = data.dense_shape
       if dense_shape is not None:
-        dense_shape = gen_control_flow_ops._enter(
+        dense_shape = gen_control_flow_ops.enter(
             dense_shape,
             frame_name,
             is_constant,
@@ -303,7 +273,7 @@ def _Enter(data,
           dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = gen_control_flow_ops._enter(
+      dense_shape = gen_control_flow_ops.enter(
           data.dense_shape,
           frame_name,
           is_constant,
@@ -609,27 +579,29 @@ def _EnforceShapeInvariant(merge_var, next_var):
   """Check if the shapes of the loops variables are invariants.
 
   Args:
-    merge_vars: The list of tensors representing the initial values of the
+    merge_var: The list of tensors representing the initial values of the
       loop variables.
-    next_vars: The list of tensors representing the values of the loop
+    next_var: The list of tensors representing the values of the loop
       variables after one loop iteration.
 
   Raises:
-    ValueError: If any tensor in `merge_vars` has a more specific shape than
+    ValueError: If any tensor in `merge_var` has a more specific shape than
       its correspnding tensor in `next_var`.
   """
   if isinstance(merge_var, ops.Tensor):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
-      # TODO(skyewm): get original loop input that caused the shape error and
-      # report its name instead of the merge node's.
+      enter = merge_var.op.inputs[0].op
+      assert util.IsLoopEnter(enter)
+      input_t = enter.inputs[0]
+      assert input_t.shape == m_shape
       raise ValueError(
-          "The shape for %s is not an invariant for the loop. It enters "
-          "the loop with shape %s, but has shape %s after one iteration. "
-          "Provide shape invariants using either the `shape_invariants` "
-          "argument of tf.while_loop or set_shape() on the loop variables." %
-          (merge_var.name, m_shape, n_shape))
+          "Input tensor '%s' enters the loop with shape %s, but has shape %s "
+          "after one iteration. To allow the shape to vary across iterations, "
+          "use the `shape_invariants` argument of tf.while_loop to specify a "
+          "less-specific shape." %
+          (input_t.name, input_t.shape, n_shape))
   else:
     if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(var))
@@ -833,6 +805,9 @@ class GradLoopState(object):
     if outer_grad_state:
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
+      if not hasattr(forward_ctxt, "outer_context"):
+        raise ValueError("Failed to call gradients on a while loop without"
+                         "properly serializing graph via MetaGraphDef")
       outer_forward_ctxt = forward_ctxt.outer_context
 
     # Add the forward loop counter.
@@ -1467,7 +1442,10 @@ def ZerosLikeOutsideLoop(op, index):
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-      return array_ops.zeros(zeros_shape, dtype=val.dtype)
+      # Ensure ops created within array_ops.zeros are dominated by switch in
+      # cond context.
+      with ops.control_dependencies([switch_val]):
+        return array_ops.zeros(zeros_shape, dtype=val.dtype)
     else:
       return array_ops.zeros_like(val, optimize=False)
 
@@ -1591,6 +1569,16 @@ class ControlFlowContext(object):
     graph = ops.get_default_graph()
     last_context = self._context_stack.pop()
     graph._set_control_flow_context(last_context)
+
+  def EnterGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.EnterGradientColocation(op, gradient_uid)
+
+  def ExitGradientColocation(self, op, gradient_uid):
+    """Start building a gradient colocated with an op."""
+    if self._outer_context:
+      self._outer_context.ExitGradientColocation(op, gradient_uid)
 
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
@@ -2363,7 +2351,15 @@ class WhileContext(ControlFlowContext):
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
     result = val
-    if val.name not in self._values:
+    new_value = val.name not in self._values
+    # Don't treat ops in this context as new values. Usually all known values
+    # are in self._values, except when we're importing a while loop inside this
+    # WhileContext. Since there's a cycle in this case, `val` may be part of the
+    # imported while loop but not yet processed by this context and added to
+    # self._values in _AddOpInternal. We only want to process external input
+    # tensors to the while loop here.
+    new_value &= val.op._control_flow_context is not self  # pylint: disable=protected-access
+    if new_value:
       self._values.add(val.name)
 
       # If we are in a grad context and val is from its forward context,
@@ -2949,7 +2945,7 @@ class WhileContext(ControlFlowContext):
     packed_exit_vars = nest.pack_sequence_as(
         structure=original_body_result,
         flat_sequence=exit_vars_with_tensor_arrays)
-    return (packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars)
+    return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
 
   def _FixControlInputsAndContext(self, enters):
     graph = ops.get_default_graph()
@@ -3178,12 +3174,18 @@ def while_loop(cond,
         body = lambda i, lv: (i + 1, orig_body(*lv))
 
     if context.executing_eagerly():
+      try_to_pack = len(loop_vars) == 1
+      packed = False  # whether the body result was packed into a 1-item tuple
+
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
+        if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
+          packed = True
+          loop_vars = (loop_vars,)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
-        return loop_vars
+        return loop_vars[0] if packed else loop_vars
 
     if shape_invariants is not None:
       if maximum_iterations is not None:
@@ -3484,15 +3486,17 @@ def _case_create_default_action(predicates, actions):
   return default_action, other_predicates, other_actions
 
 
-def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name):
+def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
+                                       allow_python_preds):
   """Verifies input arguments for the case function.
 
   Args:
-    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
-                   callable which returns a list of tensors.
+    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor,
+                   and a callable which returns a list of tensors.
     exclusive: True iff at most one predicate is allowed to evaluate to `True`.
     name: A name for the case operation.
-
+    allow_python_preds: if true, pred_fn_pairs may contain Python bools in
+                        addition to boolean Tensors
   Raises:
     TypeError: If `pred_fn_pairs` is not a list/dictionary.
     TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
@@ -3517,12 +3521,67 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name):
     if not isinstance(pred_fn_pair, _basetuple) or len(pred_fn_pair) != 2:
       raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
     pred, fn = pred_fn_pair
-    if pred.dtype != dtypes.bool:
-      raise TypeError("pred must be of type bool: %s", pred.name)
+
+    if isinstance(pred, ops.Tensor):
+      if pred.dtype != dtypes.bool:
+        raise TypeError("pred must be Tensor of type bool: %s" % pred.name)
+    elif not allow_python_preds:
+      raise TypeError("pred must be a Tensor, got: %s" % pred)
+    elif not isinstance(pred, bool):
+      raise TypeError("pred must be a Tensor or bool, got: %s" % pred)
+
     if not callable(fn):
       raise TypeError("fn for pred %s must be callable." % pred.name)
+
   predicates, actions = zip(*pred_fn_pairs)
   return predicates, actions
+
+
+def _case_helper(cond_fn, pred_fn_pairs, default,
+                 exclusive, name, allow_python_preds=False, **cond_kwargs):
+  """Implementation of case that allows for different cond functions.
+
+  Args:
+    cond_fn: method that has signature and semantics of `cond` above.
+    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor, and a
+                   callable which returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
+    name: A name for this operation (optional).
+    allow_python_preds: if true, pred_fn_pairs may contain Python bools in
+                        addition to boolean Tensors
+    **cond_kwargs: keyword arguments that will be passed to `cond_fn`.
+
+  Returns:
+    The tensors returned by the first pair whose predicate evaluated to True, or
+    those returned by `default` if none does.
+
+  Raises:
+    TypeError: If `pred_fn_pairs` is not a list/dictionary.
+    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  predicates, actions = _case_verify_and_canonicalize_args(
+      pred_fn_pairs, exclusive, name, allow_python_preds)
+  with ops.name_scope(name, "case", [predicates]):
+    if default is None:
+      default, predicates, actions = _case_create_default_action(
+          predicates, actions)
+    fn = default
+    # To eval conditions in direct order we create nested conditions in reverse:
+    #   cond_fn(c[0], true_fn=.., false_fn=cond_fn(c[1], ...))
+    for predicate, action in reversed(list(zip(predicates, actions))):
+      fn = functools.partial(
+          cond_fn, predicate, true_fn=action, false_fn=fn, **cond_kwargs)
+    if exclusive:
+      with ops.control_dependencies([
+          _assert_at_most_n_true(
+              predicates, n=1, msg="Input error: exclusive=True")
+      ]):
+        return fn()
+    else:
+      return fn()
 
 
 @tf_export("case")
@@ -3615,26 +3674,8 @@ def case(pred_fn_pairs,
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
   """
-  predicates, actions = _case_verify_and_canonicalize_args(
-      pred_fn_pairs, exclusive, name)
-  with ops.name_scope(name, "case", [predicates]):
-    if default is None:
-      default, predicates, actions = _case_create_default_action(
-          predicates, actions)
-    fn = default
-    # To eval conditions in direct order we create nested conditions in reverse:
-    #   cond(c[0], true_fn=.., false_fn=cond(c[1], ...))
-    for predicate, action in reversed(list(zip(predicates, actions))):
-      fn = functools.partial(
-          cond, predicate, true_fn=action, false_fn=fn, strict=strict)
-    if exclusive:
-      with ops.control_dependencies([
-          _assert_at_most_n_true(
-              predicates, n=1, msg="Input error: exclusive=True")
-      ]):
-        return fn()
-    else:
-      return fn()
+  return _case_helper(cond, pred_fn_pairs, default, exclusive, name,
+                      allow_python_preds=False, strict=strict)
 
 
 class XLAControlFlowContext(ControlFlowContext):

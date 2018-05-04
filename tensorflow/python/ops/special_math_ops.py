@@ -14,9 +14,7 @@
 # ==============================================================================
 """Arithmetic Operations that don't fit into math_ops due to dependencies.
 
-To avoid circular dependencies, some math_ops should go here.  Documentation
-callouts, e.g. "@@my_op" should go in math_ops.  To the user, these are just
-normal math_ops.
+To avoid circular dependencies, some math_ops should go here.
 """
 
 from __future__ import absolute_import
@@ -163,7 +161,7 @@ def einsum(equation, *inputs, **kwargs):
     if '...' in equation:
       raise ValueError('Subscripts with ellipses are not yet supported.')
 
-    match = re.match('([a-z,]+)(->[a-z]*)?', equation)
+    match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
     if not match:
       raise ValueError('Indices have incorrect format: %s' % equation)
 
@@ -402,7 +400,7 @@ def _exponential_space_einsum(equation, *inputs):
   if '...' in equation:
     raise ValueError('Subscripts with ellipses are not yet supported.')
 
-  match = re.match('([a-z,]+)(->[a-z]*)?', equation)
+  match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
   if not match:
     raise ValueError('Indices have incorrect format: %s' % equation)
 

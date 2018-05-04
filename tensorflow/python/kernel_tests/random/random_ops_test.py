@@ -228,6 +228,17 @@ class RandomUniformTest(test.TestCase):
         print("count = ", count)
       self.assertTrue(count < count_limit)
 
+  def testUniformIntsWithInvalidShape(self):
+    for dtype in dtypes.int32, dtypes.int64:
+      with self.assertRaisesRegexp(
+          ValueError, "Shape must be rank 0 but is rank 1"):
+        random_ops.random_uniform(
+            [1000], minval=[1, 2], maxval=3, dtype=dtype)
+      with self.assertRaisesRegexp(
+          ValueError, "Shape must be rank 0 but is rank 1"):
+        random_ops.random_uniform(
+            [1000], minval=1, maxval=[2, 3], dtype=dtype)
+
   # Check that uniform ints actually follow a uniform distribution.
   def testUniformInts(self):
     minv = -2

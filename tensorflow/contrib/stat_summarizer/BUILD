@@ -31,16 +31,5 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = ["no_windows"],
 )

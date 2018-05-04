@@ -23,6 +23,7 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.framework import errors
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras.engine import training_utils
@@ -30,6 +31,7 @@ from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.platform import tf_logging as logging
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -190,7 +192,15 @@ def fit_loop(model,
         batch_logs['batch'] = step_index
         batch_logs['size'] = 1
         callbacks.on_batch_begin(step_index, batch_logs)
-        outs = f(ins)
+        try:
+          outs = f(ins)
+        except errors.OutOfRangeError:
+          logging.warning('Your dataset iterator ran out of data; '
+                          'interrupting training. Make sure that your dataset '
+                          'can generate at least `steps_per_epoch * epochs` '
+                          'batches (in this case, %d batches).' %
+                          steps_per_epoch * epochs)
+          break
 
         if not isinstance(outs, list):
           outs = [outs]
@@ -298,20 +308,13 @@ def predict_loop(model, inputs, batch_size=32, verbose=0, steps=None):
   else:
     ins = inputs
 
-  if hasattr(model, 'metrics'):
-    for m in model.metrics:
-      if isinstance(m, Layer):
-        m.reset_states()
-
   num_samples = training_utils.check_num_samples(
       inputs, batch_size, steps, 'steps')
   if verbose == 1:
     if steps is not None:
-      progbar = Progbar(target=steps,
-                        stateful_metrics=model.stateful_metric_names)
+      progbar = Progbar(target=steps)
     else:
-      progbar = Progbar(target=num_samples,
-                        stateful_metrics=model.stateful_metric_names)
+      progbar = Progbar(target=num_samples)
 
   indices_for_conversion_to_dense = []
   for i in range(len(model._feed_inputs)):

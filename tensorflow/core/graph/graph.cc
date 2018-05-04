@@ -79,6 +79,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"Size", NC_METADATA},
         {"Shape", NC_METADATA},
         {"Rank", NC_METADATA},
+        {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
     });
 
 #undef REF_CLASS
@@ -567,6 +568,11 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
         inputs[edge->dst_input()] = edge;
       }
     }
+    // Sort the control inputs for more predictable serialization.
+    std::sort(inputs.begin() + node->num_inputs(), inputs.end(),
+              [](const Edge* a, const Edge* b) -> bool {
+                return a->src()->name() < b->src()->name();
+              });
     node_def->clear_input();
     node_def->mutable_input()->Reserve(inputs.size());
 

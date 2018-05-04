@@ -55,8 +55,10 @@ Status BackwardsConstAnalysis(const Graph& g,
         compile_time_const_args->at(index) = true;
         return;
       }
-      for (const Node* pred : node->in_nodes()) {
-        must_be_const.insert(pred);
+      for (const Edge* pred : node->in_edges()) {
+        if (!pred->IsControlEdge()) {
+          must_be_const.insert(pred->src());
+        }
       }
       return;
     }

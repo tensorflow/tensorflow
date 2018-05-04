@@ -29,7 +29,7 @@ GetCpuCastFromHalf(DataType dst_dtype) {
 #if GOOGLE_CUDA
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromHalf(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, GPUDevice, Eigen::half);
+  CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, Eigen::half);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA

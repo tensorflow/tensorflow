@@ -62,12 +62,18 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 
 @@executing_eagerly
 @@in_eager_mode
+@@set_execution_mode
+@@execution_mode
+@@async_wait
+@@async_clear_error
 
 @@run_test_in_graph_and_eager_modes
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
 @@DEVICE_PLACEMENT_SILENT
+@@SYNC
+@@ASYNC
 """
 
 from __future__ import absolute_import
@@ -78,8 +84,6 @@ from __future__ import print_function
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
 from tensorflow.contrib.eager.python import metrics
-from tensorflow.contrib.eager.python.checkpointable_utils import CheckpointableSaver
-from tensorflow.contrib.eager.python.checkpointable_utils import Checkpoint
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.network import Sequential
@@ -95,6 +99,12 @@ from tensorflow.python.eager.context import DEVICE_PLACEMENT_WARN
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_SILENT
 from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.eager.context import list_devices
+from tensorflow.python.eager.context import set_execution_mode
+from tensorflow.python.eager.context import execution_mode
+from tensorflow.python.eager.context import async_wait
+from tensorflow.python.eager.context import async_clear_error
+from tensorflow.python.eager.context import SYNC
+from tensorflow.python.eager.context import ASYNC
 from tensorflow.python.eager.context import num_gpus
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
@@ -111,6 +121,8 @@ from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import template
 from tensorflow.python.training.checkpointable import Checkpointable
+from tensorflow.python.training.checkpointable_utils import CheckpointableSaver
+from tensorflow.python.training.checkpointable_utils import Checkpoint
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
@@ -26,7 +28,7 @@ from tensorflow.python.platform import test
 
 class EmbeddingTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def test_embedding(self):
     testing_utils.layer_test(
         keras.layers.Embedding,
@@ -64,6 +66,17 @@ class EmbeddingTest(test.TestCase):
         input_shape=(3, 4, 2),
         input_dtype='int32',
         expected_output_dtype='float32')
+
+  def test_embedding_correctness(self):
+    with self.test_session():
+      layer = keras.layers.Embedding(output_dim=2, input_dim=2)
+      layer.build((None, 2))
+      matrix = np.array([[1, 1], [2, 2]])
+      layer.set_weights([matrix])
+
+      inputs = keras.backend.constant([[0, 1, 0]], dtype='int32')
+      outputs = keras.backend.eval(layer(inputs))
+      self.assertAllClose(outputs, [[[1, 1], [2, 2], [1, 1]]])
 
 
 if __name__ == '__main__':

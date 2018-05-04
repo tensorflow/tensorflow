@@ -19,11 +19,12 @@ limitations under the License.
 #include "tensorflow/core/framework/iterator.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/dataset.h"
-#include "tensorflow/core/kernels/data/stats_aggregator.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -203,10 +204,6 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-  void set_stats_aggregator(std::shared_ptr<StatsAggregator> stats_aggregator) {
-    mutex_lock l(mu_);
-    stats_aggregator_ = std::move(stats_aggregator);
-  }
 
   std::shared_ptr<StatsAggregator> stats_aggregator() {
     tf_shared_lock l(mu_);
@@ -587,9 +584,9 @@ class MakeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
+    core::ScopedUnref unref(iterator_resource);
     OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
                             dataset->MakeIterator("Iterator")));
-    iterator_resource->Unref();
   }
 };
 
@@ -613,17 +610,7 @@ class ToSingleElementOp : public AsyncOpKernel {
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       auto iterator = dataset->MakeIterator("SingleElementIterator");
 
-      IteratorContext::Params params;
-      params.env = ctx->env();
-      params.runner = *(ctx->runner());
-      params.lib = ctx->function_library();
-      DeviceBase* device = ctx->function_library()->device();
-      params.allocator_getter = [device](AllocatorAttributes attrs) {
-        return device->GetAllocator(attrs);
-      };
-
-      IteratorContext iter_ctx(std::move(params));
-
+      IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
@@ -867,9 +854,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     thread_pool_->Schedule(std::bind(
-        [this, ctx, iterator](DoneCallback done) {
-          core::ScopedUnref unref_iterator(iterator);
-
+        [ctx, iterator](DoneCallback done) {
           std::vector<Tensor> components;
           bool end_of_sequence = false;
 
@@ -886,17 +871,22 @@ class IteratorGetNextOp : public AsyncOpKernel {
           };
           IteratorContext iter_ctx(std::move(params));
 
-          OP_REQUIRES_OK_ASYNC(
-              ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-              done);
-          OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                            errors::OutOfRange("End of sequence"), done);
+          Status s =
+              iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+          // NOTE(mrry): We must unref the iterator before calling `done()`, to
+          // avoid destruction races.
+          iterator->Unref();
 
-          for (int i = 0; i < components.size(); ++i) {
-            // TODO(mrry): Check that the shapes match the shape attrs.
-            ctx->set_output(i, components[i]);
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+          } else if (end_of_sequence) {
+            ctx->SetStatus(errors::OutOfRange("End of sequence"));
+          } else {
+            for (int i = 0; i < components.size(); ++i) {
+              // TODO(mrry): Check that the shapes match the shape attrs.
+              ctx->set_output(i, components[i]);
+            }
           }
-
           done();
         },
         std::move(done)));
@@ -1072,30 +1062,6 @@ class DeserializeIteratorOp : public OpKernel {
   }
 };
 
-class IteratorSetStatsAggregatorOp : public OpKernel {
- public:
-  explicit IteratorSetStatsAggregatorOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    IteratorResource* iterator_resource;
-    OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-    core::ScopedUnref unref_iterator(iterator_resource);
-
-    StatsAggregatorResource* stats_aggregator_resource;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
-                                       &stats_aggregator_resource));
-    core::ScopedUnref unref_stats_aggregator(stats_aggregator_resource);
-    // TODO(mrry): Consider allowing multiple StatsAggregator ops to
-    // subscribe to updates, and/or unsubscribing.
-    OP_REQUIRES(ctx, !iterator_resource->stats_aggregator(),
-                errors::FailedPrecondition(
-                    "Iterator already associated with a StatsAggregator"));
-    iterator_resource->set_stats_aggregator(
-        stats_aggregator_resource->stats_aggregator());
-  }
-};
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
@@ -1116,8 +1082,6 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorSetStatsAggregator").Device(DEVICE_CPU),
-                        IteratorSetStatsAggregatorOp);
 
 }  // namespace
 

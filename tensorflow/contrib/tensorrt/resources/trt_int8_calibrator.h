@@ -69,5 +69,4 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
 
 #endif
 #endif
-
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_INT8_CALIBRATOR_H_

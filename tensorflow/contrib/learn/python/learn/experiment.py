@@ -358,7 +358,7 @@ class Experiment(object):
         self._start_server()
     elif config.cluster_spec and config.master:
       raise ValueError(
-          "For distributed runtime, Experiment class only works with"
+          "For distributed runtime, Experiment class only works with "
           "tf.contrib.learn.RunConfig for now, but provided {}".format(
               type(config)))
 

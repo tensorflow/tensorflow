@@ -31,8 +31,8 @@ class TopKV2OpModel : public SingleOpModel {
                 int top_k) {
     input_ = AddInput(input_type);
     top_k_ = AddInput(TensorType_INT32);
-    output_indexes_ = AddOutput(TensorType_INT32);
     output_values_ = AddOutput(input_type);
+    output_indexes_ = AddOutput(TensorType_INT32);
     SetBuiltinOp(BuiltinOperator_TOPK_V2, BuiltinOptions_TopKV2Options, 0);
     BuildInterpreter({input_shape, {1}});
     PopulateTensor<int32_t>(top_k_, {top_k});

@@ -48,7 +48,7 @@ class LocalVariabletest(test.TestCase):
       variables = variables_lib.local_variables()
       self.assertEquals(2, len(variables))
       self.assertRaises(errors_impl.OpError, sess.run, variables)
-      variables_lib.initialize_variables(variables).run()
+      variables_lib.variables_initializer(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
 
@@ -209,6 +209,7 @@ class WithShapeTest(test.TestCase):
         self.assertRaisesRegexp(errors_impl.OpError, "Wrong shape",
                                 tensor_2x2.eval, {tensor_no_shape: [42.0]})
 
+  @test_util.enable_c_shapes
   def test_with_shape_partial(self):
     with self.test_session():
       tensor_partial_shape = array_ops.placeholder(dtypes.float32)

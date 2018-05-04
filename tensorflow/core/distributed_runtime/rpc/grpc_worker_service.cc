@@ -172,6 +172,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
       ENQUEUE_REQUEST(Logging, false);
       ENQUEUE_REQUEST(Tracing, false);
 
+      for (int i = 0; i < 10; ++i) {
+        ENQUEUE_REQUEST(CompleteGroup, false);
+        ENQUEUE_REQUEST(CompleteInstance, false);
+        ENQUEUE_REQUEST(GetStepSequence, false);
+      }
+
       void* tag;
       bool ok;
 
@@ -317,6 +323,47 @@ class GrpcWorkerService : public AsyncServiceInterface {
         call->SendResponse(ToGrpcStatus(s));
       });
       ENQUEUE_REQUEST(Tracing, false);
+    }
+
+    void CompleteGroupHandler(
+        WorkerCall<CompleteGroupRequest, CompleteGroupResponse>* call) {
+      Schedule([this, call]() {
+        CallOptions* call_opts = new CallOptions;
+        call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
+        worker_->CompleteGroupAsync(call_opts, &call->request, &call->response,
+                                    [call, call_opts](const Status& s) {
+                                      call->ClearCancelCallback();
+                                      delete call_opts;
+                                      call->SendResponse(ToGrpcStatus(s));
+                                    });
+      });
+      ENQUEUE_REQUEST(CompleteGroup, false);
+    }
+
+    void CompleteInstanceHandler(
+        WorkerCall<CompleteInstanceRequest, CompleteInstanceResponse>* call) {
+      Schedule([this, call]() {
+        CallOptions* call_opts = new CallOptions;
+        call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
+        worker_->CompleteInstanceAsync(call_opts, &call->request,
+                                       &call->response,
+                                       [call, call_opts](const Status& s) {
+                                         call->ClearCancelCallback();
+                                         delete call_opts;
+                                         call->SendResponse(ToGrpcStatus(s));
+                                       });
+      });
+      ENQUEUE_REQUEST(CompleteInstance, false);
+    }
+
+    void GetStepSequenceHandler(
+        WorkerCall<GetStepSequenceRequest, GetStepSequenceResponse>* call) {
+      Schedule([this, call]() {
+        worker_->GetStepSequenceAsync(
+            &call->request, &call->response,
+            [call](const Status& s) { call->SendResponse(ToGrpcStatus(s)); });
+      });
+      ENQUEUE_REQUEST(GetStepSequence, false);
     }
 #undef ENQUEUE_REQUEST
 

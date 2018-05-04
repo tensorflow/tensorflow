@@ -21,13 +21,13 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
@@ -870,6 +870,9 @@ FunctionalizeCond::DeterminePredicateSwitchOrder() {
       // Merge the inputs of the switch node with one another. This results in
       // predicates and control input residing in the same cluster.
       for (const Edge* e : n->in_edges()) {
+        // Only consider the data inputs to the Switch node.
+        if (e->IsControlEdge()) continue;
+
         Node* src = e->src();
         UnionFind<Cluster>* src_cluster = find_output_cluster(src);
         int src_cluster_depth = switch_depth[src_cluster->Get().representative];
@@ -901,6 +904,14 @@ FunctionalizeCond::DeterminePredicateSwitchOrder() {
       int src_depth = switch_depth[src_id];
       if (!e->IsControlEdge() || new_switch_depth == src_depth) {
         if (src_depth != new_switch_depth) {
+          // TODO(b/77601805) remove this when outside_compilation supports
+          // control flow.
+          if (str_util::StrContains(src->name(), "outside_compilation") ||
+              str_util::StrContains(n->name(), "outside_compilation")) {
+            return errors::InvalidArgument(
+                "outside_compilation is not yet supported within TensorFlow "
+                "control flow constructs b/77601805");
+          }
           return errors::InvalidArgument(
               "Unable to functionalize control flow in graph: Operand ('",
               src->name(), "') and operator ('", n->name(),

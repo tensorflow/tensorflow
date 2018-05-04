@@ -45,8 +45,8 @@ void IncrementUsageCounter(TfLiteContext* context);
 // 'context'. If there are no more usages the GemmContext will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
 
-// Set the maximum number threads available for gemmlowp operations.
-void SetMaxNumThreads(TfLiteContext* context, int num_threads);
+// Set the number of threads that can be used by gemmlowp.
+void SetNumThreads(TfLiteContext* context, int num_threads);
 
 }  // namespace gemm_support
 }  // namespace tflite

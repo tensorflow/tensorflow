@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import app
@@ -125,6 +126,14 @@ def tfsplits(_):
   array_ops.identity(y, name='result')
 
 
+def tfassert_eq(_):
+  x = array_ops.placeholder(dtypes.int32, name='x_hold')
+  y = array_ops.placeholder(dtypes.int32, name='y_hold')
+  control_flow_ops.Assert(
+      math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq')
+  math_ops.add(x, math_ops.negative(y), name='x_y_diff')
+
+
 def write_graph(build_graph, out_dir):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()
@@ -144,6 +153,7 @@ def main(_):
   write_graph(tfmatmulandadd, FLAGS.out_dir)
   write_graph(tffunction, FLAGS.out_dir)
   write_graph(tfsplits, FLAGS.out_dir)
+  write_graph(tfassert_eq, FLAGS.out_dir)
 
 
 if __name__ == '__main__':

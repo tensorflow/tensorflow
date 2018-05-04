@@ -50,6 +50,12 @@ const char* GrpcWorkerMethodName(GrpcWorkerMethod id) {
       return "/tensorflow.WorkerService/Logging";
     case GrpcWorkerMethod::kTracing:
       return "/tensorflow.WorkerService/Tracing";
+    case GrpcWorkerMethod::kCompleteGroup:
+      return "/tensorflow.WorkerService/CompleteGroup";
+    case GrpcWorkerMethod::kCompleteInstance:
+      return "/tensorflow.WorkerService/CompleteInstance";
+    case GrpcWorkerMethod::kGetStepSequence:
+      return "/tensorflow.WorkerService/GetStepSequence";
   }
   // Shouldn't be reached.
   LOG(FATAL) << "Invalid id: this line shouldn't be reached.";

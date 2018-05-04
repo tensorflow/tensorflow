@@ -62,9 +62,8 @@ class GenericFftOp : public XlaOpKernel {
       }
     }
 
-    xla::ComputationBuilder* b = ctx->builder();
-    xla::ComputationDataHandle fft =
-        b->Fft(ctx->Input(0), fft_type_, fft_length);
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp fft = b->Fft(ctx->Input(0), fft_type_, fft_length);
     ctx->SetOutput(0, fft);
   }
 

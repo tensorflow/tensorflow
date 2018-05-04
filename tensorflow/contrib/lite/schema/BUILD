@@ -63,23 +63,14 @@ cc_test(
         "schema.fbs",
         "schema_v3.fbs",
     ],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         "//tensorflow/core:lib_platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tflite_portable_test_suite()

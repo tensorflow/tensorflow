@@ -115,20 +115,7 @@ tf_py_test(
     ],
     tags = [
         "manual",
+        "no_windows",
         "notap",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

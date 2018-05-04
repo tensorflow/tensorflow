@@ -29,6 +29,8 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -324,6 +326,84 @@ class UtilsTest(test.TestCase):
               [4, 3, 3]
           ],
           values)
+
+  def testExtractConvolutionPatches(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      batch_size = 10
+      image_spatial_shape = [9, 10, 11]
+      in_channels = out_channels = 32
+      kernel_spatial_shape = [5, 3, 3]
+      spatial_strides = [1, 2, 1]
+      spatial_dilation = [1, 1, 1]
+      padding = 'SAME'
+
+      images = random_ops.random_uniform(
+          [batch_size] + image_spatial_shape + [in_channels], seed=0)
+      kernel_shape = kernel_spatial_shape + [in_channels, out_channels]
+      kernel = random_ops.random_uniform(kernel_shape, seed=1)
+
+      # Ensure shape matches expectation.
+      patches = utils.extract_convolution_patches(
+          images,
+          kernel_shape,
+          padding,
+          strides=spatial_strides,
+          dilation_rate=spatial_dilation)
+      result_spatial_shape = (
+          patches.shape.as_list()[1:1 + len(image_spatial_shape)])
+      self.assertEqual(patches.shape.as_list(),
+                       [batch_size] + result_spatial_shape +
+                       kernel_spatial_shape + [in_channels])
+
+      # Ensure extract...patches() + matmul() and convolution() implementation
+      # give the same answer.
+      outputs = nn_ops.convolution(
+          images,
+          kernel,
+          padding,
+          strides=spatial_strides,
+          dilation_rate=spatial_dilation)
+
+      patches_flat = array_ops.reshape(
+          patches, [-1, np.prod(kernel_spatial_shape) * in_channels])
+      kernel_flat = array_ops.reshape(kernel, [-1, out_channels])
+      outputs_flat = math_ops.matmul(patches_flat, kernel_flat)
+
+      outputs_, outputs_flat_ = sess.run([outputs, outputs_flat])
+      self.assertAllClose(outputs_.flatten(), outputs_flat_.flatten())
+
+  def testExtractPointwiseConv2dPatches(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      batch_size = 10
+      image_height = image_width = 8
+      in_channels = out_channels = 3
+      kernel_height = kernel_width = 1
+      strides = [1, 1, 1, 1]
+      padding = 'VALID'
+
+      images = random_ops.random_uniform(
+          [batch_size, image_height, image_width, in_channels], seed=0)
+      kernel_shape = [kernel_height, kernel_width, in_channels, out_channels]
+      kernel = random_ops.random_uniform(kernel_shape, seed=1)
+
+      # Ensure shape matches expectation.
+      patches = utils.extract_pointwise_conv2d_patches(images, kernel_shape)
+      self.assertEqual(patches.shape.as_list(), [
+          batch_size, image_height, image_width, kernel_height, kernel_width,
+          in_channels
+      ])
+
+      # Ensure extract...patches() + matmul() and conv2d() implementation
+      # give the same answer.
+      outputs = nn_ops.conv2d(images, kernel, strides, padding)
+
+      patches_flat = array_ops.reshape(
+          patches, [-1, kernel_height * kernel_width * in_channels])
+      kernel_flat = array_ops.reshape(kernel, [-1, out_channels])
+      outputs_flat = math_ops.matmul(patches_flat, kernel_flat)
+
+      outputs_, outputs_flat_ = sess.run([outputs, outputs_flat])
+      self.assertAllClose(outputs_.flatten(), outputs_flat_.flatten())
 
 
 if __name__ == '__main__':

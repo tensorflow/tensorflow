@@ -144,6 +144,11 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
                                                RetvalOp);
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<ResourceHandle>("T")
+                            .HostMemory("input"),
+                        RetvalOp);
 #undef REGISTER
 
 class PassOn : public OpKernel {
@@ -318,7 +323,8 @@ class RemoteCallOp : public AsyncOpKernel {
       if (cached_entry != handle_cache_.end()) {
         handle = cached_entry->second;
       } else {
-        port::Tracing::TraceMe activity(strings::StrCat(
+        VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
+        tracing::ScopedActivity activity(strings::StrCat(
             "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
         OP_REQUIRES_OK_ASYNC(
             ctx,
@@ -327,6 +333,8 @@ class RemoteCallOp : public AsyncOpKernel {
             done);
         auto insert_result = handle_cache_.insert({function_target, handle});
         CHECK(insert_result.second) << "Insert unsuccessful.";
+        VLOG(1) << "Instantiated " << func_.name() << " on " << target_device
+                << ", resulting in handle: " << handle << " flr: " << lib;
       }
     }
 
@@ -347,10 +355,12 @@ class RemoteCallOp : public AsyncOpKernel {
       args.push_back(argument);
     }
     auto* rets = new std::vector<Tensor>;
-    auto* trace = new port::Tracing::TraceMe(strings::StrCat(
+    auto* activity = new tracing::ScopedActivity(strings::StrCat(
         "RemoteCall: Run: ", func_.name(), " on ", target_device));
+    VLOG(1) << "Running " << func_.name() << " on " << target_device
+            << " with handle: " << handle;
     lib->Run(opts, handle, args, rets,
-             [rets, trace, done, ctx](const Status& status) {
+             [rets, activity, done, ctx](const Status& status) {
                if (!status.ok()) {
                  ctx->SetStatus(status);
                } else {
@@ -359,7 +369,7 @@ class RemoteCallOp : public AsyncOpKernel {
                  }
                }
                delete rets;
-               delete trace;
+               delete activity;
                done();
              });
   }

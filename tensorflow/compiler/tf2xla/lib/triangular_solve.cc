@@ -29,21 +29,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& a,
-    xla::ComputationDataHandle b, bool left_side, bool lower, bool transpose_a,
-    bool conjugate_a, int64 block_size) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> a_shape,
-                      builder->GetShape(a));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> b_shape,
-                      builder->GetShape(b));
-  if (xla::ShapeUtil::Rank(*a_shape) != xla::ShapeUtil::Rank(*b_shape)) {
+xla::StatusOr<xla::XlaOp> TriangularSolve(xla::XlaBuilder* builder,
+                                          const xla::XlaOp& a, xla::XlaOp b,
+                                          bool left_side, bool lower,
+                                          bool transpose_a, bool conjugate_a,
+                                          int64 block_size) {
+  TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
+  TF_ASSIGN_OR_RETURN(xla::Shape b_shape, builder->GetShape(b));
+  if (xla::ShapeUtil::Rank(a_shape) != xla::ShapeUtil::Rank(b_shape)) {
     return errors::InvalidArgument(
         "Arguments to TriangularSolve have different ranks: ",
-        xla::ShapeUtil::HumanString(*a_shape), " vs. ",
-        xla::ShapeUtil::HumanString(*b_shape));
+        xla::ShapeUtil::HumanString(a_shape), " vs. ",
+        xla::ShapeUtil::HumanString(b_shape));
   }
-  const int ndims = xla::ShapeUtil::Rank(*a_shape);
+  const int ndims = xla::ShapeUtil::Rank(a_shape);
   if (ndims < 2) {
     return errors::InvalidArgument(
         "Arguments to TriangularSolve must have rank >= 2: ", ndims);
@@ -51,30 +50,30 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
   // The batch dimensions must be equal.
   std::vector<int64> batch_dimensions;
   for (int i = 0; i < ndims - 2; ++i) {
-    int64 a_size = a_shape->dimensions(i);
-    int64 b_size = b_shape->dimensions(i);
+    int64 a_size = a_shape.dimensions(i);
+    int64 b_size = b_shape.dimensions(i);
     if (a_size != b_size) {
       return errors::InvalidArgument(
           "Batch dimensions of arguments to TriangularSolve must be equal: ",
-          xla::ShapeUtil::HumanString(*a_shape), " vs ",
-          xla::ShapeUtil::HumanString(*b_shape));
+          xla::ShapeUtil::HumanString(a_shape), " vs ",
+          xla::ShapeUtil::HumanString(b_shape));
     }
     batch_dimensions.push_back(a_size);
   }
 
-  if (xla::ShapeUtil::GetDimension(*a_shape, -1) !=
-      xla::ShapeUtil::GetDimension(*a_shape, -2)) {
+  if (xla::ShapeUtil::GetDimension(a_shape, -1) !=
+      xla::ShapeUtil::GetDimension(a_shape, -2)) {
     return errors::InvalidArgument(
         "The 'a' arguments to TriangularSolve must be square matrices: ",
-        xla::ShapeUtil::HumanString(*a_shape));
+        xla::ShapeUtil::HumanString(a_shape));
   }
-  const int64 m = xla::ShapeUtil::GetDimension(*b_shape, -2);
-  const int64 n = xla::ShapeUtil::GetDimension(*b_shape, -1);
-  if ((left_side ? m : n) != xla::ShapeUtil::GetDimension(*a_shape, -1)) {
+  const int64 m = xla::ShapeUtil::GetDimension(b_shape, -2);
+  const int64 n = xla::ShapeUtil::GetDimension(b_shape, -1);
+  if ((left_side ? m : n) != xla::ShapeUtil::GetDimension(a_shape, -1)) {
     return errors::InvalidArgument(
         "Arguments to TriangularSolve have incompatible matrix shapes: ",
-        xla::ShapeUtil::HumanString(*a_shape), " vs ",
-        xla::ShapeUtil::HumanString(*b_shape));
+        xla::ShapeUtil::HumanString(a_shape), " vs ",
+        xla::ShapeUtil::HumanString(b_shape));
   }
 
   if (block_size < 1) {
@@ -83,36 +82,27 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
         block_size);
   }
 
-  // Returns [b1, b2, ... , bn, indices[0], indices[1]].
-  auto prepend_batch_dims = [&](std::array<int64, 2> indices) {
-    std::vector<int64> output(ndims);
-    std::copy(batch_dimensions.begin(), batch_dimensions.end(), output.begin());
-    std::copy(indices.begin(), indices.end(),
-              output.begin() + batch_dimensions.size());
-    return output;
-  };
-
   // Applies a complex conjugation operation if `a` is complex and `conjugate_a`
   // is true, otherwise returns its argument.
-  auto maybe_conj = [&](xla::ComputationBuilder* builder,
-                        xla::ComputationDataHandle x) {
-    auto perform_conj = a_shape->element_type() == xla::C64 && conjugate_a;
+  auto maybe_conj = [&](xla::XlaBuilder* builder, xla::XlaOp x) {
+    auto perform_conj = a_shape.element_type() == xla::C64 && conjugate_a;
     return perform_conj ? builder->Conj(x) : x;
   };
 
-  std::map<int, xla::Computation> base_computations;
+  std::map<int, xla::XlaComputation> base_computations;
   auto get_base_triangular_solve =
-      [&](int k) -> xla::StatusOr<xla::Computation*> {
-    xla::Computation& computation = base_computations[k];
+      [&](int k) -> xla::StatusOr<xla::XlaComputation*> {
+    xla::XlaComputation& computation = base_computations[k];
     if (computation.IsNull()) {
-      std::unique_ptr<xla::ComputationBuilder> sub = builder->CreateSubBuilder(
+      std::unique_ptr<xla::XlaBuilder> sub = builder->CreateSubBuilder(
           tensorflow::strings::StrCat("trsm_base_", k));
 
-      auto a_param =
-          sub->Parameter(0,
-                         xla::ShapeUtil::MakeShape(b_shape->element_type(),
-                                                   prepend_batch_dims({k, k})),
-                         "a");
+      auto a_param = sub->Parameter(
+          0,
+          xla::ShapeUtil::MakeShape(
+              b_shape.element_type(),
+              PrependMajorDims(sub.get(), batch_dimensions, {k, k})),
+          "a");
 
       std::array<int64, 2> b_lastd;
       if (left_side) {
@@ -120,11 +110,12 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
       } else {
         b_lastd = {m, k};
       }
-      auto b_param =
-          sub->Parameter(1,
-                         xla::ShapeUtil::MakeShape(b_shape->element_type(),
-                                                   prepend_batch_dims(b_lastd)),
-                         "b");
+      auto b_param = sub->Parameter(
+          1,
+          xla::ShapeUtil::MakeShape(
+              b_shape.element_type(),
+              PrependMajorDims(sub.get(), batch_dimensions, b_lastd)),
+          "b");
 
       // We use a left-looking subroutine on the block diagonal in some common
       // cases, while falling back to a recursive call in unsupported cases. The
@@ -149,7 +140,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
     return &computation;
   };
 
-  xla::ComputationDataHandle output = Zeros(builder, *b_shape);
+  xla::XlaOp output = Zeros(builder, b_shape);
 
   // Right-looking blocked triangular solve.
   // For an explanation of the algorithm, see the TRSM discussion in:
@@ -172,9 +163,9 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
                           SliceInMinorDims(builder, a, {i, i}, {i + k, i + k}));
       TF_ASSIGN_OR_RETURN(auto b_slice,
                           SliceInMinorDims(builder, b, {0, i}, {m, i + k}));
-      xla::ComputationDataHandle update;
+      xla::XlaOp update;
       if (k > 1) {
-        TF_ASSIGN_OR_RETURN(xla::Computation * solve,
+        TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                             get_base_triangular_solve(k));
         update = builder->Call(*solve, {a_slice, b_slice});
       } else {
@@ -188,7 +179,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
       //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
       //   b[..., :, i+k:] -= np.matmul(output[..., :, i:i+k], a_slice_2)
       if (i + k < n) {
-        xla::ComputationDataHandle a_slice_2;
+        xla::XlaOp a_slice_2;
         if (lower) {
           TF_ASSIGN_OR_RETURN(
               a_slice_2, SliceInMinorDims(builder, a, {i + k, i}, {n, i + k}));
@@ -222,9 +213,9 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
                           SliceInMinorDims(builder, a, {i, i}, {i + k, i + k}));
       TF_ASSIGN_OR_RETURN(auto b_slice,
                           SliceInMinorDims(builder, b, {i, 0}, {i + k, n}));
-      xla::ComputationDataHandle update;
+      xla::XlaOp update;
       if (k > 1) {
-        TF_ASSIGN_OR_RETURN(xla::Computation * solve,
+        TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                             get_base_triangular_solve(k));
         update = builder->Call(*solve, {a_slice, b_slice});
       } else {
@@ -238,7 +229,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
       //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
       //   b[..., i+k:, :] -= np.matmul(a_slice_2, output[..., i:i+k, :])
       if (i + k < m) {
-        xla::ComputationDataHandle a_slice_2;
+        xla::XlaOp a_slice_2;
         if (lower) {
           TF_ASSIGN_OR_RETURN(
               a_slice_2, SliceInMinorDims(builder, a, {i + k, i}, {m, i + k}));
@@ -271,9 +262,9 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
                           SliceInMinorDims(builder, a, {i, i}, {i + k, i + k}));
       TF_ASSIGN_OR_RETURN(auto b_slice,
                           SliceInMinorDims(builder, b, {0, i}, {m, i + k}));
-      xla::ComputationDataHandle update;
+      xla::XlaOp update;
       if (k > 1) {
-        TF_ASSIGN_OR_RETURN(xla::Computation * solve,
+        TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                             get_base_triangular_solve(k));
         update = builder->Call(*solve, {a_slice, b_slice});
       } else {
@@ -287,7 +278,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
       //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
       //   b[..., :, :i] -= np.matmul(out[..., :, i:i+k], a_slice_2)
       if (i - k >= 0) {
-        xla::ComputationDataHandle a_slice_2;
+        xla::XlaOp a_slice_2;
         if (lower) {
           TF_ASSIGN_OR_RETURN(a_slice_2,
                               SliceInMinorDims(builder, a, {i, 0}, {i + k, i}));
@@ -321,9 +312,9 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
                           SliceInMinorDims(builder, a, {i, i}, {i + k, i + k}));
       TF_ASSIGN_OR_RETURN(auto b_slice,
                           SliceInMinorDims(builder, b, {i, 0}, {i + k, n}));
-      xla::ComputationDataHandle update;
+      xla::XlaOp update;
       if (k > 1) {
-        TF_ASSIGN_OR_RETURN(xla::Computation * solve,
+        TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                             get_base_triangular_solve(k));
         update = builder->Call(*solve, {a_slice, b_slice});
       } else {
@@ -337,7 +328,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
       //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
       //   b[..., :i, :] -= np.matmul(a_slice_2, out[..., i:i+k, :])
       if (i - k >= 0) {
-        xla::ComputationDataHandle a_slice_2;
+        xla::XlaOp a_slice_2;
         if (lower) {
           TF_ASSIGN_OR_RETURN(a_slice_2,
                               SliceInMinorDims(builder, a, {i, 0}, {i + k, i}));
@@ -363,34 +354,25 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolve(
   return output;
 }
 
-xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& a,
-    const xla::ComputationDataHandle& b, bool transpose_a, bool conjugate_a) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> a_shape,
-                      builder->GetShape(a));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> b_shape,
-                      builder->GetShape(b));
-  const int64 m = xla::ShapeUtil::GetDimension(*b_shape, -2);
-  const int64 n = xla::ShapeUtil::GetDimension(*b_shape, -1);
-  const int64 ndims = xla::ShapeUtil::Rank(*a_shape);
+xla::StatusOr<xla::XlaOp> TriangularSolveLeftLooking(xla::XlaBuilder* builder,
+                                                     const xla::XlaOp& a,
+                                                     const xla::XlaOp& b,
+                                                     bool transpose_a,
+                                                     bool conjugate_a) {
+  TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
+  TF_ASSIGN_OR_RETURN(xla::Shape b_shape, builder->GetShape(b));
+  const int64 m = xla::ShapeUtil::GetDimension(b_shape, -2);
+  const int64 n = xla::ShapeUtil::GetDimension(b_shape, -1);
+  const int64 ndims = xla::ShapeUtil::Rank(a_shape);
 
   std::vector<int64> batch_dimensions;
   for (int i = 0; i < ndims - 2; ++i) {
-    int64 a_size = a_shape->dimensions(i);
+    int64 a_size = a_shape.dimensions(i);
     batch_dimensions.push_back(a_size);
   }
 
-  auto prepend_batch_dims = [&](std::array<int64, 2> indices) {
-    std::vector<int64> output(ndims);
-    std::copy(batch_dimensions.begin(), batch_dimensions.end(), output.begin());
-    std::copy(indices.begin(), indices.end(),
-              output.begin() + batch_dimensions.size());
-    return output;
-  };
-
-  auto maybe_conj = [&](xla::ComputationBuilder* builder,
-                        xla::ComputationDataHandle x) {
-    auto perform_conj = a_shape->element_type() == xla::C64 && conjugate_a;
+  auto maybe_conj = [&](xla::XlaBuilder* builder, xla::XlaOp x) {
+    auto perform_conj = a_shape.element_type() == xla::C64 && conjugate_a;
     return perform_conj ? builder->Conj(x) : x;
   };
 
@@ -402,7 +384,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
   //   output[..., m-1:, :] = b[..., m-1:, :] / a[..., m-1:, m-1:]
   // else:
   //   output[..., :1, :] = b[..., :1, :] / a[..., :1, :1]
-  xla::ComputationDataHandle output = Zeros(builder, *b_shape);
+  xla::XlaOp output = Zeros(builder, b_shape);
   {
     auto i = transpose_a ? m - 1 : 0;
     TF_ASSIGN_OR_RETURN(auto a_slice,
@@ -423,11 +405,11 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
       // The loop iteration counter is a scalar, incremented each iteration.
       xla::ShapeUtil::MakeShape(xla::S32, {}),
       // The output has the shape of b, with one row updated each iteration.
-      *b_shape,
+      b_shape,
       // The coefficient matrix a is a loop invariant.
-      *a_shape,
+      a_shape,
       // The right-hand-side matrix b is a loop invariant.
-      *b_shape};
+      b_shape};
   xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(tuple_shapes);
   auto init_i = builder->ConstantR0<int32>(transpose_a ? m - 2 : 1);
   auto init = builder->Tuple({init_i, output, a, b});
@@ -436,7 +418,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
   // def cond_fun(loop_carry):
   //   i, output, a, b = loop_carry
   //   return i >= 0 if transpose_a else i < m
-  std::unique_ptr<xla::ComputationBuilder> condb =
+  std::unique_ptr<xla::XlaBuilder> condb =
       builder->CreateSubBuilder("TriangularSolveLeftLookingWhileCond");
   {
     auto i = condb->GetTupleElement(
@@ -466,7 +448,7 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
   //     return (i + 1, output, a, b)
   // We have to do some extra FLOPs propagating zeros in the matrix multiply
   // because we can't have the size of its arguments depend on the loop counter.
-  std::unique_ptr<xla::ComputationBuilder> bodyb =
+  std::unique_ptr<xla::XlaBuilder> bodyb =
       builder->CreateSubBuilder("TriangularSolveLeftLookingWhileBody");
   {
     auto input_tuple = bodyb->Parameter(0, tuple_shape,
@@ -479,30 +461,6 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
     auto body_b = bodyb->GetTupleElement(input_tuple, 3);
     auto zero = bodyb->ConstantR0<int32>(0);
 
-    // Set up some helper functions.
-    auto prepend_zeros = [&](std::array<xla::ComputationDataHandle, 2> starts) {
-      auto zero = bodyb->Reshape(bodyb->ConstantR0<int32>(0), {1});
-      std::vector<xla::ComputationDataHandle> padded_starts(ndims, zero);
-      padded_starts[ndims - 2] = bodyb->Reshape(starts[0], {1});
-      padded_starts[ndims - 1] = bodyb->Reshape(starts[1], {1});
-      return bodyb->ConcatInDim(padded_starts, 0);
-    };
-
-    auto dynamic_slice = [&](xla::ComputationDataHandle x,
-                             std::array<xla::ComputationDataHandle, 2> starts,
-                             std::array<int64, 2> sizes) {
-      auto padded_starts = prepend_zeros(starts);
-      auto padded_sizes = prepend_batch_dims(sizes);
-      return bodyb->DynamicSlice(x, padded_starts, padded_sizes);
-    };
-
-    auto update = [&](xla::ComputationDataHandle x,
-                      xla::ComputationDataHandle update,
-                      std::array<xla::ComputationDataHandle, 2> starts) {
-      auto padded_starts = prepend_zeros(starts);
-      return bodyb->DynamicUpdateSlice(x, update, padded_starts);
-    };
-
     // We'd like to implement this:
     //   if transpose_a:
     //     a_row = T(a[..., i+1:, i:i+1])
@@ -514,24 +472,31 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
     // But since we can't have intermediate array sizes depend on the loop
     // counter, we instead exploit the fact that we initialized the output to
     // all zeros and use that as zero-padding (doing unnecessary FLOPs).
-    xla::ComputationDataHandle a_row;
+    xla::XlaOp a_row;
     if (transpose_a) {
-      a_row = dynamic_slice(body_a, {zero, i}, {m, 1});
+      TF_ASSIGN_OR_RETURN(a_row, DynamicSliceInMinorDims(bodyb.get(), body_a,
+                                                         {zero, i}, {m, 1}));
     } else {
-      a_row = dynamic_slice(body_a, {i, zero}, {1, m});
+      TF_ASSIGN_OR_RETURN(a_row, DynamicSliceInMinorDims(bodyb.get(), body_a,
+                                                         {i, zero}, {1, m}));
     }
     TF_ASSIGN_OR_RETURN(auto b_update, BatchDot(bodyb.get(), a_row, body_out,
                                                 /*transpose_x=*/transpose_a,
                                                 /*transpose_y=*/false,
                                                 /*conjugate_x=*/conjugate_a,
                                                 /*conjugate_y=*/false));
-    auto result_row =
-        bodyb->Sub(dynamic_slice(body_b, {i, zero}, {1, n}), b_update);
+    TF_ASSIGN_OR_RETURN(
+        auto result_row_slice,
+        DynamicSliceInMinorDims(bodyb.get(), body_b, {i, zero}, {1, n}));
+    auto result_row = bodyb->Sub(result_row_slice, b_update);
 
     // body_out[..., i:i+1, :] = result_row / a[..., i:i+1, i:i+1]
-    auto a_elt = dynamic_slice(body_a, {i, i}, {1, 1});
+    TF_ASSIGN_OR_RETURN(auto a_elt, DynamicSliceInMinorDims(bodyb.get(), body_a,
+                                                            {i, i}, {1, 1}));
     auto div_result = bodyb->Div(result_row, maybe_conj(bodyb.get(), a_elt));
-    body_out = update(body_out, div_result, {i, zero});
+    TF_ASSIGN_OR_RETURN(body_out,
+                        DynamicUpdateSliceInMinorDims(bodyb.get(), body_out,
+                                                      div_result, {i, zero}));
 
     // if transpose_a:
     //   return (i - 1, body_out, a, b)

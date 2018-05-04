@@ -20,6 +20,7 @@ py_test(
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":xla_client",
         "//tensorflow/python:platform_test",
@@ -71,16 +72,4 @@ tf_py_wrap_cc(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
