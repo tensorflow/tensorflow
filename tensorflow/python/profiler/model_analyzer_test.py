@@ -232,7 +232,7 @@ class PrintModelAnalysisTest(test.TestCase):
 
         self.assertLess(0, tfprof_node.total_exec_micros)
         self.assertEqual(2844, tfprof_node.total_parameters)
-        self.assertLess(168800, tfprof_node.total_float_ops)
+        self.assertLess(145660, tfprof_node.total_float_ops)
         self.assertEqual(8, len(tfprof_node.children))
         self.assertEqual('_TFProfRoot', tfprof_node.name)
         self.assertEqual(

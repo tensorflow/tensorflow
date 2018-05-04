@@ -25,6 +25,8 @@ import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -54,8 +56,8 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
 
 
-def _initialized_session():
-  sess = session.Session()
+def _initialized_session(config=None):
+  sess = session.Session(config=config)
   sess.run(variables_lib.global_variables_initializer())
   sess.run(lookup_ops.tables_initializer())
   return sess
@@ -6191,7 +6193,12 @@ class WeightedCategoricalColumnTest(test.TestCase):
               'values': ((.5,), (1.,))
           }, (column,),
           sparse_combiner='mean')
-      with _initialized_session():
+      # Disabling the constant folding optimizer here since it changes the
+      # error message differently on CPU and GPU.
+      config = config_pb2.ConfigProto()
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      with _initialized_session(config):
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
           predictions.eval()
 
@@ -6284,7 +6291,12 @@ class WeightedCategoricalColumnTest(test.TestCase):
               'values': ((.5,), (1.,))
           }, (column,),
           sparse_combiner='mean')
-      with _initialized_session():
+      # Disabling the constant folding optimizer here since it changes the
+      # error message differently on CPU and GPU.
+      config = config_pb2.ConfigProto()
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      with _initialized_session(config):
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
           predictions.eval()
 

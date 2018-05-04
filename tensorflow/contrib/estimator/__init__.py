@@ -55,6 +55,7 @@ _allowed_symbols = [
     'replicate_model_fn',
     'TowerOptimizer',
     'RNNClassifier',
+    'RNNEstimator',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
