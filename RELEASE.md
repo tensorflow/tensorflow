@@ -1,3 +1,14 @@
+# Release 1.7.1
+
+## Bug Fixes and Other Changes
+* Fixes the following potential security vulnerabilities:
+  * The TensorFlow Lite TOCO compiler did not perform correct boundary checks when reading from some fields within TFLite files.
+  * The block size in meta file could contain a large int64 value which causes an integer overflow upon addition. Subsequent code using n as index may cause an out-of-bounds read.
+  * TensorFlow checkpoint meta file uses Google's [https://github.com/google/snappy](snappy) compression/decompression library. There is a memcpy-param-overlap issue in the version of snappy currently used by TensorFlow.
+  * A maliciously crafted configuration file passed into the TensorFlow XLA compiler could cause an invalid memory access and/or a heap buffer overflow.
+
+
+
 # Release 1.7.0
 
 ## Major Features And Improvements
