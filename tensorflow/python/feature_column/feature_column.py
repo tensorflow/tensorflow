@@ -280,7 +280,7 @@ def input_layer(features,
 # TODO(akshayka): InputLayer should be a subclass of Layer, and it
 # should implement the logic in input_layer using Layer's build-and-call
 # paradigm; input_layer should create an instance of InputLayer and
-# return the result of inovking its apply method, just as functional layers do.
+# return the result of invoking its apply method, just as functional layers do.
 class InputLayer(object):
   """An object-oriented version of `input_layer` that reuses variables."""
 
@@ -834,7 +834,7 @@ def shared_embedding_columns(
     tensor_name_in_ckpt=None, max_norm=None, trainable=True):
   """List of dense columns that convert from sparse, categorical input.
 
-  This is similar to `embedding_column`, except that that it produces a list of
+  This is similar to `embedding_column`, except that it produces a list of
   embedding columns that share the same embedding weights.
 
   Use this when your inputs are sparse and of the same type (e.g. watched and
