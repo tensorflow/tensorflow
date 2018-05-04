@@ -29,6 +29,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -42,6 +43,7 @@ dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
 `self.batch_shape() + self.event_shape()`."""
 
 
+@tf_export("distributions.Dirichlet")
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -153,7 +155,7 @@ class Dirichlet(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration]):
+    with ops.name_scope(name, values=[concentration]) as name:
       self._concentration = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration, name="concentration"),
           validate_args)

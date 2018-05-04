@@ -71,7 +71,7 @@ class SparsifyGatherTest : public ::testing::Test {
   }
 
   void TestSinglePartition(bool gather_v2, bool include_shared_init,
-                           bool test_variable,
+                           bool test_variable, bool test_kept_concat,
                            const string& shared_init_name = "group_deps") {
     GraphDef graph_def;
 
@@ -80,6 +80,8 @@ class SparsifyGatherTest : public ::testing::Test {
     // Build the graph.
     NodeDef* input_node = CreateNode("ids", "Const", {}, &graph_def);
     NodeDef* w_node;
+    NodeDef* zeros_const;
+    NodeDef* zeros_shape;
     NodeDef* zeros_node;
     NodeDef* assign_node;
 
@@ -92,19 +94,27 @@ class SparsifyGatherTest : public ::testing::Test {
     } else {
       w_node = CreateNode("w/part_1", "VariableV2", {}, &graph_def);
 
-      zeros_node =
-          CreateNode("w/part_1/Initializer/zeros", "Const", {}, &graph_def);
+      zeros_shape = CreateNode("w/part_1/Initializer/zeros/shape_as_tensor",
+                               "Const", {}, &graph_def);
+      zeros_const = CreateNode("w/part_1/Initializer/zeros/Const", "Const", {},
+                               &graph_def);
+      zeros_node = CreateNode("w/part_1/Initializer/zeros", "Fill",
+                              {zeros_shape, zeros_const}, &graph_def);
       assign_node = CreateNode("w/part_1/Assign", "Assign",
                                {w_node, zeros_node}, &graph_def);
 
       NodeDef* save_const_node =
           CreateNode("save/Const", "Const", {}, &graph_def);
 
+      Tensor tensor_names_values(DT_STRING, TensorShape({1}));
+      test::FillValues<string>(&tensor_names_values, {"w"});
       NodeDef* tensor_names_node =
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
+      SetNodeTensorAttr<string>("value", tensor_names_values,
+                                tensor_names_node);
+
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
-
       Tensor shapes_slices_val(DT_STRING, TensorShape({1}));
       shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
       SetNodeTensorAttr<string>("value", shapes_slices_val,
@@ -133,6 +143,26 @@ class SparsifyGatherTest : public ::testing::Test {
       }
     }
 
+    NodeDef* concat_axis_node =
+        CreateNode("linear/concat/axis", "Const", {}, &graph_def);
+    NodeDef* concat_input_node =
+        CreateNode("concat/input/node", "Const", {}, &graph_def);
+    NodeDef* concat_node = nullptr;
+    if (!test_kept_concat) {
+      concat_node = CreateNode(
+          "concat/node", "ConcatV2",
+          {identity_node, concat_input_node, concat_axis_node}, &graph_def);
+      SetNodeAttr("N", 2, concat_node);
+    } else {
+      NodeDef* concat_input_node_2 =
+          CreateNode("concat/input/node_2", "Const", {}, &graph_def);
+      concat_node = CreateNode("concat/node", "ConcatV2",
+                               {identity_node, concat_input_node,
+                                concat_input_node_2, concat_axis_node},
+                               &graph_def);
+      SetNodeAttr("N", 3, concat_node);
+    }
+
     // Run the op.
     GraphDef result;
     TransformFuncContext context;
@@ -151,11 +181,31 @@ class SparsifyGatherTest : public ::testing::Test {
     MapNamesToNodes(result, &node_lookup);
 
     // Check nodes.
+    EXPECT_EQ(0,
+              node_lookup.count("w/part_1/Initializer/zeros/shape_as_tensor"));
+    EXPECT_EQ(0, node_lookup.count("w/part_1/Initializer/zeros/Const"));
     EXPECT_EQ(0, node_lookup.count("w/part_1/Initializer/zeros"));
     EXPECT_EQ(0, node_lookup.count("w/part_1/Assign"));
 
     EXPECT_EQ(1, node_lookup.count("ids"));
     EXPECT_EQ("Const", node_lookup.at("ids")->op());
+
+    EXPECT_EQ(1, node_lookup.count("concat/node"));
+
+    if (!test_kept_concat) {
+      EXPECT_EQ(0, node_lookup.count("linear/concat/axis"));
+      EXPECT_EQ("Identity", node_lookup.at("concat/node")->op());
+      EXPECT_EQ(1, node_lookup.at("concat/node")->input_size());
+      EXPECT_EQ("concat/input/node", node_lookup.at("concat/node")->input(0));
+    } else {
+      EXPECT_EQ(1, node_lookup.count("linear/concat/axis"));
+      EXPECT_EQ("ConcatV2", node_lookup.at("concat/node")->op());
+      EXPECT_EQ(3, node_lookup.at("concat/node")->input_size());
+      EXPECT_EQ("concat/input/node", node_lookup.at("concat/node")->input(0));
+      EXPECT_EQ("concat/input/node_2", node_lookup.at("concat/node")->input(1));
+      EXPECT_EQ("linear/concat/axis", node_lookup.at("concat/node")->input(2));
+      EXPECT_EQ(2, node_lookup.at("concat/node")->attr().at("N").i());
+    }
 
     EXPECT_EQ(1, node_lookup.count("w/part_1/indices"));
     EXPECT_EQ("Const", node_lookup.at("w/part_1/indices")->op());
@@ -247,7 +297,11 @@ class SparsifyGatherTest : public ::testing::Test {
     // Two partitions
     NodeDef* w_node1;
     NodeDef* w_node2;
+    NodeDef* zeros_const1;
+    NodeDef* zeros_shape1;
     NodeDef* zeros_node1;
+    NodeDef* zeros_const2;
+    NodeDef* zeros_shape2;
     NodeDef* zeros_node2;
     NodeDef* assign_node1;
     NodeDef* assign_node2;
@@ -260,51 +314,53 @@ class SparsifyGatherTest : public ::testing::Test {
       SetNodeTensorAttr<float>("value", weights, w_node1);
       SetNodeTensorAttr<float>("value", weights, w_node2);
     } else {
+      NodeDef* save_const_node =
+          CreateNode("save/Const", "Const", {}, &graph_def);
+
+      NodeDef* tensor_names_node =
+          CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
+      Tensor tensor_names_values(DT_STRING, TensorShape({2}));
+      test::FillValues<string>(&tensor_names_values, {"w1", "w2"});
+      SetNodeTensorAttr<string>("value", tensor_names_values,
+                                tensor_names_node);
+
+      NodeDef* tensor_shapes_slices_node = CreateNode(
+          "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
+      Tensor shapes_slices_val(DT_STRING, TensorShape({2}));
+      shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<string>()(1) = "4 1 0,4:0,1";
+      SetNodeTensorAttr<string>("value", shapes_slices_val,
+                                tensor_shapes_slices_node);
+
+      NodeDef* restore_node = CreateNode(
+          "save/RestoreV2", "RestoreV2",
+          {save_const_node, tensor_names_node, tensor_shapes_slices_node},
+          &graph_def);
+
       w_node1 = CreateNode("w1/part_1", "VariableV2", {}, &graph_def);
-      zeros_node1 =
-          CreateNode("w1/part_1/Initializer/zeros", "Const", {}, &graph_def);
+
+      zeros_shape1 = CreateNode("w1/part_1/Initializer/zeros/shape_as_tensor",
+                                "Const", {}, &graph_def);
+      zeros_const1 = CreateNode("w1/part_1/Initializer/zeros/Const", "Const",
+                                {}, &graph_def);
+      zeros_node1 = CreateNode("w1/part_1/Initializer/zeros", "Fill",
+                               {zeros_shape1, zeros_const1}, &graph_def);
       assign_node1 = CreateNode("w1/part_1/Assign", "Assign",
                                 {w_node1, zeros_node1}, &graph_def);
 
-      NodeDef* save_const_node =
-          CreateNode("save/Const", "Const", {}, &graph_def);
-      NodeDef* tensor_names_node1 =
-          CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
-      NodeDef* tensor_shapes_slices_node1 = CreateNode(
-          "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
-
-      Tensor shapes_slices_val1(DT_STRING, TensorShape({1}));
-      shapes_slices_val1.flat<string>()(0) = "4 1 0,4:0,1";
-      SetNodeTensorAttr<string>("value", shapes_slices_val1,
-                                tensor_shapes_slices_node1);
-
-      NodeDef* restore_node1 = CreateNode(
-          "save/RestoreV2", "RestoreV2",
-          {save_const_node, tensor_names_node1, tensor_shapes_slices_node1},
-          &graph_def);
-      CreateNode("save/Assign", "Assign", {w_node1, restore_node1}, &graph_def);
+      CreateNode("save/Assign", "Assign", {w_node1, restore_node}, &graph_def);
 
       w_node2 = CreateNode("w2/part_1", "VariableV2", {}, &graph_def);
-      zeros_node2 =
-          CreateNode("w2/part_1/Initializer/zeros", "Const", {}, &graph_def);
+      zeros_shape2 = CreateNode("w2/part_1/Initializer/zeros/shape_as_tensor",
+                                "Const", {}, &graph_def);
+      zeros_const2 = CreateNode("w2/part_1/Initializer/zeros/Const", "Const",
+                                {}, &graph_def);
+      zeros_node2 = CreateNode("w2/part_1/Initializer/zeros", "Fill",
+                               {zeros_shape2, zeros_const2}, &graph_def);
       assign_node2 = CreateNode("w2/part_1/Assign", "Assign",
                                 {w_node2, zeros_node2}, &graph_def);
 
-      NodeDef* tensor_names_node2 =
-          CreateNode("save/RestoreV2_1/tensor_names", "Const", {}, &graph_def);
-      NodeDef* tensor_shapes_slices_node2 = CreateNode(
-          "save/RestoreV2_1/shape_and_slices", "Const", {}, &graph_def);
-
-      Tensor shapes_slices_val2(DT_STRING, TensorShape({1}));
-      shapes_slices_val2.flat<string>()(0) = "4 1 0,4:0,1";
-      SetNodeTensorAttr<string>("value", shapes_slices_val2,
-                                tensor_shapes_slices_node2);
-
-      NodeDef* restore_node2 = CreateNode(
-          "save/RestoreV2_1", "RestoreV2",
-          {save_const_node, tensor_names_node2, tensor_shapes_slices_node2},
-          &graph_def);
-      CreateNode("save/Assign_1", "Assign", {w_node2, restore_node2},
+      CreateNode("save/Assign_1", "Assign", {w_node2, restore_node},
                  &graph_def);
 
       BundleWriter writer(Env::Default(), checkpoint_path);
@@ -321,6 +377,13 @@ class SparsifyGatherTest : public ::testing::Test {
         CreateNode("w2/part_1/read", "Identity", {w_node2}, &graph_def);
     MakeGather("gather1", gather_v2, identity_node1, input_node, &graph_def);
     MakeGather("gather2", gather_v2, identity_node2, input_node, &graph_def);
+
+    NodeDef* concat_axis_node =
+        CreateNode("linear/concat/axis", "Const", {}, &graph_def);
+    NodeDef* concat_node = CreateNode(
+        "concat/node", "ConcatV2",
+        {identity_node1, identity_node2, concat_axis_node}, &graph_def);
+    SetNodeAttr("N", 2, concat_node);
 
     // Shared init node
     if (include_shared_init) {
@@ -350,8 +413,14 @@ class SparsifyGatherTest : public ::testing::Test {
     MapNamesToNodes(result, &node_lookup);
 
     // Check nodes.
+    EXPECT_EQ(0,
+              node_lookup.count("w1/part_1/Initializer/zeros/shape_as_tensor"));
+    EXPECT_EQ(0, node_lookup.count("w1/part_1/Initializer/zeros/Const"));
     EXPECT_EQ(0, node_lookup.count("w1/part_1/Initializer/zeros"));
     EXPECT_EQ(0, node_lookup.count("w1/part_1/Assign"));
+    EXPECT_EQ(0,
+              node_lookup.count("w2/part_1/Initializer/zeros/shape_as_tensor"));
+    EXPECT_EQ(0, node_lookup.count("w2/part_1/Initializer/zeros/Const"));
     EXPECT_EQ(0, node_lookup.count("w2/part_1/Initializer/zeros"));
     EXPECT_EQ(0, node_lookup.count("w2/part_1/Assign"));
     EXPECT_EQ(1, node_lookup.count("ids"));
@@ -487,6 +556,9 @@ class SparsifyGatherTest : public ::testing::Test {
               node_lookup.at("gather2/LookupTableFind")->input(2));
     EXPECT_EQ("gather2/LookupTableFind", node_lookup.at("gather2")->input(0));
 
+    EXPECT_EQ(0, node_lookup.count("linear/concat/axis"));
+    EXPECT_EQ(0, node_lookup.count("concat/node"));
+
     // Check control deps.
     EXPECT_EQ(2, node_lookup.at(shared_init_name)->input_size());
     EXPECT_NE(std::find(node_lookup.at(shared_init_name)->input().begin(),
@@ -522,18 +594,31 @@ class SparsifyGatherTest : public ::testing::Test {
 };
 
 TEST_F(SparsifyGatherTest, TestSinglePartition) {
-  TestSinglePartition(false, false, false);
-  TestSinglePartition(false, true, false);
-  TestSinglePartition(true, false, false);
-  TestSinglePartition(true, true, false);
-  TestSinglePartition(false, false, true);
-  TestSinglePartition(false, true, true);
-  TestSinglePartition(true, false, true);
-  TestSinglePartition(true, true, true);
-  TestSinglePartition(false, true, false, "shared_inits");
-  TestSinglePartition(true, true, false, "shared_inits");
-  TestSinglePartition(false, true, true, "shared_inits");
-  TestSinglePartition(true, true, true, "shared_inits");
+  TestSinglePartition(false, false, false, false);
+  TestSinglePartition(false, true, false, false);
+  TestSinglePartition(true, false, false, false);
+  TestSinglePartition(true, true, false, false);
+  TestSinglePartition(false, false, true, false);
+  TestSinglePartition(false, true, true, false);
+  TestSinglePartition(true, false, true, false);
+  TestSinglePartition(true, true, true, false);
+  TestSinglePartition(false, true, false, false, "shared_inits");
+  TestSinglePartition(true, true, false, false, "shared_inits");
+  TestSinglePartition(false, true, true, false, "shared_inits");
+  TestSinglePartition(true, true, true, false, "shared_inits");
+
+  TestSinglePartition(false, false, false, true);
+  TestSinglePartition(false, true, false, true);
+  TestSinglePartition(true, false, false, true);
+  TestSinglePartition(true, true, false, true);
+  TestSinglePartition(false, false, true, true);
+  TestSinglePartition(false, true, true, true);
+  TestSinglePartition(true, false, true, true);
+  TestSinglePartition(true, true, true, true);
+  TestSinglePartition(false, true, false, true, "shared_inits");
+  TestSinglePartition(true, true, false, true, "shared_inits");
+  TestSinglePartition(false, true, true, true, "shared_inits");
+  TestSinglePartition(true, true, true, true, "shared_inits");
 }
 
 TEST_F(SparsifyGatherTest, TestMultiPartition) {

@@ -34,9 +34,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
     ],
@@ -69,18 +69,4 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

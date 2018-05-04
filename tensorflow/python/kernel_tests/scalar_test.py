@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
@@ -30,6 +31,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+@test_util.with_c_api
 class ScalarTest(test.TestCase):
 
   def check(self, op, args, error, correct=None):
@@ -51,7 +53,7 @@ class ScalarTest(test.TestCase):
     # Test various GraphDef versions
     for version in strict + lenient:
       with ops.Graph().as_default() as g:
-        g.graph_def_versions.producer = version
+        test_util.set_producer_version(g, version)
         with self.test_session(graph=g) as sess:
           feed = {}
           xs = placeholders(args, feed)
@@ -90,11 +92,11 @@ class ScalarTest(test.TestCase):
     self.check(array_ops.reshape, (7, 1), 'sizes input must be 1-D', [7])
 
   def testShardedFilename(self):
-    self.check(gen_io_ops._sharded_filename, ('foo', 4, [100]),
+    self.check(gen_io_ops.sharded_filename, ('foo', 4, [100]),
                'must be a scalar', b'foo-00004-of-00100')
 
   def testShardedFilespec(self):
-    self.check(gen_io_ops._sharded_filespec, ('foo', [100]), 'must be a scalar',
+    self.check(gen_io_ops.sharded_filespec, ('foo', [100]), 'must be a scalar',
                b'foo-?????-of-00100')
 
   def testUnsortedSegmentSum(self):

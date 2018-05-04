@@ -36,6 +36,7 @@ limitations under the License.
 #define DISABLED_ON_CPU(X) X
 #define DISABLED_ON_CPU_PARALLEL(X) X
 #define DISABLED_ON_GPU(X) X
+#define DISABLED_ON_INTERPRETER(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -61,6 +62,11 @@ limitations under the License.
 # undef DISABLED_ON_GPU
 # define DISABLED_ON_GPU(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_GPU
+
+#ifdef XLA_TEST_BACKEND_INTERPRETER
+# undef DISABLED_ON_INTERPRETER
+# define DISABLED_ON_INTERPRETER(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_INTERPRETER
 
 // clang-format on
 
@@ -155,4 +161,31 @@ string PrependDisabledIfIndicated(const string& test_case_name,
 
 #define XLA_TEST_P(test_case_name, test_name) \
   XLA_TEST_P_IMPL_(test_case_name, test_name)
+
+// This is identical to the TEST_F macro from "gtest", but it potentially
+// disables the test based on an external manifest file, DISABLED_MANIFEST.
+#define XLA_TYPED_TEST(CaseName, TestName)                                     \
+  template <typename gtest_TypeParam_>                                         \
+  class GTEST_TEST_CLASS_NAME_(CaseName, TestName)                             \
+      : public CaseName<gtest_TypeParam_> {                                    \
+   private:                                                                    \
+    typedef CaseName<gtest_TypeParam_> TestFixture;                            \
+    typedef gtest_TypeParam_ TypeParam;                                        \
+    virtual void TestBody();                                                   \
+  };                                                                           \
+  bool gtest_##CaseName##_##TestName##_registered_ GTEST_ATTRIBUTE_UNUSED_ =   \
+      ::testing::internal::TypeParameterizedTest<                              \
+          CaseName,                                                            \
+          ::testing::internal::TemplateSel<GTEST_TEST_CLASS_NAME_(CaseName,    \
+                                                                  TestName)>,  \
+          GTEST_TYPE_PARAMS_(CaseName)>::                                      \
+          Register(                                                            \
+              "", ::testing::internal::CodeLocation(__FILE__, __LINE__),       \
+              #CaseName,                                                       \
+              ::xla::PrependDisabledIfIndicated(#CaseName, #TestName).c_str(), \
+              0);                                                              \
+  template <typename gtest_TypeParam_>                                         \
+  void GTEST_TEST_CLASS_NAME_(CaseName,                                        \
+                              TestName)<gtest_TypeParam_>::TestBody()
+
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_TEST_MACROS_H_

@@ -25,9 +25,7 @@ namespace tensorforest {
 
 using tensorflow::Tensor;
 
-float LeftProbability(const Tensor& point,
-                      const Tensor& weight,
-                      float bias,
+float LeftProbability(const Tensor& point, const Tensor& weight, float bias,
                       int num_features) {
   const auto p = point.unaligned_flat<float>();
   const auto w = weight.unaligned_flat<float>();
@@ -41,11 +39,8 @@ float LeftProbability(const Tensor& point,
   return 1.0 / (1.0 + exp(-dot_product + bias));
 }
 
-float LeftProbabilityK(const Tensor& point,
-                       std::vector<int32> feature_set,
-                       const Tensor& weight,
-                       float bias,
-                       int num_features,
+float LeftProbabilityK(const Tensor& point, std::vector<int32> feature_set,
+                       const Tensor& weight, float bias, int num_features,
                        int k) {
   const auto p = point.unaligned_flat<float>();
   const auto w = weight.unaligned_flat<float>();

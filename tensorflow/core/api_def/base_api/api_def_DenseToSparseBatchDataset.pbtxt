@@ -21,5 +21,5 @@ SparseTensor. The shape may be partially specified, using `-1` to indicate
 that a particular dimension should use the maximum size of all batch elements.
 END
   }
-  summary: "Creates a dataset that yields a SparseTensor for each element of the input."
+  summary: "Creates a dataset that batches input elements into a SparseTensor."
 }

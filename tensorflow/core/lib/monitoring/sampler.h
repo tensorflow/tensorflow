@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
@@ -215,4 +215,4 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
 }  // namespace tensorflow
 
 #endif  // IS_MOBILE_PLATFORM
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_

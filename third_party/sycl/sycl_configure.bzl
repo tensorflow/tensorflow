@@ -67,7 +67,6 @@ def find_computecpp_root(repository_ctx):
 
 def find_trisycl_include_dir(repository_ctx):
   """Find triSYCL include directory. """
-  sycl_name = ""
   if _TRISYCL_INCLUDE_DIR in repository_ctx.os.environ:
     sycl_name = repository_ctx.os.environ[_TRISYCL_INCLUDE_DIR].strip()
     if sycl_name.startswith("/"):

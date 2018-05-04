@@ -141,6 +141,10 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
       outval = val0 - val1;
     } else if (binary_op->type == OperatorType::kDiv) {
       outval = val0 / val1;
+    } else if (binary_op->type == OperatorType::kFloorDiv) {
+      outval = floor(val0 / val1);
+    } else if (binary_op->type == OperatorType::kFloorMod) {
+      outval = val0 - (floor(val0 / val1) * val1);
     } else if (binary_op->type == OperatorType::kTensorFlowMinimum) {
       outval = std::min(val0, val1);
     } else if (binary_op->type == OperatorType::kTensorFlowMaximum) {
@@ -162,8 +166,9 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
 
 void EvaluateBinaryOperatorOnConstantInputs(Model* model,
                                             const Operator* binary_op) {
-  const auto inputs_data_type = model->arrays[binary_op->inputs[0]]->data_type;
-  const auto output_data_type = model->arrays[binary_op->outputs[0]]->data_type;
+  const auto inputs_data_type = model->GetArray(binary_op->inputs[0]).data_type;
+  const auto output_data_type =
+      model->GetArray(binary_op->outputs[0]).data_type;
 #define TOCO_HANDLE_CASE(InputsDataType, OutputDataType)                    \
   if (inputs_data_type == InputsDataType &&                                 \
       output_data_type == OutputDataType) {                                 \
@@ -191,6 +196,8 @@ bool ResolveConstantBinaryOperator::Run(Model* model, std::size_t op_index) {
       binary_op->type != OperatorType::kMul &&
       binary_op->type != OperatorType::kSub &&
       binary_op->type != OperatorType::kDiv &&
+      binary_op->type != OperatorType::kFloorDiv &&
+      binary_op->type != OperatorType::kFloorMod &&
       binary_op->type != OperatorType::kTensorFlowMinimum &&
       binary_op->type != OperatorType::kTensorFlowMaximum &&
       binary_op->type != OperatorType::kTensorFlowLess &&
@@ -208,7 +215,7 @@ bool ResolveConstantBinaryOperator::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  auto& output_array = *model->arrays[binary_op->outputs[0]];
+  auto& output_array = model->GetArray(binary_op->outputs[0]);
   // Yield until the output array dims have been resolved.
   if (!output_array.has_shape()) {
     return false;
@@ -233,10 +240,10 @@ bool ResolveConstantBinaryOperator::Run(Model* model, std::size_t op_index) {
 
   // Remove the binary operator and its inputs
   if (CountOpsWithInput(*model, binary_op->inputs[0]) == 1) {
-    model->arrays.erase(binary_op->inputs[0]);
+    model->EraseArray(binary_op->inputs[0]);
   }
   if (CountOpsWithInput(*model, binary_op->inputs[1]) == 1) {
-    model->arrays.erase(binary_op->inputs[1]);
+    model->EraseArray(binary_op->inputs[1]);
   }
   AddMessageF("Resolved constant %s to the equivalent constant array",
               LogName(*binary_op));

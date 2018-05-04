@@ -30,7 +30,8 @@ message FunctionDef {
   // Attributes specific to this function definition.
   map<string, AttrValue> attr = 5;
 
-  // NOTE: field id 2 deleted on Jan 11, 2016, GraphDef version 21.
+  // NOTE: field id 2 deleted on Jan 11, 2017, GraphDef version 21.
+  reserved 2;
 
   // In both of the following fields, there is the need to specify an
   // output that is used as either the input to another node (in

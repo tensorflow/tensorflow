@@ -35,7 +35,7 @@ bool ResolvePadAttributes::Run(Model* model, std::size_t op_index) {
   CHECK_EQ(op->inputs.size(), 2);
   if (!IsConstantParameterArray(*model, op->inputs[1])) return false;
 
-  const auto& array = *model->arrays[op->inputs[1]];
+  const auto& array = model->GetArray(op->inputs[1]);
   if (!array.has_shape()) return false;
 
   const std::vector<int>& dims = array.shape().dims();

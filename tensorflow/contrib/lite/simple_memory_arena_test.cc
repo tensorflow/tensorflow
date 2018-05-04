@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -85,7 +86,7 @@ TEST(SimpleMemoryArenaTest, TestAfterClear) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

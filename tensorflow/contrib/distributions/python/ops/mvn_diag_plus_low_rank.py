@@ -86,7 +86,7 @@ class MultivariateNormalDiagPlusLowRank(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate Gaussian with covariance `cov = S @ S.T`,
   # `S = diag(d) + U @ diag(m) @ U.T`. The perturbation, `U @ diag(m) @ U.T`, is
@@ -97,7 +97,7 @@ class MultivariateNormalDiagPlusLowRank(
        [-1, 1],
        [2, -0.5]]        # shape: [3, 2]
   m = [4., 5]            # shape: [2]
-  mvn = ds.MultivariateNormalDiagPlusLowRank(
+  mvn = tfd.MultivariateNormalDiagPlusLowRank(
       loc=mu
       scale_diag=d
       scale_perturb_factor=U,
@@ -118,7 +118,7 @@ class MultivariateNormalDiagPlusLowRank(
   m = [[0.1, 0.2],
        [0.4, 0.5]]         # shape: [b, r] = [2, 2]
 
-  mvn = ds.MultivariateNormalDiagPlusLowRank(
+  mvn = tfd.MultivariateNormalDiagPlusLowRank(
       loc=mu,
       scale_perturb_factor=U,
       scale_perturb_diag=m)
@@ -218,7 +218,7 @@ class MultivariateNormalDiagPlusLowRank(
     parameters = locals()
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier, scale_perturb_factor,
           scale_perturb_diag]):

@@ -1,84 +1,49 @@
-# TensorFlow Lite Optimizing Converter command-line reference
+# TensorFlow Lite Optimizing Converter command-line glossary
 
 This page is complete reference of command-line flags. It is complemented by the
 following other documents:
 
 *   [README](../README.md)
 *   [Command-line examples](cmdline_examples.md)
+*   [Python API examples](python_api.md)
 
 Table of contents:
 
-[TOC]
+*   [High-level flags](#high-level-flags)
+*   [Model flags](#model-flags)
+*   [Transformation flags](#transformation-flags)
+*   [Logging flags](#logging-flags)
 
-## High-level overview
+## High-level flags
 
-A full list and detailed specification of all flags is given in the next
-section. For now we focus on a higher-level description of command lines:
+The following high level flags specify the location of the input and output
+files. The flag `--output_file` is always required. Additionally, either
+`--input_file` or `--savedmodel_directory` is required.
 
-```
-toco \
-  --input_format=... \
-  --output_format=... \
-  --input_file=... \
-  --output_file=... \
-  [model flags...] \
-  [transformation flags...] \
-  [logging flags...]
-```
+*   `--savedmodel_directory`. Type: string. Specifies the full path to the
+    directory containing the SavedModel.
+*   `--savedmodel_tagset`. Type: string. Default:
+    [kSavedModelTagServe](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/tag_constants.h).
+    Specifies a comma-separated set of tags identifying the MetaGraphDef within
+    the SavedModel to analyze. All tags in the tag set must be specified.
+*   `--input_file`. Type: string. Specifies the path of the input file. This may
+    be either an absolute or a relative path.
+*   `--output_file`. Type: string. Specifies the path of the output file.
 
-In other words, the converter requires at least the following mandatory flags:
-`--input_format`, `--output_format`, `--input_file`, `--output_file`. Depending
-on the input and output formats, additional flags may be allowed or mandatory:
+The following high level flags specify the types of the input and output files:
 
-*   *Model flags* provide additional information about the model stored in the
-    input file.
-    *   `--output_array` or `--output_arrays` specify which arrays in the input
-        file are to be considered the output activations.
-    *   `--input_array` or `--input_arrays` specify which arrays in the input
-        file are to be considered the input activations.
-    *   `--input_shape` or `--input_shapes` specify the shapes of the input
-        arrays.
-    *   `--mean_value` or `--mean_values`, and `--std_value` or `--std_values`,
-        give the dequantization parameters of the input arrays, for the case
-        when the output file will accept quantized input arrays.
-*   *Transformation flags* specify options of the transformations to be applied
-    to the graph, i.e. they specify requested properties that the output file
-    should have.
-    *   `--input_type` specifies the type that the input arrays should have
-        after transformations, in the output file. This is where you choose
-        whether you want runtime inference code to accept float or quantized
-        inputs. This flag only applies to float or quantized inputs, and allows
-        to convert between the two. This flag has no effect on all other types
-        of inputs, such as ordinary integer arrays.
-    *   `--inference_type` or `--inference_types` specify the type that generic
-        intermediate and output activation arrays should have after
-        transformations, in the output file. This is where you choose whether
-        you want runtime inference code to perform float or quantized inference
-        arithmetic.
-    *   Some transformation flags allow to carry on with quantization when the
-        input graph is not properly quantized: `--default_ranges_min`,
-        `--default_ranges_max`, `--drop_fake_quant`,
-        `--reorder_across_fake_quant`.
-*   *Logging flags* described below.
-
-## Command-line flags complete reference
-
-### Mandatory flags
-
-*   `--input_format`. Type: string. Specifies the format of the input file.
-    Allowed values:
+*   `--input_format`. Type: string. Default: `TENSORFLOW_GRAPHDEF`. Specifies
+    the format of the input file. Allowed values:
     *   `TENSORFLOW_GRAPHDEF` &mdash; The TensorFlow GraphDef format. Both
         binary and text proto formats are allowed.
-    *   `TFLITE` &mdash; The TensorFlow Lite flatbuffers format.
-*   `--output_format`. Type: string. Specifies the format of the output file.
-    Allowed values:
+    *   `TFLITE` &mdash; The TensorFlow Lite FlatBuffers format.
+*   `--output_format`. Type: string. Default: `TFLITE`. Specifies the format of
+    the output file. Allowed values:
     *   `TENSORFLOW_GRAPHDEF` &mdash; The TensorFlow GraphDef format. Always
         produces a file in binary (not text) proto format.
-    *   `TFLITE` &mdash; The TensorFlow Lite flatbuffers format.
+    *   `TFLITE` &mdash; The TensorFlow Lite FlatBuffers format.
         *   Whether a float or quantized TensorFlow Lite file will be produced
             depends on the `--inference_type` flag.
-        *   Whether the produced TensorFlow Lite file will accept a float or
-            quantized input depends on the `--input_type` flag.
     *   `GRAPHVIZ_DOT` &mdash; The GraphViz `.dot` format. This asks the
         converter to generate a reasonable graphical representation of the graph
         after simplification by a generic set of transformation.
@@ -93,11 +58,11 @@ on the input and output formats, additional flags may be allowed or mandatory:
             you get in your actual output format as opposed to just a merely
             plausible visualization of a model, consider using `--dump_graphviz`
             instead and keeping your true `--output_format`.
-*   `--input_file`. Type: string. Specifies the path of the input file. This may
-    be either an absolute or a relative path.
-*   `--output_file`. Type: string. Specifies the path of the output file.
 
-### Model flags
+## Model flags
+
+*Model flags* provide additional information about the model stored in the input
+file.
 
 *   `--output_array`. Type: string. Specifies a single array as the output
     activations. Incompatible with `--output_arrays`.
@@ -109,6 +74,10 @@ on the input and output formats, additional flags may be allowed or mandatory:
 *   `--input_arrays`. Type: comma-separated list of strings. Specifies a list of
     arrays as the input activations, for models with multiple inputs.
     Incompatible with `--input_array`.
+*   `--batch_size`. Type: integer. Default: 1. Specifies the batch size for the
+    model. Replaces the first dimension of an input size array if undefined. Use
+    only with SavedModels when neither `--input_shape` nor `input_shapes` flags
+    are specified. Incompatible with GraphDefs.
 
 When `--input_array` is used, the following flags are available to provide
 additional information about the single input array:
@@ -126,9 +95,7 @@ additional information about the single input array:
         next innermost dimension after 'depth').
 *   `--mean_value` and `--std_value`. Type: floating-point. The decimal point
     character is always the dot (`.`) regardless of the locale. These specify
-    the (de-)quantization parameters of the input array, to use when the output
-    file will take a quantized input array (that is, when passing
-    `--input_type=QUANTIZED_UINT8`).
+    the (de-)quantization parameters of the input array, when it is quantized.
     *   The meaning of mean_value and std_value is as follows: each quantized
         value in the quantized input array will be interpreted as a mathematical
         real number (i.e. as an input activation value) according to the
@@ -160,35 +127,54 @@ additional information about the multiple input arrays:
     the input arrays specified in `--input_arrays`, in the same order. See
     `--mean_value`, `--std_value` for details.
 
-### Transformation flags
+## Transformation flags
 
-*   `--input_type`. Type: string. Specifies what should be the type of the
-    entries in the input array(s) in the output file, after transformations, for
-    those input arrays that are originally either floating-point or quantized
-    real numbers in the input file. If there are multiple such input arrays,
-    then they all use this type. Input arrays of other types, such as arrays of
-    plain integers or strings, are not concerned with this flag. Allowed values:
-    *   `FLOAT` &mdash; Keep floating-point input arrays as such. Dequantize any
-        quantized input array. entries ("float32").
-    *   `QUANTIZED_UINT8` &mdash; Quantize floating-point input arrays, to have
-        8-bit unsigned integer entries. The quantization params are specified by
-        `--mean_value`, `--std_value` flags as explained in the documentation of
-        these flags.
-*   `--inference_type`. Type: string. Specifies what to do with floating-point
-    arrays found in the input file, besides input arrays. In other words, this
-    controls the possible quantization of floating-point weights, intermediate
-    activations, and output activations. Has no effect on arrays that aren't
-    floating-point in the input file. Allowed values:
-    *   `FLOAT` &mdash; Keep floating-point arrays as floating-point in the
-        output file. This corresponds to what is commonly called "floating-point
-        inference".
-    *   `QUANTIZED_UINT8` &mdash; Quantize floating-point arrays, changing their
-        storage data type from float to some integer type:
-        *   All float activations are quantized as `uint8`.
-        *   Almost all float weights are quantized as `uint8`.
-            *   A few exceptions exist. In particular, the bias-vectors in
-                "Conv" and "FullyConnected" layers are quantized as `int32`
-                instead for technical reasons.
+*Transformation flags* specify options of the transformations to be applied to
+the graph, i.e. they specify requested properties that the output file should
+have.
+
+*   `--inference_type`. Type: string. Sets the type of real-number arrays in the
+    output file, that is, controls the representation (quantization) of real
+    numbers in the output file, except for input arrays, which are controlled by
+    `--inference_input_type`.
+
+    This flag only impacts real-number arrays. By "real-number" we mean float
+    arrays, and quantized arrays. This excludes plain integer arrays, strings
+    arrays, and every other data type.
+
+    For real-number arrays, the impact of this flag is to allow the output file
+    to choose a different real-numbers representation (quantization) from what
+    the input file used. For any other types of arrays, changing the data type
+    would not make sense.
+
+    Specifically:
+
+    *   If `FLOAT`, then real-numbers arrays will be of type float in the output
+        file. If they were quantized in the input file, then they get
+        dequantized.
+    *   If `QUANTIZED_UINT8`, then real-numbers arrays will be quantized as
+        uint8 in the output file. If they were float in the input file, then
+        they get quantized.
+    *   If not set, then all real-numbers arrays retain the same type in the
+        output file as they have in the input file.
+
+*   `--inference_input_type`. Type: string. Similar to inference_type, but
+    allows to control specifically the quantization of input arrays, separately
+    from other arrays.
+
+    If not set, then the value of `--inference_type` is implicitly used, i.e. by
+    default input arrays are quantized like other arrays.
+
+    Like `--inference_type`, this only affects real-number arrays. By
+    "real-number" we mean float arrays, and quantized arrays. This excludes
+    plain integer arrays, strings arrays, and every other data type.
+
+    The typical use for this flag is for vision models taking a bitmap as input,
+    typically with uint8 channels, yet still requiring floating-point inference.
+    For such image models, the uint8 input is quantized, i.e. the uint8 values
+    are interpreted as real numbers, and the quantization parameters used for
+    such input arrays are their `mean_value`, `std_value` parameters.
+
 *   `--default_ranges_min`, `--default_ranges_max`. Type: floating-point. The
     decimal point character is always the dot (`.`) regardless of the locale.
     These flags enable what is called "dummy quantization". If defined, their
@@ -198,9 +184,11 @@ additional information about the multiple input arrays:
     incorrectly-quantized input files. This enables easy performance prototyping
     ("how fast would my model run if I quantized it?") but should never be used
     in production as the resulting quantized arithmetic is inaccurate.
+
 *   `--drop_fake_quant`. Type: boolean. Default: false. Causes fake-quantization
     nodes to be dropped from the graph. This may be used to recover a plain
     float graph from a fake-quantized graph.
+
 *   `--reorder_across_fake_quant`. Type: boolean. Default: false. Normally,
     fake-quantization nodes must be strict boundaries for graph transformations,
     in order to ensure that quantized inference has the exact same arithmetic
@@ -212,10 +200,10 @@ additional information about the multiple input arrays:
     well-formed quantized representation of these graphs. Such graphs should be
     fixed, but as a temporary work-around, setting this
     reorder_across_fake_quant flag allows the converter to perform necessary
-    graph transformaitons on them, at the cost of no longer faithfully matching
+    graph transformations on them, at the cost of no longer faithfully matching
     inference and training arithmetic.
 
-### Logging flags
+## Logging flags
 
 The following are standard Google logging flags:
 

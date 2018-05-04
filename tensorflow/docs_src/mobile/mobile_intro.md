@@ -82,7 +82,7 @@ new object enters or leaves the scene. We have some sample code for this
 available for Android [on
 Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android),
 and also a [more general object detection
-model](https://github.com/tensorflow/models/tree/master/object_detection/README.md)
+model](https://github.com/tensorflow/models/tree/master/research/object_detection/README.md)
 available as well.
 
 ### Gesture Recognition
@@ -134,7 +134,7 @@ that covers everything from sentiment analysis to topic discovery. You’re like
 to have your own categories or labels that you want to apply, so the best place
 to start is with an example
 like
-[Skip-Thoughts](https://github.com/tensorflow/models/tree/master/skip_thoughts/),
+[Skip-Thoughts](https://github.com/tensorflow/models/tree/master/research/skip_thoughts/),
 and then train on your own examples.
 
 ### Voice Synthesis
@@ -235,7 +235,7 @@ TensorFlow [on Github](https://github.com/tensorflow/models) that you can look
 through. Lean towards the simplest model you can find, and try to get started as
 soon as you have even a small amount of labelled data, since you’ll get the best
 results when you’re able to iterate quickly. The shorter the time it takes to
-try training a model and running it in s real application, the better overall
+try training a model and running it in its real application, the better overall
 results you’ll see. It’s common for an algorithm to get great training accuracy
 numbers but then fail to be useful within a real application because there’s a
 mismatch between the dataset and real usage. Prototype end-to-end usage as soon

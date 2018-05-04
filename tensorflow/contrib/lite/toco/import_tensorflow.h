@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
 
 #include <memory>
 #include <string>
@@ -23,12 +23,20 @@ limitations under the License.
 
 namespace toco {
 
-std::unique_ptr<Model> ImportTensorFlowGraphDef(
-    const ModelFlags& model_flags, const tensorflow::GraphDef& graph_def);
+struct TensorFlowImportFlags {
+  // If true, control dependencies will be dropped immediately
+  // during the import of the TensorFlow GraphDef.
+  bool drop_control_dependency = false;
+};
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
-    const ModelFlags& model_flags, const string& input_file_contents);
+    const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
+    const tensorflow::GraphDef& graph_def);
+
+std::unique_ptr<Model> ImportTensorFlowGraphDef(
+    const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
+    const string& input_file_contents);
 
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_

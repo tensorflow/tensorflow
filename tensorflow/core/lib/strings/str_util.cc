@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 #include <ctype.h>
+#include <algorithm>
 #include <vector>
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace str_util {
@@ -373,7 +375,7 @@ size_t RemoveWhitespaceContext(StringPiece* text) {
 }
 
 bool ConsumePrefix(StringPiece* s, StringPiece expected) {
-  if (s->starts_with(expected)) {
+  if (StartsWith(*s, expected)) {
     s->remove_prefix(expected.size());
     return true;
   }
@@ -381,7 +383,7 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected) {
 }
 
 bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
-  if (s->ends_with(expected)) {
+  if (EndsWith(*s, expected)) {
     s->remove_suffix(expected.size());
     return true;
   }
@@ -450,6 +452,23 @@ bool SplitAndParseAsFloats(StringPiece text, char delim,
                                           str.ToString().c_str(), value);
                                     },
                                     result);
+}
+
+bool StrContains(StringPiece haystack, StringPiece needle) {
+  return std::search(haystack.begin(), haystack.end(), needle.begin(),
+                     needle.end()) != haystack.end();
+}
+
+bool StartsWith(StringPiece text, StringPiece prefix) {
+  return prefix.empty() ||
+         (text.size() >= prefix.size() &&
+          memcmp(text.data(), prefix.data(), prefix.size()) == 0);
+}
+
+bool EndsWith(StringPiece text, StringPiece suffix) {
+  return suffix.empty() || (text.size() >= suffix.size() &&
+                            memcmp(text.data() + (text.size() - suffix.size()),
+                                   suffix.data(), suffix.size()) == 0);
 }
 
 }  // namespace str_util

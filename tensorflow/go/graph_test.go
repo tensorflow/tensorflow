@@ -29,10 +29,26 @@ func hasOperations(g *Graph, ops ...string) error {
 			missing = append(missing, op)
 		}
 	}
-	if len(missing) == 0 {
-		return nil
+	if len(missing) != 0 {
+		return fmt.Errorf("Graph does not have the operations %v", missing)
 	}
-	return fmt.Errorf("Graph does not have the operations %v", missing)
+
+	inList := map[string]bool{}
+	for _, op := range g.Operations() {
+		inList[op.Name()] = true
+	}
+
+	for _, op := range ops {
+		if !inList[op] {
+			missing = append(missing, op)
+		}
+	}
+
+	if len(missing) != 0 {
+		return fmt.Errorf("Operations %v are missing from graph.Operations()", missing)
+	}
+
+	return nil
 }
 
 func TestGraphWriteToAndImport(t *testing.T) {

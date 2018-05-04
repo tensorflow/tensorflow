@@ -1,24 +1,26 @@
-# HloModule string syntax
-
-TODO: Support all subcomputations (for fusion, reduce, ...).
-
-TODO: Support all extra attributes, e.g. dimensions, strides.
+# HLO Text Syntax
 
 ```yacc
 hlo_module
   : 'HloModule' name computations
   ;
 
+/* If no computation is marked as ENTRY, the last computation will be the entry
+computation of the module.*/
 computations
   : computation
   | computation computations
   ;
 
 computation
-  : 'ENTRY' name param_list '->' shape instruction_list
-  | name param_list '->' shape instruction_list
+  : 'ENTRY' name param_list_to_shape instruction_list
+  | name param_list_to_shape instruction_list
+  | 'ENTRY' name instruction_list
+  | name instruction_list
   ;
 
+/* If no instruction is marked as ROOT, the last instruction will be the root of
+its computation. */
 instruction_list
   : '{' instruction_list1 '}'
   ;
@@ -41,6 +43,7 @@ operands1
   ;
 operand
   : shape name
+  | name
   ;
 
 attributes
@@ -58,6 +61,10 @@ attribute_value
   | [0-9]+(x[0-9]+)+                                    /*dxd_pattern*/
   | [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*  /*pad_pattern*/
   | '{' sub_attributes '}'
+  ;
+
+param_list_to_shape
+  : param_list '->' shape
   ;
 
 param_list
@@ -84,6 +91,7 @@ tuple_elements
 name
   : identifier ':'
   | '%' identifier
+  | identifier
   ;
 
 identifier
@@ -108,7 +116,29 @@ non_tuple
   | rank2345
   ;
 rank2345
-  : shape nested_array
+  : shape sparse_or_nested_array
+  ;
+sparse_or_nested_array
+  : sparse_array
+  | nested_array
+  ;
+sparse_array
+  : '{' sparse_array1 '}'
+  ;
+sparse_array1
+  : sparse_array_item
+  | sparse_array1 ',' sparse_array_item
+  ;
+sparse_array_item
+  : multi_index ':' scalar
+  ;
+multi_index
+  : kInt
+  | '[' multi_index1 ']'
+  ;
+multi_index1
+  : kInt
+  | multi_index1 ',' kInt
   ;
 
 ```

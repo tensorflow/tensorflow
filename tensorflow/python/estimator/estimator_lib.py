@@ -21,6 +21,8 @@ from __future__ import print_function
 # pylint: disable=unused-import,line-too-long,wildcard-import
 from tensorflow.python.estimator.canned.baseline import BaselineClassifier
 from tensorflow.python.estimator.canned.baseline import BaselineRegressor
+from tensorflow.python.estimator.canned.boosted_trees import BoostedTreesClassifier
+from tensorflow.python.estimator.canned.boosted_trees import BoostedTreesRegressor
 from tensorflow.python.estimator.canned.dnn import DNNClassifier
 from tensorflow.python.estimator.canned.dnn import DNNRegressor
 from tensorflow.python.estimator.canned.dnn_linear_combined import DNNLinearCombinedClassifier
@@ -30,6 +32,8 @@ from tensorflow.python.estimator.canned.linear import LinearRegressor
 from tensorflow.python.estimator.canned.parsing_utils import classifier_parse_example_spec
 from tensorflow.python.estimator.canned.parsing_utils import regressor_parse_example_spec
 from tensorflow.python.estimator.estimator import Estimator
+from tensorflow.python.estimator.estimator import VocabInfo
+from tensorflow.python.estimator.estimator import WarmStartSettings
 from tensorflow.python.estimator.export import export_lib as export
 from tensorflow.python.estimator.exporter import Exporter
 from tensorflow.python.estimator.exporter import FinalExporter
@@ -50,6 +54,8 @@ _allowed_symbols = [
     # Canned Estimators
     'BaselineClassifier',
     'BaselineRegressor',
+    'BoostedTreesClassifier',
+    'BoostedTreesRegressor',
     'DNNClassifier',
     'DNNRegressor',
     'DNNLinearCombinedClassifier',
@@ -76,6 +82,10 @@ _allowed_symbols = [
     'Exporter',
     'LatestExporter',
     'FinalExporter',
+
+    # Warm-starting
+    'WarmStartSettings',
+    'VocabInfo',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

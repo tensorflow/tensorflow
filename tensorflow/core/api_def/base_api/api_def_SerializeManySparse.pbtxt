@@ -18,7 +18,14 @@ END
 1-D.  The `shape` of the minibatch `SparseTensor`.
 END
   }
-  summary: "Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`."
+  attr {
+    name: "out_type"
+    description: <<END
+The `dtype` to use for serialization; the supported types are `string`
+(default) and `variant`.
+END
+  }
+  summary: "Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor` object."
   description: <<END
 The `SparseTensor` must have rank `R` greater than 1, and the first dimension
 is treated as the minibatch dimension.  Elements of the `SparseTensor`

@@ -51,7 +51,8 @@ If you haven't already, do the following two things:
         // set to 'bazel', 'cmake', 'makefile', 'none'
         def nativeBuildSystem = 'none'
 
-4. Click the Run button (the green arrow) or use **Run -> Run 'android'** from the top menu.
+4. Click the *Run* button (the green arrow) or select *Run > Run 'android'* from the
+    top menu. You may need to rebuild the project using *Build > Rebuild Project*.
 
     If it asks you to use Instant Run, click **Proceed Without Instant Run**.
 
@@ -66,7 +67,7 @@ them.
 
 ## Adding TensorFlow to your apps using Android Studio
 
-To add TensorFlow to your own apps on Android, the simplest way is to add the 
+To add TensorFlow to your own apps on Android, the simplest way is to add the
 following lines to your Gradle build file:
 
     allprojects {
@@ -74,7 +75,7 @@ following lines to your Gradle build file:
             jcenter()
         }
 	}
-											
+
     dependencies {
         compile 'org.tensorflow:tensorflow-android:+'
     }
@@ -90,8 +91,8 @@ using [ADB](https://developer.android.com/studio/command-line/adb.html). This
 requires some knowledge of build systems and Android developer tools, but we'll
 guide you through the basics here.
 
-- First, follow our instructions for @{$install/install_sources$installing from
-  sources}. This will also guide you through installing Bazel and cloning the
+- First, follow our instructions for @{$install/install_sources$installing from sources}.
+  This will also guide you through installing Bazel and cloning the
   TensorFlow code.
 
 - Download the Android [SDK](https://developer.android.com/studio/index.html)

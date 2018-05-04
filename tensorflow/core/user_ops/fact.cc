@@ -15,30 +15,29 @@ limitations under the License.
 
 // An example Op.
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
-using namespace tensorflow;
-
 REGISTER_OP("Fact")
     .Output("fact: string")
-    .Doc(R"doc(
-Output a fact about factorials.
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape);
 
-class FactOp : public OpKernel {
+class FactOp : public tensorflow::OpKernel {
  public:
-  explicit FactOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit FactOp(tensorflow::OpKernelConstruction* context)
+      : OpKernel(context) {}
 
-  void Compute(OpKernelContext* context) override {
+  void Compute(tensorflow::OpKernelContext* context) override {
     // Output a scalar string.
-    Tensor* output_tensor = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape(), &output_tensor));
+    tensorflow::Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, tensorflow::TensorShape(), &output_tensor));
+    using tensorflow::string;
     auto output = output_tensor->template scalar<string>();
 
     output() = "0! == 1";
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("Fact").Device(DEVICE_CPU), FactOp);
+REGISTER_KERNEL_BUILDER(Name("Fact").Device(tensorflow::DEVICE_CPU), FactOp);

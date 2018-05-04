@@ -30,7 +30,9 @@ __all__ = [
     'GANModel',
     'InfoGANModel',
     'ACGANModel',
+    'CycleGANModel',
     'GANLoss',
+    'CycleGANLoss',
     'GANTrainOps',
     'GANTrainSteps',
 ]
@@ -79,6 +81,7 @@ class InfoGANModel(
     collections.namedtuple('InfoGANModel', GANModel._fields + (
         'structured_generator_inputs',
         'predicted_distributions',
+        'discriminator_and_aux_fn',
     ))):
   """An InfoGANModel contains all the pieces needed for InfoGAN training.
 
@@ -91,6 +94,8 @@ class InfoGANModel(
     predicted_distributions: A list of tf.Distributions. Predicted by the
       recognizer, and used to evaluate the likelihood of the structured noise.
       List length should match `structured_generator_inputs`.
+    discriminator_and_aux_fn: The original discriminator function that returns
+      a tuple of (logits, `predicted_distributions`).
   """
 
 
@@ -112,6 +117,25 @@ class ACGANModel(
   """
 
 
+class CycleGANModel(
+    collections.namedtuple(
+        'CycleGANModel',
+        ('model_x2y', 'model_y2x', 'reconstructed_x', 'reconstructed_y'))):
+  """An CycleGANModel contains all the pieces needed for CycleGAN training.
+
+  The model `model_x2y` generator F maps data set X to Y, while the model
+  `model_y2x` generator G maps data set Y to X.
+
+  See https://arxiv.org/abs/1703.10593 for more details.
+
+  Args:
+    model_x2y: A `GANModel` namedtuple whose generator maps data set X to Y.
+    model_y2x: A `GANModel` namedtuple whose generator maps data set Y to X.
+    reconstructed_x: A `Tensor` of reconstructed data X which is G(F(X)).
+    reconstructed_y: A `Tensor` of reconstructed data Y which is F(G(Y)).
+  """
+
+
 class GANLoss(
     collections.namedtuple('GANLoss', (
         'generator_loss',
@@ -122,6 +146,18 @@ class GANLoss(
   Args:
     generator_loss: A tensor for the generator loss.
     discriminator_loss: A tensor for the discriminator loss.
+  """
+
+
+class CycleGANLoss(
+    collections.namedtuple('CycleGANLoss', ('loss_x2y', 'loss_y2x'))):
+  """CycleGANLoss contains the losses for `CycleGANModel`.
+
+  See https://arxiv.org/abs/1703.10593 for more details.
+
+  Args:
+    loss_x2y: A `GANLoss` namedtuple representing the loss of `model_x2y`.
+    loss_y2x: A `GANLoss` namedtuple representing the loss of `model_y2x`.
   """
 
 

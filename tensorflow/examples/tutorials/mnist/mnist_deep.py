@@ -125,27 +125,27 @@ def bias_variable(shape):
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+  mnist = input_data.read_data_sets(FLAGS.data_dir)
 
   # Create the model
   x = tf.placeholder(tf.float32, [None, 784])
 
   # Define loss and optimizer
-  y_ = tf.placeholder(tf.float32, [None, 10])
+  y_ = tf.placeholder(tf.int64, [None])
 
   # Build the graph for the deep net
   y_conv, keep_prob = deepnn(x)
 
   with tf.name_scope('loss'):
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_,
-                                                            logits=y_conv)
+    cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+        labels=y_, logits=y_conv)
   cross_entropy = tf.reduce_mean(cross_entropy)
 
   with tf.name_scope('adam_optimizer'):
     train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 
   with tf.name_scope('accuracy'):
-    correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
+    correct_prediction = tf.equal(tf.argmax(y_conv, 1), y_)
     correct_prediction = tf.cast(correct_prediction, tf.float32)
   accuracy = tf.reduce_mean(correct_prediction)
 

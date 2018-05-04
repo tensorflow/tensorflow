@@ -36,10 +36,10 @@ bool ResolveSliceAttributes::Run(Model* model, std::size_t op_index) {
   if (!IsConstantParameterArray(*model, op->inputs[1])) return false;
   if (!IsConstantParameterArray(*model, op->inputs[2])) return false;
 
-  const auto& begin_array = *model->arrays[op->inputs[1]];
+  const auto& begin_array = model->GetArray(op->inputs[1]);
   if (!begin_array.has_shape()) return false;
 
-  const auto& size_array = *model->arrays[op->inputs[2]];
+  const auto& size_array = model->GetArray(op->inputs[2]);
   if (!size_array.has_shape()) return false;
 
   op->begin = begin_array.GetBuffer<ArrayDataType::kInt32>().data;

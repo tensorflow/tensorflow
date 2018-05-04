@@ -376,7 +376,7 @@ class ExponentialMovingAverageTest(test.TestCase):
     with ops.device("/job:dev_v0"):
       v0 = variables.Variable(10.0, name="v0")
     with ops.device("/job:dev_v1"):
-      v1 = gen_state_ops._variable(
+      v1 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="v1",

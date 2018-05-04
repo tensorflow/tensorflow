@@ -63,7 +63,7 @@ bool UnfuseActivationFunctions::Run(Model* model, std::size_t op_index) {
   ac_op->outputs = op->outputs;
   const string& tmp_array_name =
       AvailableArrayName(*model, op->outputs[0] + "_unfused");
-  CHECK(!model->arrays.count(tmp_array_name));
+  CHECK(!model->HasArray(tmp_array_name));
   model->GetOrCreateArray(tmp_array_name);
   ac_op->inputs = {tmp_array_name};
   op->outputs = {tmp_array_name};

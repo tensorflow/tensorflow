@@ -89,14 +89,13 @@ class VectorExponentialDiag(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
-  la = tf.linalg
+  tfd = tf.contrib.distributions
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.
 
   # The first component has pdf exp{-x}, the second 0.5 exp{-x / 2}
-  vex = ds.VectorExponentialDiag(scale_diag=[1., 2.])
+  vex = tfd.VectorExponentialDiag(scale_diag=[1., 2.])
 
   # Compute the pdf of an`R^2` observation; return a scalar.
   vex.prob([3., 4.]).eval()  # shape: []
@@ -107,7 +106,7 @@ class VectorExponentialDiag(
   scale_diag = [[1., 2, 3],
                 [0.5, 1, 1.5]]     # shape: [2, 3]
 
-  vex = ds.VectorExponentialDiag(loc, scale_diag)
+  vex = tfd.VectorExponentialDiag(loc, scale_diag)
 
   # Compute the pdf of two `R^3` observations; return a length-2 vector.
   x = [[1.9, 2.2, 3.1],
@@ -177,7 +176,7 @@ class VectorExponentialDiag(
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
     parameters = locals()
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):
         # No need to validate_args while making diag_scale.  The returned

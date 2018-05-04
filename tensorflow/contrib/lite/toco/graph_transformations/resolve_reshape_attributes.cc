@@ -37,7 +37,7 @@ bool ResolveReshapeAttributes::Run(Model* model, std::size_t op_index) {
   if (!op->shape.empty()) return false;
 
   if (IsConstantParameterArray(*model, reshape_op->inputs[1])) {
-    const auto& constant_input_array = *model->arrays[reshape_op->inputs[1]];
+    const auto& constant_input_array = model->GetArray(reshape_op->inputs[1]);
     op->shape = constant_input_array.GetBuffer<ArrayDataType::kInt32>().data;
   }
 

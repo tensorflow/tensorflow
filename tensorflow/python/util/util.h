@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // Functions for getting information about kernels registered in the binary.
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_UTIL_H_
+#ifndef TENSORFLOW_PYTHON_UTIL_UTIL_H_
+#define TENSORFLOW_PYTHON_UTIL_UTIL_H_
 
 #include <Python.h>
 
@@ -32,6 +32,57 @@ namespace swig {
 //   True if the sequence is a not a string and is a collections.Sequence or a
 //   dict.
 bool IsSequence(PyObject* o);
+
+// Implements the same interface as tensorflow.util.nest._is_namedtuple
+// Returns Py_True iff `instance` should be considered a `namedtuple`.
+//
+// Args:
+//   instance: An instance of a Python object.
+//   strict: If True, `instance` is considered to be a `namedtuple` only if
+//       it is a "plain" namedtuple. For instance, a class inheriting
+//       from a `namedtuple` will be considered to be a `namedtuple`
+//       iff `strict=False`.
+//
+// Returns:
+//   True if `instance` is a `namedtuple`.
+PyObject* IsNamedtuple(PyObject* o, bool strict);
+
+// Implements the same interface as tensorflow.util.nest._same_namedtuples
+// Returns Py_True iff the two namedtuples have the same name and fields.
+// Raises RuntimeError if `o1` or `o2` don't look like namedtuples (don't have
+// '_fields' attribute).
+PyObject* SameNamedtuples(PyObject* o1, PyObject* o2);
+
+// Asserts that two structures are nested in the same way.
+//
+// Note that namedtuples with identical name and fields are always considered
+// to have the same shallow structure (even with `check_types=True`).
+// For intance, this code will print `True`:
+//
+// ```python
+// def nt(a, b):
+//   return collections.namedtuple('foo', 'a b')(a, b)
+// print(assert_same_structure(nt(0, 1), nt(2, 3)))
+// ```
+//
+// Args:
+//  nest1: an arbitrarily nested structure.
+//  nest2: an arbitrarily nested structure.
+//  check_types: if `true`, types of sequences are checked as
+//      well, including the keys of dictionaries. If set to `false`, for example
+//      a list and a tuple of objects will look the same if they have the same
+//      size. Note that namedtuples with identical name and fields are always
+//      considered to have the same shallow structure.
+//
+// Raises:
+//  ValueError: If the two structures do not have the same number of elements or
+//    if the two structures are not nested in the same way.
+//  TypeError: If the two structures differ in the type of sequence in any of
+//    their substructures. Only possible if `check_types` is `True`.
+//
+// Returns:
+//  Py_None on success, nullptr on error.
+PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
 
 // Implements the same interface as tensorflow.util.nest.flatten
 //
@@ -71,4 +122,4 @@ void RegisterSequenceClass(PyObject* sequence_class);
 }  // namespace swig
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_UTIL_H_
+#endif  // TENSORFLOW_PYTHON_UTIL_UTIL_H_

@@ -11,8 +11,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
+#define TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
 
 #if GOOGLE_CUDA
 
@@ -143,4 +143,4 @@ __global__ void adjust_hsv_nhwc(const int64 number_elements,
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_

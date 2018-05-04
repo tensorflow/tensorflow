@@ -30,12 +30,17 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
+    "get_default_layer_collection",
+    "set_default_layer_collection",
     "LayerParametersDict",
     "LayerCollection",
     "APPROX_KRONECKER_NAME",
     "APPROX_DIAGONAL_NAME",
     "APPROX_FULL_NAME",
     "VARIABLE_SCOPE",
+    "APPROX_KRONECKER_INDEP_NAME",
+    "APPROX_KRONECKER_SERIES_1_NAME",
+    "APPROX_KRONECKER_SERIES_2_NAME"
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

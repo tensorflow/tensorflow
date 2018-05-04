@@ -11,6 +11,7 @@ licenses(["notice"])  # Apache 2.0
 cc_library(
     name = "native_framework_only",
     srcs = [
+        "duration_utils_jni.cc",
         "exception_jni.cc",
         "nativeinterpreterwrapper_jni.cc",
         "tensor_jni.cc",
@@ -93,16 +94,4 @@ exports_files(
     [
         "version_script.lds",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -57,15 +57,40 @@ TEST_F(NameUniquerTest, NumericSuffixes) {
   EXPECT_EQ("foo.55", uniquer.GetUniqueName("foo"));
   EXPECT_EQ("foo.55.1", uniquer.GetUniqueName("foo.55.1"));
   EXPECT_EQ("foo.55.2", uniquer.GetUniqueName("foo.55.1"));
-  EXPECT_EQ("bar", uniquer.GetUniqueName("bar.-1000"));
+  EXPECT_EQ("bar.0", uniquer.GetUniqueName("bar.-1000"));
   EXPECT_EQ("bar.1", uniquer.GetUniqueName("bar.-2000"));
   EXPECT_EQ("bar.2", uniquer.GetUniqueName("bar.1"));
+}
+
+TEST_F(NameUniquerTest, PrefixHasSuffix) {
+  NameUniquer uniquer(".");
+
+  EXPECT_EQ("foo.11.0", uniquer.GetUniqueName("foo.11.0"));
+  EXPECT_EQ("foo.11", uniquer.GetUniqueName("foo.11"));
+}
+
+TEST_F(NameUniquerTest, Sanitize) {
+  NameUniquer uniquer("_");
+
+  EXPECT_EQ("foo", uniquer.GetUniqueName("foo"));
+  EXPECT_EQ("foo_1", uniquer.GetUniqueName("foo"));
+  EXPECT_EQ("foo.54", uniquer.GetUniqueName("foo.54"));
+  EXPECT_EQ("foo_54", uniquer.GetUniqueName("foo_54"));
+  EXPECT_EQ("foo_54.1", uniquer.GetUniqueName("foo_54.1"));
+  EXPECT_EQ("foo_55", uniquer.GetUniqueName("foo"));
+
+  // Invalid characters will be replaced with '_'.
+  EXPECT_EQ("bar_0", uniquer.GetUniqueName("bar<-1000"));
+  EXPECT_EQ("bar_1", uniquer.GetUniqueName("bar<-2000"));
+  EXPECT_EQ("bar_2", uniquer.GetUniqueName("bar_1"));
 
   // Separator is only recognized in the middle of the prefix.
-  EXPECT_EQ(".10", uniquer.GetUniqueName(".10"));
-  EXPECT_EQ(".10.1", uniquer.GetUniqueName(".10"));
-  EXPECT_EQ("foobar.", uniquer.GetUniqueName("foobar."));
-  EXPECT_EQ("foobar..1", uniquer.GetUniqueName("foobar."));
+  EXPECT_EQ("_10", uniquer.GetUniqueName(
+                       ".10"));  // the leading '.' is replaced with '_'.
+  EXPECT_EQ("_10_1", uniquer.GetUniqueName(".10"));
+  EXPECT_EQ("_10_2", uniquer.GetUniqueName("_10"));
+  EXPECT_EQ("foobar_", uniquer.GetUniqueName("foobar_"));
+  EXPECT_EQ("foobar__1", uniquer.GetUniqueName("foobar_"));
 }
 
 }  // namespace

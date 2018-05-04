@@ -65,8 +65,8 @@ void GetTwoBest(int max, const std::function<float(int)>& score_fn,
 
 float ClassificationSplitScore(
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& splits,
-    const Eigen::Tensor<float, 1, Eigen::RowMajor>& rights,
-    int32 num_classes, int i) {
+    const Eigen::Tensor<float, 1, Eigen::RowMajor>& rights, int32 num_classes,
+    int i) {
   Eigen::array<int, 1> offsets;
   // Class counts are stored with the total in [0], so the length of each
   // count vector is num_classes + 1.
@@ -74,7 +74,7 @@ float ClassificationSplitScore(
   Eigen::array<int, 1> extents;
   extents[0] = num_classes;
   return WeightedGiniImpurity(splits.slice(offsets, extents)) +
-      WeightedGiniImpurity(rights.slice(offsets, extents));
+         WeightedGiniImpurity(rights.slice(offsets, extents));
 }
 
 void GetTwoBestClassification(const Tensor& total_counts,
@@ -90,29 +90,28 @@ void GetTwoBestClassification(const Tensor& total_counts,
   // in seg faults, so we have to go with flat views of these tensors.  However,
   // it is still pretty efficient because we put off evaluation until the
   // score is actually returned.
-  const auto tc = total_counts.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
+  const auto tc =
+      total_counts.Slice(accumulator, accumulator + 1).unaligned_flat<float>();
 
   // TODO(gilberth): See if we can delay evaluation here by templating the
   // arguments to ClassificationSplitScore.
-  const Eigen::Tensor<float, 1, Eigen::RowMajor> splits = split_counts.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
+  const Eigen::Tensor<float, 1, Eigen::RowMajor> splits =
+      split_counts.Slice(accumulator, accumulator + 1).unaligned_flat<float>();
   Eigen::array<int, 1> bcast;
   bcast[0] = num_splits;
   const Eigen::Tensor<float, 1, Eigen::RowMajor> rights =
       tc.broadcast(bcast) - splits;
 
-  std::function<float(int)> score_fn = std::bind(
-      ClassificationSplitScore, splits, rights, num_classes,
-      std::placeholders::_1);
+  std::function<float(int)> score_fn =
+      std::bind(ClassificationSplitScore, splits, rights, num_classes,
+                std::placeholders::_1);
 
   GetTwoBest(num_splits, score_fn, best_score, best_index, second_best_score,
              second_best_index);
 }
 
-int32 BestFeatureClassification(
-    const Tensor& total_counts, const Tensor& split_counts,
-    int32 accumulator) {
+int32 BestFeatureClassification(const Tensor& total_counts,
+                                const Tensor& split_counts, int32 accumulator) {
   float best_score;
   float second_best_score;
   int best_feature_index;
@@ -130,8 +129,7 @@ float RegressionSplitScore(
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& splits_square,
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& right_sums,
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& right_squares,
-    int32 accumulator,
-    int32 num_regression_dims, int i) {
+    int32 accumulator, int32 num_regression_dims, int i) {
   Eigen::array<int, 1> offsets = {i * num_regression_dims + 1};
   Eigen::array<int, 1> extents = {num_regression_dims - 1};
   float left_count = splits_count_accessor(accumulator, i, 0);
@@ -141,15 +139,15 @@ float RegressionSplitScore(
 
   // Guard against divide-by-zero.
   if (left_count > 0) {
-    score += WeightedVariance(
-        splits_sum.slice(offsets, extents),
-        splits_square.slice(offsets, extents), left_count);
+    score +=
+        WeightedVariance(splits_sum.slice(offsets, extents),
+                         splits_square.slice(offsets, extents), left_count);
   }
 
   if (right_count > 0) {
-    score += WeightedVariance(right_sums.slice(offsets, extents),
-                              right_squares.slice(offsets, extents),
-                              right_count);
+    score +=
+        WeightedVariance(right_sums.slice(offsets, extents),
+                         right_squares.slice(offsets, extents), right_count);
   }
   return score;
 }
@@ -159,20 +157,20 @@ void GetTwoBestRegression(const Tensor& total_sums, const Tensor& total_squares,
                           int32 accumulator, float* best_score, int* best_index,
                           float* second_best_score, int* second_best_index) {
   const int32 num_splits = static_cast<int32>(split_sums.shape().dim_size(1));
-  const int32 num_regression_dims = static_cast<int32>(
-      split_sums.shape().dim_size(2));
+  const int32 num_regression_dims =
+      static_cast<int32>(split_sums.shape().dim_size(2));
   // Ideally, Eigen::Tensor::chip would be best to use here but it results
   // in seg faults, so we have to go with flat views of these tensors.  However,
   // it is still pretty efficient because we put off evaluation until the
   // score is actually returned.
-  const auto tc_sum = total_sums.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
-  const auto tc_square = total_squares.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
-  const auto splits_sum = split_sums.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
-  const auto splits_square = split_squares.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
+  const auto tc_sum =
+      total_sums.Slice(accumulator, accumulator + 1).unaligned_flat<float>();
+  const auto tc_square =
+      total_squares.Slice(accumulator, accumulator + 1).unaligned_flat<float>();
+  const auto splits_sum =
+      split_sums.Slice(accumulator, accumulator + 1).unaligned_flat<float>();
+  const auto splits_square =
+      split_squares.Slice(accumulator, accumulator + 1).unaligned_flat<float>();
   // Eigen is infuriating to work with, usually resulting in all kinds of
   // unhelpful compiler errors when trying something that seems sane.  This
   // helps us do a simple thing like access the first element (the counts)
@@ -193,10 +191,10 @@ void GetTwoBestRegression(const Tensor& total_sums, const Tensor& total_squares,
              best_score, best_index, second_best_score, second_best_index);
 }
 
-int32 BestFeatureRegression(
-    const Tensor& total_sums, const Tensor& total_squares,
-    const Tensor& split_sums, const Tensor& split_squares,
-    int32 accumulator) {
+int32 BestFeatureRegression(const Tensor& total_sums,
+                            const Tensor& total_squares,
+                            const Tensor& split_sums,
+                            const Tensor& split_squares, int32 accumulator) {
   float best_score;
   float second_best_score;
   int best_feature_index;
@@ -207,10 +205,11 @@ int32 BestFeatureRegression(
   return best_feature_index;
 }
 
-bool BestSplitDominatesRegression(
-    const Tensor& total_sums, const Tensor& total_squares,
-    const Tensor& split_sums, const Tensor& split_squares,
-    int32 accumulator) {
+bool BestSplitDominatesRegression(const Tensor& total_sums,
+                                  const Tensor& total_squares,
+                                  const Tensor& split_sums,
+                                  const Tensor& split_squares,
+                                  int32 accumulator) {
   // TODO(thomaswc): Implement this, probably as part of v3.
   return false;
 }
@@ -422,7 +421,7 @@ double getChebyshevEpsilon(const std::vector<float>& mu1,
                            const std::vector<float>& mu2) {
   // Math time!!
   // We are trying to minimize d = |mu1 - x|^2 + |mu2 - y|^2 over the surface.
-  // Using Langrange multipliers, we get
+  // Using Lagrange multipliers, we get
   //   partial d / partial x = -2 mu1 + 2 x = lambda_1 1 + 2 lambda_3 x
   //   partial d / partial y = -2 mu2 + 2 y = lambda_2 1 - 2 lambda_3 y
   // or
@@ -486,7 +485,7 @@ double getChebyshevEpsilon(const std::vector<float>& mu1,
   }
 
   double sdiscrim = sqrt(discrim);
-  // TODO(thomaswc): Analyze whetever one of these is always closer.
+  // TODO(thomaswc): Analyze whatever one of these is always closer.
   double v1 = (-b + sdiscrim) / (2 * a);
   double v2 = (-b - sdiscrim) / (2 * a);
   double dist1 = getDistanceFromLambda3(v1, mu1, mu2);
@@ -598,7 +597,6 @@ bool Decide(float value, float bias, DataColumnTypes type) {
       return false;
   }
 }
-
 
 void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
                            float parent_sum, const float* parent_data,

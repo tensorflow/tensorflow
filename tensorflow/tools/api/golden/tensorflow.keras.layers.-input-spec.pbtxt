@@ -1,6 +1,6 @@
 path: "tensorflow.keras.layers.InputSpec"
 tf_class {
-  is_instance: "<class \'tensorflow.python.layers.base.InputSpec\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.InputSpec\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

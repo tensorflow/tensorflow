@@ -333,6 +333,25 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
 
+Status ConjugateTransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "p: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dp: int32"},
+      // Attr defs
+      {"T: type"},
+      // Nodes
+      {
+          {{"q"}, "InvertPermutation", {"p"}, {}},
+          {{"dx"}, "ConjugateTranspose", {"dy", "q"}, {{"T", "$T"}}},
+          {{"dp"}, "ZerosLike", {"p"}, {{"T", DT_INT32}}},
+      });
+  VLOG(1) << "ConjugateTransposeGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("ConjugateTranspose", ConjugateTransposeGrad);
+
 Status ReverseGrad(const AttrSlice& attrs, FunctionDef* g) {
   *g = FDH::Define(
       // Arg defs

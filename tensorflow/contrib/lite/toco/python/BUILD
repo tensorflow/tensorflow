@@ -45,9 +45,6 @@ py_binary(
     name = "toco_wrapper",
     srcs = ["toco_wrapper.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
 )
 
 tf_py_test(
@@ -62,16 +59,4 @@ tf_py_test(
         ":toco_from_protos",
     ],
     tags = ["no_pip"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

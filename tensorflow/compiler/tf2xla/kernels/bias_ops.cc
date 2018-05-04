@@ -103,10 +103,15 @@ class BiasAddGradOp : public XlaOpKernel {
     std::iota(reduce_dims.begin(), reduce_dims.begin() + feature_dim, 0);
     std::iota(reduce_dims.begin() + feature_dim, reduce_dims.end(),
               feature_dim + 1);
-    xla::ComputationDataHandle result = ctx->builder()->Reduce(
-        ctx->Input(0), XlaHelpers::Zero(ctx->builder(), input_type(0)),
-        *ctx->GetOrCreateAdd(input_type(0)), reduce_dims);
-    ctx->SetOutput(0, result);
+    xla::ComputationBuilder* const b = ctx->builder();
+    const DataType accumulation_type =
+        XlaHelpers::SumAccumulationType(input_type(0));
+    auto converted =
+        XlaHelpers::ConvertElementType(b, ctx->Input(0), accumulation_type);
+    auto reduce =
+        b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                  *ctx->GetOrCreateAdd(accumulation_type), reduce_dims);
+    ctx->SetOutput(0, XlaHelpers::ConvertElementType(b, reduce, input_type(0)));
   }
 
  private:

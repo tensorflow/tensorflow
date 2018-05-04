@@ -5,7 +5,7 @@ licenses(["notice"])  # BSD
 
 exports_files(["COPYING"])
 
-load("@%ws%//third_party:common.bzl", "template_rule")
+load("@org_tensorflow//third_party:common.bzl", "template_rule")
 
 cc_library(
     name = "jemalloc_headers",
@@ -97,10 +97,10 @@ cc_library(
     includes = ["include"],
     # pthread_atfork() is called for PPC.
     linkopts = select({
-        "@%ws%//tensorflow:linux_ppc64le": [
+        "@org_tensorflow//tensorflow:linux_ppc64le": [
             "-lpthread",
         ],
-        "@%ws%//tensorflow:linux_x86_64": [
+        "@org_tensorflow//tensorflow:linux_x86_64": [
             "-lpthread",
         ],
         "//conditions:default": [
@@ -208,8 +208,8 @@ genrule(
     name = "size_classes_h",
     outs = ["include/jemalloc/internal/size_classes.h"],
     cmd = select({
-        "@%ws%//tensorflow:linux_ppc64le": "$(location :size_classes_sh) \"3 4\" 3 16 2 >$@",
-        "@%ws%//tensorflow:linux_x86_64": "$(location :size_classes_sh) \"3 4\" 3 12 2 >$@",
+        "@org_tensorflow//tensorflow:linux_ppc64le": "$(location :size_classes_sh) \"3 4\" 3 16 2 >$@",
+        "@org_tensorflow//tensorflow:linux_x86_64": "$(location :size_classes_sh) \"3 4\" 3 12 2 >$@",
         "//conditions:default": "$(location :size_classes_sh) \"3 4\" 3 12 2 >$@",
     }),
     tools = [":size_classes_sh"],

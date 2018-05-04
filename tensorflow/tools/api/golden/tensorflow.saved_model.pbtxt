@@ -32,4 +32,8 @@ tf_module {
     name: "utils"
     mtype: "<type \'module\'>"
   }
+  member_method {
+    name: "simple_save"
+    argspec: "args=[\'session\', \'export_dir\', \'inputs\', \'outputs\', \'legacy_init_op\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
 }

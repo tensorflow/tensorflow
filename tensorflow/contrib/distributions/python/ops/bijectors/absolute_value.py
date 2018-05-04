@@ -18,12 +18,98 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.distributions.python.ops.bijectors.absolute_value_impl import *
-# pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import bijector
 
-_allowed_symbols = ["AbsoluteValue"]
+__all__ = [
+    "AbsoluteValue",
+]
 
-remove_undocumented(__name__, _allowed_symbols)
+
+class AbsoluteValue(bijector.Bijector):
+  """Computes `Y = g(X) = Abs(X)`, element-wise.
+
+  This non-injective bijector allows for transformations of scalar distributions
+  with the absolute value function, which maps `(-inf, inf)` to `[0, inf)`.
+
+  * For `y in (0, inf)`, `AbsoluteValue.inverse(y)` returns the set inverse
+    `{x in (-inf, inf) : |x| = y}` as a tuple, `-y, y`.
+  * `AbsoluteValue.inverse(0)` returns `0, 0`, which is not the set inverse
+    (the set inverse is the singleton `{0}`), but "works" in conjunction with
+    `TransformedDistribution` to produce a left semi-continuous pdf.
+  * For `y < 0`, `AbsoluteValue.inverse(y)` happily returns the
+    wrong thing, `-y, y`.  This is done for efficiency.  If
+    `validate_args == True`, `y < 0` will raise an exception.
+
+
+  ```python
+  tfd = tf.contrib.distributions
+
+  abs = tfd.bijectors.AbsoluteValue()
+
+  abs.forward([-1., 0., 1.])
+  ==> [1., 0.,  1.]
+
+  abs.inverse(1.)
+  ==> [-1., 1.]
+
+  # The |dX/dY| is constant, == 1.  So Log|dX/dY| == 0.
+  abs.inverse_log_det_jacobian(1.)
+  ==> [0., 0.]
+
+  # Special case handling of 0.
+  abs.inverse(0.)
+  ==> [0., 0.]
+
+  abs.inverse_log_det_jacobian(0.)
+  ==> [0., 0.]
+  ```
+
+  """
+
+  def __init__(self, validate_args=False, name="absolute_value"):
+    """Instantiates the `AbsoluteValue` bijector.
+
+    Args:
+      validate_args: Python `bool` indicating whether arguments should be
+        checked for correctness, in particular whether inputs to `inverse` and
+        `inverse_log_det_jacobian` are non-negative.
+      name: Python `str` name given to ops managed by this object.
+    """
+    self._graph_parents = []
+    self._name = name
+
+    with self._name_scope("init"):
+      super(AbsoluteValue, self).__init__(
+          forward_min_event_ndims=0,
+          is_constant_jacobian=True,
+          validate_args=validate_args,
+          name=name)
+
+  def _forward(self, x):
+    return math_ops.abs(x)
+
+  def _inverse(self, y):
+    if self.validate_args:
+      y = control_flow_ops.with_dependencies(
+          [check_ops.assert_non_negative(y, message="Argument y was negative")],
+          y)
+    return -y, y
+
+  def _inverse_log_det_jacobian(self, y):
+    # If event_ndims = 2,
+    # F^{-1}(y) = (-y, y), so DF^{-1}(y) = (-1, 1),
+    # so Log|DF^{-1}(y)| = Log[1, 1] = [0, 0].
+    zeros = constant_op.constant(0., dtype=y.dtype)
+    if self.validate_args:
+      zeros = control_flow_ops.with_dependencies(
+          [check_ops.assert_non_negative(y, message="Argument y was negative")],
+          zeros)
+    return zeros, zeros
+
+  @property
+  def _is_injective(self):
+    return False

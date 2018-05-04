@@ -35,8 +35,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // CUDA-platform implementation of the platform-agnostic
@@ -152,7 +151,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   Event::Status PollForEventStatus(Event *event) override;
 
-  bool BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return CUDADriver::GetDeviceCount(); }
 
@@ -273,7 +272,6 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_

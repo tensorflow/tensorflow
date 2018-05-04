@@ -25,8 +25,11 @@ class MetricKeys(object):
   """Metric key strings."""
   LOSS = model_fn.LOSS_METRIC_KEY
   LOSS_MEAN = model_fn.AVERAGE_LOSS_METRIC_KEY
+  LOSS_REGULARIZATION = 'regularization_loss'
 
   ACCURACY = 'accuracy'
+  PRECISION = 'precision'
+  RECALL = 'recall'
   # This is the best the model could do by always predicting one class.
   # Should be < ACCURACY in a trained model.
   ACCURACY_BASELINE = 'accuracy_baseline'

@@ -31,7 +31,7 @@ _allowed_symbols = [
     "NormalMeanNegativeLogProbLoss",
     "NormalMeanVarianceNegativeLogProbLoss",
     "CategoricalLogitsNegativeLogProbLoss",
-    "MultiBernoulliNegativeLogProbLoss",
+    "OnehotCategoricalLogitsNegativeLogProbLoss",
     "MultiBernoulliNegativeLogProbLoss",
     "insert_slice_in_zeros",
 ]

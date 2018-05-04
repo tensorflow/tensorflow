@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -212,7 +213,7 @@ static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
   // Now that we know the index of the induction variable, we can we can try to
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
-  HloEvaluator evaluator;
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
   auto* while_init = while_op->mutable_operand(0);
   auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
   StatusOr<std::unique_ptr<Literal>> indvar_init_result =
@@ -236,7 +237,7 @@ static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
     }
-    return result.ValueOrDie()->GetArraySlice<bool>() ==
+    return result.ValueOrDie()->data<bool>() ==
            tensorflow::gtl::ArraySlice<bool>{true};
   };
 
@@ -289,7 +290,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Can't remove dead parameters from non-removable while op.";
     return false;
   }
@@ -306,6 +307,13 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     return false;
   }
 
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While body's root is not a tuple(...) instruction.";
+    return false;
+  }
+
+  auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
+
   // Bail if param0 of while_cond or while_body has users which aren't of type
   // get-tuple-element.
   for (const HloInstruction* instr : {while_body->parameter_instruction(0),
@@ -313,9 +321,10 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     for (const HloInstruction* user : instr->users()) {
       if (user->opcode() != HloOpcode::kGetTupleElement) {
         VLOG(2) << "Cowardly refusing to analyze while loop with "
-                << instr->ToStringNoMetadata()
-                << " used by non-GTE instruction " << user->ToStringNoMetadata()
-                << " in computation " << instr->parent()->name();
+                << instr->ToString(print_no_metadata)
+                << " used by non-GTE instruction "
+                << user->ToString(print_no_metadata) << " in computation "
+                << instr->parent()->name();
         return false;
       }
     }
@@ -342,7 +351,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       //
       // Careful: HloInstruction::operand_index returns the first index the
       // operand appears in, but it may appear more than once!
-      if (user->user_count() == 1 && user->users()[0] == while_body_root &&
+      if (user->user_count() == 1 && user->users().front() == while_body_root &&
           while_body_root->operand_index(user) == user->tuple_index() &&
           std::count(while_body_root->operands().begin(),
                      while_body_root->operands().end(), user) == 1) {
@@ -351,7 +360,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
       used_tuple_indices.insert(user->tuple_index());
       if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToStringNoMetadata()
+        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
                 << " uses all of its inputs; no simplification possible.";
         return false;
       }
@@ -375,7 +384,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       used_tuple_indices.insert(i);
 
       if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToStringNoMetadata()
+        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
                 << " uses all of its inputs; no simplification possible.";
         return false;
       }
@@ -387,7 +396,8 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_LT(used_tuple_indices.size(), tuple_size);
 
   VLOG(1) << "Eliminating " << tuple_size - used_tuple_indices.size()
-          << " elements from tuple of " << while_op->ToStringNoMetadata();
+          << " elements from tuple of "
+          << while_op->ToString(print_no_metadata);
 
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64> new_to_old_tuple_idx(used_tuple_indices.begin(),
@@ -403,6 +413,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
   // Compute the shape of the while op after we remove the dead indices.
   std::vector<Shape> new_while_tuple_elem_shapes;
+  new_while_tuple_elem_shapes.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_tuple_elem_shapes.push_back(
         while_init->shape().tuple_shapes(old_idx));
@@ -430,7 +441,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         continue;
       }
       CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement)
-          << user->ToStringNoMetadata();
+          << user->ToString(print_no_metadata);
 
       int64 old_idx = user->tuple_index();
       auto new_idx_iter = old_to_new_tuple_idx.find(old_idx);
@@ -443,15 +454,16 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         // This is a GTE of an index that we've removed.  Remove it from the
         // cloned computation.
         CHECK(user->user_count() == 0 ||
-              user->user_count() == 1 && user->users()[0] == while_body_root)
-            << "Instruction " << user->ToStringNoMetadata()
+              user->user_count() == 1 &&
+                  user->users().front() == while_body_root)
+            << "Instruction " << user->ToString(print_no_metadata)
             << " should be unused (except by root of while body), but has "
                "users: {"
             << tensorflow::str_util::Join(
                    user->users(), ", ",
-                   [](string* out, const HloInstruction* instr) {
+                   [&](string* out, const HloInstruction* instr) {
                      tensorflow::strings::StrAppend(
-                         out, instr->ToStringNoMetadata());
+                         out, instr->ToString(print_no_metadata));
                    })
             << "}";
 
@@ -469,6 +481,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
+  new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_body_root_elems.push_back(
         while_body_root->mutable_operand(old_idx));
@@ -483,6 +496,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // clean this up in the common case where while_init is a tuple op.  (It's
   // definitely tuple-shaped, but it's not necessarily a tuple op.)
   std::vector<HloInstruction*> new_while_init_elems;
+  new_while_init_elems.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_init_elems.push_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -551,10 +565,12 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   //
   // This is not a fundamental limitation.  The control operands can be moved
   // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.
-  // Nevertheless our infrastructure sees loop simplification as removal of
-  // these nodes and currently doesn't allow it.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  // the loop aren't removed, just cloned and added back to the loop.  But
+  // moving an op out of the loop also removes implicit control dependencies
+  // between the op and the ops outside the loop, so we'd have to add those back
+  // for things like infeed/outfeed.  It gets complicated.  So for now we just
+  // avoid it.
+  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove while loop it is not removable: "
             << while_op->ToShortString();
     return false;
@@ -582,10 +598,84 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
     auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
         while_op->shape(), while_op->operands(), while_op->while_body()));
     TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
-    TF_RETURN_IF_ERROR(CallInliner::Inline(call_op));
+    TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                        CallInliner::Inline(call_op));
+    (void)inlined_instructions_map;
     return true;
   }
   return false;
+}
+
+static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
+  auto while_init = while_op->operand(0);
+  if (while_init->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  auto while_body = while_op->while_body();
+  auto while_body_root = while_body->root_instruction();
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  auto while_body_param = while_body->parameter_instruction(0);
+  const HloInstruction::InstructionVector& root_operands =
+      while_body_root->operands();
+
+  // Find the loop invariant tuple elements with scalar constant init value and
+  // build a map from the tuple element index to the constant value. Limit this
+  // to scalar constant values because propagating array constants can regress
+  // performance by forcing us to copy constants.
+  tensorflow::gtl::FlatMap<int, const HloInstruction*> index_to_constant;
+  for (int i = 0; i < root_operands.size(); i++) {
+    HloInstruction* instr = root_operands[i];
+    if (instr->opcode() == HloOpcode::kGetTupleElement &&
+        instr->tuple_index() == i && instr->operand(0) == while_body_param &&
+        ShapeUtil::IsScalar(instr->shape())) {
+      auto tuple_element = while_init->operand(i);
+      if (tuple_element->IsConstant()) {
+        VLOG(3) << "Found loop invariant tuple element " << i << " "
+                << tuple_element->ToString();
+        index_to_constant[i] = tuple_element;
+      }
+    }
+  }
+
+  if (index_to_constant.empty()) {
+    return false;
+  }
+
+  // Replace the use of each constant tuple element in the loop_condition and
+  // loop_body with the corresponding constant value.
+  auto propagate_constant = [&](HloComputation* computation) -> StatusOr<bool> {
+    HloInstruction* param = computation->parameter_instruction(0);
+    bool changed = false;
+    for (auto instr : param->users()) {
+      // Since only a while-loop with a tuple result reaches here, we can safely
+      // assume that `param` is a tuple and the first operand of the
+      // GetTupleElement instruction is a use of `param`.
+      if (instr->opcode() == HloOpcode::kGetTupleElement) {
+        VLOG(3) << "tuple index " << instr->tuple_index() << " "
+                << instr->ToString();
+        auto iter = index_to_constant.find(instr->tuple_index());
+        if (iter != index_to_constant.end()) {
+          const HloInstruction* hlo_constant = (*iter).second;
+          VLOG(3) << "Replace use of " << instr->ToString() << " with "
+                  << hlo_constant->ToString();
+          TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(
+              computation->AddInstruction(hlo_constant->Clone())));
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  };
+
+  TF_ASSIGN_OR_RETURN(bool changed_cond,
+                      propagate_constant(while_op->while_condition()));
+  TF_ASSIGN_OR_RETURN(bool changed_body, propagate_constant(while_body));
+
+  return changed_cond || changed_body;
 }
 
 StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
@@ -618,7 +708,11 @@ StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
       continue;
     }
 
-    StatusOr<bool> result = TryRemoveWhileLoop(while_op);
+    StatusOr<bool> result = TryPropagateConstant(while_op);
+    TF_RETURN_IF_ERROR(result.status());
+    changed |= result.ValueOrDie();
+
+    result = TryRemoveWhileLoop(while_op);
     TF_RETURN_IF_ERROR(result.status());
     if (result.ValueOrDie()) {
       changed = true;

@@ -29,8 +29,7 @@ limitations under the License.
 
 typedef struct cublasContext *cublasHandle_t;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 
@@ -84,7 +83,7 @@ class CUDABlas : public blas::BlasSupport {
   template <typename FuncT, typename... Args>
   bool DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                           bool pointer_mode_host, bool err_on_failure,
-                          Args... args);
+                          bool use_tensor_op_math, Args... args);
 
   // Convenience functions that call DoBlasInternalImpl with different values
   // for err_on_failure.
@@ -92,13 +91,17 @@ class CUDABlas : public blas::BlasSupport {
   bool DoBlasInternal(FuncT cublas_func, Stream *stream, bool pointer_mode_host,
                       Args... args) {
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/true, args...);
+                              /*err_on_failure=*/true, /*use_tensor_ops=*/false,
+                              args...);
   }
   template <typename FuncT, typename... Args>
   bool DoBlasInternalFailureOK(FuncT cublas_func, Stream *stream,
                                bool pointer_mode_host, Args... args) {
+    // Tensor ops are hard-coded off in this path, but can still be enabled with
+    // a specific algorithm choice as in DoBlasGemmWithAlgorithmImpl().
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/false, args...);
+                              /*err_on_failure=*/false,
+                              /*use_tensor_ops=*/false, args...);
   }
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
@@ -158,7 +161,6 @@ class CUDABlas : public blas::BlasSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_

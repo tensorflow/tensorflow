@@ -43,6 +43,10 @@ of `params`.  The output tensor has shape
 
     indices.shape[:-1] + params.shape[indices.shape[-1]:]
 
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, a 0 is stored in the
+corresponding output value.
+
 Some examples below.
 
 Simple indexing into a matrix:

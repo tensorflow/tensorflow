@@ -23,17 +23,17 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
 KernelThunk::KernelThunk(
-    tensorflow::gtl::ArraySlice<BufferAllocation::Slice> io_buffers,
-    const string& kernel_name, const HloInstruction* hlo_instruction)
+    tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
+    const string& kernel_name, const HloInstruction* hlo_instruction,
+    int unroll_factor)
     : Thunk(Kind::kKernel, hlo_instruction),
-      io_buffers_(io_buffers.begin(), io_buffers.end()),
-      kernel_name_(kernel_name) {}
+      args_(args.begin(), args.end()),
+      kernel_name_(kernel_name),
+      unroll_factor_(unroll_factor) {}
 
 tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
   tensorflow::mutex_lock lock(mutex_);
@@ -42,7 +42,7 @@ tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
     return tensorflow::Status::OK();
   }
 
-  loader_spec_.reset(new se::MultiKernelLoaderSpec(io_buffers_.size() + 1));
+  loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
   tensorflow::StringPiece ptx = executable.ptx();
   // Convert tensorflow::StringPiece to se::port::StringPiece because
   // StreamExecutor uses the latter.
@@ -81,15 +81,16 @@ tensorflow::Status KernelThunk::ExecuteOnStream(
     kernel = &it->second;
   }
 
+  VLOG(3) << "Launching " << kernel->name();
   // Launch the kernel with potentially multiple blocks and threads.
   static constexpr int kKernelArgsLimit = 1024;
   auto kernel_args = MakeUnique<se::KernelArgsArray<kKernelArgsLimit>>();
-  for (const BufferAllocation::Slice io_buffer : io_buffers_) {
-    kernel_args->add_device_memory_argument(
-        buffer_allocations.GetDeviceAddress(io_buffer));
+  for (const BufferAllocation* arg : args_) {
+    const auto& buf = buffer_allocations.GetDeviceAddress(arg->index());
+    kernel_args->add_device_memory_argument(buf);
+    VLOG(3) << "  Arg: alloc #" << arg->index() << ": " << buf.opaque() << " ("
+            << buf.size() << "B)";
   }
-  kernel_args->add_device_memory_argument(
-      buffer_allocations.GetTempBufferBase());
   if (!stream->parent()->Launch(
           stream, se::ThreadDim(launch_dimensions.threads_per_block()),
           se::BlockDim(launch_dimensions.block_count()), *kernel,

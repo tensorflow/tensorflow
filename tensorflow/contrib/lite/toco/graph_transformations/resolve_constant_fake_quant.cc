@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
+#include "tensorflow/contrib/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -45,17 +46,38 @@ bool ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index) {
   }
 
   const auto& input_array = model->GetArray(fakequant_op->inputs[0]);
+  CHECK(input_array.data_type == ArrayDataType::kFloat);
+
+  // Determine the final data type in the same way as PropagateFakeQuantNumBits.
+  ArrayDataType quantized_data_type = input_array.final_data_type;
+  if (!InferQuantizedDataTypeFromFakeQuant(*fakequant_op,
+                                           &quantized_data_type)) {
+    AddMessageF("Unsupported FakeQuant num_bits=%d", fakequant_op->num_bits);
+    return false;
+  }
+
+  AddMessageF("Resolving constant %s", LogName(*fakequant_op));
+
   auto& output_array = model->GetArray(fakequant_op->outputs[0]);
   CHECK(input_array.data_type == ArrayDataType::kFloat);
   output_array.data_type = ArrayDataType::kFloat;
+
+  // We'll set the final data type to what the fake quant indicates we should
+  // have (and would have been set if this stayed around until
+  // PropagateFakeQuantNumBits).
+  if (propagate_fake_quant_num_bits()) {
+    output_array.final_data_type = quantized_data_type;
+  }
+
   CHECK(!output_array.buffer);
   const auto& input_buffer = input_array.GetBuffer<ArrayDataType::kFloat>();
+  output_array.GetOrCreateMinMax() = *fakequant_op->minmax;
   auto& output_buffer = output_array.GetMutableBuffer<ArrayDataType::kFloat>();
   const int size = input_buffer.data.size();
   output_buffer.data.resize(size);
   QuantizationParams qparams;
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-      model->flags, *fakequant_op->minmax, &qparams);
+  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(*fakequant_op->minmax,
+                                                         &qparams);
   for (int i = 0; i < size; i++) {
     const double src_val = input_buffer.data[i];
     const double unclamped_quantized_val =
@@ -65,8 +87,10 @@ bool ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index) {
     const double dst_val = qparams.scale * (quantized_val - qparams.zero_point);
     output_buffer.data[i] = dst_val;
   }
-  if (CountOpsWithInput(*model, fakequant_op->inputs[0]) == 1) {
-    model->arrays.erase(fakequant_op->inputs[0]);
+
+  if (IsDiscardableArray(*model, fakequant_op->inputs[0]) &&
+      CountOpsWithInput(*model, fakequant_op->inputs[0]) == 1) {
+    model->EraseArray(fakequant_op->inputs[0]);
   }
   model->operators.erase(fakequant_it);
 

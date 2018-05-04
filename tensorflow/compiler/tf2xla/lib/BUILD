@@ -39,12 +39,32 @@ cc_library(
         ":batch_dot",
         ":triangular_solve",
         ":util",
+        ":while_loop",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "scatter",
+    srcs = ["scatter.cc"],
+    hdrs = ["scatter.h"],
+    deps = [
+        ":util",
+        ":while_loop",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core:lib",
     ],
 )
@@ -60,6 +80,8 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/core:lib",
@@ -105,16 +127,41 @@ cc_library(
     ],
 )
 
-# -----------------------------------------------------------------------------
+xla_test(
+    name = "util_test",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":batch_dot",
+        ":util",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_library(
+    name = "while_loop",
+    srcs = ["while_loop.cc"],
+    hdrs = ["while_loop.h"],
+    deps = [
+        ":util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:lib",
+    ],
 )

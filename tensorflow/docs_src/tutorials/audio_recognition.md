@@ -246,7 +246,7 @@ results as in your server testing.
 The demo app updates its UI list of results automatically based on the labels
 text file you copy into assets alongside your frozen graph, which means you can
 easily try out different models without needing to make any code changes. You
-will need to updaye `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
+will need to update `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
 you've added if you change the paths though.
 
 ## How does this Model Work?
@@ -280,7 +280,7 @@ tool:
 ```
 bazel run tensorflow/examples/wav_to_spectrogram:wav_to_spectrogram -- \
 --input_wav=/tmp/speech_dataset/happy/ab00c4b2_nohash_0.wav \
---output_png=/tmp/spectrogram.png
+--output_image=/tmp/spectrogram.png
 ```
 
 If you open up `/tmp/spectrogram.png` you should see something like this:

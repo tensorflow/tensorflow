@@ -90,6 +90,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct Tile<GPUDevice, T, int32>; \
   template struct Tile<GPUDevice, T, int64>;
 
+TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_int16(DEFINE_TYPE);
 TF_CALL_int32(DEFINE_TYPE);
 TF_CALL_int64(DEFINE_TYPE);

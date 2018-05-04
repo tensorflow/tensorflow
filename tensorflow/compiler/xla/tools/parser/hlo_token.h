@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/types.h"
+
 namespace xla {
 namespace tools {
 
@@ -60,10 +63,9 @@ enum class TokKind {
   kDimLabels,      // [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
   kDxD,            // [0-9]+(x[0-9]+)+
   kPad,            // [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+  kIdent,          // other identifiers
   kString,         // "abcd\"\n"
   kShape,          // f32[2,3]{1,0}
-  kOpcode,         // add
-  kFusionKind,     // kLoop, kOutput, ...
   kInt,            // 42
   kDecimal,        // 4.2
 };

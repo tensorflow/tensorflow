@@ -15,19 +15,59 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 
+#include <string>
+
+#include "tensorflow/compiler/xla/util.h"
+
 namespace xla {
 
 HloProto MakeHloProto(const HloModule& module,
                       const BufferAssignment& assignment) {
-  HloModuleProto proto_module = module.ToProto();
   HloOrderingProto proto_ordering =
       assignment.liveness().hlo_ordering().ToProto();
   BufferAssignmentProto proto_assignment = assignment.ToProto();
-  HloProto proto;
-  proto.mutable_hlo_module()->Swap(&proto_module);
+  HloProto proto = MakeHloProto(module);
   proto.mutable_hlo_ordering()->Swap(&proto_ordering);
   proto.mutable_buffer_assignment()->Swap(&proto_assignment);
   return proto;
+}
+
+HloProto MakeHloProto(const HloModule& module) {
+  HloModuleProto proto_module = module.ToProto();
+  HloProto proto;
+  proto.mutable_hlo_module()->Swap(&proto_module);
+  return proto;
+}
+
+StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(
+    const HloProto& hlo_proto) {
+  if (!hlo_proto.has_hlo_module()) {
+    return NotFound("HloProto missing HloModuleProto.");
+  }
+  if (!hlo_proto.hlo_module().has_program_shape()) {
+    return NotFound("HloProto missing program shape.");
+  }
+
+  std::vector<const Shape*> parameter_shapes;
+  const auto& program_shape = hlo_proto.hlo_module().program_shape();
+  for (const Shape& shape : program_shape.parameters()) {
+    parameter_shapes.push_back(&shape);
+  }
+  return parameter_shapes;
+}
+
+StatusOr<const Shape*> EntryComputationOutputShape(const HloProto& hlo_proto) {
+  if (!hlo_proto.has_hlo_module()) {
+    return NotFound("HloProto missing HloModuleProto.");
+  }
+  if (!hlo_proto.hlo_module().has_program_shape()) {
+    return NotFound("HloProto missing program shape.");
+  }
+  if (!hlo_proto.hlo_module().program_shape().has_result()) {
+    return NotFound("HloProto missing result in its program shape");
+  }
+
+  return &hlo_proto.hlo_module().program_shape().result();
 }
 
 }  // namespace xla

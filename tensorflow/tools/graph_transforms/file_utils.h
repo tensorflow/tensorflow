@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_
+#ifndef TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_
+#define TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -29,4 +29,4 @@ Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def);
 }  // namespace graph_transforms
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_
+#endif  // TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_

@@ -100,7 +100,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   b->SetOpMetadata(metadata);
 
   auto sharding_parse_result = ParseShardingFromDevice(
-      op_kernel->requested_device(), std::numeric_limits<int>::max());
+      op_kernel->def(), std::numeric_limits<int>::max());
   OP_REQUIRES_OK(context, sharding_parse_result.status());
   tensorflow::gtl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();
@@ -133,100 +133,6 @@ void XlaExpression::set_handle(const xla::ComputationDataHandle& h) {
 void XlaExpression::set_constant_value(Tensor value) {
   has_constant_value_ = true;
   constant_value_ = std::move(value);
-}
-
-Status XlaResource::GetXlaShape(xla::ComputationBuilder* builder,
-                                xla::Shape* shape) const {
-  auto shape_or_status = builder->GetShape(value);
-  if (!shape_or_status.ok()) {
-    return shape_or_status.status();
-  }
-  *shape = *shape_or_status.ValueOrDie();
-  return Status::OK();
-}
-
-Status XlaResource::GetShape(xla::ComputationBuilder* builder,
-                             TensorShape* shape) const {
-  xla::Shape xla_shape;
-  TF_RETURN_IF_ERROR(GetXlaShape(builder, &xla_shape));
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, shape));
-  return Status::OK();
-}
-
-Status XlaResource::GetOrCreateTensorArrayGradient(
-    const string& source, xla::ComputationBuilder* builder,
-    XlaResource** gradient_out) {
-  VLOG(2) << "Gradient lookup for resource: " << name
-          << " gradient: " << source;
-  TF_RET_CHECK(kind == kTensorArray);
-  std::unique_ptr<XlaResource>& gradient = tensor_array_gradients[source];
-  if (!gradient) {
-    gradient.reset(new XlaResource);
-    gradient->kind = XlaResource::kTensorArray;
-    gradient->name = strings::StrCat("TensorArrayGrad: ", name);
-    gradient->type = type;
-    gradient->tensor_array_size = tensor_array_size;
-
-    TensorShape ta_shape;
-    TF_RETURN_IF_ERROR(GetShape(builder, &ta_shape));
-    gradient->value = builder->Broadcast(XlaHelpers::Zero(builder, type),
-                                         ta_shape.dim_sizes());
-    gradient->initial_value = gradient->value;
-  }
-  *gradient_out = gradient.get();
-  return Status::OK();
-}
-
-Status XlaResource::PackedShape(xla::ComputationBuilder* builder,
-                                xla::Shape* packed_shape) const {
-  if (tensor_array_gradients.empty()) {
-    return GetXlaShape(builder, packed_shape);
-  }
-  TF_RET_CHECK(kind == kTensorArray);
-  std::vector<xla::Shape> elem_shapes(1 + tensor_array_gradients.size());
-  int pos = 0;
-  TF_RETURN_IF_ERROR(GetXlaShape(builder, &elem_shapes[pos++]));
-  for (const auto& gradient : tensor_array_gradients) {
-    TF_RETURN_IF_ERROR(
-        gradient.second->GetXlaShape(builder, &elem_shapes[pos++]));
-  }
-  *packed_shape = xla::ShapeUtil::MakeTupleShape(elem_shapes);
-  return Status::OK();
-}
-
-Status XlaResource::Pack(xla::ComputationDataHandle* pack,
-                         xla::ComputationBuilder* builder) const {
-  if (tensor_array_gradients.empty()) {
-    *pack = value;
-  } else {
-    TF_RET_CHECK(kind == kTensorArray);
-    std::vector<xla::ComputationDataHandle> elems;
-    elems.push_back(value);
-    for (const auto& gradient : tensor_array_gradients) {
-      elems.push_back(gradient.second->value);
-    }
-    *pack = builder->Tuple(elems);
-  }
-  return Status::OK();
-}
-
-Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
-                                const xla::ComputationDataHandle& pack,
-                                xla::ComputationBuilder* builder) {
-  if (gradient_sources.empty()) {
-    value = pack;
-  } else {
-    TF_RET_CHECK(kind == kTensorArray);
-    int pos = 0;
-    value = builder->GetTupleElement(pack, pos++);
-    for (const auto& source : gradient_sources) {
-      XlaResource* gradient;
-      TF_RETURN_IF_ERROR(
-          GetOrCreateTensorArrayGradient(source, builder, &gradient));
-      gradient->value = builder->GetTupleElement(pack, pos++);
-    }
-  }
-  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -144,7 +144,7 @@ def inverse_stft_window_fn(frame_step,
       overlaps = -(-frame_length // frame_step)  # Ceiling division.
       denom = array_ops.pad(denom, [(0, overlaps * frame_step - frame_length)])
       denom = array_ops.reshape(denom, [overlaps, frame_step])
-      denom = math_ops.reduce_sum(denom, 0, keep_dims=True)
+      denom = math_ops.reduce_sum(denom, 0, keepdims=True)
       denom = array_ops.tile(denom, [overlaps, 1])
       denom = array_ops.reshape(denom, [overlaps * frame_step])
 

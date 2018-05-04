@@ -31,11 +31,10 @@ class ShardedFileOpsTest(test.TestCase):
     with session.Session(
         target="", config=config_pb2.ConfigProto(device_count={"CPU": 2})):
       self.assertEqual(
-          gen_io_ops._sharded_filename("foo", 4, 100).eval(),
+          gen_io_ops.sharded_filename("foo", 4, 100).eval(),
           b"foo-00004-of-00100")
       self.assertEqual(
-          gen_io_ops._sharded_filespec("foo", 100).eval(),
-          b"foo-?????-of-00100")
+          gen_io_ops.sharded_filespec("foo", 100).eval(), b"foo-?????-of-00100")
 
 
 class ShapeInferenceTest(test.TestCase):
@@ -53,7 +52,7 @@ class ShapeInferenceTest(test.TestCase):
                         [dtypes.float32, dtypes.float32])
 
   def testRestoreSlice(self):
-    op = gen_io_ops._restore_slice("model", "var", "3 4 0,1:-", dtypes.float32)
+    op = gen_io_ops.restore_slice("model", "var", "3 4 0,1:-", dtypes.float32)
     self.assertEqual([1, 4], op.get_shape())
 
 

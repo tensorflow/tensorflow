@@ -148,7 +148,7 @@ class VirtualBatchnormTest(test.TestCase):
       self.assertAllClose(bn_np[i, ...], vb_np)
 
   def test_minibatch_independent(self):
-    """Test that virtual batch normalized exampels are independent.
+    """Test that virtual batch normalized examples are independent.
 
     Unlike batch normalization, virtual batch normalization has the property
     that the virtual batch normalized value of an example is independent of the

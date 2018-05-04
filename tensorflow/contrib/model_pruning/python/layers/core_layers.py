@@ -72,8 +72,8 @@ class _MaskedConv(base.Layer):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. If None, the default
+      initializer will be used.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -210,7 +210,7 @@ class _MaskedConv(base.Layer):
       return self.activation(outputs)
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
       space = input_shape[1:-1]
@@ -279,8 +279,8 @@ class MaskedConv2D(_MaskedConv):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. If None, the default
+      initializer will be used.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -467,7 +467,7 @@ class MaskedFullyConnected(base.Layer):
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
     if input_shape[-1].value is None:

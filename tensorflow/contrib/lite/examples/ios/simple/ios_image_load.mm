@@ -14,17 +14,16 @@
 
 #include "ios_image_load.h"
 
-#include <stdlib.h>
-#include <string.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #import <CoreImage/CoreImage.h>
 #import <ImageIO/ImageIO.h>
 
-std::vector<uint8_t> LoadImageFromFile(const char* file_name,
-				     int* out_width, int* out_height,
-				     int* out_channels) {
+std::vector<uint8_t> LoadImageFromFile(const char* file_name, int* out_width, int* out_height,
+                                       int* out_channels) {
   FILE* file_handle = fopen(file_name, "rb");
   fseek(file_handle, 0, SEEK_END);
   const size_t bytes_in_file = ftell(file_handle);
@@ -32,11 +31,10 @@ std::vector<uint8_t> LoadImageFromFile(const char* file_name,
   std::vector<uint8_t> file_data(bytes_in_file);
   fread(file_data.data(), 1, bytes_in_file, file_handle);
   fclose(file_handle);
-  CFDataRef file_data_ref = CFDataCreateWithBytesNoCopy(NULL, file_data.data(),
-						      bytes_in_file,
-						      kCFAllocatorNull);
-  CGDataProviderRef image_provider =
-    CGDataProviderCreateWithCFData(file_data_ref);
+
+  CFDataRef file_data_ref =
+      CFDataCreateWithBytesNoCopy(NULL, file_data.data(), bytes_in_file, kCFAllocatorNull);
+  CGDataProviderRef image_provider = CGDataProviderCreateWithCFData(file_data_ref);
 
   const char* suffix = strrchr(file_name, '.');
   if (!suffix || suffix == file_name) {
@@ -44,12 +42,10 @@ std::vector<uint8_t> LoadImageFromFile(const char* file_name,
   }
   CGImageRef image;
   if (strcasecmp(suffix, ".png") == 0) {
-    image = CGImageCreateWithPNGDataProvider(image_provider, NULL, true,
-					     kCGRenderingIntentDefault);
-  } else if ((strcasecmp(suffix, ".jpg") == 0) ||
-    (strcasecmp(suffix, ".jpeg") == 0)) {
-    image = CGImageCreateWithJPEGDataProvider(image_provider, NULL, true,
-					      kCGRenderingIntentDefault);
+    image = CGImageCreateWithPNGDataProvider(image_provider, NULL, true, kCGRenderingIntentDefault);
+  } else if ((strcasecmp(suffix, ".jpg") == 0) || (strcasecmp(suffix, ".jpeg") == 0)) {
+    image =
+        CGImageCreateWithJPEGDataProvider(image_provider, NULL, true, kCGRenderingIntentDefault);
   } else {
     CFRelease(image_provider);
     CFRelease(file_data_ref);
@@ -68,9 +64,10 @@ std::vector<uint8_t> LoadImageFromFile(const char* file_name,
   const int bytes_in_image = (bytes_per_row * height);
   std::vector<uint8_t> result(bytes_in_image);
   const int bits_per_component = 8;
-  CGContextRef context = CGBitmapContextCreate(result.data(), width, height,
-    bits_per_component, bytes_per_row, color_space,
-    kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+
+  CGContextRef context =
+      CGBitmapContextCreate(result.data(), width, height, bits_per_component, bytes_per_row,
+                            color_space, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
   CGColorSpaceRelease(color_space);
   CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
   CGContextRelease(context);

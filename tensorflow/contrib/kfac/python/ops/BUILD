@@ -38,6 +38,7 @@ py_library(
         ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:special_math_ops",
@@ -64,6 +65,7 @@ py_library(
     srcs = ["loss_functions.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
@@ -142,10 +144,13 @@ py_library(
         ":fisher_estimator",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )
@@ -166,14 +171,17 @@ py_library(
     name = "fisher_estimator",
     srcs = [
         "estimator.py",
+        "placement.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -194,7 +202,9 @@ py_library(
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
@@ -233,16 +243,4 @@ py_library(
         ":op_queue",
         "//tensorflow/python:util",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

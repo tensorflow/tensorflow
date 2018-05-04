@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -118,11 +119,9 @@ class GraphTest : public ::testing::Test {
     LOG(FATAL) << name;
   }
 
-  bool ControlEdgeExistsInGraphOrNodeDef(const Node* src,
-                                         const Node* dst) {
-    for (const Edge *e : dst->in_edges()) {
-      if (e->IsControlEdge() &&
-          e->src() == src &&
+  bool ControlEdgeExistsInGraphOrNodeDef(const Node* src, const Node* dst) {
+    for (const Edge* e : dst->in_edges()) {
+      if (e->IsControlEdge() && e->src() == src &&
           e->src_output() == Graph::kControlSlot &&
           e->dst_input() == Graph::kControlSlot) {
         return true;
@@ -410,7 +409,7 @@ TEST_F(GraphTest, NewName) {
   EXPECT_NE(a1, a2);
   EXPECT_NE(a1, b1);
   EXPECT_NE(a2, b1);
-  EXPECT_TRUE(StringPiece(a1).starts_with("A")) << a1;
+  EXPECT_TRUE(str_util::StartsWith(a1, "A")) << a1;
 }
 
 TEST_F(GraphTest, IsValidNode) {

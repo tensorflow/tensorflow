@@ -39,9 +39,9 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 namespace {
-using StringPieceSet = std::unordered_set<StringPiece, StringPiece::Hasher>;
+using StringPieceSet = std::unordered_set<StringPiece, StringPieceHasher>;
 template <typename T>
-using StringPieceMap = std::unordered_map<StringPiece, T, StringPiece::Hasher>;
+using StringPieceMap = std::unordered_map<StringPiece, T, StringPieceHasher>;
 }  // namespace
 
 Status ReplaceSendRecvs(const GraphDef& original_graph_def,
@@ -282,6 +282,10 @@ Status FoldConstants(const GraphDef& input_graph_def,
              excluded_nodes_set.end();
     };
   }
+
+  TF_RETURN_IF_ERROR(context.GetOneInt64Parameter(
+      "max_constant_size_in_bytes", cf_opts.max_constant_size_in_bytes,
+      &cf_opts.max_constant_size_in_bytes));
 
   // Constant folding.
   bool was_mutated;

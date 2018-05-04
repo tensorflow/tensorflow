@@ -63,7 +63,7 @@ def _gen_learner_config(num_classes,
   if dropout_prob_of_skipping is not None:
     config.learning_rate_tuner.dropout.dropout_prob_of_skipping = (
         dropout_prob_of_skipping)
-  return config.SerializeToString()
+  return config
 
 
 def _gen_dense_split_info(fc, threshold, left_weight, right_weight):
@@ -145,7 +145,7 @@ class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE,
           # Dropout does not change anything here.
-          dropout_probability=0.5)
+          dropout_probability=0.5).SerializeToString()
 
       # Center bias for the initial step.
       grads = constant_op.constant([0.4, -0.3])
@@ -296,7 +296,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE,
           # Dropout does not change anything here, tree is not finalized.
-          dropout_probability=0.5)
+          dropout_probability=0.5).SerializeToString()
 
       # Prepare handler inputs.
       # Note that handlers 1 & 3 have the same gain but different splits.
@@ -443,7 +443,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE,
           # Dropout does not change anything here - tree is not finalized.
-          dropout_probability=0.5)
+          dropout_probability=0.5).SerializeToString()
 
       # Prepare handler inputs.
       # Handler 1 only has a candidate for partition 1, handler 2 has candidates
@@ -632,7 +632,8 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=1,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
+          )
 
       # Prepare handler inputs.
       handler1_partitions = np.array([0], dtype=np.int32)
@@ -772,7 +773,8 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=1,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
+          )
 
       # Prepare handler inputs.
       # All handlers have negative gain.
@@ -837,7 +839,8 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=1,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.POST_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
+          )
 
       # Prepare handler inputs.
       # Note that handlers 1 & 3 have the same gain but different splits.
@@ -943,7 +946,8 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=2,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.POST_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
+          )
 
       # Prepare handler inputs.
       # All handlers have negative gain.
@@ -1090,7 +1094,8 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           max_depth=2,
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.POST_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE).SerializeToString(
+          )
 
       # Prepare handler inputs.
       # Second handler has positive gain.
@@ -1330,7 +1335,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.LAYER_BY_LAYER,
           # Dropout will have no effect, since the tree will not be fully grown.
-          dropout_probability=1.0)
+          dropout_probability=1.0).SerializeToString()
 
       # Prepare handler inputs.
       # Handler 1 only has a candidate for partition 1, handler 2 has candidates
@@ -1538,7 +1543,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE,
-          dropout_probability=1.0)
+          dropout_probability=1.0).SerializeToString()
 
       # Prepare handler inputs.
       handler1_partitions = np.array([0], dtype=np.int32)
@@ -1582,6 +1587,123 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           6, tree_ensemble_config.tree_metadata[1].num_tree_weight_updates)
       self.assertEqual(
           2, tree_ensemble_config.tree_metadata[2].num_tree_weight_updates)
+
+  def testGrowExistingEnsembleTreeWithFeatureSelectionUsedHandlers(self):
+    """Test growing a tree with feature selection."""
+    with self.test_session() as session:
+      # Create existing ensemble with one root split and one bias tree.
+      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      text_format.Merge("""
+        trees {
+          nodes {
+            leaf {
+              vector {
+                value: -0.32
+                value: 0.28
+              }
+            }
+          }
+        }
+        trees {
+          nodes {
+            categorical_id_binary_split {
+              feature_column: 3
+              feature_id: 7
+              left_id: 1
+              right_id: 2
+            }
+            node_metadata {
+              gain: 1.3
+            }
+          }
+          nodes {
+            leaf {
+              sparse_vector {
+                index: 0
+                value: 2.3
+              }
+            }
+          }
+          nodes {
+            leaf {
+              sparse_vector {
+                index: 0
+                value: -0.9
+              }
+            }
+          }
+        }
+        tree_weights: 0.7
+        tree_weights: 1
+        tree_metadata {
+          num_tree_weight_updates: 1
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        tree_metadata {
+          num_tree_weight_updates: 5
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        growing_metadata {
+          num_trees_attempted: 2
+          num_layers_attempted: 2
+          used_handler_ids: 2
+        }
+      """, tree_ensemble_config)
+      tree_ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0,
+          tree_ensemble_config=tree_ensemble_config.SerializeToString(),
+          name="tree_ensemble")
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # Prepare learner config.
+      learner_config = _gen_learner_config(
+          num_classes=2,
+          l1_reg=0,
+          l2_reg=0,
+          tree_complexity=0,
+          max_depth=1,
+          min_node_weight=0,
+          pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
+          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
+
+      learner_config.constraints.max_number_of_unique_feature_columns = 3
+      learner_config = learner_config.SerializeToString()
+      # Prepare handler inputs.
+      handler1_partitions = np.array([0], dtype=np.int32)
+      handler1_gains = np.array([7.62], dtype=np.float32)
+      handler1_split = [_gen_dense_split_info(5, 0.52, -4.375, 7.143)]
+      handler2_partitions = np.array([0], dtype=np.int32)
+      handler2_gains = np.array([0.63], dtype=np.float32)
+      handler2_split = [_gen_dense_split_info(2, 0.23, -0.6, 0.24)]
+      handler3_partitions = np.array([0], dtype=np.int32)
+      handler3_gains = np.array([7.62], dtype=np.float32)
+      handler3_split = [_gen_categorical_split_info(8, 7, -4.375, 7.143)]
+
+      # Grow tree ensemble.
+      grow_op = training_ops.grow_tree_ensemble(
+          tree_ensemble_handle,
+          stamp_token=0,
+          next_stamp_token=1,
+          learning_rate=1,
+          partition_ids=[
+              handler1_partitions, handler2_partitions, handler3_partitions
+          ],
+          gains=[handler1_gains, handler2_gains, handler3_gains],
+          splits=[handler1_split, handler2_split, handler3_split],
+          learner_config=learner_config,
+          dropout_seed=123,
+          center_bias=True)
+      session.run(grow_op)
+
+      _, serialized = session.run(
+          model_ops.tree_ensemble_serialize(tree_ensemble_handle))
+      tree_ensemble_config.ParseFromString(serialized)
+      self.assertEqual(3, len(tree_ensemble_config.trees))
+      # 2 was already used. handler 0 is being added in this tree.
+      self.assertAllEqual(
+          [0, 2], tree_ensemble_config.growing_metadata.used_handler_ids)
 
 
 if __name__ == "__main__":

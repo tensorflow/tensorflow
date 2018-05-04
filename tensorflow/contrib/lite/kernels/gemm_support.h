@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_GEMM_SUPPORT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_GEMM_SUPPORT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_GEMM_SUPPORT_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_GEMM_SUPPORT_H_
 
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/context.h"
@@ -45,10 +45,10 @@ void IncrementUsageCounter(TfLiteContext* context);
 // 'context'. If there are no more usages the GemmContext will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
 
-// Set the maximum number threads available for gemmlowp operations.
-void SetMaxNumThreads(TfLiteContext* context, int num_threads);
+// Set the number of threads that can be used by gemmlowp.
+void SetNumThreads(TfLiteContext* context, int num_threads);
 
 }  // namespace gemm_support
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_GEMM_SUPPORT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_GEMM_SUPPORT_H_

@@ -43,5 +43,12 @@ END
 The batch size.
 END
   }
+  attr {
+    name: "compression_type"
+    description: <<END
+The type of compression for the file. Currently ZLIB and
+GZIP are supported. Defaults to none.
+END
+  }
   summary: "Emits randomized records."
 }

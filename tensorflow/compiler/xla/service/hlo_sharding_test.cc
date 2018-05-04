@@ -145,11 +145,13 @@ TEST_F(HloShardingTest, NestedTuple) {
       ShapeUtil::MakeShape(F32, {4, 6}),
   });
 
+  HloSharding tiled_sharding = HloSharding::Tile(
+      ShapeUtil::MakeShape(F32, {4, 3}), Array<int64>({{0, 1}}));
   OpSharding proto;
   proto.set_type(OpSharding::Type::OpSharding_Type_TUPLE);
   *proto.add_tuple_shardings() = HloSharding::Replicate().ToProto();
   *proto.add_tuple_shardings() = HloSharding::AssignDevice(0).ToProto();
-  *proto.add_tuple_shardings() = HloSharding::AssignDevice(1).ToProto();
+  *proto.add_tuple_shardings() = tiled_sharding.ToProto();
   HloSharding tuple_sharding =
       HloSharding::FromProto(proto).ConsumeValueOrDie();
 
@@ -157,7 +159,15 @@ TEST_F(HloShardingTest, NestedTuple) {
       tuple_sharding.GetAsShapeTree(nested_tuple_shape);
   EXPECT_EQ(shape_tree.element({0}), HloSharding::Replicate());
   EXPECT_EQ(shape_tree.element({1, 0}), HloSharding::AssignDevice(0));
-  EXPECT_EQ(shape_tree.element({2}), HloSharding::AssignDevice(1));
+  EXPECT_EQ(shape_tree.element({2}), tiled_sharding);
+
+  EXPECT_IS_OK(tuple_sharding.Validate(nested_tuple_shape, /*num_devices=*/5));
+  // Test should fail because tuple element count does not match.
+  EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeTupleShape({}),
+                                           /*num_devices=*/5));
+  // Test should fail because the input type is not a tuple.
+  EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeShape(F32, {}),
+                                           /*num_devices=*/5));
 }
 
 TEST_F(HloShardingTest, Hash) {
@@ -257,6 +267,58 @@ TEST_F(HloShardingTest, Hash) {
     HloSharding sharding2 = HloSharding::Tuple(shape_tree2);
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
   }
+}
+
+TEST_F(HloShardingTest, TransformShardedTileShapeTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 5, 7, 11}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  HloSharding result = sharding.TransformShardedTileShape(
+      ShapeUtil::MakeShape(F32, {13, 15, 17, 19}),
+      [](int dim, int value) { return dim * 111; });
+  HloSharding expected =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {13, 15, 222, 333}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  EXPECT_EQ(result, expected);
+}
+
+TEST_F(HloShardingTest, ToStringReplicatedTest) {
+  HloSharding sharding = HloSharding::Replicate();
+  EXPECT_EQ(sharding.ToString(), "{replicated}");
+}
+
+TEST_F(HloShardingTest, ToStringAssignDeviceTest) {
+  HloSharding sharding = HloSharding::AssignDevice(7);
+  EXPECT_EQ(sharding.ToString(), "{maximal device=7}");
+}
+
+TEST_F(HloShardingTest, ToStringTiledTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(S32, {7, 11, 13}),
+                        Array3D<int64>({{{2, 3}}, {{5, 7}}}));
+  EXPECT_EQ(sharding.ToString(), "{s32[7,11,13] devices=[2,1,2]2,3,5,7}");
+}
+
+TEST_F(HloShardingTest, ToStringTupleTest) {
+  HloSharding sharding = HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                 ShapeUtil::MakeShape(U32, {7, 25}),
+                                 ShapeUtil::MakeShape(S32, {9, 11})}),
+      {HloSharding::Replicate(),
+       HloSharding::Tile(ShapeUtil::MakeShape(U32, {7, 13}),
+                         Array2D<int64>({{3, 5}})),
+       HloSharding::AssignDevice(3)});
+  EXPECT_EQ(sharding.ToString(),
+            "{{replicated}, {u32[7,13] devices=[1,2]3,5}, {maximal device=3}}");
+}
+
+TEST_F(HloShardingTest, OstreamTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 5, 7, 11}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  std::ostringstream oss;
+  oss << sharding;
+  EXPECT_EQ(oss.str(), "{f32[3,5,7,11] devices=[1,1,2,2]0,1,2,3}");
 }
 
 }  // namespace

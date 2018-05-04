@@ -32,9 +32,10 @@ Note that TensorFlow already includes many filesystem implementations, such as:
 
     Note: NFS filesystems often mount as a POSIX interface, and so standard
     TensorFlow can work on top of NFS-mounted remote filesystems.
-    
+
 *   HDFS - the Hadoop File System
 *   GCS - Google Cloud Storage filesystem
+*   S3 - Amazon Simple Storage Service filesystem
 *   A "memory-mapped-file" filesystem
 
 The rest of this guide describes how to implement a custom filesystem.
@@ -80,6 +81,8 @@ filesystem implementations call their existing libraries. Examples include:
     plugin](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/platform/hadoop/hadoop_file_system.h)
 *   [GCS
     plugin](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/platform/cloud/gcs_file_system.h)
+*   [S3
+    plugin](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/platform/s3/s3_file_system.h)
 
 #### The File interfaces
 
@@ -222,7 +225,7 @@ it will use the `FooBarFileSystem` implementation.
 Next, you must build a shared object containing this implementation. An example
 of doing so using bazel's `cc_binary` rule can be found
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/BUILD#L244),
-but you may use any build system to do so. See the section on @{$adding_an_op#build-the-op-library$building the op library} for similar
+but you may use any build system to do so. See the section on @{$adding_an_op#build_the_op_library$building the op library} for similar
 instructions.
 
 The result of building this target is a `.so` shared object file.

@@ -60,7 +60,7 @@ TEST(ReshapeOpTest, TooManyDimensions) {
 
 TEST(ReshapeOpTest, TooManySpecialDimensions) {
   EXPECT_DEATH(ReshapeOpModel({1, 2, 4, 1}, {-1, -1, 2, 4}),
-               "strech_dim != -1");
+               "stretch_dim != -1");
 }
 
 TEST(ReshapeOpTest, SimpleTest) {
@@ -83,8 +83,7 @@ TEST(ReshapeOpTest, WithStretchDimension) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
-  tflite::LogToStderr();
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

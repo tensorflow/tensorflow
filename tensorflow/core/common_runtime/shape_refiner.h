@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
 
 #include <vector>
 
@@ -215,20 +215,6 @@ class ShapeRefiner {
                                 bool keep_nested_shapes,
                                 ExtendedInferenceContext* outer_context);
 
-  // Tries to infer tensor output based on the input shapes of the node. In some
-  // cases, the shapes of the inputs are sufficient for inferring the contents
-  // of the output tensor. For example, a Shape op with fully defined input
-  // shapes can have its output tensor inferred.
-  Status TryToInferTensorOutputFromInputShapes(const Edge* edge, Tensor* output,
-                                               bool* success);
-
-  // Extracts the subgraph ending at 'node' that is statically
-  // computable and inserts into 'out_graph'. If statically computable,
-  // 'is_constant_graph' will be true.
-  Status ExtractConstantSubgraph(
-      Node* node, Graph* out_graph, bool* is_constant_graph,
-      std::vector<std::pair<string, Tensor>>* const_inputs) TF_MUST_USE_RESULT;
-
   Status EvaluateConstantTensorForEdge(const Node* node, int dst_idx,
                                        bool* evaluated, Tensor* result);
 
@@ -303,4 +289,4 @@ class ShapeRefiner {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_

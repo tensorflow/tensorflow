@@ -54,7 +54,7 @@ def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
       kernel_class = pywrap_tensorflow.TryFindKernelClass(
           node_def.SerializeToString())
       if kernel_class:
-        op_and_kernel = (str(node_def.op), kernel_class.decode('utf-8'))
+        op_and_kernel = (str(node_def.op), str(kernel_class.decode('utf-8')))
         if op_and_kernel not in ops:
           ops.add(op_and_kernel)
       else:

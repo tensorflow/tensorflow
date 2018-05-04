@@ -29,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
@@ -45,36 +43,44 @@ std::ostream& operator<<(std::ostream& out,
 // Calculates the launch dimensions used to invoke `hlo`.
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& device_desc,
-    PartitionStrategy partition_strategy) {
-  int64 warp_size = device_desc.threads_per_warp();
-
+    int unroll_factor) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
 
-  // Calculate the number of threads per block.
-  // Initialize threads_per_block as the threads-per-block limit.
-  int64 threads_per_block = device_desc.threads_per_block_limit();
-  VLOG(2) << "Initial # of threads per block = " << threads_per_block;
+  CHECK_EQ(num_elements % unroll_factor, 0);
+  num_elements = num_elements / unroll_factor;
 
-  if (partition_strategy == PartitionStrategy::kLatency) {
-    // Limit the thread count to allow maximum number of registers per thread.
-    // TODO(b/28560520): We don't have to assume the emitted kernel will use up
-    // all the registers. We could use ptxas to examine the actual number of
-    // register used, and set the thread count accordingly.
-    int64 threads_per_block_limit_due_to_registers =
-        device_desc.registers_per_core_limit() /
-        device_desc.registers_per_thread_limit();
-    CHECK_NE(0, threads_per_block_limit_due_to_registers);
-    if (threads_per_block_limit_due_to_registers < threads_per_block) {
-      threads_per_block =
-          // Make `threads_per_block` a multiple of warp size to use GPU
-          // efficiently.
-          warp_size *
-          std::max(1LL, threads_per_block_limit_due_to_registers / warp_size);
-      VLOG(2) << "Update # of threads per block due to register pressure = "
-              << threads_per_block;
+  // Since we don't do any inter-warp communication, we're free to choose any
+  // block size we want, subject to hardware constraints.  We choose the
+  // smallest block size that allows the GPU to reach full occupancy (assuming
+  // the kernel uses sufficiently few registers).  This gives us max performance
+  // when the kernel uses few registers, and lets us scale down gracefully as
+  // the kernel uses more registers.
+  //
+  // Specifically, we choose the number of threads per block such that
+  //
+  //   <num threads per block> * <max blocks per core> = <max threads per core>
+
+  auto threads_per_core = device_desc.threads_per_core_limit();
+  auto blocks_per_core = device_desc.blocks_per_core_limit();
+  int64 threads_per_block;
+  if (threads_per_core != 0 && blocks_per_core != 0) {
+    threads_per_block = device_desc.threads_per_core_limit() /
+                        device_desc.blocks_per_core_limit();
+  } else {
+    static std::atomic<int64> log_count{0};
+    if (log_count.fetch_add(1) < 8) {
+      LOG(WARNING) << "Attempting to calculate launch dimensions for GPU "
+                      "without full information about its capabilities.  "
+                      "StreamExecutor's PopulateDeviceDescription should be "
+                      "updated for this device.";
+    }
+    threads_per_block = device_desc.threads_per_warp();
+    if (threads_per_block == 0) {
+      // Fall back to *something* if we can't even get num threads per warp.
+      threads_per_block = 32;
     }
   }
 
@@ -84,8 +90,6 @@ LaunchDimensions CalculateLaunchDimensions(
             << threads_per_block << ") because the latter is smaller.";
   }
 
-  // Calculate the block count. We copy the strategy used by Eigen:
-  // eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
   VLOG(2) << tensorflow::strings::Printf(
       "Initialized the block count to ceil(# of elements / threads per "

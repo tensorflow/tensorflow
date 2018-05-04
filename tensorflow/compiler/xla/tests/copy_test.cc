@@ -40,7 +40,7 @@ class CopyOpTest : public HloTestBase {
   void TestCopyOp(const Literal& literal) {
     auto builder = HloComputation::Builder(TestName());
     auto constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(MakeUnique<Literal>(literal)));
+        HloInstruction::CreateConstant(literal.CloneToUnique()));
     builder.AddInstruction(HloInstruction::CreateUnary(
         constant->shape(), HloOpcode::kCopy, constant));
     auto computation = builder.Build();
@@ -56,9 +56,13 @@ class CopyOpTest : public HloTestBase {
                                 tensorflow::gtl::ArraySlice<int64> permutation);
 };
 
-XLA_TEST_F(CopyOpTest, CopyR0Bool) { TestCopyOp(*Literal::CreateR0<bool>(true)); }
+XLA_TEST_F(CopyOpTest, CopyR0Bool) {
+  TestCopyOp(*Literal::CreateR0<bool>(true));
+}
 
-XLA_TEST_F(CopyOpTest, CopyR1S0U32) { TestCopyOp(*Literal::CreateR1<uint32>({})); }
+XLA_TEST_F(CopyOpTest, CopyR1S0U32) {
+  TestCopyOp(*Literal::CreateR1<uint32>({}));
+}
 
 XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
   TestCopyOp(*Literal::CreateR1<uint32>({1, 2, 3}));
@@ -85,7 +89,6 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   // Copy literal to device to use as parameter.
   auto literal = Literal::CreateR0<float>(42.0);
   Shape shape = literal->shape();
-  auto constant_device_base = TransferToDevice(*literal);
 
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param0"));
@@ -98,7 +101,7 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   module->AddEntryComputation(std::move(computation));
 
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(module), {constant_device_base});
+      ExecuteAndTransfer(std::move(module), {literal.get()});
   LiteralTestUtil::ExpectR0Near<float>(42.0f, *result, error_spec_);
 }
 
@@ -129,7 +132,8 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   std::unique_ptr<Literal> literal =
       Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   // Reverse the minor-to-major order of the literal.
-  Layout* literal_layout = literal->mutable_shape()->mutable_layout();
+  Layout* literal_layout =
+      literal->mutable_shape_do_not_use()->mutable_layout();
   ASSERT_EQ(2, literal_layout->minor_to_major_size());
   literal_layout->mutable_minor_to_major()->SwapElements(0, 1);
 

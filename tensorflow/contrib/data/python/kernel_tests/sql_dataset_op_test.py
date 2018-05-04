@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import sqlite3
 
 from tensorflow.contrib.data.python.ops import readers

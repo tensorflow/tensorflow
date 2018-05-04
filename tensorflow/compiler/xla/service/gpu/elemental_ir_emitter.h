@@ -54,19 +54,30 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitFloatUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const override;
 
-  StatusOr<llvm::Value*> EmitComplexUnaryOp(
-      const HloInstruction* op, llvm::Value* operand_value) const override;
-
   StatusOr<llvm::Value*> EmitFloatBinaryOp(
-      const HloInstruction* op, llvm::Value* lhs_value,
-      llvm::Value* rhs_value) const override;
-
-  StatusOr<llvm::Value*> EmitComplexBinaryOp(
       const HloInstruction* op, llvm::Value* lhs_value,
       llvm::Value* rhs_value) const override;
 
   StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
                                      llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
+                                 llvm::Value* rhs) const override;
+
+  StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
+                                   llvm::Value* rhs) const override;
 
   llvm::Value* EmitThreadId() const override;
 

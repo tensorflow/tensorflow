@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 __all__ = [
+    "erfinv",
     "ndtr",
     "ndtri",
     "log_ndtr",
@@ -212,7 +213,7 @@ def _ndtri(p):
 
   # Compute x for p <= exp(-2): x = z - log(z)/z - (1/z) P(1/z) / Q(1/z),
   # where z = sqrt(-2. * log(p)), and P/Q are chosen between two different
-  # arrays based on wether p < exp(-32).
+  # arrays based on whether p < exp(-32).
   z = math_ops.sqrt(-2. * math_ops.log(sanitized_mcp))
   first_term = z - math_ops.log(z) / z
   second_term_small_p = (_create_polynomial(1. / z, p2)
@@ -348,6 +349,29 @@ def _log_ndtr_asymptotic_series(x, series_order):
       even_sum += _double_factorial(2 * n - 1) / x_2n
     x_2n *= x_2
   return 1. + even_sum - odd_sum
+
+
+def erfinv(x, name="erfinv"):
+  """The inverse function for erf, the error function.
+
+  Args:
+    x: `Tensor` of type `float32`, `float64`.
+    name: Python string. A name for the operation (default="erfinv").
+
+  Returns:
+    x: `Tensor` with `dtype=x.dtype`.
+
+  Raises:
+    TypeError: if `x` is not floating-type.
+  """
+
+  with ops.name_scope(name, values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.as_numpy_dtype not in [np.float32, np.float64]:
+      raise TypeError(
+          "x.dtype=%s is not handled, see docstring for supported types."
+          % x.dtype)
+    return ndtri((x + 1.0) / 2.0) / np.sqrt(2)
 
 
 def _double_factorial(n):

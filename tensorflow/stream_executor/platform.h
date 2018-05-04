@@ -29,8 +29,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class StreamExecutor;
 
@@ -106,10 +105,13 @@ class Platform {
   namespace {                           \
   int plugin_id_value;                  \
   }                                     \
-  const perftools::gputools::Platform::Id ID_VAR_NAME = &plugin_id_value;
+  const ::stream_executor::Platform::Id ID_VAR_NAME = &plugin_id_value;
 
   // Returns a key uniquely identifying this platform.
   virtual Id id() const = 0;
+
+  // Name of this platform.
+  virtual const string& Name() const = 0;
 
   // Returns the number of devices accessible on this platform.
   //
@@ -118,8 +120,17 @@ class Platform {
   // device, a call to ExecutorForDevice may return an error status.
   virtual int VisibleDeviceCount() const = 0;
 
-  // Name of this platform.
-  virtual const string& Name() const = 0;
+  // Returns true iff the platform has been initialized.
+  virtual bool Initialized() const;
+
+  // Initializes the platform with a custom set of options. The platform must be
+  // initialized before obtaining StreamExecutor objects.  The interpretation of
+  // the platform_options argument is implementation specific.  This method may
+  // return an error if unrecognized options are provided.  If using
+  // MultiPlatformManager, this method will be called automatically by
+  // InitializePlatformWithId/InitializePlatformWithName.
+  virtual port::Status Initialize(
+      const std::map<string, string>& platform_options);
 
   // Returns a device with the given ordinal on this platform with a default
   // plugin configuration or, if none can be found with the given ordinal or
@@ -156,6 +167,8 @@ class Platform {
   // This is only useful on platforms which bind a device to a single process
   // that has obtained the device context. May return UNIMPLEMENTED on platforms
   // that have no reason to destroy device contexts.
+  //
+  // The platform must be reinitialized after this is called.
   virtual port::Status ForceExecutorShutdown();
 
   // Registers a TraceListener to listen to all StreamExecutors for this
@@ -191,7 +204,6 @@ class Platform {
   SE_DISALLOW_COPY_AND_ASSIGN(Platform);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_H_

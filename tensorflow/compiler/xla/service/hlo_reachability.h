@@ -30,11 +30,17 @@ namespace xla {
 
 class HloInstruction;
 
-// A class for computing and representing reachability between HloInstructions.
+// A class for representing reachability between HloInstructions.
+//
+// !!! THIS CLASS DOES NOT COMPUTE REACHABILITY !!! It has an adjacency matrix
+// and it is up to the user of the class to set the adjacency matrix such that
+// it represents reachability, i.e. such that it is transitive. That the graph
+// be transitive is thus not an invariant of this class, but it is required for
+// the name of the class and its methods to make sense.
 class HloReachabilityMap {
  public:
-  // Sets up an empty reachable matrix for the full set of instructions
-  // specified in 'instructions'.
+  // Sets up a graph with no edges and where the nodes correspond to the given
+  // instructions.
   explicit HloReachabilityMap(const std::list<HloInstruction*>& instructions);
 
   // Set the reachability set of 'instruction' to the union of the reachability
@@ -42,17 +48,33 @@ class HloReachabilityMap {
   // 'x' is not 'instruction' will return true iff IsReachable(x, input) is true
   // for some 'input' in 'inputs'. Also sets 'instruction' to be reachable from
   // itself. Returns whether the reachability set of 'instruction' changed.
+  //
+  // !!! THIS FUNCTION DOES NOT COMPUTE REACHABILITY !!! It sets the adjacency
+  // vector in the internal graph of this HloReachabilityMap for the given
+  // instruction and does not transitively update any other part of the
+  // adjacency matrix.
   bool SetReachabilityToUnion(
       tensorflow::gtl::ArraySlice<const HloInstruction*> inputs,
       const HloInstruction* instruction);
 
   // Sets entry so that IsReachable(a, b) will return true
+  //
+  // !!! THIS FUNCTION DOES NOT COMPUTE REACHABILITY !!! It sets the adjacency
+  // matrix in the internal graph of this HloReachabilityMap to have an edge
+  // from a to b and does not transitively update any other part of the
+  // adjacency matrix.
   void SetReachable(const HloInstruction* a, const HloInstruction* b);
 
   // Returns true if "b" is reachable from "a"
+  //
+  // Note that this function only correctly answers queries about reachability
+  // if the set of edges that have been provided to this class are transitive.
   bool IsReachable(const HloInstruction* a, const HloInstruction* b) const;
 
   // Returns true if "b" is reachable from "a" or "a" is reachable from "b"
+  //
+  // Note that this function only correctly answers queries about reachability
+  // if the set of edges that have been provided to this class are transitive.
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
 
  private:

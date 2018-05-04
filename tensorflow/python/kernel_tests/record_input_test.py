@@ -26,13 +26,17 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-
 class RecordInputOpTest(test.TestCase):
 
-  def generateTestData(self, prefix, n, m):
+  def generateTestData(self,
+                       prefix,
+                       n,
+                       m,
+                       compression_type=tf_record.TFRecordCompressionType.NONE):
+    options = tf_record.TFRecordOptions(compression_type)
     for i in range(n):
       f = os.path.join(self.get_temp_dir(), prefix + "." + str(i))
-      w = tf_record.TFRecordWriter(f)
+      w = tf_record.TFRecordWriter(f, options=options)
 
       for j in range(m):
         w.write("{0:0{width}}".format(i * m + j, width=10).encode("utf-8"))
@@ -49,6 +53,44 @@ class RecordInputOpTest(test.TestCase):
           buffer_size=1,
           batch_size=1,
           name="record_input").get_yield_op()
+
+      self.assertEqual(sess.run(yield_op), b"0000000000")
+
+  def testRecordInputSimpleGzip(self):
+    with self.test_session() as sess:
+      self.generateTestData(
+          "basic",
+          1,
+          1,
+          compression_type=tf_record.TFRecordCompressionType.GZIP)
+
+      yield_op = data_flow_ops.RecordInput(
+          file_pattern=os.path.join(self.get_temp_dir(), "basic.*"),
+          parallelism=1,
+          buffer_size=1,
+          batch_size=1,
+          name="record_input",
+          compression_type=tf_record.TFRecordCompressionType.GZIP).get_yield_op(
+          )
+
+      self.assertEqual(sess.run(yield_op), b"0000000000")
+
+  def testRecordInputSimpleZlib(self):
+    with self.test_session() as sess:
+      self.generateTestData(
+          "basic",
+          1,
+          1,
+          compression_type=tf_record.TFRecordCompressionType.ZLIB)
+
+      yield_op = data_flow_ops.RecordInput(
+          file_pattern=os.path.join(self.get_temp_dir(), "basic.*"),
+          parallelism=1,
+          buffer_size=1,
+          batch_size=1,
+          name="record_input",
+          compression_type=tf_record.TFRecordCompressionType.ZLIB).get_yield_op(
+          )
 
       self.assertEqual(sess.run(yield_op), b"0000000000")
 

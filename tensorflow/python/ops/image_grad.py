@@ -41,12 +41,10 @@ def _ResizeNearestNeighborGrad(op, grad):
   else:
     image_shape = array_ops.shape(image)[1:3]
 
-  # pylint: disable=protected-access
-  grads = gen_image_ops._resize_nearest_neighbor_grad(
+  grads = gen_image_ops.resize_nearest_neighbor_grad(
       grad,
       image_shape,
       align_corners=op.get_attr("align_corners"))
-  # pylint: enable=protected-access
   return [grads, None]
 
 
@@ -61,15 +59,8 @@ def _ResizeBilinearGrad(op, grad):
   Returns:
     The gradients w.r.t. the input.
   """
-  allowed_types = [dtypes.float32, dtypes.float64]
-  grad0 = None
-  if op.inputs[0].dtype in allowed_types:
-    # pylint: disable=protected-access
-    grad0 = gen_image_ops._resize_bilinear_grad(
-        grad,
-        op.inputs[0],
-        align_corners=op.get_attr("align_corners"))
-    # pylint: enable=protected-access
+  grad0 = gen_image_ops.resize_bilinear_grad(
+      grad, op.inputs[0], align_corners=op.get_attr("align_corners"))
   return [grad0, None]
 
 
@@ -87,10 +78,8 @@ def _ResizeBicubicGrad(op, grad):
   allowed_types = [dtypes.float32, dtypes.float64]
   grad0 = None
   if op.inputs[0].dtype in allowed_types:
-    # pylint: disable=protected-access
-    grad0 = gen_image_ops._resize_bicubic_grad(
+    grad0 = gen_image_ops.resize_bicubic_grad(
         grad, op.inputs[0], align_corners=op.get_attr("align_corners"))
-    # pylint: enable=protected-access
   return [grad0, None]
 
 

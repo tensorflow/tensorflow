@@ -198,6 +198,13 @@ TEST(TensorShapeTest, DataType) {
   EXPECT_EQ(TensorShapeTestHelper::data_type(&s2), DT_INVALID);
 }
 
+TEST(TensorShapeTest, ostream) {
+  TensorShape s({10, 5, 4});
+  std::stringstream ss;
+  ss << s;
+  EXPECT_EQ(ss.str(), "[10,5,4]");
+}
+
 // -----------------------------------------------------------------------
 // An old implementation of TensorShape using a different representation,
 // preserved here in the unittest to allow us to have a randomized unittest
@@ -359,7 +366,8 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " has negative dimensions");
+                                     " has negative dimensions; ",
+                                     "perhaps an un-fed placeholder?");
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {
@@ -581,7 +589,8 @@ TEST(TensorShapeTest, Large) {
 TEST(TensorShapeTest, Overflow) {
   int64 one = 1;
   std::vector<std::vector<int64>> overflows = {
-      {1 << 30, 1 << 30, 1 << 30}, {1 << 5, (one << 60) + 1},
+      {1 << 30, 1 << 30, 1 << 30},
+      {1 << 5, (one << 60) + 1},
   };
   for (const auto& overflow : overflows) {
     TensorShapeProto proto;

@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 // TODO(b/30467474) Once GPU infeed implementation settles, consider
@@ -44,7 +42,7 @@ GpuTransferManager::GpuTransferManager()
     : GenericTransferManager(
           se::cuda::kCudaPlatformId,
           /*pointer_size=*/llvm::DataLayout(gpu::GpuCompiler::kDataLayout)
-              .getPointerSize()) {}
+              .getPointerSize(0 /* default address space */)) {}
 
 Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                                                    const Literal& literal) {
@@ -54,7 +52,7 @@ Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
 
   if (!ShapeUtil::IsTuple(shape)) {
     int64 size = GetByteSizeRequirement(shape);
-    return TransferBufferToInfeed(executor, size, literal.InternalData());
+    return TransferBufferToInfeed(executor, size, literal.untyped_data());
   }
 
   if (ShapeUtil::IsNestedTuple(shape)) {
@@ -67,20 +65,21 @@ Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   // enqueue the resulting destination device addresses with the
   // infeed manager.
   std::vector<gpu::InfeedBuffer*> buffers;
-  buffers.reserve(literal.tuple_literals_size());
+  buffers.reserve(ShapeUtil::TupleElementCount(shape));
   auto cleanup = tensorflow::gtl::MakeCleanup([buffers]() {
     for (gpu::InfeedBuffer* b : buffers) {
       b->Done();
     }
   });
 
-  for (const auto& tuple_element : literal.tuple_literals()) {
-    const Shape& tuple_element_shape = tuple_element.shape();
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const Shape& tuple_element_shape =
+        ShapeUtil::GetTupleElementShape(shape, i);
     int64 tuple_element_size = GetByteSizeRequirement(tuple_element_shape);
     TF_ASSIGN_OR_RETURN(
         gpu::InfeedBuffer * buffer,
         TransferBufferToInfeedInternal(executor, tuple_element_size,
-                                       tuple_element.InternalData()));
+                                       literal.untyped_data({i})));
     buffers.push_back(buffer);
   }
 
@@ -105,12 +104,13 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
   // infeed requests, blocking on the stream might be
   // heavy-handed. Figure out if finer-grained acknowledgement is
   // possible.
-  if (!stream->BlockHostUntilDone()) {
+  Status block_status = stream->BlockHostUntilDone();
+  if (!block_status.ok()) {
     for (gpu::InfeedBuffer* b : buffers) {
       b->Done();
     }
-    return InternalError("Failed to complete data transfer on stream %p",
-                         stream);
+    return InternalError("Failed to complete data transfer on stream %p: %s",
+                         stream, block_status.error_message().c_str());
   }
 
   infeed_manager->EnqueueBuffers(buffers);
@@ -151,8 +151,8 @@ static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
 }
 
 static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(se::cuda::kCudaPlatformId,
-                                                &CreateGpuTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::cuda::kCudaPlatformId, &CreateGpuTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();

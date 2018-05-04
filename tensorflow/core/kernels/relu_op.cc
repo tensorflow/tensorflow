@@ -31,7 +31,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_RELU_KERNELS(type)                                   \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -113,8 +113,7 @@ namespace functor {
                                                                                \
   template <>                                                                  \
   void Selu<GPUDevice, T>::operator()(                                         \
-      const GPUDevice& d,                                                      \
-      typename TTypes<T>::ConstTensor features,                                \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
       typename TTypes<T>::Tensor activations);                                 \
   extern template struct Selu<GPUDevice, T>;                                   \
                                                                                \
@@ -124,8 +123,6 @@ namespace functor {
       typename TTypes<T>::ConstTensor activations,                             \
       typename TTypes<T>::Tensor backprops);                                   \
   extern template struct SeluGrad<GPUDevice, T>;
-
-
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
@@ -156,8 +153,6 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
   REGISTER_KERNEL_BUILDER(                                            \
       Name("SeluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),  \
       SeluGradOp<GPUDevice, type>)
-
-
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
@@ -192,10 +187,8 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
       Name("SeluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
       SeluGradOp<SYCLDevice, type>)
 
-
-
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

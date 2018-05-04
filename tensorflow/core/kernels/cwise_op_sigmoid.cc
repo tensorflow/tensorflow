@@ -25,7 +25,7 @@ REGISTER3(UnaryOp, GPU, "Sigmoid", functor::sigmoid, float, Eigen::half,
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER(UnaryOp, SYCL, "Sigmoid", functor::sigmoid, float);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 REGISTER5(SimpleBinaryOp, CPU, "SigmoidGrad", functor::sigmoid_grad, float,
           Eigen::half, double, complex64, complex128);
@@ -35,6 +35,6 @@ REGISTER3(SimpleBinaryOp, GPU, "SigmoidGrad", functor::sigmoid_grad, float,
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER(SimpleBinaryOp, SYCL, "SigmoidGrad", functor::sigmoid_grad, float);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

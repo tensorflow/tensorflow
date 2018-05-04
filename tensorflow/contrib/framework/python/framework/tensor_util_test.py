@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -47,7 +48,7 @@ class LocalVariabletest(test.TestCase):
       variables = variables_lib.local_variables()
       self.assertEquals(2, len(variables))
       self.assertRaises(errors_impl.OpError, sess.run, variables)
-      variables_lib.initialize_variables(variables).run()
+      variables_lib.variables_initializer(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
 
@@ -77,6 +78,7 @@ class AssertScalarIntTest(test.TestCase):
               [3, 4], dtype=dtypes.int32))
 
 
+@test_util.with_c_api
 class WithShapeTest(test.TestCase):
 
   def _assert_with_shape(self, tensor, expected_value, expected_shape,
@@ -207,22 +209,32 @@ class WithShapeTest(test.TestCase):
         self.assertRaisesRegexp(errors_impl.OpError, "Wrong shape",
                                 tensor_2x2.eval, {tensor_no_shape: [42.0]})
 
+  @test_util.enable_c_shapes
   def test_with_shape_partial(self):
     with self.test_session():
       tensor_partial_shape = array_ops.placeholder(dtypes.float32)
       tensor_partial_shape.set_shape([None, 2])
 
       for incompatible_shape in [[0], [1]]:
+        if ops._USE_C_API:
+          error_message = "Shapes must be equal rank, but are 2 and 1"
+        else:
+          error_message = r"Shapes \(\?, 2\) and \([01],\) are not compatible"
         self.assertRaisesRegexp(
-            ValueError, r"Shapes \(\?, 2\) and \([01],\) are not compatible",
+            ValueError, error_message,
             tensor_util.with_shape, incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[1, 2, 1]]:
         self.assertRaisesRegexp(ValueError, "Dimensions must be equal",
                                 tensor_util.with_shape, incompatible_shape,
                                 tensor_partial_shape)
       for incompatible_shape in [[2, 1]]:
+        if ops._USE_C_API:
+          error_message = (r"Dimension 1 in both shapes must be equal, but are "
+                           r"2 and 1. Shapes are \[\?,2\] and \[2,1\].")
+        else:
+          error_message = r"Shapes \(\?, 2\) and \(2, 1\) are not compatible"
         self.assertRaisesRegexp(
-            ValueError, r"Shapes \(\?, 2\) and \(2, 1\) are not compatible",
+            ValueError, error_message,
             tensor_util.with_shape, incompatible_shape, tensor_partial_shape)
 
       compatible_shape = [2, 2]

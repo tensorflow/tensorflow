@@ -151,7 +151,7 @@ public class SessionTest {
       s.close();
       try {
         s.runner().run();
-        fail("methods on a close()d session should fail");
+        fail("methods on a session should fail after close() is called");
       } catch (IllegalStateException e) {
         // expected exception
       }

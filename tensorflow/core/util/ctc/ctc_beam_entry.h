@@ -52,26 +52,25 @@ struct BeamProbability {
   float label;
 };
 
+template <class CTCBeamState>
+class BeamRoot;
+
 template <class CTCBeamState = EmptyBeamState>
 struct BeamEntry {
-  // Default constructor does not create a vector of children.
-  BeamEntry() : parent(nullptr), label(-1) {}
-  // Constructor giving parent, label, and number of children does
-  // create a vector of children.  The object pointed to by p
-  // cannot be copied and should not be moved, otherwise parent will
-  // become invalid.
-  BeamEntry(BeamEntry* p, int l) : parent(p), label(l) {}
+  // BeamRoot<CTCBeamState>::AddEntry() serves as the factory method.
+  friend BeamEntry<CTCBeamState>* BeamRoot<CTCBeamState>::AddEntry(
+      BeamEntry<CTCBeamState>* p, int l);
   inline bool Active() const { return newp.total != kLogZero; }
   // Return the child at the given index, or construct a new one in-place if
   // none was found.
   BeamEntry& GetChild(int ind) {
     auto entry = children.emplace(ind, nullptr);
     auto& child_entry = entry.first->second;
-    // If this is a new child, populate the uniqe_ptr.
+    // If this is a new child, populate the BeamEntry<CTCBeamState>*.
     if (entry.second) {
-      child_entry.reset(new BeamEntry(this, ind));
+      child_entry = beam_root->AddEntry(this, ind);
     }
-    return *(child_entry.get());
+    return *child_entry;
   }
   std::vector<int> LabelSeq(bool merge_repeated) const {
     std::vector<int> labels;
@@ -90,13 +89,43 @@ struct BeamEntry {
 
   BeamEntry<CTCBeamState>* parent;
   int label;
-  gtl::FlatMap<int, std::unique_ptr<BeamEntry<CTCBeamState>>> children;
+  // All instances of child BeamEntry are owned by *beam_root.
+  gtl::FlatMap<int, BeamEntry<CTCBeamState>*> children;
   BeamProbability oldp;
   BeamProbability newp;
   CTCBeamState state;
 
  private:
+  // Constructor giving parent, label, and the beam_root.
+  // The object pointed to by p cannot be copied and should not be moved,
+  // otherwise parent will become invalid.
+  // This private constructor is only called through the factory method
+  // BeamRoot<CTCBeamState>::AddEntry().
+  BeamEntry(BeamEntry* p, int l, BeamRoot<CTCBeamState>* beam_root)
+      : parent(p), label(l), beam_root(beam_root) {}
+  BeamRoot<CTCBeamState>* beam_root;
   TF_DISALLOW_COPY_AND_ASSIGN(BeamEntry);
+};
+
+// This class owns all instances of BeamEntry.  This is used to avoid recursive
+// destructor call during destruction.
+template <class CTCBeamState = EmptyBeamState>
+class BeamRoot {
+ public:
+  BeamRoot(BeamEntry<CTCBeamState>* p, int l) { root_entry_ = AddEntry(p, l); }
+  BeamRoot(const BeamRoot&) = delete;
+  BeamRoot& operator=(const BeamRoot&) = delete;
+
+  BeamEntry<CTCBeamState>* AddEntry(BeamEntry<CTCBeamState>* p, int l) {
+    auto* new_entry = new BeamEntry<CTCBeamState>(p, l, this);
+    beam_entries_.emplace_back(new_entry);
+    return new_entry;
+  }
+  BeamEntry<CTCBeamState>* RootEntry() const { return root_entry_; }
+
+ private:
+  BeamEntry<CTCBeamState>* root_entry_ = nullptr;
+  std::vector<std::unique_ptr<BeamEntry<CTCBeamState>>> beam_entries_;
 };
 
 // BeamComparer is the default beam comparer provided in CTCBeamSearch.

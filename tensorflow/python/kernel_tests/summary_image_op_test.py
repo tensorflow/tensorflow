@@ -50,7 +50,6 @@ class SummaryImageOpTest(test.TestCase):
     self.assertProtoEquals(expected, image_summ)
 
   def testImageSummary(self):
-    np.random.seed(7)
     for depth in (1, 3, 4):
       for positive in False, True:
         with self.test_session(graph=ops.Graph()) as sess:
