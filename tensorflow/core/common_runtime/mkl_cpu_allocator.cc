@@ -19,8 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-constexpr const char* MklCPUAllocator::kMaxLimitStr;
-constexpr const size_t MklCPUAllocator::kDefaultMaxLimit;
+#if __cplusplus < 201703L
+constexpr const char* MklCPUAllocator::kMaxLimitStr; // Deprecated in C++17
+#endif
 
 }  // namespace tensorflow
 

@@ -47,35 +47,37 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       remote_config_repo="../arm_compiler",
       build_file = clean_dep("//third_party/toolchains/cpus/arm:BUILD"))
 
+  # MKL is dynamic library, which should be determined based on the platform
+  mkl_download_info = {
+      "urls": {
+          "darwin": [
+              "https://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.13/mklml_mac_2018.0.1.20171227.tgz",
+              "https://github.com/01org/mkl-dnn/releases/download/v0.13/mklml_mac_2018.0.2.20180127.tgz"],
+          "linux": [
+              "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz",
+              "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz"],
+          "windows": [
+              "https://mirror.bazel.build/intel/mkl-dnn/releases/download/v0.13/mklml_win_2018.0.2.20180127.zip",
+              "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_win_2018.0.2.20180127.zip"]
+      },
+      "sha256": {
+          "darwin": "aa740d71e14562bfea56e6829e6dc186e7487cbcf6748a88dec73826b7ec1943",
+          "linux": "74844bd77294742bf2396ff040369d1aa4cdd9e826fcd38cf8398ae83564d146",
+          "windows": "d8fbf0faa0684bffa3548005d05fe5cfe56ff9dbc0e15e7612d7ac01055a6ded"
+      },
+      "strip_prefix": {
+          "darwin": "mklml_mac_2018.0.2.20180127",
+          "linux": "mklml_lnx_2018.0.2.20180127",
+          "windows": "mklml_win_2018.0.2.20180127"
+      },
+  }
+
   mkl_repository(
-      name = "mkl_linux",
-      urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz",
-          "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz",
-      ],
-      sha256 = "74844bd77294742bf2396ff040369d1aa4cdd9e826fcd38cf8398ae83564d146",
-      strip_prefix = "mklml_lnx_2018.0.2.20180127",
-      build_file = clean_dep("//third_party/mkl:mkl.BUILD")
-  )
-  mkl_repository(
-      name = "mkl_windows",
-      urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.13/mklml_win_2018.0.2.20180127.zip",
-          "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_win_2018.0.2.20180127.zip"
-      ],
-      sha256 = "d8fbf0faa0684bffa3548005d05fe5cfe56ff9dbc0e15e7612d7ac01055a6ded",
-      strip_prefix = "mklml_win_2018.0.2.20180127",
-      build_file = clean_dep("//third_party/mkl:mkl.BUILD")
-  )
-  mkl_repository(
-      name = "mkl_darwin",
-      urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.13/mklml_mac_2018.0.2.20180127.tgz",
-          "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_mac_2018.0.2.20180127.tgz"
-      ],
-      sha256 = "aa740d71e14562bfea56e6829e6dc186e7487cbcf6748a88dec73826b7ec1943",
-      strip_prefix = "mklml_mac_2018.0.2.20180127",
-      build_file = clean_dep("//third_party/mkl:mkl.BUILD")
+      name = "mkl",
+      urls = mkl_download_info["urls"],
+      sha256 = mkl_download_info["sha256"],
+      strip_prefix = mkl_download_info["strip_prefix"],
+      build_file = str(Label("//third_party/mkl:mkl.BUILD")),
   )
 
   if path_prefix:

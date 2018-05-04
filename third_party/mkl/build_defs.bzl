@@ -24,8 +24,9 @@ def if_mkl(if_true, if_false = []):
         "//conditions:default": if_false
     })
 
+
 def if_mkl_lnx_x64(if_true, if_false = []):
-    """Shorthand for select()'ing on whether we're building with MKL.
+    """Shorthand for select()'ing on whether we're building with MKL on Linux x64.
 
     Returns a select statement which evaluates to if_true if we're building
     with MKL enabled.  Otherwise, the select statement evaluates to if_false.
@@ -33,6 +34,19 @@ def if_mkl_lnx_x64(if_true, if_false = []):
     """
     return select({
         str(Label("//third_party/mkl:using_mkl_lnx_x64")): if_true,
+        "//conditions:default": if_false
+    })
+
+
+def if_mkl_darwin(if_true, if_false = []):
+    """Shorthand for select()'ing on whether we're building with MKL on macOS.
+
+    Returns a select statement which evaluates to if_true if we're building
+    with MKL enabled.  Otherwise, the select statement evaluates to if_false.
+
+    """
+    return select({
+        str(Label("//third_party/mkl:using_mkl_darwin")): if_true,
         "//conditions:default": if_false
     })
 
@@ -54,11 +68,22 @@ def _mkl_autoconf_impl(repository_ctx):
     mkl_license_path = "%s/license.txt" % mkl_root
     repository_ctx.symlink(mkl_license_path, "license.txt")
   else:
+    # Detect the platform (os)
+    os = repository_ctx.os.name.lower()
+    if "mac" in os:
+      os = "darwin"
+    elif "linux" in os:
+      os = "linux"
+    elif "windows" in os:
+      os = "windows"
+    else:
+      fail("Platform not supported yet.")
+
     # setup remote mkl repository.
     repository_ctx.download_and_extract(
-        repository_ctx.attr.urls,
-        sha256=repository_ctx.attr.sha256,
-        stripPrefix=repository_ctx.attr.strip_prefix,
+        repository_ctx.attr.urls[os],
+        sha256=repository_ctx.attr.sha256[os],
+        stripPrefix=repository_ctx.attr.strip_prefix[os],
     )
 
   # Also setup BUILD file.
@@ -72,8 +97,8 @@ mkl_repository = repository_rule(
     ],
     attrs = {
         "build_file": attr.label(),
-        "urls": attr.string_list(default = []),
-        "sha256": attr.string(default = ""),
-        "strip_prefix": attr.string(default = ""),
+        "urls": attr.string_list_dict(default = {}),
+        "sha256": attr.string_dict(default = {}),
+        "strip_prefix": attr.string_dict(default = {}),
     },
 )
