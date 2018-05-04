@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA// || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -91,7 +91,7 @@ ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
 
-#if GOOGLE_CUDA// || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_KERNEL(D, TYPE)                                      \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
@@ -112,8 +112,8 @@ REGISTER_KERNEL(GPU, uint32);
 REGISTER_KERNEL(GPU, qint32);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, uint64);
-REGISTER_KERNEL(GPU, complex64);
-REGISTER_KERNEL(GPU, complex128);
+//REGISTER_KERNEL(GPU, complex64);
+//REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
 REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
@@ -160,7 +160,7 @@ void HostConstantOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, tensor_);
 }
 
-#if GOOGLE_CUDA// || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -254,14 +254,14 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
 #undef REGISTER_KERNEL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA// || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // ROCM TODO support half type
 //REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
-REGISTER_KERNEL(GPU, complex64);
-REGISTER_KERNEL(GPU, complex128);
+//REGISTER_KERNEL(GPU, complex64);
+//REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
@@ -336,15 +336,15 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                         ZerosLikeOp<CPUDevice, int32>);
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA// || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL(bool, GPU);
 // ROCM TODO support half type
 //REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
-REGISTER_KERNEL(complex64, GPU);
-REGISTER_KERNEL(complex128, GPU);
+//REGISTER_KERNEL(complex64, GPU);
+//REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL(Variant, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
@@ -390,15 +390,15 @@ REGISTER_KERNEL_BUILDER(Name("OnesLike")
                         OnesLikeOp<CPUDevice, int32>);
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA// || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL(bool, GPU);
 // ROCM TODO support half type
 //REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
-REGISTER_KERNEL(complex64, GPU);
-REGISTER_KERNEL(complex128, GPU);
+//REGISTER_KERNEL(complex64, GPU);
+//REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(int64, GPU);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_GPU)

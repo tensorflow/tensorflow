@@ -16,7 +16,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen-work-upstream/Eigen/Core
      // We need cuda_runtime.h to ensure that that EIGEN_USING_STD_MATH macro
      // works properly on the device side
      #include <cuda_runtime.h>
-+  #elif defined(__HIPCC_)
++  #elif defined(__HIPCC__)
 +    // Do not try to vectorize on ROCm
 +    #ifndef EIGEN_DONT_VECTORIZE
 +    #define EIGEN_DONT_VECTORIZE

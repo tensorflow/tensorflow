@@ -302,7 +302,7 @@ Allocator* ProcessState::GetGPUHostAllocator(int numa_node) {
 }
 
 void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   mutex_lock lock(mu_);
   for (int i = 0; i < static_cast<int64>(gpu_allocators_.size()); ++i) {
     se::StreamExecutor* se =
@@ -316,7 +316,7 @@ void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
     gpu_visitors_.push_back(std::vector<AllocVisitor>());
   }
   gpu_visitors_[bus_id].push_back(visitor);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 void ProcessState::TestOnlyReset() {
