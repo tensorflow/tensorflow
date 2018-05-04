@@ -57,7 +57,7 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"tensorflow::strings::internal::AppendPieces|"
                            r"tensorflow::strings::internal::CatPieces|"
                            r"tensorflow::io::internal::JoinPathImpl|"
-						   r"stream_executor::Stream::ThenBlasGemm")
+                           r"stream_executor::Stream::ThenBlasGemm")
 
 # Include if matched after exclude
 INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
@@ -66,7 +66,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"functor::|"
                         r"\?nsync_|"
                         r"perftools::gputools|"
-						r"stream_executor::Stream::ThenBlasGemm")
+                        r"stream_executor::Stream::ThenBlasGemm")
 
 # We want to identify data members explicitly in the DEF file, so that no one
 # can implicitly link against the DLL if they use one of the variables exported
