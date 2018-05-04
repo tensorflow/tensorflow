@@ -23,6 +23,14 @@ load(
     "if_mkl",
 )
 
+config_setting(
+    name = "using_polly",
+    values = {
+        "polly": "true",
+    },
+    visibility = ["@%ws%//tensorflow:internal"]
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -396,7 +404,7 @@ cc_library(
     name = "compiler_functor",
     srcs = ["compiler_functor.cc"],
     hdrs = ["compiler_functor.h"],
-    deps = [
+    deps = append_polly_dep_if_enabled([
         ":cpu_runtime",
         ":disassembler",
         ":llvm_ir_runtime",
@@ -414,7 +422,7 @@ cc_library(
         "@llvm//:object",
         "@llvm//:support",
         "@llvm//:target",
-    ],
+    ]),
 )
 
 cc_library(
