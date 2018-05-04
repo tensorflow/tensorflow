@@ -494,7 +494,12 @@ def _auc(labels, predictions, weights=None, curve='ROC', name=None):
     predictions = math_ops.to_float(predictions, name='predictions')
     if weights is not None:
       weights = weights_broadcast_ops.broadcast_weights(weights, predictions)
-    return metrics_lib.auc(
+    if curve == 'PR':
+      return metrics_lib.auc(
+        labels=labels, predictions=predictions, weights=weights, curve=curve,
+        name=scope, summation_method='careful_interpolation')
+    else:
+      return metrics_lib.auc(
         labels=labels, predictions=predictions, weights=weights, curve=curve,
         name=scope)
 
