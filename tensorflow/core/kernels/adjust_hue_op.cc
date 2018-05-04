@@ -13,7 +13,7 @@ limitations under the License.
 ==============================================================================*/
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -248,7 +248,7 @@ class AdjustHueOp<CPUDevice> : public AdjustHueOpBase {
 REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_CPU),
                         AdjustHueOp<CPUDevice>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
  public:
