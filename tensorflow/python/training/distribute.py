@@ -290,19 +290,31 @@ def _require_distribution_strategy_scope(distribution_strategy):
 class _CurrentDistributionContext(object):
   """Context manager for setting the `DistributionStrategy` and var creator."""
 
-  def __init__(self, distribution_strategy, var_creator_scope, var_scope=None):
+  def __init__(self,
+               distribution_strategy,
+               var_creator_scope,
+               var_scope=None,
+               default_device=None):
     self._context = _CrossTowerThreadMode(distribution_strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    if default_device:
+      self._device_scope = ops.device(default_device)
+    else:
+      self._device_scope = None
 
   def __enter__(self):
     _push_per_thread_mode(self._context)
     if self._var_scope:
       self._var_scope.__enter__()
     self._var_creator_scope.__enter__()
+    if self._device_scope:
+      self._device_scope.__enter__()
     return self._context.distribution_strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
+    if self._device_scope:
+      self._device_scope.__exit__(exception_type, exception_value, traceback)
     self._var_creator_scope.__exit__(exception_type, exception_value, traceback)
     if self._var_scope:
       self._var_scope.__exit__(exception_type, exception_value, traceback)
@@ -557,6 +569,9 @@ class DistributionStrategy(object):
   # TODO(josh11b): List of towers with their worker and parameter devices
   #   (where the parameter devices may overlap in the ps case).
 
+  def __init__(self):
+    self._default_device = None
+
   def scope(self):
     """Returns a context manager selecting this DistributionStrategy as current.
 
@@ -587,7 +602,8 @@ class DistributionStrategy(object):
         self, variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=disable_partitioned_variables))
+            custom_getter=disable_partitioned_variables),
+        self._default_device)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
