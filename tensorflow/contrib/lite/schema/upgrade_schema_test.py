@@ -252,7 +252,7 @@ def JsonDumpAndFlush(data, fp):
 
 class TestSchemaUpgrade(test_util.TensorFlowTestCase):
 
-  def testNonExistantFile(self):
+  def testNonExistentFile(self):
     converter = upgrade_schema_lib.Converter()
     non_existent = tempfile.mktemp(suffix=".json")
     with self.assertRaisesRegexp(IOError, "No such file or directory"):

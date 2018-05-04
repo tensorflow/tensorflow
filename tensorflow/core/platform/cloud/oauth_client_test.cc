@@ -160,12 +160,12 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   ASSERT_EQ(1, EVP_DigestVerifyInit(md_ctx, nullptr, md, nullptr, key));
   ASSERT_EQ(1, EVP_DigestVerifyUpdate(md_ctx, header_dot_claim.c_str(),
                                       header_dot_claim.size()));
-  ASSERT_EQ(
-      1,
-      EVP_DigestVerifyFinal(
-          md_ctx, const_cast<unsigned char*>(
-                      reinterpret_cast<const unsigned char*>(signature.data())),
-          signature.size()));
+  ASSERT_EQ(1,
+            EVP_DigestVerifyFinal(
+                md_ctx,
+                const_cast<unsigned char*>(
+                    reinterpret_cast<const unsigned char*>(signature.data())),
+                signature.size()));
   EVP_MD_CTX_cleanup(md_ctx);
 
   // Free all the crypto-related resources.

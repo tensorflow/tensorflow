@@ -53,5 +53,15 @@ Alternatively, the format could be "NCHW", the data storage order of:
     [batch, in_channels, in_height, in_width].
 END
   }
+  attr {
+    name: "dilations"
+    description: <<END
+1-D tensor of length 4.  The dilation factor for each dimension of
+`input`. If set to k > 1, there will be k-1 skipped cells between each filter
+element on that dimension. The dimension order is determined by the value of
+`data_format`, see above for details. Dilations in the batch and depth
+dimensions must be 1.
+END
+  }
   summary: "Computes the gradients of convolution with respect to the filter."
 }

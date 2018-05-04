@@ -22,11 +22,17 @@ import numpy as np
 import numpy.random as npr
 
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -94,6 +100,18 @@ class SubGraphTest(test.TestCase):
     input_list = [b, d]
     filtered_list = sub_graph.filter_list(input_list)
     self.assertEqual(filtered_list, [b])
+
+  def testVariableUses(self):
+    with ops.Graph().as_default():
+      var = variable_scope.get_variable('var', shape=[10, 10])
+      resource_var = variable_scope.get_variable(
+          'resource_var', shape=[10, 10], use_resource=True)
+      x = array_ops.zeros([3, 10])
+      z0 = math_ops.matmul(x, var) + math_ops.matmul(x, var)
+      z1 = math_ops.matmul(x, resource_var)
+      sub_graph = utils.SubGraph((z0, z1))
+      self.assertEqual(2, sub_graph.variable_uses(var))
+      self.assertEqual(1, sub_graph.variable_uses(resource_var))
 
 
 class UtilsTest(test.TestCase):
@@ -222,18 +240,6 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(b, np.array([4., 5.]))
       self.assertAllClose(c, np.array([[6.], [7.], [8.], [9.]]))
 
-  def testComputePi(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
-      random_seed.set_random_seed(200)
-      left_factor = array_ops.diag([1., 2., 0., 1.])
-      right_factor = array_ops.ones([2., 2.])
-
-      # pi is the sqrt of the left trace norm divided by the right trace norm
-      pi = utils.compute_pi(left_factor, right_factor)
-
-      pi_val = sess.run(pi)
-      self.assertEqual(1., pi_val)
-
   def testPosDefInvCholesky(self):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
@@ -264,6 +270,140 @@ class UtilsTest(test.TestCase):
           array_ops.constant(x), identity, damp)
       np_inv = np.linalg.inv(x + damp * np.eye(size))
       self.assertAllClose(sess.run(tf_inv), np_inv)
+
+  def testCrossReplicaMean(self):
+    """Ensures that cross_replica_mean() executes only when num_shards > 1."""
+    with ops.Graph().as_default():
+      with tpu_function.tpu_shard_context(4):
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+      self.assertNotEqual(mean, tensor)
+
+    with ops.Graph().as_default():
+      with tpu_function.tpu_shard_context(1):
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+      self.assertEqual(mean, tensor)
+
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError):  # Outside of TPU context.
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+
+  def testBatchExecute(self):
+    """Ensure batch_execute runs in a round-robin fashion."""
+
+    def increment_var(var):
+      return lambda: var.assign_add(1)
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      i = variable_scope.get_variable('i', initializer=0)
+      accumulators = [
+          variable_scope.get_variable('var%d' % j, initializer=0)
+          for j in range(3)
+      ]
+      thunks = [increment_var(var) for var in accumulators]
+      increment_accumulators = utils.batch_execute(i, thunks, 2)
+      increment_i = i.assign_add(1)
+
+      sess.run(variables.global_variables_initializer())
+
+      # Ensure one op per thunk.
+      self.assertEqual(3, len(increment_accumulators))
+
+      # Ensure round-robin execution.
+      values = []
+      for _ in range(5):
+        sess.run(increment_accumulators)
+        sess.run(increment_i)
+        values.append(sess.run(accumulators))
+      self.assertAllClose(
+          [
+              [1, 1, 0],  #
+              [2, 1, 1],  #
+              [2, 2, 2],  #
+              [3, 3, 2],  #
+              [4, 3, 3]
+          ],
+          values)
+
+  def testExtractConvolutionPatches(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      batch_size = 10
+      image_spatial_shape = [9, 10, 11]
+      in_channels = out_channels = 32
+      kernel_spatial_shape = [5, 3, 3]
+      spatial_strides = [1, 2, 1]
+      spatial_dilation = [1, 1, 1]
+      padding = 'SAME'
+
+      images = random_ops.random_uniform(
+          [batch_size] + image_spatial_shape + [in_channels], seed=0)
+      kernel_shape = kernel_spatial_shape + [in_channels, out_channels]
+      kernel = random_ops.random_uniform(kernel_shape, seed=1)
+
+      # Ensure shape matches expectation.
+      patches = utils.extract_convolution_patches(
+          images,
+          kernel_shape,
+          padding,
+          strides=spatial_strides,
+          dilation_rate=spatial_dilation)
+      result_spatial_shape = (
+          patches.shape.as_list()[1:1 + len(image_spatial_shape)])
+      self.assertEqual(patches.shape.as_list(),
+                       [batch_size] + result_spatial_shape +
+                       kernel_spatial_shape + [in_channels])
+
+      # Ensure extract...patches() + matmul() and convolution() implementation
+      # give the same answer.
+      outputs = nn_ops.convolution(
+          images,
+          kernel,
+          padding,
+          strides=spatial_strides,
+          dilation_rate=spatial_dilation)
+
+      patches_flat = array_ops.reshape(
+          patches, [-1, np.prod(kernel_spatial_shape) * in_channels])
+      kernel_flat = array_ops.reshape(kernel, [-1, out_channels])
+      outputs_flat = math_ops.matmul(patches_flat, kernel_flat)
+
+      outputs_, outputs_flat_ = sess.run([outputs, outputs_flat])
+      self.assertAllClose(outputs_.flatten(), outputs_flat_.flatten())
+
+  def testExtractPointwiseConv2dPatches(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      batch_size = 10
+      image_height = image_width = 8
+      in_channels = out_channels = 3
+      kernel_height = kernel_width = 1
+      strides = [1, 1, 1, 1]
+      padding = 'VALID'
+
+      images = random_ops.random_uniform(
+          [batch_size, image_height, image_width, in_channels], seed=0)
+      kernel_shape = [kernel_height, kernel_width, in_channels, out_channels]
+      kernel = random_ops.random_uniform(kernel_shape, seed=1)
+
+      # Ensure shape matches expectation.
+      patches = utils.extract_pointwise_conv2d_patches(images, kernel_shape)
+      self.assertEqual(patches.shape.as_list(), [
+          batch_size, image_height, image_width, kernel_height, kernel_width,
+          in_channels
+      ])
+
+      # Ensure extract...patches() + matmul() and conv2d() implementation
+      # give the same answer.
+      outputs = nn_ops.conv2d(images, kernel, strides, padding)
+
+      patches_flat = array_ops.reshape(
+          patches, [-1, kernel_height * kernel_width * in_channels])
+      kernel_flat = array_ops.reshape(kernel, [-1, out_channels])
+      outputs_flat = math_ops.matmul(patches_flat, kernel_flat)
+
+      outputs_, outputs_flat_ = sess.run([outputs, outputs_flat])
+      self.assertAllClose(outputs_.flatten(), outputs_flat_.flatten())
 
 
 if __name__ == '__main__':

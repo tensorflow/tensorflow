@@ -39,6 +39,7 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
+// TODO(hongm): Convert `g` and `init` to using std::unique_ptr.
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init,
                      Rendezvous* rendez) {
@@ -85,7 +86,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   if (init) {
     Executor* init_exec;
-    TF_CHECK_OK(NewLocalExecutor(params, init, &init_exec));
+    TF_CHECK_OK(
+        NewLocalExecutor(params, std::unique_ptr<Graph>(init), &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
@@ -93,7 +95,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
     delete init_exec;
   }
 
-  TF_CHECK_OK(NewLocalExecutor(params, g, &exec_));
+  TF_CHECK_OK(NewLocalExecutor(params, std::unique_ptr<Graph>(g), &exec_));
 }
 
 Benchmark::~Benchmark() {

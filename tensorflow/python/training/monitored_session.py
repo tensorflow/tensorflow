@@ -41,6 +41,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.tf_export import tf_export
 
 
 # The list of exceptions that we should recover from. Exceptions not in this
@@ -52,7 +53,7 @@ _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 USE_DEFAULT = object()
 
 
-# TODO(touts): Share that with the Supervisor.
+@tf_export('train.Scaffold')
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
 
@@ -201,7 +202,7 @@ class Scaffold(object):
     if self._local_init_op is None:
       self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
-          Scaffold._default_local_init_op)
+          Scaffold.default_local_init_op)
     if self._summary_op is None:
       self._summary_op = Scaffold.get_or_default('summary_op',
                                                  ops.GraphKeys.SUMMARY_OP,
@@ -213,6 +214,7 @@ class Scaffold(object):
     self._saver.build()
 
     ops.get_default_graph().finalize()
+    logging.info('Graph was finalized.')
     return self
 
   @property
@@ -265,24 +267,38 @@ class Scaffold(object):
     return op
 
   @staticmethod
-  def _default_local_init_op():
-    return control_flow_ops.group(variables.local_variables_initializer(),
-                                  lookup_ops.tables_initializer())
+  def default_local_init_op():
+    """Returns an op that groups the default local init ops.
+
+    This op is used during session initialization when a Scaffold is
+    initialized without specifying the local_init_op arg. It includes
+    `tf.local_variables_initializer`, `tf.tables_initializer`, and also
+    initializes local session resources.
+
+    Returns:
+      The default Scaffold local init op.
+    """
+    return control_flow_ops.group(
+        variables.local_variables_initializer(),
+        lookup_ops.tables_initializer(),
+        resources.initialize_resources(resources.local_resources()))
 
 
+@tf_export('train.MonitoredTrainingSession')
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
                              scaffold=None,
                              hooks=None,
                              chief_only_hooks=None,
-                             save_checkpoint_secs=600,
+                             save_checkpoint_secs=USE_DEFAULT,
                              save_summaries_steps=USE_DEFAULT,
                              save_summaries_secs=USE_DEFAULT,
                              config=None,
                              stop_grace_period_secs=120,
                              log_step_count_steps=100,
-                             max_wait_secs=7200):
+                             max_wait_secs=7200,
+                             save_checkpoint_steps=USE_DEFAULT):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -305,8 +321,10 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     chief_only_hooks: list of `SessionRunHook` objects. Activate these hooks if
       `is_chief==True`, ignore otherwise.
     save_checkpoint_secs: The frequency, in seconds, that a checkpoint is saved
-      using a default checkpoint saver. If `save_checkpoint_secs` is set to
-      `None`, then the default checkpoint saver isn't used.
+      using a default checkpoint saver. If both `save_checkpoint_steps` and
+      `save_checkpoint_secs` are set to `None`, then the default checkpoint
+      saver isn't used. If both are provided, then only `save_checkpoint_secs`
+      is used. Default 600.
     save_summaries_steps: The frequency, in number of global steps, that the
       summaries are written to disk using a default summary saver. If both
       `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
@@ -325,6 +343,11 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       become available. This should be kept relatively short to help detect
       incorrect code, but sometimes may need to be increased if the chief takes
       a while to start up.
+    save_checkpoint_steps: The frequency, in number of global steps, that a
+      checkpoint is saved using a default checkpoint saver. If both
+      `save_checkpoint_steps` and `save_checkpoint_secs` are set to `None`, then
+      the default checkpoint saver isn't used. If both are provided, then only
+      `save_checkpoint_secs` is used. Default not enabled.
 
   Returns:
     A `MonitoredSession` object.
@@ -336,6 +359,15 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     save_summaries_secs = None
   elif save_summaries_steps == USE_DEFAULT:
     save_summaries_steps = None
+
+  if (save_checkpoint_steps == USE_DEFAULT and
+      save_checkpoint_secs == USE_DEFAULT):
+    save_checkpoint_steps = None
+    save_checkpoint_secs = 600
+  elif save_checkpoint_secs == USE_DEFAULT:
+    save_checkpoint_secs = None
+  elif save_checkpoint_steps == USE_DEFAULT:
+    save_checkpoint_steps = None
 
   scaffold = scaffold or Scaffold()
   if not is_chief:
@@ -369,9 +401,13 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
           save_steps=save_summaries_steps,
           save_secs=save_summaries_secs,
           output_dir=checkpoint_dir))
-    if save_checkpoint_secs and save_checkpoint_secs > 0:
+    if (save_checkpoint_secs and save_checkpoint_secs > 0) or (
+        save_checkpoint_steps and save_checkpoint_steps > 0):
       all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
-          checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
+          checkpoint_dir,
+          save_steps=save_checkpoint_steps,
+          save_secs=save_checkpoint_secs,
+          scaffold=scaffold))
 
   if hooks:
     all_hooks.extend(hooks)
@@ -379,6 +415,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                           stop_grace_period_secs=stop_grace_period_secs)
 
 
+@tf_export('train.SessionCreator')
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -388,6 +425,7 @@ class SessionCreator(object):
         'create_session is not implemented for {}.'.format(self))
 
 
+@tf_export('train.ChiefSessionCreator')
 class ChiefSessionCreator(SessionCreator):
   """Creates a tf.Session for a chief."""
 
@@ -439,6 +477,7 @@ class ChiefSessionCreator(SessionCreator):
         init_fn=self._scaffold.init_fn)
 
 
+@tf_export('train.WorkerSessionCreator')
 class WorkerSessionCreator(SessionCreator):
   """Creates a tf.Session for a worker."""
 
@@ -704,6 +743,7 @@ class _MonitoredSession(object):
     return self._coordinated_creator.tf_sess
 
 
+@tf_export('train.MonitoredSession')
 class MonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, recovery and hooks.
 
@@ -786,6 +826,7 @@ class MonitoredSession(_MonitoredSession):
         stop_grace_period_secs=stop_grace_period_secs)
 
 
+@tf_export('train.SingularMonitoredSession')
 class SingularMonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, restoring, and hooks.
 

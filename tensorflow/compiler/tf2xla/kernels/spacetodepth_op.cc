@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace {
@@ -23,6 +24,16 @@ namespace {
 class SpaceToDepthOp : public XlaOpKernel {
  public:
   explicit SpaceToDepthOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+
+    OP_REQUIRES(ctx, data_format_ == FORMAT_NCHW || data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument("Unsupported data format ",
+                                        ToString(data_format_),
+                                        "; expected formats NHWC or NCHW"));
+
     OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
     OP_REQUIRES(
         ctx, block_size_ > 1,
@@ -31,34 +42,100 @@ class SpaceToDepthOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_tensor_shape = ctx->InputShape(0);
-    // The input is presumed to be [batch, height, width, depth]
     int input_rank = input_tensor_shape.dims();
     static const int kRequiredDims = 4;
     OP_REQUIRES(ctx, kRequiredDims == input_rank,
-                errors::InvalidArgument("Input rank should be: ", kRequiredDims,
-                                        " instead of: ", input_rank));
+                errors::InvalidArgument("Input rank should be ", kRequiredDims,
+                                        "; got ", input_rank));
     const gtl::InlinedVector<int64, 4> input_shape =
         input_tensor_shape.dim_sizes();
 
     xla::ComputationBuilder* b = ctx->builder();
     xla::ComputationDataHandle input = ctx->Input(0);
 
+    int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format_);
+    int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format_);
+
+    std::vector<int64> reshaped_shape;
+    std::vector<int64> transpose_order;
+    std::vector<int64> output_shape;
+    reshaped_shape.reserve(input_rank);
+    transpose_order.reserve(input_rank);
+    output_shape.reserve(input_rank);
+    if (data_format_ == FORMAT_NHWC) {
+      int64 block_elems = 1;
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        OP_REQUIRES(ctx, input_shape[1 + i] % block_size_ == 0,
+                    errors::InvalidArgument(
+                        "input shape[", 1 + i, "]=", input_shape[1 + i],
+                        " is not divisible by block_size=", block_size_));
+        block_elems *= block_size_;
+      }
+
+      reshaped_shape.push_back(input_shape[0]);
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        reshaped_shape.push_back(input_shape[1 + i] / block_size_);
+        reshaped_shape.push_back(block_size_);
+      }
+      reshaped_shape.push_back(input_shape[feature_dim]);
+
+      transpose_order.push_back(0);
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        transpose_order.push_back(i * 2 + 1);
+      }
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        transpose_order.push_back(i * 2 + 2);
+      }
+      transpose_order.push_back(feature_dim + num_spatial_dims);
+
+      output_shape.push_back(input_shape[0]);
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        output_shape.push_back(input_shape[1 + i] / block_size_);
+      }
+      output_shape.push_back(input_shape[feature_dim] * block_elems);
+    } else {
+      // FORMAT_NCHW
+      int64 block_elems = 1;
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        OP_REQUIRES(ctx, input_shape[2 + i] % block_size_ == 0,
+                    errors::InvalidArgument(
+                        "input shape[", 2 + i, "]=", input_shape[2 + i],
+                        " is not divisible by block_size=", block_size_));
+        block_elems *= block_size_;
+      }
+
+      reshaped_shape.push_back(input_shape[0]);
+      reshaped_shape.push_back(input_shape[feature_dim]);
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        reshaped_shape.push_back(input_shape[2 + i] / block_size_);
+        reshaped_shape.push_back(block_size_);
+      }
+
+      transpose_order.push_back(0);
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        transpose_order.push_back(i * 2 + 3);
+      }
+      transpose_order.push_back(feature_dim);
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        transpose_order.push_back(i * 2 + 2);
+      }
+
+      output_shape.push_back(input_shape[0]);
+      output_shape.push_back(input_shape[feature_dim] * block_elems);
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        output_shape.push_back(input_shape[2 + i] / block_size_);
+      }
+    }
+
+    // Note: comments are given in NHWC format; NCHW is similar with a different
+    // dimension order.
     // 1. Reshape `input` to `reshaped` of shape:
     //
     //      [batch,
     //       input_shape[1] / block_size_, block_size_,
     //       input_shape[2] / block_size_, block_size_,
     //       depth]
-    const int block_rank = 2;
-    for (int i = 0; i < block_rank; ++i) {
-      OP_REQUIRES(ctx, input_shape[1 + i] % block_size_ == 0,
-                  errors::InvalidArgument(
-                      "input shape[", 1 + i, "]=", input_shape[1 + i],
-                      " is not divisible by block_size=", block_size_));
-    }
-    xla::ComputationDataHandle reshaped = b->Reshape(
-        input, {input_shape[0], input_shape[1] / block_size_, block_size_,
-                input_shape[2] / block_size_, block_size_, input_shape[3]});
+    xla::ComputationDataHandle reshaped = b->Reshape(input, reshaped_shape);
 
     // 2. Permute dimensions of `reshaped` to produce
     //    `permuted_reshaped` of shape:
@@ -69,7 +146,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     //       block_size_, block_size_,
     //       depth]
     xla::ComputationDataHandle permuted_reshaped =
-        b->Transpose(reshaped, {0, 1, 3, 2, 4, 5});
+        b->Transpose(reshaped, transpose_order);
 
     // 3. Reshape `permuted_reshaped` to flatten `block_shape` into the
     //    batch dimension, producing an output tensor of shape:
@@ -79,15 +156,14 @@ class SpaceToDepthOp : public XlaOpKernel {
     //       input_shape[2] / block_size_,
     //       block_size_ * block_size_ * depth]
     //
-    xla::ComputationDataHandle output = b->Reshape(
-        permuted_reshaped, {input_shape[0], input_shape[1] / block_size_,
-                            input_shape[2] / block_size_,
-                            block_size_ * block_size_ * input_shape[3]});
+    xla::ComputationDataHandle output =
+        b->Reshape(permuted_reshaped, output_shape);
 
     ctx->SetOutput(0, output);
   }
 
  private:
+  TensorFormat data_format_;
   int block_size_;
 };
 REGISTER_XLA_OP(Name("SpaceToDepth"), SpaceToDepthOp);

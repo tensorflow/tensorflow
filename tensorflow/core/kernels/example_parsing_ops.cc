@@ -34,9 +34,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-class ExampleParserOp : public OpKernel {
+class ParseExampleOp : public OpKernel {
  public:
-  explicit ExampleParserOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit ParseExampleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
   }
 
@@ -162,11 +162,107 @@ class ExampleParserOp : public OpKernel {
   }
 
  protected:
-  ParseSingleExampleAttrs attrs_;
+  ParseExampleAttrs attrs_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseExample").Device(DEVICE_CPU),
-                        ExampleParserOp);
+                        ParseExampleOp);
+
+class ParseSingleExampleOp : public OpKernel {
+ public:
+  explicit ParseSingleExampleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* serialized;
+    OpInputList dense_defaults;
+
+    // Grab the input list arguments.
+    OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized));
+    OP_REQUIRES_OK(ctx, ctx->input_list("dense_defaults", &dense_defaults));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(serialized->shape()),
+                errors::InvalidArgument(
+                    "Expected serialized to be a scalar, got shape: ",
+                    serialized->shape().DebugString()));
+    OP_REQUIRES(ctx, dense_defaults.size() == attrs_.dense_keys.size(),
+                errors::InvalidArgument(
+                    "Expected len(dense_defaults) == len(dense_keys) but got: ",
+                    dense_defaults.size(), " vs. ", attrs_.dense_keys.size()));
+
+    for (size_t d = 0; d < attrs_.dense_keys.size(); ++d) {
+      const Tensor& def_value = dense_defaults[d];
+      if (attrs_.variable_length[d]) {
+        OP_REQUIRES(ctx, def_value.NumElements() == 1,
+                    errors::InvalidArgument(
+                        "dense_shape[", d, "] is a variable length shape: ",
+                        attrs_.dense_shapes[d].DebugString(),
+                        ", therefore "
+                        "def_value[",
+                        d,
+                        "] must contain a single element ("
+                        "the padding element).  But its shape is: ",
+                        def_value.shape().DebugString()));
+      } else if (def_value.NumElements() > 0) {
+        OP_REQUIRES(ctx,
+                    attrs_.dense_shapes[d].IsCompatibleWith(def_value.shape()),
+                    errors::InvalidArgument(
+                        "def_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " is not compatible with dense_shapes_[", d,
+                        "] == ", attrs_.dense_shapes[d].DebugString()));
+      }
+      OP_REQUIRES(ctx, def_value.dtype() == attrs_.dense_types[d],
+                  errors::InvalidArgument(
+                      "dense_defaults[", d, "].dtype() == ",
+                      DataTypeString(def_value.dtype()), " != dense_types_[", d,
+                      "] == ", DataTypeString(attrs_.dense_types[d])));
+    }
+
+    example::Result result;
+
+    // TODO(mrry): Build the configuration once and cache it.
+    example::FastParseExampleConfig config;
+    for (int d = 0; d < attrs_.dense_keys.size(); ++d) {
+      config.dense.push_back({attrs_.dense_keys[d], attrs_.dense_types[d],
+                              attrs_.dense_shapes[d], dense_defaults[d],
+                              attrs_.variable_length[d],
+                              attrs_.elements_per_stride[d]});
+    }
+    for (int d = 0; d < attrs_.sparse_keys.size(); ++d) {
+      config.sparse.push_back({attrs_.sparse_keys[d], attrs_.sparse_types[d]});
+    }
+
+    const string& serialized_proto = serialized->scalar<string>()();
+
+    OP_REQUIRES_OK(ctx,
+                   FastParseSingleExample(config, serialized_proto, &result));
+
+    OpOutputList dense_values;
+    OpOutputList sparse_indices;
+    OpOutputList sparse_values;
+    OpOutputList sparse_shapes;
+    OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_indices", &sparse_indices));
+    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_values", &sparse_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_shapes", &sparse_shapes));
+    for (int d = 0; d < attrs_.dense_keys.size(); ++d) {
+      dense_values.set(d, result.dense_values[d]);
+    }
+    for (int d = 0; d < attrs_.sparse_keys.size(); ++d) {
+      sparse_indices.set(d, result.sparse_indices[d]);
+      sparse_values.set(d, result.sparse_values[d]);
+      sparse_shapes.set(d, result.sparse_shapes[d]);
+    }
+  }
+
+ protected:
+  ParseSingleExampleAttrs attrs_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("ParseSingleExample").Device(DEVICE_CPU),
+                        ParseSingleExampleOp);
 
 class SingleSequenceExampleParserOp : public OpKernel {
  public:
@@ -250,8 +346,9 @@ class SingleSequenceExampleParserOp : public OpKernel {
           feature_list_sparse_keys[di].scalar<string>()();
     }
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(
-                 feature_list_dense_missing_assumed_empty->shape()),
+        ctx,
+        TensorShapeUtils::IsVector(
+            feature_list_dense_missing_assumed_empty->shape()),
         errors::InvalidArgument(
             "Expected feature_list_dense_missing_assumed_empty ",
             "to be a vector, got shape: ",
@@ -290,12 +387,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
       required[d] = (def_value.NumElements() == 0);  // No default provided.
 
       if (def_value.NumElements() > 0) {
-        OP_REQUIRES(
-            ctx, def_value.shape() == attrs_.context_dense_shapes[d],
-            errors::InvalidArgument(
-                "def_value[", d, "].shape() == ",
-                def_value.shape().DebugString(), " != context_dense_shapes_[",
-                d, "] == ", attrs_.context_dense_shapes[d].DebugString()));
+        OP_REQUIRES(ctx, def_value.shape() == attrs_.context_dense_shapes[d],
+                    errors::InvalidArgument(
+                        "def_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " != context_dense_shapes_[", d,
+                        "] == ", attrs_.context_dense_shapes[d].DebugString()));
         OP_REQUIRES(
             ctx, def_value.dtype() == attrs_.context_dense_types[d],
             errors::InvalidArgument(
@@ -480,12 +577,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
         const Feature& f = fl.feature(t);
         bool types_match;
         OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-        OP_REQUIRES(
-            ctx, types_match,
-            errors::InvalidArgument(
-                "Name: ", name, ", Feature list: ", key, ", Index: ", t,
-                ".  Data types don't match. ", "Expected type: ",
-                DataTypeString(dtype), "  Feature is: ", ProtoDebugString(f)));
+        OP_REQUIRES(ctx, types_match,
+                    errors::InvalidArgument(
+                        "Name: ", name, ", Feature list: ", key, ", Index: ", t,
+                        ".  Data types don't match. ",
+                        "Expected type: ", DataTypeString(dtype),
+                        "  Feature is: ", ProtoDebugString(f)));
         OP_REQUIRES_OK(ctx, FeatureDenseCopy(t, name, key, dtype, shape, f,
                                              feature_list_dense_values[d]));
       }

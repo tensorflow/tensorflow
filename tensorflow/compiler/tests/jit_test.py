@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.contrib.compiler import jit
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,6 +37,18 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 jit_scope = jit.experimental_jit_scope
+
+
+# Disable rewrites to make sure we don't end up having to update this test
+# whenever we implement new ones.
+def NoRewriteSessionConfig():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      function_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
 
 
 def CompiledKernel(fn, *inputs, **kwargs):
@@ -80,7 +94,7 @@ class JitLaunchTest(test.TestCase):
   # actually ran. However, it is sometimes possible for _XlaLaunch ops to be
   # constant-folded away, so the check is optional.
   def _compare(self, fn, args, require_kernel_launch=True, noinline=None):
-    with session_lib.Session() as sess:
+    with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
       placeholders = []
       feeds = {}
       for arg in args:
@@ -257,7 +271,7 @@ class XlaCompilationTest(test.TestCase):
   def testReshape(self):
     """Tests an operator with compile-time constant and non-constant inputs."""
 
-    with self.test_session() as sess:
+    with self.test_session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -281,7 +295,7 @@ class XlaCompilationTest(test.TestCase):
   def testIgnoredArguments(self):
     """Tests that JIT computations can ignore formal parameters."""
 
-    with self.test_session() as sess:
+    with self.test_session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.int32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -305,7 +319,7 @@ class XlaCompilationTest(test.TestCase):
   def testLoops(self):
     """Tests that compilation accepts computations containing loops."""
 
-    with self.test_session() as session:
+    with self.test_session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         c = lambda i, _: math_ops.less(i, 5)
@@ -323,7 +337,7 @@ class XlaCompilationTest(test.TestCase):
   def testCond(self):
     """Tests that compilation handles switch operators."""
 
-    with self.test_session() as session:
+    with self.test_session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.float32)
       c = array_ops.placeholder(dtypes.bool)
@@ -364,7 +378,8 @@ class XlaCompilationTest(test.TestCase):
       inp = array_ops.placeholder(dtypes.float32)
       out = Entry(inp)
 
-    with self.test_session(graph=g, use_gpu=True) as sess:
+    with self.test_session(
+        config=NoRewriteSessionConfig(), graph=g, use_gpu=True) as sess:
       run_metadata = config_pb2.RunMetadata()
       val = sess.run(out,
                      feed_dict={inp: [2., 10.]},
@@ -376,7 +391,7 @@ class XlaCompilationTest(test.TestCase):
   def testLoopDeadlock(self):
     """Regression test for bug that caused deadlocks in graphs with loops."""
 
-    with self.test_session() as session:
+    with self.test_session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         y = x + 1.0
@@ -403,10 +418,10 @@ class XlaCompilationTest(test.TestCase):
         y = Forward(x)
         dx, = gradients_impl.gradients(y, [x], 1.0)
 
-      cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-          optimizer_options=config_pb2.OptimizerOptions(
-              opt_level=config_pb2.OptimizerOptions.L1,
-              do_function_inlining=True)))
+      cfg = NoRewriteSessionConfig()
+      cfg.graph_options.optimizer_options.opt_level = (
+          config_pb2.OptimizerOptions.L1)
+      cfg.graph_options.optimizer_options.do_function_inlining = True
       with session_lib.Session(graph=g, config=cfg) as sess:
         run_metadata = config_pb2.RunMetadata()
         dx_val = sess.run(dx,
@@ -434,6 +449,56 @@ class XlaCompilationTest(test.TestCase):
     self.assertFalse(InLabels(labels, "Reciprocal"))
     self.assertFalse(InLabels(labels, "Mul"))
     self.assertTrue(InLabels(labels, "_XlaLaunch"))
+
+
+class ElementWiseFusionTest(test.TestCase):
+
+  # Runs a simple test with the input jit_level and fusion_only flag.
+  def simpleTest(self, arg0, arg1, global_jit_level):
+    config = config_pb2.ConfigProto()
+    config.graph_options.optimizer_options.global_jit_level = global_jit_level
+
+    with session_lib.Session(config=config) as sess:
+      a1 = array_ops.placeholder(dtypes.float32, [2, 2], name="a1")
+      a2 = array_ops.placeholder(dtypes.float32, [2, 2], name="a2")
+      # Two element-wise ops. We need at least two ops since single
+      # element clusters are not passed to XLA in fusion_only mode.
+      a3 = a1 * a2
+      a4 = a3 + a1
+      # A matmul to break XLA clustering.
+      a5 = math_ops.matmul(a4, a1)
+      # Two more element-wise ops.
+      a6 = a5 - a4
+      a7 = a6 + a2
+
+      run_metadata = config_pb2.RunMetadata()
+      output = sess.run(
+          a7, {
+              a1: arg0,
+              a2: arg1
+          },
+          run_metadata=run_metadata,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+
+      labels = RunMetadataLabels(run_metadata)
+      count = sum("_XlaLaunch(" in x for x in labels)
+
+      return output, count
+
+  def testElementWiseClustering(self):
+    arg0 = np.random.rand(2, 2).astype(np.float32)
+    arg1 = np.random.rand(2, 2).astype(np.float32)
+    os.environ["TF_XLA_FLAGS"] = "--tf_xla_fusion_only=true"
+    tf_op, tf_count = self.simpleTest(arg0, arg1,
+                                      config_pb2.OptimizerOptions.OFF)
+    self.assertEqual(0, tf_count)
+
+    tfef_op, tfef_count = self.simpleTest(arg0, arg1,
+                                          config_pb2.OptimizerOptions.ON_1)
+    self.assertEqual(2, tfef_count)
+
+    self.assertAllClose(tf_op, tfef_op, rtol=1e-1)
 
 
 if __name__ == "__main__":

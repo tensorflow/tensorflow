@@ -26,10 +26,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorDiag",]
 
 
+@tf_export("linalg.LinearOperatorDiag")
 class LinearOperatorDiag(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square diagonal matrix.
 
@@ -65,7 +67,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   operator = LinearOperatorDiag(diag)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
-  # since the batch dimensions, [2, 1], are brodcast to
+  # since the batch dimensions, [2, 1], are broadcast to
   # operator.batch_shape = [2, 3].
   y = tf.random_normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)
@@ -121,8 +123,8 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
     Args:
       diag:  Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
-        The diagonal of the operator.  Allowed dtypes: `float32`, `float64`,
-          `complex64`, `complex128`.
+        The diagonal of the operator.  Allowed dtypes: `float16`, `float32`,
+          `float64`, `complex64`, `complex128`.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `diag.dtype` is real, this is auto-set to `True`.
@@ -130,8 +132,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         meaning the quadratic form `x^H A x` has positive real part for all
         nonzero `x`.  Note that we do not require the operator to be
         self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix\
-            #Extension_for_non_symmetric_matrices
+        https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
@@ -167,7 +168,12 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   def _check_diag(self, diag):
     """Static check of diag."""
     allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]
 
     dtype = diag.dtype
     if dtype not in allowed_dtypes:

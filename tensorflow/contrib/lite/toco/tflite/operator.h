@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
 
 #include "flatbuffers/flatbuffers.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
@@ -86,4 +86,4 @@ class BaseOperator {
 
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_

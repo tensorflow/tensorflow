@@ -25,6 +25,7 @@ namespace xla {
 using tensorflow::strings::Appendf;
 using tensorflow::strings::HumanReadableElapsedTime;
 using tensorflow::strings::HumanReadableNumBytes;
+using tensorflow::strings::Printf;
 using tensorflow::strings::StrAppend;
 
 string HumanReadableProfileBuilder::ToString() const {
@@ -43,7 +44,12 @@ string HumanReadableProfileBuilder::ToString() const {
     } else {
       bytes_per_sec =
           HumanReadableNumBytes(op.bytes_accessed / CyclesToSeconds(op.cycles));
-      bytes_per_cycle = HumanReadableNumBytes(op.bytes_accessed / op.cycles);
+      if (op.bytes_accessed > op.cycles) {
+        bytes_per_cycle = HumanReadableNumBytes(op.bytes_accessed / op.cycles);
+      } else {
+        bytes_per_cycle =
+            Printf("%.3fB", static_cast<float>(op.bytes_accessed) / op.cycles);
+      }
     }
 
     double cycles_percent = 0;

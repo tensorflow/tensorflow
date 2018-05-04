@@ -17,7 +17,6 @@ initialized with parameters that define the distributions.
 
 *   @{tf.contrib.distributions.Binomial}
 *   @{tf.contrib.distributions.Bernoulli}
-*   @{tf.contrib.distributions.BernoulliWithSigmoidProbs}
 *   @{tf.contrib.distributions.Beta}
 *   @{tf.contrib.distributions.Categorical}
 *   @{tf.contrib.distributions.Chi2}

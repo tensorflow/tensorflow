@@ -1,13 +1,13 @@
 #!/usr/bin/perl
 #
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -156,7 +156,7 @@ for (my $i = 1; $i <= $#info; $i++) {
                            ."   *  String elements are sequences of bytes from the last array dimension.\n";
             }
 
-    
+
             my $intro = ($trank > 0)
                 ?  "Creates a rank-$trank tensor of {\@code $jtype} elements."
                 :  "Creates a scalar tensor containing a single {\@code $jtype} element.";

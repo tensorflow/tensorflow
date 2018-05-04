@@ -25,22 +25,55 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 
 
-_SUMMARY_OPS = ("ScalarSummary",)
-_PLACEHOLDER_OPS = ("Placeholder",)
+# Operations that indicate some error in the users graph, e.g. a placeholder
+# that's introduced outside of the infeed.
+_BLACKLISTED_OPS = set([
+    "Placeholder",
+])
+
+# These operations will currently fail to compile, but we should be able to
+# support them eventually via CPU offload or extending our operation set.
+_NOT_IMPLEMENTED_OPS = set([
+    "AudioSummary",
+    "AudioSummaryV2",
+    "HistogramSummary",
+    "ImageSummary",
+    "MergeSummary",
+    "Print",
+    "ScalarSummary",
+    "TensorSummary",
+    "TensorSummaryV2",
+    ])
+
+_MAX_WARNING_LINES = 5
+
+_TPU_REPLICATE_ATTR = "_tpu_replicate"
+_OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
+
+
+def _tpu_system_device_name(job):
+  """Returns the device name for the TPU_SYSTEM device of `job`."""
+  if job is None:
+    return "/device:TPU_SYSTEM:0"
+  else:
+    return "/job:%s/device:TPU_SYSTEM:0" % job
 
 
 def initialize_system(embedding_config=None, job=None):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
-    embedding_config: If not None, an EmbeddingLayerConfiguration proto
+    embedding_config: If not None, an `EmbeddingLayerConfiguration` proto
       describing the desired configuration of the hardware embedding lookup
       tables. If embedding_config is None, no hardware embeddings can be used.
     job: The job (the XXX in TensorFlow device specification /job:XXX)
@@ -48,27 +81,18 @@ def initialize_system(embedding_config=None, job=None):
       it is assumed there is only one job in the TensorFlow flock, and an
       error will be returned if this assumption does not hold.
   Returns:
-    Op which, when executed, will initialize the system.
+    A serialized `TopologyProto` that describes the TPU system. Note:
+      the topology must be evaluated using `Session.run` before it can be used.
   """
-  if job is None:
-    device_name = "/device:TPU_SYSTEM:0"
-  else:
-    device_name = "/job:%s/device:TPU_SYSTEM:0" % job
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
-  with ops.device(device_name):
-    init_distributed_tpu = tpu_ops.configure_distributed_tpu(
-        embedding_config=config_string)
-  return init_distributed_tpu
+  with ops.device(_tpu_system_device_name(job)):
+    return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
 
 
 def shutdown_system(job=None):
   """Shuts down a running a distributed TPU system."""
-  if job is None:
-    device_name = "/device:TPU_SYSTEM:0"
-  else:
-    device_name = "/job:%s/device:TPU_SYSTEM:0" % job
-  with ops.device(device_name):
+  with ops.device(_tpu_system_device_name(job)):
     shutdown_distributed_tpu = tpu_ops.shutdown_distributed_tpu()
   return shutdown_distributed_tpu
 
@@ -80,51 +104,217 @@ def core(num):
     num: the virtual core number within each replica to which operators should
     be assigned.
   Returns:
-    A device name, suitable for passing to tf.device().
+    A device name, suitable for passing to `tf.device()`.
   """
   return "device:TPU_REPLICATED_CORE:{}".format(num)
 
 
-class TPUReplicateContext(control_flow_ops.ControlFlowContext):
-  """A ControlFlowContext for nodes inside a TPU computation.
+class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
+  """A `ControlFlowContext` for nodes inside a TPU computation.
 
-  The primary role of TPUReplicateContext is to mark operators inside a
+  The primary role of `TPUReplicateContext` is to mark operators inside a
   tpu.replicate() computation with the attribute "_tpu_replicate=XYZ", where XYZ
   is a unique name.
 
-  We use a ControlFlowContext to perform the annotation since it
+  We use a `ControlFlowContext` to perform the annotation since it
   integrates with Tensorflow constructs like ResourceVariables. For example,
-  if a ResourceVariable is constructed inside a tpu.replicate() block, the
-  ResourceVariable implementation can use "with ops.control_dependencies(None)"
-  to build the variable's definition outside the replicated computation.
+  if a `ResourceVariable` is constructed inside a tpu.replicate() block, the
+  `ResourceVariable` implementation can use
+  `with ops.control_dependencies(None)` to build the variable's definition
+  outside the replicated computation.
   """
 
-  def __init__(self, name):
-    control_flow_ops.ControlFlowContext.__init__(self)
+  def __init__(self, name, num_replicas):
+    super(TPUReplicateContext, self).__init__()
+    self._num_replicas = num_replicas
+    self._outer_device_function_stack = None
+    self._oc_dev_fn_stack = None
+    self._outside_compilation_cluster = None
+    self._outside_compilation_counter = 0
+    self._in_gradient_colocation = None
+    self._gradient_colocation_stack = []
+    self._host_compute_core = []
     self._name = name
+    self._unsupported_ops = []
+
+  def report_unsupported_operations(self):
+    if self._unsupported_ops:
+      op_str = "\n".join(["  %s (%s)" % (op.type, op.name)
+                          for op in self._unsupported_ops[:_MAX_WARNING_LINES]])
+      logging.warning("%d unsupported operations found: \n%s",
+                      len(self._unsupported_ops), op_str)
+      if len(self._unsupported_ops) > _MAX_WARNING_LINES:
+        logging.warning("... and %d more" %
+                        (len(self._unsupported_ops) - _MAX_WARNING_LINES))
+
+  def EnterGradientColocation(self, op, gradient_uid):
+    if op is not None:
+      self._gradient_colocation_stack.append(op)
+      if not self._outside_compilation_cluster:
+        try:
+          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR)
+          if self._in_gradient_colocation:
+            raise NotImplementedError(
+                "Cannot nest gradient colocation operations outside compilation"
+            )
+          if gradient_uid == "__unsupported__":
+            raise NotImplementedError(
+                "No gradient_uid calling gradient within outside_compilation")
+          # When we take the gradient of an op X in an
+          # outside_compilation cluster C in a forward computation we
+          # would like to put the ops corresponding to the gradient of
+          # X into a new outside_compilation cluster C'. However, if
+          # we take the gradient of X twice, the second one should get
+          # yet another new outside_compilation cluster C''.
+          #
+          # The mechanism we adopt is to use a 'root_cluster' which is
+          # the cluster that X was in before we took gradients, and a
+          # 'gradient_uid' which is different for every invocation of
+          # gradients, and put the gradient of X in cluster
+          # 'root_cluster.gradient_uid'.
+          #
+          # When the gradient code adds multiple Ops, it asks them to
+          # be colocated either with the original Op X, or with one of
+          # the preceding Ops that was added to the gradient. In other
+          # words, we want to detect the case where we are colocating
+          # with an Op that is in cluster root_cluster.gradient_uid
+          # and put the new Op in that same cluster if the
+          # gradient_uid is the same (the case that we are in the same
+          # invocation of gradients, and just adding new Ops to the
+          # cluster); and in a different cluster if the gradient_uids
+          # are different (the case that we are in a new invocation of
+          # gradients, taking the gradient of a previously-computed
+          # gradient).
+          self._in_gradient_colocation = op
+          parts = outside_attr.split(".")
+          if len(parts) > 1:
+            uid = parts[-1]
+            if uid == gradient_uid:
+              # Keep using the same cluster
+              cluster = outside_attr
+            else:
+              # We're taking the gradient of a gradient so make a new
+              # cluster attr, adding a new '.uid' on the end to
+              # preserve the invariant that the gradient_uid is the
+              # suffix after the last '.' in the attr.
+              cluster = outside_attr + "." + gradient_uid
+          else:
+            # We're taking the gradient of an Op in the forward pass, so
+            # make a new cluster combining the Op's cluster and the
+            # gradient id.
+            cluster = outside_attr + "." + gradient_uid
+          self._EnterOutsideCompilationScope(cluster=cluster)
+        except ValueError:
+          # The attr was not present: do nothing.
+          pass
+
+  def ExitGradientColocation(self, op, gradient_uid):
+    if op is not None:
+      if not self._gradient_colocation_stack:
+        raise errors.InternalError(
+            op.node_def, op,
+            "Badly nested gradient colocation: empty stack when popping Op " +
+            op.name)
+      last_op = self._gradient_colocation_stack.pop()
+      if op is last_op:
+        if op is self._in_gradient_colocation:
+          self._in_gradient_colocation = None
+          self._ExitOutsideCompilationScope()
+      else:
+        raise errors.InternalError(
+            op.node_def, op, "Badly nested gradient colocation, expected " +
+            last_op + ", got " + op.name)
+
+  def _EnterOutsideCompilationScope(self, cluster=None):
+
+    class FakeOp(object):
+      """A helper class to determine the current device.
+
+      Supports only the device set/get methods needed to run the
+      graph's _apply_device_function method.
+      """
+
+      def __init__(self):
+        self._device = ""
+
+      @property
+      def device(self):
+        return self._device
+
+      def _set_device(self, device):
+        self._device = device.to_string()
+
+    if self._outside_compilation_cluster:
+      raise NotImplementedError("Cannot nest outside_compilation clusters")
+    if cluster:
+      self._outside_compilation_cluster = cluster
+    else:
+      self._outside_compilation_cluster = str(self._outside_compilation_counter)
+      self._outside_compilation_counter += 1
+    graph = ops.get_default_graph()
+    fake_op = FakeOp()
+    graph._apply_device_functions(fake_op)  # pylint: disable=protected-access
+    device = pydev.DeviceSpec.from_string(fake_op.device)
+    if (device.device_type == "TPU_REPLICATED_CORE" and
+        device.device_index is not None):
+      self._host_compute_core.append(self._outside_compilation_cluster + ":" +
+                                     str(device.device_index))
+    self._oc_dev_fn_stack = graph._device_function_stack  # pylint: disable=protected-access
+    graph._device_function_stack = self._outer_device_function_stack  # pylint: disable=protected-access
+
+  def _ExitOutsideCompilationScope(self):
+    if not self._outside_compilation_cluster:
+      raise NotImplementedError(
+          "Attempted to exit outside_compilation scope when not in scope")
+    self._outside_compilation_cluster = None
+    graph = ops.get_default_graph()
+    graph._device_function_stack = self._oc_dev_fn_stack  # pylint: disable=protected-access
+
+  def Enter(self):
+    if not self._outer_device_function_stack:
+      # Capture the device function stack at the time of first entry
+      # since that is the stack that will be used outside_compilation.
+      graph = ops.get_default_graph()
+      self._outer_device_function_stack = list(graph._device_function_stack)  # pylint: disable=protected-access
+    super(TPUReplicateContext, self).Enter()
+
+  def Exit(self):
+    super(TPUReplicateContext, self).Exit()
+
+  def HostComputeCore(self):
+    return self._host_compute_core
 
   def AddOp(self, op):
     self._AddOpInternal(op)
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if op.type in _PLACEHOLDER_OPS:
-      raise ValueError("Placeholder %s is not supported." % op.name)
+    if op.type in _BLACKLISTED_OPS:
+      logging.error("Operation of type %s (%s) is not supported on the TPU. "
+                    "Execution will fail if this op is used in the graph. " %
+                    (op.type, op.name))
 
-    if op.type in _SUMMARY_OPS:
-      logging.warning(
-          "Summary operations are not currently supported (%s)" % op.name)
+    if op.type in _NOT_IMPLEMENTED_OPS:
+      self._unsupported_ops.append(op)
 
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
-    # pylint: enable=protected-access
-    if "_tpu_replicate" in op.node_def.attr:
+    if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op.node_def.attr["_tpu_replicate"].s = self._name
-    op.graph.prevent_feeding(op)
-    op.graph.prevent_fetching(op)
+    op._set_attr(_TPU_REPLICATE_ATTR,
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    if self._outside_compilation_cluster:
+      op._set_attr(
+          _OUTSIDE_COMPILATION_ATTR,
+          attr_value_pb2.AttrValue(
+              s=compat.as_bytes(self._outside_compilation_cluster)))
+    if self._num_replicas > 1 or not self._outside_compilation_cluster:
+      # Prevent feeding or fetching anything that is being compiled,
+      # and any replicated outside_compilation Op.
+      op.graph.prevent_feeding(op)
+      op.graph.prevent_fetching(op)
 
   def AddValue(self, val):
     result = val
@@ -146,40 +336,88 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
     return None
 
 
+def outside_compilation(computation, args=None):
+  """Builds part of a computation outside any current TPU replicate scope.
+
+  Args:
+    computation: A Python function that builds the computation to
+      place on the host.
+    args: Inputs to pass to computation.
+  Returns:
+    The Tensors returned by computation.
+  """
+  graph = ops.get_default_graph()
+
+  # If we are in a TPUReplicateContext, signal that we are now
+  # outside_compilation
+  initial_context = graph._get_control_flow_context()  # pylint: disable=protected-access
+  context = initial_context
+  while context:
+    if isinstance(context, TPUReplicateContext):
+      context._EnterOutsideCompilationScope()  # pylint: disable=protected-access
+    context = context.outer_context
+
+  retval = computation(*args)
+
+  # If we are in a TPUReplicateContext, signal that we are no longer
+  # outside_compilation
+  final_context = graph._get_control_flow_context()  # pylint: disable=protected-access
+  if initial_context is not final_context:
+    raise NotImplementedError(
+        "Control-flow context cannot be different at start and end of an "
+        "outside_compilation scope")
+  context = initial_context
+  while context:
+    if isinstance(context, TPUReplicateContext):
+      context._ExitOutsideCompilationScope()  # pylint: disable=protected-access
+    context = context.outer_context
+
+  return retval
+
+
 def replicate(computation,
               inputs=None,
               infeed_queue=None,
-              global_tpu_id=None,
+              device_assignment=None,
               name=None):
   """Builds a graph operator that runs a replicated TPU computation.
 
   Args:
-    computation: a Python function that builds the computation to replicate.
-    inputs: a list of lists of input tensors or None (equivalent to
-      [[]]), indexed by [replica_num][input_num]. All replicas must
+    computation: A Python function that builds the computation to replicate.
+    inputs: A list of lists of input tensors or `None` (equivalent to
+      `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
       have the same number of inputs.
-    infeed_queue: if not None, the InfeedQueue from which to append a tuple
+    infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to computation.
-    global_tpu_id: if not None, a Numpy 2D array indicating the global
-      id of each TPU device in the system. The outer dimension of the
-      array is host task id, and the inner dimension is device ordinal,
-      so e.g., global_tpu_id[x][y] indicates the global id of device
-      /task:x/device:TPU_NODE:y.
-    name: name of the operator.
+    device_assignment: If not `None`, a `DeviceAssignment` describing the
+      mapping between logical cores in the computation with physical cores in
+      the TPU topology. Uses a default device assignment if `None`. The
+      `DeviceAssignment` may be omitted if each replica of the computation uses
+      only one core, and there is either only one replica, or the number of
+      replicas is equal to the number of cores in the TPU system.
+    name: (Deprecated) Does nothing.
   Returns:
-    A list of lists of output tensors, indexed by [replica_num][output_num].
+    A list of lists of output tensors, indexed by `[replica_num][output_num]`.
   Raises:
-    ValueError: if all replicas do not have equal numbers of input tensors.
-    ValueError: if the number of inputs per replica does not match
+    ValueError: If all replicas do not have equal numbers of input tensors.
+    ValueError: If the number of inputs per replica does not match
       the number of formal parameters to `computation`.
   """
-  if name is None:
-    name = "TPUReplicate"
+  del name
   inputs = [[]] if inputs is None else inputs
 
-  if global_tpu_id is not None:
-    # Turn the Numpy array into a flattened list.
-    global_tpu_id = global_tpu_id.flatten().tolist()
+  metadata_kwargs = {}
+  if device_assignment is not None:
+    # Turn the Numpy array into a flattened list so we can pass it as an
+    # operator attribute.
+    metadata_kwargs = {
+        "topology":
+            device_assignment.topology.serialized(),
+        "device_assignment":
+            device_assignment.core_assignment.flatten().tolist(),
+        "computation_shape":
+            device_assignment.computation_shape.tolist()
+    }
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -229,117 +467,124 @@ def replicate(computation,
 
   graph = ops.get_default_graph()
 
-  with ops.name_scope(name, "replicate"):
-    # Fan-in: Builds a TPUReplicatedInput node for each input.
-    computation_inputs = []
-    for i in range(0, input_arity):
-      replicas = [inputs[replica][i] for replica in xrange(num_replicas)]
-      computation_inputs.append(
-          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
+  # Fan-in: Builds a TPUReplicatedInput node for each input.
+  computation_inputs = []
+  for i in range(0, input_arity):
+    replicas = [inputs[replica][i] for replica in xrange(num_replicas)]
+    computation_inputs.append(
+        tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
-    context = TPUReplicateContext(name=graph.unique_name("cluster"))
+  context = TPUReplicateContext(
+      name=graph.unique_name("cluster"), num_replicas=num_replicas)
+  try:
+    context.Enter()
+
+    metadata = tpu_ops.tpu_replicate_metadata(
+        num_replicas=num_replicas, **metadata_kwargs)
+
+    with tpu_function.tpu_shard_context(
+        num_replicas), ops.control_dependencies([metadata]):
+
+      # The EncapsulateTPUComputations rewrite needs to identify the
+      # replicated arguments inside each computation. Adds identity operators
+      # tagged with an attribute _tpu_replicated_input to identify the
+      # replicated inputs.
+      # pylint: disable=protected-access
+      with graph._attr_scope({"_tpu_replicated_input":
+                              attr_value_pb2.AttrValue(b=True)}):
+        computation_inputs = [
+            array_ops.identity(x, name="replicated_input_{}".format(i))
+            for i, x in enumerate(computation_inputs)]
+      # pylint: enable=protected-access
+
+      # If there is an infeed queue, adds the dequeued values to the
+      # computation's inputs.
+      if infeed_queue is not None:
+        infeed_queue.set_number_of_shards(num_replicas)
+        for t in infeed_queue.generate_dequeue_op():
+          computation_inputs.append(t)
+
+      # Only resource variables work inside a TPU computation, so turn on
+      # resource variables for the computation.
+      # TODO(phawkins): consider removing this code. It will
+      # be less confusing to clients if they knowingly choose to use resource
+      # variables.
+      vscope = variable_scope.get_variable_scope()
+      saved_use_resource = vscope.use_resource
+      vscope.set_use_resource(True)
+
+      outputs = computation(*computation_inputs)
+
+      vscope.set_use_resource(saved_use_resource)
+
+    # If the computation only returned one value, makes it a tuple.
+    if not isinstance(outputs, (list, tuple)):
+      outputs = (outputs,)
+
     try:
-      context.Enter()
-
-      metadata = tpu_ops.tpu_replicate_metadata(
-          num_replicas=num_replicas, global_tpu_id=global_tpu_id)
-
-      with tpu_function.tpu_shard_context(
-          num_replicas), ops.control_dependencies([metadata]):
-
-        # The EncapsulateTPUComputations rewrite needs to identify the
-        # replicated arguments inside each computation. Adds identity operators
-        # tagged with an attribute _tpu_replicated_input to identify the
-        # replicated inputs.
-        # pylint: disable=protected-access
-        with graph._attr_scope({"_tpu_replicated_input":
-                                attr_value_pb2.AttrValue(b=True)}):
-          computation_inputs = [
-              array_ops.identity(x, name="replicated_input_{}".format(i))
-              for i, x in enumerate(computation_inputs)]
-        # pylint: enable=protected-access
-
-        # If there is an infeed queue, adds the dequeued values to the
-        # computation's inputs.
-        if infeed_queue is not None:
-          infeed_queue.set_number_of_shards(num_replicas)
-          for t in infeed_queue.generate_dequeue_op():
-            computation_inputs.append(t)
-
-        # Only resource variables work inside a TPU computation, so turn on
-        # resource variables for the computation.
-        # TODO(phawkins): consider removing this code. It will
-        # be less confusing to clients if they knowingly choose to use resource
-        # variables.
-        vscope = variable_scope.get_variable_scope()
-        saved_use_resource = vscope.use_resource
-        vscope.set_use_resource(True)
-
-        outputs = computation(*computation_inputs)
-
-        vscope.set_use_resource(saved_use_resource)
-
-      # If the computation only returned one value, makes it a tuple.
-      if not isinstance(outputs, (list, tuple)):
-        outputs = (outputs,)
-
-      try:
-        with ops.device(core(0)):
-          outputs = [
-              o if isinstance(o, ops.Operation) else ops.convert_to_tensor(o)
-              for o in outputs
-          ]
-      except Exception as e:
-        raise ValueError(
-            "TPU function return values must all either be Operations or "
-            "convertible to Tensors. Got '%s'" % str(e))
-
-      # Separates the returned Operations and Tensors.
-      output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
-      output_tensors = [o for o in outputs
-                        if not isinstance(o, ops.Operation)]
-
-      if outputs != output_tensors + output_operations:
-        raise ValueError(
-            "TPU functions must return zero-or more Tensor values followed by "
-            "zero or more Operations.")
-      output_arity = len(output_tensors)
-
-      # Wraps outputs in Identity ops. Otherwise a replicated input copied
-      # straight to an output would bypass the replicate(). This would be bad
-      # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
-      # be rewritten away, leading to a runtime error.
-      # TODO(phawkins): extend the rewrite to elide these nodes instead.
-      new_output_tensors = []
-      for t in output_tensors:
-        with ops.device(t.device if t.device else core(0)):
-          new_output_tensors.append(array_ops.identity(t))
-      output_tensors = new_output_tensors
-    finally:
-      context.Exit()
-
-    # Fan-out: Builds a TPUReplicatedOutput node for each output.
-    outputs = [tpu_ops.tpu_replicated_output(output_tensors[i], num_replicas,
-                                             name="output{}".format(i))
-               for i in xrange(output_arity)]
-
-    with ops.control_dependencies(output_operations):
-      if output_arity == 0:
-        # Returns a list of NoOps dependent on the replication Op, indexed by
-        # [replica_num].
-        return [
-            control_flow_ops.no_op(name="%s_shard_%d" % (name, i))
-            for i in range(num_replicas)
+      with ops.device(core(0)):
+        outputs = [
+            o if isinstance(o, ops.Operation) else ops.convert_to_tensor(o)
+            for o in outputs
         ]
-      else:
-        # Wraps the outputs in identity operators so the names of any possible
-        # `fetch` nodes are preserved by the replication rewrite.
-        return [
-            [array_ops.identity(outputs[out][replica],
-                                name="output_%d_shard_%d" % (out, replica))
-             for out in xrange(output_arity)]
-            for replica in xrange(num_replicas)
-        ]
+    except Exception as e:
+      raise ValueError(
+          "TPU function return values must all either be Operations or "
+          "convertible to Tensors. Got '%s'" % str(e))
+
+    # Separates the returned Operations and Tensors.
+    output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
+    output_tensors = [o for o in outputs
+                      if not isinstance(o, ops.Operation)]
+
+    if outputs != output_tensors + output_operations:
+      raise ValueError(
+          "TPU functions must return zero-or more Tensor values followed by "
+          "zero or more Operations.")
+    output_arity = len(output_tensors)
+
+    # Wraps outputs in Identity ops. Otherwise a replicated input copied
+    # straight to an output would bypass the replicate(). This would be bad
+    # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
+    # be rewritten away, leading to a runtime error.
+    # TODO(phawkins): extend the rewrite to elide these nodes instead.
+    new_output_tensors = []
+    for t in output_tensors:
+      with ops.device(t.device if t.device else core(0)):
+        new_output_tensors.append(array_ops.identity(t))
+    output_tensors = new_output_tensors
+  finally:
+    context.report_unsupported_operations()
+    context.Exit()
+    host_compute_core = context.HostComputeCore()
+
+  if host_compute_core:
+    attr_value = attr_value_pb2.AttrValue()
+    attr_value.list.s.extend([compat.as_bytes(x) for x in host_compute_core])
+    metadata._set_attr("host_compute_core", attr_value)  # pylint: disable=protected-access
+
+  # Fan-out: Builds a TPUReplicatedOutput node for each output.
+  outputs = [tpu_ops.tpu_replicated_output(output_tensors[i], num_replicas,
+                                           name="output{}".format(i))
+             for i in xrange(output_arity)]
+
+  with ops.control_dependencies(output_operations):
+    if output_arity == 0:
+      # Returns a list of NoOps dependent on the replication Op, indexed by
+      # [replica_num].
+      return [
+          control_flow_ops.no_op(name="shard_%d" % i)
+          for i in range(num_replicas)
+      ]
+    else:
+      # Wraps the outputs in identity operators so the names of any possible
+      # `fetch` nodes are preserved by the replication rewrite.
+      return [
+          [array_ops.identity(outputs[out][replica],
+                              name="output_%d_shard_%d" % (out, replica))
+           for out in xrange(output_arity)]
+          for replica in xrange(num_replicas)
+      ]
 
 
 def shard(computation,
@@ -349,7 +594,7 @@ def shard(computation,
           outputs_from_all_shards=True,
           output_shard_axes=None,
           infeed_queue=None,
-          global_tpu_id=None,
+          device_assignment=None,
           name=None):
   """Shards `computation` for parallel execution.
 
@@ -377,39 +622,40 @@ def shard(computation,
   Inputs and outputs of the computation must be at least rank-1 Tensors.
 
   Args:
-    computation: a Python function that builds a computation to apply to each
+    computation: A Python function that builds a computation to apply to each
       shard of the input.
-    inputs: a list of input tensors or None (equivalent to an empty
+    inputs: A list of input tensors or None (equivalent to an empty
       list). Each input tensor has a corresponding shard axes, given
       by `input_shard_axes`, which must have size divisible by
       `num_shards`.
-    num_shards: the number of shards.
-    input_shard_axes: a list of dimensions along which to shard `inputs`, or
+    num_shards: The number of shards.
+    input_shard_axes: A list of dimensions along which to shard `inputs`, or
       `None`. `None` means "shard all inputs along dimension 0". If not `None`,
       there must be one dimension per input.
-    outputs_from_all_shards: boolean or list of boolean. For each output, if
+    outputs_from_all_shards: Boolean or list of boolean. For each output, if
       `True`, outputs from all shards are concatenated along the corresponding
       `output_shard_axes` entry. Otherwise, each output is taken
       from an arbitrary shard. If the argument is a boolean, the argument's
       value is used for each output.
-    output_shard_axes: a list of dimensions along which to concatenate the
+    output_shard_axes: A list of dimensions along which to concatenate the
       outputs of `computation`, or `None`. `None` means "concatenate all outputs
       along dimension 0". If not `None`, there must be one dimension per output.
       Ignored if `outputs_from_all_shards` is False.
-    infeed_queue: if not None, the InfeedQueue to use to augment the inputs of
-      `computation`.
-    global_tpu_id: if not None, a Numpy 2D array indicating the global
-      id of each TPU device in the system. The outer dimension of the
-      array is host task id, and the inner dimension is device ordinal,
-      so e.g., global_tpu_id[x][y] indicates the global id of device
-      /task:x/device:TPU_NODE:y.
-    name: name of the operator.
+    infeed_queue: If not `None`, the `InfeedQueue` to use to augment the inputs
+      of `computation`.
+    device_assignment: If not `None`, a `DeviceAssignment` describing the
+      mapping between logical cores in the computation with physical cores in
+      the TPU topology. Uses a default device assignment if `None`. The
+      `DeviceAssignment` may be omitted if each shard of the computation uses
+      only one core, and there is either only one shard, or the number of shards
+      is equal to the number of cores in the TPU system.
+    name: (Deprecated) Does nothing.
   Returns:
     A list of output tensors.
   Raises:
-    ValueError: if num_shards <= 0
-    ValueError: if len(input_shard_axes) != len(inputs)
-    ValueError: if len(output_shard_axes) != len(outputs from `computation`)
+    ValueError: If num_shards <= 0
+    ValueError: If len(input_shard_axes) != len(inputs)
+    ValueError: If len(output_shard_axes) != len(outputs from `computation`)
   """
 
   if num_shards <= 0:
@@ -440,7 +686,7 @@ def shard(computation,
       computation,
       transposed_inputs,
       infeed_queue=infeed_queue,
-      global_tpu_id=global_tpu_id,
+      device_assignment=device_assignment,
       name=name)
 
   # There must be at least one shard since num_shards > 0.
@@ -494,7 +740,7 @@ def batch_parallel(computation,
                    inputs=None,
                    num_shards=1,
                    infeed_queue=None,
-                   global_tpu_id=None,
+                   device_assignment=None,
                    name=None):
   """Shards `computation` along the batch dimension for parallel execution.
 
@@ -518,55 +764,55 @@ def batch_parallel(computation,
   Inputs and outputs of the computation must be at least rank-1 Tensors.
 
   Args:
-    computation: a Python function that builds a computation to apply to each
+    computation: A Python function that builds a computation to apply to each
       shard of the input.
-    inputs: a list of input tensors or None (equivalent to an empty
+    inputs: A list of input tensors or None (equivalent to an empty
       list). The 0-th dimension of each Tensor must have size
       divisible by `num_shards`.
-    num_shards: the number of shards.
-    infeed_queue: if not None, the InfeedQueue from which to append a tuple
+    num_shards: The number of shards.
+    infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
-    global_tpu_id: if not None, a Numpy 2D array indicating the global
-      id of each TPU device in the system. The outer dimension of the
-      array is host task id, and the inner dimension is device ordinal,
-      so e.g., global_tpu_id[x][y] indicates the global id of device
-      /task:x/device:TPU_NODE:y.
-    name: name of the operator.
+    device_assignment: If not `None`, a `DeviceAssignment` describing the
+      mapping between logical cores in the computation with physical cores in
+      the TPU topology. Uses a default device assignment if `None`. The
+      `DeviceAssignment` may be omitted if each shard of the computation uses
+      only one core, and there is either only one shard, or the number of shards
+      is equal to the number of cores in the TPU system.
+    name: (Deprecated) Does nothing.
   Returns:
     A list of output tensors.
   Raises:
-    ValueError: if num_shards <= 0
+    ValueError: If `num_shards <= 0`
   """
   return shard(
       computation,
       inputs,
       num_shards=num_shards,
       infeed_queue=infeed_queue,
-      global_tpu_id=global_tpu_id,
+      device_assignment=device_assignment,
       name=name)
 
 
 def rewrite(computation,
             inputs=None,
             infeed_queue=None,
-            global_tpu_id=None,
+            device_assignment=None,
             name=None):
   """Rewrites `computation` for execution on a TPU system.
 
   Args:
-    computation: a Python function that builds a computation to apply
+    computation: A Python function that builds a computation to apply
       to the input. If the function takes n inputs, 'inputs' should be
       a list of n tensors. If the function returns m outputs, rewrite
       will return a list of m tensors.
-    inputs: a list of input tensors or None (equivalent to an empty list).
-    infeed_queue: if not None, the InfeedQueue from which to append a tuple
+    inputs: A list of input tensors or `None` (equivalent to an empty list).
+    infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
-    global_tpu_id: if not None, a Numpy 2D array indicating the global
-      id of each TPU device in the system. The outer dimension of the
-      array is host task id, and the inner dimension is device ordinal,
-      so e.g., global_tpu_id[x][y] indicates the global id of device
-      /task:x/device:TPU_NODE:y.
-    name: name of the operator.
+    device_assignment: if not `None`, a `DeviceAssignment` describing the
+      mapping between logical cores in the computation with physical cores in
+      the TPU topology. May be omitted for a single-core computation, in which
+      case the core attached to task 0, TPU device 0 is used.
+    name: (Deprecated) Does nothing.
   Returns:
     A list of output tensors.
   """
@@ -579,6 +825,6 @@ def rewrite(computation,
       computation,
       None if inputs is None else [inputs],
       infeed_queue=infeed_queue,
-      global_tpu_id=global_tpu_id,
+      device_assignment=device_assignment,
       name=name)[0]
   # pylint: enable=indexing-exception

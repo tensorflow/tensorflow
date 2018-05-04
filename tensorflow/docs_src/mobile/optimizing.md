@@ -57,7 +57,7 @@ get one inference every two seconds.
 
 Having this estimate helps you plan for what you’ll be able to realistically
 achieve on a device. If the model is using too many ops, then there are a lot of
-opportunities to optimize the architecture to reduce that number. 
+opportunities to optimize the architecture to reduce that number.
 
 Advanced techniques include [SqueezeNet](https://arxiv.org/abs/1602.07360)
 and [MobileNet](https://arxiv.org/abs/1704.04861), which are architectures
@@ -233,6 +233,8 @@ order by how long they took. From left to right, the columns are:
 - The cumulative total time of this and the previous ops in the table. This is
   handy for understanding what the distribution of work is across the layers, to
   see if just a few of the nodes are taking up most of the time.
+  
+- The amount of memory consumed by outputs of this type of op.
 
 - Name of the node.
 
@@ -278,7 +280,7 @@ The run above was on your desktop, but the tool also works on Android, which is
 where it’s most useful for mobile development. Here’s an example command line to
 run it on a 64-bit ARM device:
 
-    bazel build -c opt --config=android_arm64 \ 
+    bazel build -c opt --config=android_arm64 \
     tensorflow/tools/benchmark:benchmark_model
     adb push bazel-bin/tensorflow/tools/benchmark/benchmark_model /data/local/tmp
     adb push /tmp/tensorflow_inception_graph.pb /data/local/tmp/
@@ -290,8 +292,8 @@ run it on a 64-bit ARM device:
 
 You can interpret the results in exactly the same way as the desktop version
 above. If you have any trouble figuring out what the right input and output
-names and types are, take a look at the @{$mobile/prepare_models$Preparing
-models} page for details about detecting these for your model, and look at the
+names and types are, take a look at the @{$mobile/prepare_models$Preparing models}
+page for details about detecting these for your model, and look at the
 `summarize_graph` tool which may give you
 helpful information.
 

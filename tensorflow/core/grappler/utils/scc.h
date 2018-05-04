@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
 
 #include <unordered_map>
 #include "tensorflow/core/framework/graph.pb.h"
@@ -43,4 +43,4 @@ int IdentifyLoops(const GraphDef& graph,
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_

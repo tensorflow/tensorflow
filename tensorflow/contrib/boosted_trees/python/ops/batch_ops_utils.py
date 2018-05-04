@@ -81,32 +81,32 @@ def _scheduled_stamp_resource_op_runner(batch, stamp):
   if not batch:
     return
   arg_keys = set(batch[0].args.keys())
-  grouped_args = collections.defaultdict(list)
+  grouped_args = collections.OrderedDict()
   resource_handles = []
   # Check that the set of arguments is the same across all the scheduled ops.
   for op in batch:
     if set(op.args.keys()) != arg_keys:
       raise ValueError("Mismatching arguments: %s, %s.", op.args, arg_keys)
     for key in arg_keys:
-      grouped_args[key].append(op.args[key])
+      grouped_args.setdefault(key, []).append(op.args[key])
     resource_handles.append(op.resource_handle)
   # Move all the inputs to the op device in one RPC.
-  grouped_args = {
-      k: _move_tensors(v, resource_handles[0].device)
-      for k, v in grouped_args.items()
-  }
+  grouped_args = collections.OrderedDict(
+      (k, _move_tensors(v, resource_handles[0].device))
+      for k, v in sorted(grouped_args.items()))
   with ops.device(resource_handles[0].device):
     return batch[0].op(resource_handles, stamp, **grouped_args)
 
 
 def run_handler_scheduled_ops(per_handler_ops, stamp, worker_device):
   """Given a dictionary of ops for each handler, runs them in batch."""
-  batched_ops = collections.defaultdict(list)
+  batched_ops = collections.OrderedDict()
   # Group the ops by their batching_key. Ops that share the same batching key
   # can be executed together.
   for handler in per_handler_ops.keys():
     for op in per_handler_ops[handler]:
-      batched_ops[(op.batching_key(), op.batch_runner_fn())].append(op)
+      key = (op.batching_key(), op.batch_runner_fn())
+      batched_ops.setdefault(key, []).append(op)
   op_results = {}
   for batch in batched_ops.values():
     # Run each of the batched ops using its runner.

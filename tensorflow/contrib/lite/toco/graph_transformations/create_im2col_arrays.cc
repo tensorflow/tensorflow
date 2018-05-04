@@ -35,7 +35,7 @@ bool CreateIm2colArrays::Run(Model* model, std::size_t op_index) {
     // We already have an im2col array
     return false;
   }
-  const auto& weights_array = *model->arrays[conv_op->inputs[1]];
+  const auto& weights_array = model->GetArray(conv_op->inputs[1]);
   if (!weights_array.has_shape()) {
     // We need to yield until weights dims have been resolved, because
     // from the weights dims we determine whether an im2col array is

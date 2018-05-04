@@ -20,11 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import random_seed
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_candidate_sampling_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('nn.uniform_candidate_sampler')
 def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                               range_max, seed=None, name=None):
   """Samples a set of classes using a uniform base distribution.
@@ -75,11 +77,12 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._uniform_candidate_sampler(
+  return gen_candidate_sampling_ops.uniform_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
 
+@tf_export('nn.log_uniform_candidate_sampler')
 def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                                   range_max, seed=None, name=None):
   """Samples a set of classes using a log-uniform (Zipfian) base distribution.
@@ -133,11 +136,12 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._log_uniform_candidate_sampler(
+  return gen_candidate_sampling_ops.log_uniform_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
 
+@tf_export('nn.learned_unigram_candidate_sampler')
 def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
                                       unique, range_max, seed=None, name=None):
   """Samples a set of classes from a distribution learned during training.
@@ -189,11 +193,12 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._learned_unigram_candidate_sampler(
+  return gen_candidate_sampling_ops.learned_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
 
+@tf_export('nn.fixed_unigram_candidate_sampler')
 def fixed_unigram_candidate_sampler(true_classes,
                                     num_true,
                                     num_sampled,
@@ -278,13 +283,14 @@ def fixed_unigram_candidate_sampler(true_classes,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._fixed_unigram_candidate_sampler(
+  return gen_candidate_sampling_ops.fixed_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max,
       vocab_file=vocab_file, distortion=distortion,
       num_reserved_ids=num_reserved_ids, num_shards=num_shards, shard=shard,
       unigrams=unigrams, seed=seed1, seed2=seed2, name=name)
 
 
+@tf_export('nn.all_candidate_sampler')
 def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
                           seed=None, name=None):
   """Generate the set of all classes.
@@ -315,11 +321,12 @@ def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`. All returned values are 1.0.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._all_candidate_sampler(
+  return gen_candidate_sampling_ops.all_candidate_sampler(
       true_classes, num_true, num_sampled, unique, seed=seed1, seed2=seed2,
       name=name)
 
 
+@tf_export('nn.compute_accidental_hits')
 def compute_accidental_hits(true_classes, sampled_candidates, num_true,
                             seed=None, name=None):
   """Compute the position ids in `sampled_candidates` matching `true_classes`.
@@ -363,6 +370,6 @@ def compute_accidental_hits(true_classes, sampled_candidates, num_true,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._compute_accidental_hits(
+  return gen_candidate_sampling_ops.compute_accidental_hits(
       true_classes, sampled_candidates, num_true, seed=seed1, seed2=seed2,
       name=name)

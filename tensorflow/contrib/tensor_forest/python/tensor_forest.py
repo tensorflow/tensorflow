@@ -212,7 +212,7 @@ class ForestHParams(object):
     self.regression = getattr(self, 'regression', False)
 
     # Num_outputs is the actual number of outputs (a single prediction for
-    # classification, a N-dimenensional point for regression).
+    # classification, a N-dimensional point for regression).
     self.num_outputs = self.num_classes if self.regression else 1
 
     # Add an extra column to classes for storing counts, which is needed for
@@ -445,7 +445,7 @@ class RandomForestGraphs(object):
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
           gather_indices = array_ops.squeeze(
-              array_ops.where(mask), squeeze_dims=[1])
+              array_ops.where(mask), axis=[1])
           # TODO(thomaswc): Calculate out-of-bag data and labels, and store
           # them for use in calculating statistics later.
           tree_data = array_ops.gather(processed_dense_features, gather_indices)
@@ -478,8 +478,7 @@ class RandomForestGraphs(object):
       **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
-      A tuple of (probabilities, tree_paths, variance), where variance
-      is the variance over all the trees for regression problems only.
+      A tuple of (probabilities, tree_paths, variance).
 
     Raises:
       NotImplementedError: If trying to use feature bagging with sparse
@@ -513,13 +512,12 @@ class RandomForestGraphs(object):
           self.params.num_trees,
           name='probabilities')
       tree_paths = array_ops.stack(paths, axis=1)
-      regression_variance = None
-      if self.params.regression:
-        expected_squares = math_ops.div(
-            math_ops.reduce_sum(all_predict * all_predict, 1),
-            self.params.num_trees)
-        regression_variance = math_ops.maximum(
-            0., expected_squares - average_values * average_values)
+
+      expected_squares = math_ops.div(
+          math_ops.reduce_sum(all_predict * all_predict, 1),
+          self.params.num_trees)
+      regression_variance = math_ops.maximum(
+          0., expected_squares - average_values * average_values)
       return average_values, tree_paths, regression_variance
 
   def average_size(self):

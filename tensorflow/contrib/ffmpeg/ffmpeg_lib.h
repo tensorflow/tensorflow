@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_FFMPEG_LIB_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_FFMPEG_LIB_H_
+#ifndef TENSORFLOW_CONTRIB_FFMPEG_FFMPEG_LIB_H_
+#define TENSORFLOW_CONTRIB_FFMPEG_FFMPEG_LIB_H_
 
 #include <string>
 #include <vector>
@@ -42,7 +42,7 @@ Status WriteFile(const string& filename, tensorflow::StringPiece contents);
 // contain a separate sample for each channel. Frames are ordered by time.
 Status ReadAudioFile(const string& filename, const string& audio_format_id,
                      int32 samples_per_second, int32 channel_count,
-                     std::vector<float>* output_samples);
+                     const string& stream, std::vector<float>* output_samples);
 
 // Creates an audio file using ffmpeg in a specific format. The samples are in
 // [-1.0, 1.0]. If there are multiple channels in the audio then each frame will
@@ -61,4 +61,4 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
 }  // namespace ffmpeg
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_FFMPEG_DEFAULT_FFMPEG_LIB_H_
+#endif  // TENSORFLOW_CONTRIB_FFMPEG_DEFAULT_FFMPEG_LIB_H_

@@ -24,6 +24,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -39,6 +40,7 @@ import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+# pylint: disable=invalid-name
 def simple_scoped_fn(a, x):
   """Simple function: (a, x) -> 2(x+a), but with "2" as a variable in scope."""
   with variable_scope.variable_scope("body"):
@@ -158,6 +160,13 @@ class FunctionalOpsTest(test.TestCase):
                 values=constant_op.constant([0, 1, 2]),
                 dense_shape=[2, 2]))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testMapOverScalarErrors(self):
+    with self.assertRaisesRegexp(ValueError, "not scalars"):
+      functional_ops.map_fn(lambda x: x, [1, 2])
+    with self.assertRaisesRegexp(ValueError, "not a scalar"):
+      functional_ops.map_fn(lambda x: x, 1)
+
   def testMap_Scoped(self):
     with self.test_session() as sess:
 
@@ -229,7 +238,7 @@ class FunctionalOpsTest(test.TestCase):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
       with self.assertRaisesRegexp(
-          TypeError, r"two structures don't have the same sequence type."):
+          TypeError, r"two structures don't have the same nested structure"):
         # lambda emits tuple, but dtype is a list
         functional_ops.map_fn(
             lambda x: ((x + 3) * 2, -(x + 3) * 2),
@@ -316,7 +325,7 @@ class FunctionalOpsTest(test.TestCase):
       initializer = np.array(1.0)
       # Multiply a * 1 each time
       with self.assertRaisesRegexp(
-          ValueError, "two structures don't have the same number of elements"):
+          ValueError, "two structures don't have the same nested structure"):
         functional_ops.scan(lambda a, x: (a, -a), elems, initializer)
 
   def testScan_Scoped(self):
@@ -607,6 +616,276 @@ class FunctionalOpsTest(test.TestCase):
       mul = sess.run(remote_op)
       self.assertEqual(mul, 9)
 
+  def testIf(self):
+
+    @function.Defun(dtypes.float32)
+    def Twice(x):
+      return x * 2
+
+    @function.Defun(dtypes.float32)
+    def Thrice(x):
+      return x * 3 + 1
+
+    with self.test_session(use_gpu=False) as sess:
+
+      def Run(x):
+        return sess.run(
+            functional_ops.If(math_ops.greater(x, 0), [x], Twice, Thrice))[0]
+
+      self.assertAllEqual(Run(9.), 18.)
+      self.assertAllEqual(Run(-8.), -23.)
+      self.assertAllEqual(Run(0.), 1.)
+
+  def testWhile(self):
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Cond(n, unused_x):
+      return n > 0
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(n, x):
+      return n - 1, x + n
+
+    # TODO(b/65752372): Set `use_gpu=False` because
+    # `functional_ops.While()` does not reliably work on GPU (apparently
+    # because the result of evaluating the condition may be in device
+    # memory, but it is read on the host).
+    with self.test_session(use_gpu=False) as sess:
+
+      def Run(n):
+        return sess.run(functional_ops.While([n, 0.], Cond, Body))[1]
+
+      self.assertAllEqual(Run(20.), 210.)
+      self.assertAllEqual(Run(100.), 5050.)
+
+  def testWhileError(self):
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Cond(n, unused_x):
+      return n > 0
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def CondReturnsTooManyArgs(n, x):
+      return n > 0, x
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(n, x):
+      return n - 1, x + n
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def BodyReturnsTooManyArgs(n, x):
+      return n - 1, x + n, x
+
+    # TODO(b/65752372): Set `use_gpu=False` because
+    # `functional_ops.While()` does not reliably work on GPU (apparently
+    # because the result of evaluating the condition may be in device
+    # memory, but it is read on the host).
+    with self.test_session(use_gpu=False):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Expected a single scalar.*got 2 tensors."):
+        functional_ops.While([5., 0.], CondReturnsTooManyArgs, Body)[0].eval()
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "While loop body returned 3 arguments. Expected: 2"):
+        functional_ops.While([5., 0.], Cond, BodyReturnsTooManyArgs)[0].eval()
+
+  def testWhileInMultipleSubgraphs(self):
+
+    @function.Defun(* [dtypes.float32] * 2)
+    def Cond(n, x):  # pylint: disable=unused-argument
+      return n > 0
+
+    @function.Defun(* [dtypes.float32] * 2)
+    def Body(n, x):
+      return n - 1, x + n
+
+    # TODO(b/65752372): Set `use_gpu=False` because
+    # `functional_ops.While()` does not reliably work on GPU (apparently
+    # because the result of evaluating the condition may be in device
+    # memory, but it is read on the host).
+    with self.test_session(use_gpu=False) as sess:
+      n = array_ops.placeholder(dtypes.float32)
+      _, result = functional_ops.While([n, 0.], Cond, Body)
+      c = constant_op.constant(37.)
+
+      self.assertAllEqual(210., sess.run(result, feed_dict={n: 20.}))
+      self.assertAllEqual(5050., sess.run(result, feed_dict={n: 100.}))
+      # Test that the result is the same when we run a different subgraph.
+      self.assertAllEqual(5050., sess.run([result, c], feed_dict={n: 100.})[0])
+
+  def _tfSum(self, rewrite_with_while):
+    # On GPU, don't rewrite using a while loop.
+    use_gpu = not rewrite_with_while
+    with self.test_session(use_gpu=use_gpu) as sess:
+
+      @function.Defun(dtypes.int32, dtypes.float32)
+      def Body(n, x):
+        return x + math_ops.to_float(n)
+
+      xs = [
+          # 1 + 2  + ... + 20
+          functional_ops.For(
+              1, 21, 1, [0.], Body, rewrite_with_while=rewrite_with_while)[0],
+          # 100 + 99 + ... + 1
+          functional_ops.For(
+              100, 0, -1, [0.], Body, rewrite_with_while=rewrite_with_while)[0],
+      ]
+      xvals = sess.run(xs)
+    self.assertAllEqual(210, xvals[0])
+    self.assertAllEqual(5050, xvals[1])
+
+  def testFor(self):
+    self._tfSum(False)
+
+  def testForWithWhile(self):
+    self._tfSum(True)
+
+  def testForWithWhileNaming(self):
+    g = ops.Graph()
+    with g.as_default():
+
+      @function.Defun(dtypes.int32, dtypes.float32, func_name="TestBody")
+      def TestBody(n, x):
+        return x + math_ops.to_float(n)
+
+      _ = functional_ops.For(
+          1, 21, 1, [0.], TestBody, rewrite_with_while=True)[0]
+
+    names = []
+    for func in g.as_graph_def().library.function:
+      names.append(func.signature.name)
+    self.assertTrue("TestBody" in names)
+    self.assertTrue("TestBody_Cond" in names)
+    self.assertTrue("TestBody_Body" in names)
+
+  def testForCapturedInputs(self):
+    v = variables.Variable(1.0)
+
+    @function.Defun(dtypes.int32)
+    def TestNullary(n):
+      v + math_ops.to_float(n)  # pylint: disable=expression-not-assigned
+
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def TestUnary(n, x):
+      return x + math_ops.to_float(n) + v
+
+    @function.Defun(dtypes.int32, dtypes.float32, dtypes.float32)
+    def TestBinary(n, x, x2):
+      return x + math_ops.to_float(n) + v, x2 + v
+
+    for rewrite_with_while in (True, False):
+      # TODO(b/65752372): Set `use_gpu=False` because
+      # `functional_ops.While()` does not reliably work on GPU (apparently
+      # because the result of evaluating the condition may be in device
+      # memory, but it is read on the host).
+      use_gpu = not rewrite_with_while
+      with self.test_session(use_gpu=use_gpu) as sess:
+        result_nullary = functional_ops.For(
+            1, 10, 1, [], TestNullary,
+            rewrite_with_while=rewrite_with_while)
+        result_unary = functional_ops.For(
+            1, 10, 1, [0.], TestUnary,
+            rewrite_with_while=rewrite_with_while)
+        result_binary = functional_ops.For(
+            1, 10, 1, [0., 0.], TestBinary,
+            rewrite_with_while=rewrite_with_while)
+        sess.run(variables.global_variables_initializer())
+        assert not result_nullary
+        # The nullary variant doesn't return anything so we can't easily run it.
+        # As a total hack, fetch the operation by name and run it.
+        sess.run(ops.get_default_graph().get_operation_by_name(
+            "While" if rewrite_with_while else "For"))
+        assert len(result_unary) == 1
+        self.assertEqual([54.0], sess.run(result_unary))
+        assert len(result_binary) == 2
+        self.assertEqual([54.0, 9.0], sess.run(result_binary))
+
+  def _tfMLP(self, xval, wsval, bsval, rewrite_with_while):
+    # On GPU, don't rewrite using a while loop.
+    use_gpu = not rewrite_with_while
+    with self.test_session(use_gpu=use_gpu):
+
+      @function.Defun(dtypes.int32, *[dtypes.float64] * 3)
+      def MLP(i, a, ws, bs):
+        a = math_ops.tanh(math_ops.matmul(a, ws[i, :]) + bs[i, :])
+        return a, ws, bs
+
+      ret = functional_ops.For(
+          0,
+          wsval.shape[0],
+          1, [xval, wsval, bsval],
+          MLP,
+          rewrite_with_while=rewrite_with_while)[0]
+
+      return ret.eval()
+
+  def _npMLP(self, xval, wsval, bsval):
+    for i in range(wsval.shape[0]):
+      xval = np.tanh(np.dot(xval, wsval[i, :]) + bsval[i, :])
+    return xval
+
+  def _testForMLP(self, rewrite_with_while):
+    # We construct a 5-layer Multi-Layer Perceptron network here.
+    # Each layer have the same number of hidden unites (3), and the
+    # activation function is tanh().  We feed the input (xval) with
+    # batch size 2.
+    xval = np.random.normal(size=(2, 3))
+    wsval = np.random.normal(size=(5, 3, 3))
+    bsval = np.random.normal(size=(5, 3))
+    np_ans = self._npMLP(xval, wsval, bsval)
+    tf_for_ans = self._tfMLP(xval, wsval, bsval, rewrite_with_while)
+    self.assertAllClose(np_ans, tf_for_ans)
+
+  def testForMLP(self):
+    self._testForMLP(False)
+
+  def testForMLPWhile(self):
+    self._testForMLP(True)
+
+  def testForError(self):
+
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(i, v):
+      return math_ops.to_float(i) + v
+
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def ReturnsTooManyArgs(unused_i, v):
+      return v, v
+
+    with self.test_session(use_gpu=True):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "must be a scalar"):
+        functional_ops.For([0], 10, 1, [0.0], Foo)[0].eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Invalid start/limit/delta"):
+        functional_ops.For(0, 10, -1, [0.0], Foo)[0].eval()
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "For loop body returned 2 arguments. Expected: 1"):
+        functional_ops.For(0, 10, 1, [0.0], ReturnsTooManyArgs)[0].eval()
+
+  def testGradient(self):
+
+    @function.Defun(dtypes.float32)
+    def Poly(x):
+      # y = 2x^3+3x^2+4x+8
+      return 2 * x * x * x + 3 * x * x + 4 * x + 8
+
+    @function.Defun(dtypes.float32)
+    def Grad(x):
+      # dy/dx = dy/dy * dy/dx = 1.0 * (6x^2+6x+4)
+      return functional_ops.Gradient([x, 1.0], Poly)[0]
+
+    with self.test_session(use_gpu=False) as sess:
+      a = constant_op.constant(0.)
+      avals = [Poly(a), Grad(a)]
+      b = constant_op.constant(1.)
+      bvals = [Poly(b), Grad(b)]
+      self.assertAllEqual(sess.run(avals), [8., 4.])
+      self.assertAllEqual(sess.run(bvals), [17., 16.])
+
 
 if __name__ == "__main__":
   test.main()
+
+# pylint: enable=invalid-name

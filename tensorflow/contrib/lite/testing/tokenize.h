@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TOKENIZER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TOKENIZER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TESTING_TOKENIZER_H_
+#define TENSORFLOW_CONTRIB_LITE_TESTING_TOKENIZER_H_
 
 #include <istream>
 #include <string>
@@ -39,4 +39,4 @@ void Tokenize(std::istream* input, TokenProcessor* processor);
 }  // namespace testing
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TOKENIZER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TESTING_TOKENIZER_H_

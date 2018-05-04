@@ -15,7 +15,7 @@ limitations under the License.
 
 syntax = "proto3";
 
-package tensorflow.contrib.mpi;
+package tensorflow.contrib.mpi_collectives;
 
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";

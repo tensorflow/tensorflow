@@ -11,8 +11,8 @@ END
   in_arg {
     name: "seed"
     description: <<END
-A scalar seed for the random number generator. If either seed or
-seed2 is set to be non-zero, the random number generator is seeded
+A scalar seed for the random number generator. If either `seed` or
+`seed2` is set to be non-zero, the random number generator is seeded
 by the given seed.  Otherwise, a random seed is used.
 END
   }

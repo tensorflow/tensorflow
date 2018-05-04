@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -237,6 +239,14 @@ bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
 const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
 
+// Computes the input type for a specific node input.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                        int input_port, DataType* input_type);
+// Computes the output type for a specific node output.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int output_port, DataType* output_type);
 // Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
@@ -253,8 +263,12 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def);
 // corresponding input/output index range.  For example,
 // input "foo" corresponds to input indices
 //   [ (*inputs)["foo"].first, (*inputs)["foo"].second ).
-// TODO(irving): Remove the NodeDef version; keep only the Node version.
-typedef std::unordered_map<string, std::pair<int, int>> NameRangeMap;
+// NOTE(mrry): To reduce allocations when the map is used and save
+// space, the returned `NameRangeMap` objects borrow the input/output
+// argument names from `op_def`. The `op_def` must outlive the
+// returned `NameRangeMap` objects.
+typedef gtl::FlatMap<StringPiece, std::pair<int, int>, hash<StringPiece>>
+    NameRangeMap;
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
 Status NameRangesForNode(const Node& node, const OpDef& op_def,

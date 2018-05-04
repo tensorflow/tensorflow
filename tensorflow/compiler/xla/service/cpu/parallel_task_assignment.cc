@@ -71,7 +71,7 @@ class DefaultCostModel : public ParallelCostModel {
     if (flops_to_bytes_ratio <= 1.0) {
       // Limit max parallelism for I/O bound instructions by assuming a
       // sub-linear scaling function (fit based on empirical benchmark results).
-      // TODO(29630486) Develop system bandwidth model.
+      // TODO(b/29630486) Develop system bandwidth model.
       max_parallelism =
           std::ceil(std::sqrt(tensorflow::port::NumSchedulableCPUs()));
       // Use shape size instruction cost and L2 cache size min per-thread cost.
@@ -81,7 +81,7 @@ class DefaultCostModel : public ParallelCostModel {
       // Use max parallelism for compute bound instructions.
       max_parallelism = max_parallelism_;
       // Calculate the instruction cost in cycles.
-      // TODO(29630486) Improve on this linear cost model.
+      // TODO(b/29630486) Improve on this linear cost model.
       // Consider making 'min_cost_per_thread' be a function of the target
       // bandwidth limit for instructions with low arithmetic complexity.
       instruction_cost =
@@ -126,25 +126,27 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
     HloInstruction* instruction) {
   // Currently, we do not assign parallel tasks to instructions with at least
   // one of the following properties:
-  // *) Internal threading (library calls to kConv, kDot, and kCustomCall).
+  // *) Internal threading (library calls to kConv, kDot, kFft, kCustomCall).
   // *) Emit custom loops (kSelectAndScatter, FusionKind::kTransposeDot).
+  // *) Operations that are not thread safe (like infeed and rng).
   // *) Tuple-shaped.
   // TODO(b/27458679) Parallelize instructions which are skipped here.
-  if (instruction->opcode() == HloOpcode::kParameter ||
-      instruction->opcode() == HloOpcode::kConstant ||
-      instruction->opcode() == HloOpcode::kCall ||
-      instruction->opcode() == HloOpcode::kCustomCall ||
-      instruction->opcode() == HloOpcode::kSelectAndScatter ||
-      instruction->opcode() == HloOpcode::kGetTupleElement ||
-      instruction->opcode() == HloOpcode::kBitcast ||
-      (instruction->opcode() == HloOpcode::kConvolution &&
+  auto opcode = instruction->opcode();
+  if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
+      opcode == HloOpcode::kCall || opcode == HloOpcode::kCustomCall ||
+      opcode == HloOpcode::kDot || opcode == HloOpcode::kSelectAndScatter ||
+      opcode == HloOpcode::kGetTupleElement || opcode == HloOpcode::kBitcast ||
+      opcode == HloOpcode::kFft || opcode == HloOpcode::kInfeed ||
+      opcode == HloOpcode::kOutfeed || opcode == HloOpcode::kRng ||
+      (opcode == HloOpcode::kConvolution &&
        PotentiallyImplementedAsEigenConvolution(*instruction)) ||
       PotentiallyImplementedAsEigenDot(*instruction) ||
-      (instruction->opcode() == HloOpcode::kFusion &&
+      (opcode == HloOpcode::kFusion &&
        instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
       ShapeUtil::IsTuple(instruction->shape())) {
     return 1;
   }
+
   // Consult 'cost_model_' to compute target parallel task count.
   return cost_model_->GetParallelTaskCount(instruction);
 }

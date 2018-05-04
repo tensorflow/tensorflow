@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_PARTITIONERS_EXAMPLE_PARTITIONER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_PARTITIONERS_EXAMPLE_PARTITIONER_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_PARTITIONERS_EXAMPLE_PARTITIONER_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_PARTITIONERS_EXAMPLE_PARTITIONER_H_
 
 #include <vector>
 #include "tensorflow/contrib/boosted_trees/lib/trees/decision_tree.h"
@@ -50,4 +50,4 @@ class ExamplePartitioner {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_PARTITIONERS_EXAMPLE_PARTITIONER_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_LEARNER_COMMON_PARTITIONERS_EXAMPLE_PARTITIONER_H_

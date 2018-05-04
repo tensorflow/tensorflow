@@ -21,12 +21,13 @@ from __future__ import print_function
 
 import functools
 import os
+
 import sqlite3
 
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.platform import gfile
 
 
@@ -39,8 +40,8 @@ class SummaryDbTest(test_util.TensorFlowTestCase):
     if os.path.exists(self.db_path):
       os.unlink(self.db_path)
     self.db = sqlite3.connect(self.db_path)
-    self.create_summary_db_writer = functools.partial(
-        summary_ops.create_summary_db_writer,
+    self.create_db_writer = functools.partial(
+        summary_ops.create_db_writer,
         db_uri=self.db_path,
         experiment_name='experiment',
         run_name='run',
@@ -83,7 +84,7 @@ def events_from_logdir(logdir):
   """
   assert gfile.Exists(logdir)
   files = gfile.ListDirectory(logdir)
-  assert len(files) == 1, "Found not exactly one file in logdir: %s" % files
+  assert len(files) == 1, 'Found not exactly one file in logdir: %s' % files
   return events_from_file(os.path.join(logdir, files[0]))
 
 

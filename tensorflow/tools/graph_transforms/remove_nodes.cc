@@ -81,7 +81,17 @@ Status RemoveNodes(const GraphDef& input_graph_def,
                 return Status::OK();
               }
               const NodeDef& input_node = match.inputs[0].node;
-              inputs_to_rename[replace_node.name()] = input_node.name();
+              string target_name = input_node.name();
+              for (const string& input : replace_node.input()) {
+                if (!input.compare(0, target_name.size(), target_name)) {
+                  if (input.size() == target_name.size() ||
+                      input[target_name.size()] == ':') {
+                    target_name = input;
+                    break;
+                  }
+                }
+              }
+              inputs_to_rename[replace_node.name()] = target_name;
               inputs_to_rename["^" + replace_node.name()] =
                   "^" + input_node.name();
               new_nodes->push_back(input_node);

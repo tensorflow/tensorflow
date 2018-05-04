@@ -139,9 +139,9 @@ static bool CopyDataFromTensorSliceToTensorSlice(const TensorShape& shape,
                                                  const TensorSlice& slice_d,
                                                  const SrcT* ptr_s,
                                                  DstT* ptr_d) {
-  CHECK_LE(shape.dims(), kTensorSliceMaxRank) << "Only tensors of size up to "
-                                              << kTensorSliceMaxRank
-                                              << " are supported";
+  CHECK_LE(shape.dims(), kTensorSliceMaxRank)
+      << "Only tensors of size up to " << kTensorSliceMaxRank
+      << " are supported";
   // We need to compute the intersection of the two slices.
   TensorSlice inter;
   if (!slice_s.Intersect(slice_d, &inter)) {

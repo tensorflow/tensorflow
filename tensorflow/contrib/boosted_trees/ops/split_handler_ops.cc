@@ -18,9 +18,9 @@
 
 namespace tensorflow {
 
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-using shape_inference::DimensionHandle;
 
 REGISTER_OP("BuildDenseInequalitySplits")
     .Attr("feature_column_group_id: int")

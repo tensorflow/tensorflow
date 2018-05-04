@@ -17,12 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.debug.cli import cli_test_utils
 from tensorflow.python.debug.cli import tensor_format
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
@@ -40,21 +42,109 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         {"dtype": tensor.dtype, "shape": tensor.shape},
         annotations["tensor_metadata"])
 
-  def _checkBeginIndices(self, expected_indices, annot):
-    self.assertEqual({tensor_format.BEGIN_INDICES_KEY: expected_indices},
-                     annot)
+  # Regular expression for text representation of float numbers, possibly in
+  # engineering notation.
+  _ELEMENT_REGEX = re.compile(
+      r"([+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?|nan|inf|-inf)")
 
-  def _checkOmittedIndices(self, expected_indices, annot):
-    self.assertEqual({tensor_format.OMITTED_INDICES_KEY: expected_indices},
-                     annot)
+  def _checkBeginIndicesAnnotations(self, out, a):
+    """Check the beginning-index annotations of an ndarray representation.
+
+    Args:
+      out: An instance of RichTextLines representing a numpy.ndarray.
+      a: The numpy.ndarray being represented.
+
+    Raises:
+      ValueError: if any ellipses ("...") are found in the lines representing
+        the array.
+    """
+    begin_line_num = 0
+    while not out.lines[begin_line_num].startswith("array"):
+      begin_line_num += 1
+    element_index = 0
+    for line_num in range(begin_line_num, len(out.lines)):
+      line = out.lines[line_num]
+      if "..." in line:
+        raise ValueError("Unexpected found ellipses in line representing array")
+      matches = re.finditer(self._ELEMENT_REGEX, line)
+      for line_item_index, _ in enumerate(matches):
+        subscripts = list(np.unravel_index(element_index, a.shape))
+        if line_item_index == 0:
+          self.assertEqual({tensor_format.BEGIN_INDICES_KEY: subscripts},
+                           out.annotations[line_num])
+        element_index += 1
+    self.assertEqual(element_index, np.size(a))
+
+  def _checkTensorElementLocations(self, out, a):
+    """Check the results of locate_tensor_element on an ndarray representation.
+
+    that represents a numpy.ndaray.
+
+    Args:
+      out: An instance of RichTextLines representing a numpy.ndarray.
+      a: The numpy.ndarray being represented.
+
+    Raises:
+      ValueError: if any ellipses ("...") are found in the lines representing
+        the array.
+    """
+    # First, locate the beginning of the tensor value section.
+    begin_line_num = 0
+    while not out.lines[begin_line_num].startswith("array"):
+      begin_line_num += 1
+    # Second, find all matches to tensor-value regex.
+    element_index = 0
+    for line_num in range(begin_line_num, len(out.lines)):
+      line = out.lines[line_num]
+      if "..." in line:
+        raise ValueError("Unexpected found ellipses in line representing array")
+      matches = re.finditer(self._ELEMENT_REGEX, line)
+      for match in matches:
+        subscripts = list(np.unravel_index(element_index, a.shape))
+        is_omitted, row, start_col, end_col = (
+            tensor_format.locate_tensor_element(out, subscripts))
+        self.assertFalse(is_omitted)
+        self.assertEqual(line_num, row)
+        self.assertEqual(match.start(), start_col)
+        self.assertEqual(match.end(), end_col)
+        element_index += 1
+    self.assertEqual(element_index, np.size(a))
+
+  def _findFirst(self, lines, string):
+    """Find first occurrence of a string in a list of strings."""
+    for i, line in enumerate(lines):
+      find_index = line.find(string)
+      if find_index >= 0:
+        return i, find_index
+
+  def _extractBoldNumbers(self, out, start_line):
+    """Extract all numbers that have the bold font attribute.
+
+    Args:
+      out: An instance of RichTextLines.
+      start_line: 0-based index to start from.
+
+    Returns:
+      A list of floats.
+    """
+    floats = []
+    for i in range(start_line, len(out.lines)):
+      if i not in out.font_attr_segs:
+        continue
+      line_attrs = out.font_attr_segs[i]
+      for begin, end, attr_value in line_attrs:
+        if attr_value == "bold":
+          floats.append(float(out.lines[i][begin:end]))
+    return floats
 
   def testFormatZeroDimensionTensor(self):
-    a = np.array(42.0, dtype=np.float32)
+    a = np.array(42, dtype=np.int32)
 
     out = tensor_format.format_tensor(a, "a")
 
-    self.assertEqual(["Tensor \"a\":", "", "array(42.0, dtype=float32)"],
-                     out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertTrue(out.lines[2].startswith("array(42"))
     self._checkTensorMetadata(a, out.annotations)
 
   def testFormatTensorHighlightsTensorNameWithoutDebugOp(self):
@@ -81,82 +171,51 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     out = tensor_format.format_tensor(
         a, "a", np_printoptions={"linewidth": 40})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([ 0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     self._checkTensorMetadata(a, out.annotations)
 
     # Check annotations for beginning indices of the lines.
-    self._checkBeginIndices([0], out.annotations[2])
-    self._checkBeginIndices([6], out.annotations[3])
-    self._checkBeginIndices([12], out.annotations[4])
-    self._checkBeginIndices([18], out.annotations[5])
+    self._checkBeginIndicesAnnotations(out, a)
 
   def testFormatTensor2DNoEllipsisNoRowBreak(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 16.0, 16).reshape([4, 4])
 
     out = tensor_format.format_tensor(a, "a")
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[ 0.    ,  0.0625,  0.125 ,  0.1875],",
-        "       [ 0.25  ,  0.3125,  0.375 ,  0.4375],",
-        "       [ 0.5   ,  0.5625,  0.625 ,  0.6875],",
-        "       [ 0.75  ,  0.8125,  0.875 ,  0.9375]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     self._checkTensorMetadata(a, out.annotations)
-
-    # Check annotations for the beginning indices of the lines.
-    for i in xrange(2, 6):
-      self._checkBeginIndices([i  - 2, 0], out.annotations[i])
+    self._checkBeginIndicesAnnotations(out, a)
 
   def testFormatTensorSuppressingTensorName(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 16.0, 16).reshape([4, 4])
 
     out = tensor_format.format_tensor(a, None)
-
-    self.assertEqual([
-        "array([[ 0.    ,  0.0625,  0.125 ,  0.1875],",
-        "       [ 0.25  ,  0.3125,  0.375 ,  0.4375],",
-        "       [ 0.5   ,  0.5625,  0.625 ,  0.6875],",
-        "       [ 0.75  ,  0.8125,  0.875 ,  0.9375]])",
-    ], out.lines)
+    self.assertEqual(repr(a).split("\n"), out.lines)
 
     self._checkTensorMetadata(a, out.annotations)
-
-    # Check annotations for the beginning indices of the lines.
-    for i in xrange(4):
-      self._checkBeginIndices([i, 0], out.annotations[i])
+    self._checkBeginIndicesAnnotations(out, a)
 
   def testFormatTensorWithMetadata(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 16.0, 16).reshape([4, 4])
 
     out = tensor_format.format_tensor(a, "a", include_metadata=True)
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "  dtype: float64",
-        "  shape: (4, 4)",
-        "",
-        "array([[ 0.    ,  0.0625,  0.125 ,  0.1875],",
-        "       [ 0.25  ,  0.3125,  0.375 ,  0.4375],",
-        "       [ 0.5   ,  0.5625,  0.625 ,  0.6875],",
-        "       [ 0.75  ,  0.8125,  0.875 ,  0.9375]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["Tensor \"a\":",
+         "  dtype: float64",
+         "  shape: (4, 4)",
+         ""], out.lines[:4])
+    self.assertEqual(repr(a).split("\n"), out.lines[4:])
 
     self._checkTensorMetadata(a, out.annotations)
-
-    # Check annotations for the beginning indices of the lines.
-    for i in xrange(4, 7):
-      self._checkBeginIndices([i  - 4, 0], out.annotations[i])
+    self._checkBeginIndicesAnnotations(out, a)
 
   def testFormatTensor2DNoEllipsisWithRowBreak(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 40.0, 40).reshape([2, 20])
@@ -168,58 +227,26 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         {"dtype": a.dtype, "shape": a.shape},
         out.annotations["tensor_metadata"])
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[ 0.   ,  0.025,  0.05 ,  0.075,  0.1  ,",
-        "         0.125,  0.15 ,  0.175,  0.2  ,  0.225,",
-        "         0.25 ,  0.275,  0.3  ,  0.325,  0.35 ,",
-        "         0.375,  0.4  ,  0.425,  0.45 ,  0.475],",
-        "       [ 0.5  ,  0.525,  0.55 ,  0.575,  0.6  ,",
-        "         0.625,  0.65 ,  0.675,  0.7  ,  0.725,",
-        "         0.75 ,  0.775,  0.8  ,  0.825,  0.85 ,",
-        "         0.875,  0.9  ,  0.925,  0.95 ,  0.975]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     self._checkTensorMetadata(a, out.annotations)
 
     # Check annotations for the beginning indices of the lines.
-    self._checkBeginIndices([0, 0], out.annotations[2])
-    self._checkBeginIndices([0, 5], out.annotations[3])
-    self._checkBeginIndices([0, 10], out.annotations[4])
-    self._checkBeginIndices([0, 15], out.annotations[5])
-    self._checkBeginIndices([1, 0], out.annotations[6])
-    self._checkBeginIndices([1, 5], out.annotations[7])
-    self._checkBeginIndices([1, 10], out.annotations[8])
-    self._checkBeginIndices([1, 15], out.annotations[9])
+    self._checkBeginIndicesAnnotations(out, a)
 
-  def testFormatTensor3DNoEllipsis(self):  # TODO(cais): Test name.
+  def testFormatTensor3DNoEllipsis(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 24.0, 24).reshape([2, 3, 4])
 
     out = tensor_format.format_tensor(a, "a")
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[[ 0.        ,  0.04166667,  0.08333333,  0.125     ],",
-        "        [ 0.16666667,  0.20833333,  0.25      ,  0.29166667],",
-        "        [ 0.33333333,  0.375     ,  0.41666667,  0.45833333]],",
-        "",
-        "       [[ 0.5       ,  0.54166667,  0.58333333,  0.625     ],",
-        "        [ 0.66666667,  0.70833333,  0.75      ,  0.79166667],",
-        "        [ 0.83333333,  0.875     ,  0.91666667,  0.95833333]]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     self._checkTensorMetadata(a, out.annotations)
-
-    # Check annotations for beginning indices of the lines.
-    self._checkBeginIndices([0, 0, 0], out.annotations[2])
-    self._checkBeginIndices([0, 1, 0], out.annotations[3])
-    self._checkBeginIndices([0, 2, 0], out.annotations[4])
-    self.assertNotIn(5, out.annotations)
-    self._checkBeginIndices([1, 0, 0], out.annotations[6])
-    self._checkBeginIndices([1, 1, 0], out.annotations[7])
-    self._checkBeginIndices([1, 2, 0], out.annotations[8])
+    self._checkBeginIndicesAnnotations(out, a)
 
   def testFormatTensor3DNoEllipsisWithArgwhereHighlightWithMatches(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 24.0, 24).reshape([2, 3, 4])
@@ -235,39 +262,22 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     out = tensor_format.format_tensor(
         a, "a", highlight_options=highlight_options)
 
-    self.assertEqual([
-        "Tensor \"a\": "
-        "Highlighted(between 0.26 and 0.5): 5 of 24 element(s) (20.83%)",
-        "",
-        "array([[[ 0.        ,  0.04166667,  0.08333333,  0.125     ],",
-        "        [ 0.16666667,  0.20833333,  0.25      ,  0.29166667],",
-        "        [ 0.33333333,  0.375     ,  0.41666667,  0.45833333]],",
-        "",
-        "       [[ 0.5       ,  0.54166667,  0.58333333,  0.625     ],",
-        "        [ 0.66666667,  0.70833333,  0.75      ,  0.79166667],",
-        "        [ 0.83333333,  0.875     ,  0.91666667,  0.95833333]]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["Tensor \"a\": "
+         "Highlighted(between 0.26 and 0.5): 5 of 24 element(s) (20.83%)",
+         ""],
+        out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     self._checkTensorMetadata(a, out.annotations)
 
     # Check annotations for beginning indices of the lines.
-    self._checkBeginIndices([0, 0, 0], out.annotations[2])
-    self._checkBeginIndices([0, 1, 0], out.annotations[3])
-    self._checkBeginIndices([0, 2, 0], out.annotations[4])
-    self.assertNotIn(5, out.annotations)
-    self._checkBeginIndices([1, 0, 0], out.annotations[6])
-    self._checkBeginIndices([1, 1, 0], out.annotations[7])
-    self._checkBeginIndices([1, 2, 0], out.annotations[8])
+    self._checkBeginIndicesAnnotations(out, a)
 
-    # Check font attribute segments for highlighted elements.
-    self.assertNotIn(2, out.font_attr_segs)
-    self.assertEqual([(49, 59, "bold")], out.font_attr_segs[3])
-    self.assertEqual([(10, 20, "bold"), (23, 28, "bold"), (36, 46, "bold"),
-                      (49, 59, "bold")], out.font_attr_segs[4])
-    self.assertNotIn(5, out.font_attr_segs)
-    self.assertNotIn(6, out.font_attr_segs)
-    self.assertNotIn(7, out.font_attr_segs)
-    self.assertNotIn(8, out.font_attr_segs)
+    self.assertAllClose(
+        [0.29166667, 0.33333333, 0.375, 0.41666667, 0.45833333],
+        self._extractBoldNumbers(out, 2))
 
   def testFormatTensor3DNoEllipsisWithArgwhereHighlightWithNoMatches(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 24.0, 24).reshape([2, 3, 4])
@@ -279,93 +289,54 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     out = tensor_format.format_tensor(
         a, "a", highlight_options=highlight_options)
 
-    self.assertEqual([
-        "Tensor \"a\": Highlighted: 0 of 24 element(s) (0.00%)", "",
-        "array([[[ 0.        ,  0.04166667,  0.08333333,  0.125     ],",
-        "        [ 0.16666667,  0.20833333,  0.25      ,  0.29166667],",
-        "        [ 0.33333333,  0.375     ,  0.41666667,  0.45833333]],", "",
-        "       [[ 0.5       ,  0.54166667,  0.58333333,  0.625     ],",
-        "        [ 0.66666667,  0.70833333,  0.75      ,  0.79166667],",
-        "        [ 0.83333333,  0.875     ,  0.91666667,  0.95833333]]])"
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["Tensor \"a\": Highlighted: 0 of 24 element(s) (0.00%)", ""],
+        out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     self._checkTensorMetadata(a, out.annotations)
-
-    # Check annotations for beginning indices of the lines.
-    self._checkBeginIndices([0, 0, 0], out.annotations[2])
-    self._checkBeginIndices([0, 1, 0], out.annotations[3])
-    self._checkBeginIndices([0, 2, 0], out.annotations[4])
-    self.assertNotIn(5, out.annotations)
-    self._checkBeginIndices([1, 0, 0], out.annotations[6])
-    self._checkBeginIndices([1, 1, 0], out.annotations[7])
-    self._checkBeginIndices([1, 2, 0], out.annotations[8])
+    self._checkBeginIndicesAnnotations(out, a)
 
     # Check font attribute segments for highlighted elements.
-    self.assertNotIn(2, out.font_attr_segs)
-    self.assertNotIn(3, out.font_attr_segs)
-    self.assertNotIn(4, out.font_attr_segs)
-    self.assertNotIn(5, out.font_attr_segs)
-    self.assertNotIn(6, out.font_attr_segs)
-    self.assertNotIn(7, out.font_attr_segs)
-    self.assertNotIn(8, out.font_attr_segs)
+    for i in range(2, len(out.lines)):
+      self.assertNotIn(i, out.font_attr_segs)
 
   def testFormatTensorWithEllipses(self):
-    a = np.zeros([11, 11, 11])
+    a = (np.arange(11 * 11 * 11) + 1000).reshape([11, 11, 11]).astype(np.int32)
 
     out = tensor_format.format_tensor(
         a, "a", False, np_printoptions={"threshold": 100, "edgeitems": 2})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       ..., ",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     self._checkTensorMetadata(a, out.annotations)
 
     # Check annotations for beginning indices of the lines.
-    for i in xrange(2):
-      self._checkBeginIndices([i, 0, 0], out.annotations[i * 6 + 2])
-      self._checkBeginIndices([i, 1, 0], out.annotations[i * 6 + 3])
-      self._checkOmittedIndices([i, 2, 0], out.annotations[i * 6 + 4])
-      self._checkBeginIndices([i, 9, 0], out.annotations[i * 6 + 5])
-      self._checkBeginIndices([i, 10, 0], out.annotations[i * 6 + 6])
-      self.assertNotIn(i * 6 + 7, out.annotations)
+    actual_row_0_0_0, _ = self._findFirst(out.lines, "1000")
+    self.assertEqual({tensor_format.BEGIN_INDICES_KEY: [0, 0, 0]},
+                     out.annotations[actual_row_0_0_0])
+    actual_row_0_1_0, _ = self._findFirst(out.lines, "1011")
+    self.assertEqual({tensor_format.BEGIN_INDICES_KEY: [0, 1, 0]},
+                     out.annotations[actual_row_0_1_0])
+    # Find the first line that is completely omitted.
+    omitted_line = 2
+    while not out.lines[omitted_line].strip().startswith("..."):
+      omitted_line += 1
+    self.assertEqual({tensor_format.OMITTED_INDICES_KEY: [0, 2, 0]},
+                     out.annotations[omitted_line])
 
-    p = 15
-    for i in xrange(2):
-      self._checkBeginIndices([9 + i, 0, 0], out.annotations[p + i * 6])
-      self._checkBeginIndices([9 + i, 1, 0], out.annotations[p + i * 6 + 1])
-      self._checkOmittedIndices(
-          [9 + i, 2, 0], out.annotations[p + i * 6 + 2])
-      self._checkBeginIndices([9 + i, 9, 0], out.annotations[p + i * 6 + 3])
-      self._checkBeginIndices([9 + i, 10, 0], out.annotations[p + i * 6 + 4])
-
-      if i < 1:
-        self.assertNotIn(p + i * 6 + 5, out.annotations)
+    actual_row_10_10_0, _ = self._findFirst(out.lines, "2320")
+    self.assertEqual({tensor_format.BEGIN_INDICES_KEY: [10, 10, 0]},
+                     out.annotations[actual_row_10_10_0])
+    # Find the last line that is completely omitted.
+    omitted_line = len(out.lines) - 1
+    while not out.lines[omitted_line].strip().startswith("..."):
+      omitted_line -= 1
+    self.assertEqual({tensor_format.OMITTED_INDICES_KEY: [10, 2, 0]},
+                     out.annotations[omitted_line])
 
   def testFormatUninitializedTensor(self):
     tensor_proto = tensor_pb2.TensorProto(
@@ -396,63 +367,11 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     out = tensor_format.format_tensor(
         a, "a", np_printoptions={"linewidth": 40})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([ 0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [0])
-    self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
-    self.assertEqual(8, start_col)
-    self.assertEqual(10, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [5])
-    self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
-    self.assertEqual(33, start_col)
-    self.assertEqual(35, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [6])
-    self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(8, start_col)
-    self.assertEqual(10, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [11])
-    self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(33, start_col)
-    self.assertEqual(35, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [12])
-    self.assertFalse(is_omitted)
-    self.assertEqual(4, row)
-    self.assertEqual(8, start_col)
-    self.assertEqual(10, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [18])
-    self.assertFalse(is_omitted)
-    self.assertEqual(5, row)
-    self.assertEqual(8, start_col)
-    self.assertEqual(10, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [19])
-    self.assertFalse(is_omitted)
-    self.assertEqual(5, row)
-    self.assertEqual(13, start_col)
-    self.assertEqual(15, end_col)
+    self._checkTensorElementLocations(out, a)
 
     with self.assertRaisesRegexp(
         ValueError, "Indices exceed tensor dimensions"):
@@ -472,49 +391,11 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     out = tensor_format.format_tensor(
         a, "a", np_printoptions={"linewidth": 40})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([ 0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
-    (are_omitted, rows, start_cols,
-     end_cols) = tensor_format.locate_tensor_element(out, [[0]])
-    self.assertEqual([False], are_omitted)
-    self.assertEqual([2], rows)
-    self.assertEqual([8], start_cols)
-    self.assertEqual([10], end_cols)
-
-    (are_omitted, rows, start_cols,
-     end_cols) = tensor_format.locate_tensor_element(out, [[0], [5]])
-    self.assertEqual([False, False], are_omitted)
-    self.assertEqual([2, 2], rows)
-    self.assertEqual([8, 33], start_cols)
-    self.assertEqual([10, 35], end_cols)
-
-    (are_omitted, rows, start_cols,
-     end_cols) = tensor_format.locate_tensor_element(out, [[0], [6]])
-    self.assertEqual([False, False], are_omitted)
-    self.assertEqual([2, 3], rows)
-    self.assertEqual([8, 8], start_cols)
-    self.assertEqual([10, 10], end_cols)
-
-    (are_omitted, rows, start_cols,
-     end_cols) = tensor_format.locate_tensor_element(out, [[0], [5], [6]])
-    self.assertEqual([False, False, False], are_omitted)
-    self.assertEqual([2, 2, 3], rows)
-    self.assertEqual([8, 33, 8], start_cols)
-    self.assertEqual([10, 35, 10], end_cols)
-
-    (are_omitted, rows, start_cols,
-     end_cols) = tensor_format.locate_tensor_element(out, [[0], [5], [6], [19]])
-    self.assertEqual([False, False, False, False], are_omitted)
-    self.assertEqual([2, 2, 3, 5], rows)
-    self.assertEqual([8, 33, 8, 13], start_cols)
-    self.assertEqual([10, 35, 10, 15], end_cols)
+    self._checkTensorElementLocations(out, a)
 
   def testBatchModeWithErrors(self):
     a = np.zeros(20)
@@ -522,14 +403,9 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     out = tensor_format.format_tensor(
         a, "a", np_printoptions={"linewidth": 40})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([ 0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.,  0.,  0.,  0.,  0.,",
-        "        0.,  0.])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
     with self.assertRaisesRegexp(ValueError, "Dimensions mismatch"):
       tensor_format.locate_tensor_element(out, [[0, 0], [0]])
@@ -554,104 +430,22 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     out = tensor_format.format_tensor(
         a, "a", np_printoptions={"linewidth": 100})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[  1.00000000e-08,   1.00000000e-08,   1.00000000e-08],",
-        "       [             nan,   1.00000000e-08,              inf],",
-        "       [  1.00000000e-08,   1.00000000e-08,   1.00000000e-08]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [0, 0])
-    self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
-    self.assertEqual(10, start_col)
-    self.assertEqual(24, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [0, 2])
-    self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
-    self.assertEqual(46, start_col)
-    self.assertEqual(60, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [1, 0])
-    self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(21, start_col)
-    self.assertEqual(24, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [1, 1])
-    self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(28, start_col)
-    self.assertEqual(42, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [1, 2])
-    self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(57, start_col)
-    self.assertEqual(60, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [2, 2])
-    self.assertFalse(is_omitted)
-    self.assertEqual(4, row)
-    self.assertEqual(46, start_col)
-    self.assertEqual(60, end_col)
+    self._checkTensorElementLocations(out, a)
 
   def testLocateTensorElement2DNoEllipsis(self):
     a = np.linspace(0.0, 1.0 - 1.0 / 16.0, 16).reshape([4, 4])
 
     out = tensor_format.format_tensor(a, "a")
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[ 0.    ,  0.0625,  0.125 ,  0.1875],",
-        "       [ 0.25  ,  0.3125,  0.375 ,  0.4375],",
-        "       [ 0.5   ,  0.5625,  0.625 ,  0.6875],",
-        "       [ 0.75  ,  0.8125,  0.875 ,  0.9375]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
 
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [0, 0])
-    self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
-    self.assertEqual(9, start_col)
-    self.assertEqual(11, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [0, 3])
-    self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
-    self.assertEqual(36, start_col)
-    self.assertEqual(42, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [1, 0])
-    self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(9, start_col)
-    self.assertEqual(13, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [1, 3])
-    self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(36, start_col)
-    self.assertEqual(42, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [3, 3])
-    self.assertFalse(is_omitted)
-    self.assertEqual(5, row)
-    self.assertEqual(36, start_col)
-    self.assertEqual(42, end_col)
+    self._checkTensorElementLocations(out, a)
 
     with self.assertRaisesRegexp(
         ValueError, "Indices exceed tensor dimensions"):
@@ -670,55 +464,20 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
 
     out = tensor_format.format_tensor(a, "a", include_numeric_summary=True)
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "Numeric summary:",
-        "|  0  + | total |",
-        "|  1 15 |    16 |",
-        "|           min           max          mean           std |",
-        "|           0.0        0.9375       0.46875 0.28811076429 |",
-        "",
-        "array([[ 0.    ,  0.0625,  0.125 ,  0.1875],",
-        "       [ 0.25  ,  0.3125,  0.375 ,  0.4375],",
-        "       [ 0.5   ,  0.5625,  0.625 ,  0.6875],",
-        "       [ 0.75  ,  0.8125,  0.875 ,  0.9375]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["Tensor \"a\":",
+         "",
+         "Numeric summary:",
+         "|  0  + | total |",
+         "|  1 15 |    16 |",
+         "|           min           max          mean           std |"],
+        out.lines[:6])
+    cli_test_utils.assert_array_lines_close(
+        self, [0.0, 0.9375, 0.46875, 0.28811076429], out.lines[6:7])
+    cli_test_utils.assert_array_lines_close(self, a, out.lines[8:])
 
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [0, 0])
-    self.assertFalse(is_omitted)
-    self.assertEqual(8, row)
-    self.assertEqual(9, start_col)
-    self.assertEqual(11, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [0, 3])
-    self.assertFalse(is_omitted)
-    self.assertEqual(8, row)
-    self.assertEqual(36, start_col)
-    self.assertEqual(42, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [1, 0])
-    self.assertFalse(is_omitted)
-    self.assertEqual(9, row)
-    self.assertEqual(9, start_col)
-    self.assertEqual(13, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [1, 3])
-    self.assertFalse(is_omitted)
-    self.assertEqual(9, row)
-    self.assertEqual(36, start_col)
-    self.assertEqual(42, end_col)
-
-    is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
-        out, [3, 3])
-    self.assertFalse(is_omitted)
-    self.assertEqual(11, row)
-    self.assertEqual(36, start_col)
-    self.assertEqual(42, end_col)
+    self._checkTensorElementLocations(out, a)
 
     with self.assertRaisesRegexp(
         ValueError, "Indices exceed tensor dimensions"):
@@ -733,100 +492,75 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
       tensor_format.locate_tensor_element(out, [0])
 
   def testLocateTensorElement3DWithEllipses(self):
-    a = np.zeros([11, 11, 11])
+    a = (np.arange(11 * 11 * 11) + 1000).reshape([11, 11, 11]).astype(np.int32)
 
     out = tensor_format.format_tensor(
         a, "a", False, np_printoptions={"threshold": 100, "edgeitems": 2})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       ..., ",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
 
+    actual_row_0_0_0, actual_col_0_0_0 = self._findFirst(out.lines, "1000")
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [0, 0, 0])
     self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
-    self.assertEqual(10, start_col)
-    self.assertEqual(12, end_col)
+    self.assertEqual(actual_row_0_0_0, row)
+    self.assertEqual(actual_col_0_0_0, start_col)
+    self.assertEqual(actual_col_0_0_0 + 4, end_col)
 
+    actual_row_0_0_10, _ = self._findFirst(out.lines, "1010")
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [0, 0, 10])
     self.assertFalse(is_omitted)
-    self.assertEqual(2, row)
+    self.assertEqual(actual_row_0_0_10, row)
     self.assertIsNone(start_col)  # Passes ellipsis.
     self.assertIsNone(end_col)
 
+    actual_row_0_1_0, actual_col_0_1_0 = self._findFirst(out.lines, "1011")
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [0, 1, 0])
     self.assertFalse(is_omitted)
-    self.assertEqual(3, row)
-    self.assertEqual(10, start_col)
-    self.assertEqual(12, end_col)
+    self.assertEqual(actual_row_0_1_0, row)
+    self.assertEqual(actual_col_0_1_0, start_col)
+    self.assertEqual(actual_col_0_1_0 + 4, end_col)
 
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [0, 2, 0])
     self.assertTrue(is_omitted)  # In omitted line.
-    self.assertEqual(4, row)
     self.assertIsNone(start_col)
     self.assertIsNone(end_col)
 
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [0, 2, 10])
     self.assertTrue(is_omitted)  # In omitted line.
-    self.assertEqual(4, row)
     self.assertIsNone(start_col)
     self.assertIsNone(end_col)
 
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [0, 8, 10])
     self.assertTrue(is_omitted)  # In omitted line.
-    self.assertEqual(4, row)
     self.assertIsNone(start_col)
     self.assertIsNone(end_col)
 
+    actual_row_0_10_1, actual_col_0_10_1 = self._findFirst(out.lines, "1111")
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [0, 10, 1])
     self.assertFalse(is_omitted)
-    self.assertEqual(6, row)
-    self.assertEqual(15, start_col)
-    self.assertEqual(17, end_col)
+    self.assertEqual(actual_row_0_10_1, row)
+    self.assertEqual(actual_col_0_10_1, start_col)
+    self.assertEqual(actual_col_0_10_1 + 4, end_col)
 
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [5, 1, 1])
     self.assertTrue(is_omitted)  # In omitted line.
-    self.assertEqual(14, row)
     self.assertIsNone(start_col)
     self.assertIsNone(end_col)
 
+    actual_row_10_10_10, _ = self._findFirst(out.lines, "2330")
     is_omitted, row, start_col, end_col = tensor_format.locate_tensor_element(
         out, [10, 10, 10])
     self.assertFalse(is_omitted)
-    self.assertEqual(25, row)
+    self.assertEqual(actual_row_10_10_10, row)
     self.assertIsNone(start_col)  # Past ellipsis.
     self.assertIsNone(end_col)
 
@@ -843,71 +577,50 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
       tensor_format.locate_tensor_element(out, [5, 5])
 
   def testLocateTensorElement3DWithEllipsesBatchMode(self):
-    a = np.zeros([11, 11, 11])
+    a = (np.arange(11 * 11 * 11) + 1000).reshape([11, 11, 11]).astype(np.int32)
 
     out = tensor_format.format_tensor(
         a, "a", False, np_printoptions={"threshold": 100,
                                         "edgeitems": 2})
 
-    self.assertEqual([
-        "Tensor \"a\":",
-        "",
-        "array([[[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       ..., ",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]],",
-        "",
-        "       [[ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        ..., ",
-        "        [ 0.,  0., ...,  0.,  0.],",
-        "        [ 0.,  0., ...,  0.,  0.]]])",
-    ], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(repr(a).split("\n"), out.lines[2:])
+
+    actual_row_0_0_0, actual_col_0_0_0 = self._findFirst(out.lines, "1000")
+    actual_row_0_0_10, _ = self._findFirst(out.lines, "1010")
+    actual_row_10_10_10, _ = self._findFirst(out.lines, "2330")
 
     (are_omitted, rows, start_cols,
      end_cols) = tensor_format.locate_tensor_element(out, [[0, 0, 0]])
     self.assertEqual([False], are_omitted)
-    self.assertEqual([2], rows)
-    self.assertEqual([10], start_cols)
-    self.assertEqual([12], end_cols)
+    self.assertEqual([actual_row_0_0_0], rows)
+    self.assertEqual([actual_col_0_0_0], start_cols)
+    self.assertEqual([actual_col_0_0_0 + 4], end_cols)
 
     (are_omitted, rows, start_cols,
      end_cols) = tensor_format.locate_tensor_element(out,
                                                      [[0, 0, 0], [0, 0, 10]])
     self.assertEqual([False, False], are_omitted)
-    self.assertEqual([2, 2], rows)
-    self.assertEqual([10, None], start_cols)
-    self.assertEqual([12, None], end_cols)
+    self.assertEqual([actual_row_0_0_0, actual_row_0_0_10], rows)
+    self.assertEqual([actual_col_0_0_0, None], start_cols)
+    self.assertEqual([actual_col_0_0_0 + 4, None], end_cols)
 
     (are_omitted, rows, start_cols,
      end_cols) = tensor_format.locate_tensor_element(out,
                                                      [[0, 0, 0], [0, 2, 0]])
     self.assertEqual([False, True], are_omitted)
     self.assertEqual([2, 4], rows)
-    self.assertEqual([10, None], start_cols)
-    self.assertEqual([12, None], end_cols)
+    self.assertEqual(2, len(start_cols))
+    self.assertEqual(2, len(end_cols))
 
     (are_omitted, rows, start_cols,
      end_cols) = tensor_format.locate_tensor_element(out,
                                                      [[0, 0, 0], [10, 10, 10]])
     self.assertEqual([False, False], are_omitted)
-    self.assertEqual([2, 25], rows)
-    self.assertEqual([10, None], start_cols)
-    self.assertEqual([12, None], end_cols)
+    self.assertEqual([actual_row_0_0_0, actual_row_10_10_10], rows)
+    self.assertEqual([actual_col_0_0_0, None], start_cols)
+    self.assertEqual([actual_col_0_0_0 + 4, None], end_cols)
 
   def testLocateTensorElementAnnotationsUnavailable(self):
     tensor_proto = tensor_pb2.TensorProto(
@@ -931,41 +644,41 @@ class NumericSummaryTest(test_util.TensorFlowTestCase):
     x = np.array([np.nan, np.nan, -np.inf, np.inf, np.inf, np.inf, -2, -3, -4,
                   0, 1, 2, 2, 2, 2, 0, 0, 0, np.inf, np.inf, np.inf])
     out = tensor_format.numeric_summary(x)
-    self.assertEqual(
-        "|  nan -inf    -    0    + +inf | total |", out.lines[0])
-    self.assertEqual(
-        "|    2    1    3    4    5    6 |    21 |", out.lines[1])
-    self.assertEqual(
-        "|           min           max          mean           std |",
-        out.lines[2])
-    self.assertEqual(
-        "|          -4.0           2.0           0.0 1.95789002075 |",
-        out.lines[3])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["|  nan -inf    -    0    + +inf | total |",
+         "|    2    1    3    4    5    6 |    21 |",
+         "|     min     max    mean    std |"], out.lines[:3])
+    cli_test_utils.assert_array_lines_close(
+        self, [-4.0, 2.0, 0.0, 1.95789002075], out.lines[3:4])
 
   def testNumericSummaryOnFloatMissingCategories(self):
     x = np.array([np.nan, np.nan])
     out = tensor_format.numeric_summary(x)
     self.assertEqual(2, len(out.lines))
-    self.assertEqual("| nan | total |", out.lines[0])
-    self.assertEqual("|   2 |     2 |", out.lines[1])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["| nan | total |", "|   2 |     2 |"], out.lines[:2])
 
     x = np.array([-np.inf, np.inf, 0, 0, np.inf, np.inf])
     out = tensor_format.numeric_summary(x)
-    self.assertEqual("| -inf    0 +inf | total |", out.lines[0])
-    self.assertEqual("|    1    2    3 |     6 |", out.lines[1])
-    self.assertEqual("|  min  max mean  std |", out.lines[2])
-    self.assertEqual("|  0.0  0.0  0.0  0.0 |", out.lines[3])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["| -inf    0 +inf | total |",
+         "|    1    2    3 |     6 |",
+         "|  min  max mean  std |"], out.lines[:3])
+    cli_test_utils.assert_array_lines_close(
+        self, [0.0, 0.0, 0.0, 0.0], out.lines[3:4])
 
     x = np.array([-120, 120, 130])
     out = tensor_format.numeric_summary(x)
-    self.assertEqual("| - + | total |", out.lines[0])
-    self.assertEqual("| 1 2 |     3 |", out.lines[1])
-    self.assertEqual(
-        "|           min           max          mean           std |",
-        out.lines[2])
-    self.assertEqual(
-        "|          -120           130 43.3333333333 115.566238822 |",
-        out.lines[3])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["| - + | total |",
+         "| 1 2 |     3 |",
+         "|       min       max     mean      std |"],
+        out.lines[:3])
+    cli_test_utils.assert_array_lines_close(
+        self, [-120, 130, 43.3333333333, 115.566238822], out.lines[3:4])
 
   def testNumericSummaryOnEmptyFloat(self):
     x = np.array([], dtype=np.float32)
@@ -976,33 +689,31 @@ class NumericSummaryTest(test_util.TensorFlowTestCase):
   def testNumericSummaryOnInt(self):
     x = np.array([-3] * 50 + [3] * 200 + [0], dtype=np.int32)
     out = tensor_format.numeric_summary(x)
-    self.assertEqual("|   -   0   + | total |", out.lines[0])
-    self.assertEqual("|  50   1 200 |   251 |", out.lines[1])
-    self.assertEqual(
-        "|           min           max          mean           std |",
-        out.lines[2])
-    self.assertEqual(
-        "|            -3             3 1.79282868526 2.39789673081 |",
-        out.lines[3])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["|   -   0   + | total |",
+         "|  50   1 200 |   251 |",
+         "|      min     max    mean     std |"],
+        out.lines[:3])
+    cli_test_utils.assert_array_lines_close(
+        self, [-3, 3, 1.79282868526, 2.39789673081], out.lines[3:4])
 
   def testNumericSummaryOnBool(self):
     x = np.array([False, True, True, False], dtype=np.bool)
     out = tensor_format.numeric_summary(x)
-    self.assertEqual(2, len(out.lines))
-    self.assertEqual("| False  True | total |", out.lines[0])
-    self.assertEqual("|     2     2 |     4 |", out.lines[1])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["| False  True | total |", "|     2     2 |     4 |"], out.lines)
 
     x = np.array([True] * 10, dtype=np.bool)
     out = tensor_format.numeric_summary(x)
-    self.assertEqual(2, len(out.lines))
-    self.assertEqual("| True | total |", out.lines[0])
-    self.assertEqual("|   10 |    10 |", out.lines[1])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["| True | total |", "|   10 |    10 |"], out.lines)
 
     x = np.array([False] * 10, dtype=np.bool)
     out = tensor_format.numeric_summary(x)
-    self.assertEqual(2, len(out.lines))
-    self.assertEqual("| False | total |", out.lines[0])
-    self.assertEqual("|    10 |    10 |", out.lines[1])
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self, ["| False | total |", "|    10 |    10 |"], out.lines)
 
     x = np.array([], dtype=np.bool)
     out = tensor_format.numeric_summary(x)

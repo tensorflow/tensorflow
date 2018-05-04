@@ -16,6 +16,7 @@ limitations under the License.
 syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
@@ -82,8 +83,9 @@ message DebugOptions {
   // Dump all HLO modules as text into the provided directory path.
   string xla_generate_hlo_text_to = 7;
 
-  // Dump compilation artifacts in binary proto into this directory.
-  string xla_dump_hlo_proto_to = 8;
+  // Dump Hlo after all hlo passes are executed as proto binary into this
+  // directory.
+  string xla_dump_optimized_hlo_proto_to = 8;
 
   // Instrument the computation to collect per-HLO cycle counts.
   bool xla_hlo_profile = 9;
@@ -174,6 +176,24 @@ message DebugOptions {
   // Prefix the name scopes of the TF graph exports with "devX" device
   // assignments, if available.
   bool xla_hlo_tfgraph_device_scopes = 93;
+
+  // If true, the GPU backend is free to use cudnn for HLO batch normalization
+  // ops.
+  bool xla_gpu_use_cudnn_batchnorm = 94;
+
+  // Dump HLO before any hlo passes are executed as proto binary into this
+  // directory.
+  string xla_dump_unoptimized_hlo_proto_to = 95;
+
+  // Dump HLO after each pass as an HloProto in binary file format into this
+  // directory.
+  string xla_dump_per_pass_hlo_proto_to = 96;
+
+  // Generate calls to MKL-DNN in the CPU backend.
+  bool xla_cpu_use_mkl_dnn = 97;
+
+  // Maximum kernel unroll factor for the GPU backend.
+  int32 xla_gpu_max_kernel_unroll_factor = 98;
 
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
@@ -285,6 +305,11 @@ message ComputationStatsRequest {
   DebugOptions debug_options = 2;
 }
 
+message ComputationGraphStatsRequest {
+  HloModuleProto computation = 1;
+  DebugOptions debug_options = 2;
+}
+
 message ComputationStatsResponse {
   ComputationStats stats = 1;
 }
@@ -329,8 +354,20 @@ message ExecuteRequest {
   ExecutionOptions execution_options = 5;
 }
 
+message ExecuteGraphRequest {
+  HloModuleProto computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 3;
+}
+
 message ExecuteParallelRequest {
   repeated ExecuteRequest requests = 1;
+}
+
+message ExecuteGraphParallelRequest {
+  repeated ExecuteGraphRequest requests = 1;
 }
 
 message ExecuteResponse {
@@ -381,6 +418,11 @@ message ComputeConstantRequest {
   ComputationDataHandle operand = 2;
   Layout output_layout = 3;
   repeated LiteralProto parameters = 4;
+}
+
+message ComputeConstantGraphRequest {
+  HloModuleProto computation = 1;
+  Layout output_layout = 2;
 }
 
 message ComputeConstantResponse {

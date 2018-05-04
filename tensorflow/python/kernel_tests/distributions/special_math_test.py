@@ -332,6 +332,32 @@ class LogNdtrGradientTest(NdtrGradientTest):
   _use_log = True
 
 
+class ErfInvTest(test.TestCase):
+
+  def testErfInvValues(self):
+    with self.test_session():
+      if not special:
+        return
+
+      x = np.linspace(0., 1.0, 50).astype(np.float64)
+
+      expected_x = special.erfinv(x)
+      x = special_math.erfinv(x)
+      self.assertAllClose(expected_x, x.eval(), atol=0.)
+
+  def testErfInvIntegerInput(self):
+    with self.test_session():
+
+      with self.assertRaises(TypeError):
+        x = np.array([1, 2, 3]).astype(np.int32)
+        special_math.erfinv(x)
+
+      with self.assertRaises(TypeError):
+        x = np.array([1, 2, 3]).astype(np.int64)
+        special_math.erfinv(x)
+
+
+
 class LogCDFLaplaceTest(test.TestCase):
   # Note that scipy.stats.laplace does not have a stable Log CDF, so we cannot
   # rely on scipy to cross check the extreme values.

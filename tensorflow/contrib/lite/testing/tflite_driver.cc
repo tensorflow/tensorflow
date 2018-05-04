@@ -31,8 +31,20 @@ float Value(const TfLitePtrUnion& data, int index) {
   return data.f[index];
 }
 template <>
+int32_t Value(const TfLitePtrUnion& data, int index) {
+  return data.i32[index];
+}
+template <>
+int64_t Value(const TfLitePtrUnion& data, int index) {
+  return data.i64[index];
+}
+template <>
 uint8_t Value(const TfLitePtrUnion& data, int index) {
   return data.uint8[index];
+}
+template <>
+bool Value(const TfLitePtrUnion& data, int index) {
+  return data.b[index];
 }
 
 template <typename T>
@@ -48,12 +60,16 @@ void SetTensorData(const std::vector<T>& values, TfLitePtrUnion* data) {
 
 class TfLiteDriver::Expectation {
  public:
-  Expectation() { data_.raw = nullptr; }
+  Expectation() {
+    data_.raw = nullptr;
+    num_elements_ = 0;
+  }
   ~Expectation() { delete[] data_.raw; }
   template <typename T>
   void SetData(const string& csv_values) {
     const auto& values = testing::Split<T>(csv_values, ",");
-    data_.raw = new char[values.size() * sizeof(T)];
+    num_elements_ = values.size();
+    data_.raw = new char[num_elements_ * sizeof(T)];
     SetTensorData(values, &data_);
   }
 
@@ -61,9 +77,16 @@ class TfLiteDriver::Expectation {
     switch (tensor.type) {
       case kTfLiteFloat32:
         return TypedCheck<float>(verbose, tensor);
+      case kTfLiteInt32:
+        return TypedCheck<int32_t>(verbose, tensor);
+      case kTfLiteInt64:
+        return TypedCheck<int64_t>(verbose, tensor);
       case kTfLiteUInt8:
         return TypedCheck<uint8_t>(verbose, tensor);
+      case kTfLiteBool:
+        return TypedCheck<bool>(verbose, tensor);
       default:
+        fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
         return false;
     }
   }
@@ -71,15 +94,36 @@ class TfLiteDriver::Expectation {
  private:
   template <typename T>
   bool TypedCheck(bool verbose, const TfLiteTensor& tensor) {
-    int tensor_size = tensor.bytes / sizeof(T);
+    // TODO(ahentz): must find a way to configure the tolerance.
+    constexpr double kRelativeThreshold = 1e-2f;
+    constexpr double kAbsoluteThreshold = 1e-4f;
+
+    size_t tensor_size = tensor.bytes / sizeof(T);
+
+    if (tensor_size != num_elements_) {
+      std::cerr << "Expected a tensor with " << num_elements_
+                << " elements, got " << tensor_size << std::endl;
+      return false;
+    }
 
     bool good_output = true;
     for (int i = 0; i < tensor_size; ++i) {
-      if (std::abs(Value<T>(data_, i) - Value<T>(tensor.data, i)) > 1e-5) {
+      float computed = Value<T>(tensor.data, i);
+      float reference = Value<T>(data_, i);
+      float diff = std::abs(computed - reference);
+      bool error_is_large = false;
+      // For very small numbers, try absolute error, otherwise go with
+      // relative.
+      if (std::abs(reference) < kRelativeThreshold) {
+        error_is_large = (diff > kAbsoluteThreshold);
+      } else {
+        error_is_large = (diff > kRelativeThreshold * std::abs(reference));
+      }
+      if (error_is_large) {
         good_output = false;
         if (verbose) {
-          std::cerr << "  index " << i << ": " << Value<T>(data_, i)
-                    << " != " << Value<T>(tensor.data, i) << std::endl;
+          std::cerr << "  index " << i << ": got " << computed
+                    << ", but expected " << reference << std::endl;
         }
       }
     }
@@ -87,6 +131,7 @@ class TfLiteDriver::Expectation {
   }
 
   TfLitePtrUnion data_;
+  size_t num_elements_;
 };
 
 TfLiteDriver::TfLiteDriver(bool use_nnapi) : use_nnapi_(use_nnapi) {}
@@ -95,8 +140,8 @@ TfLiteDriver::~TfLiteDriver() {}
 void TfLiteDriver::AllocateTensors() {
   if (must_allocate_tensors_) {
     if (interpreter_->AllocateTensors() != kTfLiteOk) {
-      std::cerr << "Failed to allocate tensors" << std::endl;
-      abort();
+      Invalidate("Failed to allocate tensors");
+      return;
     }
     must_allocate_tensors_ = false;
   }
@@ -104,7 +149,6 @@ void TfLiteDriver::AllocateTensors() {
 
 void TfLiteDriver::LoadModel(const string& bin_file_path) {
   if (!IsValid()) return;
-  std::cout << std::endl << "Loading model: " << bin_file_path << std::endl;
 
   model_ = FlatBufferModel::BuildFromFile(GetFullPath(bin_file_path).c_str());
   if (!model_) {
@@ -147,13 +191,32 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteInt32: {
+      const auto& values = testing::Split<int32_t>(csv_values, ",");
+      if (!CheckSizes<int32_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
+    case kTfLiteInt64: {
+      const auto& values = testing::Split<int64_t>(csv_values, ",");
+      if (!CheckSizes<int64_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
     case kTfLiteUInt8: {
       const auto& values = testing::Split<uint8_t>(csv_values, ",");
       if (!CheckSizes<uint8_t>(tensor->bytes, values.size())) return;
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteBool: {
+      const auto& values = testing::Split<bool>(csv_values, ",");
+      if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
     default:
+      fprintf(stderr, "Unsupported type %d in SetInput\n", tensor->type);
       Invalidate("Unsupported tensor data type");
       return;
   }
@@ -162,15 +225,29 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
 void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
+  if (expected_output_.count(id) != 0) {
+    fprintf(stderr, "Overriden expectation for tensor %d\n", id);
+    Invalidate("Overriden expectation");
+  }
   expected_output_[id].reset(new Expectation);
   switch (tensor->type) {
     case kTfLiteFloat32:
       expected_output_[id]->SetData<float>(csv_values);
       break;
+    case kTfLiteInt32:
+      expected_output_[id]->SetData<int32_t>(csv_values);
+      break;
+    case kTfLiteInt64:
+      expected_output_[id]->SetData<int64_t>(csv_values);
+      break;
     case kTfLiteUInt8:
       expected_output_[id]->SetData<uint8_t>(csv_values);
       break;
+    case kTfLiteBool:
+      expected_output_[id]->SetData<bool>(csv_values);
+      break;
     default:
+      fprintf(stderr, "Unsupported type %d in SetExpectation\n", tensor->type);
       Invalidate("Unsupported tensor data type");
       return;
   }

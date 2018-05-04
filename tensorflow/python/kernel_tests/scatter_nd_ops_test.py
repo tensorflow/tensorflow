@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -156,6 +157,20 @@ class StatefulScatterNdTest(test.TestCase):
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
+
+  def testSimpleResource(self):
+    indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+    ref = resource_variable_ops.ResourceVariable(
+        [0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.float32)
+    expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
+    scatter = state_ops.scatter_nd_update(ref, indices, updates)
+    init = variables.global_variables_initializer()
+
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(init)
+      sess.run(scatter)
+      self.assertAllClose(ref.eval(), expected)
 
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
@@ -335,7 +350,7 @@ class StatefulScatterNdTest(test.TestCase):
         indices = np.array([2, 0, 5])
         op(ref, indices, updates).eval()
 
-        # Indicies out of range should not fail.
+        # Indices out of range should not fail.
         indices = np.array([-1, 0, 5])
         op(ref, indices, updates).eval()
         indices = np.array([2, 0, 6])
@@ -348,6 +363,42 @@ class ScatterNdTest(test.TestCase):
   def scatter_nd(self, indices, updates, shape, input_=None):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
+
+  def testString(self):
+    indices = constant_op.constant([[4], [3], [1], [7]],
+                                   dtype=dtypes.int32)
+    updates = constant_op.constant(["four", "three", "one", "seven"],
+                                   dtype=dtypes.string)
+    expected = np.array([b"", b"one", b"", b"three", b"four",
+                         b"", b"", b"seven"])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by same value.
+    indices = constant_op.constant([[4], [3], [3], [7]],
+                                   dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "b", "c"],
+                                   dtype=dtypes.string)
+    expected = np.array([b"", b"", b"", b"bb", b"a", b"", b"", b"c"])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by different value.
+    indices = constant_op.constant([[4], [3], [3], [7]],
+                                   dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "c", "d"],
+                                   dtype=dtypes.string)
+    expected = [np.array([b"", b"", b"", b"bc", b"a", b"", b"", b"d"]),
+                np.array([b"", b"", b"", b"cb", b"a", b"", b"", b"d"])]
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertTrue(np.array_equal(result, expected[0]) or
+                      np.array_equal(result, expected[1]))
 
   def testRank3ValidShape(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
@@ -487,6 +538,43 @@ class ScatterNdTest(test.TestCase):
       if self.non_aliasing_add_test:
         self.assertAllEqual(expected_input_grad, input_grad.eval())
 
+  def testGradientsRank7SliceUpdate(self):
+    indices = constant_op.constant(
+        [[[
+            [[[[0, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0]]]],
+            [[[[0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 1]]]]
+        ]]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [[[
+            [[[[5, 6], [2, 4]]]],
+            [[[[1, 3], [6, 8]]]]
+        ]]], dtype=dtypes.float64)
+    shape = constant_op.constant([1, 1, 2, 1, 1, 2, 2], dtype=dtypes.int32)
+    input_ = array_ops.zeros(shape, dtype=dtypes.float64)
+    outputs = self.scatter_nd(indices, updates, shape, input_)
+
+    grad_vals = constant_op.constant(
+        [[[
+            [[[[1, 2], [3, 4]]]],
+            [[[[5, 6], [7, 8]]]]
+        ]]], dtype=dtypes.float64)
+    updates_grad, input_grad = gradients_impl.gradients(
+        [outputs], [updates, input_], [grad_vals])
+    expected_updates_grad = np.array(
+        [[[
+            [[[[3, 4], [5, 6]]]],
+            [[[[1, 2], [7, 8]]]]
+        ]]], dtype=np.float64)
+    expected_input_grad = np.array(
+        [[[
+            [[[[1, 2], [3, 4]]]],
+            [[[[5, 6], [7, 8]]]]
+        ]]], dtype=np.float64)
+    with self.test_session():
+      self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+      if self.non_aliasing_add_test:
+        self.assertAllEqual(expected_input_grad, input_grad.eval())
+
   def testScatterNdRepatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
@@ -531,6 +619,10 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
     input_ = (input_ if input_ is not None else array_ops.zeros(
         shape, dtype=updates.dtype))
     return array_ops.scatter_nd_non_aliasing_add(input_, indices, updates)
+
+  def testString(self):
+    # Not supported yet.
+    pass
 
 
 if __name__ == "__main__":

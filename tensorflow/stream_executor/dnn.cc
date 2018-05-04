@@ -18,13 +18,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace dnn {
 
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
@@ -470,10 +473,10 @@ string ConvolutionDescriptor::ToShortString() const {
 PoolingDescriptor::PoolingDescriptor(int ndims)
     : mode_(dnn::PoolingMode::kMaximum),
       ndims_(ndims),
+      propagate_nans_(false),
       window_(ndims, 0),
       padding_(ndims, 0),
-      strides_(ndims, 1),
-      propagate_nans_(false) {}
+      strides_(ndims, 1) {}
 
 PoolingDescriptor::PoolingDescriptor() : PoolingDescriptor(/*ndims=*/2) {}
 
@@ -550,5 +553,4 @@ string NormalizeDescriptor::ToShortString() const {
 }
 
 }  // namespace dnn
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

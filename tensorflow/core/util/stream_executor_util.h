@@ -41,9 +41,10 @@ class StreamExecutorUtil {
   // This assumes that the error codes between the two implementations
   // match.
   static Status ConvertStatus(const perftools::gputools::port::Status& s) {
-    return s.ok() ? Status::OK() : Status(static_cast<tensorflow::error::Code>(
-                                              static_cast<int>(s.code())),
-                                          s.error_message());
+    return s.ok() ? Status::OK()
+                  : Status(static_cast<tensorflow::error::Code>(
+                               static_cast<int>(s.code())),
+                           s.error_message());
   }
 };
 

@@ -70,6 +70,26 @@ TEST_F(HloDceTest, NoDeadCode) {
   EXPECT_EQ(3, computation->instruction_count());
 }
 
+TEST_F(HloDceTest, InstructionsWithSideEffect) {
+  // Verify that side-effect instructions (Send in this test) are not removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+  builder.AddInstruction(
+      HloInstruction::CreateSend(constant, /*channel_id=*/0));
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(3, computation->instruction_count());
+
+  HloDCE dce;
+  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(3, computation->instruction_count());
+}
+
 TEST_F(HloDceTest, DeadParameters) {
   // Verify that dead parameters are not removed, but use of the dead parameters
   // are.

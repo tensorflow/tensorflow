@@ -24,7 +24,7 @@ static void TestGradAndIndicesErrorHandling(const ShapeInferenceTestOp& op,
                                             string shape_spec_middle,
                                             const string& shape_spec_end = "") {
   auto shape_spec = [&shape_spec_middle, shape_spec_end](
-      const char* var_spec, const char* grad_indices_spec) {
+                        const char* var_spec, const char* grad_indices_spec) {
     return strings::StrCat(var_spec, ";", shape_spec_middle, ";",
                            grad_indices_spec, shape_spec_end);
   };
@@ -330,6 +330,40 @@ TEST(TrainingOpsTest, SparseApplyRMSProp_ShapeFn) {
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;[?];?;?;?;?");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;[?];?;?;?");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;?;[?];?;?");
+}
+
+TEST(TrainingOpsTest, ApplyAddSign_ShapeFn) {
+  ShapeInferenceTestOp op("ApplyAddSign");
+
+  // Output is a merge of inputs 0, 1, and 6 (var, ms, and grad).
+  INFER_OK(op, "[1,?,?];[?,2,?];[];[];[];[];[?,?,2]", "[d0_0,d1_1,d6_2]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[2];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[];[];[];[];[2]");
+
+  // lr, alpha, sign_decay, and beta must be scalars.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;[?];?;?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;[?];?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;[?];?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;[?];?");
+}
+
+TEST(TrainingOpsTest, ApplyPowerSign_ShapeFn) {
+  ShapeInferenceTestOp op("ApplyPowerSign");
+
+  // Output is a merge of inputs 0, 1, and 6 (var, ms, and grad).
+  INFER_OK(op, "[1,?,?];[?,2,?];[];[];[];[];[?,?,2]", "[d0_0,d1_1,d6_2]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[2];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[];[];[];[];[2]");
+
+  // lr, logbase, sign_decay, and beta must be scalars.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;[?];?;?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;[?];?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;[?];?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;[?];?");
 }
 
 }  // end namespace tensorflow

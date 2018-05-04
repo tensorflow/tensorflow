@@ -28,8 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 // An implementation of StreamExecutor that does no communication or interaction
@@ -139,7 +138,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   bool StopTimer(Stream *stream, Timer *timer) override;
 
-  bool BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 
@@ -210,7 +209,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_

@@ -30,6 +30,8 @@ class CpuInstructionFusion : public InstructionFusion {
 
  protected:
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
+  HloInstruction::FusionKind ChooseKind(
+      const HloInstruction* producer, const HloInstruction* consumer) override;
 };
 
 }  // namespace cpu

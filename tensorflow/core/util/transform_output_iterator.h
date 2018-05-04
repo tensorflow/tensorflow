@@ -24,7 +24,7 @@ namespace tensorflow {
 template <typename StoreType, typename InputType, typename ConversionOp,
           typename OffsetT = ptrdiff_t>
 class TransformOutputIterator {
- private:
+ protected:
   // Proxy object
   struct Reference {
     StoreType* ptr;

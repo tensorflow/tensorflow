@@ -415,18 +415,10 @@ struct ProtoHelper<qint32> {
 
 template <>
 struct ProtoHelper<bfloat16> {
-  typedef Helper<float>::RepeatedFieldType FieldType;
-  static const bfloat16* Begin(const TensorProto& proto) {
-    // TODO: Isn't this wrong, given that int_val is 32 bits long?
-    return reinterpret_cast<const bfloat16*>(proto.int_val().data());
-  }
-  static size_t NumElements(const TensorProto& proto) {
-    return proto.int_val().size();
-  }
   static void Fill(const bfloat16* data, size_t n, TensorProto* proto) {
-    proto->mutable_int_val()->Reserve(n);
+    proto->mutable_half_val()->Reserve(n);
     for (size_t i = 0; i < n; ++i) {
-      proto->mutable_int_val()->AddAlreadyReserved(data[i].value);
+      proto->mutable_half_val()->AddAlreadyReserved(data[i].value);
     }
   }
 };
@@ -529,14 +521,38 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
   return buf;
 }
 
-// fp16 is opaque to the protobuf, so we deserialize these identical to uint16
-// but with data stored in half_val instead of int_val (ie., we don't use
-// ProtoHelper<uint16>).
+// fp16 and bfloat16 are opaque to the protobuf, so we deserialize these
+// identical to uint16 but with data stored in half_val instead of int_val (ie.,
+// we don't use ProtoHelper<uint16>).
 template <>
 TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
                                           int64 n) {
   CHECK_GT(n, 0);
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
+  uint16* data = buf->template base<uint16>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64 in_n = in.half_val().size();
+  auto begin = in.half_val().begin();
+  if (n <= in_n) {
+    std::copy_n(begin, n, data);
+  } else if (in_n > 0) {
+    std::copy_n(begin, in_n, data);
+    const uint16 last = *(data + in_n - 1);
+    std::fill_n(data + in_n, n - in_n, last);
+  } else {
+    std::fill_n(data, n, 0);
+  }
+  return buf;
+}
+
+template <>
+TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
+                                       int64 n) {
+  CHECK_GT(n, 0);
+  Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
   uint16* data = buf->template base<uint16>();
   if (data == nullptr) {
     buf->Unref();
@@ -594,16 +610,20 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype);
+  CHECK_EQ(dtype(), expected_dtype)
+      << DataTypeString(expected_dtype) << " expected, got "
+      << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype);
-  CHECK(IsAligned());
+  CHECK_EQ(dtype(), expected_dtype)
+      << DataTypeString(expected_dtype) << " expected, got "
+      << DataTypeString(dtype());
+  CHECK(IsAligned()) << "CheckTypeAndIsAligned";
 }
 
 void Tensor::CheckIsAlignedAndSingleElement() const {
-  CHECK(IsAligned());
+  CHECK(IsAligned()) << "Aligned and single element";
   CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
 }
 
@@ -868,10 +888,25 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
+
+// StrCat and StrAppend don't support Eigen::half directly at the moment, and
+// we would like to keep them compatible with their absl counterparts, for ease
+// of migration. We could rely on errors::internal::PrepareForStrCat() but the
+// logic is so simple we can just replicate it here, where it is close to its
+// usage and easy to change later. And there's the extra benefit of not
+// accessing an 'internal' namespace.
+inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a) {
+  return a;
+}
+inline float PrintOneElement(const Eigen::half& h) {
+  return static_cast<float>(h);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
-                 int shape_size, T* data, int64* data_index, string* result) {
+void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
+                 int64 limit, int shape_size, const T* data, int64* data_index,
+                 string* result) {
   if (*data_index >= limit) return;
   int64 element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.
@@ -879,7 +914,7 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
     for (int64 i = 0; i < element_count; i++) {
       if (*data_index >= limit) return;
       if (i > 0) strings::StrAppend(result, " ");
-      strings::StrAppend(result, data[(*data_index)++]);
+      strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
     }
     return;
   }
@@ -910,7 +945,7 @@ string SummarizeArray(int64 limit, int64 num_elts,
   if (shape.empty()) {
     for (int64 i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
-      strings::StrAppend(&ret, array[i]);
+      strings::StrAppend(&ret, PrintOneElement(array[i]));
     }
     if (num_elts > limit) strings::StrAppend(&ret, "...");
     return ret;
@@ -1008,9 +1043,8 @@ StringPiece Tensor::tensor_data() const {
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {
-  CHECK_NE(nullptr, buf_);
-  CHECK_NE(nullptr, b.buf_);
-  return buf_->root_buffer() == b.buf_->root_buffer();
+  return buf_ != nullptr && b.buf_ != nullptr &&
+         buf_->root_buffer() == b.buf_->root_buffer();
 }
 
 string Tensor::DebugString() const {

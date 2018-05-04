@@ -17,14 +17,15 @@ py_library(
         ":saver",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:numerics",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:core",
-        "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:function",
     ],
@@ -50,7 +51,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:prefetching_py",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:errors",
@@ -67,13 +68,19 @@ cuda_py_test(
     srcs = ["datasets_test.py"],
     additional_deps = [
         ":datasets",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
+        "//tensorflow/contrib/data/python/ops:threadpool",
+        "//tensorflow/contrib/data/python/ops:unique",
+        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python/data",
         "//tensorflow/python/eager:test",
     ],
+    tags = ["noguitar"],
 )
 
 py_library(
@@ -104,37 +111,6 @@ cuda_py_test(
 )
 
 py_library(
-    name = "summary_writer",
-    srcs = ["summary_writer.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/summary:gen_summary_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary_op_util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/eager:context",
-    ],
-)
-
-cuda_py_test(
-    name = "summary_writer_test",
-    srcs = ["summary_writer_test.py"],
-    additional_deps = [
-        ":summary_writer",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-py_library(
     name = "metrics",
     srcs = [
         "metrics.py",
@@ -143,13 +119,14 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:checkpointable",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
@@ -163,11 +140,11 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
-        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/contrib/summary:summary_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -184,10 +161,10 @@ py_library(
     deps = [
         ":datasets",
         ":metrics",
-        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "@six_archive//:six",
@@ -232,6 +209,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":network",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
@@ -244,17 +222,4 @@ py_test(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

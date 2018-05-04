@@ -60,7 +60,9 @@ using perftools::gputools::Stream;
 
 namespace tensorflow {
 
-namespace gpu = ::perftools::gputools;
+// TODO(b/77980417): Remove this and use the regular tensorflow::se alias once
+// that's available.
+namespace gpu = ::stream_executor;
 
 Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
                    const Tensor* dst,
@@ -352,11 +354,7 @@ Status GPUUtil::Sync(Device* gpu_device) {
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo");
   }
-  dev_info->stream->BlockHostUntilDone();
-  if (!dev_info->stream->ok()) {
-    return errors::Internal("GPU sync failed");
-  }
-  return Status::OK();
+  return dev_info->stream->BlockHostUntilDone();
 }
 
 Status GPUUtil::SyncAll(Device* gpu_device) {

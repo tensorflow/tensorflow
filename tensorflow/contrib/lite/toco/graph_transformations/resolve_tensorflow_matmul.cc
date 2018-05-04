@@ -29,7 +29,43 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   if (matmul_it->get()->type != OperatorType::kTensorFlowMatMul) {
     return false;
   }
-  const auto* matmul_op = matmul_it->get();
+  const auto* matmul_op =
+      static_cast<const TensorFlowMatMulOperator*>(matmul_it->get());
+
+  // Reorder the axes on the second input. TensorFlow uses row-major ordering
+  // on both inputs, however this is inefficient for the FullyConnected
+  // operator. We'll transpose the second input to be in column-major order now
+  // and let constant propagation optimize things (if possible).
+  auto* transpose_op = new TransposeOperator;
+  transpose_op->inputs = {
+      matmul_op->inputs[1],
+      CreateInt32Array(
+          model,
+          AvailableArrayName(*model, matmul_op->inputs[1] + "/transpose/perm"),
+          {1, 0})};
+  transpose_op->outputs = {
+      AvailableArrayName(*model, matmul_op->inputs[1] + "/transpose")};
+  model->GetOrCreateArray(transpose_op->outputs[0]);
+  model->operators.emplace(matmul_it, transpose_op);
+
+  // Refresh iterator.
+  matmul_it = model->operators.begin();
+  for (; matmul_it != model->operators.end(); ++matmul_it) {
+    if (matmul_it->get() == matmul_op) {
+      break;
+    }
+  }
+  DCHECK_EQ(matmul_it->get(), matmul_op);
+
+  string input_lhs = matmul_op->inputs[0];
+  string input_rhs = transpose_op->outputs[0];
+
+  // Construct the new FullyConnectedOperator.
+  auto* fc_op = new FullyConnectedOperator;
+  fc_op->outputs = matmul_op->outputs;
+
+  // Insert the newly constructed FullyConnectedOperator.
+  model->operators.emplace(matmul_it, fc_op) + 1;
 
   // Find the op producing the array passed to this MatMul
   auto previous_op_it = model->operators.begin();
@@ -47,38 +83,35 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   }
   Operator* previous_op = (found) ? previous_op_it->get() : nullptr;
 
-  // construct the new FullyConnectedOperator
-  auto* fc_op = new FullyConnectedOperator;
-  fc_op->outputs = matmul_op->outputs;
-
-  // insert the newly constructed FullyConnectedOperator
-  auto fc_it = model->operators.emplace(matmul_it, fc_op);
-
-  // refresh invalidated iterator
-  matmul_it = fc_it + 1;
+  // Refresh iterator.
+  matmul_it = model->operators.begin();
+  for (; matmul_it != model->operators.end(); ++matmul_it) {
+    if (matmul_it->get() == matmul_op) {
+      break;
+    }
+  }
   DCHECK_EQ(matmul_it->get(), matmul_op);
 
   // The way that TensorFlow encodes FullyConnected ops is as a pair
   // (Reshape, MatMul), so we want to remove the Reshape op and rewrite the
-  // MatMul
-  // op as a FullyConnected. However, TensorFlow skips the Reshape ops if the
-  // input doesn't need reshaping, so we can't just match (Reshape, MatMul)
+  // MatMul op as a FullyConnected. However, TensorFlow skips the Reshape ops if
+  // the input doesn't need reshaping, so we can't just match (Reshape, MatMul)
   // pairs.
   if (previous_op && previous_op->type == OperatorType::kTensorFlowReshape) {
     AddMessageF("Combining %s and %s into %s", LogName(*previous_op),
                 LogName(*matmul_op), LogName(*fc_op));
     const auto& previous_op_output = previous_op->outputs[0];
     if (CountOpsWithInput(*model, previous_op_output) == 1) {
-      model->arrays.erase(previous_op_output);
+      model->EraseArray(previous_op_output);
     }
     CHECK_EQ(previous_op->inputs.size(), 2);
-    fc_op->inputs = {previous_op->inputs[0], matmul_op->inputs[1]};
+    input_lhs = previous_op->inputs[0];
     // Only remove Reshape node if no other node uses its output.
     if (CountOpsWithInput(*model, previous_op_output) == 1) {
       const auto& previous_op_shape = previous_op->inputs[1];
       if (CountOpsWithInput(*model, previous_op_shape) == 1 &&
           !GetOpWithOutput(*model, previous_op_shape)) {
-        model->arrays.erase(previous_op_shape);
+        model->EraseArray(previous_op_shape);
       }
       model->operators.erase(previous_op_it);
     }
@@ -95,8 +128,9 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   } else {
     AddMessageF("Replacing %s by a FullyConnected operator",
                 LogName(*matmul_op));
-    fc_op->inputs = {matmul_op->inputs[0], matmul_op->inputs[1]};
   }
+
+  fc_op->inputs = {input_lhs, input_rhs};
 
   // erase the MatMul operator
   model->operators.erase(matmul_it);

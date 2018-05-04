@@ -17,17 +17,22 @@
 """## Functions for working with arbitrarily nested sequences of elements.
 
 NOTE(mrry): This fork of the `tensorflow.python.util.nest` module
-makes two changes:
+makes three changes:
 
 1. It adds support for dictionaries as a level of nesting in nested structures.
 2. It removes support for lists as a level of nesting in nested structures.
+3. It adds support for `SparseTensorValue` as an atomic element.
 
-The motivation for this change is twofold:
+The motivation for this change is threefold:
 
 1. Many input-processing functions (e.g. `tf.parse_example()`) return
    dictionaries, and we would like to support them natively in datasets.
 2. It seems more natural for lists to be treated (e.g. in Dataset constructors)
    as tensors, rather than lists of (lists of...) tensors.
+3. This is needed because `SparseTensorValue` is implemented as a `namedtuple`
+   that would normally be flattened and we want to be able to create sparse
+   tensor from `SparseTensorValue's similarly to creating tensors from numpy
+   arrays.
 """
 
 from __future__ import absolute_import
@@ -38,6 +43,7 @@ import collections as _collections
 
 import six as _six
 
+from tensorflow.python.framework import sparse_tensor as _sparse_tensor
 from tensorflow.python.util.all_util import remove_undocumented
 
 
@@ -87,6 +93,8 @@ def _yield_value(iterable):
     # corresponding `OrderedDict` to pack it back).
     for key in _sorted(iterable):
       yield iterable[key]
+  elif isinstance(iterable, _sparse_tensor.SparseTensorValue):
+    yield iterable
   else:
     for value in iterable:
       yield value
@@ -116,8 +124,9 @@ def is_sequence(seq):
     True if the sequence is a not a string or list and is a
     collections.Sequence.
   """
-  return (isinstance(seq, (_collections.Sequence, dict))
-          and not isinstance(seq, (list, _six.string_types)))
+  return (isinstance(seq, (_collections.Sequence, dict)) and
+          not isinstance(seq, _sparse_tensor.SparseTensorValue) and
+          not isinstance(seq, (list, _six.string_types)))
 
 
 def flatten(nest):
@@ -257,7 +266,7 @@ def map_structure(func, *structure, **check_types_dict):
   and the return value will contain the results in the same structure.
 
   Args:
-    func: A callable that acceps as many arguments are there are structures.
+    func: A callable that accepts as many arguments are there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
       tuples/lists, or scalars.  Note: numpy arrays are considered scalars.
     **check_types_dict: only valid keyword argument is `check_types`. If set to
@@ -370,12 +379,12 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     if check_types and isinstance(shallow_tree, dict):
       if set(input_tree) != set(shallow_tree):
         raise ValueError(
-          "The two structures don't have the same keys. Input "
-          "structure has keys %s, while shallow structure has keys %s."
-          % (list(_six.iterkeys(input_tree)),
+            "The two structures don't have the same keys. Input "
+            "structure has keys %s, while shallow structure has keys %s." %
+            (list(_six.iterkeys(input_tree)),
              list(_six.iterkeys(shallow_tree))))
-      input_tree = list(_six.iteritems(input_tree))
-      shallow_tree = list(_six.iteritems(shallow_tree))
+      input_tree = list(sorted(_six.iteritems(input_tree)))
+      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -470,8 +479,8 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   The `inputs`, can be thought of as having the same structure as
   `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
-  This function therefore will return something with the same base structure as
-  `shallow_tree`.
+  This function, therefore, will return something with the same base structure
+  as `shallow_tree`.
 
   Examples:
 

@@ -117,6 +117,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DepthwiseConv2D"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Dot"
     mtype: "<type \'type\'>"
   }
@@ -293,7 +297,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SeparableConv1D"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SeparableConv2D"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SeparableConvolution1D"
     mtype: "<type \'type\'>"
   }
   member {
@@ -306,6 +318,10 @@ tf_module {
   }
   member {
     name: "SimpleRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Softmax"
     mtype: "<type \'type\'>"
   }
   member {

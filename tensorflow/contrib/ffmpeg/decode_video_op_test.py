@@ -20,11 +20,9 @@ from __future__ import print_function
 
 import os.path
 
-import six
+import six  # pylint: disable=unused-import
 
 from tensorflow.contrib import ffmpeg
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -32,7 +30,8 @@ from tensorflow.python.platform import test
 
 class DecodeVideoOpTest(test.TestCase):
 
-  def _loadFileAndTest(self, filename, width, height, frames, bmp_filename, index):
+  def _loadFileAndTest(self, filename, width, height, frames, bmp_filename,
+                       index):
     """Loads an video file and validates the output tensor.
 
     Args:
@@ -40,6 +39,8 @@ class DecodeVideoOpTest(test.TestCase):
       width: The width of the video.
       height: The height of the video.
       frames: The frames of the video.
+      bmp_filename: The filename for the bmp file.
+      index: Index location inside the video.
     """
     with self.test_session():
       path = os.path.join(resource_loader.get_data_files_path(), 'testdata',
@@ -48,7 +49,7 @@ class DecodeVideoOpTest(test.TestCase):
         contents = f.read()
 
       bmp_path = os.path.join(resource_loader.get_data_files_path(), 'testdata',
-                          bmp_filename)
+                              bmp_filename)
       with open(bmp_path, 'rb') as f:
         bmp_contents = f.read()
 
@@ -58,7 +59,7 @@ class DecodeVideoOpTest(test.TestCase):
       video_op = ffmpeg.decode_video(contents)
       video = video_op.eval()
       self.assertEqual(video.shape, (frames, height, width, 3))
-      self.assertAllEqual(video[index,:,:,:], image)
+      self.assertAllEqual(video[index, :, :, :], image)
 
   def testMp4(self):
     self._loadFileAndTest('small.mp4', 560, 320, 166, 'small_100.bmp', 99)

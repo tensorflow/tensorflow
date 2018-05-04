@@ -48,6 +48,7 @@
 ## Graph collections
 
 @@add_to_collection
+@@add_to_collections
 @@get_collection
 @@get_collection_ref
 @@GraphKeys
@@ -92,6 +93,7 @@ from tensorflow.python.framework.ops import get_default_graph
 from tensorflow.python.framework.ops import reset_default_graph
 from tensorflow.python.framework.ops import GraphKeys
 from tensorflow.python.framework.ops import add_to_collection
+from tensorflow.python.framework.ops import add_to_collections
 from tensorflow.python.framework.ops import get_collection
 from tensorflow.python.framework.ops import get_collection_ref
 from tensorflow.python.framework.ops import convert_to_tensor
@@ -118,7 +120,7 @@ from tensorflow.python.framework.ops import register_tensor_conversion_function
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.python.framework.dtypes import *
+from tensorflow.python.framework.dtypes import *  # pylint: disable=redefined-builtin
 
 # Load a TensorFlow plugin
 from tensorflow.python.framework.load_library import *

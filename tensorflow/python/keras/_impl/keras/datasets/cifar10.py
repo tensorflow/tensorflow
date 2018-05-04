@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""CIFAR10 small image classification dataset.
+"""CIFAR10 small images classification dataset.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -25,8 +25,10 @@ import numpy as np
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.datasets.cifar import load_batch
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.datasets.cifar10.load_data')
 def load_data():
   """Loads CIFAR10 dataset.
 

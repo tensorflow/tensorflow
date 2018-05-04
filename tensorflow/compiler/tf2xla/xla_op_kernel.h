@@ -164,21 +164,28 @@ class XlaOpKernelContext {
                                  TensorShape* shape) const;
 
   // Reads the current value of the resouce variable referred to by input
-  // 'index'.
-  Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
+  // 'index'. If `shape` is not nullptr, sets `*shape` to the shape of the
+  // variable. Returns an error if the variable has not been initialized, or if
+  // its type does not match `type`.
+  Status ReadVariableInput(int index, DataType type, TensorShape* shape,
+                           xla::ComputationDataHandle* value);
 
   // Assigns the value `handle` to the variable referenced by input
-  // `input_index`. Marks the operator as having side effects.
+  // `input_index`. The variable must be of `type`. Returns an error if the
+  // variable has been initialized with a different type or with a
+  // different shape.
   Status AssignVariable(int input_index, DataType type,
-                        const xla::ComputationDataHandle& handle);
+                        xla::ComputationDataHandle handle);
 
   // Helper routines for the OP_REQUIRES macros
-  void CtxFailure(Status s);
-  void CtxFailureWithWarning(Status s);
+  void CtxFailure(const Status& s);
+  void CtxFailureWithWarning(const Status& s);
+  void CtxFailure(const char* file, int line, const Status& s);
+  void CtxFailureWithWarning(const char* file, int line, const Status& s);
 
   // If this kernel invocation is within a function execution,
   // call_frame() returns the call frame for the function call.
-  FunctionCallFrame* call_frame() const { return context_->call_frame(); }
+  CallFrameInterface* call_frame() const { return context_->call_frame(); }
 
   FunctionLibraryRuntime* function_library() const {
     return context_->function_library();
@@ -209,6 +216,11 @@ class XlaOpKernelContext {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
+
+  // Gets an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMul(const DataType type);
 
  private:
   OpKernelContext* const context_;

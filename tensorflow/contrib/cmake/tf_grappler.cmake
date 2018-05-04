@@ -23,7 +23,7 @@ file(GLOB tf_grappler_srcs
    "${tensorflow_source_dir}/tensorflow/python/grappler/model_analyzer.cc"
    "${tensorflow_source_dir}/tensorflow/python/grappler/model_analyzer.h"
  )
- 
+
 add_library(tf_grappler OBJECT ${tf_grappler_srcs})
 
 add_dependencies(tf_grappler tf_core_cpu)

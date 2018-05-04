@@ -43,23 +43,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  // TODO(ahentz): Our current implementations rely on the inputs being 4D.
-  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
+  TF_LITE_ENSURE(context, NumDimensions(input) <= 4);
 
-  // TODO(ahentz): Our current implementations only support float32.
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+  TF_LITE_ENSURE(
+      context, output->type == kTfLiteFloat32 || output->type == kTfLiteUInt8);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
+
+  if (output->type == kTfLiteUInt8) {
+    TF_LITE_ENSURE_EQ(context, output->params.scale, (1. / 128.));
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 128);
+  }
 
   // TODO(ahentz): For some reason our implementations don't support
   // activations.
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
 
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
-  output_size->data[0] = input->dims->data[0];
-  output_size->data[1] = input->dims->data[1];
-  output_size->data[2] = input->dims->data[2];
-  output_size->data[3] = input->dims->data[3];
-
+  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
   return context->ResizeTensor(context, output, output_size);
 }
 
@@ -73,6 +72,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   type::L2Normalization<FusedActivationFunctionType::kNone>( \
       GetTensorData<float>(input), GetTensorDims(input),     \
       GetTensorData<float>(output), GetTensorDims(output))
+
+    if (kernel_type == kReference) {
+      TF_LITE_L2NORM(reference_ops);
+    }
+    if (kernel_type == kGenericOptimized) {
+      TF_LITE_L2NORM(optimized_ops);
+    }
+#undef TF_LITE_L2NORM
+  } else if (output->type == kTfLiteUInt8) {
+#define TF_LITE_L2NORM(type)                                               \
+  type::L2Normalization(GetTensorData<uint8>(input), GetTensorDims(input), \
+                        input->params.zero_point,                          \
+                        GetTensorData<uint8>(output), GetTensorDims(output))
 
     if (kernel_type == kReference) {
       TF_LITE_L2NORM(reference_ops);

@@ -46,18 +46,61 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 _BIAS_VARIABLE_NAME = "bias"
 _WEIGHTS_VARIABLE_NAME = "kernel"
 
 
+# TODO(jblespiau): Remove this function when we are sure there are no longer
+# any usage (even if protected, it is being used). Prefer assert_like_rnncell.
 def _like_rnncell(cell):
   """Checks that a given object is an RNNCell by using duck typing."""
   conditions = [hasattr(cell, "output_size"), hasattr(cell, "state_size"),
                 hasattr(cell, "zero_state"), callable(cell)]
   return all(conditions)
+
+
+# This can be used with self.assertRaisesRegexp for assert_like_rnncell.
+ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
+
+
+def assert_like_rnncell(cell_name, cell):
+  """Raises a TypeError if cell is not like an RNNCell.
+
+  NOTE: Do not rely on the error message (in particular in tests) which can be
+  subject to change to increase readability. Use
+  ASSERT_LIKE_RNNCELL_ERROR_REGEXP.
+
+  Args:
+    cell_name: A string to give a meaningful error referencing to the name
+      of the functionargument.
+    cell: The object which should behave like an RNNCell.
+
+  Raises:
+    TypeError: A human-friendly exception.
+  """
+  conditions = [
+      hasattr(cell, "output_size"),
+      hasattr(cell, "state_size"),
+      hasattr(cell, "zero_state"),
+      callable(cell),
+  ]
+  errors = [
+      "'output_size' property is missing",
+      "'state_size' property is missing",
+      "'zero_state' method is missing",
+      "is not callable"
+  ]
+
+  if not all(conditions):
+
+    errors = [error for error, cond in zip(errors, conditions) if not cond]
+    raise TypeError("The argument {!r} ({}) is not an RNNCell: {}.".format(
+        cell_name, cell, ", ".join(errors)))
 
 
 def _concat(prefix, suffix, static=False):
@@ -126,13 +169,14 @@ def _zero_state_tensors(state_size, batch_size, dtype):
     """Combine s with batch_size to get a proper tensor shape."""
     c = _concat(batch_size, s)
     size = array_ops.zeros(c, dtype=dtype)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       c_static = _concat(batch_size, s, static=True)
       size.set_shape(c_static)
     return size
   return nest.map_structure(get_state_shape, state_size)
 
 
+@tf_export("nn.rnn_cell.RNNCell")
 class RNNCell(base_layer.Layer):
   """Abstract object representing an RNN cell.
 
@@ -189,12 +233,13 @@ class RNNCell(base_layer.Layer):
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
     variable = getter(*args, **kwargs)
-    if context.in_graph_mode():
-      trainable = (variable in tf_variables.trainable_variables() or
-                   (isinstance(variable, tf_variables.PartitionedVariable) and
-                    list(variable)[0] in tf_variables.trainable_variables()))
-    else:
+    if context.executing_eagerly():
       trainable = variable._trainable  # pylint: disable=protected-access
+    else:
+      trainable = (
+          variable in tf_variables.trainable_variables() or
+          (isinstance(variable, tf_variables.PartitionedVariable) and
+           list(variable)[0] in tf_variables.trainable_variables()))
     if trainable and variable not in self._trainable_weights:
       self._trainable_weights.append(variable)
     elif not trainable and variable not in self._non_trainable_weights:
@@ -238,7 +283,8 @@ class RNNCell(base_layer.Layer):
     # Try to use the last cached zero_state. This is done to avoid recreating
     # zeros, especially when eager execution is enabled.
     state_size = self.state_size
-    if hasattr(self, "_last_zero_state"):
+    is_eager = context.executing_eagerly()
+    if is_eager and hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
        last_output) = getattr(self, "_last_zero_state")
       if (last_batch_size == batch_size and
@@ -247,11 +293,12 @@ class RNNCell(base_layer.Layer):
         return last_output
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       output = _zero_state_tensors(state_size, batch_size, dtype)
-    self._last_zero_state = (state_size, batch_size, dtype, output)
+    if is_eager:
+      self._last_zero_state = (state_size, batch_size, dtype, output)
     return output
 
 
-class _LayerRNNCell(RNNCell):
+class LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.
 
   For backwards compatibility purposes, most `RNNCell` instances allow their
@@ -265,7 +312,7 @@ class _LayerRNNCell(RNNCell):
   `call` methods do not access Variables `tf.get_variable`.
   """
 
-  def __call__(self, inputs, state, scope=None):
+  def __call__(self, inputs, state, scope=None, *args, **kwargs):
     """Run this RNN cell on inputs, starting from the given state.
 
     Args:
@@ -274,8 +321,9 @@ class _LayerRNNCell(RNNCell):
         with shape `[batch_size, self.state_size]`.  Otherwise, if
         `self.state_size` is a tuple of integers, this should be a tuple
         with shapes `[batch_size, s] for s in self.state_size`.
-      scope: `VariableScope` for the created subgraph; if not provided,
-        defaults to standard `tf.layers.Layer` behavior.
+      scope: optional cell scope.
+      *args: Additional positional arguments.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       A pair containing:
@@ -287,10 +335,12 @@ class _LayerRNNCell(RNNCell):
     # Bypass RNNCell's variable capturing semantics for LayerRNNCell.
     # Instead, it is up to subclasses to provide a proper build
     # method.  See the class docstring for more details.
-    return base_layer.Layer.__call__(self, inputs, state, scope=scope)
+    return base_layer.Layer.__call__(self, inputs, state, scope=scope,
+                                     *args, **kwargs)
 
 
-class BasicRNNCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.BasicRNNCell")
+class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
 
   Args:
@@ -302,10 +352,17 @@ class BasicRNNCell(_LayerRNNCell):
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such
       cases.
+    dtype: Default dtype of the layer (default of `None` means use the type
+      of the first input). Required when `build` is called before `call`.
   """
 
-  def __init__(self, num_units, activation=None, reuse=None, name=None):
-    super(BasicRNNCell, self).__init__(_reuse=reuse, name=name)
+  def __init__(self,
+               num_units,
+               activation=None,
+               reuse=None,
+               name=None,
+               dtype=None):
+    super(BasicRNNCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -347,7 +404,8 @@ class BasicRNNCell(_LayerRNNCell):
     return output, output
 
 
-class GRUCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.GRUCell")
+class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
   Args:
@@ -362,6 +420,8 @@ class GRUCell(_LayerRNNCell):
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such
       cases.
+    dtype: Default dtype of the layer (default of `None` means use the type
+      of the first input). Required when `build` is called before `call`.
   """
 
   def __init__(self,
@@ -370,8 +430,9 @@ class GRUCell(_LayerRNNCell):
                reuse=None,
                kernel_initializer=None,
                bias_initializer=None,
-               name=None):
-    super(GRUCell, self).__init__(_reuse=reuse, name=name)
+               name=None,
+               dtype=None):
+    super(GRUCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -444,6 +505,7 @@ class GRUCell(_LayerRNNCell):
 _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 
 
+@tf_export("nn.rnn_cell.LSTMStateTuple")
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 
@@ -463,7 +525,8 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
-class BasicLSTMCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.BasicLSTMCell")
+class BasicLSTMCell(LayerRNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -478,8 +541,14 @@ class BasicLSTMCell(_LayerRNNCell):
   that follows.
   """
 
-  def __init__(self, num_units, forget_bias=1.0,
-               state_is_tuple=True, activation=None, reuse=None, name=None):
+  def __init__(self,
+               num_units,
+               forget_bias=1.0,
+               state_is_tuple=True,
+               activation=None,
+               reuse=None,
+               name=None,
+               dtype=None):
     """Initialize the basic LSTM cell.
 
     Args:
@@ -497,11 +566,13 @@ class BasicLSTMCell(_LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
+      dtype: Default dtype of the layer (default of `None` means use the type
+        of the first input). Required when `build` is called before `call`.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
       `CudnnCompatibleLSTMCell` instead.
     """
-    super(BasicLSTMCell, self).__init__(_reuse=reuse, name=name)
+    super(BasicLSTMCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -546,9 +617,9 @@ class BasicLSTMCell(_LayerRNNCell):
     Args:
       inputs: `2-D` tensor with shape `[batch_size, input_size]`.
       state: An `LSTMStateTuple` of state tensors, each shaped
-        `[batch_size, self.state_size]`, if `state_is_tuple` has been set to
+        `[batch_size, num_units]`, if `state_is_tuple` has been set to
         `True`.  Otherwise, a `Tensor` shaped
-        `[batch_size, 2 * self.state_size]`.
+        `[batch_size, 2 * num_units]`.
 
     Returns:
       A pair containing the new hidden state, and the new state (either a
@@ -587,7 +658,8 @@ class BasicLSTMCell(_LayerRNNCell):
     return new_h, new_state
 
 
-class LSTMCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.LSTMCell")
+class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -614,7 +686,7 @@ class LSTMCell(_LayerRNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=None, num_proj_shards=None,
                forget_bias=1.0, state_is_tuple=True,
-               activation=None, reuse=None, name=None):
+               activation=None, reuse=None, name=None, dtype=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -647,11 +719,13 @@ class LSTMCell(_LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
+      dtype: Default dtype of the layer (default of `None` means use the type
+        of the first input). Required when `build` is called before `call`.
 
       When restoring from CudnnLSTM-trained checkpoints, use
       `CudnnCompatibleLSTMCell` instead.
     """
-    super(LSTMCell, self).__init__(_reuse=reuse, name=name)
+    super(LSTMCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -830,6 +904,7 @@ def _default_dropout_state_filter_visitor(substate):
   return True
 
 
+@tf_export("nn.rnn_cell.DropoutWrapper")
 class DropoutWrapper(RNNCell):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
@@ -900,8 +975,8 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
-    if not _like_rnncell(cell):
-      raise TypeError("The parameter cell is not a RNNCell.")
+    assert_like_rnncell("cell", cell)
+
     if (dropout_state_filter_visitor is not None
         and not callable(dropout_state_filter_visitor)):
       raise TypeError("dropout_state_filter_visitor must be callable")
@@ -976,6 +1051,10 @@ class DropoutWrapper(RNNCell):
     return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
   @property
+  def wrapped_cell(self):
+    return self._cell
+
+  @property
   def state_size(self):
     return self._cell.state_size
 
@@ -1037,7 +1116,7 @@ class DropoutWrapper(RNNCell):
       inputs = self._dropout(inputs, "input",
                              self._recurrent_input_noise,
                              self._input_keep_prob)
-    output, new_state = self._cell(inputs, state, scope)
+    output, new_state = self._cell(inputs, state, scope=scope)
     if _should_dropout(self._state_keep_prob):
       # Identify which subsets of the state to perform dropout on and
       # which ones to keep.
@@ -1054,6 +1133,7 @@ class DropoutWrapper(RNNCell):
     return output, new_state
 
 
+@tf_export("nn.rnn_cell.ResidualWrapper")
 class ResidualWrapper(RNNCell):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
@@ -1109,6 +1189,7 @@ class ResidualWrapper(RNNCell):
     return (res_outputs, new_state)
 
 
+@tf_export("nn.rnn_cell.DeviceWrapper")
 class DeviceWrapper(RNNCell):
   """Operator that ensures an RNNCell runs on a particular device."""
 
@@ -1143,8 +1224,18 @@ class DeviceWrapper(RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
+@tf_export("nn.rnn_cell.MultiRNNCell")
 class MultiRNNCell(RNNCell):
-  """RNN cell composed sequentially of multiple simple cells."""
+  """RNN cell composed sequentially of multiple simple cells.
+
+  Example:
+
+  ```python
+  num_units = [128, 64]
+  cells = [BasicLSTMCell(num_units=n) for n in num_units]
+  stacked_rnn_cell = MultiRNNCell(cells)
+  ```
+  """
 
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.
@@ -1168,6 +1259,12 @@ class MultiRNNCell(RNNCell):
           "cells must be a list or tuple, but saw: %s." % cells)
 
     self._cells = cells
+    for cell_number, cell in enumerate(self._cells):
+      # Add Checkpointable dependencies on these cells so their variables get
+      # saved with this object when using object-based saving.
+      if isinstance(cell, checkpointable.CheckpointableBase):
+        # TODO(allenl): Track down non-Checkpointable callers.
+        self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):

@@ -26,6 +26,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 
+#include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
@@ -71,15 +73,20 @@ class XlaDevice : public LocalDevice {
   // Factory function. 'platform_name' is the name of the XLA platform.
   // 'device_name' is the name of the Tensorflow device to create.
   // 'jit_device_name' is the name of the corresponding JIT device.
+  // 'transfer_as_literal' is true if device<->host transfers must be done using
+  // XLA's TransferLiteral{To,From}Device interface. If false, we can use
+  // ThenMemcpy instead.
   static Status Create(const string& platform_name, const string& device_name,
                        int device_ordinal, const string& jit_device_name,
                        const SessionOptions& options, const string& name_prefix,
-                       bool register_device_for_compilation,
+                       const XlaOpRegistry::DeviceRegistration& registration,
+                       bool transfer_as_literal,
                        std::unique_ptr<XlaDevice>* device);
 
   XlaDevice(const SessionOptions& options, const DeviceAttributes& attrs,
             int device_ordinal, const DeviceType& jit_device_name,
-            ::perftools::gputools::Platform* platform);
+            ::perftools::gputools::Platform* platform,
+            bool transfer_as_literal);
   ~XlaDevice() override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
@@ -104,7 +111,7 @@ class XlaDevice : public LocalDevice {
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
   // The name of the device that is used to compile Ops for this XlaDevice.
-  const DeviceType& jit_device_name_;
+  DeviceType jit_device_name_;
   // Memory allocator associated with this device.
   Allocator* xla_allocator_;                   // Not owned.
   ::perftools::gputools::Platform* platform_;  // Not owned.
@@ -113,9 +120,12 @@ class XlaDevice : public LocalDevice {
   // copying back and forth between CPU and the device, and
   // computations enqueued by XLA.
   xla::Backend::StreamPtr stream_;
+  // Must we use XLA's transfer manager for correct host<->device transfers? if
+  // false, we can use ThenMemcpy() instead.
+  bool transfer_as_literal_;
 };
 
-// Builds dummy OpKernel registrations on 'device' for the JIT operators
+// Builds OpKernel registrations on 'device' for the JIT operators
 // registered on 'jit_device'. Returns ownership of a XlaDeviceOpRegistrations
 // object that encapsulates the kernel registrations.
 struct XlaDeviceOpRegistrations {

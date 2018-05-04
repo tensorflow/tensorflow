@@ -17,11 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -98,36 +98,36 @@ class InTopK : public OpKernel {
   int k_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("InTopK").Device(DEVICE_CPU)
-    .HostMemory("predictions")
-    .HostMemory("targets")
-    .HostMemory("precision")
-    .TypeConstraint<int32>("T"),
-    InTopK<float, int32>);
-REGISTER_KERNEL_BUILDER(
-    Name("InTopK").Device(DEVICE_CPU)
-    .HostMemory("predictions")
-    .HostMemory("targets")
-    .HostMemory("precision")
-    .TypeConstraint<int64>("T"),
-    InTopK<float, int64>);
+REGISTER_KERNEL_BUILDER(Name("InTopK")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("predictions")
+                            .HostMemory("targets")
+                            .HostMemory("precision")
+                            .TypeConstraint<int32>("T"),
+                        InTopK<float, int32>);
+REGISTER_KERNEL_BUILDER(Name("InTopK")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("predictions")
+                            .HostMemory("targets")
+                            .HostMemory("precision")
+                            .TypeConstraint<int64>("T"),
+                        InTopK<float, int64>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("InTopKV2").Device(DEVICE_CPU)
-    .HostMemory("predictions")
-    .HostMemory("targets")
-    .HostMemory("k")
-    .HostMemory("precision")
-    .TypeConstraint<int32>("T"),
-    InTopK<float, int32>);
-REGISTER_KERNEL_BUILDER(
-    Name("InTopKV2").Device(DEVICE_CPU)
-    .HostMemory("predictions")
-    .HostMemory("targets")
-    .HostMemory("k")
-    .HostMemory("precision")
-    .TypeConstraint<int64>("T"),
-    InTopK<float, int64>);
+REGISTER_KERNEL_BUILDER(Name("InTopKV2")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("predictions")
+                            .HostMemory("targets")
+                            .HostMemory("k")
+                            .HostMemory("precision")
+                            .TypeConstraint<int32>("T"),
+                        InTopK<float, int32>);
+REGISTER_KERNEL_BUILDER(Name("InTopKV2")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("predictions")
+                            .HostMemory("targets")
+                            .HostMemory("k")
+                            .HostMemory("precision")
+                            .TypeConstraint<int64>("T"),
+                        InTopK<float, int64>);
 
 }  // namespace tensorflow

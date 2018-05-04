@@ -427,7 +427,7 @@ inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
     int64 size, const string& debug_info) {
   DeviceLapackInfo new_dev_info(context_, size, debug_info);
   scratch_tensor_refs_.emplace_back(new_dev_info.tensor());
-  return std::move(new_dev_info);
+  return new_dev_info;
 }
 
 }  // namespace tensorflow

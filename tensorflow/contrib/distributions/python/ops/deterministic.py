@@ -87,7 +87,7 @@ class _BaseDeterministic(distribution.Distribution):
       ValueError:  If `loc` is a scalar.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, atol, rtol]):
+    with ops.name_scope(name, values=[loc, atol, rtol]) as name:
       loc = ops.convert_to_tensor(loc, name="loc")
       if is_vector and validate_args:
         msg = "Argument loc must be at least rank 1."
@@ -290,8 +290,10 @@ class VectorDeterministic(_BaseDeterministic):
   #### Examples
 
   ```python
+  tfd = tf.contrib.distributions
+
   # Initialize a single VectorDeterministic supported at [0., 2.] in R^2.
-  constant = tf.contrib.distributions.Deterministic([0., 2.])
+  constant = tfd.Deterministic([0., 2.])
   constant.prob([0., 2.])
   ==> 1.
   constant.prob([0., 3.])
@@ -299,7 +301,7 @@ class VectorDeterministic(_BaseDeterministic):
 
   # Initialize a [3] batch of constants on R^2.
   loc = [[0., 1.], [2., 3.], [4., 5.]]
-  constant = constant_lib.VectorDeterministic(loc)
+  constant = tfd.VectorDeterministic(loc)
   constant.prob([[0., 1.], [1.9, 3.], [3.99, 5.]])
   ==> [1., 0., 0.]
   ```

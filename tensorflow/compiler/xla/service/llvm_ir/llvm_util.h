@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -280,6 +281,16 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 Status DumpIRToDirectory(const string& directory_name,
                          const string& hlo_module_name,
                          const llvm::Module& llvm_module, bool optimized);
+
+llvm::Function* CreateFunction(llvm::FunctionType* function_type,
+                               llvm::GlobalValue::LinkageTypes linkage,
+                               bool enable_fast_math, bool optimize_for_size,
+                               tensorflow::StringPiece name,
+                               llvm::Module* module);
+
+// Extracts the xla_backend_extra_options from `config` and passes those that
+// don't start with xla_ to LLVM.
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config);
 
 }  // namespace llvm_ir
 }  // namespace xla

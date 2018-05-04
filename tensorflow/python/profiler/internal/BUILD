@@ -21,6 +21,7 @@ py_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -68,19 +69,4 @@ cuda_py_test(
     tags = [
         "no_pip",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

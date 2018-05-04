@@ -22,6 +22,7 @@ cc_library(
         "include/json/value.h",
         "include/json/writer.h",
     ],
+    copts = ["-DJSON_USE_EXCEPTION=0"],
     includes = ["include"],
     visibility = ["//visibility:public"],
     deps = [":private"],

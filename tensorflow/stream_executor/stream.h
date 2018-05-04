@@ -38,8 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace host {
 class HostBlas;
@@ -113,7 +112,7 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  Stream &Init();
+  Stream &Init() LOCKS_EXCLUDED(mu_);
 
   // Initializes timer t via the StreamExecutor.
   Stream &InitTimer(Timer *t);
@@ -124,11 +123,11 @@ class Stream {
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
-  Stream *GetOrCreateSubStream();
+  Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later.
-  void ReturnSubStream(Stream *sub_stream);
+  void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
   // or destroyed.
@@ -234,7 +233,7 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
       const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
-      const DeviceMemory<float> &variance, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
       DeviceMemory<float> *offset_backprop);
@@ -255,7 +254,7 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &mean, const DeviceMemory<float> &variance,
+      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half> *x_backprop,
@@ -357,6 +356,17 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -478,6 +488,18 @@ class Stream {
 
   Stream &ThenConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<double> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardDataWithAlgorithm(
+      const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<float> &filter_data,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> backward_output_data,
@@ -528,6 +550,18 @@ class Stream {
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<Eigen::half> *backward_filter_data,
       ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveBackwardFilterWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<double> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -1767,7 +1801,8 @@ class Stream {
                          DeviceMemory<Eigen::half> *output_c_data,
                          bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1784,7 +1819,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<float> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1801,7 +1837,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<double> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   // Enqueue a backward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnBackward for more details.
@@ -1828,7 +1865,8 @@ class Stream {
       DeviceMemory<Eigen::half> *input_c_backprop_data,
       DeviceMemory<Eigen::half> *params_backprop_data,
       DeviceMemory<uint8> *reserve_space_data,
-      ScratchAllocator *workspace_allocator);
+      ScratchAllocator *workspace_allocator,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1852,7 +1890,8 @@ class Stream {
                           DeviceMemory<float> *input_c_backprop_data,
                           DeviceMemory<float> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1876,7 +1915,8 @@ class Stream {
                           DeviceMemory<double> *input_c_backprop_data,
                           DeviceMemory<double> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
@@ -1903,8 +1943,9 @@ class Stream {
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.
   //
-  // Returns true if the stream is ok().
-  bool BlockHostUntilDone();
+  // Returns an OK status if the blocking was successful and the stream is ok().
+  // Otherwise returns an error describing why the blocking failed.
+  port::Status BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
 
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal
@@ -1932,15 +1973,14 @@ class Stream {
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
+  //
   // Behavior is undefined when synchronizing using OpenCL user events.
   // Behavior is undefined if host callbacks call device routines or insert
   // them into any stream.
+  //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
   Stream &ThenDoHostCallback(std::function<void()> callback);
-
-  // Identical to ThenDoHostCallback; only exposed for testing purposes.
-  Stream &ThenDoHostCallbackForTest(std::function<void()> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
@@ -1960,14 +2000,14 @@ class Stream {
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.
 
-  bool InErrorState() const {
+  bool InErrorState() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock{mu_};
     return !ok_;
   }
 
   // Sets the error state if operation_retcode is false.
   // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) {
+  void CheckError(bool operation_retcode) LOCKS_EXCLUDED(mu_) {
     if (operation_retcode) {
       return;
     }
@@ -2057,7 +2097,6 @@ struct Quantization<int32> {
       dnn::QuantizedActivationMode::k32Bit;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_H_

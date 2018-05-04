@@ -142,18 +142,6 @@ class ResizeBilinearOpTest(test.TestCase):
           input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
     self.assertLess(err, 1e-3)
 
-  def testGradOnUnsupportedType(self):
-    in_shape = [1, 4, 6, 1]
-    out_shape = [1, 2, 3, 1]
-
-    x = np.arange(0, 24).reshape(in_shape).astype(np.uint8)
-
-    with self.test_session():
-      input_tensor = constant_op.constant(x, shape=in_shape)
-      resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-      grad = gradients_impl.gradients(input_tensor, [resize_out])
-      self.assertEqual([None], grad)
-
   def testCompareGpuVsCpu(self):
     in_shape = [2, 4, 6, 3]
     out_shape = [2, 8, 16, 3]
@@ -171,6 +159,26 @@ class ResizeBilinearOpTest(test.TestCase):
               input_tensor, in_shape, resized_tensor, out_shape, x_init_value=x)
 
       self.assertAllClose(grad[False], grad[True], rtol=1e-4, atol=1e-4)
+
+  def testTypes(self):
+    in_shape = [1, 4, 6, 1]
+    out_shape = [1, 2, 3, 1]
+    x = np.arange(0, 24).reshape(in_shape)
+
+    with self.test_session() as sess:
+      for dtype in [np.float16, np.float32, np.float64]:
+        input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
+        resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
+        grad = sess.run(gradients_impl.gradients(resize_out, input_tensor))[0]
+        self.assertAllEqual(in_shape, grad.shape)
+        # Not using gradient_checker.compute_gradient as I didn't work out
+        # the changes required to compensate for the lower precision of
+        # float16 when computing the numeric jacobian.
+        # Instead, we just test the theoretical jacobian.
+        self.assertAllEqual([[[[1.], [0.], [1.], [0.], [1.], [0.]], [[0.], [
+            0.
+        ], [0.], [0.], [0.], [0.]], [[1.], [0.], [1.], [0.], [1.], [0.]],
+                              [[0.], [0.], [0.], [0.], [0.], [0.]]]], grad)
 
 
 class ResizeBicubicOpTest(test.TestCase):

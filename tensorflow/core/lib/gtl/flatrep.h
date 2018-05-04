@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
+#define TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
 
 #include <string.h>
 #include <utility>
@@ -328,4 +328,4 @@ class FlatRep {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_FLATREP_H_

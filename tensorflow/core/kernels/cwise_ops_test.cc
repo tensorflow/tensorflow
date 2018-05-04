@@ -54,36 +54,36 @@ int ColsFromArg(int arg) { return (arg % kRows); }
 BM_UNARY(cpu, Floor, float, DT_FLOAT);
 #if GOOGLE_CUDA
 BM_UNARY(gpu, Floor, float, DT_FLOAT);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 BM_UNARY(sycl, Floor, float, DT_FLOAT);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 BM_UNARY(cpu, Floor, double, DT_DOUBLE);
 #if GOOGLE_CUDA
 BM_UNARY(gpu, Floor, double, DT_DOUBLE);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 BM_UNARY(sycl, Floor, double, DT_DOUBLE);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 BM_UNARY(cpu, Conj, std::complex<float>, DT_COMPLEX64);
 #if GOOGLE_CUDA
 BM_UNARY(gpu, Conj, std::complex<float>, DT_COMPLEX64);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 BM_UNARY(cpu, Conj, std::complex<double>, DT_COMPLEX128);
 #if GOOGLE_CUDA
 BM_UNARY(gpu, Conj, std::complex<double>, DT_COMPLEX128);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 BM_UNARY(cpu, Rint, double, DT_DOUBLE);
 #if GOOGLE_CUDA
 BM_UNARY(gpu, Rint, double, DT_DOUBLE);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 BM_UNARY(cpu, Rint, float, DT_FLOAT);
 #if GOOGLE_CUDA
 BM_UNARY(gpu, Rint, float, DT_FLOAT);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 // data func scalar.
 Graph* BinaryScalar(int num, const string& func) {
@@ -113,18 +113,18 @@ Graph* BinaryScalar(int num, const string& func) {
 BM_BINARY_SCALAR(cpu, Less);
 #if GOOGLE_CUDA
 BM_BINARY_SCALAR(gpu, Less);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 BM_BINARY_SCALAR(sycl, Less);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 BM_BINARY_SCALAR(cpu, Add);
 #if GOOGLE_CUDA
 BM_BINARY_SCALAR(gpu, Add);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 BM_BINARY_SCALAR(sycl, Add);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 #undef BM_BINARY_SCALAR
 
 template <class T>
@@ -163,11 +163,11 @@ using Eigen::half;
 BM_BIAS_ADD_ALL(cpu, float, DT_FLOAT);
 #if GOOGLE_CUDA
 BM_BIAS_ADD_ALL(gpu, float, DT_FLOAT);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 BM_BIAS_ADD_ALL(cpu, half, DT_HALF);
 #if GOOGLE_CUDA
 BM_BIAS_ADD_ALL(gpu, half, DT_HALF);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #undef BM_BIAS_ADD_ALL
 #undef BM_BIAS_ADD
 
@@ -217,28 +217,36 @@ using Eigen::half;
 #if GOOGLE_CUDA
 BM_BIAS_ADD_GRAD_ALL(gpu, NCHW, float, DT_FLOAT);
 BM_BIAS_ADD_GRAD_ALL(gpu, NCHW, half, DT_HALF);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 BM_BIAS_ADD_GRAD_ALL(cpu, NHWC, float, DT_FLOAT);
 #if GOOGLE_CUDA
 BM_BIAS_ADD_GRAD_ALL(gpu, NHWC, float, DT_FLOAT);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 BM_BIAS_ADD_GRAD_ALL(cpu, NHWC, half, DT_HALF);
 #if GOOGLE_CUDA
 BM_BIAS_ADD_GRAD_ALL(gpu, NHWC, half, DT_HALF);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #undef BM_BIAS_ADD_GRAD_ALL
 #undef BM_BIAS_ADD_GRAD
 
 Graph* BcastAdd(int rows, int cols, int dim) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor lhs(DT_FLOAT, TensorShape({rows, cols}));
-  lhs.flat<float>().setRandom();
-  TensorShape rhs_shape;
-  if (dim == 0) {
+  TensorShape lhs_shape, rhs_shape;
+  if (dim == 0) {  // row
+    lhs_shape = TensorShape({rows, cols});
     rhs_shape = TensorShape({rows, 1});
-  } else {
+  } else if (dim == 1) {  // col
+    lhs_shape = TensorShape({rows, cols});
     rhs_shape = TensorShape({cols});
+  } else if (dim == 2) {  // cross_rc
+    lhs_shape = TensorShape({rows, 1});
+    rhs_shape = TensorShape({1, cols});
+  } else {  // cross_cr
+    lhs_shape = TensorShape({1, cols});
+    rhs_shape = TensorShape({rows, 1});
   }
+  Tensor lhs(DT_FLOAT, lhs_shape);
+  lhs.flat<float>().setRandom();
   Tensor rhs(DT_FLOAT, rhs_shape);
   rhs.flat<float>().setRandom();
   test::graph::Binary(g, "Add", test::graph::Constant(g, lhs),
@@ -265,10 +273,10 @@ Graph* BcastAdd(int rows, int cols, int dim) {
 BM_BCAST_ADD_ROW_ALL(cpu);
 #if GOOGLE_CUDA
 BM_BCAST_ADD_ROW_ALL(gpu);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 BM_BCAST_ADD_ROW_ALL(sycl);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 #undef BM_BCAST_ADD_ROW_ALL
 #undef BM_BCAST_ADD_ROW
 
@@ -291,12 +299,66 @@ BM_BCAST_ADD_ROW_ALL(sycl);
 BM_BCAST_ADD_COL_ALL(cpu);
 #if GOOGLE_CUDA
 BM_BCAST_ADD_COL_ALL(gpu);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 BM_BCAST_ADD_COL_ALL(sycl);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 #undef BM_BCAST_ADD_COL_ALL
 #undef BM_BCAST_ADD_COL
+
+#define BM_BCAST_ADD_CROSS_RC(DEVICE, R, C)                            \
+  void BM_##DEVICE##_BcastAddCrossRC_R##R##_C##C(int iters, int arg) { \
+    const int rows = RowsFromArg(arg);                                 \
+    const int cols = ColsFromArg(arg);                                 \
+    const int64 tot = static_cast<int64>(iters) * rows * cols;         \
+    testing::ItemsProcessed(tot);                                      \
+    testing::BytesProcessed(tot * sizeof(float));                      \
+    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 2)).Run(iters);      \
+  }                                                                    \
+  BENCHMARK(BM_##DEVICE##_BcastAddCrossRC_R##R##_C##C)                 \
+      ->Arg(RowsAndColsArg(R, C));
+
+#define BM_BCAST_ADD_CROSS_RC_ALL(DEVICE)   \
+  BM_BCAST_ADD_CROSS_RC(DEVICE, 512, 2048); \
+  BM_BCAST_ADD_CROSS_RC(DEVICE, 512, 4096); \
+  BM_BCAST_ADD_CROSS_RC(DEVICE, 2048, 512); \
+  BM_BCAST_ADD_CROSS_RC(DEVICE, 4096, 512);
+BM_BCAST_ADD_CROSS_RC_ALL(cpu);
+#if GOOGLE_CUDA
+BM_BCAST_ADD_CROSS_RC_ALL(gpu);
+#endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+BM_BCAST_ADD_CROSS_RC_ALL(sycl);
+#endif  // TENSORFLOW_USE_SYCL
+#undef BM_BCAST_ADD_CROSS_RC_ALL
+#undef BM_BCAST_ADD_CROSS_RC
+
+#define BM_BCAST_ADD_CROSS_CR(DEVICE, R, C)                            \
+  void BM_##DEVICE##_BcastAddCrossCR_R##R##_C##C(int iters, int arg) { \
+    const int rows = RowsFromArg(arg);                                 \
+    const int cols = ColsFromArg(arg);                                 \
+    const int64 tot = static_cast<int64>(iters) * rows * cols;         \
+    testing::ItemsProcessed(tot);                                      \
+    testing::BytesProcessed(tot * sizeof(float));                      \
+    test::Benchmark(#DEVICE, BcastAdd(rows, cols, 3)).Run(iters);      \
+  }                                                                    \
+  BENCHMARK(BM_##DEVICE##_BcastAddCrossCR_R##R##_C##C)                 \
+      ->Arg(RowsAndColsArg(R, C));
+
+#define BM_BCAST_ADD_CROSS_CR_ALL(DEVICE)   \
+  BM_BCAST_ADD_CROSS_CR(DEVICE, 512, 2048); \
+  BM_BCAST_ADD_CROSS_CR(DEVICE, 512, 4096); \
+  BM_BCAST_ADD_CROSS_CR(DEVICE, 2048, 512); \
+  BM_BCAST_ADD_CROSS_CR(DEVICE, 4096, 512);
+BM_BCAST_ADD_CROSS_CR_ALL(cpu);
+#if GOOGLE_CUDA
+BM_BCAST_ADD_CROSS_CR_ALL(gpu);
+#endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+BM_BCAST_ADD_CROSS_CR_ALL(sycl);
+#endif  // TENSORFLOW_USE_SYCL
+#undef BM_BCAST_ADD_CROSS_CR_ALL
+#undef BM_BCAST_ADD_CROSS_CR
 
 }  // namespace
 }  // namespace tensorflow

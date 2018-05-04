@@ -76,7 +76,7 @@ class OneHotOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(OneHotOp);
 };
 
-REGISTER_XLA_OP(Name("OneHot"), OneHotOp);
+REGISTER_XLA_OP(Name("OneHot").CompileTimeConstInput("depth"), OneHotOp);
 
 }  // namespace
 }  // namespace tensorflow

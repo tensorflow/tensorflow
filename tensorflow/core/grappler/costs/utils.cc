@@ -26,6 +26,8 @@ limitations under the License.
 #include "cuda/include/cudnn.h"
 #endif
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -200,17 +202,25 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
 }
 
 DeviceProperties GetDeviceInfo(const string& device_str) {
+  DeviceProperties unknown;
+  unknown.set_type("UNKNOWN");
+
   DeviceNameUtils::ParsedName parsed;
   if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
-      return GetLocalGPUInfo(parsed.id);
+      TfGpuId tf_gpu_id(parsed.id);
+      CudaGpuId cuda_gpu_id;
+      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      if (!s.ok()) {
+        // We are probably running simulation without linking cuda libraries.
+        cuda_gpu_id = CudaGpuId(parsed.id);
+      }
+      return GetLocalGPUInfo(cuda_gpu_id);
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }
   }
-  DeviceProperties device;
-  device.set_type("UNKNOWN");
-  return device;
+  return unknown;
 }
 
 DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
@@ -285,14 +295,10 @@ OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
       perf->mutable_op_memory()->add_output_memory(output_info.size());
     }
 
-    perf->mutable_op_memory()->set_host_temp_memory(
-        cost_node->host_temp_memory_size());
-    perf->mutable_op_memory()->set_device_temp_memory(
-        cost_node->device_temp_memory_size());
-    perf->mutable_op_memory()->set_host_persistent_memory(
-        cost_node->host_persistent_memory_size());
-    perf->mutable_op_memory()->set_device_persistent_memory(
-        cost_node->device_persistent_memory_size());
+    perf->mutable_op_memory()->set_temp_memory(
+        cost_node->temporary_memory_size());
+    perf->mutable_op_memory()->set_persistent_memory(
+        cost_node->persistent_memory_size());
   }
   return ret;
 }

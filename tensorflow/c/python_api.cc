@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/c/python_api.h"
 
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/python/framework/cpp_shape_inference.pb.h"
 
 namespace tensorflow {
 
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
   mutex_lock l(graph->mu);
   graph->graph.AddControlEdge(&input->node, &op->node);
+  RecordMutation(graph, *op, "adding control input");
 }
 
 void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
@@ -36,11 +38,13 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 
   mutex_lock l(graph->mu);
   op->node.AddAttr(attr_name, attr_val);
+  RecordMutation(graph, *op, "setting attribute");
 }
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   mutex_lock l(graph->mu);
   op->node.set_requested_device(device);
+  RecordMutation(graph, *op, "setting device");
 }
 
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
@@ -75,6 +79,60 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
   }
   status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
                                            &dst.oper->node, dst.index);
+
+  if (status->status.ok()) {
+    // This modification only updates the destination node for
+    // the purposes of running this graph in a session. Thus, we don't
+    // record the source node as being modified.
+    RecordMutation(graph, *dst.oper, "updating input tensor");
+  }
+}
+
+void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
+  mutex_lock l(graph->mu);
+  std::vector<const Edge*> control_edges;
+  for (const Edge* edge : op->node.in_edges()) {
+    if (!edge->IsControlEdge()) continue;
+    control_edges.push_back(edge);
+  }
+  for (const Edge* edge : control_edges) {
+    graph->graph.RemoveControlEdge(edge);
+  }
+}
+
+void SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
+  mutex_lock l(graph->mu);
+  graph->refiner.set_require_shape_inference_fns(require);
+}
+
+void ExtendSession(TF_Session* session, TF_Status* status) {
+  ExtendSessionGraphHelper(session, status);
+  session->extend_before_run = false;
+}
+
+std::string ResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
+  Node* node = &output.oper->node;
+  CppShapeInferenceResult::HandleData handle_data;
+  handle_data.set_is_set(true);
+  {
+    mutex_lock l(graph->mu);
+    tensorflow::shape_inference::InferenceContext* ic =
+        graph->refiner.GetContext(node);
+    CHECK(ic != nullptr);
+    CHECK_LT(output.index, ic->num_outputs());
+    const auto* shapes_and_types =
+        ic->output_handle_shapes_and_types(output.index);
+    if (shapes_and_types == nullptr) return "";
+
+    for (const auto& p : *shapes_and_types) {
+      auto* out_shape_and_type = handle_data.add_shape_and_type();
+      ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
+      out_shape_and_type->set_dtype(p.dtype);
+    }
+  }
+  string result;
+  handle_data.SerializeToString(&result);
+  return result;
 }
 
 }  // namespace tensorflow

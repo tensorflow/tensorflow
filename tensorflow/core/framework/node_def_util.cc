@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -131,7 +132,7 @@ Status AttrSlice::Find(StringPiece attr_name,
   // Skip AttachDef for internal attrs since it is a little bit
   // expensive and it is common for them to correctly not be included
   // in a NodeDef.
-  if (!attr_name.starts_with("_") && ndef_ != nullptr) {
+  if (!str_util::StartsWith(attr_name, "_") && ndef_ != nullptr) {
     s = AttachDef(s, *ndef_);
   }
   return s;
@@ -347,6 +348,36 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
 
 }  // namespace
 
+Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                        int input_port, DataType* input_type) {
+  DataTypeVector input_types;
+  for (const auto& arg : op_def.input_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &input_types));
+    if (input_types.size() > input_port) {
+      const DataType dtype = input_types[input_port];
+      *input_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Input ", input_port, " not found for node ",
+                                 node_def.name());
+}
+
+Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int output_port, DataType* output_type) {
+  DataTypeVector output_types;
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &output_types));
+    if (output_types.size() > output_port) {
+      const DataType dtype = output_types[output_port];
+      *output_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Output ", output_port, " not found for node ",
+                                 node_def.name());
+}
+
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
   for (const auto& arg : op_def.input_arg()) {
@@ -369,7 +400,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   size_t num_inputs = 0;
   // TODO(josh11b): Unify the input field validation.
   for (const string& input : node_def.input()) {
-    if (StringPiece(input).starts_with("^")) {
+    if (str_util::StartsWith(input, "^")) {
       seen_control = true;
       if (input.find(':') != string::npos) {
         return errors::InvalidArgument(
@@ -395,7 +426,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   }
   for (const auto& attr : node_def.attr()) {
     // Allow internal optional attributes with names starting with "_".
-    if (StringPiece(attr.first).starts_with("_")) {
+    if (str_util::StartsWith(attr.first, "_")) {
       continue;
     }
     auto iter = op_attrs.find(attr.first);

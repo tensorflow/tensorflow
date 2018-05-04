@@ -24,6 +24,8 @@ from tensorflow.contrib.framework.python.ops import sort_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -89,6 +91,38 @@ class SortTest(test.TestCase):
               constant_op.constant(arr),
               axis=0,
               direction='DESCENDING').eval())
+
+  def testSort_staticallyKnownRank_constantTransposition(self):
+    # The transposition array should be a constant if the rank of "values" is
+    # statically known.
+    tensor = random_ops.random_uniform(
+        # Rank is statically known to be 5, but the dimension lengths are not
+        # known.
+        random_ops.random_uniform(
+            shape=(5,), minval=0, maxval=10, dtype=dtypes.int32))
+    sort_ops.sort(tensor, axis=1)
+    transposition = (
+        ops.get_default_graph().get_tensor_by_name('sort/transposition:0'))
+    self.assertFalse(tensor_util.constant_value(transposition) is None)
+    self.assertAllEqual(
+        # Swaps "1" and "4" to put "1" at the end.
+        tensor_util.constant_value(transposition),
+        [0, 4, 2, 3, 1])
+
+  def testArgsort_1d(self):
+    arr = np.random.random(42)
+    with self.test_session():
+      self.assertAllEqual(
+          np.sort(arr),
+          array_ops.gather(arr, sort_ops.argsort(arr)).eval())
+
+  def testArgsort(self):
+    arr = np.random.random((5, 6, 7, 8))
+    for axis in range(4):
+      with self.test_session():
+        self.assertAllEqual(
+            np.argsort(arr, axis=axis),
+            sort_ops.argsort(arr, axis=axis).eval())
 
 
 if __name__ == '__main__':

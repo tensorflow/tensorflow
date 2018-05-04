@@ -37,8 +37,8 @@ limitations under the License.
 //   # described above.
 //   buf.WriteToTensor(tensor)
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_STRING_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_STRING_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_STRING_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_STRING_UTIL_H_
 
 #include <vector>
 
@@ -88,4 +88,4 @@ int GetStringCount(const TfLiteTensor* tensor);
 StringRef GetString(const TfLiteTensor* tensor, int string_index);
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_STRING_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_STRING_UTIL_H_

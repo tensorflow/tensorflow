@@ -32,8 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
@@ -52,6 +50,12 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
 /* static */ StatusOr<std::unique_ptr<DeviceAssignment>>
 DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   TF_RET_CHECK(proto.computation_devices_size() == proto.computation_count());
+  if (proto.replica_count() <= 0 || proto.computation_count() <= 0) {
+    return InvalidArgument(
+        "Invalid device assignment topology: replica_count=%d, "
+        "computation_count=%d",
+        proto.replica_count(), proto.computation_count());
+  }
   auto assignment = MakeUnique<DeviceAssignment>(proto.replica_count(),
                                                  proto.computation_count());
   for (int computation = 0; computation < proto.computation_count();
@@ -126,11 +130,9 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
     ComputationPlacer::platform_computation_placer_mutex_(
         tensorflow::LINKER_INITIALIZED);
 
-/* static */ std::map<perftools::gputools::Platform::Id,
-                      ComputationPlacer::State>*
+/* static */ std::map<se::Platform::Id, ComputationPlacer::State>*
 ComputationPlacer::GetPlatformComputationPlacers() {
-  static auto* r =
-      new std::map<perftools::gputools::Platform::Id, ComputationPlacer::State>;
+  static auto* r = new std::map<se::Platform::Id, ComputationPlacer::State>;
   return r;
 }
 
@@ -141,10 +143,10 @@ static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
 }
 
 static bool InitModule() {
-  xla::ComputationPlacer::RegisterComputationPlacer(se::host::kHostPlatformId,
-                                                    &CreateComputationPlacer);
-  xla::ComputationPlacer::RegisterComputationPlacer(se::cuda::kCudaPlatformId,
-                                                    &CreateComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      stream_executor::host::kHostPlatformId, &CreateComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
   return true;
 }
 static bool module_initialized = InitModule();

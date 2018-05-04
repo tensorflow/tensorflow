@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -43,7 +45,7 @@ class EventsWriter {
   // Note that it is not recommended to simultaneously have two
   // EventWriters writing to the same file_prefix.
   explicit EventsWriter(const string& file_prefix);
-  ~EventsWriter() { Close(); }  // Autoclose in destructor.
+  ~EventsWriter();
 
   // Sets the event file filename and opens file for writing.  If not called by
   // user, will be invoked automatically by a call to FileName() or Write*().
@@ -51,11 +53,8 @@ class EventsWriter {
   // and is open this is a no-op.  If on the other hand the file was opened,
   // but has since disappeared (e.g. deleted by another process), this will open
   // a new file with a new timestamp in its filename.
-  bool Init() { return InitWithSuffix(""); }
-  bool InitWithSuffix(const string& suffix) {
-    file_suffix_ = suffix;
-    return InitIfNeeded();
-  }
+  Status Init();
+  Status InitWithSuffix(const string& suffix);
 
   // Returns the filename for the current events file:
   // filename_ = [file_prefix_].out.events.[timestamp].[hostname][suffix]
@@ -77,12 +76,12 @@ class EventsWriter {
   // be written too.
   //   Close() calls Flush() and then closes the current events file.
   // Returns true only if both the flush and the closure were successful.
-  bool Flush();
-  bool Close();
+  Status Flush();
+  Status Close();
 
  private:
-  bool FileHasDisappeared();  // True if event_file_path_ does not exist.
-  bool InitIfNeeded();
+  Status FileStillExists();  // OK if event_file_path_ exists.
+  Status InitIfNeeded();
 
   Env* env_;
   const string file_prefix_;

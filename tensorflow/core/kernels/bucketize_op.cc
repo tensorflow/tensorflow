@@ -25,10 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-using thread::ThreadPool;
-
-typedef Eigen::ThreadPoolDevice CPUDevice;
-typedef Eigen::GpuDevice GPUDevice;
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
@@ -49,6 +47,7 @@ struct BucketizeFunctor<CPUDevice, T> {
     return Status::OK();
   }
 };
+
 }  // namespace functor
 
 template <typename Device, typename T>

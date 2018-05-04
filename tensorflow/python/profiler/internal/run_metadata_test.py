@@ -205,17 +205,13 @@ class RunMetadataTest(test.TestCase):
     for _, f in six.iteritems(back_to_forward):
       self.assertTrue(f in forward_op)
 
-  # pylint: disable=pointless-string-statement
-  """
-  # TODO(xpan): This test is flaky because RunMetadata returned from TensorFlow
-  # is random. Still being investigated.
   def testLoopGPU(self):
     if not test.is_gpu_available():
       return
 
     ops.reset_default_graph()
     with ops.device('/device:GPU:0'):
-      tfprof_node, run_meta = _run_loop_model()
+      _, run_meta = _run_loop_model()
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
                           'rnn/while/basic_rnn_cell/MatMul')
@@ -226,11 +222,6 @@ class RunMetadataTest(test.TestCase):
         total_cpu_execs += node.op_end_rel_micros
 
       self.assertGreaterEqual(len(ret['gpu:0/stream:all']), 4, '%s' % run_meta)
-
-      total_accelerator_execs = 0
-      for node in ret['gpu:0/stream:all']:
-        total_accelerator_execs += node.op_end_rel_micros
-  """
 
 
 if __name__ == '__main__':

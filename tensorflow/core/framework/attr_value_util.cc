@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -33,7 +34,19 @@ namespace tensorflow {
 namespace {
 
 string SummarizeString(const string& str) {
-  return strings::StrCat("\"", str_util::CEscape(str), "\"");
+  string escaped = str_util::CEscape(str);
+
+  // If the string is long, replace the middle with ellipses.
+  constexpr int kMaxStringSummarySize = 80;
+  if (escaped.size() >= kMaxStringSummarySize) {
+    StringPiece prefix(escaped);
+    StringPiece suffix = prefix;
+    prefix.remove_suffix(escaped.size() - 10);
+    suffix.remove_prefix(escaped.size() - 10);
+    return strings::StrCat("\"", prefix, "...", suffix, "\"");
+  } else {
+    return strings::StrCat("\"", escaped, "\"");
+  }
 }
 
 string SummarizeTensor(const TensorProto& tensor_proto) {
@@ -74,54 +87,47 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kTensor:
       return SummarizeTensor(attr_value.tensor());
     case AttrValue::kList: {
-      string ret = "[";
+      std::vector<string> pieces;
       if (attr_value.list().s_size() > 0) {
         for (int i = 0; i < attr_value.list().s_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, SummarizeString(attr_value.list().s(i)));
+          pieces.push_back(SummarizeString(attr_value.list().s(i)));
         }
       } else if (attr_value.list().i_size() > 0) {
         for (int i = 0; i < attr_value.list().i_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().i(i));
+          pieces.push_back(strings::StrCat(attr_value.list().i(i)));
         }
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().f(i));
+          pieces.push_back(strings::StrCat(attr_value.list().f(i)));
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().b(i) ? "true" : "false");
+          pieces.push_back(attr_value.list().b(i) ? "true" : "false");
         }
       } else if (attr_value.list().type_size() > 0) {
         for (int i = 0; i < attr_value.list().type_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret,
-                             EnumName_DataType(attr_value.list().type(i)));
+          pieces.push_back(EnumName_DataType(attr_value.list().type(i)));
         }
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(
-              &ret, TensorShape::DebugString(attr_value.list().shape(i)));
+          pieces.push_back(
+              TensorShape::DebugString(attr_value.list().shape(i)));
         }
       } else if (attr_value.list().tensor_size() > 0) {
         for (int i = 0; i < attr_value.list().tensor_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret,
-                             SummarizeTensor(attr_value.list().tensor(i)));
+          pieces.push_back(SummarizeTensor(attr_value.list().tensor(i)));
         }
       } else if (attr_value.list().func_size() > 0) {
         for (int i = 0; i < attr_value.list().func_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, SummarizeFunc(attr_value.list().func(i)));
+          pieces.push_back(SummarizeFunc(attr_value.list().func(i)));
         }
       }
-
-      strings::StrAppend(&ret, "]");
-      return ret;
+      constexpr int kMaxListSummarySize = 15;
+      if (pieces.size() >= kMaxListSummarySize) {
+        pieces.erase(pieces.begin() + 5, pieces.begin() + (pieces.size() - 6));
+        pieces[5] = "...";
+      }
+      return strings::StrCat("[", str_util::Join(pieces, ", "), "]");
     }
     case AttrValue::kFunc: {
       return SummarizeFunc(attr_value.func());
@@ -180,7 +186,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   // check if has_list is false and some other field in attr_value is
   // set to flag the error.  This test can be made more strict once
   // support for GraphDef versions <= 4 is dropped.
-  if (StringPiece(type).starts_with("list(") && !attr_value.has_list()) {
+  if (str_util::StartsWith(type, "list(") && !attr_value.has_list()) {
     if (num_set) {
       return errors::InvalidArgument(
           "AttrValue missing value with expected type '", type, "'");
@@ -191,7 +197,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   }
 
   // Okay to have an empty list, but not to be missing a non-list value.
-  if (num_set == 0 && !StringPiece(type).starts_with("list(")) {
+  if (num_set == 0 && !str_util::StartsWith(type, "list(")) {
     return errors::InvalidArgument(
         "AttrValue missing value with expected type '", type, "'");
   }
@@ -235,29 +241,29 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
 bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
   // Parse type.
   string field_name;
-  bool is_list = type.Consume("list(");
-  if (type.Consume("string")) {
+  bool is_list = str_util::ConsumePrefix(&type, "list(");
+  if (str_util::ConsumePrefix(&type, "string")) {
     field_name = "s";
-  } else if (type.Consume("int")) {
+  } else if (str_util::ConsumePrefix(&type, "int")) {
     field_name = "i";
-  } else if (type.Consume("float")) {
+  } else if (str_util::ConsumePrefix(&type, "float")) {
     field_name = "f";
-  } else if (type.Consume("bool")) {
+  } else if (str_util::ConsumePrefix(&type, "bool")) {
     field_name = "b";
-  } else if (type.Consume("type")) {
+  } else if (str_util::ConsumePrefix(&type, "type")) {
     field_name = "type";
-  } else if (type.Consume("shape")) {
+  } else if (str_util::ConsumePrefix(&type, "shape")) {
     field_name = "shape";
-  } else if (type.Consume("tensor")) {
+  } else if (str_util::ConsumePrefix(&type, "tensor")) {
     field_name = "tensor";
-  } else if (type.Consume("func")) {
+  } else if (str_util::ConsumePrefix(&type, "func")) {
     field_name = "func";
-  } else if (type.Consume("placeholder")) {
+  } else if (str_util::ConsumePrefix(&type, "placeholder")) {
     field_name = "placeholder";
   } else {
     return false;
   }
-  if (is_list && !type.Consume(")")) {
+  if (is_list && !str_util::ConsumePrefix(&type, ")")) {
     return false;
   }
 

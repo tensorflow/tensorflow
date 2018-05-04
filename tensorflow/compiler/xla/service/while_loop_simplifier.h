@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -25,7 +25,7 @@ namespace xla {
 // HLO pass that makes the following transformations on while loops:
 //
 //  - A while loop with static trip count of 0 is deleted.
-//  - A while loops with static trip count of 1 is replaced by its body (sans
+//  - A while loop with static trip count of 1 is replaced by its body (sans
 //    loop).
 //  - Elements of a while loop's tuple that the loop doesn't use are removed
 //    from the tuple.
@@ -41,4 +41,4 @@ class WhileLoopSimplifier : public HloPassInterface {
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_

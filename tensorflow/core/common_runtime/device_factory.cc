@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace {
 
 static mutex* get_device_factory_lock() {
-  static mutex device_factory_lock;
+  static mutex device_factory_lock(LINKER_INITIALIZED);
   return &device_factory_lock;
 }
 

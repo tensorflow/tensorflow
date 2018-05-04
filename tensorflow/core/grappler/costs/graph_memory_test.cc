@@ -134,6 +134,62 @@ TEST_F(GraphMemoryTest, MultiDevice) {
   EXPECT_EQ(gpu_expected, gpu_tensors);
 }
 
+TEST_F(GraphMemoryTest, GpuSwapping) {
+  TrivialTestGraphInputYielder fake_input(4, 2, 1024 * 1024, false, {"/GPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+  item.feed.clear();
+
+  {
+    // Estimate the max memory usage for the graph.
+    GraphMemory memory(item);
+    Status s = memory.InferStatically(devices_);
+    TF_CHECK_OK(s);
+
+    const GraphMemory::MemoryUsage& gpu_mem =
+        memory.GetPeakMemoryUsage("/GPU:0");
+    EXPECT_EQ(20971520, gpu_mem.used_memory);
+    std::set<string> gpu_tensors;
+    for (const auto& t : gpu_mem.live_tensors) {
+      gpu_tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+    }
+    std::set<string> gpu_expected;
+    gpu_expected.insert("Square:0");
+    gpu_expected.insert("Square_1:0");
+    gpu_expected.insert("AddN:0");
+    gpu_expected.insert("AddN_1:0");
+    gpu_expected.insert("AddN_2:0");
+    EXPECT_EQ(gpu_expected, gpu_tensors);
+  }
+
+  {
+    // Swap the first input to node AddN_1: its fanin (the square nodes) should
+    // not appear in the max cut anymore.
+    for (auto& node : *item.graph.mutable_node()) {
+      if (node.name() == "AddN_1") {
+        (*node.mutable_attr())["_swap_to_host"].mutable_list()->add_i(0);
+      }
+    }
+    GraphMemory memory(item);
+    Status s = memory.InferStatically(devices_);
+    TF_CHECK_OK(s);
+    const GraphMemory::MemoryUsage& new_gpu_mem =
+        memory.GetPeakMemoryUsage("/GPU:0");
+    EXPECT_EQ(20971520, new_gpu_mem.used_memory);
+    std::set<string> new_gpu_tensors;
+    for (const auto& t : new_gpu_mem.live_tensors) {
+      new_gpu_tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+    }
+    std::set<string> new_gpu_expected;
+    new_gpu_expected.insert("AddN:0");
+    new_gpu_expected.insert("AddN_1:0");
+    new_gpu_expected.insert("AddN_2:0");
+    new_gpu_expected.insert("AddN_3:0");
+    new_gpu_expected.insert("AddN_4:0");
+    EXPECT_EQ(new_gpu_expected, new_gpu_tensors);
+  }
+}
+
 TEST_F(GraphMemoryTest, CtrlDependencies) {
   // Build a simple graph with a control dependency.
   Scope s = Scope::NewRootScope();

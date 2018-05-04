@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -48,8 +50,8 @@ class ReluTest(test.TestCase):
     self.assertAllClose(
         np.array([[0.0, 0.7, 0.0, 0.3, 0.0], [0.1, 0.0, 0.5, 0.0, 0.9]]),
         self._npRelu(
-            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7, 0.9]
-                     ])))
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
+                                                     0.9]])))
 
   def _testRelu(self, np_features, use_gpu=False):
     np_relu = self._npRelu(np_features)
@@ -86,6 +88,35 @@ class ReluTest(test.TestCase):
           x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("relu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
+
+  # The gradient for fp16 is inaccurate due to the low-precision.
+  # Instead of relying on compute_gradient_error, we compare the fp16 analytical
+  # gradient against their fp32 counterpart.
+  def testGradientFloat16(self):
+    with self.test_session(use_gpu=True) as sess:
+      # Randomly construct a 1D shape from [1, 40)
+      shape = random_ops.random_uniform(
+          [1], minval=1, maxval=40, dtype=dtypes.int32)
+
+      # Construct the fp32 graph and its gradient.
+      x = random_ops.random_uniform(shape, minval=-1, maxval=1, name="x")
+      y1 = nn_ops.relu(x, name="relu_fp32")
+      l1 = nn_ops.l2_loss(y1)
+      dx_f32 = gradients_impl.gradients(l1, x)
+
+      # Construct the fp16 graph and its gradient.
+      # It starts with the same x, in fp32. But before it reaches Relu, it is
+      # cast into fp16. So during backprop, the gradient computation is in fp16.
+      x2 = math_ops.cast(x, dtype=dtypes.float16, name="cast")
+      y2 = nn_ops.relu(x2, name="relu_fp16")
+      l2 = nn_ops.l2_loss(y2)
+      dx_f16 = gradients_impl.gradients(l2, x)
+
+      # Repeat the experiment for 100 times. All tensor shapes and its tensor
+      # values are randomly generated for each run.
+      for _ in xrange(100):
+        dx_f32_v, dx_f16_v = sess.run([dx_f32, dx_f16])
+        self.assertAllClose(dx_f32_v, dx_f16_v, atol=3e-4)
 
   def testGradientFloat64(self):
     with self.test_session():
@@ -163,8 +194,8 @@ class Relu6Test(test.TestCase):
     self.assertAllClose(
         np.array([[0.0, 0.7, 0.0, 0.3, 6.0], [0.1, 0.0, 6.0, 0.0, 0.9]]),
         self._npRelu6(
-            np.array([[-0.9, 0.7, -0.5, 0.3, 6.0], [0.1, -0.3, 6.5, -0.7, 0.9]
-                     ])))
+            np.array([[-0.9, 0.7, -0.5, 0.3, 6.0], [0.1, -0.3, 6.5, -0.7,
+                                                    0.9]])))
 
   def _testRelu6(self, np_features, use_gpu=False):
     np_relu6 = self._npRelu6(np_features)
@@ -231,8 +262,8 @@ class EluTest(test.TestCase):
         np.array([[-0.59343034025, 0.7, -0.39346934028, 0.3, -0.09516258196],
                   [0.1, -0.25918177931, 0.5, -0.5034146962, 0.9]]),
         self._npElu(
-            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7, 0.9]
-                     ])))
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
+                                                     0.9]])))
 
   def _testElu(self, np_features, use_gpu=False):
     np_elu = self._npElu(np_features)
@@ -330,11 +361,11 @@ class SeluTest(test.TestCase):
 
   def testNpSelu(self):
     self.assertAllClose(
-        np.array([[-1.0433095, 0.73549069, -0.6917582, 0.3152103 , -0.16730527],
-                 [0.1050701 , -0.45566732, 0.5253505, -0.88505305, 0.9456309]]),
+        np.array([[-1.0433095, 0.73549069, -0.6917582, 0.3152103, -0.16730527],
+                  [0.1050701, -0.45566732, 0.5253505, -0.88505305, 0.9456309]]),
         self._npSelu(
-            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7, 0.9]
-                     ])))
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
+                                                     0.9]])))
 
   def _testSelu(self, np_features, use_gpu=False):
     np_selu = self._npSelu(np_features)
@@ -440,6 +471,24 @@ class CreluTest(test.TestCase):
         self._testCrelu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
             use_gpu=True)
+
+  def testNumbersWithAxis0(self):
+    with self.test_session():
+      crelu = nn_ops.crelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=0)
+      tf_relu = crelu.eval()
+      np_crelu = np.array([[0, 7, 0, 3, 0], [1, 0, 5, 0, 9], [9, 0, 5, 0, 1],
+                           [0, 3, 0, 7, 0]])
+      self.assertAllEqual(np_crelu, tf_relu)
+
+  def testNumbersWithAxis1(self):
+    with self.test_session():
+      crelu = nn_ops.crelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=1)
+      tf_relu = crelu.eval()
+      np_crelu = np.array([[0, 7, 0, 3, 0, 9, 0, 5, 0, 1],
+                           [1, 0, 5, 0, 9, 0, 3, 0, 7, 0]])
+      self.assertAllEqual(np_crelu, tf_relu)
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ REGISTER_XLA_OP(Name("Identity").CompilationOnly(), IdentityOp);
 REGISTER_XLA_OP(Name("IdentityN").CompilationOnly(), IdentityOp);
 REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);
 REGISTER_XLA_OP(Name("StopGradient"), IdentityOp);
+REGISTER_XLA_OP(Name("Snapshot"), IdentityOp);
 
 }  // namespace
 }  // namespace tensorflow

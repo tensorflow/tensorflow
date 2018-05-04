@@ -73,16 +73,6 @@ class SaverTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'v1'):
         saver.save(ckpt_prefix)
 
-  def testDifferentGraphError(self):
-    with ops.device(self._dev()):
-      with ops.Graph().as_default():
-        v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
-      with ops.Graph().as_default():
-        saver = _saver.Saver([v1])
-        ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
-        with self.assertRaisesRegexp(ValueError, 'Graph'):
-          saver.save(ckpt_prefix)
-
   def testSameObjectOK(self):
     with ops.device(self._dev()):
       v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
@@ -111,7 +101,6 @@ class SaverTest(test.TestCase):
       self.assertEqual(v2.read_value().numpy(), 2.0)
       # Can still restore it.
       saver.restore(ckpt_prefix)
-      self.assertEqual(v1.read_value().numpy(), 1.0)
       self.assertEqual(v1.read_value().numpy(), 1.0)
       # However, cannot restore it with default name.
       with self.assertRaisesOpError('not found in checkpoint'):

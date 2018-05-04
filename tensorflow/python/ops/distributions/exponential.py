@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import gamma
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
 ]
 
 
+@tf_export("distributions.Exponential")
 class Exponential(gamma.Gamma):
   """Exponential distribution.
 
@@ -93,7 +95,7 @@ class Exponential(gamma.Gamma):
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.name_scope(name, values=[rate]):
+    with ops.name_scope(name, values=[rate]) as name:
       self._rate = ops.convert_to_tensor(rate, name="rate")
     super(Exponential, self).__init__(
         concentration=array_ops.ones([], dtype=self._rate.dtype),
@@ -142,7 +144,7 @@ class ExponentialWithSoftplusRate(Exponential):
                allow_nan_stats=True,
                name="ExponentialWithSoftplusRate"):
     parameters = locals()
-    with ops.name_scope(name, values=[rate]):
+    with ops.name_scope(name, values=[rate]) as name:
       super(ExponentialWithSoftplusRate, self).__init__(
           rate=nn.softplus(rate, name="softplus_rate"),
           validate_args=validate_args,

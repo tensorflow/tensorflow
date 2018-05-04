@@ -44,7 +44,7 @@ clean() {
   # (though if run inside a clean docker container, there won't be any dirty
   # artifacts lying around)
   mvn -q clean
-  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow/src libtensorflow/target tensorflow-android/target
+  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target libtensorflow/src libtensorflow/target tensorflow-android/target
 }
 
 update_version_in_pom() {
@@ -116,6 +116,26 @@ download_libtensorflow_jni() {
   touch linux-x86_64/*
   touch darwin-x86_64/*
   touch windows-x86_64/*
+  cd "${DIR}"
+}
+
+download_libtensorflow_jni_gpu() {
+  NATIVE_DIR="${DIR}/libtensorflow_jni_gpu/src/main/resources/org/tensorflow/native"
+  mkdir -p "${NATIVE_DIR}"
+  cd "${NATIVE_DIR}"
+
+  mkdir linux-x86_64
+
+  if [[ "${IS_SNAPSHOT}" == "true" ]]; then
+    # Nightly builds from http://ci.tensorflow.org/view/Nightly/job/nightly-libtensorflow/
+    # and http://ci.tensorflow.org/view/Nightly/job/nightly-libtensorflow-windows/
+    curl -L "http://ci.tensorflow.org/view/Nightly/job/nightly-libtensorflow/TYPE=gpu-linux/lastSuccessfulBuild/artifact/lib_package/libtensorflow_jni-gpu-linux-x86_64.tar.gz" | tar -xvz -C linux-x86_64
+  else
+    curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-gpu-linux-x86_64-${TF_VERSION}.tar.gz" | tar -xvz -C linux-x86_64
+  fi
+
+  # Updated timestamps seem to be required to get Maven to pick up the file.
+  touch linux-x86_64/*
   cd "${DIR}"
 }
 
@@ -225,6 +245,7 @@ clean
 update_version_in_pom
 download_libtensorflow
 download_libtensorflow_jni
+download_libtensorflow_jni_gpu
 update_tensorflow_android
 generate_java_protos
 # Build the release artifacts

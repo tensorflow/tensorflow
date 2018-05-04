@@ -33,10 +33,13 @@ namespace xla {
   switch (instruction.opcode()) {
     // Cheap instructions.
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConstant:
@@ -53,15 +56,14 @@ namespace xla {
     case HloOpcode::kInfeed:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
-    case HloOpcode::kAnd:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kReal:
@@ -88,9 +90,9 @@ namespace xla {
 
     // Expensive instructions.
     case HloOpcode::kAtan2:
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
@@ -99,24 +101,27 @@ namespace xla {
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
+    case HloOpcode::kFft:
     case HloOpcode::kFusion:
+    case HloOpcode::kGather:
+    case HloOpcode::kHostCompute:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kPower:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
       return true;
   }
 
@@ -298,7 +303,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 
       // Consider each operand of this instruction for fusion into this
       // instruction. We want to consider the operands in a particular order to
-      // avoid created duplicate instruction clones in the fusion instruction.
+      // avoid creating duplicate instruction clones in the fusion instruction.
       // For example, consider the following expression:
       //
       //   A = ...
@@ -373,7 +378,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         changed = true;
 
         if (operand->user_count() == 0) {
-          // Operand is now dead. Remove from post order by setting it's
+          // Operand is now dead. Remove from post order by setting its
           // location to nullptr.
           post_order[FindOrDie(post_order_index, operand)] = nullptr;
           post_order_index.erase(operand);

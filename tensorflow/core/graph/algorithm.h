@@ -69,6 +69,10 @@ extern void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
                            const std::function<void(Node*)>& enter,
                            const std::function<void(Node*)>& leave,
                            const NodeComparator& stable_comparator = {});
+extern void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<const Node*> start,
+                           const std::function<void(const Node*)>& enter,
+                           const std::function<void(const Node*)>& leave,
+                           const NodeComparator& stable_comparator = {});
 
 // Stores in *order the post-order numbering of all nodes
 // in graph found via a depth first search starting at the source node.

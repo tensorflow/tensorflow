@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+
+#include <unordered_map>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -51,16 +53,6 @@ TEST(StringPiece, Ctor) {
     EXPECT_TRUE(s31.data() == hola.data());
     EXPECT_EQ(8, s31.size());
   }
-}
-
-TEST(StringPiece, Contains) {
-  StringPiece a("abcdefg");
-  StringPiece b("abcd");
-  StringPiece c("efg");
-  StringPiece d("gh");
-  EXPECT_TRUE(a.contains(b));
-  EXPECT_TRUE(a.contains(c));
-  EXPECT_TRUE(!a.contains(d));
 }
 
 }  // namespace tensorflow

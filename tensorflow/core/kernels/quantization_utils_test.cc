@@ -385,8 +385,12 @@ void TestQuantizedToFloatInPlaceUsingEigen(
   // These are the float values we're going to test the conversions on.
   typedef std::pair<float, float> FPair;
   for (FPair min_and_max : std::vector<FPair>{
-           FPair(-255.0f, 255.0f), FPair(-1.0f, 1.0f), FPair(-1.0f, 255.0f),
-           FPair(0.0f, 1e6), FPair(0.0f, 1.0f), FPair(-31.0f, 13.0f),
+           FPair(-255.0f, 255.0f),
+           FPair(-1.0f, 1.0f),
+           FPair(-1.0f, 255.0f),
+           FPair(0.0f, 1e6),
+           FPair(0.0f, 1.0f),
+           FPair(-31.0f, 13.0f),
            FPair(-5.89505e+08, 5.89505e+08),
        }) {
     const float f_min = min_and_max.first;
@@ -743,7 +747,8 @@ template <int POW>
 void TestDivide64x2Pow(int64 val, int64 ref) {
   const int64x2_t val_64x2 = vmovq_n_s64(val);
   const int64x2_t ret = Divide64x2Pow<POW>(val_64x2);
-  int64 rets[2];
+  // TODO(b/70947959) Change back to int64 when possible
+  int64_t rets[2];
   vst1q_s64(rets, ret);
   EXPECT_EQ(rets[0], ref);
   EXPECT_EQ(rets[1], ref);
@@ -754,7 +759,8 @@ template <int POW>
 void TestDivide64x2PowRound(int64 val, int64 ref) {
   const int64x2_t val_64x2 = vmovq_n_s64(val);
   const int64x2_t shifted = Divide64x2PowRound<POW>(val_64x2);
-  int64 rets[2];
+  // TODO(b/70947959) Change back to int64 when possible
+  int64_t rets[2];
   vst1q_s64(rets, shifted);
   EXPECT_EQ(rets[0], ref) << "in = " << val << ", " << POW
                           << ", act = " << rets[0] << ", ref = " << ref;
@@ -910,42 +916,41 @@ void TestComputeLerp4xAll() {
 
 }  // namespace tensorflow
 
-#if defined(__ANDROID__)
-int main(int argc, char** argv) {
-#define RUN_TEST(t)            \
-  LOG(INFO) << "Test: " << #t; \
-  tensorflow::t();
-#else
 #define RUN_TEST(t) \
   TEST(QuantizationUtilsTest, t) { tensorflow::t(); }
-#endif
 
-  RUN_TEST(TestFloatToQuantized);
-  RUN_TEST(TestQuantizedToFloat);
-  RUN_TEST(TestAvoidBias);
-  RUN_TEST(TestRequantizeInNewRange);
-  RUN_TEST(TestRequantizeInNewRangeRealData);
-  RUN_TEST(TestRequantizeInNewRange32To8Bit);
-  RUN_TEST(TestRequantizeManyInNewRange32To8Bit);
-  RUN_TEST(TestRequantizeManyInNewRange32To8BitUsingEigen);
-  RUN_TEST(TestRequantizeManyInNewRange32To8BitEigenVsNonEigen);
-  RUN_TEST(TestRequantizeManyInNewRange32To8BitSignedEigenVsNonEigen);
-  RUN_TEST(TestFloatTensorToQuantized);
-  RUN_TEST(TestRequantizeManyInNewRange8To32Bit);
-  RUN_TEST(TestFloatToQuantizedInPlaceUsingEigen);
-  RUN_TEST(TestOverflowWithEigen);
-  RUN_TEST(TestQuantizedTensorToFloat);
-  RUN_TEST(TestQuantizedToFloatInPlaceUsingEigen);
+RUN_TEST(TestFloatToQuantized);
+RUN_TEST(TestQuantizedToFloat);
+RUN_TEST(TestAvoidBias);
+RUN_TEST(TestRequantizeInNewRange);
+RUN_TEST(TestRequantizeInNewRangeRealData);
+RUN_TEST(TestRequantizeInNewRange32To8Bit);
+RUN_TEST(TestRequantizeManyInNewRange32To8Bit);
+RUN_TEST(TestRequantizeManyInNewRange32To8BitUsingEigen);
+RUN_TEST(TestRequantizeManyInNewRange32To8BitEigenVsNonEigen);
+RUN_TEST(TestRequantizeManyInNewRange32To8BitSignedEigenVsNonEigen);
+RUN_TEST(TestFloatTensorToQuantized);
+RUN_TEST(TestRequantizeManyInNewRange8To32Bit);
+RUN_TEST(TestFloatToQuantizedInPlaceUsingEigen);
+RUN_TEST(TestOverflowWithEigen);
+RUN_TEST(TestQuantizedTensorToFloat);
+RUN_TEST(TestQuantizedToFloatInPlaceUsingEigen);
 
 #if defined(__ANDROID__)
+
+RUN_TEST(BenchmarkRequantizeManyInNewRange);
+
 #ifdef QUANTIZATION_UTILS_USE_NEON
-  RUN_TEST(TestDivide64x2PowAll);
-  RUN_TEST(TestComputeLerp4xAll);
-#endif
 
-  tensorflow::BenchmarkRequantizeManyInNewRange();
+RUN_TEST(TestDivide64x2PowAll);
+RUN_TEST(TestComputeLerp4xAll);
 
-  LOG(INFO) << "All tests complete.";
-  return 0;
+#endif  // QUANTIZATION_UTILS_USE_NEON
+
+#endif  // __ANDROID__
+
+int main(int argc, char** argv) {
+  // On Linux, add: FLAGS_logtostderr = true;
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
-#endif

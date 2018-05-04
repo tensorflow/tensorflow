@@ -29,7 +29,7 @@ interpreter->AllocateTensors();
 float* input = interpreter->typed_input_tensor<float>(0);
 // Fill `input`.
 interpreter->Invoke();
-float* output = interpreter->type_output_tensor<float>(0);
+float* output = interpreter->typed_output_tensor<float>(0);
 ```
 ### Data Alignment
 
@@ -52,7 +52,7 @@ typedef enum {
 Failures can be easily verified with:
 ```c++
 if (status != kTfLiteOk) {
-  // ... error handling here ... 
+  // ... error handling here ...
 }
 ```
 

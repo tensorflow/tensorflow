@@ -92,6 +92,8 @@ class InitializableLookupTable : public LookupInterface {
   //
   // Then the iterator is exhausted, valid returns false and status returns
   // Status::OutOfRange.
+  //
+  // This class is Thread-unsafe.
   class InitTableIterator {
    public:
     InitTableIterator() {}
@@ -114,6 +116,7 @@ class InitializableLookupTable : public LookupInterface {
     virtual Status status() const = 0;
 
     // Returns the total number of elements that the iterator will produce.
+    // It might return -1 in case of error.
     virtual int64 total_size() const = 0;
 
    private:
@@ -128,6 +131,17 @@ class InitializableLookupTable : public LookupInterface {
   // Prepares and allocates the underlying data structure to store the given
   // number of expected elements.
   virtual Status DoPrepare(size_t expected_num_elements) = 0;
+
+  // Same as DoPrepare() but derived implementations might choose to skip
+  // calling get_expected_num_elements if size is not needed for DoPrepare.
+  virtual Status DoLazyPrepare(
+      std::function<int64(void)> get_expected_num_elements) {
+    int64 expected_num_elements = get_expected_num_elements();
+    if (expected_num_elements < 0) {
+      return errors::FailedPrecondition("Got negative expected_num_elements.");
+    }
+    return DoPrepare(expected_num_elements);
+  }
 
   // Populates the table in batches given keys and values as tensors into the
   // underlying data structure.

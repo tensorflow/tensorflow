@@ -27,8 +27,12 @@ namespace xla {
 // called function, and proceed recursively.
 class CallInliner : public HloPassInterface {
  public:
-  // Inlines one call instruction.
-  static Status Inline(HloInstruction* call);
+  using InlinedInstructionMap =
+      std::unordered_map<HloInstruction*, HloInstruction*>;
+
+  // Inlines one call instruction.  Returns a mapping from the original
+  // instructions to their inlined versions.
+  static StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
 
   ~CallInliner() override = default;
   tensorflow::StringPiece name() const override { return "CallInliner"; }

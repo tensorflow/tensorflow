@@ -50,7 +50,7 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   # A 1024-point STFT with frames of 64 ms and 75% overlap.
   stfts = tf.contrib.signal.stft(pcm, frame_length=1024, frame_step=256,
                                  fft_length=1024)
-  spectrograms = tf.abs(stft)
+  spectrograms = tf.abs(stfts)
 
   # Warp the linear scale spectrograms into the mel-scale.
   num_spectrogram_bins = stfts.shape[-1].value
@@ -105,4 +105,4 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
       num_mel_bins = array_ops.shape(log_mel_spectrograms)[-1]
 
     dct2 = spectral_ops.dct(log_mel_spectrograms)
-    return dct2 * math_ops.rsqrt(num_mel_bins * 2.0)
+    return dct2 * math_ops.rsqrt(math_ops.to_float(num_mel_bins) * 2.0)

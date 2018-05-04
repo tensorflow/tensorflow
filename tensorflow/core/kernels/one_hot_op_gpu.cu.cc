@@ -19,16 +19,16 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/one_hot_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/one_hot_op.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPEC_INDEX(T, TI)                   \
-  template class generator::OneGenerator<T, TI>;       \
+#define DEFINE_GPU_SPEC_INDEX(T, TI)             \
+  template class generator::OneGenerator<T, TI>; \
   template struct functor::OneHot<GPUDevice, T, TI>;
 
 #define DEFINE_GPU_SPEC(T)         \

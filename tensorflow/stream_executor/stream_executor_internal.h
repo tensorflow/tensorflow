@@ -45,8 +45,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/trace_listener.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 class Timer;
@@ -219,7 +218,7 @@ class StreamExecutorInterface {
   virtual void DeallocateTimer(Timer *timer) = 0;
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
-  virtual bool BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
@@ -343,7 +342,6 @@ extern StreamExecutorFactory MakeHostExecutorImplementation;
 
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
 
 #include <vector>
 
@@ -32,7 +32,7 @@ class ShapeRefinerTest;
 namespace grappler {
 class GraphProperties;
 class SymbolicShapeManager;
-}
+}  // namespace grappler
 
 namespace shape_inference {
 
@@ -62,7 +62,7 @@ class DimensionHandle {
  private:
   DimensionHandle(const Dimension* dim) { ptr_ = dim; }
 
-  const Dimension* operator->() { return ptr_; }
+  const Dimension* operator->() const { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
 
   const Dimension* ptr_ = nullptr;
@@ -104,7 +104,7 @@ class ShapeHandle {
 
  private:
   ShapeHandle(const Shape* shape) { ptr_ = shape; }
-  const Shape* operator->() { return ptr_; }
+  const Shape* operator->() const { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
 
   const Shape* ptr_ = nullptr;
@@ -285,6 +285,8 @@ class InferenceContext {
     return true;
   }
 
+  void SetInput(int idx, ShapeHandle shape) { inputs_[idx] = shape; }
+
   ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
@@ -317,6 +319,11 @@ class InferenceContext {
     input_tensors_as_shapes_ = input_tensors_as_shapes;
   }
 
+  const std::vector<ShapeHandle>& input_tensors_as_shapes() const {
+    return input_tensors_as_shapes_;
+  }
+
+  ShapeHandle output(int64 idx) const { return outputs_[idx]; }
   void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);
@@ -462,6 +469,12 @@ class InferenceContext {
   // the input tensor is NULL, then an unknown shape is returned.
   Status MakeShapeFromShapeTensor(int input_idx, ShapeHandle* out);
 
+  // Like the function above, but treats scalar values as unknown
+  // shapes.  **NOTE** If the scalar is statically known, its value
+  // must be -1 or an error is returned.
+  Status MakeShapeFromShapeTensorTreatScalarAsUnknownShape(int input_idx,
+                                                           ShapeHandle* out);
+
   // Returns in <out> a new shape corresponding to <proto>.
   Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
                                  ShapeHandle* out);
@@ -580,6 +593,12 @@ class InferenceContext {
       int idx,
       const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
 
+  void set_input_handle_shapes_and_types(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+    input_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
+  }
+
   // Returns the output handle shapes and types, for the resource tensor output
   // at index <idx>. Returns NULL if the shape and types were never set.
   const std::vector<ShapeAndType>* output_handle_shapes_and_types(int idx) {
@@ -678,14 +697,17 @@ class InferenceContext {
   // Adds additional context to the given status.
   Status AttachContext(const Status& status);
 
-  // Relaxes <d0> and <d1> and returns the relaxed dimension in <*out>. If <d0>
-  // and <d1> have incompatible values, returns an error.
+  // Relaxes an existing value <d_old> with a new value <d_new> and returns the
+  // relaxed dimension in <*out>. If <d_old> and <d_new> have incompatible
+  // values, returns an error.
   //
-  // Note that <*out> may be set to <d0> or <d1>.
-  void Relax(DimensionHandle d0, DimensionHandle d1, DimensionHandle* out);
-  // Relaxes <s0> and <s1> and returns the relaxed shape in <*out>. See
-  // 'RelaxInput' function for full details and examples.
-  void Relax(ShapeHandle s0, ShapeHandle s1, ShapeHandle* out);
+  // Note that <*out> may be set to <d_old> or <d_new>.
+  void Relax(DimensionHandle d_old, DimensionHandle d_new,
+             DimensionHandle* out);
+  // Relaxes an existing shape <s_old> with a new shape <s_new> and returns the
+  // relaxed shape in <*out>. See 'RelaxInput' function for full details and
+  // examples.
+  void Relax(ShapeHandle s_old, ShapeHandle s_new, ShapeHandle* out);
 
   // Used to implement MergeInputHandleShapesAndTypes and
   // MergeOutputHandleShapesAndTypes.
@@ -697,6 +719,17 @@ class InferenceContext {
   bool RelaxHandleShapesAndMergeTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
       std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+
+  // Forget all the previous merged shapes and dims.
+  void ForgetMerges() {
+    merged_shapes_.clear();
+    merged_dims_.clear();
+  }
+
+  // Helper method for MakeShapeFromTensor and MakeShapeFromShapeTensor.
+  Status InternalMakeShapeFromTensor(
+      bool treat_unknown_scalar_tensor_as_unknown_shape, const Tensor* t,
+      ShapeHandle tensor_shape, ShapeHandle* out);
 
   ShapeManager shape_manager_;
 
@@ -778,4 +811,4 @@ Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
 }  // namespace shape_inference
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_H_

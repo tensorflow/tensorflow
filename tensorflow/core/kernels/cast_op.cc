@@ -36,7 +36,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define CURRY_TYPES2(FN, arg0)   \
   FN(arg0, bool);                \
@@ -223,11 +223,11 @@ class SyclCastOp : public CastOpBase {
   }
 };
 
-#define REGISTER_CAST_SYCL(srctype, dsttype)                    \
-  REGISTER_KERNEL_BUILDER(Name("Cast")                          \
-                              .TypeConstraint<srctype>("SrcT")  \
-                              .TypeConstraint<dsttype>("DstT")  \
-                              .Device(DEVICE_SYCL),             \
+#define REGISTER_CAST_SYCL(srctype, dsttype)                   \
+  REGISTER_KERNEL_BUILDER(Name("Cast")                         \
+                              .TypeConstraint<srctype>("SrcT") \
+                              .TypeConstraint<dsttype>("DstT") \
+                              .Device(DEVICE_SYCL),            \
                           SyclCastOp)
 CURRY_TYPES2(REGISTER_CAST_SYCL, bool);
 CURRY_TYPES2(REGISTER_CAST_SYCL, int32);
@@ -237,7 +237,7 @@ CURRY_TYPES2(REGISTER_CAST_SYCL, double);
 
 #undef REGISTER_CAST_SYCL
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef CURRY_TYPES2
 
@@ -250,6 +250,5 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("_HostCast").Device(DEVICE_SYCL).HostMemory("x").HostMemory("y"),
     CpuCastOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow
-

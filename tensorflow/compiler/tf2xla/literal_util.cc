@@ -23,18 +23,41 @@ limitations under the License.
 namespace tensorflow {
 
 Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal) {
-  literal->Clear();
+  xla::Shape literal_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(
-      host_tensor.dtype(), host_tensor.shape(), literal->mutable_shape()));
+      host_tensor.dtype(), host_tensor.shape(), &literal_shape));
 
-  literal->Reserve(host_tensor.NumElements());
+  *literal = xla::Literal(literal_shape);
 
   // memcpy over the payload ...
   // TODO(phawkins): handle string types.
   size_t total_bytes = host_tensor.TotalBytes();
   if (total_bytes > 0) {
-    void* dst_ptr = literal->MutableInternalData();
+    void* dst_ptr = literal->untyped_data();
     const void* src_ptr = DMAHelper::base(&host_tensor);
+    memcpy(dst_ptr, src_ptr, total_bytes);
+  }
+  return Status::OK();
+}
+
+Status CopyLiteralToHostTensor(const xla::Literal& literal,
+                               Tensor* host_tensor) {
+  TF_RET_CHECK(xla::ShapeUtil::IsArray(literal.shape()) &&
+               xla::ShapeUtil::ElementsIn(literal.shape()) ==
+                   host_tensor->NumElements());
+  xla::PrimitiveType primitive_type;
+  TF_RETURN_IF_ERROR(
+      DataTypeToPrimitiveType(host_tensor->dtype(), &primitive_type));
+  if (literal.shape().element_type() != primitive_type) {
+    return errors::InvalidArgument(
+        "Cannot convert literal of type ",
+        xla::PrimitiveType_Name(literal.shape().element_type()),
+        " to tensor of type ", DataTypeString(host_tensor->dtype()));
+  }
+  size_t total_bytes = host_tensor->TotalBytes();
+  if (total_bytes > 0) {
+    const void* src_ptr = literal.untyped_data();
+    void* dst_ptr = DMAHelper::base(host_tensor);
     memcpy(dst_ptr, src_ptr, total_bytes);
   }
   return Status::OK();
@@ -42,25 +65,10 @@ Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal) {
 
 Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
                            Tensor* host_tensor) {
-  xla::PrimitiveType primitive_type;
-  TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(target_type, &primitive_type));
-  if (literal.shape().element_type() != primitive_type) {
-    return errors::InvalidArgument(
-        "Cannot convert literal of type ",
-        xla::PrimitiveType_Name(literal.shape().element_type()),
-        " to tensor of type ", DataTypeString(target_type));
-  }
-
   TensorShape shape;
   TF_RETURN_IF_ERROR(XLAShapeToTensorShape(literal.shape(), &shape));
   *host_tensor = Tensor(target_type, shape);
-  size_t total_bytes = host_tensor->TotalBytes();
-  if (total_bytes > 0) {
-    const void* src_ptr = literal.InternalData();
-    void* dst_ptr = DMAHelper::base(host_tensor);
-    memcpy(dst_ptr, src_ptr, total_bytes);
-  }
-  return Status::OK();
+  return CopyLiteralToHostTensor(literal, host_tensor);
 }
 
 }  // namespace tensorflow

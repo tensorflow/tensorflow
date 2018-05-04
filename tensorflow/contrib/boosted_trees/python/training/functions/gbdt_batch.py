@@ -18,11 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 
 from tensorflow.contrib import learn
 from tensorflow.contrib import stateless
-
 from tensorflow.contrib.boosted_trees.lib.learner.batch import categorical_split_handler
 from tensorflow.contrib.boosted_trees.lib.learner.batch import ordinal_split_handler
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
@@ -56,6 +56,8 @@ PREDICTIONS = "predictions"
 PARTITION_IDS = "partition_ids"
 NUM_LAYERS_ATTEMPTED = "num_layers"
 NUM_TREES_ATTEMPTED = "num_trees"
+NUM_USED_HANDLERS = "num_used_handlers"
+USED_HANDLERS_MASK = "used_handlers_mask"
 _FEATURE_NAME_TEMPLATE = "%s_%d"
 
 
@@ -69,7 +71,8 @@ def _get_column_by_index(tensor, indices):
   return array_ops.reshape(array_ops.gather(p_flat, i_flat), [shape[0], -1])
 
 
-def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
+def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats,
+                           used_handlers):
   """Returns predictions for the given logits and n_classes.
 
   Args:
@@ -78,6 +81,8 @@ def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
         that contains predictions when no dropout was applied.
     partition_ids: A rank 1 `Tensor` with shape [batch_size].
     ensemble_stats: A TreeEnsembleStatsOp result tuple.
+    used_handlers: A TreeEnsembleUsedHandlerOp result tuple of an int and a
+        boolean mask..
 
   Returns:
     A dict of predictions.
@@ -88,6 +93,8 @@ def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
   result[PARTITION_IDS] = partition_ids
   result[NUM_LAYERS_ATTEMPTED] = ensemble_stats.attempted_layers
   result[NUM_TREES_ATTEMPTED] = ensemble_stats.attempted_trees
+  result[NUM_USED_HANDLERS] = used_handlers.num_used_handlers
+  result[USED_HANDLERS_MASK] = used_handlers.used_handlers_mask
   return result
 
 
@@ -133,7 +140,7 @@ class _OpRoundRobinStrategy(object):
     return task
 
 
-def extract_features(features, feature_columns):
+def extract_features(features, feature_columns, use_core_columns):
   """Extracts columns from a dictionary of features.
 
   Args:
@@ -163,10 +170,14 @@ def extract_features(features, feature_columns):
     scope = "gbdt"
     with variable_scope.variable_scope(scope):
       feature_columns = list(feature_columns)
-      transformed_features = {}
+      transformed_features = collections.OrderedDict()
       for fc in feature_columns:
         # pylint: disable=protected-access
-        if isinstance(fc, feature_column_lib._EmbeddingColumn):
+        if use_core_columns:
+          # pylint: disable=protected-access
+          tensor = fc_core._transform_features(features, [fc])[fc]
+          transformed_features[fc.name] = tensor
+        elif isinstance(fc, feature_column_lib._EmbeddingColumn):
           # pylint: enable=protected-access
           transformed_features[fc.name] = fc_core.input_layer(
               features, [fc],
@@ -257,7 +268,8 @@ class GradientBoostedDecisionTreeModel(object):
                learner_config,
                features,
                logits_dimension,
-               feature_columns=None):
+               feature_columns=None,
+               use_core_columns=False):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
     Args:
@@ -322,14 +334,17 @@ class GradientBoostedDecisionTreeModel(object):
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
     self._attempted_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False)
+        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        name="attempted_trees")
     self._finalized_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False)
+        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        name="finalized_trees")
     if not features:
       raise ValueError("Features dictionary must be specified.")
     (fc_names, dense_floats, sparse_float_indices, sparse_float_values,
-     sparse_float_shapes, sparse_int_indices, sparse_int_values,
-     sparse_int_shapes) = extract_features(features, self._feature_columns)
+     sparse_float_shapes, sparse_int_indices,
+     sparse_int_values, sparse_int_shapes) = extract_features(
+         features, self._feature_columns, use_core_columns)
     logging.info("Active Feature Columns: " + str(fc_names))
     self._fc_names = fc_names
     self._dense_floats = dense_floats
@@ -358,6 +373,13 @@ class GradientBoostedDecisionTreeModel(object):
     """
     ensemble_stats = training_ops.tree_ensemble_stats(ensemble_handle,
                                                       ensemble_stamp)
+    num_handlers = (
+        len(self._dense_floats) + len(self._sparse_float_shapes) +
+        len(self._sparse_int_shapes))
+    # Used during feature selection.
+    used_handlers = model_ops.tree_ensemble_used_handlers(
+        ensemble_handle, ensemble_stamp, num_all_handlers=num_handlers)
+
     # We don't need dropout info - we can always restore it based on the
     # seed.
     apply_dropout, seed = _dropout_params(mode, ensemble_stats)
@@ -392,7 +414,7 @@ class GradientBoostedDecisionTreeModel(object):
           use_locking=True)
 
     return _make_predictions_dict(ensemble_stamp, predictions, partition_ids,
-                                  ensemble_stats)
+                                  ensemble_stats, used_handlers)
 
   def predict(self, mode):
     """Returns predictions given the features and mode.
@@ -679,13 +701,13 @@ class GradientBoostedDecisionTreeModel(object):
                               control_flow_ops.no_op))
 
     # Update handler stats.
-    handler_reads = {}
+    handler_reads = collections.OrderedDict()
     for handler in handlers:
       handler_reads[handler] = handler.scheduled_reads()
 
     handler_results = batch_ops_utils.run_handler_scheduled_ops(
         handler_reads, ensemble_stamp, worker_device)
-    per_handler_updates = {}
+    per_handler_updates = collections.OrderedDict()
     # Two values per handler. First one is if the handler is active for the
     # current layer. The second one is if the handler is going to be active
     # for the next layer.
@@ -707,11 +729,27 @@ class GradientBoostedDecisionTreeModel(object):
       active_handlers_current_layer = (
           active_handlers_current_layer <
           self._learner_config.feature_fraction_per_tree)
-      active_handlers = array_ops.stack(active_handlers_current_layer,
-                                        array_ops.ones(
-                                            [len(handlers)], dtype=dtypes.bool))
+      active_handlers = array_ops.stack([
+          active_handlers_current_layer,
+          array_ops.ones([len(handlers)], dtype=dtypes.bool)], axis=1)
     else:
       active_handlers = array_ops.ones([len(handlers), 2], dtype=dtypes.bool)
+
+    if self._learner_config.constraints.max_number_of_unique_feature_columns:
+      target = (
+          self._learner_config.constraints.max_number_of_unique_feature_columns)
+
+      def _feature_selection_active_handlers():
+        # The active list for current and the next iteration.
+        used_handlers = array_ops.reshape(predictions_dict[USED_HANDLERS_MASK],
+                                          [-1, 1])
+        used_handlers = array_ops.concat([used_handlers, used_handlers], axis=1)
+        return math_ops.logical_and(used_handlers, active_handlers)
+
+      active_handlers = (
+          control_flow_ops.cond(predictions_dict[NUM_USED_HANDLERS] >= target,
+                                _feature_selection_active_handlers,
+                                lambda: active_handlers))
 
     # Prepare empty gradients and hessians when handlers are not ready.
     empty_hess_shape = [1] + hessian_shape.as_list()

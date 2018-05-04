@@ -305,7 +305,7 @@ TEST(SplitAndParseAsInts, Int64) {
   EXPECT_EQ(nums[0], 134);
   EXPECT_EQ(nums[1], 2);
   EXPECT_EQ(nums[2], 13);
-  EXPECT_EQ(nums[3], -4000000000);
+  EXPECT_EQ(nums[3], static_cast<int64>(-4000000000ull));
 
   EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
 
@@ -428,6 +428,58 @@ TEST(StringReplace, EmptyStringReplaceFirst) {
 
 TEST(StringReplace, EmptyStringReplaceAll) {
   EXPECT_EQ("", str_util::StringReplace("", "a", "X", /*replace_all=*/true));
+}
+
+TEST(StartsWith, Basic) {
+  const string s1(
+      "123"
+      "\0"
+      "456",
+      7);
+  const StringPiece a("foobar");
+  const StringPiece b(s1);
+  const StringPiece e;
+  EXPECT_TRUE(str_util::StartsWith(a, a));
+  EXPECT_TRUE(str_util::StartsWith(a, "foo"));
+  EXPECT_TRUE(str_util::StartsWith(a, e));
+  EXPECT_TRUE(str_util::StartsWith(b, s1));
+  EXPECT_TRUE(str_util::StartsWith(b, b));
+  EXPECT_TRUE(str_util::StartsWith(b, e));
+  EXPECT_TRUE(str_util::StartsWith(e, ""));
+  EXPECT_FALSE(str_util::StartsWith(a, b));
+  EXPECT_FALSE(str_util::StartsWith(b, a));
+  EXPECT_FALSE(str_util::StartsWith(e, a));
+}
+
+TEST(EndsWith, Basic) {
+  const string s1(
+      "123"
+      "\0"
+      "456",
+      7);
+  const StringPiece a("foobar");
+  const StringPiece b(s1);
+  const StringPiece e;
+  EXPECT_TRUE(str_util::EndsWith(a, a));
+  EXPECT_TRUE(str_util::EndsWith(a, "bar"));
+  EXPECT_TRUE(str_util::EndsWith(a, e));
+  EXPECT_TRUE(str_util::EndsWith(b, s1));
+  EXPECT_TRUE(str_util::EndsWith(b, b));
+  EXPECT_TRUE(str_util::EndsWith(b, e));
+  EXPECT_TRUE(str_util::EndsWith(e, ""));
+  EXPECT_FALSE(str_util::EndsWith(a, b));
+  EXPECT_FALSE(str_util::EndsWith(b, a));
+  EXPECT_FALSE(str_util::EndsWith(e, a));
+}
+
+TEST(StrContains, Basic) {
+  StringPiece a("abcdefg");
+  StringPiece b("abcd");
+  StringPiece c("efg");
+  StringPiece d("gh");
+  EXPECT_TRUE(str_util::StrContains(a, b));
+  EXPECT_TRUE(str_util::StrContains(a, c));
+  EXPECT_TRUE(!str_util::StrContains(a, d));
 }
 
 }  // namespace tensorflow

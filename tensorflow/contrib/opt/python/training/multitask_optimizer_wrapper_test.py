@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+import six
+
 from tensorflow.contrib.opt.python.training import multitask_optimizer_wrapper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -25,13 +28,11 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 
-import numpy as np
-import six
 
 class MultitaskOptimizerWrapperTest(test.TestCase):
+  """Tests for the multitask optimizer wrapper.
   """
-  Tests for the multitask optimizer wrapper.
-  """
+
   def testWrapper(self):
     with self.test_session():
       var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
@@ -39,12 +40,10 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtypes.float32)
       grads1 = constant_op.constant([0.01, 0.01], dtype=dtypes.float32)
       grads_allzero = constant_op.constant([0.0, 0.0], dtype=dtypes.float32)
-      mom_opt_impl = momentum.MomentumOptimizer(
-          learning_rate=2.0, momentum=0.9)
+      mom_opt_impl = momentum.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
       mom_opt = multitask_optimizer_wrapper.MultitaskOptimizerWrapper(
           mom_opt_impl)
-      mom_update = mom_opt.apply_gradients(
-          zip([grads0, grads1], [var0, var1]))
+      mom_update = mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       mom_update_partial = mom_opt.apply_gradients(
           zip([grads_allzero, grads1], [var0, var1]))
       mom_update_no_action = mom_opt.apply_gradients(
@@ -63,14 +62,13 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
       # Step 1: normal momentum update.
       self.evaluate(mom_update)
       # Check that the momentum accumulators have been updated.
-      self.assertAllCloseAccordingToType(np.array([0.1, 0.1]),
-                                         self.evaluate(slot0))
-      self.assertAllCloseAccordingToType(np.array([0.01, 0.01]),
-                                         self.evaluate(slot1))
+      self.assertAllCloseAccordingToType(
+          np.array([0.1, 0.1]), self.evaluate(slot0))
+      self.assertAllCloseAccordingToType(
+          np.array([0.01, 0.01]), self.evaluate(slot1))
       # Check that the parameters have been updated.
       self.assertAllCloseAccordingToType(
-          np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
-          self.evaluate(var0))
+          np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]), self.evaluate(var0))
       self.assertAllCloseAccordingToType(
           np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
           self.evaluate(var1))
@@ -78,8 +76,8 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
       # Step 2: momentum update that changes only slot1 but not slot0.
       self.evaluate(mom_update_partial)
       # Check that only the relevant momentum accumulator has been updated.
-      self.assertAllCloseAccordingToType(np.array([0.1, 0.1]),
-                                         self.evaluate(slot0))
+      self.assertAllCloseAccordingToType(
+          np.array([0.1, 0.1]), self.evaluate(slot0))
       self.assertAllCloseAccordingToType(
           np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
           self.evaluate(slot1))
@@ -87,8 +85,8 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
       # Step 3: momentum update that does not change anything.
       self.evaluate(mom_update_no_action)
       # Check that the momentum accumulators have *NOT* been updated.
-      self.assertAllCloseAccordingToType(np.array([0.1, 0.1]),
-                                         self.evaluate(slot0))
+      self.assertAllCloseAccordingToType(
+          np.array([0.1, 0.1]), self.evaluate(slot0))
       self.assertAllCloseAccordingToType(
           np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
           self.evaluate(slot1))
@@ -105,8 +103,9 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
       grads3 = None
       varlist = [var0, var1, var2, var3]
       gradients = [grads0, grads1, grads2, grads3]
-      clipped_gradvars, global_norm = multitask_optimizer_wrapper.clip_gradients_by_global_norm(
-          six.moves.zip(gradients, varlist), clip_norm=1.0)
+      clipped_gradvars, global_norm = (
+          multitask_optimizer_wrapper.clip_gradients_by_global_norm(
+              six.moves.zip(gradients, varlist), clip_norm=1.0))
       clipped_grads = list(six.moves.zip(*clipped_gradvars))[0]
       reference_global_norm = np.sqrt(np.sum(np.square([10.0, 15.0, 0.0, 5.0])))
       self.assertAllCloseAccordingToType(
@@ -114,6 +113,7 @@ class MultitaskOptimizerWrapperTest(test.TestCase):
       self.assertAllCloseAccordingToType(
           self.evaluate(clipped_grads[2]), np.array([0., 0.]))
       self.assertEqual(clipped_grads[3], None)
+
 
 if __name__ == "__main__":
   test.main()

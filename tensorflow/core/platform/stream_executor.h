@@ -37,4 +37,15 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
+namespace perftools {
+namespace gputools {
+
+// Temporarily pull stream_executor into perftools::gputools while we migrate
+// code to the new namespace.  TODO(jlebar): Remove this once we've completed
+// the migration.
+using namespace stream_executor;  // NOLINT[build/namespaces]
+
+}  // namespace gputools
+}  // namespace perftools
+
 #endif  // TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_

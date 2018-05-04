@@ -50,7 +50,17 @@ void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
 
   // TODO(b/62904716): Bias array should become 1-D when padding removed.
   const int depth = bias_shape.dims(bias_shape.dimensions_count() - 1);
-  CHECK_EQ(depth, operand_shape.dims(operand_shape.dimensions_count() - 1));
+  int operand_channel_increment = 0;
+  if (operand_shape.dimensions_count() >= 1 &&
+      operand_shape.dims(operand_shape.dimensions_count() - 1) ==
+          bias_shape.dims(bias_shape.dimensions_count() - 1)) {
+    operand_channel_increment = 1;
+  } else if (operand_shape.dimensions_count() == 0 ||
+             operand_shape.dims(operand_shape.dimensions_count() - 1) == 1) {
+    operand_channel_increment = 0;
+  } else {
+    LOG(FATAL) << "Operand shape mismatch.";
+  }
 
   enum class OpType { BiasPlusOperand, BiasMinusOperand, OperandMinusBias };
 
@@ -60,9 +70,10 @@ void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
                                   ? OpType::BiasMinusOperand
                                   : OpType::OperandMinusBias;
 
+  int operand_channel = 0;
   for (int i = 0; i < depth; i++) {
     float& bias_val = bias_data[i];
-    const float operand_val = operand_data[i];
+    const float operand_val = operand_data[operand_channel];
     if (optype == OpType::BiasPlusOperand) {
       bias_val += operand_val;
     } else if (optype == OpType::BiasMinusOperand) {
@@ -72,6 +83,7 @@ void FuseAddOrSubParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
     } else {
       LOG(FATAL) << "Should not get here.";
     }
+    operand_channel += operand_channel_increment;
   }
 }
 
@@ -309,7 +321,7 @@ bool FuseBinaryIntoPrecedingAffine::Run(Model* model, std::size_t op_index) {
     LOG(FATAL) << "should not get here";
   }
 
-  model->arrays.erase(preceding_op->outputs[0]);
+  model->EraseArray(preceding_op->outputs[0]);
   preceding_op->outputs[0] = binary_op->outputs[0];
   preceding_op->fused_activation_function =
       binary_op->fused_activation_function;
@@ -317,7 +329,7 @@ bool FuseBinaryIntoPrecedingAffine::Run(Model* model, std::size_t op_index) {
       binary_op->inputs[index_of_constant_input];
   CHECK(IsConstantParameterArray(*model, old_constant_param_name));
   if (CountOpsWithInput(*model, old_constant_param_name) == 1) {
-    model->arrays.erase(old_constant_param_name);
+    model->EraseArray(old_constant_param_name);
   }
   model->operators.erase(binary_it);
   return true;

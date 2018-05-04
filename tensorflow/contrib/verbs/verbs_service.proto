@@ -50,6 +50,12 @@ message GetRemoteAddressResponse {
   repeated MemoryRegion mr = 3;
 }
 
+message ErrorStatusProto {
+  int32 error_code = 1;
+  string error_message = 2;
+  string error_details = 3;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // VerbsService

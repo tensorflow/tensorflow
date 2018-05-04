@@ -80,3 +80,8 @@ message TaggedRunMetadata {
   // deserialization.
   bytes run_metadata = 2;
 }
+
+// For communicating live events back to a coordinator
+message SessionStatus {
+  repeated Event event = 1;
+}

@@ -50,6 +50,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .TypeConstraint<int64>("Tidx")                                       \
           .HostMemory("reduction_indices"),                                    \
       ReductionOp<GPUDevice, type, int64, Eigen::internal::MinReducer<type>>);
+REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
 

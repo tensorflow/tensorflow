@@ -26,12 +26,13 @@ echo ""
 
 # Run configure.
 export TF_NEED_CUDA=0
+export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=`which python3`
 yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --test_tag_filters=-no_oss,-oss_serial,-gpu,-benchmark-test -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
+    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --config=opt \
     --test_output=errors -- \
     //tensorflow/contrib/... \
     -//tensorflow/contrib/lite/... \

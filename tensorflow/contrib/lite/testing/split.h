@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_SPLIT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_SPLIT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TESTING_SPLIT_H_
+#define TENSORFLOW_CONTRIB_LITE_TESTING_SPLIT_H_
 
 #include <cstdlib>
 #include <string>
@@ -54,6 +54,15 @@ inline std::vector<int> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<int64_t> Split(const string& s, const string& delimiter) {
+  std::vector<int64_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(strtoll(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<float> Split(const string& s, const string& delimiter) {
   std::vector<float> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
@@ -71,7 +80,17 @@ inline std::vector<uint8_t> Split(const string& s, const string& delimiter) {
   return fields;
 }
 
+template <>
+inline std::vector<bool> Split(const string& s, const string& delimiter) {
+  std::vector<bool> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(
+        static_cast<bool>(strtol(s.data() + p.first, nullptr, 10)));
+  }
+  return fields;
+}
+
 }  // namespace testing
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_SPLIT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TESTING_SPLIT_H_

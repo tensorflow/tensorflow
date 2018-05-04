@@ -162,7 +162,10 @@ class SpaceToBatchNDOp : public XlaOpKernel {
                  block_shape, paddings);
   }
 };
-REGISTER_XLA_OP(Name("SpaceToBatchND"), SpaceToBatchNDOp);
+REGISTER_XLA_OP(Name("SpaceToBatchND")
+                    .CompileTimeConstInput("paddings")
+                    .CompileTimeConstInput("block_shape"),
+                SpaceToBatchNDOp);
 
 class SpaceToBatchOp : public XlaOpKernel {
  public:
@@ -184,7 +187,8 @@ class SpaceToBatchOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("SpaceToBatch"), SpaceToBatchOp);
+REGISTER_XLA_OP(Name("SpaceToBatch").CompileTimeConstInput("paddings"),
+                SpaceToBatchOp);
 
 }  // namespace
 }  // namespace tensorflow

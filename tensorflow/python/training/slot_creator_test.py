@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
@@ -29,6 +30,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import slot_creator
 
 
+@test_util.with_c_api
 class SlotCreatorTest(test.TestCase):
 
   def testCreateSlotFromVariable(self):

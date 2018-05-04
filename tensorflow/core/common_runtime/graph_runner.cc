@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(skyewm): this is necessary to make the single_threaded_cpu_device.h
+// include work. Some other include must be including eigen without defining
+// this. Consider defining in this in a BUILD rule.
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/common_runtime/graph_runner.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -20,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/single_threaded_cpu_device.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -35,18 +41,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-std::unique_ptr<Device> GetCPUDevice(Env* env) {
-  std::vector<Device*> devices;
-  SessionOptions session_options;
-  session_options.env = env;
-  Status s = DeviceFactory::GetFactory(DEVICE_CPU)
-                 ->CreateDevices(session_options, "", &devices);
-  if (s.ok() && !devices.empty()) {
-    return std::unique_ptr<Device>(devices[0]);
-  }
-  return nullptr;
-}
 
 // A simple rendezvous class.
 // Assumes a single sender and a single receiver, no duplicate sends, and no
@@ -97,7 +91,10 @@ class SimpleRendezvous : public Rendezvous {
 
 }  // namespace
 
-GraphRunner::GraphRunner(Env* env) : cpu_device_(GetCPUDevice(env)) {}
+GraphRunner::GraphRunner(Env* env)
+    : device_deleter_(new SingleThreadedCpuDevice(env)),
+      device_(device_deleter_.get()) {}
+GraphRunner::GraphRunner(Device* device) : device_(device) {}
 
 GraphRunner::~GraphRunner() {}
 
@@ -105,17 +102,18 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
                         const NamedTensorList& inputs,
                         const std::vector<string>& output_names,
                         std::vector<Tensor>* outputs) {
-  if (cpu_device_ == nullptr) {
+  if (device_ == nullptr) {
     return errors::NotFound("Cannot find a device for GraphRunner.");
   }
 
   if (function_library && function_library->device() &&
-      function_library->device()->device_type() != cpu_device_->device_type()) {
-    // We are running on a CPU but the function library is for a non-CPU device,
-    // so just ignore the function_library.
+      function_library->device()->device_type() != device_->device_type()) {
+    // Mismatch between function_library's device_type and device_'s
+    // device_type.
     // TODO(matthewmurray) Can we create a new FunctionLibraryRuntime that is
-    // identical to function_library except that it uses CPU?
-    VLOG(1) << "Cannot run on CPU device with a function library for a "
+    // identical to function_library except that it uses the given 'device_'?
+    VLOG(1) << "Cannot run on: " << device_->device_type()
+            << " with a function library for a "
             << function_library->device()->device_type() << " device.";
     function_library = nullptr;
   }
@@ -146,8 +144,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   subgraph::RewriteGraphMetadata metadata;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph_to_run.get(), input_names, output_names, {} /* target nodes */,
-      cpu_device_->attributes(), false /* use_function_convention */,
-      &metadata));
+      device_->attributes(), false /* use_function_convention */, &metadata));
 
   // Create the local executor and the Rendezvous for fetching back the
   // constants.
@@ -156,21 +153,20 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   // should not be running expensive operators.
   auto runner = [](Executor::Args::Closure c) { c(); };
 
-  // Take ownership and pass to NewLocalExecutor
-  Graph* g = graph_to_run.release();
-
   LocalExecutorParams params;
   // The ownership of the output tensors are bound to this device's lifetime.
-  params.device = cpu_device_.get();
+  params.device = device_;
   params.function_library = function_library;
-  params.create_kernel = [this, g](const NodeDef& ndef, OpKernel** kernel) {
-    return CreateNonCachedKernel(cpu_device_.get(), nullptr, ndef,
-                                 g->versions().producer(), kernel);
+  const int producer = graph_to_run->versions().producer();
+  params.create_kernel = [this, producer](const NodeDef& ndef,
+                                          OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, nullptr, ndef, producer, kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
 
   Executor* executor;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &executor));
+  TF_RETURN_IF_ERROR(
+      NewLocalExecutor(params, std::move(graph_to_run), &executor));
   std::unique_ptr<Executor> executor_unref(executor);
 
   Executor::Args args;

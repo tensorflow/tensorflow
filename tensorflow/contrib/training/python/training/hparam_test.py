@@ -38,40 +38,60 @@ class HParamsTest(test.TestCase):
     self.assertFalse('bar' in hparams)
 
   def testSomeValues(self):
-    hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6')
-    self.assertDictEqual({'aaa': 1, 'b': 2.0, 'c_c': 'relu6'}, hparams.values())
-    expected_str = '[(\'aaa\', 1), (\'b\', 2.0), (\'c_c\', \'relu6\')]'
+    hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d='/a/b=c/d')
+    self.assertDictEqual(
+        {'aaa': 1, 'b': 2.0, 'c_c': 'relu6', 'd': '/a/b=c/d'},
+        hparams.values())
+    expected_str = ('[(\'aaa\', 1), (\'b\', 2.0), (\'c_c\', \'relu6\'), '
+                    '(\'d\', \'/a/b=c/d\')]')
     self.assertEqual(expected_str, str(hparams.__str__()))
     self.assertEqual(expected_str, str(hparams))
     self.assertEqual(1, hparams.aaa)
     self.assertEqual(2.0, hparams.b)
     self.assertEqual('relu6', hparams.c_c)
+    self.assertEqual('/a/b=c/d', hparams.d)
     hparams.parse('aaa=12')
     self.assertDictEqual({
         'aaa': 12,
         'b': 2.0,
-        'c_c': 'relu6'
+        'c_c': 'relu6',
+        'd': '/a/b=c/d'
     }, hparams.values())
     self.assertEqual(12, hparams.aaa)
     self.assertEqual(2.0, hparams.b)
     self.assertEqual('relu6', hparams.c_c)
-    hparams.parse('c_c=relu4,b=-2.0e10')
+    self.assertEqual('/a/b=c/d', hparams.d)
+    hparams.parse('c_c=relu4, b=-2.0e10')
     self.assertDictEqual({
         'aaa': 12,
         'b': -2.0e10,
-        'c_c': 'relu4'
+        'c_c': 'relu4',
+        'd': '/a/b=c/d'
     }, hparams.values())
     self.assertEqual(12, hparams.aaa)
     self.assertEqual(-2.0e10, hparams.b)
     self.assertEqual('relu4', hparams.c_c)
+    self.assertEqual('/a/b=c/d', hparams.d)
     hparams.parse('c_c=,b=0,')
-    self.assertDictEqual({'aaa': 12, 'b': 0, 'c_c': ''}, hparams.values())
+    self.assertDictEqual({'aaa': 12, 'b': 0, 'c_c': '', 'd': '/a/b=c/d'},
+                         hparams.values())
     self.assertEqual(12, hparams.aaa)
     self.assertEqual(0.0, hparams.b)
     self.assertEqual('', hparams.c_c)
+    self.assertEqual('/a/b=c/d', hparams.d)
     hparams.parse('c_c=2.3",b=+2,')
     self.assertEqual(2.0, hparams.b)
     self.assertEqual('2.3"', hparams.c_c)
+    hparams.parse('d=/a/b/c/d,aaa=11,')
+    self.assertEqual(11, hparams.aaa)
+    self.assertEqual(2.0, hparams.b)
+    self.assertEqual('2.3"', hparams.c_c)
+    self.assertEqual('/a/b/c/d', hparams.d)
+    hparams.parse('b=1.5,d=/a=b/c/d,aaa=10,')
+    self.assertEqual(10, hparams.aaa)
+    self.assertEqual(1.5, hparams.b)
+    self.assertEqual('2.3"', hparams.c_c)
+    self.assertEqual('/a=b/c/d', hparams.d)
     with self.assertRaisesRegexp(ValueError, 'Unknown hyperparameter'):
       hparams.parse('x=123')
     with self.assertRaisesRegexp(ValueError, 'Could not parse'):
@@ -84,17 +104,19 @@ class HParamsTest(test.TestCase):
       hparams.parse('b=relu')
     with self.assertRaisesRegexp(ValueError, 'Must not pass a list'):
       hparams.parse('aaa=[123]')
-    self.assertEqual(12, hparams.aaa)
-    self.assertEqual(2.0, hparams.b)
+    self.assertEqual(10, hparams.aaa)
+    self.assertEqual(1.5, hparams.b)
     self.assertEqual('2.3"', hparams.c_c)
+    self.assertEqual('/a=b/c/d', hparams.d)
     # Exports to proto.
     hparam_def = hparams.to_proto()
     # Imports from proto.
     hparams2 = hparam.HParams(hparam_def=hparam_def)
     # Verifies that all hparams are restored.
-    self.assertEqual(12, hparams2.aaa)
-    self.assertEqual(2.0, hparams2.b)
+    self.assertEqual(10, hparams2.aaa)
+    self.assertEqual(1.5, hparams2.b)
     self.assertEqual('2.3"', hparams2.c_c)
+    self.assertEqual('/a=b/c/d', hparams2.d)
 
   def testSetFromMap(self):
     hparams = hparam.HParams(a=1, b=2.0, c='tanh')
@@ -292,6 +314,16 @@ class HParamsTest(test.TestCase):
     self.assertEqual('relu4', hparams2.c_c)
     self.assertEqual(False, hparams2.d)
 
+    hparams3 = hparam.HParams(aaa=123)
+    self.assertEqual('{"aaa": 123}', hparams3.to_json())
+    self.assertEqual('{\n  "aaa": 123\n}', hparams3.to_json(indent=2))
+    self.assertEqual('{"aaa"=123}', hparams3.to_json(separators=(';', '=')))
+
+    hparams4 = hparam.HParams(aaa=123, b='hello', c_c=False)
+    self.assertEqual(
+        '{"aaa": 123, "b": "hello", "c_c": false}',
+        hparams4.to_json(sort_keys=True))
+
   def testSetHParam(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d=True)
     self.assertDictEqual({
@@ -363,6 +395,49 @@ class HParamsTest(test.TestCase):
       hparam.HParams(hparam_def='hello')
     with self.assertRaisesRegexp(AssertionError, ''):
       hparam.HParams(hparam_def=[1, 2, 3])
+
+  def testGet(self):
+    hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d=True, e=[5.0, 6.0])
+
+    # Existing parameters with default=None.
+    self.assertEqual(1, hparams.get('aaa'))
+    self.assertEqual(2.0, hparams.get('b'))
+    self.assertEqual('relu6', hparams.get('c_c'))
+    self.assertEqual(True, hparams.get('d'))
+    self.assertEqual([5.0, 6.0], hparams.get('e', None))
+
+    # Existing parameters with compatible defaults.
+    self.assertEqual(1, hparams.get('aaa', 2))
+    self.assertEqual(2.0, hparams.get('b', 3.0))
+    self.assertEqual(2.0, hparams.get('b', 3))
+    self.assertEqual('relu6', hparams.get('c_c', 'default'))
+    self.assertEqual(True, hparams.get('d', True))
+    self.assertEqual([5.0, 6.0], hparams.get('e', [1.0, 2.0, 3.0]))
+    self.assertEqual([5.0, 6.0], hparams.get('e', [1, 2, 3]))
+
+    # Existing parameters with incompatible defaults.
+    with self.assertRaises(ValueError):
+      hparams.get('aaa', 2.0)
+
+    with self.assertRaises(ValueError):
+      hparams.get('b', False)
+
+    with self.assertRaises(ValueError):
+      hparams.get('c_c', [1, 2, 3])
+
+    with self.assertRaises(ValueError):
+      hparams.get('d', 'relu')
+
+    with self.assertRaises(ValueError):
+      hparams.get('e', 123.0)
+
+    with self.assertRaises(ValueError):
+      hparams.get('e', ['a', 'b', 'c'])
+
+    # Nonexistent parameters.
+    self.assertEqual(None, hparams.get('unknown'))
+    self.assertEqual(123, hparams.get('unknown', 123))
+    self.assertEqual([1, 2, 3], hparams.get('unknown', [1, 2, 3]))
 
 
 if __name__ == '__main__':
