@@ -205,6 +205,19 @@ tensorflow::ImportNumpy();
   }
 }
 
+%typemap(out) StatusOr<xla::swig::LocalShapedBuffer*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::LocalShapedBuffer*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
 %typemap(out) StatusOr< std::unique_ptr<Literal> > {
   if ($1.ok()) {
     std::unique_ptr<Literal> value = $1.ConsumeValueOrDie();

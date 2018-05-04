@@ -87,6 +87,19 @@ py_library(
 )
 
 py_library(
+    name = "multi_worker_strategy",
+    srcs = ["multi_worker_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":mirrored_strategy",
+        ":values",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "one_device_strategy",
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],

@@ -626,16 +626,9 @@ Service::ExecuteParallelAndRegisterResult(
   // profiled.
   std::map<int64, se::Stream*> index_to_profiled_streams;
 
-  // Build DeviceAssignment for all cores based on the provided device handles.
-  DeviceAssignment device_assignment(options_.number_of_replicas(),
-                                     executables.size());
-  for (int64 i = 0; i < executables.size(); i++) {
-    TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
-    CHECK_EQ(replicas.size(), arguments[i].size());
-    for (int64 replica = 0; replica < replicas.size(); ++replica) {
-      device_assignment(replica, i) = replicas[replica]->device_ordinal();
-    }
-  }
+  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                      backend->computation_placer()->AssignDevices(
+                          options_.number_of_replicas(), executables.size()));
 
   for (int64 i = 0; i < executables.size(); i++) {
     // Stream executors for the replicas of the current computation.

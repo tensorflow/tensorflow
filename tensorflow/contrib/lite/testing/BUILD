@@ -43,6 +43,7 @@ gen_zipped_test_files(
         "mean.zip",
         "minimum.zip",
         "mul.zip",
+        "neg.zip",
         "pad.zip",
         "relu.zip",
         "relu1.zip",

@@ -77,6 +77,7 @@ py_test(
     tags = [
         "no_pip",
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
         ":dnn",
@@ -450,6 +451,7 @@ py_test(
         "no_pip",
         "noasan",  # times out
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
         ":head",

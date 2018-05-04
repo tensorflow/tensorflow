@@ -1375,9 +1375,9 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   request->SetResultBuffer(&output_buffer);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when renaming ", src,
                                   " to ", target);
-  // Flush the target from the block cache.  The source will be flushed in the
+  // Flush the target from the caches.  The source will be flushed in the
   // DeleteFile call below.
-  file_block_cache_->RemoveFile(target);
+  ClearFileCaches(target);
   Json::Value root;
   TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
   bool done;
