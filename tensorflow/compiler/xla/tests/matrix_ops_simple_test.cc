@@ -52,12 +52,7 @@ class MatOpsSimpleTest : public ClientLibraryTestBase {};
 template <typename T>
 class MatOpsSimpleTest_F16F32 : public MatOpsSimpleTest {};
 
-// TODO(bixia): This test for F16 failed on GPU 02-25-2018.
-#ifdef XLA_TEST_BACKEND_GPU
-TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, ::testing::Types<float>);
-#else
 TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, TypesF16F32);
-#endif
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   using T = TypeParam;
@@ -171,10 +166,7 @@ string PrintTestLinspaceMaxParam(
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-// TODO(bixia): This test failed on GPU 02-25-2018
-#ifdef XLA_TEST_BACKEND_CPU
 XLA_TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
-#endif
 #endif
 XLA_TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
 

@@ -540,6 +540,14 @@ uint64 HloModule::RandomNew64() const {
   return rng_();
 }
 
+HloComputation* HloModule::GetComputationWithName(
+    tensorflow::StringPiece name) {
+  auto it = c_find_if(computations(), [&](HloComputation* computation) {
+    return computation->name() == name;
+  });
+  return it == computations().end() ? nullptr : *it;
+}
+
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
 
 }  // namespace xla

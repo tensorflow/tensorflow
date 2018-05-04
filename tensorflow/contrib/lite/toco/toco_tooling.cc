@@ -345,6 +345,11 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
 
+  // Deduplicate large constant arrays.
+  if (toco_flags.has_dedupe_array_min_size_bytes()) {
+    DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
+  }
+
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 
   if (output_format != GRAPHVIZ_DOT && output_format != TFLITE) {

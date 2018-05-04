@@ -32,38 +32,44 @@ def _FFTSizeForGrad(grad, rank):
 
 @ops.RegisterGradient("FFT")
 def _FFTGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
-  return spectral_ops.ifft(grad) * math_ops.complex(size, 0.)
+  size = math_ops.cast(_FFTSizeForGrad(grad, 1), grad.dtype)
+  return spectral_ops.ifft(grad) * size
 
 
 @ops.RegisterGradient("IFFT")
 def _IFFTGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
-  return spectral_ops.fft(grad) * math_ops.complex(rsize, 0.)
+  rsize = math_ops.cast(
+      1. / math_ops.cast(_FFTSizeForGrad(grad, 1), grad.dtype.real_dtype),
+      grad.dtype)
+  return spectral_ops.fft(grad) * rsize
 
 
 @ops.RegisterGradient("FFT2D")
 def _FFT2DGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
-  return spectral_ops.ifft2d(grad) * math_ops.complex(size, 0.)
+  size = math_ops.cast(_FFTSizeForGrad(grad, 2), grad.dtype)
+  return spectral_ops.ifft2d(grad) * size
 
 
 @ops.RegisterGradient("IFFT2D")
 def _IFFT2DGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
-  return spectral_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
+  rsize = math_ops.cast(
+      1. / math_ops.cast(_FFTSizeForGrad(grad, 2), grad.dtype.real_dtype),
+      grad.dtype)
+  return spectral_ops.fft2d(grad) * rsize
 
 
 @ops.RegisterGradient("FFT3D")
 def _FFT3DGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
-  return spectral_ops.ifft3d(grad) * math_ops.complex(size, 0.)
+  size = math_ops.cast(_FFTSizeForGrad(grad, 3), grad.dtype)
+  return spectral_ops.ifft3d(grad) * size
 
 
 @ops.RegisterGradient("IFFT3D")
 def _IFFT3DGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
-  return spectral_ops.fft3d(grad) * math_ops.complex(rsize, 0.)
+  rsize = math_ops.cast(
+      1. / math_ops.cast(_FFTSizeForGrad(grad, 3), grad.dtype.real_dtype),
+      grad.dtype)
+  return spectral_ops.fft3d(grad) * rsize
 
 
 def _RFFTGradHelper(rank, irfft_fn):
