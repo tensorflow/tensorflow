@@ -96,7 +96,7 @@ def _eager_metrics_fn(model, outputs, targets):
           model.metrics_names.append(metric_name)
 
       with backend.name_scope(metric_name):
-        metric_result = metric_fn(outputs[i], targets[i])
+        metric_result = metric_fn(targets[i], outputs[i])
         metric_names.append(metric_name)
         metric_results.append(backend.mean(metric_result))
 
@@ -181,7 +181,7 @@ def slice_arrays(arrays, indices, contiguous=True):
   """Slices batches out of provided arrays (workaround for eager tensors).
 
   Unfortunately eager tensors don't have the same slicing behavior as
-  Numpy arrays (they folow  the same slicing behavior as symbolic TF tensors),
+  Numpy arrays (they follow the same slicing behavior as symbolic TF tensors),
   hence we cannot use `generic_utils.slice_arrays` directly
   and we have to implement this workaround based on `concat`. This has a
   performance cost.

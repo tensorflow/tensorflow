@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
@@ -733,7 +734,7 @@ class DistributionStrategy(object):
     `fn` may call `tf.get_tower_context()` to access methods such as
     `tower_id()` and `merge_call()`.
 
-    `merge_call()` is used to communicate betwen the towers and
+    `merge_call()` is used to communicate between the towers and
     re-enter the cross-tower context. All towers pause their execution
     having encountered a `merge_call()` call. After that the
     `merge_fn`-function is executed. Its results are then unwrapped and
@@ -896,6 +897,8 @@ class DistributionStrategy(object):
       A `Tensor` on `destination`.
     """
     _require_cross_tower_context(self)
+    assert isinstance(destination, six.string_types)
+    destination = device_util.resolve(destination)
     return self._fetch(val, destination, fn)
 
   def _fetch(self, val, destination, fn):
@@ -1124,8 +1127,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
     def creator(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      if kwargs.pop("tower_local_reduce_method", None) is not None:
-        kwargs["trainable"] = False
+      kwargs.pop("tower_local_reduce_method", None)
       return next_creator(*args, **kwargs)
 
     return _CurrentDistributionContext(
@@ -1135,7 +1137,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     """Does not set to resource variables."""
     def create_tower_local_variable(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      kwargs["tower_local_reduce_method"] = reduce_method
+      kwargs["trainable"] = False
       return next_creator(*args, **kwargs)
 
     _require_distribution_strategy_scope(self)

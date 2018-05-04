@@ -6,7 +6,7 @@
 * Added Gradient Boosted Trees as pre-made Estimators: BoostedTreesClassifier, BoostedTreesRegressor.
 * Add 3rd generation pipeline config for Cloud TPUs which improves performance and usability.
 * `tf.contrib.bayesflow` is moving out to it's own repo.
-* Added `tf.contrib.{proto,rpc}` to allow generic proto parsing and RPC communication.
+* Added `tf.contrib.{proto,rpc}` to allow generic proto parsing and RPC communication<sup>[1](#rpc-issue)</sup>.
 
 ## Bug Fixes and Other Changes
 * `tf.data`:
@@ -49,12 +49,13 @@
   * Fix non-uniformity of orthogonal matrices.
   * Fix bug where multi-image Estimator eval summaries were not displayed correctly.
 
+<a name="rpc-issue"><sup>1</sup></a> The cancellation logic of the RPC op contains a concurrency error. A fix has been submitted to master and will be part of the next release.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
 4d55397500, Aghasy, Alan Du, Alan Lee, Alan Yee, Alex Wiltschko, Animesh Karnewar, Ankit Gupta, Anton Matosov, Aris L, Ben Barsdell, Brent Yi, Brett Koonce, Carl Thomé, cbockman, Chikanaga Tomoyuki, Chris Tava, CéDric Deltheil, Dahan Gong, Dalmo Cirne, Daniel Erenrich, David Norman, DavidNorman, Edd Wilder-James, Fanjin Zeng, Felix Abecassis, fo40225, George Sterpu, Giovanni Terlingen, Gor Baghdasaryan, Guillaume Klein, Hanchen Li, Ilya Polenov, Jakub Kolodziejczyk, Jason Sadler, Jayaram Bobba, Jerry Liu, jinghuangintel, Jiongyan Zhang (张炯衍), Joel Shor, Jong Wook Kim, Julian Eisenschlos, Karl Lessard, Krish Ravindranath, Loo Rong Jie, Lukas Geiger, Luke Iwanski, Mahmoud Abuzaina, ManHyuk, Marvin Richter, Maximilian Mitchell, Mohammad Ashraf Bhuiyan, msofka, Mustafa Kasap, Nathan Burnham, Nathan Luehr, Naveen Marri, ngc92, nio1814, Oleg Zabluda, Ou Changkun, Panos Ipeirotis, Paul Van Eck, Peter Lee, Piotr Czapla, qjivy, Rholais Lii, Rodrigo Formigone, Russell Klopfer, ryantimjohn, Sang Han, SebastiáN RamíRez, shengfuintel, Siby Jose Plathottam, Silver Chan, Stanislaw Antol, Taehoon Lee, Tarang Chugh, Ted Chang, Thomas Bastiani, Xian Xu, Xiaoming (Jason) Cui, Yan Facai (颜发才), yaox12, Yashal Shakti Kanungo, Yong Tang, Yuan (Terry) Tang, Yuxin Wu, Ziyue(Louis) Lu
-
 
 # Release 1.7.0
 
@@ -235,7 +236,7 @@ Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, 田�
   * Add `complex64` support to XLA compiler.
   * `bfloat` support is now added to XLA infrastructure.
   * Make `ClusterSpec` propagation work with XLA devices.
-  * Use a determinisitic executor to generate XLA graph.
+  * Use a deterministic executor to generate XLA graph.
 * `tf.contrib`:
   * `tf.contrib.distributions`:
     * Add `tf.contrib.distributions.Autoregressive`.

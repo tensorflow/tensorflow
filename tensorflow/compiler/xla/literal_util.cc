@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -44,8 +45,16 @@ namespace {
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
-// Converts between little and big endian, assuming elements in the array are 16
-// bits long.
+// Converts between little and big endian.
+//
+// Precondition: size % 2 == 0 (elements in the array are 16 bits long)
+void ConvertEndianShort(string* bytes) {
+  CHECK_EQ(bytes->size() / 2, 0);
+  for (int64 i = 0; i < bytes->size(); i += 2) {
+    std::swap((*bytes)[i], (*bytes)[i + 1]);
+  }
+}
+
 void ConvertEndianShort(char* bytes, int64 size) {
   CHECK_EQ(size / 2, 0);
   for (int64 i = 0; i < size; i += 2) {
@@ -1930,16 +1939,14 @@ void Literal::Piece::WriteToProto(LiteralProto* proto) const {
       *proto->mutable_f16s() = string(
           reinterpret_cast<const char*>(data<half>().data()), size_bytes());
       if (!kLittleEndian) {
-        ConvertEndianShort(const_cast<char*>(proto->mutable_f16s()->data()),
-                           proto->f16s().size());
+        ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
       *proto->mutable_bf16s() = string(
           reinterpret_cast<const char*>(data<bfloat16>().data()), size_bytes());
       if (!kLittleEndian) {
-        ConvertEndianShort(const_cast<char*>(proto->mutable_bf16s()->data()),
-                           proto->bf16s().size());
+        ConvertEndianShort(proto->mutable_bf16s());
       }
       break;
     case F32:
@@ -2140,6 +2147,27 @@ string Literal::GetR1U8AsString() const {
 /* static */ const LiteralView LiteralView::Create(
     const Literal& literal, const ShapeIndex& view_root) {
   return LiteralView(literal, view_root);
+}
+
+size_t Literal::Hash() const {
+  using tensorflow::Hash64;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = ShapeUtil::Hash(shape());
+
+  ShapeUtil::ForEachSubshape(
+      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsTuple(subshape)) {
+          return;
+        }
+
+        CHECK(LayoutUtil::IsDense(subshape.layout()));
+        hash_value = Hash64Combine(
+            hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
+                               size_bytes(index)));
+      });
+
+  return hash_value;
 }
 
 LiteralView::LiteralView(const Literal& literal, const ShapeIndex& view_root) {

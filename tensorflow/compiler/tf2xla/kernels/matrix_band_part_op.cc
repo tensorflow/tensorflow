@@ -44,10 +44,10 @@ class MatrixBandPartOp : public XlaOpKernel {
                 errors::InvalidArgument("num_upper must be scalar, got shape ",
                                         num_upper_in_shape.DebugString()));
 
-    xla::ComputationBuilder* builder = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle num_lower = context->Input(1);
-    xla::ComputationDataHandle num_upper = context->Input(2);
+    xla::XlaBuilder* builder = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp num_lower = context->Input(1);
+    xla::XlaOp num_upper = context->Input(2);
     DataType input_type = context->input_type(0);
     DataType index_type = context->input_type(1);
 
@@ -58,10 +58,10 @@ class MatrixBandPartOp : public XlaOpKernel {
 
     // Compute 'offset', which is how many diagonals we are above/below the
     // diagonal.
-    xla::ComputationDataHandle iota_m;
+    xla::XlaOp iota_m;
     OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, index_type, m, &iota_m));
 
-    xla::ComputationDataHandle iota_n;
+    xla::XlaOp iota_n;
     OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, index_type, n, &iota_n));
 
     auto offset = builder->Sub(builder->Broadcast(iota_n, {m}), iota_m,

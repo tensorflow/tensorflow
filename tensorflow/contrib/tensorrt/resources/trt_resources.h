@@ -13,20 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTRESOURCES_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTRESOURCES_H_
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_RESOURCES_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_RESOURCES_H_
 
 #include <list>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
+
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
+
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
@@ -40,6 +43,11 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
         engine_(nullptr),
         logger_(nullptr),
         thr_(nullptr) {}
+
+  ~TRTCalibrationResource() {
+    VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
+  }
+
   string DebugString() override {
     std::stringstream oss;
     oss << " Calibrator = " << std::hex << calibrator_ << std::dec << std::endl
@@ -47,16 +55,17 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
         << " Network    = " << std::hex << network_ << std::dec << std::endl
         << " Engine     = " << std::hex << engine_ << std::dec << std::endl
         << " Logger     = " << std::hex << logger_ << std::dec << std::endl
+        << " Allocator  = " << std::hex << allocator_.get() << std::dec
+        << std::endl
         << " Thread     = " << std::hex << thr_ << std::dec << std::endl;
     return oss.str();
   }
-  ~TRTCalibrationResource() {
-    VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
-  }
+
   TRTInt8Calibrator* calibrator_;
   nvinfer1::IBuilder* builder_;
   nvinfer1::INetworkDefinition* network_;
   nvinfer1::ICudaEngine* engine_;
+  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
   tensorflow::tensorrt::Logger* logger_;
   // TODO(sami): Use threadpool threads!
   std::thread* thr_;
@@ -65,31 +74,28 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
 class TRTWeightStore : public tensorflow::ResourceBase {
  public:
   TRTWeightStore() {}
-  std::list<std::vector<uint8_t>> store_;
+
+  virtual ~TRTWeightStore() { VLOG(1) << "Destroying store" << DebugString(); }
+
   string DebugString() override {
     std::stringstream oss;
-    size_t lenBytes = 0;
+    size_t len_bytes = 0;
     for (const auto& v : store_) {
-      lenBytes += v.size() * sizeof(uint8_t);
+      len_bytes += v.size() * sizeof(uint8_t);
     }
     oss << " Number of entries     = " << store_.size() << std::endl
         << " Total number of bytes = "
-        << store_.size() * sizeof(std::vector<uint8_t>) + lenBytes << std::endl;
+        << store_.size() * sizeof(std::vector<uint8_t>) + len_bytes
+        << std::endl;
     return oss.str();
   }
-  virtual ~TRTWeightStore() { VLOG(1) << "Destroying store" << DebugString(); }
-};
 
-class TRTEngineResource : public tensorflow::ResourceBase {
- public:
-  TRTEngineResource() : runtime_(nullptr), ctx_(nullptr){};
-  string DebugString() override { return string(""); }
-  nvinfer1::IRuntime* runtime_;
-  nvinfer1::IExecutionContext* ctx_;
+  std::list<std::vector<uint8_t>> store_;
 };
 
 }  // namespace tensorrt
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCEMGR_TRTRESOURCES_H_
+
 #endif
 #endif
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_RESOURCES_H_

@@ -439,6 +439,22 @@ class HParamsTest(test.TestCase):
     self.assertEqual(123, hparams.get('unknown', 123))
     self.assertEqual([1, 2, 3], hparams.get('unknown', [1, 2, 3]))
 
+  def testDel(self):
+    hparams = hparam.HParams(aaa=1, b=2.0)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('aaa', 'will fail')
+
+    with self.assertRaises(ValueError):
+      hparams.add_hparam('aaa', 'will fail')
+
+    hparams.del_hparam('aaa')
+    hparams.add_hparam('aaa', 'will work')
+    self.assertEqual('will work', hparams.get('aaa'))
+
+    hparams.set_hparam('aaa', 'still works')
+    self.assertEqual('still works', hparams.get('aaa'))
+
 
 if __name__ == '__main__':
   test.main()

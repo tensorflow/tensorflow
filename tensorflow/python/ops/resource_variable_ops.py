@@ -24,7 +24,6 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
-from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -47,13 +46,11 @@ def get_resource_handle_data(graph_op):
   assert ops._USE_C_SHAPES  # pylint: disable=protected-access
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
-  with c_api_util.tf_buffer() as buf:
-    pywrap_tensorflow.TFE_GetResourceHandleShapeAndType(
-        graph_op.graph._c_graph, graph_op._as_tf_output(), buf)  # pylint: disable=protected-access
-    data = pywrap_tensorflow.TF_GetBuffer(buf)
+  handle_data = pywrap_tensorflow.GetResourceHandleShapeAndType(
+      graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
-      compat.as_bytes(data))
+      compat.as_bytes(handle_data))
 
 
 def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):

@@ -114,9 +114,9 @@ class BreakStatementTransformer(transformer.Base):
           template,
           var_name=break_var,
           for_stmt=node)
-      extra_cond = templates.replace_as_expression(
+      extra_test = templates.replace_as_expression(
           'not var_name', var_name=break_var)
-      anno.setanno(node[1], 'extra_cond', extra_cond)
+      anno.setanno(node[1], 'extra_test', extra_test)
 
     return node
 

@@ -85,7 +85,8 @@ class HloTestBase : public ::testing::Test {
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  static std::unique_ptr<HloModule> CreateNewModule();
+  static std::unique_ptr<HloModule> CreateNewModule(
+      const string& name = TestName());
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
@@ -176,9 +177,13 @@ class HloTestBase : public ::testing::Test {
   // 'layout'.
   void ForceParameterLayout(HloModule* module, int64 param_no,
                             const Layout& layout) {
-    ASSERT_LT(param_no,
-              module->mutable_entry_computation_layout()->parameter_count());
-    module->mutable_entry_computation_layout()
+    ASSERT_LT(
+        param_no,
+        module->mutable_host_entry_computation_layout()->parameter_count());
+    module->mutable_host_entry_computation_layout()
+        ->mutable_parameter_layout(param_no)
+        ->ResetLayout(layout);
+    module->mutable_device_entry_computation_layout()
         ->mutable_parameter_layout(param_no)
         ->ResetLayout(layout);
   }
@@ -186,7 +191,10 @@ class HloTestBase : public ::testing::Test {
   // Convenience method to force the layout of the computation result in a
   // module. The result layout of 'module' is set to 'layout'.
   void ForceResultLayout(HloModule* module, const Layout& layout) {
-    module->mutable_entry_computation_layout()
+    module->mutable_host_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout);
+    module->mutable_device_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout);
   }
@@ -194,7 +202,10 @@ class HloTestBase : public ::testing::Test {
   // Convenience method to clear the layout of the computation result in
   // 'module'.
   void ForceClearResultLayout(HloModule* module) {
-    module->mutable_entry_computation_layout()
+    module->mutable_host_entry_computation_layout()
+        ->mutable_result_layout()
+        ->Clear();
+    module->mutable_device_entry_computation_layout()
         ->mutable_result_layout()
         ->Clear();
   }

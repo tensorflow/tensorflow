@@ -28,7 +28,6 @@ py_library(
 py_library(
     name = "rpc_op_test_base",
     srcs = ["rpc_op_test_base.py"],
-    tags = ["notsan"],
     deps = [
         ":test_example_proto_py",
         "//tensorflow/contrib/proto",
