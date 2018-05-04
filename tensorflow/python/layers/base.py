@@ -358,7 +358,7 @@ def _add_elements_to_collection(elements, collection_list):
 def _should_add_regularizer(variable, existing_variable_set):
   result = True
   if isinstance(variable, tf_variables.PartitionedVariable):
-    for var in variable._get_variable_list():
+    for var in variable:
       if var in existing_variable_set:
         result = False
         break
