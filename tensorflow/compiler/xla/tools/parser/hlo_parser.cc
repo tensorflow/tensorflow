@@ -440,6 +440,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   optional<OpMetadata> metadata;
   attrs["metadata"] = {/*required=*/false, AttrTy::kMetadata, &metadata};
 
+  optional<string> backend_config;
+  attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
+                             &backend_config};
+
   HloInstruction* instruction;
   switch (opcode) {
     case HloOpcode::kParameter: {
@@ -1094,8 +1098,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
 
   instruction->set_name(name);
 
-  // Add common attrs (sharding, control predecessors) to the instruction, if
-  // they were seen.
+  // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {
     instruction->set_sharding(
         HloSharding::FromProto(sharding.value()).ValueOrDie());
@@ -1111,6 +1114,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   }
   if (metadata) {
     instruction->set_metadata(*metadata);
+  }
+  if (backend_config) {
+    instruction->set_backend_config(std::move(*backend_config));
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
