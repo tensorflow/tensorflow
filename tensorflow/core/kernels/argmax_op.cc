@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/argmax_op.h"
 
@@ -146,7 +146,7 @@ class ArgMinOp
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -222,6 +222,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
 
 #undef REGISTER_ARGMAX_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

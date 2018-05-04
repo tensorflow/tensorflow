@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -22,11 +22,13 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
+#if GOOGLE_CUDA
 #include "cuda/include/cuda.h"
+#endif
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -46,7 +48,7 @@ struct maybe_conj {
   }
 };
 
-// Partial specializations for Cuda types used to store complex numbers.
+// Partial specializations for Gpu types used to store complex numbers.
 template <bool conjugate>
 struct maybe_conj<float2, conjugate> {
   __device__ static __inline__ float2 run(float2 c) {
@@ -170,7 +172,7 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index<IndexCount> FlatToTensorIndex(
   return tensor_index;
 }
 
-// A Cuda custom kernel that swaps dimension-0 and dimension-2 of a 3D tensor.
+// A Gpu custom kernel that swaps dimension-0 and dimension-2 of a 3D tensor.
 template <typename T, bool conjugate = false>
 __global__ void SwapDimension0And2InTensor3Simple(int nthreads, const T* input,
                                                   Dimension<3> input_dims,
@@ -180,7 +182,7 @@ __global__ void SwapDimension0And2InTensor3Simple(int nthreads, const T* input,
   output_dims[1] = input_dims[1];
   output_dims[2] = input_dims[0];
 
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
 
     Index<3> output_tensor_index = FlatToTensorIndex(output_index, output_dims);
@@ -197,7 +199,7 @@ __global__ void SwapDimension0And2InTensor3Simple(int nthreads, const T* input,
   }
 }
 
-// A Cuda custom kernel that swaps dimension-1 and dimension-2 of a 3D tensor.
+// A Gpu custom kernel that swaps dimension-1 and dimension-2 of a 3D tensor.
 template <typename T, bool conjugate = false>
 __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
                                                   Dimension<3> input_dims,
@@ -207,7 +209,7 @@ __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
   output_dims[1] = input_dims[2];
   output_dims[2] = input_dims[1];
 
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<3> output_tensor_index = FlatToTensorIndex(output_index, output_dims);
 
@@ -368,14 +370,14 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   }
 }
 
-// A Cuda custom kernel that convert input to output, given proper padding on
+// A Gpu custom kernel that convert input to output, given proper padding on
 // the left and the top. The padded value is zero.
 template <typename T, int NDIMS>
 __global__ void PadInputCustomKernelNHWC(int nthreads, const T* input,
                                          Dimension<NDIMS> input_dims, T* output,
                                          Dimension<NDIMS> output_dims,
                                          Dimension<NDIMS - 2> padding_left) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
         FlatToTensorIndex(output_index, output_dims);
@@ -404,7 +406,7 @@ __global__ void PadInputCustomKernelNCHW(int nthreads, const T* input,
                                          Dimension<NDIMS> input_dims, T* output,
                                          Dimension<NDIMS> output_dims,
                                          Dimension<NDIMS - 2> padding_left) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
         FlatToTensorIndex(output_index, output_dims);
@@ -443,9 +445,9 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     }
     combined_dims[1] = in.dimension(NDIMS - 2);  // input filters
     combined_dims[2] = in.dimension(NDIMS - 1);  // output filters
-    CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    SwapDimension0And2InTensor3Simple<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+    GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
+    GPU_LAUNCH_KERNEL(SwapDimension0And2InTensor3Simple<T>,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
             config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
 };
@@ -463,9 +465,9 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
     for (int i = 3; i < NDIMS; ++i) {
       combined_dims[2] *= in.dimension(i);
     }
-    CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    SwapDimension0And2InTensor3Simple<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+    GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
+    GPU_LAUNCH_KERNEL(SwapDimension0And2InTensor3Simple<T>,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
             config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
 };
@@ -481,7 +483,7 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, int>::Tensor out,
                   TensorFormat format) {
-    CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
+    GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
     Dimension<NDIMS> input_dims;
     for (int i = 0; i < NDIMS; ++i) {
       input_dims[i] = in.dimension(i);
@@ -494,13 +496,13 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
     const Dimension<NDIMS - 2> padding_left_dim(padding_left);
 
     if (format == FORMAT_NHWC) {
-      PadInputCustomKernelNHWC<T, NDIMS>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+      GPU_LAUNCH_KERNEL(PadInputCustomKernelNHWC<T, NDIMS>,
+          dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
               config.virtual_thread_count, in.data(), input_dims, out.data(),
               output_dims, padding_left_dim);
     } else if (format == FORMAT_NCHW) {
-      PadInputCustomKernelNCHW<T, NDIMS>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+      GPU_LAUNCH_KERNEL(PadInputCustomKernelNCHW<T, NDIMS>,
+          dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
               config.virtual_thread_count, in.data(), input_dims, out.data(),
               output_dims, padding_left_dim);
     } else {
@@ -611,15 +613,15 @@ void LaunchBatchNarrowMatrixTransposeKernel(
     const T* input, const Dimension<3>& input_dims, T* output) {
   constexpr int NumThreads = TileLongSide;
   if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
-    SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
-                                          TileShortSide>
-        <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
-                                                           output);
+    GPU_LAUNCH_KERNEL(SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
+                                          TileLongSide, TileShortSide>,
+        dim3(total_tiles_count), dim3(NumThreads), 0, d.stream(),
+        input, input_dims, output);
   } else {
-    SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
-                                          TileLongSide>
-        <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
-                                                           output);
+    GPU_LAUNCH_KERNEL(SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
+                                          TileShortSide, TileLongSide>,
+        dim3(total_tiles_count), dim3(NumThreads), 0, d.stream(),
+        input, input_dims, output);
   }
 }
 
@@ -920,19 +922,19 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
 
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
-    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize,
-                                          conjugate>
-        <<<total_tiles_count, kNumThreads, 0, d.stream()>>>(input, input_dims,
-                                                            output);
+    GPU_LAUNCH_KERNEL(SwapDimension1And2InTensor3UsingTiles<T, kNumThreads,
+                                          kTileSize, kTileSize, conjugate>,
+        dim3(total_tiles_count), dim3(kTileSize, kNumThreads / kTileSize), 0, d.stream(),
+        input, input_dims, output);
 
   } else if (narrow_matrix) {
     SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(
         d, input, input_dims, output, kMinDimensionToUseTiles);
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);
-    SwapDimension1And2InTensor3Simple<T, conjugate>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+    GpuLaunchConfig config = GetGpuLaunchConfig(total_element_count, d);
+    GPU_LAUNCH_KERNEL(SwapDimension1And2InTensor3Simple<T, conjugate>,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
             config.virtual_thread_count, input, input_dims, output);
   }
 }
@@ -962,9 +964,9 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
                                static_cast<int>(combined_dims[1]),
                                static_cast<int>(combined_dims[2])};
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_size, d);
-    SwapDimension0And2InTensor3Simple<T, conjugate>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+    GpuLaunchConfig config = GetGpuLaunchConfig(total_size, d);
+    GPU_LAUNCH_KERNEL(SwapDimension0And2InTensor3Simple<T, conjugate>,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
             config.virtual_thread_count, in, input_dims, out);
   }
 };
@@ -1078,4 +1080,4 @@ template struct functor::PadInput<GPUDevice, Eigen::half, int, 5>;
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

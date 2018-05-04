@@ -12,13 +12,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/adjust_hsv_gpu.cu.h"
 #include "tensorflow/core/kernels/adjust_saturation_op.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -30,15 +30,15 @@ void AdjustSaturationGPU::operator()(GPUDevice* device,
                                      const float* const scale,
                                      float* const output) {
   const auto stream = device->stream();
-  const CudaLaunchConfig config =
-      GetCudaLaunchConfig(number_of_elements, *device);
+  const GpuLaunchConfig config =
+      GetGpuLaunchConfig(number_of_elements, *device);
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  internal::adjust_hsv_nhwc<false, true, false>
-      <<<block_count, threads_per_block, 0, stream>>>(
+  GPU_LAUNCH_KERNEL(internal::adjust_hsv_nhwc<false, true, false>,
+      dim3(block_count), dim3(threads_per_block), 0, stream,
           number_of_elements, input, output, nullptr, scale, nullptr);
 }
 }  // namespace functor
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

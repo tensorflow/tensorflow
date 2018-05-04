@@ -250,7 +250,7 @@ TF_CALL_ALL_TYPES(REGISTER)
 #undef REGISTER
 #endif  // INTEL_MKL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                    gtl::ArraySlice<int32> perm, Tensor* out) {
   typedef Eigen::GpuDevice GPUDevice;
