@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,17 +83,19 @@ SourceWriter& SourceWriter::Append(const StringPiece& str) {
 }
 
 SourceWriter& SourceWriter::AppendType(const Type& type) {
-  if (type.unknown()) {
+  if (type.wildcard()) {
     Append("?");
   } else {
     Append(type.name());
     if (!type.parameters().empty()) {
       Append("<");
+      bool first = true;
       for (const Type& t : type.parameters()) {
-        if (&t != &type.parameters().front()) {
+        if (!first) {
           Append(", ");
         }
         AppendType(t);
+        first = false;
       }
       Append(">");
     }
@@ -145,11 +147,13 @@ SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers,
     AppendType(method.return_type()).Append(" ");
   }
   Append(method.name()).Append("(");
+  bool first = true;
   for (const Variable& v : method.arguments()) {
-    if (&v != &method.arguments().front()) {
+    if (!first) {
       Append(", ");
     }
     AppendType(v.type()).Append(v.variadic() ? "... " : " ").Append(v.name());
+    first = false;
   }
   return Append(")").BeginBlock();
 }
@@ -294,14 +298,16 @@ SourceWriter& SourceWriter::WriteAnnotations(
 SourceWriter& SourceWriter::WriteGenerics(
     const std::list<const Type*>& generics) {
   Append("<");
+  bool first = true;
   for (const Type* pt : generics) {
-    if (pt != generics.front()) {
+    if (!first) {
       Append(", ");
     }
     Append(pt->name());
     if (!pt->supertypes().empty()) {
       Append(" extends ").AppendType(pt->supertypes().front());
     }
+    first = false;
   }
   return Append(">");
 }
@@ -339,7 +345,7 @@ void SourceWriter::TypeVisitor::Visit(const Type& type) {
 
 void SourceWriter::GenericNamespace::DoVisit(const Type& type) {
   // ignore non-generic parameters, wildcards and generics already declared
-  if (type.kind() == Type::GENERIC && !type.unknown()
+  if (type.kind() == Type::GENERIC && !type.wildcard()
       && generic_names_.find(type.name()) == generic_names_.end()) {
     declared_types_.push_back(&type);
     generic_names_.insert(type.name());
@@ -348,7 +354,7 @@ void SourceWriter::GenericNamespace::DoVisit(const Type& type) {
 
 void SourceWriter::TypeImporter::DoVisit(const Type& type) {
   if (!type.package().empty() && type.package() != current_package_) {
-    imports_.insert(type.full_name());
+    imports_.insert(type.canonical_name());
   }
 }
 

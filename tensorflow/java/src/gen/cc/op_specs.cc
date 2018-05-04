@@ -45,9 +45,26 @@ class TypeResolver {
  public:
   explicit TypeResolver(const OpDef& op_def) : op_def_(op_def) {}
 
+  // Returns the class type of an input/output argument
+  //
+  // For example, if the argument's datatype is DT_STRING, this method will
+  // return "java.lang.String", so the argument can become "Operand<String>"
+  // in the Ops API
   Type TypeOf(const OpDef_ArgDef& arg_def, bool *iterable_out);
-  std::pair<Type, Type> TypeOf(const OpDef_AttrDef& attr_def,
+
+  // Returns types of an input attribute
+  //
+  // The first element of the pair is the class type of this attribute while
+  // the second is its JNI/primitive type equivalent, required for explicit
+  // unboxing.
+  //
+  // For example, if the attribute is of type "float", this method will return
+  // <java.lang.Float, float>, so the attribute can be used as a "Float" object
+  // in the Ops API and casted to a "float" when passing through the JNI layer.
+  std::pair<Type, Type> TypesOf(const OpDef_AttrDef& attr_def,
       bool *iterable_out);
+
+  // Returns true if the type of this attribute has already been resolved
   bool IsAttributeVisited(const string& attr_name) {
     return visited_attrs_.find(attr_name) != visited_attrs_.cend();
   }
@@ -123,7 +140,7 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
     } else {
       for (const auto& attr_def : op_def_.attr()) {
         if (attr_def.name() == arg_def.type_attr()) {
-          type = TypeOf(attr_def, iterable_out).first;
+          type = TypesOf(attr_def, iterable_out).first;
           break;
         }
       }
@@ -141,7 +158,7 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
   return type;
 }
 
-std::pair<Type, Type> TypeResolver::TypeOf(const OpDef_AttrDef& attr_def,
+std::pair<Type, Type> TypeResolver::TypesOf(const OpDef_AttrDef& attr_def,
     bool* iterable_out) {
   std::pair<Type, Type> types = MakeTypePair(Type::Wildcard());
   *iterable_out = false;
@@ -319,7 +336,7 @@ ArgumentSpec CreateInput(const OpDef_ArgDef& input_def,
 AttributeSpec CreateAttribute(const OpDef_AttrDef& attr_def,
     const ApiDef::Attr& attr_api_def, TypeResolver* type_resolver) {
   bool iterable = false;
-  std::pair<Type, Type> types = type_resolver->TypeOf(attr_def, &iterable);
+  std::pair<Type, Type> types = type_resolver->TypesOf(attr_def, &iterable);
   Type var_type = types.first.kind() == Type::GENERIC ?
       Type::Class("Class").add_parameter(types.first) : types.first;
   if (iterable) {
