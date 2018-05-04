@@ -1138,7 +1138,7 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 
 )";
   ExpectHasSubstr(Parse(original).status().error_message(),
-                  "unexpected attribute calls");
+                  "unexpected attribute \"calls\"");
 }
 
 TEST_F(HloParserTest, MissingAttribute) {
