@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -102,10 +102,10 @@ class Type {
   const Kind& kind() const { return kind_; }
   const string& name() const { return name_; }
   const string& package() const { return package_; }
-  const string full_name() const {
+  const string canonical_name() const {
     return package_.empty() ? name_ : package_ + "." + name_;
   }
-  bool unknown() const { return name_.empty(); }  // only wildcards has no name
+  bool wildcard() const { return name_.empty(); }  // only wildcards has no name
   const std::list<Type>& parameters() const { return parameters_; }
   Type& add_parameter(const Type& parameter) {
     parameters_.push_back(parameter);

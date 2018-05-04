@@ -68,34 +68,27 @@ filegroup(
     ],
 )
 
-# Build the gen tool as a library, as it will be linked to a core/ops binary
-# files before making it an executable.
 tf_java_op_gen_srcjar(
     name = "java_op_gen_sources",
     api_def_srcs = [
         "//tensorflow/core/api_def:base_api_def",
+        "//tensorflow/core/api_def:java_api_def",
     ],
-    gen_base_package = "org.tensorflow.op",
-    gen_tool = "java_op_gen_tool",
-    ops_libs = [
-        "array_ops",
-        "candidate_sampling_ops",
-        "control_flow_ops",
-        "data_flow_ops",
-        "image_ops",
-        "io_ops",
-        "linalg_ops",
-        "logging_ops",
-        "math_ops",
-        "nn_ops",
-        "no_op",
-        "parsing_ops",
-        "random_ops",
-        "sparse_ops",
-        "state_ops",
-        "string_ops",
-        "training_ops",
-        "user_ops",
+    base_package = "org.tensorflow.op",
+    gen_tool = ":java_op_gen_tool",
+)
+
+tf_cc_binary(
+    name = "java_op_gen_tool",
+    srcs = [
+        "src/gen/cc/op_gen_main.cc",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-lm"],
+    linkstatic = 1,
+    deps = [
+        ":java_op_gen_lib",
+        "//tensorflow/core:ops",
     ],
 )
 

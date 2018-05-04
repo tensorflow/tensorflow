@@ -65,7 +65,6 @@ class ArgumentSpec {
       const Type& type, const string& description, bool iterable)
     : op_def_name_(op_def_name), var_(var), type_(type),
       description_(description), iterable_(iterable) {}
-  virtual ~ArgumentSpec() = default;
 
   const string& op_def_name() const { return op_def_name_; }
   const Variable& var() const { return var_; }
@@ -81,7 +80,7 @@ class ArgumentSpec {
   const bool iterable_;
 };
 
-class AttributeSpec : public ArgumentSpec {
+class AttributeSpec {
  public:
   // A specification for an operation attribute
   //
@@ -95,14 +94,24 @@ class AttributeSpec : public ArgumentSpec {
   AttributeSpec(const string& op_def_name, const Variable& var,
       const Type& type, const Type& jni_type, const string& description,
       bool iterable, bool has_default_value)
-    : ArgumentSpec(op_def_name, var, type, description, iterable),
+    : op_def_name_(op_def_name), var_(var), type_(type),
+      description_(description), iterable_(iterable),
       jni_type_(jni_type), has_default_value_(has_default_value) {}
-  virtual ~AttributeSpec() = default;
 
+  const string& op_def_name() const { return op_def_name_; }
+  const Variable& var() const { return var_; }
+  const Type& type() const { return type_; }
+  const string& description() const { return description_; }
+  bool iterable() const { return iterable_; }
   const Type& jni_type() const { return jni_type_; }
   bool has_default_value() const { return has_default_value_; }
 
  private:
+  const string op_def_name_;
+  const Variable var_;
+  const Type type_;
+  const string description_;
+  const bool iterable_;
   const Type jni_type_;
   const bool has_default_value_;
 };
