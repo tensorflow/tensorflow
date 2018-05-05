@@ -328,6 +328,19 @@ def _rnn_model_fn(features,
         logits=logits)
 
 
+def _assert_rnn_cell_fn(rnn_cell_fn, num_units, cell_type):
+  """Assert arguments are valid and return rnn_cell_fn."""
+  if rnn_cell_fn and (num_units or cell_type != USE_DEFAULT):
+    raise ValueError(
+        'num_units and cell_type must not be specified when using rnn_cell_fn'
+    )
+  if not rnn_cell_fn:
+    if cell_type == USE_DEFAULT:
+      cell_type = 'basic_rnn'
+    rnn_cell_fn = _make_rnn_cell_fn(num_units, cell_type)
+  return rnn_cell_fn
+
+
 class RNNClassifier(estimator.Estimator):
   """A classifier for TensorFlow RNN models.
 
@@ -341,8 +354,8 @@ class RNNClassifier(estimator.Estimator):
   token_emb = embedding_column(categorical_column=token_sequence, ...)
 
   estimator = RNNClassifier(
-      num_units=[32, 16], cell_type='lstm',
-      sequence_feature_columns=[token_emb])
+      sequence_feature_columns=[token_emb],
+      num_units=[32, 16], cell_type='lstm')
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -438,8 +451,8 @@ class RNNClassifier(estimator.Estimator):
         encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
         Also there will be errors if vocabulary is not provided and labels are
         string.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to Adagrad optimizer.
+      optimizer: An instance of `tf.Optimizer` or string specifying optimizer
+        type. Defaults to Adagrad optimizer.
       input_layer_partitioner: Optional. Partitioner for input layer. Defaults
         to `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: `RunConfig` object to configure the runtime settings.
@@ -448,14 +461,7 @@ class RNNClassifier(estimator.Estimator):
       ValueError: If `num_units`, `cell_type`, and `rnn_cell_fn` are not
         compatible.
     """
-    if rnn_cell_fn and (num_units or cell_type != USE_DEFAULT):
-      raise ValueError(
-          'num_units and cell_type must not be specified when using rnn_cell_fn'
-      )
-    if not rnn_cell_fn:
-      if cell_type == USE_DEFAULT:
-        cell_type = 'basic_rnn'
-      rnn_cell_fn = _make_rnn_cell_fn(num_units, cell_type)
+    rnn_cell_fn = _assert_rnn_cell_fn(rnn_cell_fn, num_units, cell_type)
 
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
@@ -478,4 +484,138 @@ class RNNClassifier(estimator.Estimator):
           input_layer_partitioner=input_layer_partitioner,
           config=config)
     super(RNNClassifier, self).__init__(
+        model_fn=_model_fn, model_dir=model_dir, config=config)
+
+
+class RNNEstimator(estimator.Estimator):
+  """An Estimator for TensorFlow RNN models with user-specified head.
+
+  Example:
+
+  ```python
+  token_sequence = sequence_categorical_column_with_hash_bucket(...)
+  token_emb = embedding_column(categorical_column=token_sequence, ...)
+
+  estimator = RNNEstimator(
+      head=tf.contrib.estimator.regression_head(),
+      sequence_feature_columns=[token_emb],
+      num_units=[32, 16], cell_type='lstm')
+
+  # Or with custom RNN cell:
+  def rnn_cell_fn(mode):
+    cells = [ tf.contrib.rnn.LSTMCell(size) for size in [32, 16] ]
+    if mode == tf.estimator.ModeKeys.TRAIN:
+      cells = [ tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=0.5)
+                    for cell in cells ]
+    return tf.contrib.rnn.MultiRNNCell(cells)
+
+  estimator = RNNEstimator(
+      head=tf.contrib.estimator.regression_head(),
+      sequence_feature_columns=[token_emb],
+      rnn_cell_fn=rnn_cell_fn)
+
+  # Input builders
+  def input_fn_train: # returns x, y
+    pass
+  estimator.train(input_fn=input_fn_train, steps=100)
+
+  def input_fn_eval: # returns x, y
+    pass
+  metrics = estimator.evaluate(input_fn=input_fn_eval, steps=10)
+  def input_fn_predict: # returns x, None
+    pass
+  predictions = estimator.predict(input_fn=input_fn_predict)
+  ```
+
+  Input of `train` and `evaluate` should have following features,
+  otherwise there will be a `KeyError`:
+
+  * if the head's `weight_column` is not `None`, a feature with
+    `key=weight_column` whose value is a `Tensor`.
+  * for each `column` in `sequence_feature_columns`:
+    - a feature with `key=column.name` whose `value` is a `SparseTensor`.
+  * for each `column` in `context_feature_columns`:
+    - if `column` is a `_CategoricalColumn`, a feature with `key=column.name`
+      whose `value` is a `SparseTensor`.
+    - if `column` is a `_WeightedCategoricalColumn`, two features: the first
+      with `key` the id column name, the second with `key` the weight column
+      name. Both features' `value` must be a `SparseTensor`.
+    - if `column` is a `_DenseColumn`, a feature with `key=column.name`
+      whose `value` is a `Tensor`.
+
+  Loss and predicted output are determined by the specified head.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
+  """
+
+  def __init__(self,
+               head,
+               sequence_feature_columns,
+               context_feature_columns=None,
+               num_units=None,
+               cell_type=USE_DEFAULT,
+               rnn_cell_fn=None,
+               model_dir=None,
+               optimizer='Adagrad',
+               input_layer_partitioner=None,
+               config=None):
+    """Initializes a `RNNClassifier` instance.
+
+    Args:
+      head: A `_Head` instance constructed with a method such as
+        `tf.contrib.estimator.multi_label_head`. This specifies the model's
+        output and loss function to be optimized.
+      sequence_feature_columns: An iterable containing the `FeatureColumn`s
+        that represent sequential input. All items in the set should either be
+        sequence columns (e.g. `sequence_numeric_column`) or constructed from
+        one (e.g. `embedding_column` with `sequence_categorical_column_*` as
+        input).
+      context_feature_columns: An iterable containing the `FeatureColumn`s
+        for contextual input. The data represented by these columns will be
+        replicated and given to the RNN at each timestep. These columns must be
+        instances of classes derived from `_DenseColumn` such as
+        `numeric_column`, not the sequential variants.
+      num_units: Iterable of integer number of hidden units per RNN layer. If
+        set, `cell_type` must also be specified and `rnn_cell_fn` must be
+        `None`.
+      cell_type: A subclass of `tf.nn.rnn_cell.RNNCell` or a string specifying
+        the cell type. Supported strings are: `'basic_rnn'`, `'lstm'`, and
+        `'gru'`. If set, `num_units` must also be specified and `rnn_cell_fn`
+        must be `None`.
+      rnn_cell_fn: A function with one argument, a `tf.estimator.ModeKeys`, and
+        returns an object of type `tf.nn.rnn_cell.RNNCell` that will be used to
+        construct the RNN. If set, `num_units` and `cell_type` cannot be set.
+        This is for advanced users who need additional customization beyond
+        `num_units` and `cell_type`. Note that `tf.nn.rnn_cell.MultiRNNCell` is
+        needed for stacked RNNs.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
+      optimizer: An instance of `tf.Optimizer` or string specifying optimizer
+        type. Defaults to Adagrad optimizer.
+      input_layer_partitioner: Optional. Partitioner for input layer. Defaults
+        to `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
+      config: `RunConfig` object to configure the runtime settings.
+
+    Raises:
+      ValueError: If `num_units`, `cell_type`, and `rnn_cell_fn` are not
+        compatible.
+    """
+    rnn_cell_fn = _assert_rnn_cell_fn(rnn_cell_fn, num_units, cell_type)
+
+    def _model_fn(features, labels, mode, config):
+      return _rnn_model_fn(
+          features=features,
+          labels=labels,
+          mode=mode,
+          head=head,
+          rnn_cell_fn=rnn_cell_fn,
+          sequence_feature_columns=tuple(sequence_feature_columns or []),
+          context_feature_columns=tuple(context_feature_columns or []),
+          optimizer=optimizer,
+          input_layer_partitioner=input_layer_partitioner,
+          config=config)
+    super(RNNEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

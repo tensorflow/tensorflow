@@ -19,6 +19,7 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@toco_convert
 @@toco_convert_protos
 @@tflite_from_saved_model
+@@Interpreter
 @@OpHint
 @@convert_op_hints_to_stubs
 
@@ -31,6 +32,7 @@ from __future__ import print_function
 from tensorflow.contrib.lite.python.convert import toco_convert
 from tensorflow.contrib.lite.python.convert import toco_convert_protos
 from tensorflow.contrib.lite.python.convert_saved_model import tflite_from_saved_model
+from tensorflow.contrib.lite.python.interpreter import Interpreter
 from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.contrib.lite.python.op_hint import OpHint
 # pylint: enable=unused-import

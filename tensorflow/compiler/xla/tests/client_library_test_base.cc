@@ -94,25 +94,11 @@ string ClientLibraryTestBase::TestName() const {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
-template <typename BuilderT>
 StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
-    BuilderT* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return client_->Execute(computation, arguments, &execution_options_);
-}
-
-StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout) {
-  ExecutionOptions execution_options = execution_options_;
-  if (shape_with_output_layout != nullptr) {
-    *execution_options.mutable_shape_with_output_layout() =
-        *shape_with_output_layout;
-  }
-  return client_->ExecuteAndTransfer(computation, arguments,
-                                     &execution_options);
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
@@ -128,17 +114,6 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
                                      &execution_options);
 }
 
-template <>
-StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
-    ComputationBuilder* builder,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout) {
-  // Build the computation, as a convenience.
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-  return ExecuteAndTransfer(computation, arguments, shape_with_output_layout);
-}
-
-template <>
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
     XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_output_layout) {
@@ -162,18 +137,6 @@ ClientLibraryTestBase::ExecuteAndTransferReference(
                                          &execution_options);
 }
 
-std::unique_ptr<GlobalData> ClientLibraryTestBase::ExecuteOrDie(
-    ComputationBuilder* builder,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  return Execute(builder, arguments).ConsumeValueOrDie();
-}
-
-std::unique_ptr<Literal> ClientLibraryTestBase::ExecuteAndTransferOrDie(
-    ComputationBuilder* builder,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  return ExecuteAndTransfer(builder, arguments).ConsumeValueOrDie();
-}
-
 string ClientLibraryTestBase::ExecuteToString(
     XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   auto computation_status = builder->Build();
@@ -191,32 +154,6 @@ string ClientLibraryTestBase::ExecuteToString(
   }
 }
 
-string ClientLibraryTestBase::ExecuteToString(
-    ComputationBuilder* builder,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  auto computation_status = builder->Build();
-  if (!computation_status.ok()) {
-    return computation_status.status().ToString();
-  }
-  auto computation = computation_status.ConsumeValueOrDie();
-
-  auto result =
-      client_->ExecuteAndTransfer(computation, arguments, &execution_options_);
-  if (!result.ok()) {
-    return result.status().ToString();
-  } else {
-    return result.ValueOrDie()->ToString();
-  }
-}
-
-void ClientLibraryTestBase::ComputeAndCompareR1(
-    ComputationBuilder* builder, const tensorflow::core::Bitmap& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
-                                                  arguments);
-}
-
 void ClientLibraryTestBase::ComputeAndCompareR1(
     XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
@@ -225,18 +162,16 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
                                                   arguments);
 }
 
-template <typename BuilderT>
 void ClientLibraryTestBase::ComputeAndCompareLiteral(
-    BuilderT* builder, const Literal& expected,
+    XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_layout) {
   EXPECT_IS_OK(ComputeAndCompareLiteralWithStatus(builder, expected, arguments,
                                                   shape_with_layout));
 }
 
-template <typename BuilderT>
 void ClientLibraryTestBase::ComputeAndCompareLiteral(
-    BuilderT* builder, const Literal& expected,
+    XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
     const Shape* shape_with_layout) {
   EXPECT_IS_OK(ComputeAndCompareLiteralWithStatus(builder, expected, arguments,
@@ -245,7 +180,7 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
 
 tensorflow::Status
 ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
-    const xla::Computation& computation, const Literal& expected,
+    const xla::XlaComputation& computation, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const std::function<void(const Literal& actual,
                              const string& error_message)>& verify_output) {
@@ -271,7 +206,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
 
 tensorflow::Status
 ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
-    const xla::Computation& computation, const Literal& expected,
+    const xla::XlaComputation& computation, const Literal& /*expected*/,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const std::function<void(const Literal& actual,
                              const string& error_message)>& verify_output,
@@ -334,28 +269,8 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
   return choose(0);
 }
 
-tensorflow::Status
-ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
-    const xla::XlaComputation& /*computation*/, const Literal& /*expected*/,
-    tensorflow::gtl::ArraySlice<GlobalData*> /*arguments*/,
-    const std::function<void(const Literal& actual,
-                             const string& error_message)>& /*verify_output*/) {
-  return Unimplemented("not yet implemented for XlaComputation");
-}
-
-tensorflow::Status
-ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
-    const xla::XlaComputation& /*computation*/, const Literal& /*expected*/,
-    tensorflow::gtl::ArraySlice<GlobalData*> /*arguments*/,
-    const std::function<void(const Literal& actual,
-                             const string& error_message)>& /*verify_output*/,
-    const Shape* /*output_with_layout*/) {
-  return Unimplemented("not yet implemented for XlaComputation");
-}
-
-template <typename BuilderT>
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
-    BuilderT* builder, const Literal& expected,
+    XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
     const Shape* shape_with_layout) {
   std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
@@ -412,9 +327,8 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   return tensorflow::Status::OK();
 }
 
-template <typename BuilderT>
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
-    BuilderT* builder, const Literal& expected,
+    XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
     ErrorSpec error, const Shape* shape_with_layout) {
   std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
@@ -484,9 +398,8 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   EXPECT_EQ(expected, actual->GetR1U8AsString());
 }
 
-template <typename BuilderT>
 void ClientLibraryTestBase::ComputeAndCompareTuple(
-    BuilderT* builder, const Literal& expected,
+    XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
@@ -497,9 +410,8 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
   LiteralTestUtil::ExpectEqual(expected, *actual);
 }
 
-template <typename BuilderT>
 void ClientLibraryTestBase::ComputeAndCompareTuple(
-    BuilderT* builder, const Literal& expected,
+    XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
@@ -508,60 +420,6 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
   }
   auto actual = actual_status.ConsumeValueOrDie();
   LiteralTestUtil::ExpectNear(expected, *actual, error);
-}
-
-void ClientLibraryTestBase::ComputeAndCompare(
-    ComputationBuilder* builder, const ComputationDataHandle& operand,
-    tensorflow::gtl::ArraySlice<Literal> arguments) {
-  auto status_or_data = ComputeValueAndReference(builder, operand, arguments);
-  EXPECT_IS_OK(status_or_data);
-  if (!status_or_data.ok()) {
-    return;
-  }
-  std::unique_ptr<Literal> reference, result;
-  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqual(*reference, *result);
-}
-
-void ClientLibraryTestBase::ComputeAndCompare(
-    ComputationBuilder* builder, const ComputationDataHandle& operand,
-    tensorflow::gtl::ArraySlice<Literal> arguments, ErrorSpec error) {
-  auto status_or_data = ComputeValueAndReference(builder, operand, arguments);
-  EXPECT_IS_OK(status_or_data);
-  if (!status_or_data.ok()) {
-    return;
-  }
-  std::unique_ptr<Literal> reference, result;
-  std::tie(reference, result) = status_or_data.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectNear(*reference, *result, error);
-}
-
-StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
-ClientLibraryTestBase::ComputeValueAndReference(
-    ComputationBuilder* builder, const ComputationDataHandle& operand,
-    tensorflow::gtl::ArraySlice<Literal> arguments) {
-  // Transfer the arguments to the executor service. We put the unique_ptr's
-  // into a vector to keep the data alive on the service until the end of this
-  // function.
-  std::vector<std::unique_ptr<GlobalData>> argument_data;
-  for (const auto& arg : arguments) {
-    TF_ASSIGN_OR_RETURN(auto data, client_->TransferToServer(arg));
-    argument_data.push_back(std::move(data));
-  }
-
-  // Create raw pointers to the GlobalData for the rest of the call stack.
-  std::vector<GlobalData*> argument_data_ptr;
-  std::transform(
-      argument_data.begin(), argument_data.end(),
-      std::back_inserter(argument_data_ptr),
-      [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
-
-  TF_ASSIGN_OR_RETURN(
-      auto reference,
-      builder->ComputeConstant(operand, /*output_layout=*/nullptr, arguments));
-  TF_ASSIGN_OR_RETURN(auto result,
-                      ExecuteAndTransfer(builder, argument_data_ptr));
-  return std::make_pair(std::move(reference), std::move(result));
 }
 
 void ClientLibraryTestBase::ComputeAndCompare(
@@ -651,8 +509,8 @@ XlaComputation ClientLibraryTestBase::CreateScalarMax() {
   return computation_status.ConsumeValueOrDie();
 }
 
-Computation ClientLibraryTestBase::CreateScalarReluSensitivity() {
-  ComputationBuilder builder(client_, "relu_sensitivity");
+XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
+  XlaBuilder builder("relu_sensitivity");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
   auto activation = builder.Parameter(0, shape, "activation");
   auto backprop = builder.Parameter(1, shape, "backprop");
@@ -693,14 +551,6 @@ ClientLibraryTestBase::CreatePatternedMatrixWithZeroPadding(int rows, int cols,
   return array;
 }
 
-ComputationDataHandle ClientLibraryTestBase::AddParam(
-    const Literal& argument, ComputationBuilder* builder) {
-  ComputationDataHandle data_handle;
-  arguments_.push_back(CreateParameterAndTransferLiteral(
-      arguments_.size(), argument, "", builder, &data_handle));
-  return data_handle;
-}
-
 XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
                                       XlaBuilder* builder) {
   XlaOp data_handle;
@@ -709,59 +559,10 @@ XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
   return data_handle;
 }
 
-ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(
-    const Literal& literal, ComputationBuilder* builder) {
-  return builder->ConstantLiteral(
-      use_bfloat16_ ? *LiteralTestUtil::ConvertF32ToBF16(literal) : literal);
-}
-
 XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                                        XlaBuilder* builder) {
   return builder->ConstantLiteral(
       use_bfloat16_ ? *LiteralTestUtil::ConvertF32ToBF16(literal) : literal);
 }
-
-template void ClientLibraryTestBase::ComputeAndCompareLiteral(
-    ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_layout);
-
-template void ClientLibraryTestBase::ComputeAndCompareLiteral(
-    XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_layout);
-
-template void ClientLibraryTestBase::ComputeAndCompareLiteral(
-    ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
-    const Shape* shape_with_layout);
-
-template void ClientLibraryTestBase::ComputeAndCompareLiteral(
-    XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
-    const Shape* shape_with_layout);
-
-template void ClientLibraryTestBase::ComputeAndCompareTuple(
-    ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments);
-
-template void ClientLibraryTestBase::ComputeAndCompareTuple(
-    XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments);
-
-template void ClientLibraryTestBase::ComputeAndCompareTuple(
-    ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
-
-template void ClientLibraryTestBase::ComputeAndCompareTuple(
-    XlaBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
-
-template StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
-    ComputationBuilder* builder,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments);
-
-template StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 
 }  // namespace xla

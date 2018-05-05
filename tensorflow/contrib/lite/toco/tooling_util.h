@@ -88,6 +88,10 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
 Operator* GetOpWithInput(const Model& model, const string& array_name);
 Operator* GetFirstOpWithInput(const Model& model, const string& array_name);
 
+// Replaces all uses of the |old_array_name| with the |new_array_name|.
+void ReplaceArrayUsage(Model* model, const string& old_array_name,
+                       const string& new_array_name);
+
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOp(
     const Model& model, const Operator* op);
 std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
@@ -138,6 +142,9 @@ int RequiredBufferSizeForShape(const Shape& shape);
 
 bool IsConstantParameterArray(const Model& model, const string& name);
 
+// Compares two constant parameter arrays for exact equality.
+bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array);
+
 void CheckNoMissingArray(const Model& model);
 void CheckInvariants(const Model& model);
 
@@ -149,6 +156,15 @@ void FixNoOrphanedArray(Model* model);
 
 // Fixes input/output arrays that may have issues during export or inference.
 void FixEdgeArrays(Model* model);
+
+// Finds and deduplicates large constant arrays in the model.
+// After constant propagation runs it's possible to end up with several of the
+// same large array (whether they be zeros or otherwise).
+//
+// |min_size| is used to adjust the minimum size in bytes of an array before
+// it's considered for deduping. As deduping can make the graphs more difficult
+// to read this helps prevent small arrays from spidering out.
+void DedupeConstantArrays(Model* model, size_t min_size);
 
 // Copies the contents of an array into another.
 // Expects that the shape and data type match.

@@ -99,10 +99,6 @@ class DotOpEmitter {
       llvm_ir::ForLoopNest* loop_nest, const llvm_ir::IrArray& operand_array,
       int64 reduction_dimension, tensorflow::StringPiece name_suffix);
 
-  // Our runtime operation requires that all arrays have the same layout,
-  // no padding, and a rank of two.
-  bool ShapesAreLegalForRuntimeDot() const;
-
   // Represents the dimensions of a matrix-matrix multiply operation.
   struct MatMultDims {
     // The number of rows in the LHS.

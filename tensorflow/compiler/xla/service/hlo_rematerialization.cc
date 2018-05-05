@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -1216,7 +1217,7 @@ StatusOr<bool> HloRematerialization::Run(
   // Create initial sequence of HLO instructions.
   TF_ASSIGN_OR_RETURN(*sequence, CreateMemoryMinimizingSequence(
                                      *module,
-                                     [this](const LogicalBuffer& buffer) {
+                                     [this](const BufferValue& buffer) {
                                        return size_function_(buffer.shape());
                                      },
                                      scheduler_algorithm_));

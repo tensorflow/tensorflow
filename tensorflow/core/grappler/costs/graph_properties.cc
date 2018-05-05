@@ -475,6 +475,38 @@ class SymbolicShapeRefiner {
               }
             }
           }
+        } else if (IsRank(*input)) {
+          if (c->inference_context->RankKnown(c->inference_context->input(0))) {
+            int32 rank =
+                c->inference_context->Rank(c->inference_context->input(0));
+            Tensor t(DT_INT32, {});
+            t.flat<int32>()(0) = rank;
+            const_values[dst_input] = t;
+            input_tensors[dst_input] = &const_values[dst_input];
+          }
+        } else if (IsSize(*input)) {
+          DimensionHandle size =
+              c->inference_context->NumElements(c->inference_context->input(0));
+          if (c->inference_context->ValueKnown(size)) {
+            int64 sz = c->inference_context->Value(size);
+            bool valid = false;
+            if (input->attr().at("T").type() == DT_INT32) {
+              if (sz < std::numeric_limits<int32>::max()) {
+                Tensor t(DT_INT32, {});
+                t.flat<int32>()(0) = sz;
+                const_values[dst_input] = t;
+                valid = true;
+              }
+            } else {
+              Tensor t(DT_INT64, {});
+              t.flat<int64>()(0) = sz;
+              const_values[dst_input] = t;
+              valid = true;
+            }
+            if (valid) {
+              input_tensors[dst_input] = &const_values[dst_input];
+            }
+          }
         }
 
         if (c->output_tensors_as_shapes.size() > src_output) {
@@ -737,6 +769,29 @@ class SymbolicShapeRefiner {
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = result;
         }
+      } else if (IsPack(node)) {
+        // A Pack node concatenating scalars is often used to generate a shape.
+        std::vector<DimensionHandle> dims;
+        bool valid = true;
+        for (int i = 0; i < ic->num_inputs(); ++i) {
+          const Tensor* t = ic->input_tensor(i);
+          if (t) {
+            if (t->dims() != 0 ||
+                (t->dtype() != DT_INT32 && t->dtype() != DT_INT64)) {
+              valid = false;
+              break;
+            }
+            int64 size = t->dtype() == DT_INT32 ? t->scalar<int32>()()
+                                                : t->scalar<int64>()();
+            dims.push_back(size < 0 ? ic->UnknownDim() : ic->MakeDim(size));
+          } else {
+            dims.push_back(ic->UnknownDim());
+          }
+        }
+        if (valid) {
+          c->output_tensors_as_shapes.resize(1);
+          c->output_tensors_as_shapes[0] = ic->MakeShape(dims);
+        }
       } else if (IsSlice(node)) {
         ShapeHandle input = ic->input_tensors_as_shapes()[0];
         bool valid = ic->RankKnown(input);
@@ -748,11 +803,16 @@ class SymbolicShapeRefiner {
           int64 start = slice_offset->dtype() == DT_INT32
                             ? slice_offset->flat<int32>()(0)
                             : slice_offset->flat<int64>()(0);
-          int64 end = start + (slice_size->dtype() == DT_INT32
-                                   ? slice_size->flat<int32>()(0)
-                                   : slice_size->flat<int64>()(0));
+          int64 size =
+              (slice_size->dtype() == DT_INT32 ? slice_size->flat<int32>()(0)
+                                               : slice_size->flat<int64>()(0));
           ShapeHandle result;
-          TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          if (size == -1) {
+            TF_RETURN_IF_ERROR(ic->Subshape(input, start, &result));
+          } else {
+            int64 end = start + size;
+            TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          }
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = result;
         }

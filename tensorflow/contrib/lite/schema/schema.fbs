@@ -136,6 +136,7 @@ enum BuiltinOperator : byte {
   ARG_MAX = 56,
   MINIMUM = 57,
   LESS = 58,
+  NEG = 59,
 }
 
 // Options for the builtin operators.
@@ -181,6 +182,7 @@ union BuiltinOptions {
   MaximumMinimumOptions,
   ArgMaxOptions,
   LessOptions,
+  NegOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -404,6 +406,9 @@ table ArgMaxOptions {
 }
 
 table LessOptions {
+}
+
+table NegOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

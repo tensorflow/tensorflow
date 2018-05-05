@@ -140,6 +140,17 @@ class XlaTensorBuffer : public TensorBuffer {
   Allocator* allocator_;
 };
 
+// Exposed in this header file for microbenchmarking purposes, but this is an
+// internal implementation detail.
+namespace internal {
+// Return the 'index''th subtree of the given ShapedBuffer as a
+// ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
+// subtree, and sets the input's buffer pointers to nullptr for the subtree.
+xla::ScopedShapedBuffer ExtractSubShapedBuffer(
+    xla::ShapedBuffer* shaped_buffer, int index,
+    xla::DeviceMemoryAllocator* allocator);
+}  // namespace internal
+
 }  // namespace tensorflow
 
 #endif

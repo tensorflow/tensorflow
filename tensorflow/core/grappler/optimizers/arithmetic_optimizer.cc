@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -48,6 +49,12 @@ using tensorflow::strings::StrCat;
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+// Mark nodes created or optimized by a stage with a tag.
+constexpr char kAddOpsRewriteTag[] =
+    "_grappler:ArithmeticOptimizer:AddOpsRewriteStage";
+constexpr char kMinimizeBroadcastsTag[] =
+    "_grappler:ArithmeticOptimizer:MinimizeBroadcasts";
 
 // Extract values from a Const op to `values`. Returns true if succeeds.
 template <typename T>
@@ -140,18 +147,6 @@ bool MaybeAddControlInput(const string& new_input, NodeDef* node,
     node_map->AddOutput(NodeName(new_input), node->name());
   }
   return !already_exists;
-}
-
-int CopyControlInputs(const NodeDef& from, NodeDef* to, GraphDef* graph,
-                      NodeMap* node_map) {
-  int num_copied = 0;
-  for (const string& input : from.input()) {
-    if (IsControlInput(input) &&
-        MaybeAddControlInput(input, to, graph, node_map)) {
-      ++num_copied;
-    }
-  }
-  return num_copied;
 }
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
@@ -300,6 +295,7 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
         }
       }
     }
+    DedupControlInputs(target_node);
   }
 
   bool IsInPreserveSet(const NodeDef& node) const {
@@ -326,7 +322,7 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
   explicit ArithmeticNodesGroupOptimizerStage(
       const string& name, const GraphOptimizerContext& ctx,
       const ArithmeticOptimizerContext ctx_ext)
-      : ArithmeticOptimizerStage(name, ctx, ctx_ext), optimized_nodes_{} {}
+      : ArithmeticOptimizerStage(name, ctx, ctx_ext) {}
   ~ArithmeticNodesGroupOptimizerStage() override = default;
 
   // Input name with a statically inferred shape from GraphProperties
@@ -465,13 +461,16 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
     return signature;
   }
 
-  void AddToOptimizedNodes(const NodeDef* node) {
-    optimized_nodes_.insert(node->name());
+  void MarkWithTag(const StringPiece tag, NodeDef* node) {
+    AddNodeAttr(tag, true, node);
   }
 
-  void AddAllMembersToOptimizedNodes(const OptimizedNodesGroup& group) {
-    AddToOptimizedNodes(group.root_node);
-    for (const NodeDef* opt : group.optimized_nodes) AddToOptimizedNodes(opt);
+  void MarkAllMembersWithTag(const OptimizedNodesGroup& group,
+                             const StringPiece tag) const {
+    AddNodeAttr(tag, true, group.root_node);
+    for (NodeDef* optimized_node : group.optimized_nodes) {
+      AddNodeAttr(tag, true, optimized_node);
+    }
   }
 
   bool IsOnTheSameDevice(const OptimizedNodesGroup& group,
@@ -479,13 +478,19 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
     return group.root_node->device() == node.device();
   }
 
-  bool IsAlreadyOptimized(const NodeDef& node) const {
-    return optimized_nodes_.find(node.name()) != optimized_nodes_.end();
+  bool IsInPreserveSet(const NodeDef& node) const {
+    return ctx().nodes_to_preserve->find(node.name()) !=
+           ctx().nodes_to_preserve->end();
   }
 
- private:
-  // set of nodes already processed by this optimizer stage
-  std::unordered_set<string> optimized_nodes_;
+  bool IsMarkedWithTag(const NodeDef& node, const StringPiece tag) const {
+    return HasNodeAttr(node, tag);
+  }
+
+  bool IsMarkedWithAnyTag(const NodeDef& node, const StringPiece tag1,
+                          const StringPiece tag2) const {
+    return IsMarkedWithTag(node, tag1) || IsMarkedWithTag(node, tag2);
+  }
 };
 
 // Rewrite a tree of Add/AddN with a single AddN operation, consuming all the
@@ -561,7 +566,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     if (!IsAdd(node) && !IsAddN(node)) {
       return false;
     }
-    if (IsInPreserveSet(node) || IsAlreadyOptimized(node)) {
+    if (IsInPreserveSet(node) || IsMarkedWithTag(node, kAddOpsRewriteTag)) {
       return false;
     }
     // TODO(ezhulenev): relax this condition for root node
@@ -579,7 +584,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
             << " num_inputs=" << group.inputs.size();
 
     // Do not optimize any of the nodes that are part of this group.
-    AddAllMembersToOptimizedNodes(group);
+    MarkAllMembersWithTag(group, kAddOpsRewriteTag);
 
     // All new nodes will be placed under the scope of a root node.
     auto root_scope_and_name = ParseNodeScopeAndName(group.root_node->name());
@@ -688,7 +693,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
       node->add_input(inputAndShape.input);
     }
 
-    AddToOptimizedNodes(node);
+    MarkWithTag(kAddOpsRewriteTag, node);
     return InputAndShape(node_name, shape);
   }
 
@@ -705,14 +710,13 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     node->set_op("Add");
     node->set_device(root_node.device());
     (*node->mutable_attr())["T"].set_type(dtype);
+    node->add_input(left.input);
+    node->add_input(right.input);
 
     ctx().node_map->AddOutput(left.input, node_name);
     ctx().node_map->AddOutput(right.input, node_name);
 
-    node->add_input(left.input);
-    node->add_input(right.input);
-
-    AddToOptimizedNodes(node);
+    MarkWithTag(kAddOpsRewriteTag, node);
     return InputAndShape(
         node_name, TensorShapeProto());  // shape is not important at this point
   }
@@ -960,7 +964,9 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override {
     if (!IsBinaryAssociative(*node)) return false;
-    if (IsAlreadyOptimized(*node)) return false;
+
+    if (IsMarkedWithAnyTag(*node, kMinimizeBroadcastsTag, kAddOpsRewriteTag))
+      return false;
 
     // has a symbolically defined shape with broadcastable inputs
     OpInfo::TensorProperties properties;
@@ -984,7 +990,11 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
     if (!IsSameOp(group, node)) {
       return false;
     }
-    if (IsInPreserveSet(node) || IsAlreadyOptimized(node)) {
+    if (IsInPreserveSet(node)) {
+      return false;
+    }
+    // Nodes optimized by AddOpsRewrite already have optimal broadcasts.
+    if (IsMarkedWithAnyTag(node, kMinimizeBroadcastsTag, kAddOpsRewriteTag)) {
       return false;
     }
     if (IsDrivenByControlDependency(node) || DrivesControlDependency(node)) {
@@ -1019,7 +1029,7 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
             << " num_optimized_nodes=" << group.optimized_nodes.size();
 
     // Do not optimize any of the nodes that are part of this group.
-    AddAllMembersToOptimizedNodes(group);
+    MarkAllMembersWithTag(group, kMinimizeBroadcastsTag);
 
     if (CountUniqueShapes(group.inputs) <= 1) {
       VLOG(3) << "Skip min-bcast group with single unique shape";
@@ -1391,6 +1401,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       return n > 1;
     } else if (IsSplit(*node) || IsSplitV(*node)) {
       const int num_split = node->attr().at("num_split").i();
+      if (NumNonControlOutputs(*node, *ctx().node_map) > num_split) {
+        // TODO(rmlarsen): Remove this constraint when we have optimizations
+        // in place for merging slices into splits.
+        return false;
+      }
       return num_split > 1 && !IsAlreadyOptimized(*node);
     }
     return false;
@@ -1449,13 +1464,13 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     if (tails.empty()) {
       return Status::OK();
     }
-    AddControlInputs(ctrl_inputs, root_node);
     AddToOptimizationQueue(root_node);
     optimized_nodes_.insert(root_node->name());
     if (node_is_concat_) {
+      AddControlInputs(ctrl_inputs, root_node);
       return HoistChainForConcat(prefix_length, tails, root_node);
     } else {
-      return HoistChainForSplit(prefix_length, tails, root_node);
+      return HoistChainForSplit(prefix_length, tails, ctrl_inputs, root_node);
     }
   }
 
@@ -1526,16 +1541,15 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
                          const ChainLinkSet& ops) const {
     if (ops.empty()) return true;
     const NodeDef* op0 = ops.begin()->node;
-    if (!IsUnaryElementWise(*op0)) return false;
+    if (ModifiesFrameInfo(*op0) || !IsUnaryElementWise(*op0)) return false;
     for (const auto& link : ops) {
       const NodeDef* op = link.node;
       if (op->device() != root_node.device() || op->op() != op0->op() ||
           IsInPreserveSet(*op)) {
         return false;
       }
-      if (node_is_concat_ &&
-          ctx().node_map->GetOutputs(op->name()).size() > 1) {
-        // TODO(rmlarsen): Allow and hoist outgoing control edges.
+      if (ctx().node_map->GetOutputs(op->name()).size() > 1) {
+        // TODO(rmlarsen): Allow outgoing control edges.
         return false;
       }
     }
@@ -1603,6 +1617,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   }
 
   Status HoistChainForSplit(const int prefix_length, const ChainLinkSet& tails,
+                            std::set<string>* ctrl_inputs,
                             NodeDef* split_node) {
     // Create a new chain before the split node to process the input tensor.
     const string& split_name = split_node->name();
@@ -1637,6 +1652,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     cur_copy->add_input(orig_input);
     ctx().node_map->UpdateOutput(NodeName(orig_input), split_name,
                                  cur_copy->name());
+    // Make sure all the control inputs are satisfied before running the first
+    // node in the new chain.
+    AddControlInputs(ctrl_inputs, cur_copy);
 
     // Connect all consumers of the tail nodes directly to the
     // output port of Split from which the chain started.
@@ -1671,6 +1689,32 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
  private:
   bool node_is_concat_;
   std::unordered_set<string> optimized_nodes_;
+};
+
+class RemoveIdempotentStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveIdempotentStage(const GraphOptimizerContext& ctx,
+                                 const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveIdempotent", ctx, ctx_ext) {}
+  ~RemoveIdempotentStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsIdempotent(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+    auto root_scope_and_name = ParseNodeScopeAndName(node->name());
+    const string new_name = OptimizedNodeName(root_scope_and_name);
+    if (input->op() == node->op() && input->device() == node->device() &&
+        IsIdempotent(*input) && !ctx().node_map->NodeExists(new_name)) {
+      NodeDef* new_input_node = AddCopyNode(new_name, input);
+      ForwardControlDependencies(new_input_node, {node});
+      *simplified_node_name = new_input_node->name();
+    }
+    return Status::OK();
+  }
 };
 
 // Performs the conversion:
@@ -1905,6 +1949,8 @@ void ArithmeticOptimizer::DedupComputations() {
           FeedsInPlaceOp(graph_view, *node)) {
         continue;
       }
+      VLOG(3) << "Remove duplicated node: node=" << node->name()
+              << " representative=" << rep->name();
       const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
       for (NodeDef* fanout : fanouts) {
         for (int i = 0; i < fanout->input_size(); ++i) {
@@ -1956,6 +2002,7 @@ void ArithmeticOptimizer::ForwardControlDependencies(
       }
     }
   }
+  DedupControlInputs(target_node);
 }
 
 // TODO(ezhulenev): extract each individual simplify rewrite into separate
@@ -2362,6 +2409,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)
     pipeline.AddStage<SqrtDivToRsqrtMulStage>(ctx, ctx_ext);
+  if (options_.remove_idempotent)
+    pipeline.AddStage<RemoveIdempotentStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");

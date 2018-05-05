@@ -19,7 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -222,7 +222,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   HloInstruction* transpose_y =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), y, {1, 0, 2, 3}));
-  auto dnums = ComputationBuilder::CreateDefaultConvDimensionNumbers();
+  auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
@@ -275,7 +275,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   HloInstruction* transpose_y =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), y, {1, 3, 0, 2}));
-  auto dnums = ComputationBuilder::CreateDefaultConvDimensionNumbers();
+  auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
@@ -334,7 +334,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   HloInstruction* transpose_x =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), x, {1, 0, 2, 3}));
-  auto dnums = ComputationBuilder::CreateDefaultConvDimensionNumbers();
+  auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
@@ -398,7 +398,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   HloInstruction* transpose_x =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), x, {1, 0, 3, 2}));
-  auto dnums = ComputationBuilder::CreateDefaultConvDimensionNumbers();
+  auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();

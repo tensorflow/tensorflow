@@ -263,15 +263,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
       type `out_type`.
   """
 
-  output = gen_array_ops.shape_n(input, out_type=out_type, name=name)
-  if not context.executing_eagerly():
-    for i, input_tensor in enumerate(input):
-      input_tensor = ops.convert_to_tensor(input_tensor)
-      input_shape = input_tensor.get_shape()
-      if input_shape.is_fully_defined():
-        output[i] = constant(
-            input_shape.as_list(), dtype=out_type, name=name)
-  return output
+  return gen_array_ops.shape_n(input, out_type=out_type, name=name)
 
 
 @tf_export("size")

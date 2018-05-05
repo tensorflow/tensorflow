@@ -272,6 +272,15 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_batch_index"),
                                                current_batch_index_));
         TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        // Wait for the map_fn dispatches made in `InvokeFunctionLocked` to
+        // finish. This may delay saving a checkpoint by a bit but keeps the
+        // code clean and also saves us from checkpointing the state of the
+        // `BlockingCounter`.
+        std::vector<int64> num_elements(batch_results_.size());
+        for (size_t i = 0; i < batch_results_.size(); i++) {
+          WaitForBatch(i, &num_elements[i]).IgnoreError();
+        }
+
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             full_name("invocation_results_size"), invocation_results_.size()));
         for (size_t i = 0; i < invocation_results_.size(); ++i) {
@@ -280,7 +289,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("batch_results_size"),
                                                batch_results_.size()));
         for (size_t i = 0; i < batch_results_.size(); ++i) {
-          TF_RETURN_IF_ERROR(WriteBatchResultLocked(writer, i));
+          TF_RETURN_IF_ERROR(
+              WriteBatchResultLocked(writer, i, num_elements[i]));
         }
         return Status::OK();
       }
@@ -567,15 +577,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status WriteBatchResultLocked(IteratorStateWriter* writer, size_t index)
+      Status WriteBatchResultLocked(IteratorStateWriter* writer, size_t index,
+                                    int64 num_elements)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        // Wait for the map_fn dispatches made in `InvokeFunctionLocked` to
-        // finish. This may delay saving a checkpoint by a bit but keeps the
-        // code clean and also saves us from checkpointing the state of the
-        // `BlockingCounter`.
-        int64 num_elements = 0;
-        WaitForBatch(index, &num_elements).IgnoreError();
-
         const BatchResult& result = batch_results_[index];
         string prefix = strings::StrCat("batch_results_", index);
         {
