@@ -746,7 +746,7 @@ TEST_F(MathGradTest, UnsafeDiv) {
         }
       };
       test::ExpectClose(dx, test::AsTensor<float>(
-                                {g(0.f, -10.f), g(-3.f, -10.f), g(-2.f, -0.f),
+                                {g(0.f, -10.f), g(-3.f, -10.f), g(-2.f, -10.f),
                                  g(-1.f, 0.f), g(0.f, 0.f), g(1.f, 0.f),
                                  g(2.f, 10.f), g(3.f, 10.f), g(0.f, 10.f)},
                                 TensorShape({3, 3})));
@@ -762,7 +762,7 @@ TEST_F(MathGradTest, UnsafeDiv) {
       };
       test::ExpectClose(dy,
                         test::AsTensor<float>(
-                            {g(0.f, -10.f) + g(-3.f, -10.f) + g(-2.f, -0.f),
+                            {g(0.f, -10.f) + g(-3.f, -10.f) + g(-2.f, -10.f),
                              g(-1.f, 0.f) + g(0.f, 0.f) + g(1.f, 0.f),
                              g(2.f, 10.f) + g(3.f, 10.f) + g(0.f, 10.f)},
                             TensorShape({3, 1})));

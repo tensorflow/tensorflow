@@ -453,7 +453,7 @@ Status UnsafeDivGrad(const Scope& scope, const Operation& op,
                   UnsafeDiv(scope, UnsafeDiv(scope, Neg(scope, x_1), x_2), x_2));
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
-REGISTER_GRADIENT_OP("UnsafeDiv", DivGrad);
+REGISTER_GRADIENT_OP("UnsafeDiv", UnsafeDivGrad);
 
 Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
                              const std::vector<Output>& grad_inputs,
