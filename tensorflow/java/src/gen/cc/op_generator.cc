@@ -420,6 +420,18 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
   writer.EndType();
 }
 
+bool CanGenerateOp(const OpDef& op_def, const ApiDef& api_def) {
+  if (api_def.visibility() == ApiDef::SKIP) {
+    return false;
+  }
+  for (const auto& attr : op_def.attr()) {
+    if (attr.type() == "func") {
+      return false;  // TODO(karllessard) add support for function attributes
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 Status OpGenerator::Run(const OpList& op_list, const string& base_package,
@@ -441,7 +453,7 @@ Status OpGenerator::Run(const OpList& op_list, const string& base_package,
   api_map.UpdateDocs();
   for (const auto& op_def : op_list.op()) {
     const ApiDef* api_def = api_map.GetApiDef(op_def.name());
-    if (api_def->visibility() != ApiDef::SKIP) {
+    if (CanGenerateOp(op_def, *api_def)) {
       OpSpec op(OpSpec::Create(op_def, *api_def));
       for (const EndpointSpec& endpoint : op.endpoints()) {
         GenerateOp(op, endpoint, base_package, output_dir, env_);

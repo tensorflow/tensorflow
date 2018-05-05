@@ -30,12 +30,6 @@ filegroup(
     visibility = ["//tensorflow:internal"],
 )
 
-filegroup(
-    name = "java_api_def",
-    srcs = glob(["java_api/*"]),
-    visibility = ["//tensorflow:internal"],
-)
-
 cc_library(
     name = "excluded_ops_lib",
     srcs = ["excluded_ops.cc"],

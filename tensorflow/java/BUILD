@@ -72,7 +72,6 @@ tf_java_op_gen_srcjar(
     name = "java_op_gen_sources",
     api_def_srcs = [
         "//tensorflow/core/api_def:base_api_def",
-        "//tensorflow/core/api_def:java_api_def",
     ],
     base_package = "org.tensorflow.op",
     gen_tool = ":java_op_gen_tool",
