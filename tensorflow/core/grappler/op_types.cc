@@ -323,6 +323,8 @@ bool IsSize(const NodeDef& node) { return node.op() == "Size"; }
 
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
+bool IsSnapshot(const NodeDef& node) { return node.op() == "Snapshot"; }
+
 bool IsSoftplusGrad(const NodeDef& node) { return node.op() == "SoftplusGrad"; }
 
 bool IsSoftsignGrad(const NodeDef& node) { return node.op() == "SoftsignGrad"; }
@@ -488,14 +490,13 @@ bool IsValueAndOrderAndShapePreserving(const NodeDef& node) {
               "DeepCopy"
               "Enter",
               "Exit",
-              "Identity",
-              "IdentityN",
               "PreventGradient",
               "Print",
               "Snapshot",
               "StopGradient",
           }));
-  return value_and_order_and_shape_preserving_ops->count(node.op()) > 0;
+  return value_and_order_and_shape_preserving_ops->count(node.op()) > 0 ||
+         IsIdentity(node);
 }
 
 bool IsValueAndOrderPreserving(const NodeDef& node) {
@@ -505,7 +506,7 @@ bool IsValueAndOrderPreserving(const NodeDef& node) {
   static const std::unordered_set<string>* value_and_order_preserving_ops =
       CHECK_NOTNULL((new const std::unordered_set<string>{
           "ExpandDims",
-          "Snapshot",
+          "Reshape",
           "Squeeze",
       }));
   return value_and_order_preserving_ops->count(node.op()) > 0 ||
@@ -576,12 +577,16 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Tanh",
       }));
   return element_wise_ops->count(node.op()) > 0 ||
-         (!IsIdentityN(node) && IsValueAndOrderAndShapePreserving(node));
+         IsValueAndOrderAndShapePreserving(node);
 }
 
 bool HasOpDef(const NodeDef& node) {
   const OpDef* op_def = nullptr;
   return OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok();
+}
+
+bool IsIdempotent(const NodeDef& node) {
+  return IsValueAndOrderAndShapePreserving(node) && IsFreeOfSideEffect(node);
 }
 
 }  // namespace grappler

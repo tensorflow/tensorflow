@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -350,7 +349,7 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto zero = builder.ConstantR0<int64>(0);
   auto one = builder.ConstantR0<int64>(10);
   auto x = builder.ConstantR1<int64>({-3, 3, 9, 13});

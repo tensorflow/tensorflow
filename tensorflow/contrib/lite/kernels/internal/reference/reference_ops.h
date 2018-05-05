@@ -1189,6 +1189,60 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
   }
 }
 
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/8bit");
+
+  int sb1 = y0;
+  int sa2 = y0;
+  int sb2 = y0 * y1;
+  int sa3 = y0 * y2;
+  int sa4 = y0 * y2 * y3;
+  int sb4 = y0 * y1 * y2;
+
+  uint8* output_data_ptr = output_data;
+  for (int i4 = 0; i4 < y4; ++i4) {
+    for (int i3 = 0; i3 < y3; ++i3) {
+      for (int i2 = 0; i2 < y2; ++i2) {
+        for (int i1 = 0; i1 < y1; ++i1) {
+          for (int i0 = 0; i0 < y0; ++i0) {
+            const int32 input1_val =
+                input1_offset +
+                input1_data[i4 * sa4 + i3 * sa3 + i2 * sa2 + i0];
+            const int32 input2_val =
+                input2_offset +
+                input2_data[i4 * sb4 + i2 * sb2 + i1 * sb1 + i0];
+            const int32 shifted_input1_val = input1_val * (1 << left_shift);
+            const int32 shifted_input2_val = input2_val * (1 << left_shift);
+            const int32 scaled_input1_val =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    shifted_input1_val, input1_multiplier, input1_shift);
+            const int32 scaled_input2_val =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    shifted_input2_val, input2_multiplier, input2_shift);
+            const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+            const int32 raw_output =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    raw_sum, output_multiplier, output_shift) +
+                output_offset;
+            const int32 clamped_output =
+                std::min(output_activation_max,
+                         std::max(output_activation_min, raw_output));
+            *output_data_ptr = static_cast<uint8>(clamped_output);
+            ++output_data_ptr;
+          }
+        }
+      }
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                          const Dims<4>& input1_dims, int32 input1_offset,
@@ -1215,6 +1269,33 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                input2_offset, input2_multiplier, input2_shift, output_offset,
                output_multiplier, output_shift, output_activation_min,
                output_activation_max, output_data, output_dims);
+}
+
+template <FusedActivationFunctionType Ac>
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  BroadcastAddFivefold(y0, y1, y2, y3, y4, left_shift, input1_data, input1_dims,
+                       input1_offset, input1_multiplier, input1_shift,
+                       input2_data, input2_dims, input2_offset,
+                       input2_multiplier, input2_shift, output_offset,
+                       output_multiplier, output_shift, output_activation_min,
+                       output_activation_max, output_data, output_dims);
 }
 
 inline void Mul(const float* input1_data, const Dims<4>& input1_dims,

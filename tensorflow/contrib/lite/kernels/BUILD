@@ -158,6 +158,7 @@ cc_library(
         "mean.cc",
         "mfcc.cc",
         "mul.cc",
+        "neg.cc",
         "pad.cc",
         "pooling.cc",
         "register.cc",
@@ -848,6 +849,19 @@ tf_cc_test(
     tags = [
         "tflite_not_portable_ios",
     ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "neg_test",
+    size = "small",
+    srcs = ["neg_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

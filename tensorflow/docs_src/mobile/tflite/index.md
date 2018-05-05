@@ -11,7 +11,7 @@ optimizing the kernels for mobile apps, pre-fused activations, and quantized
 kernels that allow smaller and faster (fixed-point math) models.
 
 Most of our TensorFlow Lite documentation is [on
-Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite)
+GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite)
 for the time being.
 
 ## What does TensorFlow Lite contain?
