@@ -4,7 +4,6 @@
 # The following targets can be used to access ApiDefs:
 #   :base_api_def
 #   :python_api_def
-#   :java_api_def
 
 package(
     default_visibility = ["//visibility:private"],
