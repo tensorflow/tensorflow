@@ -104,25 +104,25 @@ static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
 }
 
 /* static */
-LocalShapedBuffer* LocalShapedBuffer::FromLiteral(
+StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
     const Literal& argument,
     const tensorflow::gtl::optional<Shape>& shape_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
-  ScopedShapedBuffer buf = [&] {
+  StatusOr<ScopedShapedBuffer> buf = [&] {
     if (shape_with_layout) {
       std::unique_ptr<Literal> relaid =
           argument.Relayout(shape_with_layout.value());
-      return ToBuffer(client, /*device_ordinal=*/0, *relaid)
-          .ConsumeValueOrDie();
+      return ToBuffer(client, /*device_ordinal=*/0, *relaid);
     }
-    return ToBuffer(client, /*device_ordinal=*/0, argument).ConsumeValueOrDie();
+    return ToBuffer(client, /*device_ordinal=*/0, argument);
   }();
-  return new LocalShapedBuffer(std::move(buf));
+  TF_RETURN_IF_ERROR(buf.status());
+  return new LocalShapedBuffer(std::move(buf).ValueOrDie());
 }
 
-std::unique_ptr<Literal> LocalShapedBuffer::ToLiteral() const {
+StatusOr<std::unique_ptr<Literal>> LocalShapedBuffer::ToLiteral() const {
   LocalClient* client = GetOrCreateLocalClient();
-  return client->ShapedBufferToLiteral(*shaped_buffer()).ConsumeValueOrDie();
+  return client->ShapedBufferToLiteral(*shaped_buffer());
 }
 
 CompiledLocalComputation::CompiledLocalComputation(

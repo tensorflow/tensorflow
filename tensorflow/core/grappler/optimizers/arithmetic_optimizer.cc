@@ -295,6 +295,7 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
         }
       }
     }
+    DedupControlInputs(target_node);
   }
 
   bool IsInPreserveSet(const NodeDef& node) const {
@@ -1540,7 +1541,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
                          const ChainLinkSet& ops) const {
     if (ops.empty()) return true;
     const NodeDef* op0 = ops.begin()->node;
-    if (!IsUnaryElementWise(*op0)) return false;
+    if (ModifiesFrameInfo(*op0) || !IsUnaryElementWise(*op0)) return false;
     for (const auto& link : ops) {
       const NodeDef* op = link.node;
       if (op->device() != root_node.device() || op->op() != op0->op() ||
@@ -1688,6 +1689,32 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
  private:
   bool node_is_concat_;
   std::unordered_set<string> optimized_nodes_;
+};
+
+class RemoveIdempotentStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveIdempotentStage(const GraphOptimizerContext& ctx,
+                                 const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveIdempotent", ctx, ctx_ext) {}
+  ~RemoveIdempotentStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsIdempotent(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+    auto root_scope_and_name = ParseNodeScopeAndName(node->name());
+    const string new_name = OptimizedNodeName(root_scope_and_name);
+    if (input->op() == node->op() && input->device() == node->device() &&
+        IsIdempotent(*input) && !ctx().node_map->NodeExists(new_name)) {
+      NodeDef* new_input_node = AddCopyNode(new_name, input);
+      ForwardControlDependencies(new_input_node, {node});
+      *simplified_node_name = new_input_node->name();
+    }
+    return Status::OK();
+  }
 };
 
 // Performs the conversion:
@@ -1975,6 +2002,7 @@ void ArithmeticOptimizer::ForwardControlDependencies(
       }
     }
   }
+  DedupControlInputs(target_node);
 }
 
 // TODO(ezhulenev): extract each individual simplify rewrite into separate
@@ -2381,6 +2409,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)
     pipeline.AddStage<SqrtDivToRsqrtMulStage>(ctx, ctx_ext);
+  if (options_.remove_idempotent)
+    pipeline.AddStage<RemoveIdempotentStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");

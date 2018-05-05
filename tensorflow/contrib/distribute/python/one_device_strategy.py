@@ -40,6 +40,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     super(OneDeviceStrategy, self).__init__()
     self._device = device
     self._prefetch_on_device = prefetch_on_device
+    self._default_device = device
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # No need to distinguish tower-local variables when not mirroring,

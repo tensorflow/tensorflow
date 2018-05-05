@@ -67,8 +67,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
       Literal::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
                                        {0.36788f, 1.64872f}});  // row 1
 
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-5));
+  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
@@ -96,8 +95,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
                                        {-0.5f, 1.0f}});  // row 1
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-5));
+  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
@@ -116,8 +114,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
                                        {3.0f, -4.0f}});  // row 1
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-6));
+  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6));
 }
 
 struct TestLinspaceMaxParam {

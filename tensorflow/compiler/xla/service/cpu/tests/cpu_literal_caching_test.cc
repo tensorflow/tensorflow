@@ -50,15 +50,9 @@ ENTRY main {
   const_b = f32[2,3,2] while(f32[2,3,2] const_a), condition=while_cond, body=while_body
 
   out0 = () outfeed(f32[2,3,2] const_a)
-  out1 = () outfeed(f32[2,3,2] const_b)
-
-  ROOT root = f32[] constant(1)
+  ROOT out1 = () outfeed(f32[2,3,2] const_b)
 }
 )";
-
-  // TODO(b/78879738): The fake "f32[] constant(1)" root is only needed to work
-  // around b/78879738.  Once b/78879738 is fixed, we can set one of the
-  // outfeeds as the root.
 
   string filecheck_pattern = R"(
 CHECK: private constant [2 x [3 x [2 x float]]]
@@ -99,15 +93,9 @@ ENTRY main {
   const_b = (f32[2,1]{1,0}, f32[2]{0}) while((f32[2,1]{1,0}, f32[2]{0}) const_a), condition=while_cond, body=while_body
 
   out0 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_a)
-  out1 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_b)
-
-  ROOT root = f32[] constant(1)
+  ROOT out1 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_b)
 }
 )";
-
-  // TODO(b/78879738): The fake "f32[] constant(1)" root is only needed to work
-  // around b/78879738.  Once b/78879738 is fixed, we can set one of the
-  // outfeeds as the root.
 
   string filecheck_pattern = R"(
 CHECK: private constant [2 x float]
