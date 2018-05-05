@@ -8407,3 +8407,51 @@ TF_Tensor* TF_DequeueNamedTensor(TF_Session* session, int tensor_id,
   }
   return ret;
 }
+
+void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
+                           TF_Tensor* tensor, TF_Status* status) {
+  assert(session);
+  {
+    tensorflow::mutex_lock c(session->graph->mu);
+    if (VLOG_IS_ON(1)) {
+      VLOG(1) << "Enqueuing named tensor with id " << tensor_id
+              << ", with input graph: "
+              << session->graph->graph.ToGraphDefDebug().DebugString();
+      tensorflow::Tensor internal_tensor;
+      if (tensorflow::TF_TensorToTensor(tensor, &internal_tensor).ok()) {
+        VLOG(1) << "Enqueu'ing tensor content: "
+                << internal_tensor.DebugString();
+      }
+    }
+  }
+
+  TF_Operation* enqueue_op = TF_GraphOperationByName(
+      session->graph,
+      tensorflow::strings::StrCat("fifo_queue_enqueue_", tensor_id).c_str());
+  if (enqueue_op == nullptr) {
+    status->status = tensorflow::errors::Internal(
+        "Unable to find the enqueue node in the TF graph.");
+    return;
+  }
+
+  TF_Operation* placeholder_op = TF_GraphOperationByName(
+      session->graph,
+      tensorflow::strings::StrCat("arg_tensor_enqueue_", tensor_id).c_str());
+  if (placeholder_op == nullptr) {
+    status->status = tensorflow::errors::Internal(
+        "Unable to find the placeholder node as input to enqueue in the TF "
+        "graph.");
+    return;
+  }
+
+  VLOG(1) << "Running the enqueue op";
+  TF_Output input{placeholder_op, 0};
+  TF_SessionRun(session, /*run_options*/ nullptr,
+                // input related parameters
+                /*inputs*/ &input, /*input_values*/ &tensor, /*ninputs*/ 1,
+                // output related parameters
+                /*outputs*/ nullptr, /*output_values*/ nullptr, /*noutputs*/ 0,
+                /*targets*/ &enqueue_op, /*ntargets*/ 1,
+                /*run_metadata*/ nullptr, status);
+  VLOG(1) << "Enqueuing is done.";
+}
