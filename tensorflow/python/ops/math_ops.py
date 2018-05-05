@@ -1035,14 +1035,17 @@ def div(x, y, name=None):
 
 
 def unsafe_div(x, y, name=None):
-  """Divide two values using Python 2 semantics. Used for Tensor.__div__.
+  """Computes an unsafe divide which returns 0 if the y is zero.
+
+  Note that the function uses Python 3 division operator semantics.
 
   Args:
-    x: `Tensor` numerator of real numeric type.
-    y: `Tensor` denominator of real numeric type.
+    x: A `Tensor`. Must be one of the following types:
+       `half`, `float32`, `float64`.
+    y: A `Tensor` whose dtype is compatible with `x`.
     name: A name for the operation (optional).
   Returns:
-    `x / y` returns the quotient of x and y.
+    The element-wise value of the x divided by y.
   """
 
   with ops.name_scope(name, "unsafe_div", [x, y]) as name:
