@@ -744,6 +744,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = clean_dep("//third_party:tflite_smartreply.BUILD"),
   )
 
+  tf_http_archive(
+      name = "tflite_ovic_testdata",
+      sha256 = "a9a705d8d519220178e2e65d383fdb21da37fdb31d1e909b0a1acdac46479e9c",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+      ],
+      build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
+      strip_prefix = "ovic",
+  )
+
   ##############################################################################
   # BIND DEFINITIONS
   #
