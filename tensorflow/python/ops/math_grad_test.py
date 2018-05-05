@@ -214,7 +214,7 @@ class UnsafeDivGradientTest(test.TestCase):
   def testBasicGradient(self):
     inputs = constant_op.constant(np.arange(-3, 3),
                                   dtype=dtypes.float32)
-    outputs = math_ops.unsafe_div(inputs, 1 + abs(inputs))
+    outputs = math_ops.unsafe_div(inputs, 1 + math_ops.abs(inputs))
     with self.test_session():
       error = gradient_checker.compute_gradient_error(
           inputs, inputs.get_shape().as_list(),
