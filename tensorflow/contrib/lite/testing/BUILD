@@ -45,6 +45,7 @@ gen_zipped_test_files(
         "mul.zip",
         "neg.zip",
         "pad.zip",
+        "padv2.zip",
         "relu.zip",
         "relu1.zip",
         "relu6.zip",

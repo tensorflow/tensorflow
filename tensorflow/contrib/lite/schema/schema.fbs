@@ -137,6 +137,7 @@ enum BuiltinOperator : byte {
   MINIMUM = 57,
   LESS = 58,
   NEG = 59,
+  PADV2 = 60,
 }
 
 // Options for the builtin operators.
@@ -163,6 +164,7 @@ union BuiltinOptions {
   EmbeddingLookupSparseOptions,
   MulOptions,
   PadOptions,
+  PadV2Options,
   GatherOptions,
   BatchToSpaceNDOptions,
   SpaceToBatchNDOptions,
@@ -314,6 +316,9 @@ table CallOptions {
 }
 
 table PadOptions {
+}
+
+table PadV2Options {
 }
 
 table ReshapeOptions {

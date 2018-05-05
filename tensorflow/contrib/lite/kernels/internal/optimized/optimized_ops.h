@@ -5851,10 +5851,26 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+void TypedMemset(void* ptr, T value, size_t num) {
+  // Optimization for common cases where memset() will suffice.
+  if (value == 0 || std::is_same<T, uint8_t>::value) {
+    memset(ptr, value, num * sizeof(T));
+  } else {
+    // Default implementation for cases where memset() will not preserve the
+    // bytes, e.g., typically when sizeof(T) > sizeof(uint8_t).
+    char* pos = static_cast<char*>(ptr);
+    for (size_t i = 0; i < num; ++i) {
+      memcpy(pos, &value, sizeof(T));
+      pos = pos + sizeof(T);
+    }
+  }
+}
+
+template <typename T>
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
   gemmlowp::ScopedProfilingLabel label("Pad");
   TFLITE_DCHECK_EQ(left_paddings.size(), 4);
   TFLITE_DCHECK_EQ(right_paddings.size(), 4);
@@ -5877,27 +5893,28 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   const int input_depth = ArraySize(input_dims, 0);
 
   if (left_b_padding != 0) {
-    memset(output_data, pad_value,
-           left_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data, pad_value,
+        left_b_padding * output_height * output_width * output_depth);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), pad_value,
-             left_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(output_data + Offset(output_dims, 0, 0, 0, out_b),
+                     pad_value, left_h_padding * output_width * output_depth);
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), pad_value,
-               left_w_padding * output_depth * sizeof(T));
+        TypedMemset<T>(output_data + Offset(output_dims, 0, 0, out_h, out_b),
+                       pad_value, left_w_padding * output_depth);
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
-          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b),
-                 pad_value, left_d_padding * sizeof(T));
+          TypedMemset<T>(
+              output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+              pad_value, left_d_padding);
         }
 
         T* out = output_data +
@@ -5908,33 +5925,44 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
         memcpy(out, in, input_depth * sizeof(T));
 
         if (right_d_padding != 0) {
-          memset(
+          TypedMemset<T>(
               output_data + Offset(output_dims, output_depth - right_d_padding,
                                    out_w, out_h, out_b),
-              pad_value, right_d_padding * sizeof(T));
+              pad_value, right_d_padding);
         }
       }
       if (right_w_padding != 0) {
-        memset(
+        TypedMemset<T>(
             output_data + Offset(output_dims, 0, output_width - right_w_padding,
                                  out_h, out_b),
-            pad_value, right_w_padding * output_depth * sizeof(T));
+            pad_value, right_w_padding * output_depth);
       }
     }
     if (right_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0,
-                                  output_height - right_h_padding, out_b),
-             pad_value,
-             right_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(
+          output_data +
+              Offset(output_dims, 0, 0, output_height - right_h_padding, out_b),
+          pad_value, right_h_padding * output_width * output_depth);
     }
   }
   if (right_b_padding != 0) {
-    memset(output_data +
-               Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
-           0,
-           right_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data +
+            Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
+        pad_value,
+        right_b_padding * output_height * output_width * output_depth);
   }
+}
+
+// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T>
+inline void Pad(const T* input_data, const Dims<4>& input_dims,
+                const std::vector<int>& left_paddings,
+                const std::vector<int>& right_paddings, T* output_data,
+                const Dims<4>& output_dims, const int32_t pad_value) {
+  const T converted_pad_value = static_cast<T>(pad_value);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, converted_pad_value);
 }
 
 template <typename T>

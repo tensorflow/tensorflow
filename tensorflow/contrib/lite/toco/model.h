@@ -82,6 +82,7 @@ enum class OperatorType {
   kStack,
   kBatchToSpaceND,
   kPad,
+  kPadV2,
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -820,6 +821,29 @@ struct TensorFlowMatMulOperator : Operator {
 // TensorFlow equivalent: Pad
 struct PadOperator : Operator {
   PadOperator() : Operator(OperatorType::kPad) {}
+
+  std::vector<int> left_padding;
+  std::vector<int> right_padding;
+};
+
+// PaddingV2 operator. Pads a tensor with the given constant value.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the padding array
+//   inputs[2]: required: the scalar constant_values
+//
+// This operation pads input according to the paddings and constant_values you
+// specify. paddings is an integer tensor with shape [Dn, 2], where n is the
+// rank of input. For each dimension D of input, paddings[D, 0] indicates how
+// many padding values to add before the contents of input in that dimension,
+// and paddings[D, 1] indicates how many padding values to add after the
+// contents of input in that dimension. constant_values is a scalar tensor of
+// the same type as input that indicates the value to use for padding input.
+//
+// TensorFlow equivalent: PadV2
+struct PadV2Operator : Operator {
+  PadV2Operator() : Operator(OperatorType::kPadV2) {}
 
   std::vector<int> left_padding;
   std::vector<int> right_padding;

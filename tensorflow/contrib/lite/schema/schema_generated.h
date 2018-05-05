@@ -88,6 +88,9 @@ struct CallOptionsT;
 struct PadOptions;
 struct PadOptionsT;
 
+struct PadV2Options;
+struct PadV2OptionsT;
+
 struct ReshapeOptions;
 struct ReshapeOptionsT;
 
@@ -276,11 +279,12 @@ enum BuiltinOperator {
   BuiltinOperator_MINIMUM = 57,
   BuiltinOperator_LESS = 58,
   BuiltinOperator_NEG = 59,
+  BuiltinOperator_PADV2 = 60,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_NEG
+  BuiltinOperator_MAX = BuiltinOperator_PADV2
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[59] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[60] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -340,7 +344,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[59] {
     BuiltinOperator_ARG_MAX,
     BuiltinOperator_MINIMUM,
     BuiltinOperator_LESS,
-    BuiltinOperator_NEG
+    BuiltinOperator_NEG,
+    BuiltinOperator_PADV2
   };
   return values;
 }
@@ -407,6 +412,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "MINIMUM",
     "LESS",
     "NEG",
+    "PADV2",
     nullptr
   };
   return names;
@@ -441,31 +447,32 @@ enum BuiltinOptions {
   BuiltinOptions_EmbeddingLookupSparseOptions = 20,
   BuiltinOptions_MulOptions = 21,
   BuiltinOptions_PadOptions = 22,
-  BuiltinOptions_GatherOptions = 23,
-  BuiltinOptions_BatchToSpaceNDOptions = 24,
-  BuiltinOptions_SpaceToBatchNDOptions = 25,
-  BuiltinOptions_TransposeOptions = 26,
-  BuiltinOptions_MeanOptions = 27,
-  BuiltinOptions_SubOptions = 28,
-  BuiltinOptions_DivOptions = 29,
-  BuiltinOptions_SqueezeOptions = 30,
-  BuiltinOptions_SequenceRNNOptions = 31,
-  BuiltinOptions_StridedSliceOptions = 32,
-  BuiltinOptions_ExpOptions = 33,
-  BuiltinOptions_TopKV2Options = 34,
-  BuiltinOptions_SplitOptions = 35,
-  BuiltinOptions_LogSoftmaxOptions = 36,
-  BuiltinOptions_CastOptions = 37,
-  BuiltinOptions_DequantizeOptions = 38,
-  BuiltinOptions_MaximumMinimumOptions = 39,
-  BuiltinOptions_ArgMaxOptions = 40,
-  BuiltinOptions_LessOptions = 41,
-  BuiltinOptions_NegOptions = 42,
+  BuiltinOptions_PadV2Options = 23,
+  BuiltinOptions_GatherOptions = 24,
+  BuiltinOptions_BatchToSpaceNDOptions = 25,
+  BuiltinOptions_SpaceToBatchNDOptions = 26,
+  BuiltinOptions_TransposeOptions = 27,
+  BuiltinOptions_MeanOptions = 28,
+  BuiltinOptions_SubOptions = 29,
+  BuiltinOptions_DivOptions = 30,
+  BuiltinOptions_SqueezeOptions = 31,
+  BuiltinOptions_SequenceRNNOptions = 32,
+  BuiltinOptions_StridedSliceOptions = 33,
+  BuiltinOptions_ExpOptions = 34,
+  BuiltinOptions_TopKV2Options = 35,
+  BuiltinOptions_SplitOptions = 36,
+  BuiltinOptions_LogSoftmaxOptions = 37,
+  BuiltinOptions_CastOptions = 38,
+  BuiltinOptions_DequantizeOptions = 39,
+  BuiltinOptions_MaximumMinimumOptions = 40,
+  BuiltinOptions_ArgMaxOptions = 41,
+  BuiltinOptions_LessOptions = 42,
+  BuiltinOptions_NegOptions = 43,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
   BuiltinOptions_MAX = BuiltinOptions_NegOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[43] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[44] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -490,6 +497,7 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[43] {
     BuiltinOptions_EmbeddingLookupSparseOptions,
     BuiltinOptions_MulOptions,
     BuiltinOptions_PadOptions,
+    BuiltinOptions_PadV2Options,
     BuiltinOptions_GatherOptions,
     BuiltinOptions_BatchToSpaceNDOptions,
     BuiltinOptions_SpaceToBatchNDOptions,
@@ -539,6 +547,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "EmbeddingLookupSparseOptions",
     "MulOptions",
     "PadOptions",
+    "PadV2Options",
     "GatherOptions",
     "BatchToSpaceNDOptions",
     "SpaceToBatchNDOptions",
@@ -659,6 +668,10 @@ template<> struct BuiltinOptionsTraits<MulOptions> {
 
 template<> struct BuiltinOptionsTraits<PadOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_PadOptions;
+};
+
+template<> struct BuiltinOptionsTraits<PadV2Options> {
+  static const BuiltinOptions enum_value = BuiltinOptions_PadV2Options;
 };
 
 template<> struct BuiltinOptionsTraits<GatherOptions> {
@@ -947,6 +960,14 @@ struct BuiltinOptionsUnion {
   const PadOptionsT *AsPadOptions() const {
     return type == BuiltinOptions_PadOptions ?
       reinterpret_cast<const PadOptionsT *>(value) : nullptr;
+  }
+  PadV2OptionsT *AsPadV2Options() {
+    return type == BuiltinOptions_PadV2Options ?
+      reinterpret_cast<PadV2OptionsT *>(value) : nullptr;
+  }
+  const PadV2OptionsT *AsPadV2Options() const {
+    return type == BuiltinOptions_PadV2Options ?
+      reinterpret_cast<const PadV2OptionsT *>(value) : nullptr;
   }
   GatherOptionsT *AsGatherOptions() {
     return type == BuiltinOptions_GatherOptions ?
@@ -2873,6 +2894,46 @@ inline flatbuffers::Offset<PadOptions> CreatePadOptions(
 
 flatbuffers::Offset<PadOptions> CreatePadOptions(flatbuffers::FlatBufferBuilder &_fbb, const PadOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct PadV2OptionsT : public flatbuffers::NativeTable {
+  typedef PadV2Options TableType;
+  PadV2OptionsT() {
+  }
+};
+
+struct PadV2Options FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef PadV2OptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  PadV2OptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(PadV2OptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<PadV2Options> Pack(flatbuffers::FlatBufferBuilder &_fbb, const PadV2OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct PadV2OptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit PadV2OptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  PadV2OptionsBuilder &operator=(const PadV2OptionsBuilder &);
+  flatbuffers::Offset<PadV2Options> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<PadV2Options>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<PadV2Options> CreatePadV2Options(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  PadV2OptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<PadV2Options> CreatePadV2Options(flatbuffers::FlatBufferBuilder &_fbb, const PadV2OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct ReshapeOptionsT : public flatbuffers::NativeTable {
   typedef ReshapeOptions TableType;
   std::vector<int32_t> new_shape;
@@ -4258,6 +4319,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const PadOptions *builtin_options_as_PadOptions() const {
     return builtin_options_type() == BuiltinOptions_PadOptions ? static_cast<const PadOptions *>(builtin_options()) : nullptr;
   }
+  const PadV2Options *builtin_options_as_PadV2Options() const {
+    return builtin_options_type() == BuiltinOptions_PadV2Options ? static_cast<const PadV2Options *>(builtin_options()) : nullptr;
+  }
   const GatherOptions *builtin_options_as_GatherOptions() const {
     return builtin_options_type() == BuiltinOptions_GatherOptions ? static_cast<const GatherOptions *>(builtin_options()) : nullptr;
   }
@@ -4430,6 +4494,10 @@ template<> inline const MulOptions *Operator::builtin_options_as<MulOptions>() c
 
 template<> inline const PadOptions *Operator::builtin_options_as<PadOptions>() const {
   return builtin_options_as_PadOptions();
+}
+
+template<> inline const PadV2Options *Operator::builtin_options_as<PadV2Options>() const {
+  return builtin_options_as_PadV2Options();
 }
 
 template<> inline const GatherOptions *Operator::builtin_options_as<GatherOptions>() const {
@@ -5572,6 +5640,29 @@ inline flatbuffers::Offset<PadOptions> CreatePadOptions(flatbuffers::FlatBufferB
       _fbb);
 }
 
+inline PadV2OptionsT *PadV2Options::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new PadV2OptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void PadV2Options::UnPackTo(PadV2OptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<PadV2Options> PadV2Options::Pack(flatbuffers::FlatBufferBuilder &_fbb, const PadV2OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreatePadV2Options(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<PadV2Options> CreatePadV2Options(flatbuffers::FlatBufferBuilder &_fbb, const PadV2OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const PadV2OptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreatePadV2Options(
+      _fbb);
+}
+
 inline ReshapeOptionsT *ReshapeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ReshapeOptionsT();
   UnPackTo(_o, _resolver);
@@ -6432,6 +6523,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const PadOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<const PadV2Options *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions_GatherOptions: {
       auto ptr = reinterpret_cast<const GatherOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -6618,6 +6713,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const PadOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<const PadV2Options *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions_GatherOptions: {
       auto ptr = reinterpret_cast<const GatherOptions *>(obj);
       return ptr->UnPack(resolver);
@@ -6792,6 +6891,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const PadOptionsT *>(value);
       return CreatePadOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<const PadV2OptionsT *>(value);
+      return CreatePadV2Options(_fbb, ptr, _rehasher).Union();
+    }
     case BuiltinOptions_GatherOptions: {
       auto ptr = reinterpret_cast<const GatherOptionsT *>(value);
       return CreateGatherOptions(_fbb, ptr, _rehasher).Union();
@@ -6964,6 +7067,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_PadOptions: {
       value = new PadOptionsT(*reinterpret_cast<PadOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_PadV2Options: {
+      value = new PadV2OptionsT(*reinterpret_cast<PadV2OptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_GatherOptions: {
@@ -7160,6 +7267,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_PadOptions: {
       auto ptr = reinterpret_cast<PadOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<PadV2OptionsT *>(value);
       delete ptr;
       break;
     }
