@@ -46,6 +46,7 @@ using ops::RealDiv;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::UnsafeDiv;
 using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
@@ -853,6 +854,15 @@ TEST_F(NaryGradTest, RealDiv) {
   // division errors in the numeric estimator used by the gradient checker.
   auto y =
       RealDiv(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+  RunTest({x}, {x_shape}, {y}, {x_shape});
+}
+
+TEST_F(NaryGradTest, UnsafeDiv) {
+  TensorShape x_shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+  // division errors in the numeric estimator used by the gradient checker.
+  auto y = UnsafeDiv(scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
   RunTest({x}, {x_shape}, {y}, {x_shape});
 }
 

@@ -120,7 +120,8 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
                               "Maximum",    "Minimum",
                               "Mod",        "Mul",
                               "NotEqual",   "Pow",
-                              "Sub",        "SquaredDifference"}) {
+                              "Sub",        "SquaredDifference",
+                              "UnsafeDiv"}) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[1,2];?", "?");
