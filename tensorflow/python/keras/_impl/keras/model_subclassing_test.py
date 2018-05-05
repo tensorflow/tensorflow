@@ -28,7 +28,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpointable
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
@@ -582,6 +584,22 @@ class ModelSubclassingTest(test.TestCase):
     model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
+
+  def test_no_dependency(self):
+    class Foo(keras.Model):
+
+      def __init__(self):
+        super(Foo, self).__init__()
+        self.isdep = keras.layers.Dense(1)
+        self.notdep = checkpointable.NoDependency(keras.layers.Dense(2))
+        self.notdep_var = checkpointable.NoDependency(
+            resource_variable_ops.ResourceVariable(1., name='notdep_var'))
+
+    m = Foo()
+    self.assertEqual([m.isdep, m.notdep], m.layers)
+    self.assertEqual(1, len(m._checkpoint_dependencies))
+    self.assertIs(m.isdep, m._checkpoint_dependencies[0].ref)
+    self.assertEqual('notdep_var:0', m.notdep_var.name)
 
 
 class CustomCallModel(keras.Model):

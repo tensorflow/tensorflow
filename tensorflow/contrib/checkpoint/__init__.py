@@ -19,6 +19,7 @@ For creating and managing dependencies:
 @@CheckpointableObjectGraph
 @@dot_graph_from_checkpoint
 @@object_metadata
+@@NoDependency
 @@split_dependency
 """
 
@@ -29,6 +30,7 @@ from __future__ import print_function
 from tensorflow.contrib.checkpoint.python.split_dependency import split_dependency
 from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkpoint
 from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import CheckpointableObjectGraph
+from tensorflow.python.training.checkpointable import NoDependency
 from tensorflow.python.training.checkpointable_utils import object_metadata
 
 from tensorflow.python.util.all_util import remove_undocumented

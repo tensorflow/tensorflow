@@ -318,6 +318,9 @@ class Network(base_layer.Layer):
           layer, name='layer-%d' % layer_index, overwrite=True)
 
   def __setattr__(self, name, value):
+    no_dependency = isinstance(value, checkpointable.NoDependency)
+    if no_dependency:
+      value = value.value
     if isinstance(value, (base_layer.Layer, Network)):
       try:
         is_graph_network = self._is_graph_network
@@ -332,7 +335,8 @@ class Network(base_layer.Layer):
             # In subclassed models, legacy layers (tf.layers) must always use
             # resource variables.
             value._use_resource_variables = True
-    if isinstance(value, checkpointable.CheckpointableBase):
+    if (not no_dependency
+        and isinstance(value, checkpointable.CheckpointableBase)):
       # Layer (and therefore Network/Model) inherit from CheckpointableBase
       # rather than Checkpointable, which means there is no Checkpointable
       # __setattr__ override (it would be a performance issue for functional
