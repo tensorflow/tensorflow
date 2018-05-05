@@ -538,10 +538,10 @@ def gan_loss(
         type(model))
 
   # Create standard losses.
-  gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
+  gen_loss = generator_loss_fn(model, addsummaries=add_summaries)
   dis_loss = discriminator_loss_fn(
       _tensor_pool_adjusted_model(model, tensor_pool_fn),
-      add_summaries=add_summaries)
+      addsummaries=add_summaries)
 
   # Add optional extra losses.
   if _use_aux_loss(gradient_penalty_weight):
@@ -550,20 +550,20 @@ def gan_loss(
         epsilon=gradient_penalty_epsilon,
         target=gradient_penalty_target,
         one_sided=gradient_penalty_one_sided,
-        add_summaries=add_summaries)
+        addsummaries=add_summaries)
     dis_loss += gradient_penalty_weight * gp_loss
   if _use_aux_loss(mutual_information_penalty_weight):
     info_loss = tfgan_losses.mutual_information_penalty(
-        model, add_summaries=add_summaries)
+        model, addsummaries=add_summaries)
     dis_loss += mutual_information_penalty_weight * info_loss
     gen_loss += mutual_information_penalty_weight * info_loss
   if _use_aux_loss(aux_cond_generator_weight):
     ac_gen_loss = tfgan_losses.acgan_generator_loss(
-        model, add_summaries=add_summaries)
+        model, addsummaries=add_summaries)
     gen_loss += aux_cond_generator_weight * ac_gen_loss
   if _use_aux_loss(aux_cond_discriminator_weight):
     ac_disc_loss = tfgan_losses.acgan_discriminator_loss(
-        model, add_summaries=add_summaries)
+        model, addsummaries=add_summaries)
     dis_loss += aux_cond_discriminator_weight * ac_disc_loss
   # Gathers auxiliary losses.
   if model.generator_scope:
