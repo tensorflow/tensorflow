@@ -4,11 +4,11 @@ licenses(["notice"])  # Apache 2.0
 filegroup(
     name = "ovic_testdata",
     srcs = [
-        "float_model.lite",
-        "low_res_model.lite",
-        "quantized_model.lite",
-        "test_image_128.jpg",
-        "test_image_224.jpg",
+        "@tflite_ovic_testdata//:float_model.lite",
+        "@tflite_ovic_testdata//:low_res_model.lite",
+        "@tflite_ovic_testdata//:quantized_model.lite",
+        "@tflite_ovic_testdata//:test_image_128.jpg",
+        "@tflite_ovic_testdata//:test_image_224.jpg",
     ],
     visibility = ["//visibility:public"],
 )

@@ -23,7 +23,7 @@ android_binary(
     deps = [
         "//tensorflow/contrib/lite/java:ovicbenchmarkerlib",
         "//tensorflow/contrib/lite/java:tensorflowlite",
-        "//third_party/java/android/android_sdk_linux/extras/android/compatibility/v13",
-        "//third_party/java/android/android_sdk_linux/extras/android/compatibility/v4",
+        "@androidsdk//com.android.support:support-v13-25.2.0",
+        "@androidsdk//com.android.support:support-v4-25.2.0",
     ],
 )
