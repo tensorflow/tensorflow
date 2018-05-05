@@ -80,7 +80,7 @@ You can now run any of the example TensorFlow programs in the
 would run any Python program:
 
 ```bsh
-python linear_regressor.py
+python linear_regression.py
 ```
 
 During training, all three programs output the following information:
@@ -89,7 +89,7 @@ During training, all three programs output the following information:
 * The training loss after every 100 iterations, which helps you
   determine whether the model is converging.
 
-For example, here's some possible output for the `linear_regressor.py`
+For example, here's some possible output for the `linear_regression.py`
 program:
 
 ``` None
@@ -108,9 +108,9 @@ INFO:tensorflow:Loss for final step: 5.12413.
 
 
 <a name="basic"></a>
-## linear_regressor.py
+## linear_regression.py
 
-`linear_regressor.py` trains a model that predicts the price of a car from
+`linear_regression.py` trains a model that predicts the price of a car from
 two numerical features.
 
 <table>
@@ -122,7 +122,7 @@ two numerical features.
 
   <tr>
     <td>Features</td>
-    <td>Numerical: <tt>body-style</tt> and <tt>make</tt>.</td>
+    <td>Numerical: <tt>curb-weight</tt> and <tt>highway-mpg</tt>.</td>
   </tr>
 
   <tr>
@@ -157,8 +157,8 @@ categorical and numerical features.
 
   <tr>
     <td>Features</td>
-    <td>Categorical: <tt>curb-weight</tt> and <tt>highway-mpg</tt>.<br/>
-        Numerical: <tt>body-style</tt> and <tt>make</tt>.</td>
+    <td>Numerical: <tt>curb-weight</tt> and <tt>highway-mpg</tt>.<br/>
+        Categorical: <tt>body-style</tt> and <tt>make</tt>.</td>
   </tr>
 
   <tr>
