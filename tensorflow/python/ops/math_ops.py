@@ -1041,7 +1041,7 @@ def unsafe_div(x, y, name=None):
 
   Args:
     x: A `Tensor`. Must be one of the following types:
-       `half`, `float32`, `float64`.
+       `float32`, `float64`, `int16`, `int32`, `int64`.
     y: A `Tensor` whose dtype is compatible with `x`.
     name: A name for the operation (optional).
   Returns:
