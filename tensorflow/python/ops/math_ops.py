@@ -1034,6 +1034,28 @@ def div(x, y, name=None):
   return _div_python2(x, y, name)
 
 
+def unsafe_div(x, y, name=None):
+  """Divide two values using Python 2 semantics. Used for Tensor.__div__.
+
+  Args:
+    x: `Tensor` numerator of real numeric type.
+    y: `Tensor` denominator of real numeric type.
+    name: A name for the operation (optional).
+  Returns:
+    `x / y` returns the quotient of x and y.
+  """
+
+  with ops.name_scope(name, "unsafe_div", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError("x and y must have the same dtype, got %r != %r" %
+                      (x_dtype, y_dtype))
+    return gen_math_ops.unsafe_div(x, y, name=name)
+
+
 # TODO(aselle): This should be removed
 mod = gen_math_ops.floor_mod
 
