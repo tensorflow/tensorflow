@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
+    "tf_cc_test",
     "tf_gen_op_libs",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
@@ -85,6 +86,19 @@ py_test(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:gradient_checker",
         "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "periodic_resample_op_cc_test",
+    size = "small",
+    srcs = [
+        "ops/array_ops_test.cc",
+    ],
+    deps = [
+        ":all_ops",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
