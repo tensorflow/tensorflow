@@ -5423,9 +5423,9 @@ def enable_eager_execution(config=None, device_policy=None,
       actually executed. When set to None, an appropriate value will be picked
       automatically. The value picked may change between TensorFlow releases.
       Valid values:
-        - tf.contrib.eager.SYNC: executes each operation synchronously.
-        - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
-          operations may return "non-ready" handles.
+      - tf.contrib.eager.SYNC: executes each operation synchronously.
+      - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+        operations may return "non-ready" handles.
 
   Raises:
     ValueError: If eager execution is enabled after creating/executing a
