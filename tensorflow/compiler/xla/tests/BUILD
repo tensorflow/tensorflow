@@ -1868,6 +1868,7 @@ xla_test(
 xla_test(
     name = "local_client_execute_test",
     srcs = ["local_client_execute_test.cc"],
+    shard_count = 30,
     tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",

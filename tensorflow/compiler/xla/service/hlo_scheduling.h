@@ -55,6 +55,12 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function);
 
+// Naive Post Order scheduler
+StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function);
+
 // The default scheduling algorithm. Runs both the list scheduler
 // and the DFS scheduler, and chooses whichever returns a lower min-memory,
 // not accounting for fragmentation.
