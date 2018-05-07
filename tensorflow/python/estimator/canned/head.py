@@ -32,6 +32,7 @@ from tensorflow.python.feature_column import feature_column as feature_column_li
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -67,6 +68,35 @@ LossSpec = collections.namedtuple(
 
 def _summary_key(head_name, val):
   return '%s/%s' % (val, head_name) if head_name else val
+
+
+def _create_eval_metrics_tuple(fn, kwargs):
+  """Creates TPU eval metrics tuple.
+
+  Helper function to make eval_metric tuple (eval_metric_fn, fn_kwargs) used
+  by `TPUEstimator`. TPUEstimator requires that `eval_metric_fn` take
+  exclusively Tensor arguments. This helper can help create such a function from
+  a more generic function that can take both Tensor and non-Tensor arguments.
+
+  Args:
+    fn: A eval_metric_fn that takes both Tensor and non-Tensor arguments.
+        This function must return a dict of form
+        {'metric name': (metric_tensor, eval_op)}
+    kwargs: Dict of arguments for `fn`.
+
+  Returns:
+    `eval_metric` tuple that can be passed to a `model_fn._TPUEstimatorSpec`.
+  """
+  tensor_kwargs = {}
+  nontensor_kwargs = {}
+  for k, v in six.iteritems(kwargs):
+    if tensor_util.is_tensor(v):
+      tensor_kwargs[k] = v
+    else:
+      nontensor_kwargs[k] = v
+  def _fn(**tensors):
+    return fn(**dict(nontensor_kwargs, **tensors))
+  return (_fn, tensor_kwargs)
 
 
 class _Head(object):
@@ -174,7 +204,6 @@ class _Head(object):
 
   # TODO(b/65403806): By default, collect regularization_losses from
   # GraphKeys.REGULARIZATION_LOSSES collection.
-  @abc.abstractmethod
   def create_estimator_spec(
       self, features, mode, logits, labels=None, optimizer=None,
       train_op_fn=None, regularization_losses=None):
@@ -203,7 +232,47 @@ class _Head(object):
     Returns:
       `EstimatorSpec`.
     """
-    raise NotImplementedError('Calling an abstract method.')
+    try:
+      tpu_estimator_spec = (
+          self._create_tpu_estimator_spec(
+              features, mode, logits, labels, optimizer, train_op_fn,
+              regularization_losses))
+      return tpu_estimator_spec.as_estimator_spec()
+    except NotImplementedError:
+      # Not all subclasses of _Head will have implemented
+      # _create_tpu_estimator_spec. If it is implemented, we can use it to
+      # create our `EstimatorSpec` here.
+      raise NotImplementedError(
+          'Subclasses of _Head must implement `create_estimator_spec()` or '
+          '_create_tpu_estimator_spec().')
+
+  def _create_tpu_estimator_spec(
+      self, features, mode, logits, labels=None, optimizer=None,
+      train_op_fn=None, regularization_losses=None):
+    """Returns `model_fn._TPUEstimatorSpec` that a model_fn can return.
+
+    Args:
+      features: Input `dict` of `Tensor` or `SparseTensor` objects.
+      mode: Estimator's `ModeKeys`.
+      logits: logits `Tensor` to be used by the head.
+      labels: Labels `Tensor`, or `dict` of same.
+      optimizer: `Optimizer` instance to optimize the loss in TRAIN mode.
+        Namely, sets `train_op = optimizer.minimize(loss, global_step)`, which
+        updates variables and increments `global_step`.
+      train_op_fn: Function that takes a scalar loss `Tensor` and returns an op
+        to optimize the model with the loss in TRAIN mode. Used if `optimizer`
+        is `None`. Exactly one of `train_op_fn` and `optimizer` must be set in
+        TRAIN mode. None is allowed in other modes. If you want to optimize loss
+        yourself you can pass `lambda _: tf.no_op()` and then use
+        EstimatorSpec.loss to compute and apply gradients.
+      regularization_losses: A list of additional scalar losses to be added to
+        the training loss, such as regularization losses.
+
+    Returns:
+      A `model_fn._TPUEstimatorSpec' instance.
+    """
+    raise NotImplementedError(
+        'TPUEstimatorSpec not available for this model head.')
 
 
 def _check_dense_labels_match_logits_and_reshape(
@@ -702,10 +771,10 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         weights=weights,
         processed_labels=label_ids)
 
-  def create_estimator_spec(
+  def _create_tpu_estimator_spec(
       self, features, mode, logits, labels=None, optimizer=None,
       train_op_fn=None, regularization_losses=None):
-    """Returns an `EstimatorSpec`.
+    """Returns a `model_fn._TPUEstimatorSpec`.
 
     Args:
       features: Input `dict` of `Tensor` or `SparseTensor` objects.
@@ -727,7 +796,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
         avoid scaling errors.
     Returns:
-      `EstimatorSpec`.
+      A `model_fn._TPUEstimatorSpec` instance.
     Raises:
       ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
         mode, or if both are set.
@@ -761,7 +830,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         classifier_output = _classification_output(
             scores=probabilities, n_classes=self._n_classes,
             label_vocabulary=self._label_vocabulary)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
@@ -781,16 +850,17 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         regularized_training_loss = training_loss
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
             loss=regularized_training_loss,
-            eval_metric_ops=self._eval_metric_ops(
-                labels=label_ids,
-                class_ids=class_ids,
-                weights=weights,
-                unreduced_loss=unreduced_loss,
-                regularization_loss=regularization_loss))
+            eval_metrics=_create_eval_metrics_tuple(self._eval_metric_ops, {
+                'labels': label_ids,
+                'class_ids': class_ids,
+                'weights': weights,
+                'unreduced_loss': unreduced_loss,
+                'regularization_loss': regularization_loss
+            }))
 
       # Train.
       if optimizer is not None:
@@ -824,7 +894,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         summary.scalar(
             _summary_key(self._name, keys.LOSS_REGULARIZATION),
             regularization_loss)
-    return model_fn.EstimatorSpec(
+    return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
         loss=regularized_training_loss,
@@ -1060,7 +1130,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         weights=weights,
         processed_labels=labels)
 
-  def create_estimator_spec(
+  def _create_tpu_estimator_spec(
       self, features, mode, logits, labels=None, optimizer=None,
       train_op_fn=None, regularization_losses=None):
     """Returns an `EstimatorSpec`.
@@ -1122,7 +1192,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         classifier_output = _classification_output(
             scores=probabilities, n_classes=2,
             label_vocabulary=self._label_vocabulary)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
@@ -1146,18 +1216,22 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
             loss=regularized_training_loss,
-            eval_metric_ops=self._eval_metric_ops(
-                labels=processed_labels,
-                logits=logits,
-                logistic=logistic,
-                class_ids=class_ids,
-                weights=weights,
-                unreduced_loss=unreduced_loss,
-                regularization_loss=regularization_loss))
+            eval_metrics=_create_eval_metrics_tuple(
+                self._eval_metric_ops,
+                {
+                    'labels': processed_labels,
+                    'logits': logits,
+                    'logistic': logistic,
+                    'class_ids': class_ids,
+                    'weights': weights,
+                    'unreduced_loss': unreduced_loss,
+                    'regularization_loss': regularization_loss
+                }
+            ))
 
       # Train.
       if optimizer is not None:
@@ -1190,7 +1264,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         summary.scalar(
             _summary_key(self._name, keys.LOSS_REGULARIZATION),
             regularization_loss)
-    return model_fn.EstimatorSpec(
+    return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
         loss=regularized_training_loss,
@@ -1322,7 +1396,25 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         weights=weights,
         processed_labels=labels)
 
-  def create_estimator_spec(
+  def _eval_metric_ops(self, weights, unreduced_loss, regularization_loss):
+    """Returns the Eval metric ops."""
+    keys = metric_keys.MetricKeys
+    # Estimator already adds a metric for loss.
+    eval_metric_ops = {
+        _summary_key(self._name, keys.LOSS_MEAN):
+            metrics_lib.mean(
+                values=unreduced_loss,
+                weights=weights)
+    }
+    if regularization_loss is not None:
+      regularization_loss_key = _summary_key(
+          self._name, keys.LOSS_REGULARIZATION)
+      eval_metric_ops[regularization_loss_key] = metrics_lib.mean(
+          values=regularization_loss,
+          name=keys.LOSS_REGULARIZATION)
+    return eval_metric_ops
+
+  def _create_tpu_estimator_spec(
       self, features, mode, logits, labels=None, optimizer=None,
       train_op_fn=None, regularization_losses=None):
     """Returns an `EstimatorSpec`.
@@ -1348,7 +1440,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
         avoid scaling errors.
     Returns:
-      `EstimatorSpec`.
+      A `model_fn._TPUEstimatorSpec` instance.
     Raises:
       ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
         mode, or if both are set.
@@ -1369,7 +1461,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       if mode == model_fn.ModeKeys.PREDICT:
         regression_output = export_output.RegressionOutput(
             value=predicted_value)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
@@ -1390,25 +1482,18 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        keys = metric_keys.MetricKeys
-        # Estimator already adds a metric for loss.
-        eval_metric_ops = {
-            _summary_key(self._name, keys.LOSS_MEAN):
-                metrics_lib.mean(
-                    values=unreduced_loss,
-                    weights=weights)
-        }
-        if regularization_loss is not None:
-          regularization_loss_key = _summary_key(
-              self._name, keys.LOSS_REGULARIZATION)
-          eval_metric_ops[regularization_loss_key] = metrics_lib.mean(
-              values=regularization_loss,
-              name=keys.LOSS_REGULARIZATION)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
             loss=regularized_training_loss,
-            eval_metric_ops=eval_metric_ops)
+            eval_metrics=_create_eval_metrics_tuple(
+                self._eval_metric_ops,
+                {
+                    'weights': weights,
+                    'unreduced_loss': unreduced_loss,
+                    'regularization_loss': regularization_loss,
+                }
+            ))
 
       # Train.
       if optimizer is not None:
@@ -1441,7 +1526,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         summary.scalar(
             _summary_key(self._name, keys.LOSS_REGULARIZATION),
             regularization_loss)
-    return model_fn.EstimatorSpec(
+    return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
         loss=regularized_training_loss,
@@ -1478,3 +1563,42 @@ def _weights(features, weight_column):
       raise ValueError('Weight column should be castable to float. '
                        'Given dtype: {}'.format(weights.dtype))
     return math_ops.to_float(weights, name='weights')
+
+
+def _binary_logistic_or_multi_class_head(
+    n_classes, weight_column, label_vocabulary, loss_reduction):
+  """Creates either binary or multi-class head.
+
+  Args:
+    n_classes: Number of label classes.
+    weight_column: A string or a `_NumericColumn` created by
+      `tf.feature_column.numeric_column` defining feature column representing
+      weights. It is used to down weight or boost examples during training. It
+      will be multiplied by the loss of the example. If it is a string, it is
+      used as a key to fetch weight tensor from the `features`. If it is a
+      `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
+      then weight_column.normalizer_fn is applied on it to get weight tensor.
+    label_vocabulary: A list of strings represents possible label values. If
+      given, labels must be string type and have any value in
+      `label_vocabulary`. If it is not given, that means labels are
+      already encoded as integer or float within [0, 1] for `n_classes=2` and
+      encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
+      Also there will be errors if vocabulary is not provided and labels are
+      string.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+      to reduce training loss over batch. Defaults to `SUM`.
+
+  Returns:
+    `head._Head` instance.
+  """
+  if n_classes == 2:
+    head = _binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        weight_column=weight_column,
+        label_vocabulary=label_vocabulary,
+        loss_reduction=loss_reduction)
+  else:
+    head = _multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes, weight_column=weight_column,
+        label_vocabulary=label_vocabulary,
+        loss_reduction=loss_reduction)
+  return head

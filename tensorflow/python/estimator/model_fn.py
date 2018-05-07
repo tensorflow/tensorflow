@@ -334,6 +334,57 @@ class EstimatorSpec(
     return EstimatorSpec(*new_fields)
 
 
+class _TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
+    'mode',
+    'predictions',
+    'loss',
+    'train_op',
+    'eval_metrics',
+    'export_outputs',
+    'scaffold_fn',
+    'host_call'])):
+  """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
+
+  This is a simplified implementation of `tf.contrib.tpu.EstimatorSpec`. See
+  tensorflow/contrib/tpu/python/tpu/tpu_estimator.py for more detailed
+  documentation.
+  """
+
+  def __new__(cls,
+              mode,
+              predictions=None,
+              loss=None,
+              train_op=None,
+              eval_metrics=None,
+              export_outputs=None,
+              scaffold_fn=None,
+              host_call=None):
+    """Creates a `_TPUEstimatorSpec` instance."""
+    return super(_TPUEstimatorSpec, cls).__new__(cls,
+                                                 mode=mode,
+                                                 predictions=predictions,
+                                                 loss=loss,
+                                                 train_op=train_op,
+                                                 eval_metrics=eval_metrics,
+                                                 export_outputs=export_outputs,
+                                                 scaffold_fn=scaffold_fn,
+                                                 host_call=host_call)
+
+  def as_estimator_spec(self):
+    """Creates an equivalent `EstimatorSpec` used by CPU train/eval."""
+    if not self.eval_metrics:
+      eval_metric_ops = None
+    else:
+      metric_fn, tensors = self.eval_metrics
+      eval_metric_ops = metric_fn(**tensors)
+    return EstimatorSpec(mode=self.mode,
+                         predictions=self.predictions,
+                         loss=self.loss,
+                         train_op=self.train_op,
+                         eval_metric_ops=eval_metric_ops,
+                         export_outputs=self.export_outputs)
+
+
 def _check_is_tensor_or_operation(x, name):
   if not (isinstance(x, ops.Operation) or isinstance(x, ops.Tensor)):
     raise TypeError('{} must be Operation or Tensor, given: {}'.format(name, x))
