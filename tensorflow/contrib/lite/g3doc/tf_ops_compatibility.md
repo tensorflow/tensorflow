@@ -281,6 +281,32 @@ Options {
 }
 ```
 
+**GREATER**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is
+  greater than the corresponding element of the second tensor.
+}
+```
+
+**GREATER_EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is
+  greater than or equal to the corresponding element of the second tensor.
+}
+```
+
 **L2_NORMALIZATION**
 
 ```
@@ -322,6 +348,19 @@ Inputs {
 Outputs {
   0: a tensor of type bool, true whenever an element of the first tensor is less
   than the corresponding element of the second tensor.
+}
+```
+
+**LESS_EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is less
+  than or equal to the corresponding element of the second tensor.
 }
 ```
 

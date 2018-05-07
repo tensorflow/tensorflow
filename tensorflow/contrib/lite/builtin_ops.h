@@ -86,6 +86,9 @@ typedef enum {
   kTfLiteBuiltinLess = 58,
   kTfLiteBuiltinNeg = 59,
   kTfLiteBuiltinPadv2 = 60,
+  kTfLiteBuiltinGreater = 61,
+  kTfLiteBuiltinGreaterEqual = 62,
+  kTfLiteBuiltinLessEqual = 63,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

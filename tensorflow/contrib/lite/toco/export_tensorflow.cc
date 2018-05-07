@@ -1702,6 +1702,19 @@ void ConvertRandomUniformOperator(const Model& model,
   (*new_op->mutable_attr())["seed2"].set_i(src_op.seed2);
 }
 
+void ConvertComparisonOperator(const Model& model, const Operator& src_op,
+                               const char* op_name,
+                               GraphDef* tensorflow_graph) {
+  auto* comparison_op = tensorflow_graph->add_node();
+  comparison_op->set_op(op_name);
+  comparison_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *comparison_op->add_input() = src_op.inputs[0];
+  *comparison_op->add_input() = src_op.inputs[1];
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*comparison_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -1893,6 +1906,14 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertRandomUniformOperator(
         model, static_cast<const RandomUniformOperator&>(src_op),
         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowGreater) {
+    ConvertComparisonOperator(model, src_op, "Greater", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowGreaterEqual) {
+    ConvertComparisonOperator(model, src_op, "GreaterEqual", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowLess) {
+    ConvertComparisonOperator(model, src_op, "Less", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowLessEqual) {
+    ConvertComparisonOperator(model, src_op, "LessEqual", tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

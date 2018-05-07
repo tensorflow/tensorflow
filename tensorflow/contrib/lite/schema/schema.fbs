@@ -138,6 +138,9 @@ enum BuiltinOperator : byte {
   LESS = 58,
   NEG = 59,
   PADV2 = 60,
+  GREATER = 61,
+  GREATER_EQUAL = 62,
+  LESS_EQUAL = 63,
 }
 
 // Options for the builtin operators.
@@ -183,7 +186,10 @@ union BuiltinOptions {
   DequantizeOptions,
   MaximumMinimumOptions,
   ArgMaxOptions,
+  GreaterOptions,
+  GreaterEqualOptions,
   LessOptions,
+  LessEqualOptions,
   NegOptions,
 }
 
@@ -410,7 +416,16 @@ table ArgMaxOptions {
   output_type : TensorType;
 }
 
+table GreaterOptions {
+}
+
+table GreaterEqualOptions {
+}
+
 table LessOptions {
+}
+
+table LessEqualOptions {
 }
 
 table NegOptions {

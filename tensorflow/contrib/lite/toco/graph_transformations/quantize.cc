@@ -55,7 +55,11 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
-         type == OperatorType::kTranspose || type == OperatorType::kMean;
+         type == OperatorType::kTranspose || type == OperatorType::kMean ||
+         type == OperatorType::kTensorFlowGreater ||
+         type == OperatorType::kTensorFlowGreaterEqual ||
+         type == OperatorType::kTensorFlowLess ||
+         type == OperatorType::kTensorFlowLessEqual;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
@@ -257,8 +261,7 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
         IsExactlyRepresentable(0., *quantized_data_type, *quantization_params));
     return true;
   }
-  if ((op.type == OperatorType::kLogistic) ||
-      (op.type == OperatorType::kSoftmax)) {
+  if (op.type == OperatorType::kLogistic || op.type == OperatorType::kSoftmax) {
     // Logistic and Softmax have range: [0, 1].
     //
     // For Logistic, 0.5 should be exactly representable, as implementations

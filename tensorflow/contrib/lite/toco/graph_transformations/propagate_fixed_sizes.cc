@@ -499,8 +499,8 @@ void ProcessTensorFlowReshapeOperator(Model* model,
       << op->outputs[0] << "\". Are your input shapes correct?";
 }
 
-void ProcessSimpleOperator(Model* model, Operator* op) {
-  const auto& input_array = model->GetArray(op->inputs[0]);
+void ProcessSimpleOperator(Model* model, Operator* op, int input_index) {
+  const auto& input_array = model->GetArray(op->inputs[input_index]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -1499,7 +1499,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kExp:
-      ProcessSimpleOperator(model, op);
+      ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
       ProcessGatherOperator(model, static_cast<GatherOperator*>(op));

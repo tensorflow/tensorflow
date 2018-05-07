@@ -35,35 +35,6 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOne(
-    int32 x, int32 quantized_multiplier, int right_shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), right_shift);
-}
-
-inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(
-    int32 x, int32 quantized_multiplier, int left_shift) {
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
-                                           quantized_multiplier);
-}
-
-template <typename T>
-int CountLeadingZeros(T integer_input) {
-  static_assert(std::is_unsigned<T>::value,
-                "Only unsigned integer types handled.");
-  const T one_in_leading_positive = static_cast<T>(1)
-                                    << (std::numeric_limits<T>::digits - 1);
-  int leading_zeros = 0;
-  while (integer_input < one_in_leading_positive) {
-    integer_input <<= 1;
-    ++leading_zeros;
-  }
-  return leading_zeros;
-}
-
 // DO NOT USE THIS STRUCT FOR NEW FUNCTIONALITY BEYOND IMPLEMENTING ELEMENT-WISE
 // BROADCASTING.
 //
@@ -3614,17 +3585,29 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Less(int64_t num_elements, const T* input1, const T* input2,
-                 bool* output) {
-  for (int64_t i = 0; i < num_elements; ++i) {
-    output[i] = input1[i] < input2[i];
-  }
+inline bool GreaterFn(T lhs, T rhs) {
+  return lhs > rhs;
+}
+template <typename T>
+inline bool GreaterEqualFn(T lhs, T rhs) {
+  return lhs >= rhs;
+}
+template <typename T>
+inline bool LessFn(T lhs, T rhs) {
+  return lhs < rhs;
+}
+template <typename T>
+inline bool LessEqualFn(T lhs, T rhs) {
+  return lhs <= rhs;
 }
 
 template <typename T>
-inline void Less(const T* input1_data, const Dims<4>& input1_dims,
-                 const T* input2_data, const Dims<4>& input2_dims,
-                 bool* output_data, const Dims<4>& output_dims) {
+using ComparisonFn = bool (*)(T, T);
+
+template <typename T, ComparisonFn<T> F>
+inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
+                       const T* input2_data, const Dims<4>& input2_dims,
+                       bool* output_data, const Dims<4>& output_dims) {
   const int64_t batches =
       MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
   const int64_t height =
@@ -3633,30 +3616,148 @@ inline void Less(const T* input1_data, const Dims<4>& input1_dims,
       MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
   const int64_t depth =
       MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  Less(batches * height * width * depth, input1_data, input2_data, output_data);
+  for (int64_t i = 0; i < batches * height * width * depth; ++i) {
+    output_data[i] = F(input1_data[i], input2_data[i]);
+  }
 }
 
-template <typename T1, typename T2>
-inline void BroadcastLess(T1* input1_data, const Dims<4>& input1_dims,
-                          T2* input2_data, const Dims<4>& input2_dims,
-                          bool* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastLess");
+template <typename T, ComparisonFn<T> F>
+inline void Comparison(int left_shift, const T* input1_data,
+                       const Dims<4>& input1_dims, int32 input1_offset,
+                       int32 input1_multiplier, int input1_shift,
+                       const T* input2_data, const Dims<4>& input2_dims,
+                       int32 input2_offset, int32 input2_multiplier,
+                       int input2_shift, bool* output_data,
+                       const Dims<4>& output_dims) {
+  const int64_t batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int64_t width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int64_t depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int64_t i = 0; i < batches * height * width * depth; ++i) {
+    const int32 input1_val = input1_offset + input1_data[i];
+    const int32 input2_val = input2_offset + input2_data[i];
+    const int32 shifted_input1_val = input1_val * (1 << left_shift);
+    const int32 shifted_input2_val = input2_val * (1 << left_shift);
+    const int32 scaled_input1_val = MultiplyByQuantizedMultiplierSmallerThanOne(
+        shifted_input1_val, input1_multiplier, input1_shift);
+    const int32 scaled_input2_val = MultiplyByQuantizedMultiplierSmallerThanOne(
+        shifted_input2_val, input2_multiplier, input2_shift);
+    output_data[i] = F(scaled_input1_val, scaled_input2_val);
+  }
+}
+
+template <typename T, ComparisonFn<T> F>
+inline void BroadcastComparison(const T* input1_data,
+                                const Dims<4>& input1_dims,
+                                const T* input2_data,
+                                const Dims<4>& input2_dims, bool* output_data,
+                                const Dims<4>& output_dims) {
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
-
   for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
           output_data[Offset(output_dims, c, x, y, b)] =
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] <
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)];
+              F(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
         }
       }
     }
   }
 }
+
+template <typename T, ComparisonFn<T> F>
+inline void BroadcastComparison(int left_shift, const T* input1_data,
+                                const Dims<4>& input1_dims, int32 input1_offset,
+                                int32 input1_multiplier, int input1_shift,
+                                const T* input2_data,
+                                const Dims<4>& input2_dims, int32 input2_offset,
+                                int32 input2_multiplier, int input2_shift,
+                                bool* output_data, const Dims<4>& output_dims) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          const int32 input1_val =
+              input1_offset + input1_data[SubscriptToIndex(desc1, c, x, y, b)];
+          const int32 input2_val =
+              input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
+          const int32 shifted_input1_val = input1_val * (1 << left_shift);
+          const int32 shifted_input2_val = input2_val * (1 << left_shift);
+          const int32 scaled_input1_val =
+              MultiplyByQuantizedMultiplierSmallerThanOne(
+                  shifted_input1_val, input1_multiplier, input1_shift);
+          const int32 scaled_input2_val =
+              MultiplyByQuantizedMultiplierSmallerThanOne(
+                  shifted_input2_val, input2_multiplier, input2_shift);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              F(scaled_input1_val, scaled_input2_val);
+        }
+      }
+    }
+  }
+}
+
+#define TFLITE_COMPARISON_OP(name)                                            \
+  template <typename T>                                                       \
+  inline void name(const T* input1_data, const Dims<4>& input1_dims,          \
+                   const T* input2_data, const Dims<4>& input2_dims,          \
+                   bool* output_data, const Dims<4>& output_dims) {           \
+    gemmlowp::ScopedProfilingLabel label(#name);                              \
+    Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,            \
+                            input2_dims, output_data, output_dims);           \
+  }                                                                           \
+  template <typename T>                                                       \
+  inline void name(                                                           \
+      int left_shift, const T* input1_data, const Dims<4>& input1_dims,       \
+      int32 input1_offset, int32 input1_multiplier, int input1_shift,         \
+      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
+      int32 input2_multiplier, int input2_shift, bool* output_data,           \
+      const Dims<4>& output_dims) {                                           \
+    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
+    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
+                                     input1_offset, input1_multiplier,        \
+                                     input1_shift, input2_data, input2_dims,  \
+                                     input2_offset, input2_multiplier,        \
+                                     input2_shift, output_data, output_dims); \
+  }                                                                           \
+  template <typename T>                                                       \
+  inline void Broadcast##name(                                                \
+      const T* input1_data, const Dims<4>& input1_dims, const T* input2_data, \
+      const Dims<4>& input2_dims, bool* output_data,                          \
+      const Dims<4>& output_dims) {                                           \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                  \
+    BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,   \
+                                     input2_dims, output_data, output_dims);  \
+  }                                                                           \
+  template <typename T>                                                       \
+  inline void Broadcast##name(                                                \
+      int left_shift, const T* input1_data, const Dims<4>& input1_dims,       \
+      int32 input1_offset, int32 input1_multiplier, int input1_shift,         \
+      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
+      int32 input2_multiplier, int input2_shift, bool* output_data,           \
+      const Dims<4>& output_dims) {                                           \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");          \
+    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
+                                     input1_offset, input1_multiplier,        \
+                                     input1_shift, input2_data, input2_dims,  \
+                                     input2_offset, input2_multiplier,        \
+                                     input2_shift, output_data, output_dims); \
+  }
+TFLITE_COMPARISON_OP(Greater);
+TFLITE_COMPARISON_OP(GreaterEqual);
+TFLITE_COMPARISON_OP(Less);
+TFLITE_COMPARISON_OP(LessEqual);
+#undef TFLITE_COMPARISON_OP
 
 }  // namespace reference_ops
 }  // namespace tflite
