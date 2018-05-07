@@ -438,7 +438,7 @@ HloInstruction::CreateCrossReplicaSum(
       << "Outfeed shape " << shape << " must be compatible with operand shape "
       << operand->shape();
   instruction->AppendOperand(operand);
-  instruction->outfeed_config_ = outfeed_config.ToString();
+  instruction->outfeed_config_ = std::string(outfeed_config);
   instruction->outfeed_shape_ = shape;
   return instruction;
 }
@@ -1168,7 +1168,7 @@ bool HloInstruction::HasSideEffect() const {
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
-  instruction->custom_call_target_ = custom_call_target.ToString();
+  instruction->custom_call_target_ = std::string(custom_call_target);
   return instruction;
 }
 
@@ -1180,7 +1180,7 @@ bool HloInstruction::HasSideEffect() const {
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
-  instruction->channel_name_ = channel_name.ToString();
+  instruction->channel_name_ = std::string(channel_name);
   instruction->cost_estimate_ns_ = cost_estimate_ns;
   return instruction;
 }

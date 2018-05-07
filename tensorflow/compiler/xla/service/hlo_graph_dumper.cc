@@ -325,7 +325,7 @@ class HloDotDumper {
                bool show_backend_config, const HloExecutionProfile* profile,
                NodeFilter filter)
       : computation_(computation),
-        label_(label.ToString()),
+        label_(std::string(label)),
         debug_options_(debug_options),
         show_metadata_(show_metadata),
         show_backend_config_(show_backend_config),

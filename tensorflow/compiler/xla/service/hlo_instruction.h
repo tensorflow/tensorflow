@@ -1264,7 +1264,7 @@ class HloInstruction {
 
   // Gets/sets the string identifier for this instruction.
   const string& name() const { return name_; }
-  void set_name(tensorflow::StringPiece name) { name_ = name.ToString(); }
+  void set_name(tensorflow::StringPiece name) { name_ = std::string(name); }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
