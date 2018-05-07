@@ -354,10 +354,15 @@ __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleXorGetSrcLane(lane_mask, width)));
+#if GOOGLE_CUDA
 #if CUDA_VERSION >= 9000
   return __shfl_xor_sync(mask, value, lane_mask, width);
 #else
   return __shfl_xor(value, lane_mask, width);
+#endif
+#elif TENSORFLOW_USE_ROCM
+  // ROCM TODO: check if HIP should be changed to cope with more types
+  return __shfl_xor(static_cast<int>(value), lane_mask, width);
 #endif
 }
 

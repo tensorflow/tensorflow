@@ -38,9 +38,9 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -243,7 +243,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 // Extern template instantiated in conv_ops.cc.
 extern template struct LaunchConv2DOp<CPUDevice, float>;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Extern template instantiated in depthwise_conv_op_gpu.cc.
 extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
@@ -429,7 +429,7 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T"),

@@ -660,7 +660,7 @@ ifeq ($(BUILD_FOR_TEGRA),1)
 CORE_CC_ALL_SRCS := $(CORE_CC_ALL_SRCS) \
 tensorflow/core/kernels/concat_lib_gpu.cc \
 tensorflow/core/kernels/cuda_solvers.cc \
-tensorflow/core/kernels/cudnn_pooling_gpu.cc \
+tensorflow/core/kernels/dnn_pooling_gpu.cc \
 tensorflow/core/kernels/dense_update_functor.cc \
 tensorflow/core/kernels/fractional_avg_pool_op.cc \
 tensorflow/core/kernels/fractional_max_pool_op.cc \

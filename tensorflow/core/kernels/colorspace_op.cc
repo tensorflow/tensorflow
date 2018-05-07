@@ -119,7 +119,7 @@ class HSVToRGBOp : public OpKernel {
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
 namespace functor {

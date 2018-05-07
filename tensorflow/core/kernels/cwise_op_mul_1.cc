@@ -26,7 +26,7 @@ REGISTER6(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
 REGISTER(BinaryOp, CPU, "Mul", functor::mul, int32);
 #endif  // __ANDROID_TYPES_SLIM__
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER4(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double,
           uint8);
 // A special GPU kernel for int32.

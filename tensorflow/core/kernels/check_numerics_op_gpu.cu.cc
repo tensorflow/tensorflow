@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include <assert.h>
@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -60,12 +61,20 @@ template <typename T>
 struct CheckNumericsLaunch {
   void Run(const GPUDevice &d, const T *data, int size,
            int abnormal_detected[2]) {
+#if GOOGLE_CUDA
     const int32 block_size = d.maxCudaThreadsPerBlock();
     const int32 num_blocks =
         (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
         block_size;
+#elif TENSORFLOW_USE_ROCM
+    const int32 block_size = d.maxHipThreadsPerBlock();
+    const int32 num_blocks =
+        (d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor()) /
+        block_size;
+#endif
 
-    CheckNumericsKernel<T><<<num_blocks, block_size, 0, d.stream()>>>(
+    GPU_LAUNCH_KERNEL(CheckNumericsKernel<T>,
+        dim3(num_blocks), dim3(block_size), 0, d.stream(),
         data, size, abnormal_detected);
   }
 };
@@ -75,4 +84,4 @@ template struct CheckNumericsLaunch<float>;
 template struct CheckNumericsLaunch<double>;
 
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

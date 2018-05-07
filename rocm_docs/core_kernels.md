@@ -101,58 +101,58 @@ Kernels under tensorflow/core/kernels
 |   O    | bucketize_op.cc
 |   O    | bucketize_op.h
 |   O    | bucketize_op_gpu.cu.cc
-|        | candidate_sampler_ops.cc
-|        | captured_function.h
-|        | cast_op.cc
-|        | cast_op.h
-|        | cast_op_gpu.cu.cc
-|        | cast_op_impl.h
-|        | cast_op_impl_bfloat.cc
-|        | cast_op_impl_bool.cc
-|        | cast_op_impl_complex128.cc
-|        | cast_op_impl_complex64.cc
-|        | cast_op_impl_double.cc
-|        | cast_op_impl_float.cc
-|        | cast_op_impl_half.cc
-|        | cast_op_impl_int16.cc
-|        | cast_op_impl_int32.cc
-|        | cast_op_impl_int64.cc
-|        | cast_op_impl_int8.cc
-|        | cast_op_impl_uint16.cc
-|        | cast_op_impl_uint8.cc
-|        | cast_op_test.cc
-|        | check_numerics_op.cc
-|        | check_numerics_op_gpu.cu.cc
-|        | cholesky_grad.cc
-|        | cholesky_op.cc
-|        | collective_ops.cc
-|        | colorspace_op.cc
-|        | colorspace_op.h
-|        | colorspace_op_gpu.cu.cc
-|        | colorspace_op_test.cc
-|        | compare_and_bitpack_op.cc
-|        | compare_and_bitpack_op.h
-|        | compare_and_bitpack_op_gpu.cu.cc
-|        | concat_lib.h
-|        | concat_lib_cpu.cc
-|        | concat_lib_cpu.h
-|        | concat_lib_gpu.cc
-|        | concat_lib_gpu_impl.cu.cc
-|        | concat_op.cc
-|        | concat_op_test.cc
-|        | conditional_accumulator.h
-|        | conditional_accumulator_base.cc
-|        | conditional_accumulator_base.h
-|        | conditional_accumulator_base_op.cc
-|        | conditional_accumulator_base_op.h
-|        | conditional_accumulator_op.cc
-|        | constant_op.cc
-|        | constant_op.h
-|        | constant_op_gpu.cu.cc
-|        | constant_op_test.cc
-|        | control_flow_ops.cc
-|        | control_flow_ops.h
-|        | control_flow_ops_test.cc
+|   O    | candidate_sampler_ops.cc
+|   O    | captured_function.h
+|   O    | cast_op.cc
+|   O    | cast_op.h
+|   O    | cast_op_gpu.cu.cc
+|   O    | cast_op_impl.h
+|   O    | cast_op_impl_bfloat.cc
+|   O    | cast_op_impl_bool.cc
+|   O    | cast_op_impl_complex128.cc
+|   O    | cast_op_impl_complex64.cc
+|   O    | cast_op_impl_double.cc
+|   O    | cast_op_impl_float.cc
+|   O    | cast_op_impl_half.cc
+|   O    | cast_op_impl_int16.cc
+|   O    | cast_op_impl_int32.cc
+|   O    | cast_op_impl_int64.cc
+|   O    | cast_op_impl_int8.cc
+|   O    | cast_op_impl_uint16.cc
+|   O    | cast_op_impl_uint8.cc
+|   O    | cast_op_test.cc
+|   O    | check_numerics_op.cc
+|   O    | check_numerics_op_gpu.cu.cc
+|   O    | cholesky_grad.cc
+|   X    | cholesky_op.cc
+|   O    | collective_ops.cc
+|   O    | colorspace_op.cc
+|   O    | colorspace_op.h
+|   O    | colorspace_op_gpu.cu.cc
+|   O    | colorspace_op_test.cc
+|   O    | compare_and_bitpack_op.cc
+|   O    | compare_and_bitpack_op.h
+|   O    | compare_and_bitpack_op_gpu.cu.cc
+|   O    | concat_lib.h
+|   O    | concat_lib_cpu.cc
+|   O    | concat_lib_cpu.h
+|   O    | concat_lib_gpu.cc
+|   O    | concat_lib_gpu_impl.cu.cc
+|   O    | concat_op.cc
+|   O    | concat_op_test.cc
+|   O    | conditional_accumulator.h
+|   O    | conditional_accumulator_base.cc
+|   O    | conditional_accumulator_base.h
+|   O    | conditional_accumulator_base_op.cc
+|   O    | conditional_accumulator_base_op.h
+|   O    | conditional_accumulator_op.cc
+|   O    | constant_op.cc
+|   O    | constant_op.h
+|   O    | constant_op_gpu.cu.cc
+|   O    | constant_op_test.cc
+|   O    | control_flow_ops.cc
+|   O    | control_flow_ops.h
+|   O    | control_flow_ops_test.cc
 |        | conv_2d.h
 |        | conv_3d.h
 |        | conv_grad_filter_ops.cc
@@ -169,283 +169,283 @@ Kernels under tensorflow/core/kernels
 |        | conv_ops_gpu_3.cu.cc
 |        | conv_ops_test.cc
 |        | conv_ops_using_gemm.cc
-|        | count_up_to_op.cc
-|        | crop_and_resize_op.cc
-|        | crop_and_resize_op.h
-|        | crop_and_resize_op_gpu.cu.cc
-|        | crop_and_resize_op_test.cc
-|        | cross_op.cc
-|        | cross_op.h
-|        | cross_op_gpu.cu.cc
-|        | cross_op_test.cc
-|        | ctc_decoder_ops.cc
-|        | ctc_loss_op.cc
-|        | cuda_device_array.h
-|        | cuda_device_array_gpu.h
-|        | cuda_solvers.cc
-|        | cuda_solvers.h
-|        | cudnn_pooling_gpu.cc
-|        | cudnn_pooling_gpu.h
+|   O    | count_up_to_op.cc
+|   O    | crop_and_resize_op.cc
+|   O    | crop_and_resize_op.h
+|   O    | crop_and_resize_op_gpu.cu.cc
+|   O    | crop_and_resize_op_test.cc
+|   O    | cross_op.cc
+|   O    | cross_op.h
+|   O    | cross_op_gpu.cu.cc
+|   O    | cross_op_test.cc
+|   O    | ctc_decoder_ops.cc
+|   O    | ctc_loss_op.cc
+|   O    | cuda_device_array.h
+|   O    | cuda_device_array_gpu.h
+|   X    | cuda_solvers.cc
+|   X    | cuda_solvers.h
+|   O    | cudnn_pooling_gpu.cc
+|   O    | cudnn_pooling_gpu.h
 |        | cudnn_rnn_ops.cc
-|        | cwise_op_abs.cc
-|        | cwise_op_acos.cc
-|        | cwise_op_acosh.cc
-|        | cwise_op_add_1.cc
-|        | cwise_op_add_2.cc
-|        | cwise_op_arg.cc
-|        | cwise_op_asin.cc
-|        | cwise_op_asinh.cc
-|        | cwise_op_atan.cc
-|        | cwise_op_atan2.cc
-|        | cwise_op_atanh.cc
-|        | cwise_op_bitwise_and.cc
-|        | cwise_op_bitwise_or.cc
-|        | cwise_op_bitwise_xor.cc
-|        | cwise_op_ceil.cc
-|        | cwise_op_clip.cc
-|        | cwise_op_clip.h
-|        | cwise_op_clip_gpu.cu.cc
-|        | cwise_op_complex.cc
-|        | cwise_op_conj.cc
-|        | cwise_op_cos.cc
-|        | cwise_op_cosh.cc
-|        | cwise_op_digamma.cc
-|        | cwise_op_div.cc
-|        | cwise_op_equal_to_1.cc
-|        | cwise_op_equal_to_2.cc
-|        | cwise_op_erf.cc
-|        | cwise_op_erfc.cc
-|        | cwise_op_exp.cc
-|        | cwise_op_expm1.cc
-|        | cwise_op_floor.cc
-|        | cwise_op_floor_div.cc
-|        | cwise_op_floor_mod.cc
-|        | cwise_op_gpu_abs.cu.cc
-|        | cwise_op_gpu_acos.cu.cc
-|        | cwise_op_gpu_acosh.cu.cc
-|        | cwise_op_gpu_add.cu.cc
-|        | cwise_op_gpu_arg.cu.cc
-|        | cwise_op_gpu_asin.cu.cc
-|        | cwise_op_gpu_asinh.cu.cc
-|        | cwise_op_gpu_atan.cu.cc
-|        | cwise_op_gpu_atan2.cu.cc
-|        | cwise_op_gpu_atanh.cu.cc
-|        | cwise_op_gpu_bitwise_and.cu.cc
-|        | cwise_op_gpu_bitwise_or.cu.cc
-|        | cwise_op_gpu_bitwise_xor.cu.cc
-|        | cwise_op_gpu_ceil.cu.cc
-|        | cwise_op_gpu_complex.cu.cc
-|        | cwise_op_gpu_conj.cu.cc
-|        | cwise_op_gpu_cos.cu.cc
-|        | cwise_op_gpu_cosh.cu.cc
-|        | cwise_op_gpu_digamma.cu.cc
-|        | cwise_op_gpu_div.cu.cc
-|        | cwise_op_gpu_equal_to.cu.cc
-|        | cwise_op_gpu_erf.cu.cc
-|        | cwise_op_gpu_erfc.cu.cc
-|        | cwise_op_gpu_exp.cu.cc
-|        | cwise_op_gpu_expm1.cu.cc
-|        | cwise_op_gpu_floor.cu.cc
-|        | cwise_op_gpu_floor_div.cu.cc
-|        | cwise_op_gpu_floor_mod.cu.cc
-|        | cwise_op_gpu_greater.cu.cc
-|        | cwise_op_gpu_greater_equal.cu.cc
-|        | cwise_op_gpu_igammas.cu.cc
-|        | cwise_op_gpu_imag.cu.cc
-|        | cwise_op_gpu_inverse.cu.cc
-|        | cwise_op_gpu_invert.cu.cc
-|        | cwise_op_gpu_isfinite.cu.cc
-|        | cwise_op_gpu_isinf.cu.cc
-|        | cwise_op_gpu_isnan.cu.cc
-|        | cwise_op_gpu_left_shift.cu.cc
-|        | cwise_op_gpu_less.cu.cc
-|        | cwise_op_gpu_less_equal.cu.cc
-|        | cwise_op_gpu_lgamma.cu.cc
-|        | cwise_op_gpu_log.cu.cc
-|        | cwise_op_gpu_log1p.cu.cc
-|        | cwise_op_gpu_logical_and.cu.cc
-|        | cwise_op_gpu_logical_not.cu.cc
-|        | cwise_op_gpu_logical_or.cu.cc
-|        | cwise_op_gpu_maximum.cu.cc
-|        | cwise_op_gpu_minimum.cu.cc
-|        | cwise_op_gpu_mod.cu.cc
-|        | cwise_op_gpu_mul.cu.cc
-|        | cwise_op_gpu_neg.cu.cc
-|        | cwise_op_gpu_not_equal_to.cu.cc
-|        | cwise_op_gpu_pow.cu.cc
-|        | cwise_op_gpu_real.cu.cc
-|        | cwise_op_gpu_right_shift.cu.cc
-|        | cwise_op_gpu_rint.cu.cc
-|        | cwise_op_gpu_round.cu.cc
-|        | cwise_op_gpu_rsqrt.cu.cc
-|        | cwise_op_gpu_select.cu.cc
-|        | cwise_op_gpu_sigmoid.cu.cc
-|        | cwise_op_gpu_sign.cu.cc
-|        | cwise_op_gpu_sin.cu.cc
-|        | cwise_op_gpu_sinh.cu.cc
-|        | cwise_op_gpu_sqrt.cu.cc
-|        | cwise_op_gpu_square.cu.cc
-|        | cwise_op_gpu_squared_difference.cu.cc
-|        | cwise_op_gpu_sub.cu.cc
-|        | cwise_op_gpu_tan.cu.cc
-|        | cwise_op_gpu_tanh.cu.cc
-|        | cwise_op_gpu_zeta.cu.cc
-|        | cwise_op_greater.cc
-|        | cwise_op_greater_equal.cc
-|        | cwise_op_igammas.cc
-|        | cwise_op_imag.cc
-|        | cwise_op_invert.cc
-|        | cwise_op_isfinite.cc
-|        | cwise_op_isinf.cc
-|        | cwise_op_isnan.cc
-|        | cwise_op_left_shift.cc
-|        | cwise_op_less.cc
-|        | cwise_op_less_equal.cc
-|        | cwise_op_lgamma.cc
-|        | cwise_op_log.cc
-|        | cwise_op_log1p.cc
-|        | cwise_op_logical_and.cc
-|        | cwise_op_logical_not.cc
-|        | cwise_op_logical_or.cc
-|        | cwise_op_maximum.cc
-|        | cwise_op_minimum.cc
-|        | cwise_op_mod.cc
-|        | cwise_op_mul_1.cc
-|        | cwise_op_mul_2.cc
-|        | cwise_op_neg.cc
-|        | cwise_op_not_equal_to_1.cc
-|        | cwise_op_not_equal_to_2.cc
-|        | cwise_op_pow.cc
-|        | cwise_op_real.cc
-|        | cwise_op_reciprocal.cc
-|        | cwise_op_right_shift.cc
-|        | cwise_op_rint.cc
-|        | cwise_op_round.cc
-|        | cwise_op_rsqrt.cc
-|        | cwise_op_select.cc
-|        | cwise_op_sigmoid.cc
-|        | cwise_op_sign.cc
-|        | cwise_op_sin.cc
-|        | cwise_op_sinh.cc
-|        | cwise_op_sqrt.cc
-|        | cwise_op_square.cc
-|        | cwise_op_squared_difference.cc
-|        | cwise_op_sub.cc
-|        | cwise_op_tan.cc
-|        | cwise_op_tanh.cc
-|        | cwise_op_zeta.cc
-|        | cwise_ops.h
-|        | cwise_ops_common.cc
-|        | cwise_ops_common.h
-|        | cwise_ops_gpu_common.cu.h
-|        | cwise_ops_gpu_gradients.cu.h
-|        | cwise_ops_gradients.h
-|        | cwise_ops_sycl_common.h
-|        | cwise_ops_test.cc
-|        | data
-|        | data/BUILD
-|        | data/batch_dataset_op.cc
-|        | data/cache_dataset_ops.cc
-|        | data/captured_function.cc
-|        | data/captured_function.h
-|        | data/concatenate_dataset_op.cc
-|        | data/dataset.h
-|        | data/dataset_utils.cc
-|        | data/dataset_utils.h
-|        | data/dense_to_sparse_batch_dataset_op.cc
-|        | data/filter_dataset_op.cc
-|        | data/flat_map_dataset_op.cc
-|        | data/generator_dataset_op.cc
-|        | data/group_by_window_dataset_op.cc
-|        | data/interleave_dataset_op.cc
-|        | data/iterator_ops.cc
-|        | data/map_and_batch_dataset_op.cc
-|        | data/map_dataset_op.cc
-|        | data/padded_batch_dataset_op.cc
-|        | data/parallel_interleave_dataset_op.cc
-|        | data/parallel_map_dataset_op.cc
-|        | data/prefetch_autotuner.cc
-|        | data/prefetch_autotuner.h
-|        | data/prefetch_autotuner_test.cc
-|        | data/prefetch_dataset_op.cc
-|        | data/random_dataset_op.cc
-|        | data/range_dataset_op.cc
-|        | data/reader_dataset_ops.cc
-|        | data/repeat_dataset_op.cc
-|        | data/scan_dataset_op.cc
-|        | data/shuffle_dataset_op.cc
-|        | data/skip_dataset_op.cc
-|        | data/slide_dataset_op.cc
-|        | data/sparse_tensor_slice_dataset_op.cc
-|        | data/sql
-|        | data/sql/BUILD
-|        | data/sql/driver_manager.cc
-|        | data/sql/driver_manager.h
-|        | data/sql/query_connection.h
-|        | data/sql/sqlite_query_connection.cc
-|        | data/sql/sqlite_query_connection.h
-|        | data/sql_dataset_ops.cc
-|        | data/stats_aggregator_dataset_op.cc
-|        | data/stats_aggregator_ops.cc
-|        | data/stats_dataset_ops.cc
-|        | data/take_dataset_op.cc
-|        | data/tensor_dataset_op.cc
-|        | data/tensor_queue_dataset_op.cc
-|        | data/tensor_slice_dataset_op.cc
-|        | data/unbatch_dataset_op.cc
-|        | data/window_dataset.cc
-|        | data/window_dataset.h
-|        | data/writer_ops.cc
-|        | data/zip_dataset_op.cc
-|        | data_format_ops.cc
-|        | data_format_ops.h
-|        | data_format_ops_gpu.cu.cc
-|        | dataset.h
-|        | debug_ops.cc
-|        | debug_ops.h
-|        | debug_ops_test.cc
-|        | decode_bmp_op.cc
-|        | decode_compressed_op.cc
-|        | decode_csv_op.cc
-|        | decode_image_op.cc
-|        | decode_proto_op.cc
-|        | decode_raw_op.cc
-|        | decode_wav_op.cc
-|        | decode_wav_op_test.cc
-|        | deep_conv2d.cc
-|        | deep_conv2d.h
-|        | deep_conv2d_test.cc
-|        | dense_update_functor.cc
-|        | dense_update_functor.h
-|        | dense_update_functor_gpu.cu.cc
-|        | dense_update_ops.cc
-|        | depthtospace_op.cc
-|        | depthtospace_op.h
-|        | depthtospace_op_gpu.cu.cc
-|        | depthwise_conv_grad_op.cc
-|        | depthwise_conv_op.cc
-|        | depthwise_conv_op.h
-|        | depthwise_conv_op_gpu.cu.cc
-|        | dequantize_op.cc
-|        | dequantize_op_test.cc
-|        | determinant_op.cc
-|        | determinant_op.h
-|        | determinant_op_gpu.cu.cc
-|        | diag_op.cc
-|        | diag_op.h
-|        | diag_op_gpu.cu.cc
-|        | diag_op_test.cc
-|        | dilation_ops.cc
-|        | dilation_ops.h
-|        | dilation_ops_gpu.cu.cc
-|        | draw_bounding_box_op.cc
-|        | dynamic_partition_op.cc
-|        | dynamic_partition_op_gpu.cu.cc
-|        | dynamic_partition_op_test.cc
-|        | dynamic_stitch_op.cc
-|        | dynamic_stitch_op_gpu.cu.cc
-|        | dynamic_stitch_op_test.cc
-|        | edit_distance_op.cc
+|   O    | cwise_op_abs.cc
+|   O    | cwise_op_acos.cc
+|   O    | cwise_op_acosh.cc
+|   O    | cwise_op_add_1.cc
+|   O    | cwise_op_add_2.cc
+|   O    | cwise_op_arg.cc
+|   O    | cwise_op_asin.cc
+|   O    | cwise_op_asinh.cc
+|   O    | cwise_op_atan.cc
+|   O    | cwise_op_atan2.cc
+|   O    | cwise_op_atanh.cc
+|   O    | cwise_op_bitwise_and.cc
+|   O    | cwise_op_bitwise_or.cc
+|   O    | cwise_op_bitwise_xor.cc
+|   O    | cwise_op_ceil.cc
+|   O    | cwise_op_clip.cc
+|   O    | cwise_op_clip.h
+|   O    | cwise_op_clip_gpu.cu.cc
+|   O    | cwise_op_complex.cc
+|   O    | cwise_op_conj.cc
+|   O    | cwise_op_cos.cc
+|   O    | cwise_op_cosh.cc
+|   O    | cwise_op_digamma.cc
+|   O    | cwise_op_div.cc
+|   O    | cwise_op_equal_to_1.cc
+|   O    | cwise_op_equal_to_2.cc
+|   O    | cwise_op_erf.cc
+|   O    | cwise_op_erfc.cc
+|   O    | cwise_op_exp.cc
+|   O    | cwise_op_expm1.cc
+|   O    | cwise_op_floor.cc
+|   O    | cwise_op_floor_div.cc
+|   O    | cwise_op_floor_mod.cc
+|   O    | cwise_op_gpu_abs.cu.cc
+|   O    | cwise_op_gpu_acos.cu.cc
+|   O    | cwise_op_gpu_acosh.cu.cc
+|   O    | cwise_op_gpu_add.cu.cc
+|   O    | cwise_op_gpu_arg.cu.cc
+|   O    | cwise_op_gpu_asin.cu.cc
+|   O    | cwise_op_gpu_asinh.cu.cc
+|   O    | cwise_op_gpu_atan.cu.cc
+|   O    | cwise_op_gpu_atan2.cu.cc
+|   O    | cwise_op_gpu_atanh.cu.cc
+|   O    | cwise_op_gpu_bitwise_and.cu.cc
+|   O    | cwise_op_gpu_bitwise_or.cu.cc
+|   O    | cwise_op_gpu_bitwise_xor.cu.cc
+|   O    | cwise_op_gpu_ceil.cu.cc
+|   O    | cwise_op_gpu_complex.cu.cc
+|   O    | cwise_op_gpu_conj.cu.cc
+|   O    | cwise_op_gpu_cos.cu.cc
+|   O    | cwise_op_gpu_cosh.cu.cc
+|   O    | cwise_op_gpu_digamma.cu.cc
+|   O    | cwise_op_gpu_div.cu.cc
+|   O    | cwise_op_gpu_equal_to.cu.cc
+|   O    | cwise_op_gpu_erf.cu.cc
+|   O    | cwise_op_gpu_erfc.cu.cc
+|   O    | cwise_op_gpu_exp.cu.cc
+|   O    | cwise_op_gpu_expm1.cu.cc
+|   O    | cwise_op_gpu_floor.cu.cc
+|   O    | cwise_op_gpu_floor_div.cu.cc
+|   O    | cwise_op_gpu_floor_mod.cu.cc
+|   O    | cwise_op_gpu_greater.cu.cc
+|   O    | cwise_op_gpu_greater_equal.cu.cc
+|   O    | cwise_op_gpu_igammas.cu.cc
+|   O    | cwise_op_gpu_imag.cu.cc
+|   O    | cwise_op_gpu_inverse.cu.cc
+|   O    | cwise_op_gpu_invert.cu.cc
+|   O    | cwise_op_gpu_isfinite.cu.cc
+|   O    | cwise_op_gpu_isinf.cu.cc
+|   O    | cwise_op_gpu_isnan.cu.cc
+|   O    | cwise_op_gpu_left_shift.cu.cc
+|   O    | cwise_op_gpu_less.cu.cc
+|   O    | cwise_op_gpu_less_equal.cu.cc
+|   O    | cwise_op_gpu_lgamma.cu.cc
+|   O    | cwise_op_gpu_log.cu.cc
+|   O    | cwise_op_gpu_log1p.cu.cc
+|   O    | cwise_op_gpu_logical_and.cu.cc
+|   O    | cwise_op_gpu_logical_not.cu.cc
+|   O    | cwise_op_gpu_logical_or.cu.cc
+|   O    | cwise_op_gpu_maximum.cu.cc
+|   O    | cwise_op_gpu_minimum.cu.cc
+|   O    | cwise_op_gpu_mod.cu.cc
+|   O    | cwise_op_gpu_mul.cu.cc
+|   O    | cwise_op_gpu_neg.cu.cc
+|   O    | cwise_op_gpu_not_equal_to.cu.cc
+|   O    | cwise_op_gpu_pow.cu.cc
+|   O    | cwise_op_gpu_real.cu.cc
+|   O    | cwise_op_gpu_right_shift.cu.cc
+|   O    | cwise_op_gpu_rint.cu.cc
+|   O    | cwise_op_gpu_round.cu.cc
+|   O    | cwise_op_gpu_rsqrt.cu.cc
+|   O    | cwise_op_gpu_select.cu.cc
+|   O    | cwise_op_gpu_sigmoid.cu.cc
+|   O    | cwise_op_gpu_sign.cu.cc
+|   O    | cwise_op_gpu_sin.cu.cc
+|   O    | cwise_op_gpu_sinh.cu.cc
+|   O    | cwise_op_gpu_sqrt.cu.cc
+|   O    | cwise_op_gpu_square.cu.cc
+|   O    | cwise_op_gpu_squared_difference.cu.cc
+|   O    | cwise_op_gpu_sub.cu.cc
+|   O    | cwise_op_gpu_tan.cu.cc
+|   O    | cwise_op_gpu_tanh.cu.cc
+|   O    | cwise_op_gpu_zeta.cu.cc
+|   O    | cwise_op_greater.cc
+|   O    | cwise_op_greater_equal.cc
+|   O    | cwise_op_igammas.cc
+|   O    | cwise_op_imag.cc
+|   O    | cwise_op_invert.cc
+|   O    | cwise_op_isfinite.cc
+|   O    | cwise_op_isinf.cc
+|   O    | cwise_op_isnan.cc
+|   O    | cwise_op_left_shift.cc
+|   O    | cwise_op_less.cc
+|   O    | cwise_op_less_equal.cc
+|   O    | cwise_op_lgamma.cc
+|   O    | cwise_op_log.cc
+|   O    | cwise_op_log1p.cc
+|   O    | cwise_op_logical_and.cc
+|   O    | cwise_op_logical_not.cc
+|   O    | cwise_op_logical_or.cc
+|   O    | cwise_op_maximum.cc
+|   O    | cwise_op_minimum.cc
+|   O    | cwise_op_mod.cc
+|   O    | cwise_op_mul_1.cc
+|   O    | cwise_op_mul_2.cc
+|   O    | cwise_op_neg.cc
+|   O    | cwise_op_not_equal_to_1.cc
+|   O    | cwise_op_not_equal_to_2.cc
+|   O    | cwise_op_pow.cc
+|   O    | cwise_op_real.cc
+|   O    | cwise_op_reciprocal.cc
+|   O    | cwise_op_right_shift.cc
+|   O    | cwise_op_rint.cc
+|   O    | cwise_op_round.cc
+|   O    | cwise_op_rsqrt.cc
+|   O    | cwise_op_select.cc
+|   O    | cwise_op_sigmoid.cc
+|   O    | cwise_op_sign.cc
+|   O    | cwise_op_sin.cc
+|   O    | cwise_op_sinh.cc
+|   O    | cwise_op_sqrt.cc
+|   O    | cwise_op_square.cc
+|   O    | cwise_op_squared_difference.cc
+|   O    | cwise_op_sub.cc
+|   O    | cwise_op_tan.cc
+|   O    | cwise_op_tanh.cc
+|   O    | cwise_op_zeta.cc
+|   O    | cwise_ops.h
+|   O    | cwise_ops_common.cc
+|   O    | cwise_ops_common.h
+|   O    | cwise_ops_gpu_common.cu.h
+|   O    | cwise_ops_gpu_gradients.cu.h
+|   O    | cwise_ops_gradients.h
+|   O    | cwise_ops_sycl_common.h
+|   O    | cwise_ops_test.cc
+|   O    | data
+|   O    | data/BUILD
+|   O    | data/batch_dataset_op.cc
+|   O    | data/cache_dataset_ops.cc
+|   O    | data/captured_function.cc
+|   O    | data/captured_function.h
+|   O    | data/concatenate_dataset_op.cc
+|   O    | data/dataset.h
+|   O    | data/dataset_utils.cc
+|   O    | data/dataset_utils.h
+|   O    | data/dense_to_sparse_batch_dataset_op.cc
+|   O    | data/filter_dataset_op.cc
+|   O    | data/flat_map_dataset_op.cc
+|   O    | data/generator_dataset_op.cc
+|   O    | data/group_by_window_dataset_op.cc
+|   O    | data/interleave_dataset_op.cc
+|   O    | data/iterator_ops.cc
+|   O    | data/map_and_batch_dataset_op.cc
+|   O    | data/map_dataset_op.cc
+|   O    | data/padded_batch_dataset_op.cc
+|   O    | data/parallel_interleave_dataset_op.cc
+|   O    | data/parallel_map_dataset_op.cc
+|   O    | data/prefetch_autotuner.cc
+|   O    | data/prefetch_autotuner.h
+|   O    | data/prefetch_autotuner_test.cc
+|   O    | data/prefetch_dataset_op.cc
+|   O    | data/random_dataset_op.cc
+|   O    | data/range_dataset_op.cc
+|   O    | data/reader_dataset_ops.cc
+|   O    | data/repeat_dataset_op.cc
+|   O    | data/scan_dataset_op.cc
+|   O    | data/shuffle_dataset_op.cc
+|   O    | data/skip_dataset_op.cc
+|   O    | data/slide_dataset_op.cc
+|   O    | data/sparse_tensor_slice_dataset_op.cc
+|   O    | data/sql
+|   O    | data/sql/BUILD
+|   O    | data/sql/driver_manager.cc
+|   O    | data/sql/driver_manager.h
+|   O    | data/sql/query_connection.h
+|   O    | data/sql/sqlite_query_connection.cc
+|   O    | data/sql/sqlite_query_connection.h
+|   O    | data/sql_dataset_ops.cc
+|   O    | data/stats_aggregator_dataset_op.cc
+|   O    | data/stats_aggregator_ops.cc
+|   O    | data/stats_dataset_ops.cc
+|   O    | data/take_dataset_op.cc
+|   O    | data/tensor_dataset_op.cc
+|   O    | data/tensor_queue_dataset_op.cc
+|   O    | data/tensor_slice_dataset_op.cc
+|   O    | data/unbatch_dataset_op.cc
+|   O    | data/window_dataset.cc
+|   O    | data/window_dataset.h
+|   O    | data/writer_ops.cc
+|   O    | data/zip_dataset_op.cc
+|   O    | data_format_ops.cc
+|   O    | data_format_ops.h
+|   O    | data_format_ops_gpu.cu.cc
+|   O    | dataset.h
+|   O    | debug_ops.cc
+|   O    | debug_ops.h
+|   O    | debug_ops_test.cc
+|   O    | decode_bmp_op.cc
+|   O    | decode_compressed_op.cc
+|   O    | decode_csv_op.cc
+|   O    | decode_image_op.cc
+|   O    | decode_proto_op.cc
+|   O    | decode_raw_op.cc
+|   O    | decode_wav_op.cc
+|   O    | decode_wav_op_test.cc
+|   O    | deep_conv2d.cc
+|   O    | deep_conv2d.h
+|   O    | deep_conv2d_test.cc
+|   O    | dense_update_functor.cc
+|   O    | dense_update_functor.h
+|   O    | dense_update_functor_gpu.cu.cc
+|   O    | dense_update_ops.cc
+|   O    | depthtospace_op.cc
+|   O    | depthtospace_op.h
+|   O    | depthtospace_op_gpu.cu.cc
+|   O    | depthwise_conv_grad_op.cc
+|   O    | depthwise_conv_op.cc
+|   O    | depthwise_conv_op.h
+|   O    | depthwise_conv_op_gpu.cu.cc
+|   O    | dequantize_op.cc
+|   O    | dequantize_op_test.cc
+|   X    | determinant_op.cc
+|   X    | determinant_op.h
+|   X    | determinant_op_gpu.cu.cc
+|   O    | diag_op.cc
+|   O    | diag_op.h
+|   O    | diag_op_gpu.cu.cc
+|   O    | diag_op_test.cc
+|   O    | dilation_ops.cc
+|   O    | dilation_ops.h
+|   O    | dilation_ops_gpu.cu.cc
+|   O    | draw_bounding_box_op.cc
+|   O    | dynamic_partition_op.cc
+|   X    | dynamic_partition_op_gpu.cu.cc
+|   O    | dynamic_partition_op_test.cc
+|   O    | dynamic_stitch_op.cc
+|   O    | dynamic_stitch_op_gpu.cu.cc
+|   O    | dynamic_stitch_op_test.cc
+|   O    | edit_distance_op.cc
 |        | eigen_activations.h
 |        | eigen_activations_test.cc
 |        | eigen_attention.h
@@ -461,19 +461,19 @@ Kernels under tensorflow/core/kernels
 |        | eigen_spatial_convolutions.h
 |        | eigen_spatial_convolutions_test.cc
 |        | eigen_volume_patch.h
-|        | encode_jpeg_op.cc
-|        | encode_png_op.cc
-|        | encode_proto_op.cc
-|        | encode_wav_op.cc
-|        | encode_wav_op_test.cc
-|        | example_parsing_ops.cc
-|        | example_parsing_ops_test.cc
-|        | extract_image_patches_op.cc
-|        | extract_image_patches_op.h
-|        | extract_image_patches_op_gpu.cu.cc
-|        | extract_jpeg_shape_op.cc
-|        | eye_functor.h
-|        | eye_functor_gpu.cu.cc
+|   O    | encode_jpeg_op.cc
+|   O    | encode_png_op.cc
+|   O    | encode_proto_op.cc
+|   O    | encode_wav_op.cc
+|   O    | encode_wav_op_test.cc
+|   O    | example_parsing_ops.cc
+|   O    | example_parsing_ops_test.cc
+|   O    | extract_image_patches_op.cc
+|   O    | extract_image_patches_op.h
+|   O    | extract_image_patches_op_gpu.cu.cc
+|   O    | extract_jpeg_shape_op.cc
+|   O    | eye_functor.h
+|   O    | eye_functor_gpu.cu.cc
 |        | fact_op.cc
 |        | fake_quant_ops.cc
 |        | fake_quant_ops_functor.h

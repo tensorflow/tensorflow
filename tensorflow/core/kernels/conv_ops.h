@@ -40,7 +40,7 @@ struct LaunchConv2DOp {
                   TensorFormat data_format);
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA
 template <typename T>
 struct LaunchConv2DOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,

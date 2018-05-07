@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <unordered_map>
 
@@ -29,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+inline se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory, uint64 size) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(gpu_memory), size * sizeof(T));
   se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
@@ -158,6 +158,6 @@ class AutoTuneSingleton {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_

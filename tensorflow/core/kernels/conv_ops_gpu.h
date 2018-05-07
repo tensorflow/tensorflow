@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <tuple>
 #include <unordered_map>
@@ -27,19 +27,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Get the Cudnn workspace limit from the environment variable, which is in MB.
+// Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
-int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
+int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                              int64 default_value_in_bytes);
 
-// A class to provide scratch-space allocator for Stream-Executor Cudnn
+// A class to provide scratch-space allocator for Stream-Executor Dnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
 // the kernel finishes.
-class CudnnScratchAllocator : public se::ScratchAllocator {
+class DnnScratchAllocator : public se::ScratchAllocator {
  public:
-  virtual ~CudnnScratchAllocator() {}
-  CudnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
+  virtual ~DnnScratchAllocator() {}
+  DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64 GetMemoryLimitInBytes(se::Stream* stream) override {
     return memory_limit_;
@@ -143,7 +143,7 @@ class ConvParameters {
     if (version.ok() && version.ValueOrDie().major_version() >= 7) {
       return true;
     }
-    return ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
+    return ShouldIncludeWinogradNonfusedAlgoPreDnn7<T>();
   }
 
  protected:
@@ -162,7 +162,7 @@ class ConvParameters {
   friend struct ConvParametersPeer;  // For testing purposes.
 
   template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() const {
+  bool ShouldIncludeWinogradNonfusedAlgoPreDnn7() const {
     int64 total_size = 16 * std::ceil(batch_ / 16.0) *
                        std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
                        sizeof(T);
@@ -190,6 +190,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_

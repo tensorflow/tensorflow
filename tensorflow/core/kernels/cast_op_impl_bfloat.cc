@@ -28,7 +28,7 @@ GetCpuCastFromBfloat(DataType dst_dtype) {
   return nullptr;
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromBfloat(DataType dst_dtype) {
   if (dst_dtype == DT_FLOAT) {
@@ -40,6 +40,6 @@ GetGpuCastFromBfloat(DataType dst_dtype) {
   }
   return nullptr;
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

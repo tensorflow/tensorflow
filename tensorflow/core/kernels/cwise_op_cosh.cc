@@ -29,7 +29,7 @@ REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(UnaryOp, GPU, "Cosh", functor::cosh, float, double);
 #endif
 }  // namespace tensorflow

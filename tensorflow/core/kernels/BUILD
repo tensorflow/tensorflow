@@ -3540,7 +3540,7 @@ tf_kernel_library(
     name = "pooling_ops",
     srcs = [
         "avgpooling_op.cc",
-        "cudnn_pooling_gpu.cc",
+        "dnn_pooling_gpu.cc",
         "fractional_avg_pool_op.cc",
         "fractional_max_pool_op.cc",
         "fractional_pool_common.cc",
@@ -3550,7 +3550,7 @@ tf_kernel_library(
     ],
     hdrs = [
         "avgpooling_op.h",
-        "cudnn_pooling_gpu.h",
+        "dnn_pooling_gpu.h",
         "fractional_pool_common.h",
         "maxpooling_op.h",
         "pooling_ops_3d.h",
