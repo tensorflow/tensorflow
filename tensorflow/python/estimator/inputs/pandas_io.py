@@ -68,7 +68,7 @@ def pandas_input_fn(x,
   Raises:
     ValueError: if `x` already contains a column with the same name as `y`, or
       if the indexes of `x` and `y` don't match.
-    TypeError: `shuffle` is not bool.
+    ValueError: if 'shuffle' is not provided or a bool.
   """
   if not HAS_PANDAS:
     raise TypeError(
