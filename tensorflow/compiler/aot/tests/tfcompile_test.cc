@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
@@ -148,6 +149,31 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add_const.result0(), 153);
   EXPECT_EQ(add_const.result0_data()[0], 153);
   EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
+}
+
+TEST(TFCompileTest, Cond) {
+  CondComp cond;
+  EXPECT_EQ(cond.arg0_data(), cond.args()[0]);
+  EXPECT_EQ(cond.arg1_data(), cond.args()[1]);
+  EXPECT_EQ(cond.arg2_data(), cond.args()[2]);
+  cond.arg1() = 10;
+  cond.arg2() = 20;
+  {
+    cond.arg0() = true;
+    const int32 expected_result = cond.arg1();
+    EXPECT_TRUE(cond.Run());
+    EXPECT_EQ(cond.result0(), expected_result);
+    EXPECT_EQ(cond.result0_data()[0], expected_result);
+    EXPECT_EQ(cond.result0_data(), cond.results()[0]);
+  }
+  {
+    cond.arg0() = false;
+    const int32 expected_result = cond.arg2();
+    EXPECT_TRUE(cond.Run());
+    EXPECT_EQ(cond.result0(), expected_result);
+    EXPECT_EQ(cond.result0_data()[0], expected_result);
+    EXPECT_EQ(cond.result0_data(), cond.results()[0]);
+  }
 }
 
 TEST(TFCompileTest, Gather) {
