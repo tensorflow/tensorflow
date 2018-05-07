@@ -306,9 +306,6 @@ void InitApiDefFromOpDef(const OpDef& op_def, ApiDef* api_def) {
 
   auto* endpoint = api_def->add_endpoint();
   endpoint->set_name(op_def.name());
-  if (op_def.has_deprecation()) {
-    endpoint->set_deprecation_version(op_def.deprecation().version());
-  }
 
   for (const auto& op_in_arg : op_def.input_arg()) {
     auto* api_in_arg = api_def->add_in_arg();
