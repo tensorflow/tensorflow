@@ -49,7 +49,7 @@ tf_cuda_library(
         "//tensorflow/c:__subpackages__",
     ],
     deps = select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
@@ -73,7 +73,7 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
-        "//tensorflow:android": [
+        "//tensorflow:rem_android": [
             ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],

@@ -57,7 +57,8 @@ struct scalar_asinh_op {
 #if EIGEN_HAS_CXX11_MATH
     return numext::asinh(a);
 #else
-    return std::asinh(a);
+    using namespace std;
+    return asinh(a);
 #endif  // EIGEN_HAS_CXX11_MATH
   }
 };
@@ -73,7 +74,8 @@ struct scalar_acosh_op {
 #if EIGEN_HAS_CXX11_MATH
     return numext::acosh(a);
 #else
-    return std::acosh(a);
+    using namespace std;
+    return acosh(a);
 #endif  // EIGEN_HAS_CXX11_MATH
   }
 };
@@ -89,7 +91,8 @@ struct scalar_atanh_op {
 #if EIGEN_HAS_CXX11_MATH
     return numext::atanh(a);
 #else
-    return std::atanh(a);
+    using namespace std;
+    return atanh(a);
 #endif  // EIGEN_HAS_CXX11_MATH
   }
 };

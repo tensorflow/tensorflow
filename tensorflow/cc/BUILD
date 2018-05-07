@@ -600,6 +600,9 @@ tf_cc_binary(
             "-lm",
             "-lpthread",
         ],
+        "//tensorflow:android":[
+            "-lm",
+        ],
         "//tensorflow:ios": [
             "-lm",
             "-lpthread",

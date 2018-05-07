@@ -48,6 +48,7 @@ cc_library(
     ],
     linkopts = select({
         "@org_tensorflow//tensorflow:windows_msvc": [],
+        "@org_tensorflow//tensorflow:android": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",

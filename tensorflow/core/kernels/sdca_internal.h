@@ -89,7 +89,8 @@ class Regularizations {
   double Shrink(const double weight) const {
     const double shrinked = std::max(std::abs(weight) - shrinkage_, 0.0);
     if (shrinked > 0.0) {
-      return std::copysign(shrinked, weight);
+      using namespace std;
+      return copysign(shrinked, weight);
     }
     return 0.0;
   }

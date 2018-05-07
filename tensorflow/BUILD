@@ -22,6 +22,17 @@ load(
 
 # Config setting for determining if we are building for Android.
 config_setting(
+        name = "rem_android",
+        values = {"cpu": 'paperbox'},
+        visibility = ["//visibility:public"]
+        )
+config_setting(
+        name = "rem_android_arm",
+        values = {"cpu": 'paperbox'},
+        visibility = ["//visibility:public"]
+        )
+
+config_setting(
     name = "android",
     values = {"crosstool_top": "//external:android/crosstool"},
     visibility = ["//visibility:public"],
@@ -802,6 +813,9 @@ tf_cc_shared_object(
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
             "//tensorflow:tf_exported_symbols.lds",
+        ],
+        "//tensorflow:android": [
+            "-z defs", "-s", "-Wl,--version-script","//tensorflow:tf_version_script.lds","-llog"
         ],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],

@@ -167,11 +167,12 @@ GPUNanResetAllocator::GPUNanResetAllocator(VisitableAllocator* allocator,
 GPUNanResetAllocator::~GPUNanResetAllocator() { delete base_allocator_; }
 
 void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
+  using namespace std;
   void* allocated_ptr = base_allocator_->AllocateRaw(alignment, num_bytes);
 
   // Initialize the buffer to Nans
   size_t req_size = base_allocator_->RequestedSize(allocated_ptr);
-  std::vector<float> nans(req_size / sizeof(float), std::nanf(""));
+  std::vector<float> nans(req_size / sizeof(float), nanf(""));
   gpu::DeviceMemory<float> nan_ptr{
       gpu::DeviceMemoryBase{static_cast<float*>(allocated_ptr), req_size}};
 
@@ -182,9 +183,10 @@ void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   return allocated_ptr;
 }
 void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
+  using namespace std;
   // Reset the buffer to Nans
   size_t req_size = base_allocator_->RequestedSize(ptr);
-  std::vector<float> nans(req_size / sizeof(float), std::nanf(""));
+  std::vector<float> nans(req_size / sizeof(float), nanf(""));
   gpu::DeviceMemory<float> nan_ptr{
       gpu::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
   if (!stream_exec_->SynchronousMemcpy(&nan_ptr, &nans[0], req_size)) {

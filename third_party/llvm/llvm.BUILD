@@ -308,11 +308,13 @@ cc_binary(
     ]) + [
         "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
     ],
-    linkopts = [
+    linkopts = select({
+        "@org_tensorflow//tensorflow:android":["-lm", "-ldl"],
+        "//conditions:default": [
         "-lm",
         "-ldl",
         "-lpthread",
-    ],
+    ]}),
     stamp = 0,
     deps = [
         ":config",
@@ -328,11 +330,13 @@ cc_binary(
         "utils/FileCheck/*.cpp",
         "utils/FileCheck/*.h",
     ]),
-    linkopts = [
+    linkopts = select({
+        "@org_tensorflow//tensorflow:android":["-lm", "-ldl"],
+        "//conditions:default": [
         "-ldl",
         "-lm",
         "-lpthread",
-    ],
+    ]}),
     stamp = 0,
     deps = [":support"],
 )

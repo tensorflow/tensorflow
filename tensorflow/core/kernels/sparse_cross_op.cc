@@ -31,6 +31,16 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#include <sstream>
+
+template <typename T>
+static std::string to_string(T value)
+{
+    std::ostringstream os ;
+    os << value ;
+    return os.str() ;
+}
+
 namespace tensorflow {
 
 namespace {
@@ -88,7 +98,7 @@ string SparseTensorColumn<string>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
     return values_.vec<string>().data()[start + n];
-  return std::to_string(values_.vec<int64>().data()[start + n]);
+  return to_string(values_.vec<int64>().data()[start + n]);
 }
 
 template <>
@@ -126,7 +136,7 @@ int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
 template <>
 string DenseTensorColumn<string>::Feature(int64 batch, int64 n) const {
   if (DT_STRING == tensor_.dtype()) return tensor_.matrix<string>()(batch, n);
-  return std::to_string(tensor_.matrix<int64>()(batch, n));
+  return to_string(tensor_.matrix<int64>()(batch, n));
 }
 
 template <>
