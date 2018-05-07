@@ -133,9 +133,9 @@ class HloShardingMatcher
 
 // Matches a Dot HLO instruction with specific LHS and RHS contracting
 // dimensions.
-class HloDotWithContractDimsMatcher : public HloMatcher {
+class HloDotWithContractingDimsMatcher : public HloMatcher {
  public:
-  explicit HloDotWithContractDimsMatcher(
+  explicit HloDotWithContractingDimsMatcher(
       ::testing::Matcher<const HloInstruction*> lhs,
       ::testing::Matcher<const HloInstruction*> rhs, int64 lhs_contracting_dim,
       int64 rhs_contracting_dim)
@@ -350,7 +350,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
     ::testing::Matcher<const HloInstruction*> rhs_matcher,
     int64 lhs_contracting_dim, int64 rhs_contracting_dim) {
   return ::testing::MakeMatcher(
-      new ::xla::testing::HloDotWithContractDimsMatcher(
+      new ::xla::testing::HloDotWithContractingDimsMatcher(
           lhs_matcher, rhs_matcher, lhs_contracting_dim, rhs_contracting_dim));
 }
 

@@ -198,7 +198,7 @@ void HloShardingMatcher::DescribeTo(std::ostream* os) const {
   }
 }
 
-bool HloDotWithContractDimsMatcher::MatchAndExplain(
+bool HloDotWithContractingDimsMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {
   if (!HloMatcher::MatchAndExplain(instruction, listener)) {
@@ -227,7 +227,7 @@ bool HloDotWithContractDimsMatcher::MatchAndExplain(
   return true;
 }
 
-void HloDotWithContractDimsMatcher::DescribeTo(std::ostream* os) const {
+void HloDotWithContractingDimsMatcher::DescribeTo(std::ostream* os) const {
   HloMatcher::DescribeTo(os);
   *os << " with lhs_contracting_dims={" << lhs_contracting_dim_
       << "} and rhs_contracting_dims={" << rhs_contracting_dim_ << "}";
