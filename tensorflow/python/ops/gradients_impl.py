@@ -297,7 +297,8 @@ def _DefaultGradYs(grad_ys,
 def _IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
-                              dtypes.complex64, dtypes.complex128)
+                              dtypes.complex64, dtypes.complex128,
+                              dtypes.resource)
 
 
 def _IsBackpropagatable(tensor):
