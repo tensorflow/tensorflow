@@ -200,7 +200,22 @@ tf_cc_test(
 
 cc_library(
     name = "hlo_evaluator",
-    srcs = ["hlo_evaluator.cc"],
+    srcs = [
+        "hlo_evaluator.cc",
+        "hlo_evaluator_typed_visitor.h",
+        "hlo_evaluator_typed_visitor_bfloat16.cc",
+        "hlo_evaluator_typed_visitor_bool.cc",
+        "hlo_evaluator_typed_visitor_complex64.cc",
+        "hlo_evaluator_typed_visitor_double.cc",
+        "hlo_evaluator_typed_visitor_float.cc",
+        "hlo_evaluator_typed_visitor_half.cc",
+        "hlo_evaluator_typed_visitor_int32.cc",
+        "hlo_evaluator_typed_visitor_int64.cc",
+        "hlo_evaluator_typed_visitor_int8.cc",
+        "hlo_evaluator_typed_visitor_uint32.cc",
+        "hlo_evaluator_typed_visitor_uint64.cc",
+        "hlo_evaluator_typed_visitor_uint8.cc",
+    ],
     hdrs = ["hlo_evaluator.h"],
     deps = [
         ":hlo",
