@@ -136,7 +136,8 @@ def numpy_input_fn(x,
       values in `x` have same shape).
     ValueError: if duplicate keys are in both `x` and `y` when `y` is a dict.
     ValueError: if x or y is an empty dict.
-    TypeError: `x` is not a dict or array, or if `shuffle` is not bool.
+    TypeError: `x` is not a dict or array.
+    ValueError: if 'shuffle' is not provided or a bool.
   """
   if not isinstance(shuffle, bool):
     raise ValueError('shuffle must be provided and explicitly set as boolean '
