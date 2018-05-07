@@ -232,13 +232,12 @@ Status ShapeRefiner::AddNode(const Node* node) {
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
 
-    // Only propagate handle data of edges which are carrying resource handles.
-    if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
-      const auto* in_v = c->output_handle_shapes_and_types(e->src_output());
-      if (in_v != nullptr) {
-        input_handle_shapes_and_types[e->dst_input()].reset(
-            new std::vector<ShapeAndType>(*in_v));
-      }
+    const auto* in_v = c->output_handle_shapes_and_types(e->src_output());
+    if (in_v != nullptr) {
+      DataType input_type = e->src()->output_type(e->src_output());
+      DCHECK(input_type == DT_RESOURCE || input_type == DT_VARIANT);
+      input_handle_shapes_and_types[e->dst_input()].reset(
+          new std::vector<ShapeAndType>(*in_v));
     }
   }
 
