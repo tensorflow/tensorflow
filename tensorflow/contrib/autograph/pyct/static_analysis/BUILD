@@ -48,6 +48,7 @@ py_test(
     name = "cfg_test",
     srcs = ["cfg_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/autograph/pyct",
