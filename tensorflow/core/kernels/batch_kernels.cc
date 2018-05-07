@@ -81,12 +81,12 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
       context->allocate_output(output_index, output_shape, &output));
   if (output->NumElements() > 0) {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (std::is_same<Device, GPUDevice>::value) {
       ConcatGPU<T>(context, inputs_flat, output, &output_flat);
       return Status::OK();
     }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     ConcatCPU<T>(context->device(), inputs_flat, &output_flat);
   }
 
@@ -171,7 +171,7 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
   return Status::OK();
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Handles the general case, on GPU.
 template <typename T>
@@ -182,7 +182,7 @@ Status SplitGPU(OpKernelContext* context, const Tensor& input,
   LOG(FATAL) << "Not yet implemented";  // Crash ok
 }
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // The outer function that dispatches to the various Split*() functions above.
 template <typename T>
@@ -196,10 +196,10 @@ Status Split(OpKernelContext* context, const Tensor& input,
     return Status::OK();
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // TODO(olston, apassos): Handle non-CPU cases.
 // return SplitGPU<T>(context, input, sizes, outputs);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return SplitCPU<T>(context, input, sizes, outputs);
 }
 

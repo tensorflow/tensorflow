@@ -40,67 +40,67 @@ Kernels under tensorflow/core/kernels
 |   O    | avgpooling_op.cc
 |   O    | avgpooling_op.h
 |   O    | avgpooling_op_gpu.cu.cc
-|        | barrier_ops.cc
-|        | base64_ops.cc
-|        | basic_ops_benchmark_test.cc
-|        | batch_kernels.cc
-|        | batch_matmul_op_complex.cc
-|        | batch_matmul_op_impl.h
-|        | batch_matmul_op_real.cc
-|        | batch_matmul_op_test.cc
-|        | batch_norm_op.cc
-|        | batch_norm_op.h
-|        | batch_norm_op_gpu.cu.cc
-|        | batch_norm_op_test.cc
-|        | batch_util.cc
-|        | batch_util.h
-|        | batching_util
-|        | batching_util/BUILD
-|        | batching_util/adaptive_shared_batch_scheduler.h
-|        | batching_util/adaptive_shared_batch_scheduler_test.cc
-|        | batching_util/basic_batch_scheduler.h
-|        | batching_util/basic_batch_scheduler_benchmark_test.cc
-|        | batching_util/basic_batch_scheduler_test.cc
-|        | batching_util/batch_scheduler.h
-|        | batching_util/batch_scheduler_test.cc
-|        | batching_util/fake_clock_env.cc
-|        | batching_util/fake_clock_env.h
-|        | batching_util/periodic_function.cc
-|        | batching_util/periodic_function.h
-|        | batching_util/periodic_function_test.cc
-|        | batching_util/shared_batch_scheduler.h
-|        | batching_util/shared_batch_scheduler_test.cc
-|        | batchtospace_op.cc
-|        | bcast_ops.cc
-|        | betainc_op.cc
-|        | betainc_op.h
-|        | betainc_op_gpu.cu.cc
-|        | bias_op.cc
-|        | bias_op.h
-|        | bias_op_gpu.cu.cc
-|        | bias_op_gpu.h
-|        | bincount_op.cc
-|        | bincount_op.h
-|        | bincount_op_gpu.cu.cc
-|        | bincount_op_test.cc
-|        | bitcast_op.cc
-|        | bitcast_op.h
-|        | boosted_trees
-|        | boosted_trees/BUILD
-|        | boosted_trees/boosted_trees.proto
-|        | boosted_trees/prediction_ops.cc
-|        | boosted_trees/resource_ops.cc
-|        | boosted_trees/resources.cc
-|        | boosted_trees/resources.h
-|        | boosted_trees/stats_ops.cc
-|        | boosted_trees/training_ops.cc
-|        | bounds_check.h
-|        | broadcast_to_op.cc
-|        | broadcast_to_op.h
-|        | broadcast_to_op_gpu.cu.cc
-|        | bucketize_op.cc
-|        | bucketize_op.h
-|        | bucketize_op_gpu.cu.cc
+|   O    | barrier_ops.cc
+|   O    | base64_ops.cc
+|   O    | basic_ops_benchmark_test.cc
+|   O    | batch_kernels.cc
+|   O    | batch_matmul_op_complex.cc
+|   O    | batch_matmul_op_impl.h
+|   O    | batch_matmul_op_real.cc
+|   O    | batch_matmul_op_test.cc
+|   O    | batch_norm_op.cc
+|   O    | batch_norm_op.h
+|   O    | batch_norm_op_gpu.cu.cc
+|   O    | batch_norm_op_test.cc
+|   O    | batch_util.cc
+|   O    | batch_util.h
+|   O    | batching_util
+|   O    | batching_util/BUILD
+|   O    | batching_util/adaptive_shared_batch_scheduler.h
+|   O    | batching_util/adaptive_shared_batch_scheduler_test.cc
+|   O    | batching_util/basic_batch_scheduler.h
+|   O    | batching_util/basic_batch_scheduler_benchmark_test.cc
+|   O    | batching_util/basic_batch_scheduler_test.cc
+|   O    | batching_util/batch_scheduler.h
+|   O    | batching_util/batch_scheduler_test.cc
+|   O    | batching_util/fake_clock_env.cc
+|   O    | batching_util/fake_clock_env.h
+|   O    | batching_util/periodic_function.cc
+|   O    | batching_util/periodic_function.h
+|   O    | batching_util/periodic_function_test.cc
+|   O    | batching_util/shared_batch_scheduler.h
+|   O    | batching_util/shared_batch_scheduler_test.cc
+|   O    | batchtospace_op.cc
+|   O    | bcast_ops.cc
+|   O    | betainc_op.cc
+|   O    | betainc_op.h
+|   O    | betainc_op_gpu.cu.cc
+|   O    | bias_op.cc
+|   O    | bias_op.h
+|   O    | bias_op_gpu.cu.cc
+|   O    | bias_op_gpu.h
+|   X    | bincount_op.cc
+|   X    | bincount_op.h
+|   X    | bincount_op_gpu.cu.cc
+|   X    | bincount_op_test.cc
+|   O    | bitcast_op.cc
+|   O    | bitcast_op.h
+|   O    | boosted_trees
+|   O    | boosted_trees/BUILD
+|   O    | boosted_trees/boosted_trees.proto
+|   O    | boosted_trees/prediction_ops.cc
+|   O    | boosted_trees/resource_ops.cc
+|   O    | boosted_trees/resources.cc
+|   O    | boosted_trees/resources.h
+|   O    | boosted_trees/stats_ops.cc
+|   O    | boosted_trees/training_ops.cc
+|   O    | bounds_check.h
+|   O    | broadcast_to_op.cc
+|   O    | broadcast_to_op.h
+|   O    | broadcast_to_op_gpu.cu.cc
+|   O    | bucketize_op.cc
+|   O    | bucketize_op.h
+|   O    | bucketize_op_gpu.cu.cc
 |        | candidate_sampler_ops.cc
 |        | captured_function.h
 |        | cast_op.cc

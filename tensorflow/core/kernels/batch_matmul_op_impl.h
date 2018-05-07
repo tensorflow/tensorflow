@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -241,22 +241,22 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
   }
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+se::DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(gpu_memory));
   se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
-class CublasScratchAllocator : public se::ScratchAllocator {
+class BlasScratchAllocator : public se::ScratchAllocator {
  public:
   using Stream = se::Stream;
   using DeviceMemoryBytes = se::DeviceMemory<uint8>;
 
-  CublasScratchAllocator(OpKernelContext* context) : context_(context) {}
+  BlasScratchAllocator(OpKernelContext* context) : context_(context) {}
 
   int64 GetMemoryLimitInBytes(Stream* stream) override { return -1; }
 
@@ -329,7 +329,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
       c_ptrs.push_back(&c_device_memory.back());
     }
 
-    // Cublas does
+    // Blas does
     // C = A x B
     // where A, B and C are assumed to be in column major.
     // We want the output to be in row-major, so we can compute
@@ -378,7 +378,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         }
       }
     } else {
-      CublasScratchAllocator scratch_allocator(context);
+      BlasScratchAllocator scratch_allocator(context);
       bool blas_launch_status =
           stream
               ->ThenBlasGemmBatchedWithScratch(
@@ -398,7 +398,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
   }
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename Scalar>
