@@ -672,11 +672,12 @@ class MultiWorkerDataset(object):
     return MultiWorkerDataIterator(iterators, self._worker_device_map)
 
 
-class PerIteration(object):
-  """Holds input for multiple iterations at once."""
+class _PerKey(object):
+  """Holds data associated by keys."""
 
-  def __init__(self, index):
-    self._index = index
+  def __init__(self, *index):
+    # pylint: disable=protected-access
+    self._index = list(index)
 
   def get(self, iteration):
     return array_ops.gather(self._index, iteration)
@@ -686,6 +687,24 @@ class PerIteration(object):
 
   def get_dtype(self):
     return self._index[-1][-1].dtype
+
+  def __str__(self):
+    return "%s:%s" % (self.__class__.__name__, self._index)
+
+  def __repr__(self):
+    return "%s(%r)" % (self.__class__.__name__, self._index)
+
+
+class PerIteration(_PerKey):
+  """Holds input for multiple iterations at once."""
+
+  def __init__(self, *index):
+    # pylint: disable=protected-access
+    super(PerIteration, self).__init__(*[batch._index for batch in index])
+
+
+class Batches(_PerKey):
+  pass
 
 
 class MultiIterator(object):
@@ -697,11 +716,31 @@ class MultiIterator(object):
     self._batches_per_iteration = batches_per_iteration
 
   def get_next(self, name=None):
-    return PerIteration([[
-        self._dataset_iterator.get_next(name=name)
-        for _ in range(self._batches_per_iteration)
-    ]
-                         for _ in range(self._iterations)])
+    """Return PerIteration with `iterations x batches_per_iteration` inputs."""
+    data = []
+    for _ in range(self._batches_per_iteration):
+      batch = []
+      for _ in range(self._iterations):
+        batch.append(self._dataset_iterator.get_next(name=name))
+      data.append(batch)
+
+    # Here is an example.  Suppose each get_next returns a tuple of two tensors.
+    # For 3 `iterations` and 2 `batches_per_iteration`, the `data` is:
+    # [[(a,z), (b,y), (c,x)], [(A,Z), (B,Y), (C,X)]]
+    #
+    # After the first `map_structure` it gets transformed to:
+    #  [(Batches(a, A), Batches(z, Z)),
+    #   (Batches(b, B), Batches(y, Y)),
+    #   (Batches(c, C), Batches(x, X))]
+    #
+    # After the second `map_structure` it gets transformed to a tuple of:
+    # (PerIteration([Batches(a, A), Batches(b, B), Batches(c, C)]),
+    #  PerIteration([Batches(z, Z), Batches(y, Y), Batches(x, X)]))
+
+    data = nest.map_structure(Batches, *data)
+    data = nest.map_structure(PerIteration, *data)
+
+    return data
 
   @property
   def initializer(self):
