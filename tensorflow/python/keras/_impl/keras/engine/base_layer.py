@@ -1658,7 +1658,7 @@ class DeferredTensor(object):
   """Tensor-like object used to build graphs of layers in Eager mode.
 
   When calling a layer on a DeferredTensor, the layer will not perform any
-  computation and will simply perfom shape inference to return new
+  computation and will simply perform shape inference to return new
   DeferredTensors with appropriate shape information. Thus DeferredTensor
   behaves like a graph-mode Tensor when manipulated by layers.
   """

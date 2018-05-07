@@ -23,6 +23,7 @@ import os
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -249,6 +250,26 @@ class ModelSubclassingTest(test.TestCase):
 
       model.fit([x1, x2], [y1, y2], epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_single_io_workflow_with_dataset_iterators(self):
+    num_classes = 2
+    num_samples = 10
+    input_dim = 50
+
+    with self.test_session():
+      model = SimpleTestModel(num_classes=num_classes, use_dp=True, use_bn=True)
+      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+      x = np.ones((num_samples, input_dim))
+      y = np.zeros((num_samples, num_classes))
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+      iterator = dataset.make_one_shot_iterator()
+
+      model.fit(iterator, epochs=2, steps_per_epoch=10, verbose=0)
+      _ = model.evaluate(iterator, steps=10, verbose=0)
 
   def test_multi_io_workflow_with_numpy_arrays_and_custom_placeholders(self):
 
