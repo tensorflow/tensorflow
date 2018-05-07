@@ -177,7 +177,6 @@ class HloInstruction {
     kOutput,        // Op's output is fused into the op itself.
                     // REQUIRES: At least one operand buffer must be able
                     // to alias the output buffer.
-    kTransposeDot,  // Fused into a dot with transposed operands.
     kCustom,        // Custom category for backend-specific fusions that
                     // do not match any of the more specific ones.
   };

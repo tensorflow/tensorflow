@@ -85,10 +85,6 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
     }
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion) {
-    CHECK_NE(hlo.fusion_kind(), HloInstruction::FusionKind::kTransposeDot);
-  }
-
   if (hlo.opcode() == HloOpcode::kFusion &&
       hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
       hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {

@@ -793,23 +793,11 @@ HloInstruction::CreateBroadcastSequence(
   return instruction;
 }
 
-// We put the fusion kind into the instruction's name for transpose-dot fusions,
-// since those fusions are really just describing a type of dot rather than
-// generating a novel computation.
-static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
-  switch (fusion_kind) {
-    case HloInstruction::FusionKind::kTransposeDot:
-      return "dot_fusion";
-    default:
-      return "fusion";
-  }
-}
-
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
   instruction->fusion_kind_ = fusion_kind;
-  instruction->name_ = FusionNodeName(fusion_kind);
+  instruction->name_ = "fusion";
   instruction->set_parent(fused_root->parent());
   instruction->set_metadata(fused_root->metadata());
   instruction->CloneAndFuseInternal(fused_root);
@@ -825,7 +813,7 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
     instruction->AppendOperand(operand);
   }
   instruction->fusion_kind_ = fusion_kind;
-  instruction->name_ = FusionNodeName(fusion_kind);
+  instruction->name_ = "fusion";
   instruction->called_computations_.push_back(fusion_computation);
   fusion_computation->SetFusionInstruction(instruction.get());
   return instruction;
@@ -2442,8 +2430,6 @@ string HloInstruction::ToCategory() const {
         return "input fusion";
       case FusionKind::kOutput:
         return "output fusion";
-      case FusionKind::kTransposeDot:
-        return "dot";
       case FusionKind::kCustom:
         return "custom fusion";
     }
@@ -3226,8 +3212,6 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kInput";
     case HloInstruction::FusionKind::kOutput:
       return "kOutput";
-    case HloInstruction::FusionKind::kTransposeDot:
-      return "kTransposeDot";
     case HloInstruction::FusionKind::kCustom:
       return "kCustom";
   }
@@ -3243,9 +3227,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   }
   if (kind_name == "kOutput") {
     return HloInstruction::FusionKind::kOutput;
-  }
-  if (kind_name == "kTransposeDot") {
-    return HloInstruction::FusionKind::kTransposeDot;
   }
   if (kind_name == "kCustom") {
     return HloInstruction::FusionKind::kCustom;

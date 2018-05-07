@@ -2077,8 +2077,6 @@ static const HloInstruction* StripTranspose(const HloInstruction& hlo) {
 }
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
-  CHECK_NE(fusion->fusion_kind(), HloInstruction::FusionKind::kTransposeDot);
-
   auto* root = fusion->fused_expression_root();
   if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";

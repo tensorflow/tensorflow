@@ -1098,19 +1098,6 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
     }
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    auto* dot = hlo.fused_expression_root();
-    const Shape& lhs_shape = dot->operand(0)->shape();
-    const Shape& rhs_shape = dot->operand(1)->shape();
-    if (ShapeUtil::HasZeroElements(lhs_shape) ||
-        ShapeUtil::HasZeroElements(rhs_shape)) {
-      return false;
-    }
-    return true;
-  }
-
   return false;
 }
 
