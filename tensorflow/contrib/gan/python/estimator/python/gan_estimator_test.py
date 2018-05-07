@@ -213,6 +213,8 @@ class GANEstimatorIntegrationTest(test.TestCase):
     scores = est.evaluate(eval_input_fn)
     self.assertEqual(num_steps, scores[ops.GraphKeys.GLOBAL_STEP])
     self.assertIn('loss', six.iterkeys(scores))
+    self.assertEqual(scores['discriminator_loss'] + scores['generator_loss'],
+                     scores['loss'])
 
     # PREDICT
     predictions = np.array([x for x in est.predict(predict_input_fn)])
