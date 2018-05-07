@@ -1344,6 +1344,19 @@ void ConvertUnsupportedOperator(const NodeDef& node,
   }
 }
 
+void ConvertSelectOperator(const NodeDef& node,
+                           const TensorFlowImportFlags& tf_import_flags,
+                           Model* model) {
+  CheckInputsCount(node, tf_import_flags, 3);
+
+  auto* op = new SelectOperator;
+  for (const auto& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertStridedSliceOperator(const NodeDef& node,
                                  const TensorFlowImportFlags& tf_import_flags,
                                  Model* model) {
@@ -2254,6 +2267,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertDynamicStitchOperator(node, tf_import_flags, model);
   } else if (node.op() == "RandomUniform") {
     ConvertRandomUniform(node, tf_import_flags, model);
+  } else if (node.op() == "Select") {
+    ConvertSelectOperator(node, tf_import_flags, model);
   } else {
     ConvertUnsupportedOperator(node, tf_import_flags, model);
   }

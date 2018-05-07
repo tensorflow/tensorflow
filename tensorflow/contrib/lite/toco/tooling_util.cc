@@ -391,6 +391,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Exp)
     HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
+    HANDLE_OPERATORTYPENAME_CASE(Select)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -2097,6 +2098,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt32;
     case INT64:
       return ArrayDataType::kInt64;
+    case BOOL:
+      return ArrayDataType::kBool;
     default:
       return ArrayDataType::kNone;
   }

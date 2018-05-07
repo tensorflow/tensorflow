@@ -1674,6 +1674,19 @@ void ConvertTensorFlowMaximumOperator(const Model& model,
   (*sub_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertSelectOperator(const Model& model, const SelectOperator& src_op,
+                           GraphDef* tensorflow_graph) {
+  auto* sub_op = tensorflow_graph->add_node();
+  sub_op->set_op("Select");
+  sub_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 3);
+  *sub_op->add_input() = src_op.inputs[0];
+  *sub_op->add_input() = src_op.inputs[1];
+  *sub_op->add_input() = src_op.inputs[2];
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[1]);
+  (*sub_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertTopKV2Operator(const Model& model, const TopKV2Operator& src_op,
                            GraphDef* tensorflow_graph) {
   auto* topk_op = tensorflow_graph->add_node();
@@ -1914,6 +1927,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertComparisonOperator(model, src_op, "Less", tensorflow_graph);
   } else if (src_op.type == OperatorType::kTensorFlowLessEqual) {
     ConvertComparisonOperator(model, src_op, "LessEqual", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kSelect) {
+    ConvertSelectOperator(model, static_cast<const SelectOperator&>(src_op),
+                          tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

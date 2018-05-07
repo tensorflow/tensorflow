@@ -86,6 +86,7 @@ TfLiteRegistration* Register_LESS();
 TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR();
 TfLiteRegistration* Register_NEG();
+TfLiteRegistration* Register_SELECT();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -153,6 +154,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL());
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
+  AddBuiltin(BuiltinOperator_SELECT, Register_SELECT());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

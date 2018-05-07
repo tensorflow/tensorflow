@@ -639,6 +639,20 @@ Outputs {
 }
 ```
 
+**SELECT**
+
+```
+Inputs {
+  0: tensor
+  1: tensor
+  2: tensor
+}
+Outputs {
+  0: tensor that contains the elementwise values of 'tensor 1' if the
+  corresponding value of 'tensor 0' is true or the value of 'tensor 2' if false.
+}
+```
+
 And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 

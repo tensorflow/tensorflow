@@ -64,6 +64,7 @@ gen_zipped_test_files(
         "sub.zip",
         "topk.zip",
         "transpose.zip",
+        "where.zip",
     ],
 )
 

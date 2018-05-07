@@ -6318,6 +6318,59 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+// UNOPTIMIZED COPY of Select from reference_ops.h.
+template <typename D, typename T>
+inline void Select(const D* input_condition_data,
+                   const Dims<4>& input_condition_dims, const T* input_x_data,
+                   const Dims<4>& input_x_dims, const T* input_y_data,
+                   const Dims<4>& input_y_dims, T* output_data,
+                   const Dims<4>& output_dims) {
+  const int64_t batches =
+      MatchingArraySize(input_condition_dims, 3, input_x_dims, 3, input_y_dims,
+                        3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_condition_dims, 2, input_x_dims, 2, input_y_dims,
+                        2, output_dims, 2);
+  const int64_t width = MatchingArraySize(input_condition_dims, 1, input_x_dims,
+                                          1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth = MatchingArraySize(input_condition_dims, 0, input_x_dims,
+                                          0, input_y_dims, 0, output_dims, 0);
+
+  const int64_t num_elements = batches * height * width * depth;
+  for (int64_t i = 0; i < num_elements; ++i) {
+    output_data[i] =
+        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
+  }
+}
+
+// UNOPTIMIZED COPY of RankOneSelect from reference_ops.h.
+template <typename D, typename T>
+inline void RankOneSelect(const D* input_condition_data,
+                          const Dims<4>& input_condition_dims,
+                          const T* input_x_data, const Dims<4>& input_x_dims,
+                          const T* input_y_data, const Dims<4>& input_y_dims,
+                          T* output_data, const Dims<4>& output_dims) {
+  const int64_t rank = ArraySize(input_condition_dims, 0);
+
+  const int64_t batches =
+      MatchingArraySize(input_x_dims, 3, input_y_dims, 3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_x_dims, 2, input_y_dims, 2, output_dims, 2);
+  const int64_t width =
+      MatchingArraySize(input_x_dims, 1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth =
+      MatchingArraySize(input_x_dims, 0, input_y_dims, 0, output_dims, 0);
+
+  TFLITE_DCHECK_EQ(rank, batches);
+
+  int64_t offset = 0;
+  int64_t size = depth * height * width;
+  for (int64_t i = 0; i < rank; i++) {
+    const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
+    memcpy(output_data + offset, input_data + offset, size * sizeof(T));
+  }
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 

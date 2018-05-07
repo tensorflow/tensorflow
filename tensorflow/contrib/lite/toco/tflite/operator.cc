@@ -924,6 +924,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new SimpleOperator<TensorFlowLessEqualOperator>(
       "LESS_EQUAL", OperatorType::kTensorFlowLessEqual));
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
+  ops.emplace_back(
+      new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
 
   return ops;
 }

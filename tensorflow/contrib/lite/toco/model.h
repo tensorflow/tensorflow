@@ -133,6 +133,7 @@ enum class OperatorType {
   // instead of being given as plain constant arrays. So we need to insert
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
+  kSelect,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1085,6 +1086,18 @@ struct RankOperator : Operator {
 // TensorFlow equivalent: Neg
 struct NegOperator : Operator {
   NegOperator() : Operator(OperatorType::kNeg) {}
+};
+
+// Element-wise select operator choosing elements from inputs[1] or input[2]
+//
+// Inputs:
+//  inputs[0]: required: boolean mask per index
+//  inputs[1]: required: tensor of values if true
+//  inputs[2]: required: tensor of values if false
+//
+//  TensorFlow equivalent: Select
+struct SelectOperator : Operator {
+  SelectOperator() : Operator(OperatorType::kSelect) {}
 };
 
 // Element-wise reciprocal-square-root (x^-0.5) operator.

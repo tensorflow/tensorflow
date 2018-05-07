@@ -529,6 +529,21 @@ void ProcessSimpleBinaryOperator(Model* model, Operator* op) {
                                   &output_array);
 }
 
+void ProcessSelectOperator(Model* model, SelectOperator* op) {
+  // Yield until all input dims have been resolved.
+  for (const auto& input : op->inputs) {
+    const auto& input_array = model->GetArray(input);
+    if (!input_array.has_shape()) {
+      return;
+    }
+  }
+
+  // Select's output matches the second and third output.
+  const auto& input1_array = model->GetArray(op->inputs[1]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  output_array.copy_shape(input1_array.shape());
+}
+
 void ProcessAddNOperator(Model* model, Operator* op) {
   // Yield until all input dims have been resolved.
   //
@@ -1570,7 +1585,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kMean:
       ProcessTensorFlowReductionOperator(model, op);
       break;
-
+    case OperatorType::kSelect:
+      ProcessSelectOperator(model, static_cast<SelectOperator*>(op));
+      break;
     case OperatorType::kSlice:
       ProcessSliceOperator(model, static_cast<SliceOperator*>(op));
       break;

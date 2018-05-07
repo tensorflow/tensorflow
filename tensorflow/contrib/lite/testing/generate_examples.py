@@ -2242,9 +2242,40 @@ def make_neg_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_where_tests(zip_path):
+  """Make a set of tests to do where."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
+  }]
+
+  def build_graph(parameters):
+    """Build the where op testing graph."""
+    input_value1 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input2",
+        shape=parameters["input_shape_set"][0])
+    input_value2 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input3",
+        shape=parameters["input_shape_set"][1])
+    less = tf.less(input_value1, input_value2)
+    out = tf.where(less, input_value1, input_value2)
+    return [input_value1, input_value2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value1 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_set"][0])
+    input_value2 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_set"][1])
+    return [input_value1, input_value2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
 # Toco binary path provided by the generate rule.
 bin_path = None
-
 
 def main(unused_args):
   global bin_path

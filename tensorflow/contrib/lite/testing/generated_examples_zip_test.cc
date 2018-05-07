@@ -289,6 +289,7 @@ INSTANTIATE_TESTS(squeeze)
 INSTANTIATE_TESTS(strided_slice)
 INSTANTIATE_TESTS(sub)
 INSTANTIATE_TESTS(transpose)
+INSTANTIATE_TESTS(where)
 
 }  // namespace testing
 }  // namespace tflite
