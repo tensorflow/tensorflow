@@ -34,8 +34,7 @@ class KumaraswamyBijectorTest(test.TestCase):
       a = 2.
       b = 0.3
       bijector = Kumaraswamy(
-          concentration1=a, concentration0=b,
-          event_ndims=0, validate_args=True)
+          concentration1=a, concentration0=b, validate_args=True)
       self.assertEqual("kumaraswamy", bijector.name)
       x = np.array([[[0.1], [0.2], [0.3], [0.4], [0.5]]], dtype=np.float32)
       # Kumaraswamy cdf. This is the same as inverse(x).
@@ -46,13 +45,11 @@ class KumaraswamyBijectorTest(test.TestCase):
                              (b - 1) * np.log1p(-x ** a))
 
       self.assertAllClose(
-          # We should lose a dimension from calculating the determinant of the
-          # jacobian.
-          kumaraswamy_log_pdf,
-          bijector.inverse_log_det_jacobian(x).eval())
+          np.squeeze(kumaraswamy_log_pdf, axis=-1),
+          bijector.inverse_log_det_jacobian(x, event_ndims=1).eval())
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(x).eval(),
-          bijector.forward_log_det_jacobian(y).eval(),
+          -bijector.inverse_log_det_jacobian(x, event_ndims=1).eval(),
+          bijector.forward_log_det_jacobian(y, event_ndims=1).eval(),
           rtol=1e-4,
           atol=0.)
 
@@ -69,11 +66,11 @@ class KumaraswamyBijectorTest(test.TestCase):
       bijector = Kumaraswamy(
           concentration1=concentration1,
           concentration0=concentration0, validate_args=True)
-      # Omitting the endpoints 0 and 1, since idlj will be inifinity at these
+      # Omitting the endpoints 0 and 1, since idlj will be infinity at these
       # endpoints.
       y = np.linspace(.01, 0.99, num=10).astype(np.float32)
       x = 1 - (1 - y ** concentration1) ** concentration0
-      assert_bijective_and_finite(bijector, x, y, rtol=1e-3)
+      assert_bijective_and_finite(bijector, x, y, event_ndims=0, rtol=1e-3)
 
 
 if __name__ == "__main__":

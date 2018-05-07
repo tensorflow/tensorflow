@@ -109,7 +109,7 @@ def histogram_summary(tag, values, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "HistogramSummary", [tag, values]) as scope:
-    val = gen_logging_ops._histogram_summary(
+    val = gen_logging_ops.histogram_summary(
         tag=tag, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
@@ -346,7 +346,7 @@ def scalar_summary(tags, values, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "ScalarSummary", [tags, values]) as scope:
-    val = gen_logging_ops._scalar_summary(tags=tags, values=values, name=scope)
+    val = gen_logging_ops.scalar_summary(tags=tags, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 

@@ -48,9 +48,9 @@ class FusedBatchNormOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(ctx->input_type(1), &scale_type));
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaOp input = ctx->Input(0);
     TensorShape input_shape = ctx->InputShape(0);
 
     int feature_index =
@@ -62,7 +62,7 @@ class FusedBatchNormOp : public XlaOpKernel {
     input = builder->ConvertElementType(input, scale_type);
 
     if (is_training_) {
-      xla::ComputationDataHandle output = builder->BatchNormTraining(
+      xla::XlaOp output = builder->BatchNormTraining(
           input, ctx->Input(1), ctx->Input(2), epsilon_, feature_index);
 
       // In training mode, outputs the normalized value as well as the
@@ -79,7 +79,7 @@ class FusedBatchNormOp : public XlaOpKernel {
       ctx->SetOutput(3, builder->GetTupleElement(output, 1));
       ctx->SetOutput(4, builder->GetTupleElement(output, 2));
     } else {
-      xla::ComputationDataHandle output = builder->BatchNormInference(
+      xla::XlaOp output = builder->BatchNormInference(
           input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
           epsilon_, feature_index);
       ctx->SetOutput(0, builder->ConvertElementType(output, input_type));
@@ -118,36 +118,30 @@ class FusedBatchNormGradOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
-
-    auto grad_backprop = ctx->Input(0);
-    auto activations = ctx->Input(1);
-    auto scale = ctx->Input(2);
-    auto mean = ctx->Input(3);
-    auto var = ctx->Input(4);
-
-    TensorShape input_shape = ctx->InputShape(0);
-    int feature_index =
-        GetTensorFeatureDimIndex(input_shape.dims(), data_format_);
-
+    xla::XlaBuilder* const b = ctx->builder();
     DataType input_dtype = ctx->input_type(0);
     DataType scale_dtype = ctx->input_type(2);
-    xla::PrimitiveType input_type;
-    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_dtype, &input_type));
-    xla::PrimitiveType scale_type;
-    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(scale_dtype, &scale_type));
 
     // TODO(b/69928690): support mixed precision in the XLA batch normalization
     // operators. For now, cast everything to the statistics type (which
     // may be more precise than the input type).
-    grad_backprop = b->ConvertElementType(grad_backprop, scale_type);
-    activations = b->ConvertElementType(activations, scale_type);
+    auto grad_backprop =
+        XlaHelpers::ConvertElementType(b, ctx->Input(0), scale_dtype);
+    auto activations =
+        XlaHelpers::ConvertElementType(b, ctx->Input(1), scale_dtype);
+    auto scale = ctx->Input(2);
+    auto mean = ctx->Input(3);
+    auto var = ctx->Input(4);
 
-    xla::ComputationDataHandle x_backprop;
-    xla::ComputationDataHandle scale_backprop;
-    xla::ComputationDataHandle offset_backprop;
+    const int input_dims = ctx->InputShape(0).dims();
+    const int feature_index =
+        GetTensorFeatureDimIndex(input_dims, data_format_);
+
+    xla::XlaOp x_backprop;
+    xla::XlaOp scale_backprop;
+    xla::XlaOp offset_backprop;
     if (is_training_) {
-      xla::ComputationDataHandle output =
+      xla::XlaOp output =
           b->BatchNormGrad(activations, scale, mean, var, grad_backprop,
                            epsilon_, feature_index);
 
@@ -156,7 +150,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       offset_backprop = b->GetTupleElement(output, 2);
     } else {
       // Reduce over all dimensions except the feature dim.
-      std::vector<int64> reduction_dims(input_shape.dims() - 1);
+      std::vector<int64> reduction_dims(input_dims - 1);
       std::iota(reduction_dims.begin(), reduction_dims.begin() + feature_index,
                 0);
       std::iota(reduction_dims.begin() + feature_index, reduction_dims.end(),
@@ -165,9 +159,14 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var +
       // epsilon))
       // x_backprop = y_backprop * (scale * rsqrt(pop_var + epsilon))
-      offset_backprop =
-          b->Reduce(grad_backprop, XlaHelpers::Zero(b, scale_dtype),
-                    *ctx->GetOrCreateAdd(scale_dtype), reduction_dims);
+      const DataType accumulation_type =
+          XlaHelpers::SumAccumulationType(scale_dtype);
+      auto converted =
+          XlaHelpers::ConvertElementType(b, grad_backprop, accumulation_type);
+      auto reduce =
+          b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                    *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
+      offset_backprop = XlaHelpers::ConvertElementType(b, reduce, scale_dtype);
 
       // scratch1 = rsqrt(pop_var + epsilon)
       auto neg_half = XlaHelpers::FloatLiteral(b, scale_dtype, -0.5);
@@ -175,17 +174,21 @@ class FusedBatchNormGradOp : public XlaOpKernel {
           b->Pow(b->Add(var, b->ConstantR0<float>(epsilon_)), neg_half);
 
       // scratch2 = sum(y_backprop * (x - mean))
-      auto scratch2 = b->Reduce(
-          b->Mul(grad_backprop, b->Sub(activations, mean, {feature_index})),
-          XlaHelpers::Zero(b, scale_dtype), *ctx->GetOrCreateAdd(scale_dtype),
-          reduction_dims);
+      auto mul =
+          b->Mul(grad_backprop, b->Sub(activations, mean, {feature_index}));
+      converted = XlaHelpers::ConvertElementType(b, mul, accumulation_type);
+      reduce =
+          b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                    *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
+      auto scratch2 = XlaHelpers::ConvertElementType(b, reduce, scale_dtype);
 
       x_backprop =
           b->Mul(grad_backprop, b->Mul(scratch1, scale), {feature_index});
       scale_backprop = b->Mul(scratch1, scratch2);
     }
 
-    ctx->SetOutput(0, b->ConvertElementType(x_backprop, input_type));
+    ctx->SetOutput(0,
+                   XlaHelpers::ConvertElementType(b, x_backprop, input_dtype));
     ctx->SetOutput(1, scale_backprop);
     ctx->SetOutput(2, offset_backprop);
     ctx->SetConstantOutput(3, Tensor(scale_dtype, {}));

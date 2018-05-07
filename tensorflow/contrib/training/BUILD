@@ -60,6 +60,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data",
         "//tensorflow/python/estimator:inputs_queues",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -306,18 +307,6 @@ py_test(
         "//tensorflow/python/data",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_proto_library(

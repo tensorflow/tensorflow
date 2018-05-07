@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -270,6 +270,12 @@ class TensorShapeBase : public TensorShapeRep {
   template <class T, class S>
   friend Status MakeShapeHelper(const T*, int64, S*);
 };
+
+/// Outputs `TensorShapeBase` to `std::ostream`.
+template <typename Shape>
+std::ostream& operator<<(std::ostream& os, const TensorShapeBase<Shape>& tsb) {
+  return os << tsb.DebugString();
+}
 
 /// Represents the shape of a Tensor.
 ///

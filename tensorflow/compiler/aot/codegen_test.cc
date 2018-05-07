@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -33,7 +34,7 @@ namespace {
 
 void ExpectErrorContains(const Status& status, StringPiece str) {
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(StringPiece(status.error_message()).contains(str))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), str))
       << "expected error: " << status.error_message() << " to contain: " << str;
 }
 
@@ -171,7 +172,7 @@ TEST(CodegenTest, Golden) {
   fetch->set_name("myfetch");
   CompileResult compile_result;
   compile_result.aot.reset(
-      new xla::cpu::CpuAotCompilationResult({}, {1, -1, 2, -1, 3, 120}, 5));
+      new xla::cpu::CpuAotCompilationResult({}, {1, -1, 2, -1, 3, 120}, 5, {}));
   compile_result.program_shape = xla::ShapeUtil::MakeProgramShape(
       {
           xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),

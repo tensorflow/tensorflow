@@ -23,7 +23,9 @@ from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.keras._impl.keras.utils import tf_utils
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -100,7 +102,8 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
-    super(Embedding, self).__init__(**kwargs)
+    dtype = kwargs.pop('dtype', K.floatx())
+    super(Embedding, self).__init__(dtype=dtype, **kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
@@ -111,24 +114,23 @@ class Embedding(Layer):
     self.mask_zero = mask_zero
     self.input_length = input_length
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     self.embeddings = self.add_weight(
         shape=(self.input_dim, self.output_dim),
         initializer=self.embeddings_initializer,
         name='embeddings',
         regularizer=self.embeddings_regularizer,
-        constraint=self.embeddings_constraint,
-        dtype=self.dtype)
+        constraint=self.embeddings_constraint)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
     if not self.mask_zero:
       return None
     else:
-      return K.not_equal(inputs, 0)
+      return math_ops.not_equal(inputs, 0)
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self.input_length is None:
       return input_shape + (self.output_dim,)
@@ -151,9 +153,10 @@ class Embedding(Layer):
       return (input_shape[0],) + tuple(in_lens) + (self.output_dim,)
 
   def call(self, inputs):
-    if K.dtype(inputs) != 'int32':
-      inputs = K.cast(inputs, 'int32')
-    out = K.gather(self.embeddings, inputs)
+    dtype = K.dtype(inputs)
+    if dtype != 'int32' and dtype != 'int64':
+      inputs = math_ops.cast(inputs, 'int32')
+    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
     return out
 
   def get_config(self):

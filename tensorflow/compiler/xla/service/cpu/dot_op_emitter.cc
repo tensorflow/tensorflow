@@ -557,8 +557,6 @@ DotOpEmitter::DotOpEmitter(
   return dot_emitter.Emit();
 }
 
-bool DotOpEmitter::ShapesAreLegalForRuntimeDot() const { return true; }
-
 bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   if (dot_.shape().dimensions_size() != 2) {
     return false;
@@ -714,6 +712,11 @@ tensorflow::Status DotOpEmitter::Emit() {
   // each dimension of the output. Inside this loop nest is another for-loop
   // which performs the sum-of-products (the reduction loop) before storing
   // the result in the output buffer.
+
+  // This routine assumes that the dot operation is not in a parallelized
+  // enclosing computation.
+  CHECK(
+      dot_.parent()->root_instruction()->outer_dimension_partitions().empty());
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
@@ -903,8 +906,6 @@ tensorflow::Status DotOpEmitter::EmitScalarDot() {
 }
 
 tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
-  DCHECK(ShapesAreLegalForRuntimeDot());
-
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
@@ -913,28 +914,35 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // The two transpose_... parameters are actually booleans, but we use int32
   // to avoid target-dependent calling convention details.
 
-  bool multi_threaded_eigen =
+  bool multi_threaded =
       hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
+  bool use_mkl_dnn = hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
     case F16:
-      fn_name = multi_threaded_eigen
+      fn_name = multi_threaded
                     ? runtime::kEigenMatMulF16SymbolName
                     : runtime::kEigenSingleThreadedMatMulF16SymbolName;
       float_type = ir_builder_->getHalfTy();
       break;
     case F32:
-      fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatMulF32SymbolName
-                    : runtime::kEigenSingleThreadedMatMulF32SymbolName;
+      fn_name = multi_threaded
+                    ? (use_mkl_dnn ? runtime::kMKLMatMulF32SymbolName
+                                   : runtime::kEigenMatMulF32SymbolName)
+                    : (use_mkl_dnn
+                           ? runtime::kMKLSingleThreadedMatMulF32SymbolName
+                           : runtime::kEigenSingleThreadedMatMulF32SymbolName);
       float_type = ir_builder_->getFloatTy();
       break;
     case F64:
-      fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatMulF64SymbolName
-                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
+      fn_name = multi_threaded
+                    ? (use_mkl_dnn ? runtime::kMKLMatMulF64SymbolName
+                                   : runtime::kEigenMatMulF64SymbolName)
+                    : (use_mkl_dnn
+                           ? runtime::kMKLSingleThreadedMatMulF64SymbolName
+                           : runtime::kEigenSingleThreadedMatMulF64SymbolName);
       float_type = ir_builder_->getDoubleTy();
       break;
     default:
@@ -1058,7 +1066,8 @@ static bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   // 1) be matrices with no padding, and
   // 2) have an allowed element type.
   PrimitiveType output_primitive_type = output_shape.element_type();
-  return (output_primitive_type == F32 || output_primitive_type == F16) &&
+  return (output_primitive_type == F64 || output_primitive_type == F32 ||
+          output_primitive_type == F16) &&
          IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape);
 }

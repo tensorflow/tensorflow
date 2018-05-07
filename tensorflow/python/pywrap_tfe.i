@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/platform/base.i"
+
 %ignore "";
 
 %rename("%s") TFE_NewContext;
@@ -26,6 +28,9 @@ limitations under the License.
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
+%rename("%s") TFE_ContextSetAsyncForThread;
+%rename("%s") TFE_ContextAsyncWait;
+%rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;
@@ -51,6 +56,7 @@ limitations under the License.
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
+%rename("%s") TFE_ContextOptionsSetAsync;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 
@@ -114,9 +120,9 @@ limitations under the License.
 
 }
 %typemap(out) (TFE_Context*) {
-  if ($1 == nullptr) {
-    SWIG_fail;
-  } else {
+  // When the TFE_Context* returned is a nullptr, we expect the status is not
+  // OK. This will raise an error (happens in another typemap).
+  if ($1 != nullptr) {
     $result = PyCapsule_New($1, nullptr, TFE_DeleteContextCapsule);
   }
 }

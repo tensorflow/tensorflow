@@ -20,14 +20,18 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
 namespace tensorrt {
 namespace segment {
 
-using SegmentNodesVector = std::vector<std::set<string>>;
+// vector of segments, each entry contains a device name and a set of nodes in
+// segment
+using SegmentNodesVector = std::vector<std::pair<std::set<string>, string>>;
 
 struct SegmentOptions {
   // Segment must contain at least this many nodes.
@@ -46,7 +50,21 @@ struct SegmentOptions {
 // @return the status.
 tensorflow::Status SegmentGraph(
     const tensorflow::GraphDef& gdef,
-    const std::function<bool(const tensorflow::NodeDef&)>& candidate_fn,
+    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
+    const SegmentOptions& options, SegmentNodesVector* segments);
+
+// Get the subgraphs of a graph that can be handled by TensorRT.
+//
+// @param graph tensorflow::Graph of the network
+// @param candidate_fn A function that returns true for a Node* if
+// that node can be handled by TensorRT.
+// @param segments Returns the TensorRT segments/subgraphs. Each entry
+// in the vector describes a subgraph by giving a set of the names of
+// all the NodeDefs in that subgraph.
+// @return the status.
+tensorflow::Status SegmentGraph(
+    tensorflow::Graph* tf_graph,
+    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments);
 
 }  // namespace segment

@@ -209,7 +209,7 @@ def random_uniform(shape,
     maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
       the range of random values to generate.  Defaults to 1 if `dtype` is
       floating point.
-    dtype: The type of the output: 'float16`, `float32`, `float64`, `int32`,
+    dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
       See @{tf.set_random_seed}

@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 # Subdirectory name containing the asset files.
@@ -66,17 +65,3 @@ tf_export("saved_model.constants.VARIABLES_DIRECTORY").export_constant(
 VARIABLES_FILENAME = "variables"
 tf_export("saved_model.constants.VARIABLES_FILENAME").export_constant(
     __name__, "VARIABLES_FILENAME")
-
-
-_allowed_symbols = [
-    "ASSETS_DIRECTORY",
-    "ASSETS_KEY",
-    "LEGACY_INIT_OP_KEY",
-    "MAIN_OP_KEY",
-    "SAVED_MODEL_SCHEMA_VERSION",
-    "SAVED_MODEL_FILENAME_PB",
-    "SAVED_MODEL_FILENAME_PBTXT",
-    "VARIABLES_DIRECTORY",
-    "VARIABLES_FILENAME",
-]
-remove_undocumented(__name__, _allowed_symbols)

@@ -27,6 +27,7 @@ from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
@@ -69,6 +70,98 @@ class TestGatherTree(test.TestCase):
       res_ = sess.run(res)
 
     self.assertAllEqual(expected_result, res_)
+
+  def _test_gather_tree_from_array(self,
+                                   depth_ndims=0,
+                                   merged_batch_beam=False):
+    array = np.array(
+        [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [0, 0, 0]],
+         [[2, 3, 4], [5, 6, 7], [8, 9, 10], [11, 12, 0]]]).transpose([1, 0, 2])
+    parent_ids = np.array(
+        [[[0, 0, 0], [0, 1, 1], [2, 1, 2], [-1, -1, -1]],
+         [[0, 0, 0], [1, 1, 0], [2, 0, 1], [0, 1, 0]]]).transpose([1, 0, 2])
+    expected_array = np.array(
+        [[[2, 2, 2], [6, 5, 6], [7, 8, 9], [0, 0, 0]],
+         [[2, 3, 2], [7, 5, 7], [8, 9, 8], [11, 12, 0]]]).transpose([1, 0, 2])
+    sequence_length = [[3, 3, 3], [4, 4, 3]]
+
+    array = ops.convert_to_tensor(
+        array, dtype=dtypes.float32)
+    parent_ids = ops.convert_to_tensor(
+        parent_ids, dtype=dtypes.int32)
+    expected_array = ops.convert_to_tensor(
+        expected_array, dtype=dtypes.float32)
+
+    max_time = array_ops.shape(array)[0]
+    batch_size = array_ops.shape(array)[1]
+    beam_width = array_ops.shape(array)[2]
+
+    def _tile_in_depth(tensor):
+      # Generate higher rank tensors by concatenating tensor and tensor + 1.
+      for _ in range(depth_ndims):
+        tensor = array_ops.stack([tensor, tensor + 1], -1)
+      return tensor
+
+    if merged_batch_beam:
+      array = array_ops.reshape(
+          array, [max_time, batch_size * beam_width])
+      expected_array = array_ops.reshape(
+          expected_array, [max_time, batch_size * beam_width])
+
+    if depth_ndims > 0:
+      array = _tile_in_depth(array)
+      expected_array = _tile_in_depth(expected_array)
+
+    sorted_array = beam_search_decoder.gather_tree_from_array(
+        array, parent_ids, sequence_length)
+
+    with self.test_session() as sess:
+      sorted_array = sess.run(sorted_array)
+      expected_array = sess.run(expected_array)
+      self.assertAllEqual(expected_array, sorted_array)
+
+  def test_gather_tree_from_array_scalar(self):
+    self._test_gather_tree_from_array()
+
+  def test_gather_tree_from_array_1d(self):
+    self._test_gather_tree_from_array(depth_ndims=1)
+
+  def test_gather_tree_from_array_1d_with_merged_batch_beam(self):
+    self._test_gather_tree_from_array(depth_ndims=1, merged_batch_beam=True)
+
+  def test_gather_tree_from_array_2d(self):
+    self._test_gather_tree_from_array(depth_ndims=2)
+
+
+class TestArrayShapeChecks(test.TestCase):
+
+  def _test_array_shape_dynamic_checks(self, static_shape, dynamic_shape,
+                                       batch_size, beam_width, is_valid=True):
+    t = array_ops.placeholder_with_default(
+        np.random.randn(*static_shape).astype(np.float32),
+        shape=dynamic_shape)
+
+    batch_size = array_ops.constant(batch_size)
+    check_op = beam_search_decoder._check_batch_beam(t, batch_size, beam_width)  # pylint: disable=protected-access
+
+    with self.test_session() as sess:
+      if is_valid:
+        sess.run(check_op)
+      else:
+        with self.assertRaises(errors.InvalidArgumentError):
+          sess.run(check_op)
+
+  def test_array_shape_dynamic_checks(self):
+    self._test_array_shape_dynamic_checks(
+        (8, 4, 5, 10), (None, None, 5, 10), 4, 5, is_valid=True)
+    self._test_array_shape_dynamic_checks(
+        (8, 20, 10), (None, None, 10), 4, 5, is_valid=True)
+    self._test_array_shape_dynamic_checks(
+        (8, 21, 10), (None, None, 10), 4, 5, is_valid=False)
+    self._test_array_shape_dynamic_checks(
+        (8, 4, 6, 10), (None, None, None, 10), 4, 5, is_valid=False)
+    self._test_array_shape_dynamic_checks(
+        (8, 4), (None, None), 4, 5, is_valid=False)
 
 
 class TestEosMasking(test.TestCase):
@@ -319,7 +412,8 @@ class TestLargeBeamStep(test.TestCase):
 
 class BeamSearchDecoderTest(test.TestCase):
 
-  def _testDynamicDecodeRNN(self, time_major, has_attention):
+  def _testDynamicDecodeRNN(self, time_major, has_attention,
+                            with_alignment_history=False):
     encoder_sequence_length = np.array([3, 2, 3, 1, 1])
     decoder_sequence_length = np.array([2, 0, 1, 2, 3])
     batch_size = 5
@@ -359,7 +453,7 @@ class BeamSearchDecoderTest(test.TestCase):
             cell=cell,
             attention_mechanism=attention_mechanism,
             attention_layer_size=attention_depth,
-            alignment_history=False)
+            alignment_history=with_alignment_history)
       cell_state = cell.zero_state(
           dtype=dtypes.float32, batch_size=batch_size_tensor * beam_width)
       if has_attention:
@@ -419,6 +513,12 @@ class BeamSearchDecoderTest(test.TestCase):
 
   def testDynamicDecodeRNNBatchMajorYesAttention(self):
     self._testDynamicDecodeRNN(time_major=False, has_attention=True)
+
+  def testDynamicDecodeRNNBatchMajorYesAttentionWithAlignmentHistory(self):
+    self._testDynamicDecodeRNN(
+        time_major=False,
+        has_attention=True,
+        with_alignment_history=True)
 
 
 if __name__ == '__main__':

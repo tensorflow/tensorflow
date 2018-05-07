@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 
@@ -218,8 +219,8 @@ std::unordered_set<string> Scope::Impl::GetColocationConstraints(
   if (GetNodeAttr(attrs, kColocationAttrName, &node_constraints).ok()) {
     for (const string& entry : node_constraints) {
       StringPiece s(entry);
-      if (s.Consume(kColocationGroupPrefix)) {
-        current_constraints.insert(s.ToString());
+      if (str_util::ConsumePrefix(&s, kColocationGroupPrefix)) {
+        current_constraints.insert(std::string(s));
       }
     }
   } else {

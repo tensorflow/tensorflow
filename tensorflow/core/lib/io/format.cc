@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/core/lib/io/format.h"
 
 #include "tensorflow/core/lib/core/coding.h"
@@ -84,6 +86,11 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
   // Read the block contents as well as the type/crc footer.
   // See table_builder.cc for the code that built this structure.
   size_t n = static_cast<size_t>(handle.size());
+
+  if (kBlockTrailerSize > std::numeric_limits<size_t>::max() - n) {
+    return errors::DataLoss("handle.size() too big");
+  }
+
   char* buf = new char[n + kBlockTrailerSize];
   StringPiece contents;
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);

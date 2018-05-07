@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Script Language Operators. See the @{$python/script_ops} guide.
-
-@@py_func
-"""
+"""Script Language Operators. See the @{$python/script_ops} guide."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -36,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -54,6 +52,16 @@ class EagerFunc(object):
     self._func = func
     self._out_dtypes = Tout
 
+  def _convert(self, value, dtype):
+    if isinstance(value, resource_variable_ops.ResourceVariable):
+      raise RuntimeError(
+          "Attempting to return a variable from an eagerly executed py_func. "
+          "Only numeric data structures like Tensors or NumPy arrays should "
+          "be returned; to return the value of a variable, make sure to obtain "
+          "the Tensor backing it by calling `.read_value()` on the variable in "
+          "question: %s" % value)
+    return ops.convert_to_tensor(value, dtype=dtype)
+
   def __call__(self, on_gpu, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
     with context.eager_mode():
@@ -61,14 +69,13 @@ class EagerFunc(object):
       maybe_copy_to_gpu = lambda x: x if not on_gpu else x.gpu()
       if isinstance(ret, (tuple, list)):
         return [
-            maybe_copy_to_gpu(ops.convert_to_tensor(x, dtype=dtype))
+            maybe_copy_to_gpu(self._convert(x, dtype=dtype))
             for (x, dtype) in zip(ret, self._out_dtypes)
         ]
       elif ret is None:
         return ret
       else:
-        return maybe_copy_to_gpu(
-            ops.convert_to_tensor(ret, dtype=self._out_dtypes[0]))
+        return maybe_copy_to_gpu(self._convert(ret, dtype=self._out_dtypes[0]))
 
 
 class FuncRegistry(object):
@@ -236,14 +243,68 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
 
 
 def eager_py_func(func, inp, Tout, name=None):
-  """Wraps a python function into a TensorFlow op.
+  """Wraps a python function into a TensorFlow op that executes it eagerly.
 
-  When the returned op is executed, `func` is invoked with eager execution
-  enabled. Inputs are Tensor objects and func must return None or objects
-  that may be converted to Tensor objects.
+  This function allows expressing computations in a TensorFlow graph as
+  Python functions. In particular, it wraps a Python function `func`
+  in a TensorFlow operation that executes it with eager exeuction enabled. As a
+  consequence, `tf.contrib.eager.py_func` makes it possible to express control
+  flow using Python constructs (`if`, `while`, `for`, etc.), instead of
+  TensorFlow control flow constructs (@{tf.cond}, @{tf.while_loop}). For
+  example, you might use `tf.contrib.eager.py_func` to implement the log huber
+  function:
 
-  This function has the same limitations as `py_func` with respect to
-  serialization and distribution.
+  ```python
+  def log_huber(x, m):
+    if tf.abs(x) <= m:
+      return x ** 2
+    else:
+      return m ** 2 * (1 - 2 * tf.log(m) + tf.log(x ** 2))
+
+  x = tf.placeholder(tf.float32)
+  m = tf.placeholder(tf.float32)
+
+  y = tf.contrib.eager.py_func(func=log_huber, inp=[x, m], Tout=tf.float32)
+
+  with tf.Session() as sess:
+    # The session executes `log_huber` eagerly. Given the feed values below,
+    # it will take the second branch, so `output` evaluates to 7.24372.
+    output = sess.run(y, feed_dict={x: 3.0, m: 2.0})
+  ```
+
+  You can also use `tf.contrib.eager.py_func` to debug your models at runtime
+  using Python tools, i.e., you can isolate portions of your code that
+  you want to debug, wrap them in Python functions and insert `pdb` tracepoints
+  or print statements as desired, and wrap those functions in
+  `tf.contrib.eager.py_func`.
+
+  For more information on eager execution, see @{$programmers_guide/eager}.
+
+  `tf.contrib.eager.py_func` is similar in spirit to @{tf.py_func}, but unlike
+  the latter, the former lets you use TensorFlow operations in the wrapped
+  Python function. In particular, while @{tf.py_func} only runs on CPUs and
+  wraps functions that take NumPy arrays as inputs and return NumPy arrays as
+  outputs, `tf.contrib.eager.py_func` can be placed on GPUs and wraps functions
+  that take Tensors as inputs, execute TensorFlow operations in their bodies,
+  and return Tensors as outputs.
+
+  `tf.contrib.eager.py_func` is not differentiable, though a gradient may be
+  implemented in the future; if you would like to differentiate through it,
+  please file an issue on Github.
+
+  Like @{tf.py_func}, `tf.contrib.eager.py_func` has the following limitations
+  with respect to serialization and distribution:
+
+  * The body of the function (i.e. `func`) will not be serialized in a
+    `GraphDef`. Therefore, you should not use this function if you need to
+    serialize your model and restore it in a different environment.
+
+  * The operation must run in the same address space as the Python program
+    that calls `tf.contrib.eager.py_func()`. If you are using distributed
+    TensorFlow, you must run a `tf.train.Server` in the same process as the
+    program that calls `tf.contrib.eager.py_func()` and you must pin the created
+    operation to a device in that server (e.g. using `with tf.device():`).
+
 
   Args:
     func: A Python function which accepts a list of `Tensor` objects
@@ -324,7 +385,11 @@ def py_func(func, inp, Tout, stateful=True, name=None):
     result = func(*[x.numpy() for x in inp])
     result = nest.flatten(result)
 
-    return [x if x is None else ops.convert_to_tensor(x) for x in result]
+    result = [x if x is None else ops.convert_to_tensor(x) for x in result]
+    if len(result) == 1:
+      # Mimic the automatic unwrapping in graph-mode py_func
+      result, = result
+    return result
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)

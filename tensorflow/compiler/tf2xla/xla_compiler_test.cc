@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -163,7 +164,6 @@ REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_CPU_XLA_JIT),
 REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_GPU_XLA_JIT),
                 DummyDuplicateOp);
 
-
 // Tests compilation and execution of an empty graph.
 TEST_F(XlaCompilerTest, EmptyReturnValues) {
   XlaCompiler compiler(DefaultOptions());
@@ -257,10 +257,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("depends on a parameter"))
+      str_util::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
   EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("[[Node: C = Reshape"))
+      str_util::StrContains(status.error_message(), "[[Node: C = Reshape"))
       << status.error_message();
 }
 
@@ -432,21 +432,26 @@ TEST_F(XlaCompilerTest, DeterministicCompilation) {
   }
 
   for (int64 i = 1; i < test_count; ++i) {
-    auto m1 =
-        results[i - 1].computation->Snapshot().ValueOrDie()->entry().requests();
-    auto m2 =
-        results[i].computation->Snapshot().ValueOrDie()->entry().requests();
-    // Check if every entry is the same.
-    for (auto& entry1 : m1) {
-      int64 key = entry1.first;
-      auto value1 = entry1.second;
-      auto entry2 = m2.find(key);
-      auto value2 = entry2->second;
-      EXPECT_TRUE(entry2 != m2.end());
-      string str1, str2;
-      value1.AppendToString(&str1);
-      value2.AppendToString(&str2);
-      EXPECT_EQ(str1, str2);
+    const auto& m1 = results[i - 1].computation->proto();
+    const auto& m2 = results[i].computation->proto();
+    ASSERT_EQ(m1.computations_size(), m2.computations_size());
+    // Check if every hlo computation is the same.
+    for (int k = 0; k < m1.computations_size(); k++) {
+      const auto& c1 = m1.computations(k);
+      const auto& c2 = m2.computations(k);
+      ASSERT_EQ(c1.instructions_size(), c2.instructions_size());
+      for (int j = 0; j < c1.instructions_size(); j++) {
+        auto instr1 = c1.instructions(j);
+        auto instr2 = c2.instructions(j);
+        instr1.clear_name();
+        instr2.clear_name();
+        // The names of instructions were uniquified by the XlaBuilder, the rest
+        // of the fields should be identical.
+        string str1, str2;
+        instr1.AppendPartialToString(&str1);
+        instr2.AppendPartialToString(&str2);
+        EXPECT_EQ(str1, str2);
+      }
     }
   }
 }
@@ -597,7 +602,8 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
+                                    "is not defined."))
       << status.error_message();
 }
 
@@ -676,11 +682,12 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
 
   ASSERT_FALSE(status.ok());
   // Flib lookup failure.
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
+                                    "is not defined."))
       << status.error_message();
   // Local flib lookup failure.
-  EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("Attr T is not found"))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
+                                    "Attr T is not found"))
       << status.error_message();
 }
 

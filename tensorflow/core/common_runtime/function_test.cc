@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -53,8 +54,8 @@ Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
-void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+void HasError(const Status& s, StringPiece substr) {
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -230,19 +231,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
     FunctionLibraryRuntime::Options opts;
-    status = Run(flr, handle, opts, args, rets, add_runner);
-    if (!status.ok()) return status;
-
-    // Release the handle and try running again. It should not succeed.
-    status = flr->ReleaseHandle(handle);
-    if (!status.ok()) return status;
-
-    Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
-
-    return status;
+    TF_RETURN_IF_ERROR(Run(flr, handle, opts, args, rets, add_runner));
+    return flr->ReleaseHandle(handle);
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
@@ -303,16 +293,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       *rets[i] = retvals[i];
     }
 
-    // Release the handle and try running again. It should not succeed.
-    status = flr->ReleaseHandle(handle);
-    if (!status.ok()) return status;
-
-    Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
-
-    return status;
+    // Release the handle.
+    return flr->ReleaseHandle(handle);
   }
 
   std::unique_ptr<Graph> GetFuncBody(FunctionLibraryRuntime* flr,

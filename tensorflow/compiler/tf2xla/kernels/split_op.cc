@@ -124,7 +124,7 @@ class SplitVOp : public XlaOpKernel {
                                         input_shape.dims(), "), but got ",
                                         split_dim_orig));
 
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaOp input = ctx->Input(0);
 
     OP_REQUIRES(ctx, input_shape.dims() > 0,
                 errors::InvalidArgument("Can't split a 0 dimensional input"));

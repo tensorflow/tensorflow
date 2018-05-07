@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -85,7 +85,7 @@ TEST_P(FloatReverseTest, Reverses) {
   auto r1_literal = Literal::CreateR1<float>(input_vector);
   auto input_literal = r1_literal->Reshape(spec.input_dims).ConsumeValueOrDie();
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a = AddParam(*input_literal, &builder);
   builder.Rev(a, spec.reversal);
 
@@ -114,7 +114,7 @@ class ReverseTest : public ClientLibraryTestBase {};
 
 // Tests the reverse operation on a 4D U8 array on dimension 0 and 3.
 XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   // Input shape is U8[1x2x3x4].
   // clang-format off
   Array4D<uint8> input({{
@@ -144,7 +144,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
 
 // Tests the reverse operation on a 4D float array on dimension 0 and 1.
 TEST_F(ReverseTest, Reverse4DFloatArrayOnDim01) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   // Input shape is float[4x3x2x1].
   // clang-format off
   Array4D<float> input({

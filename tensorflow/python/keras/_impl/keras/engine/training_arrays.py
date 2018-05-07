@@ -23,6 +23,7 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.framework import errors
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras.engine import training_utils
@@ -30,6 +31,7 @@ from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.platform import tf_logging as logging
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -190,7 +192,15 @@ def fit_loop(model,
         batch_logs['batch'] = step_index
         batch_logs['size'] = 1
         callbacks.on_batch_begin(step_index, batch_logs)
-        outs = f(ins)
+        try:
+          outs = f(ins)
+        except errors.OutOfRangeError:
+          logging.warning('Your dataset iterator ran out of data; '
+                          'interrupting training. Make sure that your dataset '
+                          'can generate at least `steps_per_epoch * epochs` '
+                          'batches (in this case, %d batches).' %
+                          steps_per_epoch * epochs)
+          break
 
         if not isinstance(outs, list):
           outs = [outs]

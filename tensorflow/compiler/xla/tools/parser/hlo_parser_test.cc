@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -894,7 +895,7 @@ class HloParserTest : public ::testing::Test,
                       public ::testing::WithParamInterface<TestData> {
  protected:
   static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-    EXPECT_TRUE(StringPiece(s).contains(expected))
+    EXPECT_TRUE(tensorflow::str_util::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
 
@@ -1238,7 +1239,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = Parse(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->entry_computation_layout();
+  auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();

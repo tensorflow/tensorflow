@@ -28,6 +28,9 @@ void IncrementUsageCounter(TfLiteContext* context);
 // usages all temporary Eigen objects will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
 
+// Set the number of threads that can be used by Eigen.
+void SetNumThreads(TfLiteContext* context, int num_threads);
+
 }  // namespace eigen_support
 }  // namespace tflite
 

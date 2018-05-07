@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -75,14 +76,14 @@ class Scanner {
   // Consume the next s.size() characters of the input, if they match <s>. If
   // they don't match <s>, this is a no-op.
   Scanner& ZeroOrOneLiteral(StringPiece s) {
-    cur_.Consume(s);
+    str_util::ConsumePrefix(&cur_, s);
     return *this;
   }
 
   // Consume the next s.size() characters of the input, if they match <s>. If
   // they don't match <s>, then GetResult will ultimately return false.
   Scanner& OneLiteral(StringPiece s) {
-    if (!cur_.Consume(s)) {
+    if (!str_util::ConsumePrefix(&cur_, s)) {
       error_ = true;
     }
     return *this;

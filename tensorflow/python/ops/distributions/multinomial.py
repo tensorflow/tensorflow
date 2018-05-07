@@ -183,7 +183,7 @@ class Multinomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]):
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._total_count = ops.convert_to_tensor(total_count, name="total_count")
       if validate_args:
         self._total_count = (

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
-
 # pylint disable=long-line
 from tensorflow.contrib.kfac.python.ops import curvature_matrix_vector_products as cmvp
 from tensorflow.contrib.kfac.python.ops import estimator as est
@@ -53,8 +51,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
                estimation_mode="gradients",
                colocate_gradients_with_ops=True,
                batch_size=None,
-               cov_devices=None,
-               inv_devices=None):
+               placement_strategy=None,
+               **kwargs):
     """Initializes the KFAC optimizer with the given settings.
 
     Args:
@@ -68,7 +66,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           the local approximation with the Fisher information matrix, and to
           regularize the update direction by making it closer to the gradient.
           If damping is adapted during training then this value is used for
-          initializing damping varaible.
+          initializing damping variable.
           (Higher damping means the update looks more like a standard gradient
           update - see Tikhonov regularization.)
       layer_collection: The layer collection object, which holds the fisher
@@ -96,14 +94,11 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           (Default: True)
       batch_size: The size of the mini-batch. Only needed when momentum_type
           == 'qmodel' or when automatic adjustment is used.  (Default: None)
-      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
-          computations will be placed on these devices in a round-robin fashion.
-          Can be None, which means that no devices are specified. Only used
-          with (soon-to-be-depcrecated "convenience" properties).
-      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
-          computations will be placed on these devices in a round-robin fashion.
-          Can be None, which means that no devices are specified. Only used
-          with (soon-to-be-depcrecated "convenience" properties).
+      placement_strategy: string, Device placement strategy used when creating
+        covariance variables, covariance ops, and inverse ops.
+        (Default: `None`)
+      **kwargs: Arguments to be passesd to specific placement
+        strategy mixin. Check `placement.RoundRobinPlacementMixin` for example.
 
     Raises:
       ValueError: If the momentum type is unsupported.
@@ -112,21 +107,14 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       ValueError: If momentum is non-zero and momentum_type is not 'regular'
           or 'adam'.
     """
-
-    variables = var_list
-    if variables is None:
-      variables = tf_variables.trainable_variables()
-
     # Parameters to be passed to the Fisher estimator:
-    self._variables = variables
+    self._variables = var_list or tf_variables.trainable_variables
     self._cov_ema_decay = cov_ema_decay
     self._layers = layer_collection
     self._estimation_mode = estimation_mode
     self._colocate_gradients_with_ops = colocate_gradients_with_ops
-    self._cov_devices = cov_devices
-    self._inv_devices = inv_devices
 
-    # The below paramaters are required only if damping needs to be adapated.
+    # The below parameters are required only if damping needs to be adapated.
     # These parameters can be set by calling
     # set_damping_adaptation_params() explicitly.
     self._damping_adaptation_decay = 0.95
@@ -164,16 +152,19 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     self._momentum_type = momentum_type
     self._norm_constraint = norm_constraint
     self._batch_size = batch_size
+    self._placement_strategy = placement_strategy
 
     with variable_scope.variable_scope(name):
-      self._fisher_est = est.FisherEstimator(
-          self._variables,
-          self._cov_ema_decay,
-          self.damping,
-          self._layers,
+      self._fisher_est = est.make_fisher_estimator(
+          placement_strategy=placement_strategy,
+          variables=self._variables,
+          cov_ema_decay=self._cov_ema_decay,
+          damping=self.damping,
+          layer_collection=self._layers,
           exps=(-1,),
           estimation_mode=self._estimation_mode,
-          colocate_gradients_with_ops=self._colocate_gradients_with_ops)
+          colocate_gradients_with_ops=self._colocate_gradients_with_ops,
+          **kwargs)
 
     super(KfacOptimizer, self).__init__(learning_rate, name=name)
 
@@ -204,7 +195,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       min_damping: `float`(Optional), Minimum value the damping parameter
         can take. Default value 1e-5.
       damping_adaptation_decay: `float`(Optional), The `damping` parameter is
-        multipled by the `damping_adaptation_decay` every
+        multiplied by the `damping_adaptation_decay` every
         `damping_adaptation_interval` number of iterations. Default value 0.99.
       damping_adaptation_interval: `int`(Optional), Number of steps in between
         updating the `damping` parameter. Default value 5.
@@ -237,38 +228,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           "damping", initializer=self._damping_constant, trainable=False)
 
   @property
-  def cov_update_thunks(self):
-    self._maybe_make_and_save_everything()
-    return self._cov_update_thunks
-
-  @property
-  def cov_update_ops(self):
-    self._maybe_make_and_save_everything()
-    return self._cov_update_ops
-
-  @property
-  def cov_update_op(self):
-    self._maybe_make_and_save_everything()
-    return self._cov_update_op
-
-  @property
-  def inv_update_thunks(self):
-    self._maybe_make_and_save_everything()
-    return self._inv_update_thunks
-
-  @property
-  def inv_update_ops(self):
-    self._maybe_make_and_save_everything()
-    return self._inv_update_ops
-
-  @property
-  def inv_update_op(self):
-    self._maybe_make_and_save_everything()
-    return self._inv_update_op
-
-  @property
   def variables(self):
-    return self._variables
+    return self._fisher_est.variables
 
   @property
   def damping(self):
@@ -281,103 +242,9 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
   def damping_adaptation_interval(self):
     return self._damping_adaptation_interval
 
-  def _maybe_make_and_save_everything(self):
-    if not self._fisher_est.made_vars():
-      warnings.warn("These convenience properties will be depcrecated soon. "
-                    "Please use explicit op/thunk creation methods instead "
-                    "(e.g. make_ops_and_vars_round_robin, etc).",
-                    DeprecationWarning)
-      (self._cov_update_ops, self._cov_update_op, self._inv_update_ops,
-       self._inv_update_op, self._cov_update_thunks,
-       self._inv_update_thunks) = self.make_ops_and_vars_round_robin(
-           cov_devices=self._cov_devices,
-           inv_devices=self._inv_devices)
+  def make_vars_and_create_op_thunks(self):
+    """Make vars and create op thunks.
 
-  def make_ops_and_vars(self):
-    """Make ops and vars with no specific device placement.
-
-    See make_ops_and_vars_round_robin for details.
-
-    Returns:
-      cov_update_ops: List of ops that compute the cov updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_ops: List of ops that compute the inv updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_op: inv_update_ops grouped into a single op.
-    """
-    with variable_scope.variable_scope(self.get_name()):
-      return self._fisher_est.make_ops_and_vars()
-
-  def make_ops_and_vars_round_robin(self, cov_devices=None, inv_devices=None):
-    """Make ops and vars with a round-robin device placement strategy.
-
-    For each factor, all of that factor's cov variables and their associated
-    update ops will be placed on a particular device.  A new device is chosen
-    for each factor by cycling through list of devices in the cov_devices
-    argument. If cov_devices is None then no explicit device placement occurs.
-
-    An analogous strategy is followed for inverse update ops, with the list of
-    devices being given by the inv_devices argument.
-
-    Inverse variables on the other hand are not placed on any specific device
-    (they will just use the current the device placement context, whatever
-    that happens to be).  The idea is that the inverse variable belong where
-    they will be accessed most often, which is the device that actually applies
-    the preconditioner to the gradient. The user will be responsible for setting
-    the device context for this.
-
-    Args:
-      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
-        computations will be placed on these devices in a round-robin fashion.
-        Can be None, which means that no devices are specified.
-      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
-        computations will be placed on these devices in a round-robin fashion.
-        Can be None, which means that no devices are specified.
-
-    Returns:
-      cov_update_ops: List of ops that compute the cov updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_ops: List of ops that compute the inv updates. Corresponds
-        one-to-one with the list of factors given by the "factors" property.
-      cov_update_op: cov_update_ops grouped into a single op.
-      inv_update_op: inv_update_ops grouped into a single op.
-      cov_update_thunks: Thunks that make the ops in cov_update_ops.
-      inv_update_thunks: Thunks that make the ops in inv_update_ops.
-    """
-    with variable_scope.variable_scope(self.get_name()):
-      return self._fisher_est.make_ops_and_vars_round_robin(
-          cov_devices=cov_devices, inv_devices=inv_devices)
-
-  def make_vars_and_create_op_thunks_round_robin(self,
-                                                 cov_devices=None,
-                                                 inv_devices=None):
-    """Make vars and create op thunks w/ a round-robin device placement strat.
-
-    For each factor, all of that factor's cov variables and their associated
-    update ops will be placed on a particular device.  A new device is chosen
-    for each factor by cycling through list of devices in the cov_devices
-    argument. If cov_devices is None then no explicit device placement occurs.
-
-    An analogous strategy is followed for inverse update ops, with the list of
-    devices being given by the inv_devices argument.
-
-    Inverse variables on the other hand are not placed on any specific device
-    (they will just use the current the device placement context, whatever
-    that happens to be).  The idea is that the inverse variable belong where
-    they will be accessed most often, which is the device that actually applies
-    the preconditioner to the gradient. The user will be responsible for setting
-    the device context for this.
-
-    Args:
-      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
-        computations will be placed on these devices in a round-robin fashion.
-        Can be None, which means that no devices are specified.
-      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
-        computations will be placed on these devices in a round-robin fashion.
-        Can be None, which means that no devices are specified.
     Returns:
       cov_update_thunks: List of cov update thunks. Corresponds one-to-one with
         the list of factors given by the "factors" property.
@@ -385,10 +252,9 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
         the list of factors given by the "factors" property.
     """
     scope = self.get_name() + "/" + self._fisher_est.name
-    return self._fisher_est.make_vars_and_create_op_thunks_round_robin(
-        scope=scope, cov_devices=cov_devices, inv_devices=inv_devices)
+    return self._fisher_est.make_vars_and_create_op_thunks(scope=scope)
 
-  def ops_and_vars_thunks(self):
+  def create_ops_and_vars_thunks(self):
     """Create thunks that make the ops and vars on demand.
 
     This function returns 4 lists of thunks: cov_variable_thunks,
@@ -413,7 +279,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       inv_update_thunks: A list of thunks that make the inv update ops.
     """
     scope = self.get_name() + "/" + self._fisher_est.name
-    return self._fisher_est.ops_and_vars_thunks(scope=scope)
+    return self._fisher_est.create_ops_and_vars_thunks(scope=scope)
 
   def minimize(self, *args, **kwargs):
     # Should this variable scope encompass everything below?  Or will the super-
@@ -445,6 +311,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     else:
       kwargs["var_list"] = kwargs.get("var_list") or self.variables
       var_list = kwargs["var_list"]
+
     if set(var_list) != set(self.variables):
       raise ValueError("var_list doesn't match with set of Fisher-estimating "
                        "variables.")
@@ -461,8 +328,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     Returns:
       An `Operation` that applies the specified gradients.
     """
-    self._maybe_make_and_save_everything()
-
     # In Python 3, grads_and_vars can be a zip() object which can only be
     # iterated over once. By converting it to a list, we ensure that it can be
     # iterated over more than once.
@@ -618,7 +483,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     # compute the matrix-vector products with the transposed Fisher factor
     fft_precon_grads = cmvpc.multiply_fisher_factor_transpose(precon_grads)
     fft_prev_updates = cmvpc.multiply_fisher_factor_transpose(prev_updates)
-
     batch_size = math_ops.cast(
         self._batch_size, dtype=fft_precon_grads[0].dtype)
 
@@ -802,7 +666,6 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     # Go through variable and update its associated part of the velocity vector.
     return [_update_velocity(vec, var) for vec, var in vecs_and_vars]
 
-  # TODO(b/73448937): Move all update damping code to a separate class/function.
   def _update_damping(self, prev_batch, global_step):
     """Adapts damping parameter. Check KFAC (Section 6.5) for the details.
 

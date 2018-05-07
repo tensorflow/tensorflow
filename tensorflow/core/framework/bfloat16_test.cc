@@ -37,19 +37,27 @@ float BinaryToFloat(uint32_t sign, uint32_t exponent, uint32_t high_mantissa,
 
 struct Bfloat16TestParam {
   float input;
-  float expected;
+  float expected_truncation;
+  float expected_rounding;
 };
 
 class Bfloat16Test : public ::testing::Test,
                      public ::testing::WithParamInterface<Bfloat16TestParam> {};
 
 TEST_P(Bfloat16Test, TruncateTest) {
-  bfloat16 a(GetParam().input);
+  bfloat16 truncated(GetParam().input);
   if (std::isnan(GetParam().input)) {
-    EXPECT_TRUE(std::isnan(float(a)) || std::isinf(float(a)));
+    EXPECT_TRUE(std::isnan(float(truncated)) || std::isinf(float(truncated)));
     return;
   }
-  EXPECT_EQ(GetParam().expected, float(a));
+  EXPECT_EQ(GetParam().expected_truncation, float(truncated));
+
+  bfloat16 rounded = bfloat16::round_to_bfloat16((GetParam().input));
+  if (std::isnan(GetParam().input)) {
+    EXPECT_TRUE(std::isnan(float(rounded)) || std::isinf(float(rounded)));
+    return;
+  }
+  EXPECT_EQ(GetParam().expected_rounding, float(rounded));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -57,37 +65,48 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b1111010111000011),
-            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001001, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(1, 0b10000000, 0b1001000, 0b1111010111000011),
-            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000)},
+            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000),
+            BinaryToFloat(1, 0b10000000, 0b1001001, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b11111111, 0b0000000, 0b0000000000000001),
-            BinaryToFloat(0, 0b11111111, 0b0000000, 0b0000000000000000)},
+            BinaryToFloat(0, 0b11111111, 0b0000000, 0b0000000000000000),
+            BinaryToFloat(0, 0b11111111, 0b1000000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b11111111, 0b1111111, 0b1111111111111111),
-            BinaryToFloat(0, 0b11111111, 0b1111111, 0b0000000000000000)},
+            BinaryToFloat(0, 0b11111111, 0b1111111, 0b0000000000000000),
+            BinaryToFloat(0, 0b11111111, 0b1000000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(1, 0b10000000, 0b1001000, 0b1100000000000000),
-            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000)},
+            BinaryToFloat(1, 0b10000000, 0b1001000, 0b0000000000000000),
+            BinaryToFloat(1, 0b10000000, 0b1001001, 0b0000000000000000)},
         Bfloat16TestParam{
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0100000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b00000000, 0b1001000, 0b1000000000000000),
+            BinaryToFloat(0, 0b00000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b00000000, 0b1001000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b00000000, 0b1111111, 0b1100000000000000),
-            BinaryToFloat(0, 0b00000000, 0b1111111, 0b0000000000000000)}));
+            BinaryToFloat(0, 0b00000000, 0b1111111, 0b0000000000000000),
+            BinaryToFloat(0, 0b00000001, 0b0000000, 0b0000000000000000)}));
 
 TEST(Bfloat16Test, Conversion) {
   float a[100];

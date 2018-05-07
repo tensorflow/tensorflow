@@ -96,7 +96,7 @@ NVVM_LIBDEVICE_PATHS = [
   "share/cuda/",
 ]
 
-load(":download_clang.bzl", "download_clang")
+load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
 
 # TODO(dzc): Once these functions have been factored out of Bazel's
 # cc_configure.bzl, load them from @bazel_tools instead.

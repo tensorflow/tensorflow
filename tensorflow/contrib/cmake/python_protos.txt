@@ -1,10 +1,10 @@
 tensorflow/core
+tensorflow/core/kernels/boosted_trees
 tensorflow/core/profiler
 tensorflow/python
 tensorflow/contrib/boosted_trees/proto
 tensorflow/contrib/cloud/kernels
 tensorflow/contrib/decision_trees/proto
-tensorflow/contrib/eager/proto
 tensorflow/contrib/gdr
 tensorflow/contrib/lite/toco
 tensorflow/contrib/mpi

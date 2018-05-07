@@ -1,9 +1,7 @@
 # Description:
 #   TensorFlow Serving session bundle.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -17,18 +15,6 @@ load(
     "if_not_mobile",
     "py_test",
     "tf_cc_test",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
 )
 
 # TODO(b/32673259): add a test to continuously validate these files.

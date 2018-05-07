@@ -118,6 +118,7 @@ genrule(
         "@com_googlesource_code_re2//:LICENSE",
         "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
+        "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft/readme.txt",
@@ -138,7 +139,6 @@ genrule(
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-        "@mkl//:LICENSE",
     ]),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
@@ -156,6 +156,7 @@ genrule(
         "@com_googlesource_code_re2//:LICENSE",
         "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
+        "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft/readme.txt",
@@ -176,7 +177,6 @@ genrule(
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-        "@mkl//:LICENSE",
     ]),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",

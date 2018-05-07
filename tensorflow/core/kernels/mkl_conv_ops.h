@@ -65,9 +65,12 @@ class MklDnnConvUtil {
  public:
   MklDnnConvUtil(OpKernelContext* context, const std::vector<int32>& strides,
                  Padding pad, TensorFormat fm,
-                 const std::vector<int32>& dilations) :
-    context_(context), strides_(strides), padding_(pad),
-    data_format_(fm), dilations_(dilations) {}
+                 const std::vector<int32>& dilations)
+      : context_(context),
+        strides_(strides),
+        dilations_(dilations),
+        padding_(pad),
+        data_format_(fm) {}
 
   virtual ~MklDnnConvUtil() { context_ = nullptr; }
 

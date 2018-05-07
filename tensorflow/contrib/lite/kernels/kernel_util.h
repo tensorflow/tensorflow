@@ -32,6 +32,10 @@ inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {
   return &context->tensors[node->outputs->data[index]];
 }
+inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
+                                  int index) {
+  return &context->tensors[node->temporaries->data[index]];
+}
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 
@@ -53,13 +57,13 @@ inline TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
 }
 
 // Determines whether tensor is constant.
-inline bool IsConstantTensor(TfLiteTensor* tensor) {
+inline bool IsConstantTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteMmapRo;
 }
 
 // Determines whether tensor is dynamic. Note that a tensor can be non-const and
 // not dynamic. This function specifically checks for a dynamic tensor.
-inline bool IsDynamicTensor(TfLiteTensor* tensor) {
+inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteDynamic;
 }
 

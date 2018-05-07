@@ -61,7 +61,7 @@ enum FilterTensorFormat {
   FORMAT_OIHW = 1,
 
   // OIHW_VECT_I is the most performant tensor format for cudnn6's quantized
-  // int8 convolution and fused convolution. It is analagous to the NCHW_VECT_C
+  // int8 convolution and fused convolution. It is analogous to the NCHW_VECT_C
   // data format. It is laid out in the same order as OIHW, except that the size
   // of the Input Channels dimension is divided by 4, and a new dimension of
   // size 4 is appended, which packs 4 adjacent input channel weights into an

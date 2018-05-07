@@ -36,7 +36,7 @@ class Independent(distribution_lib.Distribution):
 
   This distribution is useful for regarding a collection of independent,
   non-identical distributions as a single random variable. For example, the
-  `Indpendent` distribution composed of a collection of `Bernoulli`
+  `Independent` distribution composed of a collection of `Bernoulli`
   distributions might define a distribution over an image (where each
   `Bernoulli` is a distribution over each pixel).
 
@@ -119,7 +119,7 @@ class Independent(distribution_lib.Distribution):
     parameters = locals()
     name = name or "Independent" + distribution.name
     self._distribution = distribution
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       if reinterpreted_batch_ndims is None:
         reinterpreted_batch_ndims = self._get_default_reinterpreted_batch_ndims(
             distribution)

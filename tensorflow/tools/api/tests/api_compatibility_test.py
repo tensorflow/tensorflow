@@ -34,7 +34,6 @@ import sys
 import unittest
 
 import tensorflow as tf
-from tensorflow import experimental_api as api
 
 from google.protobuf import text_format
 
@@ -47,8 +46,6 @@ from tensorflow.tools.api.lib import python_object_to_proto_visitor
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 
-if hasattr(tf, 'experimental_api'):
-  del tf.experimental_api
 
 # FLAGS defined at the bottom:
 FLAGS = None
@@ -58,7 +55,7 @@ _UPDATE_GOLDENS_HELP = """
      have to be authorized by TensorFlow leads.
 """
 
-# DEFINE_boolean, verbose_diffs, default False:
+# DEFINE_boolean, verbose_diffs, default True:
 _VERBOSE_DIFFS_HELP = """
      If set to true, print line by line diffs on all libraries. If set to
      false, only print which libraries have differences.
@@ -237,67 +234,13 @@ class ApiCompatibilityTest(test.TestCase):
         verbose=FLAGS.verbose_diffs,
         update_goldens=FLAGS.update_goldens)
 
-  @unittest.skipUnless(
-      sys.version_info.major == 2,
-      'API compabitility test goldens are generated using python2.')
-  def testNewAPIBackwardsCompatibility(self):
-    # Extract all API stuff.
-    visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
-
-    public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.do_not_descend_map['tf'].append('contrib')
-    public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
-    # TODO(annarev): Make slide_dataset available in API.
-    public_api_visitor.private_map['tf'] = ['slide_dataset']
-    traverse.traverse(api, public_api_visitor)
-
-    proto_dict = visitor.GetProtos()
-
-    # Read all golden files.
-    expression = os.path.join(
-        resource_loader.get_root_dir_with_all_resources(),
-        _KeyToFilePath('*'))
-    golden_file_list = file_io.get_matching_files(expression)
-
-    def _ReadFileToProto(filename):
-      """Read a filename, create a protobuf from its contents."""
-      ret_val = api_objects_pb2.TFAPIObject()
-      text_format.Merge(file_io.read_file_to_string(filename), ret_val)
-      return ret_val
-
-    golden_proto_dict = {
-        _FileNameToKey(filename): _ReadFileToProto(filename)
-        for filename in golden_file_list
-    }
-
-    # user_ops is an empty module. It is currently available in TensorFlow API
-    # but we don't keep empty modules in the new API.
-    # We delete user_ops from golden_proto_dict to make sure assert passes
-    # when diffing new API against goldens.
-    # TODO(annarev): remove user_ops from goldens once we switch to new API.
-    tf_module = golden_proto_dict['tensorflow'].tf_module
-    for i in range(len(tf_module.member)):
-      if tf_module.member[i].name == 'user_ops':
-        del tf_module.member[i]
-        break
-
-    # Diff them. Do not fail if called with update.
-    # If the test is run to update goldens, only report diffs but do not fail.
-    self._AssertProtoDictEquals(
-        golden_proto_dict,
-        proto_dict,
-        verbose=FLAGS.verbose_diffs,
-        update_goldens=False,
-        additional_missing_object_message=
-        'Check if tf_export decorator/call is missing for this symbol.')
-
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
   parser.add_argument(
-      '--verbose_diffs', type=bool, default=False, help=_VERBOSE_DIFFS_HELP)
+      '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)
   FLAGS, unparsed = parser.parse_known_args()
 
   # Now update argv, so that unittest library does not get confused.

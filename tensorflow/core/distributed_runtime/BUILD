@@ -8,18 +8,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "c_srcs",
     data = glob([
         "**/*.cc",
@@ -145,6 +133,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -156,6 +145,7 @@ tf_cc_test(
     deps = [
         ":session_mgr",
         ":worker_env",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
@@ -459,6 +449,81 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "collective_param_resolver_distributed",
+    srcs = ["collective_param_resolver_distributed.cc"],
+    hdrs = ["collective_param_resolver_distributed.h"],
+    deps = [
+        ":call_options",
+        ":device_resolver_distributed",
+        ":worker_cache",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    srcs = [],
+    hdrs = ["test_utils.h"],
+    deps = [
+        ":worker_cache",
+        ":worker_interface",
+    ],
+)
+
+tf_cc_test(
+    name = "collective_param_resolver_distributed_test",
+    size = "small",
+    srcs = ["collective_param_resolver_distributed_test.cc"],
+    deps = [
+        ":collective_param_resolver_distributed",
+        ":device_resolver_distributed",
+        ":test_utils",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "device_resolver_distributed",
+    srcs = ["device_resolver_distributed.cc"],
+    hdrs = ["device_resolver_distributed.h"],
+    deps = [
+        ":worker_cache",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "device_resolver_distributed_test",
+    size = "small",
+    srcs = ["device_resolver_distributed_test.cc"],
+    deps = [
+        ":device_resolver_distributed",
+        ":test_utils",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

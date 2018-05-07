@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
-#define TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#define TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
 
 #include <memory>
 #include <set>
@@ -40,8 +40,6 @@ struct ItemConfig {
   int placeholder_unknown_output_shape_dim = -1;
   // If true, does L1 optimizations.
   bool apply_optimizations = false;
-  // If true, does inlining.
-  bool inline_functions = false;
   // If true, erases all "_noinline" attributes from user-defined functions.
   // Has no effect if "inline_functions" is disabled.
   bool erase_noinline_attributes = false;
@@ -61,4 +59,4 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_

@@ -34,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -252,7 +250,7 @@ Status GpuExecutable::ExecuteThunks(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -267,16 +265,22 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
-      // The caller must give us a buffer for ShapeIndex {} of every parameter.
-      // It can optionally give us a buffer for other ShapeIndices, but we
-      // ignore them: Because we can't rely on these sub-buffers' addresses
-      // being available, our generated code can't use them.  Instead, it must
-      // chase pointers starting at the tuple root.
-      if (allocation.param_shape_index().empty()) {
-        auto param_no = allocation.parameter_number();
-        buffer_allocations_builder.RegisterBuffer(
-            i, arguments[param_no]->root_buffer());
+      auto param_no = allocation.parameter_number();
+      se::DeviceMemoryBase buffer =
+          arguments[param_no]->buffer(allocation.param_shape_index());
+
+      // All top-level buffers and sub-buffers must have an explicit, non-null
+      // pointer, except for zero-sized buffers, which may be null.
+      if (buffer.is_null() && buffer.size() > 0) {
+        return FailedPrecondition(
+            "Cannot run XLA computation because pointer to (sub-)buffer at "
+            "index %s of parameter %lld was null.  All pointers to "
+            "(sub-)buffers must not be null, unless the (sub-)buffer has zero "
+            "elements.",
+            allocation.param_shape_index().ToString().c_str(), param_no);
       }
+
+      buffer_allocations_builder.RegisterBuffer(i, buffer);
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();
@@ -293,13 +297,13 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  auto shaped_buffer = MakeUnique<ShapedBuffer>(
-      root->shape(), root->shape(), executor->platform(), device_ordinal);
+  ScopedShapedBuffer shaped_buffer(root->shape(), root->shape(),
+                                   memory_allocator, device_ordinal);
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
-  TF_RETURN_IF_ERROR(shaped_buffer->buffers().ForEachMutableElementWithStatus(
+  TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
       [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
@@ -318,7 +322,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
         CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-        perftools::gputools::DeviceMemoryBase src_base =
+        se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
         *device_memory = src_base;
@@ -331,7 +335,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
   return std::move(shaped_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.

@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "cuda/include/cuda.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Identifies the memory space where an allocation resides. See
@@ -400,11 +399,19 @@ class CUDADriver {
 
   // Returns a grab-bag of device properties in a caller-owned device_properties
   // structure for device_ordinal via cuDeviceGetProperties.
-  // This call is deprecated in the NVIDIA driver API.
+  //
+  // This call is deprecated in the NVIDIA driver API; its replacement is
+  // GetDeviceAttribute
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE__DEPRECATED.html#group__CUDA__DEVICE__DEPRECATED_1g65a5b4e25186bd257df80b98c98cffe6
   static bool GetDeviceProperties(CUdevprop *device_properties,
                                   int device_ordinal);
+
+  // Gets a specific integer-valued property about the given device.
+  //
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
+  static port::StatusOr<int> GetDeviceAttribute(CUdevice_attribute attribute,
+                                                CUdevice device);
 
   // Returns whether ECC is enabled for the given CUdevice via
   // cuDeviceGetattribute with CU_DEVICE_ATTRIBUTE_ECC_ENABLED.
@@ -498,7 +505,6 @@ class CudaContext {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_

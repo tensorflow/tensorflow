@@ -69,15 +69,3 @@ cc_library(
 #         "//testing/base/public:gunit",
 #     ],
 # )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

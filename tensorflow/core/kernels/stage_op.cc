@@ -32,53 +32,8 @@ namespace {
 
 class Buffer : public ResourceBase {
  public:
-  // public types
   using Tuple = std::vector<Tensor>;
 
- private:
-  // private variables
-  std::size_t capacity_;
-  std::size_t memory_limit_;
-  std::size_t current_bytes_;
-  std::mutex mu_;
-  std::condition_variable non_empty_cond_var_;
-  std::condition_variable full_cond_var_;
-  std::deque<Tuple> buf_;
-
- private:
-  // private methods
-
-  // If the buffer is configured for bounded capacity, notify
-  // waiting inserters that space is now available
-  void notify_inserters_if_bounded(std::unique_lock<std::mutex>* lock) {
-    if (IsBounded()) {
-      lock->unlock();
-      // Notify all inserters. The removal of an element
-      // may make memory available for many inserters
-      // to insert new elements
-      full_cond_var_.notify_all();
-    }
-  }
-
-  // Are there a limit number of elements or a memory limit
-  // configued on this buffer?
-  bool IsBounded() const { return capacity_ > 0 || memory_limit_ > 0; }
-
-  bool IsCapacityFull() const { return buf_.size() >= capacity_; }
-
-  bool WouldExceedMemoryLimit(std::size_t bytes) const {
-    return bytes + current_bytes_ > memory_limit_;
-  }
-
-  std::size_t GetTupleBytes(const Tuple& tuple) {
-    return std::accumulate(tuple.begin(), tuple.end(), 0,
-                           [](const std::size_t& lhs, const Tensor& rhs) {
-                             return lhs + rhs.TotalBytes();
-                           });
-  }
-
- public:
-  // public methods
   explicit Buffer(std::size_t capacity, std::size_t memory_limit)
       : capacity_(capacity), memory_limit_(memory_limit), current_bytes_(0) {}
 
@@ -181,6 +136,44 @@ class Buffer : public ResourceBase {
     std::unique_lock<std::mutex> lock(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }
+
+ private:
+  // If the buffer is configured for bounded capacity, notify
+  // waiting inserters that space is now available
+  void notify_inserters_if_bounded(std::unique_lock<std::mutex>* lock) {
+    if (IsBounded()) {
+      lock->unlock();
+      // Notify all inserters. The removal of an element
+      // may make memory available for many inserters
+      // to insert new elements
+      full_cond_var_.notify_all();
+    }
+  }
+
+  // Are there a limit number of elements or a memory limit
+  // configued on this buffer?
+  bool IsBounded() const { return capacity_ > 0 || memory_limit_ > 0; }
+
+  bool IsCapacityFull() const { return buf_.size() >= capacity_; }
+
+  bool WouldExceedMemoryLimit(std::size_t bytes) const {
+    return bytes + current_bytes_ > memory_limit_;
+  }
+
+  std::size_t GetTupleBytes(const Tuple& tuple) {
+    return std::accumulate(tuple.begin(), tuple.end(), 0,
+                           [](const std::size_t& lhs, const Tensor& rhs) {
+                             return lhs + rhs.TotalBytes();
+                           });
+  }
+
+  std::size_t capacity_;
+  std::size_t memory_limit_;
+  std::size_t current_bytes_;
+  std::mutex mu_;
+  std::condition_variable non_empty_cond_var_;
+  std::condition_variable full_cond_var_;
+  std::deque<Tuple> buf_;
 };
 
 Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {

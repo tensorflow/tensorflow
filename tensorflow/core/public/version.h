@@ -19,7 +19,7 @@ limitations under the License.
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
 #define TF_MAJOR_VERSION 1
-#define TF_MINOR_VERSION 6
+#define TF_MINOR_VERSION 8
 #define TF_PATCH_VERSION 0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",

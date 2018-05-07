@@ -407,9 +407,9 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
           .StopCapture()
           .OneLiteral(": ")
           .GetResult(&value, &name)) {
-    string str_value = value.ToString();
+    string str_value = std::string(value);
     str_util::StripTrailingWhitespace(&str_value);
-    that->response_headers_[name.ToString()] = str_value;
+    that->response_headers_[std::string(name)] = str_value;
   }
   return size * nmemb;
 }

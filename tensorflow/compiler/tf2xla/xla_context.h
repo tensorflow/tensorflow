@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -43,7 +43,7 @@ class XlaContext : public ResourceBase {
   static XlaContext& Get(const XlaOpKernelContext* ctx);
 
   // Creates a new XlaContext.
-  XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
+  XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
              bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
              const std::function<TensorShape(const TensorShape&, DataType)>*
                  variable_representation_shape_fn);
@@ -53,9 +53,8 @@ class XlaContext : public ResourceBase {
 
   XlaCompiler* compiler() const { return compiler_; }
 
-  // Returns the ComputationBuilder that Ops use for compiling new
-  // expressions.
-  xla::ComputationBuilder* builder();
+  // Returns the XlaBuilder that Ops use for compiling new expressions.
+  xla::XlaBuilder* builder();
 
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
 
@@ -66,8 +65,7 @@ class XlaContext : public ResourceBase {
 
   // This is called by the Retval Op to associate a computed value
   // with a specific return value of the subgraph.
-  void AddRetval(int retval_index, DataType type,
-                 const xla::ComputationDataHandle& handle);
+  void AddRetval(int retval_index, DataType type, const xla::XlaOp& handle);
 
   // As for Retval, but for return values that are compile-time constants.
   Status AddConstRetval(int retval_index, DataType dtype,
@@ -79,8 +77,7 @@ class XlaContext : public ResourceBase {
   // Fails if the resource already exists.
   Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
                         DataType type, TensorShape shape,
-                        const xla::ComputationDataHandle& handle,
-                        int64 tensor_array_size,
+                        const xla::XlaOp& handle, int64 tensor_array_size,
                         const std::set<string>& tensor_array_gradients,
                         XlaResource** resource);
 
@@ -96,22 +93,22 @@ class XlaContext : public ResourceBase {
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateMax(const DataType type);
+  const xla::XlaComputation* GetOrCreateMax(const DataType type);
 
   // Get an XLA lambda to compute Min. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateMin(const DataType type);
+  const xla::XlaComputation* GetOrCreateMin(const DataType type);
 
   // Get an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateAdd(const DataType type);
+  const xla::XlaComputation* GetOrCreateAdd(const DataType type);
 
   // Get an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateMul(const DataType type);
+  const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
@@ -119,9 +116,8 @@ class XlaContext : public ResourceBase {
  private:
   XlaCompiler* const compiler_;
 
-  // The ComputationBuilder used to construct the subgraph's compiled
-  // representation.
-  xla::ComputationBuilder* builder_;
+  // The XlaBuilder used to construct the subgraph's compiled representation.
+  xla::XlaBuilder* builder_;
 
   // Allow ops to emit CustomCall operations for CPU.
   const bool allow_cpu_custom_calls_;
@@ -146,14 +142,14 @@ class XlaContext : public ResourceBase {
       variable_representation_shape_fn_;
 
   // Cache of prebuilt computations indexed by their type.
-  using ComputationMap = std::map<DataType, xla::Computation>;
+  using ComputationMap = std::map<DataType, xla::XlaComputation>;
 
   // Finds the value for the given type in out map if it already
   // exists or makes a new value with create function and keeps it the
   // map. The returned value != nullptr and is owned by the map.
-  const xla::Computation* LookupOrCreate(
+  const xla::XlaComputation* LookupOrCreate(
       DataType type, ComputationMap* out,
-      const std::function<xla::Computation()>& create);
+      const std::function<xla::XlaComputation()>& create);
 
   // Cached computation to compute Max of two elements, specialized by type.
   ComputationMap max_func_;

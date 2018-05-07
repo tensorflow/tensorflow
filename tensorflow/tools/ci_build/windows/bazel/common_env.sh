@@ -44,6 +44,8 @@ export PYTHON_LIB_PATH="C:/${PYTHON_BASE_PATH}/lib/site-packages"
 # Add python into PATH, it's needed because gen_git_source.py uses
 # '/usr/bin/env python' as a shebang
 export PATH="/c/${PYTHON_BASE_PATH}:$PATH"
+# Add git into PATH needed for gen_git_source.py
+export PATH="/c/Program Files/Git/cmd:$PATH"
 
 # Make sure we have pip in PATH
 export PATH="/c/${PYTHON_BASE_PATH}/Scripts:$PATH"

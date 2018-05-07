@@ -48,6 +48,8 @@ namespace xla {
 // deferred from being handled until Build() is called.
 //
 // Thread-compatible.
+//
+// TODO(b/74197823): Deprecated. Use XlaBuilder instead.
 class ComputationBuilder {
  public:
   // client: client in which to build the computation.
@@ -103,15 +105,6 @@ class ComputationBuilder {
 
   // Retrieves the (inferred) result for the current computation's shape.
   StatusOr<ProgramShape> GetProgramShape();
-
-  // Checks that the operand has the given expected shape. Returns the operand
-  // if yes, fails with a CHECK error if no.
-  ComputationDataHandle CheckShape(const ComputationDataHandle& operand,
-                                   const Shape& expected_shape);
-
-  // Checks that the lhs and rhs results have the same shape.
-  void CheckSameShape(const ComputationDataHandle& lhs,
-                      const ComputationDataHandle& rhs);
 
   // Enqueues a constant with the value of the given literal onto the
   // computation.
@@ -665,6 +658,9 @@ class ComputationBuilder {
 
   // Enqueues a negate instruction onto the computation.
   ComputationDataHandle Neg(const ComputationDataHandle& operand);
+
+  // Enqueues a count-leading-zeros instruction onto the computation.
+  ComputationDataHandle Clz(const ComputationDataHandle& operand);
 
   // Enqueues a transpose instruction onto the computation.
   ComputationDataHandle Transpose(

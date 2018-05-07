@@ -71,9 +71,15 @@ class WhileUtil {
   //    return loop_state;
   //  }
   static StatusOr<LoopStateTy> MakeCountedLoop(
-      HloComputation* computation, int64 trip_count,
+      HloComputation* computation, int32 trip_count,
       const LoopStateTy& init_values,
       const LoopBodyGeneratorTy& loop_body_generator);
+
+  // Returns the GetTupleElement instructions in `while_body` that access
+  // elements in the parameter tuple that don't change across iterations.
+  // Assumes `while_body` is the body computation of the while loop in question.
+  static std::vector<HloInstruction*> GetInvariantGTEsForWhileBody(
+      const HloComputation& while_body);
 };
 }  // namespace xla
 

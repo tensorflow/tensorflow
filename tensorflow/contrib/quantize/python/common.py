@@ -123,3 +123,11 @@ def CreateOrGetQuantizationStep():
         # normal variables to return a tensor of the same name.
         return array_ops.identity(
             state_ops.assign_add(quantization_step_tensor, 1))
+
+
+def DropStringPrefix(s, prefix):
+  """If the string starts with this prefix, drops it."""
+  if s.startswith(prefix):
+    return s[len(prefix):]
+  else:
+    return s

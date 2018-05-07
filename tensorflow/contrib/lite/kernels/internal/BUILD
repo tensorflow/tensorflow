@@ -154,6 +154,8 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":quantization_util",
+        ":strided_slice_logic",
         ":types",
         ":round",
         "//third_party/eigen3",
@@ -229,6 +231,17 @@ cc_test(
 )
 
 cc_library(
+    name = "strided_slice_logic",
+    srcs = [],
+    hdrs = [
+        "strided_slice_logic.h",
+    ],
+    deps = [
+        ":types",
+    ],
+)
+
+cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
@@ -238,7 +251,9 @@ cc_library(
         "reference/reference_ops.h",
     ],
     deps = [
+        ":quantization_util",
         ":round",
+        ":strided_slice_logic",
         ":types",
         "//third_party/eigen3",
         "@gemmlowp",
@@ -274,6 +289,7 @@ cc_library(
         "reference/portable_tensor_utils.h",
     ],
     deps = [
+        ":round",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "//tensorflow/contrib/lite/kernels:op_macros",
@@ -287,6 +303,7 @@ cc_library(
     ],
     hdrs = [
         "common.h",
+        "compatibility.h",
         "optimized/cpu_check.h",
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
@@ -295,6 +312,7 @@ cc_library(
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
+        ":round",
         ":types",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
@@ -430,16 +448,13 @@ cc_library(
     ),
 )
 
-exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_test(
+    name = "batch_to_space_nd_test",
+    srcs = ["batch_to_space_nd_test.cc"],
+    deps = [
+        ":optimized_base",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
+
+exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])

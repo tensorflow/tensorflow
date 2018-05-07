@@ -46,7 +46,14 @@ void DecrementUsageCounter(TfLiteContext* context) {
   }
   if (--ptr->num_references == 0) {
     delete ptr;
+    context->eigen_context = nullptr;
   }
+}
+
+void SetNumThreads(TfLiteContext* context, int num_threads) {
+  IncrementUsageCounter(context);
+  Eigen::setNbThreads(num_threads);
+  DecrementUsageCounter(context);
 }
 
 }  // namespace eigen_support

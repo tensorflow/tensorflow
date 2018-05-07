@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 
@@ -151,7 +152,8 @@ class ColocationGraph {
       if (attr_value != nullptr && attr_value->has_list()) {
         for (const string& class_spec : attr_value->list().s()) {
           StringPiece spec(class_spec);
-          if (spec.Consume(kColocationGroupPrefixStringPiece)) {
+          if (str_util::ConsumePrefix(&spec,
+                                      kColocationGroupPrefixStringPiece)) {
             found_spec = true;
             TF_RETURN_IF_ERROR(
                 ColocateNodeToGroup(&colocation_group_root, node, spec));

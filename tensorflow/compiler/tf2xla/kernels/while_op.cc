@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -101,7 +101,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       ctx, MakeXlaCompilerArgumentsFromInputs(
                ctx, &arguments, &has_uninitialized_vars, &has_tensor_arrays));
 
-  xla::ComputationBuilder* builder = ctx->builder();
+  xla::XlaBuilder* builder = ctx->builder();
   XlaCompiler* compiler = ctx->compiler();
 
   VLOG(1) << "Compiling body";
@@ -234,7 +234,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
                   xla::ShapeUtil::HumanString(cond.xla_output_shape)));
 
   int num_inputs = body.input_mapping.size();
-  std::vector<xla::ComputationDataHandle> inputs(num_inputs);
+  std::vector<xla::XlaOp> inputs(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     int input_num = body.input_mapping[i];
     if (ctx->input_type(input_num) == DT_RESOURCE) {
@@ -246,24 +246,24 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  xla::ComputationDataHandle init = builder->Tuple(inputs);
+  xla::XlaOp init = builder->Tuple(inputs);
 
   VLOG(1) << "Building while loop";
 
   // Wraps the condition in a computation that unpacks the output tuple.
-  xla::Computation cond_wrapper;
+  xla::XlaComputation cond_wrapper;
   {
-    std::unique_ptr<xla::ComputationBuilder> cb =
+    std::unique_ptr<xla::XlaBuilder> cb =
         builder->CreateSubBuilder("cond_wrapper");
     auto inputs = cb->Parameter(0, cond_input_shape, "inputs");
     auto outputs = cb->Call(*cond.computation, {inputs});
     cb->GetTupleElement(outputs, 0);
-    xla::StatusOr<xla::Computation> result = cb->Build();
+    xla::StatusOr<xla::XlaComputation> result = cb->Build();
     OP_REQUIRES_OK(ctx, result.status());
     cond_wrapper = std::move(result.ValueOrDie());
   }
 
-  xla::ComputationDataHandle while_result =
+  xla::XlaOp while_result =
       builder->While(cond_wrapper, *body.computation, init);
 
   // Sets non-variable outputs.

@@ -354,5 +354,29 @@ TEST_F(ArrayGradTest, MirrorPadGradGrad_Symmetric) {
   RunTest(x, x_shape, y, y_shape);
 }
 
+TEST_F(ArrayGradTest, StridedSliceGrad) {
+  TensorShape x_shape({6, 4, 4});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+
+  // y = x[2:6:2, 1:3, 1:3]
+  auto y = StridedSlice(scope_, x, {2, 1, 1}, {6, 3, 3}, {2, 1, 1});
+  // y.shape = [2, 2, 2];
+  RunTest(x, x_shape, y, {2, 2, 2});
+
+  // y = x[2:6:2, 1:3, 1:3]
+  // begin_mask = 1<<1 (ignore begin_index = 1)
+  // end_mask = 1<<2 (ignore end_index = 2)
+  y = StridedSlice(scope_, x, {2, 1, 1}, {6, 3, 3}, {2, 1, 1},
+                   StridedSlice::BeginMask(1 << 1).EndMask(1 << 2));
+  // y.shape = [2, 3, 3];
+  RunTest(x, x_shape, y, {2, 3, 3});
+
+  // y = [tf.newaxis, 2:6:2, 1:3, 1:3]
+  y = StridedSlice(scope_, x, {0, 2, 1, 1}, {0, 6, 3, 3}, {1, 2, 1, 1},
+                   StridedSlice::NewAxisMask(1 << 0));
+  // y.shape = [1, 2, 2, 2];
+  RunTest(x, x_shape, y, {1, 2, 2, 2});
+}
+
 }  // namespace
 }  // namespace tensorflow

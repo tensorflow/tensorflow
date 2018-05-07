@@ -206,6 +206,28 @@ class RNNTest(test.TestCase):
     self.assertAllEqual(4, state[0])
     self.assertAllEqual([[[1]], [[2]], [[3]], [[4]]], state[1])
 
+  def _assert_cell_builds(self, cell_class, dtype, batch_size, in_size,
+                          out_size):
+    cell = cell_class(out_size, dtype=dtype)
+    in_shape = tensor_shape.TensorShape((batch_size, in_size))
+    cell.build(in_shape)
+    state_output = cell.zero_state(batch_size, dtype)
+    cell_output, _ = cell(array_ops.zeros(in_shape, dtype), state_output)
+    self.assertAllEqual([batch_size, out_size], cell_output.shape.as_list())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testCellsBuild(self):
+    f32 = dtypes.float32
+    f64 = dtypes.float64
+    self._assert_cell_builds(rnn_cell_impl.BasicRNNCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.BasicRNNCell, f64, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.BasicLSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.BasicLSTMCell, f64, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.GRUCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.GRUCell, f64, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.LSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.LSTMCell, f64, 5, 7, 3)
+
 
 ######### Benchmarking RNN code
 

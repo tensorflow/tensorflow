@@ -48,7 +48,8 @@ TF_Tensor* FloatTensor(float v);
 
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
                           const char* name = "feed",
-                          TF_DataType dtype = TF_INT32);
+                          TF_DataType dtype = TF_INT32,
+                          const std::vector<int64_t>& dims = {});
 
 TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");

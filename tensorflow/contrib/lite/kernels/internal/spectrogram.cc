@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/kernels/internal/spectrogram.h"
 
+#include <assert.h>
 #include <math.h>
 
 #include "third_party/fft2d/fft.h"
@@ -54,7 +55,6 @@ inline int Log2Floor(uint n) {
       log += shift;
     }
   }
-  assert(value == 1);
   return log;
 }
 

@@ -662,6 +662,32 @@ class SequenceIndicatorColumnTest(test.TestCase):
 
 class SequenceNumericColumnTest(test.TestCase):
 
+  def test_defaults(self):
+    a = sfc.sequence_numeric_column('aaa')
+    self.assertEqual('aaa', a.key)
+    self.assertEqual('aaa', a.name)
+    self.assertEqual('aaa', a._var_scope_name)
+    self.assertEqual((1,), a.shape)
+    self.assertEqual(0., a.default_value)
+    self.assertEqual(dtypes.float32, a.dtype)
+
+  def test_shape_saved_as_tuple(self):
+    a = sfc.sequence_numeric_column('aaa', shape=[1, 2])
+    self.assertEqual((1, 2), a.shape)
+
+  def test_shape_must_be_positive_integer(self):
+    with self.assertRaisesRegexp(TypeError, 'shape dimensions must be integer'):
+      sfc.sequence_numeric_column('aaa', shape=[1.0])
+
+    with self.assertRaisesRegexp(
+        ValueError, 'shape dimensions must be greater than 0'):
+      sfc.sequence_numeric_column('aaa', shape=[0])
+
+  def test_dtype_is_convertible_to_float(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'dtype must be convertible to float'):
+      sfc.sequence_numeric_column('aaa', dtype=dtypes.string)
+
   def test_get_sequence_dense_tensor(self):
     sparse_input = sparse_tensor.SparseTensorValue(
         # example 0, values [[0.], [1]]

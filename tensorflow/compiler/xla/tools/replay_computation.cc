@@ -40,7 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -66,6 +68,7 @@ struct Options {
   bool use_fake_data = false;
   bool print_result = true;
   int num_runs = 1;
+  bool xla_hlo_profile_last_run = false;
 };
 
 // Invokes the given computation passing arbitrary data for every (unbound)
@@ -73,9 +76,14 @@ struct Options {
 //
 // Similarly, infeeds fake data of shape fake_infeed_shape if it is provided;
 // otherwise, no infeed is performed.
-StatusOr<std::unique_ptr<Literal>> ReplayComputation(
-    const SessionModule& module, Client* client, const Options& opts) {
-  TF_ASSIGN_OR_RETURN(Computation computation, client->LoadSnapshot(module));
+template <typename ModuleT>
+StatusOr<std::unique_ptr<Literal>> ReplayComputation(const ModuleT& module,
+                                                     Client* client,
+                                                     const Options& opts) {
+  static_assert(std::is_same<ModuleT, HloSnapshot>::value ||
+                    std::is_same<ModuleT, SessionModule>::value,
+                "Proto must be in HloSnapshot or SessionModule format");
+  TF_ASSIGN_OR_RETURN(auto computation, client->LoadSnapshot(module));
 
   std::vector<std::unique_ptr<GlobalData>> arguments;
   if (opts.use_fake_data) {
@@ -122,16 +130,21 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
   std::unique_ptr<Literal> result;
   for (int i = 0; i < opts.num_runs; ++i) {
     ExecutionProfile profile;
+    ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+    if (opts.xla_hlo_profile_last_run && i == opts.num_runs - 1) {
+      execution_options.mutable_debug_options()->set_xla_hlo_profile(true);
+    }
+
     if (opts.print_result) {
-      TF_ASSIGN_OR_RETURN(result, client->ExecuteAndTransfer(
-                                      computation, execute_arguments,
-                                      /*execution_options=*/nullptr, &profile));
+      TF_ASSIGN_OR_RETURN(
+          result, client->ExecuteAndTransfer(computation, execute_arguments,
+                                             &execution_options, &profile));
     } else {
       // If we're not printing the result, execute the computation but don't
       // bother retrieving the result.  This can be a significant speedup.
       TF_RETURN_IF_ERROR(client
                              ->Execute(computation, execute_arguments,
-                                       /*execution_options=*/nullptr, &profile)
+                                       &execution_options, &profile)
                              .status());
     }
     LOG(INFO) << "Execution took "
@@ -146,6 +159,38 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
   tensorflow::Env* env = tensorflow::Env::Default();
   int exit_status = EXIT_SUCCESS;
   for (char* arg : args) {
+    HloSnapshot snapshot;
+    auto status = tensorflow::ReadBinaryProto(env, arg, &snapshot);
+    if (status.ok()) {
+      StatusOr<std::unique_ptr<Literal>> result_status =
+          ReplayComputation(snapshot, client, opts);
+      if (!result_status.ok()) {
+        fprintf(stderr, "%s: error: %s\n", arg,
+                result_status.status().ToString().c_str());
+        exit_status = EXIT_FAILURE;
+        continue;
+      }
+
+      std::unique_ptr<Literal> result = result_status.ConsumeValueOrDie();
+      if (result != nullptr) {
+        fprintf(stdout, "%s: %s :: %s:%s\n", arg,
+                snapshot.hlo().hlo_module().name().c_str(),
+                ShapeUtil::HumanString(result->shape()).c_str(),
+                result->ToString().c_str());
+        if (snapshot.has_result()) {
+          std::unique_ptr<Literal> literal =
+              Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
+          fprintf(stdout, "was %s:%s\n",
+                  ShapeUtil::HumanString(snapshot.result().shape()).c_str(),
+                  literal->ToString().c_str());
+        }
+      }
+
+      continue;
+    }
+    fprintf(stderr, "%s: is not HloSnapshot: %s. Trying as SessionModule...\n",
+            arg, status.ToString().c_str());
+
     SessionModule module;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(env, arg, &module));
     StatusOr<std::unique_ptr<Literal>> result_status =
@@ -191,6 +236,9 @@ int main(int argc, char** argv) {
                        "Number of times to run each computation"),
       tensorflow::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
                        "Shape of fake data to construct for (infinite) infeed"),
+      tensorflow::Flag(
+          "xla_hlo_profile_last_run", &opts.xla_hlo_profile_last_run,
+          "Pass --xla_hlo_profile the last time we run the computation."),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
