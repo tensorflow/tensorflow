@@ -167,7 +167,6 @@ union BuiltinOptions {
   EmbeddingLookupSparseOptions,
   MulOptions,
   PadOptions,
-  PadV2Options,
   GatherOptions,
   BatchToSpaceNDOptions,
   SpaceToBatchNDOptions,
@@ -186,11 +185,12 @@ union BuiltinOptions {
   DequantizeOptions,
   MaximumMinimumOptions,
   ArgMaxOptions,
+  LessOptions,
+  NegOptions,
+  PadV2Options,
   GreaterOptions,
   GreaterEqualOptions,
-  LessOptions,
   LessEqualOptions,
-  NegOptions,
 }
 
 enum Padding : byte { SAME, VALID }

@@ -465,32 +465,32 @@ enum BuiltinOptions {
   BuiltinOptions_EmbeddingLookupSparseOptions = 20,
   BuiltinOptions_MulOptions = 21,
   BuiltinOptions_PadOptions = 22,
-  BuiltinOptions_PadV2Options = 23,
-  BuiltinOptions_GatherOptions = 24,
-  BuiltinOptions_BatchToSpaceNDOptions = 25,
-  BuiltinOptions_SpaceToBatchNDOptions = 26,
-  BuiltinOptions_TransposeOptions = 27,
-  BuiltinOptions_MeanOptions = 28,
-  BuiltinOptions_SubOptions = 29,
-  BuiltinOptions_DivOptions = 30,
-  BuiltinOptions_SqueezeOptions = 31,
-  BuiltinOptions_SequenceRNNOptions = 32,
-  BuiltinOptions_StridedSliceOptions = 33,
-  BuiltinOptions_ExpOptions = 34,
-  BuiltinOptions_TopKV2Options = 35,
-  BuiltinOptions_SplitOptions = 36,
-  BuiltinOptions_LogSoftmaxOptions = 37,
-  BuiltinOptions_CastOptions = 38,
-  BuiltinOptions_DequantizeOptions = 39,
-  BuiltinOptions_MaximumMinimumOptions = 40,
-  BuiltinOptions_ArgMaxOptions = 41,
-  BuiltinOptions_GreaterOptions = 42,
-  BuiltinOptions_GreaterEqualOptions = 43,
-  BuiltinOptions_LessOptions = 44,
-  BuiltinOptions_LessEqualOptions = 45,
-  BuiltinOptions_NegOptions = 46,
+  BuiltinOptions_GatherOptions = 23,
+  BuiltinOptions_BatchToSpaceNDOptions = 24,
+  BuiltinOptions_SpaceToBatchNDOptions = 25,
+  BuiltinOptions_TransposeOptions = 26,
+  BuiltinOptions_MeanOptions = 27,
+  BuiltinOptions_SubOptions = 28,
+  BuiltinOptions_DivOptions = 29,
+  BuiltinOptions_SqueezeOptions = 30,
+  BuiltinOptions_SequenceRNNOptions = 31,
+  BuiltinOptions_StridedSliceOptions = 32,
+  BuiltinOptions_ExpOptions = 33,
+  BuiltinOptions_TopKV2Options = 34,
+  BuiltinOptions_SplitOptions = 35,
+  BuiltinOptions_LogSoftmaxOptions = 36,
+  BuiltinOptions_CastOptions = 37,
+  BuiltinOptions_DequantizeOptions = 38,
+  BuiltinOptions_MaximumMinimumOptions = 39,
+  BuiltinOptions_ArgMaxOptions = 40,
+  BuiltinOptions_LessOptions = 41,
+  BuiltinOptions_NegOptions = 42,
+  BuiltinOptions_PadV2Options = 43,
+  BuiltinOptions_GreaterOptions = 44,
+  BuiltinOptions_GreaterEqualOptions = 45,
+  BuiltinOptions_LessEqualOptions = 46,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_NegOptions
+  BuiltinOptions_MAX = BuiltinOptions_LessEqualOptions
 };
 
 inline BuiltinOptions (&EnumValuesBuiltinOptions())[47] {
@@ -518,7 +518,6 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[47] {
     BuiltinOptions_EmbeddingLookupSparseOptions,
     BuiltinOptions_MulOptions,
     BuiltinOptions_PadOptions,
-    BuiltinOptions_PadV2Options,
     BuiltinOptions_GatherOptions,
     BuiltinOptions_BatchToSpaceNDOptions,
     BuiltinOptions_SpaceToBatchNDOptions,
@@ -537,11 +536,12 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[47] {
     BuiltinOptions_DequantizeOptions,
     BuiltinOptions_MaximumMinimumOptions,
     BuiltinOptions_ArgMaxOptions,
+    BuiltinOptions_LessOptions,
+    BuiltinOptions_NegOptions,
+    BuiltinOptions_PadV2Options,
     BuiltinOptions_GreaterOptions,
     BuiltinOptions_GreaterEqualOptions,
-    BuiltinOptions_LessOptions,
-    BuiltinOptions_LessEqualOptions,
-    BuiltinOptions_NegOptions
+    BuiltinOptions_LessEqualOptions
   };
   return values;
 }
@@ -571,7 +571,6 @@ inline const char **EnumNamesBuiltinOptions() {
     "EmbeddingLookupSparseOptions",
     "MulOptions",
     "PadOptions",
-    "PadV2Options",
     "GatherOptions",
     "BatchToSpaceNDOptions",
     "SpaceToBatchNDOptions",
@@ -590,11 +589,12 @@ inline const char **EnumNamesBuiltinOptions() {
     "DequantizeOptions",
     "MaximumMinimumOptions",
     "ArgMaxOptions",
+    "LessOptions",
+    "NegOptions",
+    "PadV2Options",
     "GreaterOptions",
     "GreaterEqualOptions",
-    "LessOptions",
     "LessEqualOptions",
-    "NegOptions",
     nullptr
   };
   return names;
@@ -697,10 +697,6 @@ template<> struct BuiltinOptionsTraits<PadOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_PadOptions;
 };
 
-template<> struct BuiltinOptionsTraits<PadV2Options> {
-  static const BuiltinOptions enum_value = BuiltinOptions_PadV2Options;
-};
-
 template<> struct BuiltinOptionsTraits<GatherOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_GatherOptions;
 };
@@ -773,6 +769,18 @@ template<> struct BuiltinOptionsTraits<ArgMaxOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_ArgMaxOptions;
 };
 
+template<> struct BuiltinOptionsTraits<LessOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_LessOptions;
+};
+
+template<> struct BuiltinOptionsTraits<NegOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_NegOptions;
+};
+
+template<> struct BuiltinOptionsTraits<PadV2Options> {
+  static const BuiltinOptions enum_value = BuiltinOptions_PadV2Options;
+};
+
 template<> struct BuiltinOptionsTraits<GreaterOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_GreaterOptions;
 };
@@ -781,16 +789,8 @@ template<> struct BuiltinOptionsTraits<GreaterEqualOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_GreaterEqualOptions;
 };
 
-template<> struct BuiltinOptionsTraits<LessOptions> {
-  static const BuiltinOptions enum_value = BuiltinOptions_LessOptions;
-};
-
 template<> struct BuiltinOptionsTraits<LessEqualOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_LessEqualOptions;
-};
-
-template<> struct BuiltinOptionsTraits<NegOptions> {
-  static const BuiltinOptions enum_value = BuiltinOptions_NegOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1000,14 +1000,6 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_PadOptions ?
       reinterpret_cast<const PadOptionsT *>(value) : nullptr;
   }
-  PadV2OptionsT *AsPadV2Options() {
-    return type == BuiltinOptions_PadV2Options ?
-      reinterpret_cast<PadV2OptionsT *>(value) : nullptr;
-  }
-  const PadV2OptionsT *AsPadV2Options() const {
-    return type == BuiltinOptions_PadV2Options ?
-      reinterpret_cast<const PadV2OptionsT *>(value) : nullptr;
-  }
   GatherOptionsT *AsGatherOptions() {
     return type == BuiltinOptions_GatherOptions ?
       reinterpret_cast<GatherOptionsT *>(value) : nullptr;
@@ -1152,6 +1144,30 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_ArgMaxOptions ?
       reinterpret_cast<const ArgMaxOptionsT *>(value) : nullptr;
   }
+  LessOptionsT *AsLessOptions() {
+    return type == BuiltinOptions_LessOptions ?
+      reinterpret_cast<LessOptionsT *>(value) : nullptr;
+  }
+  const LessOptionsT *AsLessOptions() const {
+    return type == BuiltinOptions_LessOptions ?
+      reinterpret_cast<const LessOptionsT *>(value) : nullptr;
+  }
+  NegOptionsT *AsNegOptions() {
+    return type == BuiltinOptions_NegOptions ?
+      reinterpret_cast<NegOptionsT *>(value) : nullptr;
+  }
+  const NegOptionsT *AsNegOptions() const {
+    return type == BuiltinOptions_NegOptions ?
+      reinterpret_cast<const NegOptionsT *>(value) : nullptr;
+  }
+  PadV2OptionsT *AsPadV2Options() {
+    return type == BuiltinOptions_PadV2Options ?
+      reinterpret_cast<PadV2OptionsT *>(value) : nullptr;
+  }
+  const PadV2OptionsT *AsPadV2Options() const {
+    return type == BuiltinOptions_PadV2Options ?
+      reinterpret_cast<const PadV2OptionsT *>(value) : nullptr;
+  }
   GreaterOptionsT *AsGreaterOptions() {
     return type == BuiltinOptions_GreaterOptions ?
       reinterpret_cast<GreaterOptionsT *>(value) : nullptr;
@@ -1168,14 +1184,6 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_GreaterEqualOptions ?
       reinterpret_cast<const GreaterEqualOptionsT *>(value) : nullptr;
   }
-  LessOptionsT *AsLessOptions() {
-    return type == BuiltinOptions_LessOptions ?
-      reinterpret_cast<LessOptionsT *>(value) : nullptr;
-  }
-  const LessOptionsT *AsLessOptions() const {
-    return type == BuiltinOptions_LessOptions ?
-      reinterpret_cast<const LessOptionsT *>(value) : nullptr;
-  }
   LessEqualOptionsT *AsLessEqualOptions() {
     return type == BuiltinOptions_LessEqualOptions ?
       reinterpret_cast<LessEqualOptionsT *>(value) : nullptr;
@@ -1183,14 +1191,6 @@ struct BuiltinOptionsUnion {
   const LessEqualOptionsT *AsLessEqualOptions() const {
     return type == BuiltinOptions_LessEqualOptions ?
       reinterpret_cast<const LessEqualOptionsT *>(value) : nullptr;
-  }
-  NegOptionsT *AsNegOptions() {
-    return type == BuiltinOptions_NegOptions ?
-      reinterpret_cast<NegOptionsT *>(value) : nullptr;
-  }
-  const NegOptionsT *AsNegOptions() const {
-    return type == BuiltinOptions_NegOptions ?
-      reinterpret_cast<const NegOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4502,9 +4502,6 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const PadOptions *builtin_options_as_PadOptions() const {
     return builtin_options_type() == BuiltinOptions_PadOptions ? static_cast<const PadOptions *>(builtin_options()) : nullptr;
   }
-  const PadV2Options *builtin_options_as_PadV2Options() const {
-    return builtin_options_type() == BuiltinOptions_PadV2Options ? static_cast<const PadV2Options *>(builtin_options()) : nullptr;
-  }
   const GatherOptions *builtin_options_as_GatherOptions() const {
     return builtin_options_type() == BuiltinOptions_GatherOptions ? static_cast<const GatherOptions *>(builtin_options()) : nullptr;
   }
@@ -4559,20 +4556,23 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const ArgMaxOptions *builtin_options_as_ArgMaxOptions() const {
     return builtin_options_type() == BuiltinOptions_ArgMaxOptions ? static_cast<const ArgMaxOptions *>(builtin_options()) : nullptr;
   }
+  const LessOptions *builtin_options_as_LessOptions() const {
+    return builtin_options_type() == BuiltinOptions_LessOptions ? static_cast<const LessOptions *>(builtin_options()) : nullptr;
+  }
+  const NegOptions *builtin_options_as_NegOptions() const {
+    return builtin_options_type() == BuiltinOptions_NegOptions ? static_cast<const NegOptions *>(builtin_options()) : nullptr;
+  }
+  const PadV2Options *builtin_options_as_PadV2Options() const {
+    return builtin_options_type() == BuiltinOptions_PadV2Options ? static_cast<const PadV2Options *>(builtin_options()) : nullptr;
+  }
   const GreaterOptions *builtin_options_as_GreaterOptions() const {
     return builtin_options_type() == BuiltinOptions_GreaterOptions ? static_cast<const GreaterOptions *>(builtin_options()) : nullptr;
   }
   const GreaterEqualOptions *builtin_options_as_GreaterEqualOptions() const {
     return builtin_options_type() == BuiltinOptions_GreaterEqualOptions ? static_cast<const GreaterEqualOptions *>(builtin_options()) : nullptr;
   }
-  const LessOptions *builtin_options_as_LessOptions() const {
-    return builtin_options_type() == BuiltinOptions_LessOptions ? static_cast<const LessOptions *>(builtin_options()) : nullptr;
-  }
   const LessEqualOptions *builtin_options_as_LessEqualOptions() const {
     return builtin_options_type() == BuiltinOptions_LessEqualOptions ? static_cast<const LessEqualOptions *>(builtin_options()) : nullptr;
-  }
-  const NegOptions *builtin_options_as_NegOptions() const {
-    return builtin_options_type() == BuiltinOptions_NegOptions ? static_cast<const NegOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -4688,10 +4688,6 @@ template<> inline const PadOptions *Operator::builtin_options_as<PadOptions>() c
   return builtin_options_as_PadOptions();
 }
 
-template<> inline const PadV2Options *Operator::builtin_options_as<PadV2Options>() const {
-  return builtin_options_as_PadV2Options();
-}
-
 template<> inline const GatherOptions *Operator::builtin_options_as<GatherOptions>() const {
   return builtin_options_as_GatherOptions();
 }
@@ -4764,6 +4760,18 @@ template<> inline const ArgMaxOptions *Operator::builtin_options_as<ArgMaxOption
   return builtin_options_as_ArgMaxOptions();
 }
 
+template<> inline const LessOptions *Operator::builtin_options_as<LessOptions>() const {
+  return builtin_options_as_LessOptions();
+}
+
+template<> inline const NegOptions *Operator::builtin_options_as<NegOptions>() const {
+  return builtin_options_as_NegOptions();
+}
+
+template<> inline const PadV2Options *Operator::builtin_options_as<PadV2Options>() const {
+  return builtin_options_as_PadV2Options();
+}
+
 template<> inline const GreaterOptions *Operator::builtin_options_as<GreaterOptions>() const {
   return builtin_options_as_GreaterOptions();
 }
@@ -4772,16 +4780,8 @@ template<> inline const GreaterEqualOptions *Operator::builtin_options_as<Greate
   return builtin_options_as_GreaterEqualOptions();
 }
 
-template<> inline const LessOptions *Operator::builtin_options_as<LessOptions>() const {
-  return builtin_options_as_LessOptions();
-}
-
 template<> inline const LessEqualOptions *Operator::builtin_options_as<LessEqualOptions>() const {
   return builtin_options_as_LessEqualOptions();
-}
-
-template<> inline const NegOptions *Operator::builtin_options_as<NegOptions>() const {
-  return builtin_options_as_NegOptions();
 }
 
 struct OperatorBuilder {
@@ -6796,10 +6796,6 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const PadOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case BuiltinOptions_PadV2Options: {
-      auto ptr = reinterpret_cast<const PadV2Options *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
     case BuiltinOptions_GatherOptions: {
       auto ptr = reinterpret_cast<const GatherOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -6872,6 +6868,18 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const ArgMaxOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<const LessOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_NegOptions: {
+      auto ptr = reinterpret_cast<const NegOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<const PadV2Options *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions_GreaterOptions: {
       auto ptr = reinterpret_cast<const GreaterOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -6880,16 +6888,8 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const GreaterEqualOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case BuiltinOptions_LessOptions: {
-      auto ptr = reinterpret_cast<const LessOptions *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
     case BuiltinOptions_LessEqualOptions: {
       auto ptr = reinterpret_cast<const LessEqualOptions *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
-    case BuiltinOptions_NegOptions: {
-      auto ptr = reinterpret_cast<const NegOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
     default: return false;
@@ -6998,10 +6998,6 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const PadOptions *>(obj);
       return ptr->UnPack(resolver);
     }
-    case BuiltinOptions_PadV2Options: {
-      auto ptr = reinterpret_cast<const PadV2Options *>(obj);
-      return ptr->UnPack(resolver);
-    }
     case BuiltinOptions_GatherOptions: {
       auto ptr = reinterpret_cast<const GatherOptions *>(obj);
       return ptr->UnPack(resolver);
@@ -7074,6 +7070,18 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const ArgMaxOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<const LessOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_NegOptions: {
+      auto ptr = reinterpret_cast<const NegOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<const PadV2Options *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions_GreaterOptions: {
       auto ptr = reinterpret_cast<const GreaterOptions *>(obj);
       return ptr->UnPack(resolver);
@@ -7082,16 +7090,8 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const GreaterEqualOptions *>(obj);
       return ptr->UnPack(resolver);
     }
-    case BuiltinOptions_LessOptions: {
-      auto ptr = reinterpret_cast<const LessOptions *>(obj);
-      return ptr->UnPack(resolver);
-    }
     case BuiltinOptions_LessEqualOptions: {
       auto ptr = reinterpret_cast<const LessEqualOptions *>(obj);
-      return ptr->UnPack(resolver);
-    }
-    case BuiltinOptions_NegOptions: {
-      auto ptr = reinterpret_cast<const NegOptions *>(obj);
       return ptr->UnPack(resolver);
     }
     default: return nullptr;
@@ -7188,10 +7188,6 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const PadOptionsT *>(value);
       return CreatePadOptions(_fbb, ptr, _rehasher).Union();
     }
-    case BuiltinOptions_PadV2Options: {
-      auto ptr = reinterpret_cast<const PadV2OptionsT *>(value);
-      return CreatePadV2Options(_fbb, ptr, _rehasher).Union();
-    }
     case BuiltinOptions_GatherOptions: {
       auto ptr = reinterpret_cast<const GatherOptionsT *>(value);
       return CreateGatherOptions(_fbb, ptr, _rehasher).Union();
@@ -7264,6 +7260,18 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const ArgMaxOptionsT *>(value);
       return CreateArgMaxOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<const LessOptionsT *>(value);
+      return CreateLessOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_NegOptions: {
+      auto ptr = reinterpret_cast<const NegOptionsT *>(value);
+      return CreateNegOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<const PadV2OptionsT *>(value);
+      return CreatePadV2Options(_fbb, ptr, _rehasher).Union();
+    }
     case BuiltinOptions_GreaterOptions: {
       auto ptr = reinterpret_cast<const GreaterOptionsT *>(value);
       return CreateGreaterOptions(_fbb, ptr, _rehasher).Union();
@@ -7272,17 +7280,9 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const GreaterEqualOptionsT *>(value);
       return CreateGreaterEqualOptions(_fbb, ptr, _rehasher).Union();
     }
-    case BuiltinOptions_LessOptions: {
-      auto ptr = reinterpret_cast<const LessOptionsT *>(value);
-      return CreateLessOptions(_fbb, ptr, _rehasher).Union();
-    }
     case BuiltinOptions_LessEqualOptions: {
       auto ptr = reinterpret_cast<const LessEqualOptionsT *>(value);
       return CreateLessEqualOptions(_fbb, ptr, _rehasher).Union();
-    }
-    case BuiltinOptions_NegOptions: {
-      auto ptr = reinterpret_cast<const NegOptionsT *>(value);
-      return CreateNegOptions(_fbb, ptr, _rehasher).Union();
     }
     default: return 0;
   }
@@ -7378,10 +7378,6 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
       value = new PadOptionsT(*reinterpret_cast<PadOptionsT *>(u.value));
       break;
     }
-    case BuiltinOptions_PadV2Options: {
-      value = new PadV2OptionsT(*reinterpret_cast<PadV2OptionsT *>(u.value));
-      break;
-    }
     case BuiltinOptions_GatherOptions: {
       value = new GatherOptionsT(*reinterpret_cast<GatherOptionsT *>(u.value));
       break;
@@ -7454,6 +7450,18 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
       value = new ArgMaxOptionsT(*reinterpret_cast<ArgMaxOptionsT *>(u.value));
       break;
     }
+    case BuiltinOptions_LessOptions: {
+      value = new LessOptionsT(*reinterpret_cast<LessOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_NegOptions: {
+      value = new NegOptionsT(*reinterpret_cast<NegOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_PadV2Options: {
+      value = new PadV2OptionsT(*reinterpret_cast<PadV2OptionsT *>(u.value));
+      break;
+    }
     case BuiltinOptions_GreaterOptions: {
       value = new GreaterOptionsT(*reinterpret_cast<GreaterOptionsT *>(u.value));
       break;
@@ -7462,16 +7470,8 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
       value = new GreaterEqualOptionsT(*reinterpret_cast<GreaterEqualOptionsT *>(u.value));
       break;
     }
-    case BuiltinOptions_LessOptions: {
-      value = new LessOptionsT(*reinterpret_cast<LessOptionsT *>(u.value));
-      break;
-    }
     case BuiltinOptions_LessEqualOptions: {
       value = new LessEqualOptionsT(*reinterpret_cast<LessEqualOptionsT *>(u.value));
-      break;
-    }
-    case BuiltinOptions_NegOptions: {
-      value = new NegOptionsT(*reinterpret_cast<NegOptionsT *>(u.value));
       break;
     }
     default:
@@ -7591,11 +7591,6 @@ inline void BuiltinOptionsUnion::Reset() {
       delete ptr;
       break;
     }
-    case BuiltinOptions_PadV2Options: {
-      auto ptr = reinterpret_cast<PadV2OptionsT *>(value);
-      delete ptr;
-      break;
-    }
     case BuiltinOptions_GatherOptions: {
       auto ptr = reinterpret_cast<GatherOptionsT *>(value);
       delete ptr;
@@ -7686,6 +7681,21 @@ inline void BuiltinOptionsUnion::Reset() {
       delete ptr;
       break;
     }
+    case BuiltinOptions_LessOptions: {
+      auto ptr = reinterpret_cast<LessOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_NegOptions: {
+      auto ptr = reinterpret_cast<NegOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_PadV2Options: {
+      auto ptr = reinterpret_cast<PadV2OptionsT *>(value);
+      delete ptr;
+      break;
+    }
     case BuiltinOptions_GreaterOptions: {
       auto ptr = reinterpret_cast<GreaterOptionsT *>(value);
       delete ptr;
@@ -7696,18 +7706,8 @@ inline void BuiltinOptionsUnion::Reset() {
       delete ptr;
       break;
     }
-    case BuiltinOptions_LessOptions: {
-      auto ptr = reinterpret_cast<LessOptionsT *>(value);
-      delete ptr;
-      break;
-    }
     case BuiltinOptions_LessEqualOptions: {
       auto ptr = reinterpret_cast<LessEqualOptionsT *>(value);
-      delete ptr;
-      break;
-    }
-    case BuiltinOptions_NegOptions: {
-      auto ptr = reinterpret_cast<NegOptionsT *>(value);
       delete ptr;
       break;
     }
