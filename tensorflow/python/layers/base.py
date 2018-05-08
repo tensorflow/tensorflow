@@ -191,6 +191,18 @@ class Layer(base_layer.Layer):
       RuntimeError: If called with partioned variable regularization and
         eager execution is enabled.
     """
+    
+    def _should_add_regularizer(variable, existing_variable_set):
+      result = True
+      if isinstance(variable, tf_variables.PartitionedVariable):
+        for var in variable:
+          if var in existing_variable_set:
+            result = False
+            break
+      else:
+        result = variable not in existing_variable_set
+      return result
+
     init_graph = None
     if not context.executing_eagerly():
       default_graph = ops.get_default_graph()
@@ -354,14 +366,3 @@ def _add_elements_to_collection(elements, collection_list):
     for element in elements:
       if element not in collection_set:
         collection.append(element)
-
-def _should_add_regularizer(variable, existing_variable_set):
-  result = True
-  if isinstance(variable, tf_variables.PartitionedVariable):
-    for var in variable:
-      if var in existing_variable_set:
-        result = False
-        break
-  else:
-    result = variable not in existing_variable_set
-  return result

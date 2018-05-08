@@ -99,10 +99,10 @@ class BaseLayerTest(test.TestCase):
   def testReusePartitionedVaraiblesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
-    for i in xrange(2):
+    for reuse in [False, True]:
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                          partitioner=partitioner,
-                                         reuse=False if i == 0 else True):
+                                         reuse=reuse):
         layer = base_layers.Layer(name='my_layer')
         variable = layer.add_variable(
             'reg_part_var', [4, 4],
