@@ -327,7 +327,11 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:function",
     ],
 )
 
