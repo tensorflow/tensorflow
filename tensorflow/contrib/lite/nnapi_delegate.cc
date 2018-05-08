@@ -61,6 +61,10 @@ NNAPIAllocation::~NNAPIAllocation() {
 }
 
 NNAPIDelegate::~NNAPIDelegate() {
+  if (nn_compiled_model_) {
+    ANeuralNetworksCompilation_free(nn_compiled_model_);
+    nn_compiled_model_ = nullptr;
+  }
   if (nn_model_) {
     ANeuralNetworksModel_free(nn_model_);
     nn_model_ = nullptr;
