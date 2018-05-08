@@ -563,7 +563,7 @@ py_test(
 
 py_test(
     name = "normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
