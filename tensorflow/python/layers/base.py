@@ -197,6 +197,7 @@ class Layer(base_layer.Layer):
         for var in variable:
           if var in existing_variable_set:
             return False
+        return True
       else:
         return variable not in existing_variable_set
 
@@ -240,7 +241,6 @@ class Layer(base_layer.Layer):
             partitioner=partitioner,
             use_resource=use_resource,
             getter=vs.get_variable)
-
         if regularizer:
           if context.executing_eagerly() or _should_add_regularizer(
               variable, existing_variables):
