@@ -174,7 +174,7 @@ def while_stmt(test, body, init_state, extra_deps, opts=None):
     Tuple containing the final state.
   """
   # TODO(mdan): Consider adding a generic mechanism for dynamic dispatch.
-  # That could be somethins as simple as a collection of dispatch rules, with
+  # That could be something as simple as a collection of dispatch rules, with
   # some prioritization.
   if any(tensor_util.is_tensor(v) for v in init_state + extra_deps):
     return _tf_while_stmt(test, body, init_state, opts)

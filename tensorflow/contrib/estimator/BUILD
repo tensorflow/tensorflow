@@ -77,6 +77,7 @@ py_test(
     tags = [
         "no_pip",
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
         ":dnn",
@@ -450,20 +451,25 @@ py_test(
         "no_pip",
         "noasan",  # times out
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
+        ":head",
         ":rnn",
+        "//tensorflow/contrib/data",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:parsing_utils",
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
         "@six_archive//:six",

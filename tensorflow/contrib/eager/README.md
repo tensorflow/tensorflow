@@ -1,6 +1,6 @@
 # Eager Execution
 
-Eager execution provides an imperative interface to TensorFlow (similiar to
+Eager execution provides an imperative interface to TensorFlow (similar to
 [NumPy](http://www.numpy.org)). When you enable eager execution, TensorFlow
 operations execute immediately; you do not execute a pre-constructed graph with
 [`Session.run()`](https://www.tensorflow.org/api_docs/python/tf/Session).

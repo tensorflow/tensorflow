@@ -92,7 +92,7 @@ Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
+  FileSystem* file_system = file_system_registry_->Lookup(std::string(scheme));
   if (!file_system) {
     if (scheme.empty()) {
       scheme = "[local]";
@@ -166,7 +166,7 @@ bool Env::FilesExist(const std::vector<string>& files,
   for (const auto& file : files) {
     StringPiece scheme, host, path;
     io::ParseURI(file, &scheme, &host, &path);
-    files_per_fs[scheme.ToString()].push_back(file);
+    files_per_fs[std::string(scheme)].push_back(file);
   }
 
   std::unordered_map<string, Status> per_file_status;

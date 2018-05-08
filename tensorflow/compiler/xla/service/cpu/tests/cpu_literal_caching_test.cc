@@ -20,9 +20,9 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 namespace {
-class CpuExternalConstantsTest : public CpuCodegenTest {};
+class CpuDuplicateConstantsTest : public CpuCodegenTest {};
 
-TEST_F(CpuExternalConstantsTest, RepeatedArrayConstants) {
+TEST_F(CpuDuplicateConstantsTest, RepeatedArrayConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
   const string hlo_text = R"(
@@ -50,9 +50,7 @@ ENTRY main {
   const_b = f32[2,3,2] while(f32[2,3,2] const_a), condition=while_cond, body=while_body
 
   out0 = () outfeed(f32[2,3,2] const_a)
-  out1 = () outfeed(f32[2,3,2] const_b)
-
-  ROOT root = f32[] constant(1)
+  ROOT out1 = () outfeed(f32[2,3,2] const_b)
 }
 )";
 
@@ -73,7 +71,7 @@ CHECK-NOT: private constant [2 x [3 x [2 x float]]]
                                 /*match_optimized_ir=*/false);
 }
 
-TEST_F(CpuExternalConstantsTest, RepeatedTupleConstants) {
+TEST_F(CpuDuplicateConstantsTest, RepeatedTupleConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
   const string hlo_text = R"(
@@ -95,9 +93,7 @@ ENTRY main {
   const_b = (f32[2,1]{1,0}, f32[2]{0}) while((f32[2,1]{1,0}, f32[2]{0}) const_a), condition=while_cond, body=while_body
 
   out0 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_a)
-  out1 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_b)
-
-  ROOT root = f32[] constant(1)
+  ROOT out1 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_b)
 }
 )";
 

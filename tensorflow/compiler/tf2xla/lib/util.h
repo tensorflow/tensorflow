@@ -85,6 +85,11 @@ xla::StatusOr<xla::XlaOp> DynamicUpdateSliceInMinorDims(
 xla::StatusOr<xla::XlaOp> TransposeInMinorDims(xla::XlaBuilder* builder,
                                                const xla::XlaOp& x);
 
+// Applies a complex conjugation operation if `a` is complex and `conjugate_a`
+// is true, otherwise returns its argument.
+xla::StatusOr<xla::XlaOp> MaybeConjugate(xla::XlaBuilder* builder,
+                                         const xla::XlaOp& x, bool conjugate);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_UTIL_H_

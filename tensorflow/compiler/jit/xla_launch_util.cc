@@ -77,16 +77,16 @@ Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase* mem) {
   return Status::OK();
 }
 
-namespace {
+namespace internal {
 // Return the 'index''th subtree of the given ShapedBuffer as a
 // ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
 // subtree, and sets the input's buffer pointers to nullptr for the subtree.
 ScopedShapedBuffer ExtractSubShapedBuffer(
     ShapedBuffer* shaped_buffer, int index,
     xla::DeviceMemoryAllocator* allocator) {
-  xla::Shape on_host_shape = xla::ShapeUtil::GetTupleElementShape(
+  const xla::Shape& on_host_shape = xla::ShapeUtil::GetTupleElementShape(
       shaped_buffer->on_host_shape(), index);
-  xla::Shape on_device_shape = xla::ShapeUtil::GetTupleElementShape(
+  const xla::Shape& on_device_shape = xla::ShapeUtil::GetTupleElementShape(
       shaped_buffer->on_device_shape(), index);
 
   ShapedBuffer sub_shaped_buffer(on_host_shape, on_device_shape,
@@ -98,14 +98,18 @@ ScopedShapedBuffer ExtractSubShapedBuffer(
   sub_shape_tree.CopySubtreeFrom(shape_tree,
                                  /*source_base_index=*/{index},
                                  /*target_base_index=*/{});
-  for (auto& index_to_buffer : shape_tree) {
-    if (!index_to_buffer.first.empty() && index_to_buffer.first[0] == index) {
-      index_to_buffer.second = se::DeviceMemoryBase(nullptr, 0);
-    }
-  }
+  shape_tree.ForEachMutableElement(
+      [index](const xla::ShapeIndex& shape_index,
+              tensorflow::se::DeviceMemoryBase* data) {
+        // shape_index is empty for the root node. Ignore that.
+        if (!shape_index.empty() && shape_index[0] == index) {
+          *data = tensorflow::se::DeviceMemoryBase(nullptr, 0);
+        }
+      });
   return ScopedShapedBuffer(std::move(sub_shaped_buffer), allocator);
 }
-}  // namespace
+}  // namespace internal
+using internal::ExtractSubShapedBuffer;
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
     int64 num_resource_args, xla::LocalClient* client,

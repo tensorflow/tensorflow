@@ -674,7 +674,7 @@ def run_in_graph_and_eager_modes(__unused__=None,
 
 
   Args:
-    __unused__: Prevents sliently skipping tests.
+    __unused__: Prevents silently skipping tests.
     config: An optional config_pb2.ConfigProto to use to configure the
       session when executing graphs.
     use_gpu: If True, attempt to run as many operations as possible on GPU.

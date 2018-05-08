@@ -557,8 +557,6 @@ DotOpEmitter::DotOpEmitter(
   return dot_emitter.Emit();
 }
 
-bool DotOpEmitter::ShapesAreLegalForRuntimeDot() const { return true; }
-
 bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   if (dot_.shape().dimensions_size() != 2) {
     return false;
@@ -908,8 +906,6 @@ tensorflow::Status DotOpEmitter::EmitScalarDot() {
 }
 
 tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
-  DCHECK(ShapesAreLegalForRuntimeDot());
-
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,

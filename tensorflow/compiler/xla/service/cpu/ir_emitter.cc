@@ -2563,8 +2563,12 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   // nothing to do since the result was already written directly into the output
   // buffer.
   VLOG(2) << "FinishVisit root: " << root->ToString();
-  llvm::Value* root_value = GetEmittedValueFor(root);
-  VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
+  if (root->opcode() == HloOpcode::kOutfeed) {
+    VLOG(2) << "  outfeed with value: "
+            << llvm_ir::DumpToString(*GetEmittedValueFor(root->operand(0)));
+  } else {
+    VLOG(2) << "  value: " << llvm_ir::DumpToString(*GetEmittedValueFor(root));
+  }
 
   auto record_complete_computation = [&](llvm::Value* prof_counter) {
     if (prof_counter) {

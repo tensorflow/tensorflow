@@ -242,7 +242,7 @@ bool HloParser::Error(LocTy loc, StringPiece msg) {
   std::vector<string> error_lines;
   error_lines.push_back(
       StrCat("was parsing ", line, ":", col, ": error: ", msg));
-  error_lines.push_back(lexer_.GetLine(loc).ToString());
+  error_lines.push_back(std::string(lexer_.GetLine(loc)));
   error_lines.push_back(col == 0 ? "" : StrCat(string(col - 1, ' '), "^"));
 
   error_.push_back(tensorflow::str_util::Join(error_lines, "\n"));

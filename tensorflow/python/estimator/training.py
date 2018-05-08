@@ -588,7 +588,7 @@ class _TrainingExecutor(object):
     # max_steps, the evaluator will send the final export signal. There is a
     # small chance that the Estimator.train stopping logic sees a different
     # global_step value (due to global step race condition and the fact the
-    # saver sees a larger value for checkpoing saving), which does not end
+    # saver sees a larger value for checkpoint saving), which does not end
     # the training. When the training ends, a new checkpoint is generated, which
     # triggers the listener again. So, it could be the case the final export is
     # triggered twice.
@@ -656,6 +656,11 @@ class _TrainingExecutor(object):
           max_steps=self._train_spec.max_steps,
           hooks=train_hooks)
 
+      if not self._continuous_eval_listener.before_eval():
+        logging.info('Exiting training and evaluation loop, as requested by '
+                     '_ContinuousEvalListener.before_eval.')
+        break
+
       # Final export signal: For any eval result with global_step >= train
       # max_steps, the evaluator will send the final export signal. The
       # _should_stop_local_train will then end the while True as the stopping
@@ -668,6 +673,11 @@ class _TrainingExecutor(object):
         #  Training should always end with a new checkpoint.
         raise RuntimeError('There was no new checkpoint after the training. '
                            'Eval status: {}'.format(eval_result.status))
+
+      if not self._continuous_eval_listener.after_eval(eval_result):
+        logging.info('Exiting evaluation, as requested by '
+                     '_ContinuousEvalListener.after_eval.')
+        break
 
       if _should_stop_local_train(
           eval_result.metrics[ops.GraphKeys.GLOBAL_STEP]):

@@ -474,15 +474,13 @@ std::vector<int> GetStackPushNodesToConvert(
   return nodes_to_convert;
 }
 
-Status RemoveStackOps(const GrapplerItem& item, GraphDef* optimized_graph) {
-  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
-  const GraphDef& graph = item.graph;
-  *optimized_graph = graph;
+Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
+                      GraphDef* optimized_graph) {
   NodeMap node_map(optimized_graph);
   SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
-  for (int node_idx = 0; node_idx < graph.node_size(); ++node_idx) {
-    if (IsStackOp(graph.node(node_idx))) {
+  TF_RETURN_IF_ERROR(graph_view.Initialize(*optimized_graph));
+  for (int node_idx = 0; node_idx < optimized_graph->node_size(); ++node_idx) {
+    if (IsStackOp(optimized_graph->node(node_idx))) {
       for (int push_node_idx : GetStackPushNodesToConvert(
                graph_view, nodes_to_preserve, node_idx)) {
         // We found push nodes without corresponding pops. Convert them to
@@ -517,7 +515,7 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(linm_optimizer.Optimize());
   }
   if (options_.enable_stack_push_removal) {
-    TF_RETURN_IF_ERROR(RemoveStackOps(item, optimized_graph));
+    TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
   }
 
   return Status::OK();

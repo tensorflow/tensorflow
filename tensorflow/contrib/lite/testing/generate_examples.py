@@ -109,7 +109,7 @@ KNOWN_BUGS = {
 
 
 class ExtraTocoOptions(object):
-  """Additonal toco options besides input, output, shape."""
+  """Additional toco options besides input, output, shape."""
 
   def __init__(self):
     # Whether to ignore control dependency nodes.
@@ -1758,7 +1758,7 @@ def make_strided_slice_tests(zip_path):
           "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
           "constant_indices": [False, True],
       },
-      # TODO(b/73170889) Restore test paramaters removed in cl/191608113.
+      # TODO(b/73170889) Restore test parameters removed in cl/191608113.
       # 2-D
       {
           "dtype": [tf.float32, tf.int32, tf.int64],
@@ -1899,7 +1899,7 @@ def make_lstm_tests(zip_path):
     return inputs_after_split, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    """Feed inputs, assign vairables, and freeze graph."""
+    """Feed inputs, assign variables, and freeze graph."""
 
     with tf.variable_scope("", reuse=True):
       kernel = tf.get_variable("rnn/basic_lstm_cell/kernel")
@@ -2057,6 +2057,31 @@ def make_floor_tests(zip_path):
                                      parameters["input_shape"])
     return [input_value], sess.run(
         outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_neg_tests(zip_path):
+  """Make a set of tests to do neg."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[1, 3, 4, 3], [5]],
+  }]
+
+  def build_graph(parameters):
+    """Build the neg op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.negative(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = create_tensor_data(parameters["input_dtype"],
+                                parameters["input_shape"])
+    return [values], sess.run(outputs, feed_dict=dict(zip(inputs, [values])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 

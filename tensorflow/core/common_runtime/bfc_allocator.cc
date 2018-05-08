@@ -616,7 +616,7 @@ string BFCAllocator::RenderOccupancy() {
     region_offset += region.memory_size();
   }
 
-  return StringPiece(rendered, resolution).ToString();
+  return std::string(rendered, resolution);
 }
 
 void BFCAllocator::DumpMemoryLog(size_t num_bytes) {

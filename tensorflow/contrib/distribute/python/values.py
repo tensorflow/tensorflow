@@ -27,6 +27,7 @@ import weakref
 import six
 
 from tensorflow.contrib.data.python.ops import batching
+from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
@@ -651,8 +652,8 @@ class MultiWorkerDataset(object):
         six.iteritems(worker_device_map)):
       with ops.device(worker):
         worker_input = dataset_fn()
-        # TODO(yuefengz, priyag): support efficient sharding.
-        worker_input = worker_input.shard(len(worker_device_map), i)
+        worker_input = input_ops.auto_shard_dataset(
+            worker_input, len(worker_device_map), i)
         self._datasets[worker] = PerDeviceDataset(
             worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
 
