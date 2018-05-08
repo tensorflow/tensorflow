@@ -224,11 +224,11 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<HloCSE>(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
-          [](const Shape&, const Shape&) { return false; });
+          [](const Shape&, const Shape&) { return false; }, false, false);
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<Inliner>();
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
-          [](const Shape&, const Shape&) { return false; });
+          [](const Shape&, const Shape&) { return false; }, false, false);
   pipeline.AddPass<ZeroSizedHloElimination>();
   pipeline.AddPass<ComputationFlattener>();
   pipeline.AddPass<TupleSimplifier>(true);

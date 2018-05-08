@@ -161,10 +161,12 @@ bool IsGradientMatMul(const HloInstruction* inst) {
 }
 
 bool IsWeightUpdateMatMul(const HloInstruction* inst) {
-  const HloInstruction* lh = inst->operand(0);
-  const HloInstruction* rh = inst->operand(1);
-  return (lh->opcode() == HloOpcode::kTranspose &&
-          rh->opcode() != HloOpcode::kTranspose);
+//  const HloInstruction* lh = inst->operand(0);
+//  const HloInstruction* rh = inst->operand(1);
+//  return (lh->opcode() == HloOpcode::kTranspose &&
+//          rh->opcode() != HloOpcode::kTranspose);
+  // Cannot mark as MATMUL WU until poplibs T2934 fixed
+  return false;
 }
 
 bool IsTfReluGradOp(const HloInstruction* inst) {
