@@ -34,6 +34,10 @@ constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // software can change it dynamically.
 int NumSchedulableCPUs();
 
+// Returns an estimate of the number of hyperthreads per physical core
+// on the CPU
+int NumHyperthreadsPerCore();
+
 // Mostly ISA related features that we care about
 enum CPUFeature {
   // Do not change numeric assignments.

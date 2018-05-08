@@ -74,6 +74,14 @@ int NumSchedulableCPUs() {
   return kDefaultCores;
 }
 
+int NumHyperthreadsPerCore() {
+  const int kDefaultHyperthreads = 2;
+#if defined(__linux__) && !defined(__ANDROID__)
+  return kDefaultHyperthreads;
+#endif
+  return kDefaultHyperthreads;  
+}
+
 void* AlignedMalloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__)
   return memalign(minimum_alignment, size);
