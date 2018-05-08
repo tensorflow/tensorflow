@@ -31,17 +31,15 @@ limitations under the License.
 namespace tensorflow {
 class XlaAllocator;
 
-// Takes a snapshot of the values of resource variable arguments, whose
-// indices are specified in `variables` argument. We snapshot tensors that back
+// Takes a snapshot of the values of resource variable arguments, which are
+// the last `num_variables` arguments. We snapshot tensors that back
 // resource variables since concurrent updates may modify the shape, and it is
 // important that the shapes used for compilation match the true shapes of the
 // buffers.
 //
-// Returns a map of TensorFlow argument index to resource variable. If a
-// resource variable is not initialized, the corresponding OptionalTensor
-// will have its `present` field set to false.
-std::map<int, OptionalTensor> SnapshotResourceVariables(
-    OpKernelContext* ctx, const std::vector<int>& variables);
+// Returns a map of TensorFlow argument index to resource variable.
+std::map<int, OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
+                                                        int num_variables);
 
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
 // Assumes that the Tensorflow allocator permits asynchronous deallocation:
@@ -74,7 +72,7 @@ class XlaComputationLaunchContext {
   // Create a new launch context. 'allocate_xla_tensors' is true if allocated
   // output tensors and variables are always XlaTensors. If false they are
   // assumed to be "normal" device pointers.
-  XlaComputationLaunchContext(xla::LocalClient* client,
+  XlaComputationLaunchContext(int64 num_resource_args, xla::LocalClient* client,
                               xla::DeviceMemoryAllocator* xla_allocator,
                               bool allocate_xla_tensors);
 
@@ -94,6 +92,7 @@ class XlaComputationLaunchContext {
   const std::vector<xla::ShapedBuffer*>& arguments() const { return arg_ptrs_; }
 
  private:
+  int64 num_resource_args_;
   xla::LocalClient* client_;
   xla::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;

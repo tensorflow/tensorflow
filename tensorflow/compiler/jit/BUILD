@@ -261,7 +261,6 @@ cc_library(
     name = "create_xla_launch_op",
     srcs = [
         "create_xla_launch_op.cc",
-        "create_xla_launch_op.h",
     ],
     deps = [
         ":common",
@@ -271,27 +270,6 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "create_xla_launch_op_test",
-    srcs = [
-        "create_xla_launch_op.h",
-        "create_xla_launch_op_test.cc",
-    ],
-    deps = [
-        ":create_xla_launch_op",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 

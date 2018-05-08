@@ -48,12 +48,13 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                  const XlaCompiler::CompilationResult* result,
                                  xla::LocalExecutable* executable) {
   std::map<int, OptionalTensor> variables = GetVariables(ctx);
+  int64 num_resource_args = variables.size();
 
   xla::LocalClient* client = metadata.client();
 
   // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
-      client, client->backend().memory_allocator(), true);
+      num_resource_args, client, client->backend().memory_allocator(), true);
 
   launch_context.PopulateInputs(ctx, result, variables);
 
