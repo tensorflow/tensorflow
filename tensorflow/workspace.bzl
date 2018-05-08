@@ -228,6 +228,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
       strip_prefix = "libpng-1.6.34",
       build_file = clean_dep("//third_party:png.BUILD"),
+      patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
   )
 
   tf_http_archive(
