@@ -38,14 +38,13 @@ using xla::ScopedShapedBuffer;
 using xla::ShapedBuffer;
 }  // anonymous namespace
 
-std::map<int, OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
-                                                        int num_variables) {
+std::map<int, OptionalTensor> SnapshotResourceVariables(
+    OpKernelContext* ctx, const std::vector<int>& variables) {
   std::map<int, OptionalTensor> snapshot;
-  int first_variable = ctx->num_inputs() - num_variables;
-  for (int i = 0; i < num_variables; ++i) {
+  for (int i : variables) {
     Var* variable = nullptr;
-    ResourceHandle handle = HandleFromInput(ctx, first_variable + i);
-    OptionalTensor& tensor = snapshot[first_variable + i];
+    ResourceHandle handle = HandleFromInput(ctx, i);
+    OptionalTensor& tensor = snapshot[i];
     if (LookupResource(ctx, handle, &variable).ok()) {
       tf_shared_lock lock(*variable->mu());
       tensor.name = handle.name();
@@ -112,10 +111,9 @@ ScopedShapedBuffer ExtractSubShapedBuffer(
 using internal::ExtractSubShapedBuffer;
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
-    int64 num_resource_args, xla::LocalClient* client,
-    xla::DeviceMemoryAllocator* xla_allocator, bool allocate_xla_tensors)
-    : num_resource_args_(num_resource_args),
-      client_(client),
+    xla::LocalClient* client, xla::DeviceMemoryAllocator* xla_allocator,
+    bool allocate_xla_tensors)
+    : client_(client),
       xla_allocator_(xla_allocator),
       allocate_xla_tensors_(allocate_xla_tensors) {}
 
