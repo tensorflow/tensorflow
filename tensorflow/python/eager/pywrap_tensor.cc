@@ -650,6 +650,12 @@ tensorflow::int64 EagerTensor_id(const PyObject* tensor) {
   return reinterpret_cast<const EagerTensor*>(tensor)->id;
 }
 
+tensorflow::DataType EagerTensor_dtype(const PyObject* tensor) {
+  CHECK(EagerTensor_CheckExact(tensor));
+  return static_cast<tensorflow::DataType>(TFE_TensorHandleDataType(
+      reinterpret_cast<const EagerTensor*>(tensor)->handle));
+}
+
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   if (!PyType_Check(base_class)) {
     PyErr_SetString(
