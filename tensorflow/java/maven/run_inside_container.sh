@@ -32,10 +32,14 @@ if [[ "${TF_VERSION}" == *"-SNAPSHOT" ]]; then
   DEPLOY_BINTRAY="false"
 fi
 PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.3.0/protoc-3.3.0-linux-x86_64.zip"
+TF_ECOSYSTEM_URL="https://github.com/tensorflow/ecosystem.git"
+
 if [[ "${DEPLOY_BINTRAY}" != "true" && "${DEPLOY_OSSRH}" != "true" ]]; then
   echo "Must deploy to at least one of Bintray or OSSRH" >&2
   exit 2
 fi
+
+IS_SNAPSHOT="true"
 
 set -ex
 
@@ -183,6 +187,41 @@ generate_java_protos() {
   rm -rf "${DIR}/proto/tmp"
 }
 
+
+download_tf_ecosystem() {
+  ECOSYSTEM_DIR="/tmp/tensorflow-ecosystem"
+  HADOOP_DIR="${DIR}/tensorflow-hadoop"
+  SPARK_DIR="${DIR}/spark-tensorflow-connector"
+
+  # Clean any previous attempts
+  rm -rf "${ECOSYSTEM_DIR}"
+
+  # Clone the TensorFlow ecosystem project
+  mkdir -p  "${ECOSYSTEM_DIR}"
+  cd "${ECOSYSTEM_DIR}"
+  git clone "${TF_ECOSYSTEM_URL}"
+
+  # Copy the TensorFlow Hadoop source
+  cp -r "${ECOSYSTEM_DIR}/ecosystem/hadoop/src" "${HADOOP_DIR}"
+  python ${HADOOP_DIR}/update.py --template ${HADOOP_DIR}/pom-hadoop.xml.template \
+    --input_pom ${ECOSYSTEM_DIR}/ecosystem/hadoop/pom.xml \
+    --output_pom ${HADOOP_DIR}/pom.xml \
+    --version ${TF_VERSION}
+
+  # Copy the TensorFlow Spark connector source
+  cp -r "${ECOSYSTEM_DIR}/ecosystem/spark/spark-tensorflow-connector/src" "${SPARK_DIR}"
+  python ${SPARK_DIR}/update.py --template ${SPARK_DIR}/pom-spark.xml.template \
+    --input_pom ${ECOSYSTEM_DIR}/ecosystem/spark/spark-tensorflow-connector/pom.xml \
+    --output_pom ${SPARK_DIR}/pom.xml \
+    --version ${TF_VERSION} \
+    --scala_version 2.11
+
+  # Cleanup
+  rm -rf "${ECOSYSTEM_DIR}"
+
+  cd "${DIR}"
+}
+
 # Deploy artifacts using a specific profile.
 # Arguments:
 #   profile - name of selected profile.
@@ -240,7 +279,7 @@ cd "${DIR}"
 # Comment lines out appropriately if debugging/tinkering with the release
 # process.
 # gnupg2 is required for signing
-apt-get -qq update && apt-get -qqq install -y gnupg2
+apt-get -qq update && apt-get -qqq install -y gnupg2 && apt-get -qqq install -y git
 clean
 update_version_in_pom
 download_libtensorflow
@@ -248,6 +287,7 @@ download_libtensorflow_jni
 download_libtensorflow_jni_gpu
 update_tensorflow_android
 generate_java_protos
+download_tf_ecosystem
 # Build the release artifacts
 mvn verify
 # Push artifacts to repository
