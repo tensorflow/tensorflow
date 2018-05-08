@@ -121,7 +121,7 @@ public:
     std::vector<Shape> module_shapes;
 
     HloModule* module = inst->parent()->parent();
-    ComputationLayout* layout = module->mutable_entry_computation_layout();
+    ComputationLayout* layout = module->mutable_host_entry_computation_layout();
     if (layout->parameter_count() > inst->parameter_number()) {
       const Shape& mod_shape = layout->parameter_shape(inst->parameter_number());
       module_shapes = FlattenedXlaShape(mod_shape);
@@ -159,7 +159,7 @@ public:
 
     auto outputs = FindInstructionOutputs(tensor_map, inst);
 
-    auto* layout = comp->parent()->mutable_entry_computation_layout();
+    auto* layout = comp->parent()->mutable_host_entry_computation_layout();
     std::vector<Shape> shapes = FlattenedXlaShape(layout->result_shape());
 
     for (size_t o=0; o<outputs.size(); o++) {
@@ -307,7 +307,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   // Set layout if there isn't one
-  auto comp_layout = module->mutable_entry_computation_layout()
+  auto comp_layout = module->mutable_host_entry_computation_layout()
           ->mutable_result_layout();
   if (!comp_layout->LayoutIsSet()) {
     auto shape = entry->root_instruction()->shape();

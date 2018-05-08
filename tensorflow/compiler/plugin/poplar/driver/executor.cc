@@ -504,7 +504,7 @@ PoplarExecutor::ExecuteEngine(
     const Args& args) {
 
   const auto& output_map = executable.OutputMapping();
-  const auto& output_shape = executable.result_shape();
+  const auto& output_shape = executable.host_result_shape();
   const auto& engine = executable.Engine();
 
   perftools::gputools::DeviceMemoryBase retbuf;
