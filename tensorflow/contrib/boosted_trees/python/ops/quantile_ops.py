@@ -187,7 +187,7 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
       stamp_token: Expected current token.
       next_stamp_token: Next value for the token.
     Returns:
-      A list of quantiles or approximate boundaries.
+      The flush operation.
     """
     return gen_quantile_ops.quantile_accumulator_flush(
         quantile_accumulator_handle=self._quantile_accumulator_handle,
