@@ -154,10 +154,11 @@ bool IsForwardMatMul(const HloInstruction* inst) {
 }
 
 bool IsGradientMatMul(const HloInstruction* inst) {
-  const HloInstruction* lh = inst->operand(0);
-  const HloInstruction* rh = inst->operand(1);
-  return (lh->opcode() != HloOpcode::kTranspose &&
-          rh->opcode() == HloOpcode::kTranspose);
+//  const HloInstruction* lh = inst->operand(0);
+//  const HloInstruction* rh = inst->operand(1);
+//  return (lh->opcode() != HloOpcode::kTranspose &&
+//          rh->opcode() == HloOpcode::kTranspose);
+  return false;
 }
 
 bool IsWeightUpdateMatMul(const HloInstruction* inst) {
