@@ -102,13 +102,15 @@ class CapturingGraph(ops.Graph):
   def clear_resource_control_flow_state(self):
     self._last_op_using_resource_tensor = {}
 
-  def maybe_capture_tensor(self, tensor):
+  def capture(self, tensor, name=None):
     if isinstance(tensor, ops.EagerTensor):
-      return capture_value(
-          self.captures, tensor, tensor.dtype, str(ops.uid()))
+      if name is None:
+        name = str(ops.uid())
+      return capture_value(self.captures, tensor, tensor.dtype, name)
     if tensor.graph is not self:
-      return capture_value(
-          self.captures, tensor, tensor.dtype, tensor.op.name)
+      if name is None:
+        name = tensor.op.name
+      return capture_value(self.captures, tensor, tensor.dtype, name)
     return tensor
 
   def create_op(
@@ -126,7 +128,7 @@ class CapturingGraph(ops.Graph):
     # forward the resources such as Identity and Switch can cause serialization
     # to fail.
     for i, inp in enumerate(inputs):
-      inputs[i] = self.maybe_capture_tensor(inp)
+      inputs[i] = self.capture(inp)
     return super(CapturingGraph, self).create_op(
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
         compute_shapes, compute_device)
@@ -598,7 +600,7 @@ def _defun_internal(name, func, args, kwds):
       # call to convert_to_tensor, so we manually capture all such tensors.
       outputs_list = _flatten(func_outputs)
       func_def_outputs = [
-          tmp_graph.maybe_capture_tensor(x) for x in outputs_list
+          tmp_graph.capture(x) for x in outputs_list
           if x is not None
       ]
 

@@ -1057,13 +1057,19 @@ def internal_convert_to_tensor(value,
 
   """
   if ctx is None: ctx = context.context()
-  if ctx.executing_eagerly():
-    # Fast path for EagerTensors that don't need any conversion.
-    if isinstance(value, EagerTensor):
+  if isinstance(value, EagerTensor):
+    if ctx.executing_eagerly():
+      # Fast path for EagerTensors that don't need any conversion.
       # Note that we don't check that value's dtype matches the dtype
       # argument.  We expect that the C runtime will do that checking
       # when we execute the kernel.
       return value
+    else:
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError("Attempting to capture an EagerTensor without "
+                           "building a function.")
+      return graph.capture(value, name=name)
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1251,7 +1257,10 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, _TensorLike):
+  if isinstance(value, EagerTensor) and not context.executing_eagerly():
+    return internal_convert_to_tensor(
+        value, dtype=dtype, name=name, as_ref=as_ref)
+  elif isinstance(value, _TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
