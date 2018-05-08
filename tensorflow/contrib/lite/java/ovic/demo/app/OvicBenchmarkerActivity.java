@@ -20,10 +20,15 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
+import android.os.Process;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
+import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.MappedByteBuffer;
@@ -50,6 +55,10 @@ public class OvicBenchmarkerActivity extends Activity {
   private static final double WALL_TIME = 3000;
   /** Maximum number of iterations in each benchmarking experiment. */
   private static final int MAX_ITERATIONS = 100;
+  /** Mask for binding to a single big core. Pixel 1 (4), Pixel 2 (16). */
+  private static final int BIG_CORE_MASK = 16;
+  /** Amount of time in milliseconds to wait for affinity to set. */
+  private static final int WAIT_TIME_FOR_AFFINITY = 1000;
 
   /* The model to be benchmarked. */
   private MappedByteBuffer model = null;
@@ -123,6 +132,13 @@ public class OvicBenchmarkerActivity extends Activity {
       Log.e(TAG, "Can't initialize benchmarker.", e);
       throw e;
     }
+    String displayText = "";
+    try {
+      setProcessorAffinity(BIG_CORE_MASK);
+    } catch (IOException e) {
+      Log.e(TAG, e.getMessage());
+      displayText = e.getMessage() + "\n";
+    }
     Log.i(TAG, "Successfully initialized benchmarker.");
     int testIter = 0;
     Boolean iterSuccess = false;
@@ -147,17 +163,85 @@ public class OvicBenchmarkerActivity extends Activity {
 
     if (textView != null) {
       if (testIter > 0) {
-        textView
-            .setText(
-                MODEL_PATH
-                    + ": Average latency="
-                    + df2.format(totalLatency / testIter)
-                    + "ms after "
-                    + testIter
-                    + " runs.");
+        textView.setText(
+            displayText
+                + MODEL_PATH
+                + ": Average latency="
+                + df2.format(totalLatency / testIter)
+                + "ms after "
+                + testIter
+                + " runs.");
       } else {
         textView.setText("Benchmarker failed to run on more than one images.");
       }
     }
+  }
+
+  private static void setProcessorAffinity(int mask) throws IOException {
+    int myPid = Process.myPid();
+    Log.i(TAG, String.format("Setting processor affinity to 0x%02x", mask));
+
+    String command = String.format("taskset -a -p %x %d", mask, myPid);
+    try {
+      Runtime.getRuntime().exec(command).waitFor();
+    } catch (InterruptedException e) {
+      throw new IOException("Interrupted: " + e);
+    }
+
+    // Make sure set took effect - try for a second to confirm the change took.  If not then fail.
+    long startTimeMs = SystemClock.elapsedRealtime();
+    while (true) {
+      int readBackMask = readCpusAllowedMask();
+      if (readBackMask == mask) {
+        Log.i(TAG, String.format("Successfully set affinity to 0x%02x", mask));
+        return;
+      }
+      if (SystemClock.elapsedRealtime() > startTimeMs + WAIT_TIME_FOR_AFFINITY) {
+        throw new IOException(
+            String.format(
+                "Core-binding failed: affinity set to 0x%02x but read back as 0x%02x\n"
+                    + "please root device.",
+                mask, readBackMask));
+      }
+
+      try {
+        Thread.sleep(50);
+      } catch (InterruptedException e) {
+        // Ignore sleep interrupted, will sleep again and compare is final cross-check.
+      }
+    }
+  }
+
+  public static int readCpusAllowedMask() throws IOException {
+    // Determine how many CPUs there are total
+    final String pathname = "/proc/self/status";
+    final String resultPrefix = "Cpus_allowed:";
+    File file = new File(pathname);
+    String line = "<NO LINE READ>";
+    String allowedCPU = "";
+    Integer allowedMask = null;
+    BufferedReader bufReader = null;
+    try {
+      bufReader = new BufferedReader(new FileReader(file));
+      while ((line = bufReader.readLine()) != null) {
+        if (line.startsWith(resultPrefix)) {
+          allowedMask = Integer.valueOf(line.substring(resultPrefix.length()).trim(), 16);
+          allowedCPU = bufReader.readLine();
+          break;
+        }
+      }
+    } catch (RuntimeException e) {
+      throw new IOException(
+          "Invalid number in " + pathname + " line: \"" + line + "\": " + e.getMessage());
+    } finally {
+      if (bufReader != null) {
+        bufReader.close();
+      }
+    }
+    if (allowedMask == null) {
+      throw new IOException(pathname + " missing " + resultPrefix + " line");
+    }
+    Log.i(TAG, allowedCPU);
+    return allowedMask;
   }
 }
