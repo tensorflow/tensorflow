@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.tensorflow</groupId>
   <artifactId>parentpom</artifactId>
-  <version>1.8.0</version>
+  <version>1.8.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <url>https://www.tensorflow.org</url>
@@ -32,6 +32,8 @@
     <module>libtensorflow_jni_gpu</module>
     <module>tensorflow</module>
     <module>proto</module>
+    <module>tensorflow-hadoop</module>
+    <module>spark-tensorflow-connector</module>
   </modules>
 
   <!-- Two profiles are used:
@@ -44,7 +46,8 @@
         <!-- Sonatype requirements from http://central.sonatype.org/pages/apache-maven.html -->
         <snapshotRepository>
           <id>ossrh</id>
-          <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+          <url>https://tap.jfrog.io/tap/public-snapshots</url>
+          <!--<url>https://oss.sonatype.org/content/repositories/snapshots</url>-->
         </snapshotRepository>
         <repository>
           <id>ossrh</id>
@@ -74,6 +77,7 @@
   <build>
     <plugins>
       <!-- GPG signed components: http://central.sonatype.org/pages/apache-maven.html#gpg-signed-components -->
+      <!--
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-gpg-plugin</artifactId>
@@ -87,7 +91,7 @@
             </goals>
           </execution>
         </executions>
-      </plugin>
+      </plugin> -->
     </plugins>
   </build>
 
