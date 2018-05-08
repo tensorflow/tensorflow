@@ -387,6 +387,9 @@ cc_library(
         ":armv7a": [
             ":neon_tensor_utils",
         ],
+        ":haswell": [
+            ":neon_tensor_utils",
+        ],
         ":ios_armv7": [
             ":neon_tensor_utils",
         ],
