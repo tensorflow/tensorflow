@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;
 #endif
@@ -185,7 +185,7 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A dummy type to group forward convolution autotune results together.
 struct Conv3dAutoTuneGroup {
@@ -406,7 +406,7 @@ struct LaunchConvOp<GPUDevice, T> {
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
 
-    static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+    static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     int device_id = stream->parent()->device_ordinal();
@@ -442,7 +442,7 @@ struct LaunchConvOp<GPUDevice, T> {
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
@@ -478,7 +478,7 @@ struct LaunchConvOp<GPUDevice, T> {
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
-    CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     bool cudnn_launch_status =
         stream
             ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
@@ -539,6 +539,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

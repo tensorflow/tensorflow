@@ -44,10 +44,10 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -524,7 +524,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 // GPU definitions.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // The slow version (but compiles for GPU)
 
 // A dummy type to group forward backward filter autotune results together.
@@ -885,7 +885,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                   transformed_input.template flat<T>().size());
 
-  static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
+  static int64 ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
   );
   int device_id = stream->parent()->device_ordinal();
@@ -919,7 +919,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               ctx);
       ProfileResult profile_result;
       bool cudnn_launch_status =
@@ -957,7 +957,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
   }
-  CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+  DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           ctx);
   bool cudnn_launch_status =
       stream
@@ -1040,6 +1040,6 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .TypeConstraint<Eigen::half>("T")
                             .HostMemory("filter_sizes"),
                         Conv2DSlowBackpropFilterOp<GPUDevice, Eigen::half>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -23,15 +23,15 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/relu_op_functor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
-#ifdef TF_HAS_CUDA_FP16
+#ifdef TF_HAS_GPU_FP16
 
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
@@ -50,7 +50,7 @@ __global__ void ReluGradHalfKernel(const Eigen::half* gradient,
     half2 feature_h2 = reinterpret_cast<const half2*>(feature)[index];
     half2* p_backprop_h2 = reinterpret_cast<half2*>(backprop) + index;
 
-#if __CUDA_ARCH__ >= 530
+#if __GPU_ARCH__ >= 530
     // Fast path, when half2 primitives are available.
     const half2 kZeroH2 = __float2half2_rn(0.f);
     // mask = (feature > 0)
@@ -106,15 +106,15 @@ struct ReluGrad<Device, Eigen::half> {
     if (count == 0) return;
     int32 half2_count = Eigen::divup(count, 2);
     const int32 kThreadInBlock = 512;
-    CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+    GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
         half2_count, d, ReluGradHalfKernel, 0, kThreadInBlock);
-    ReluGradHalfKernel<<<config.block_count, config.thread_per_block, 0,
-                         d.stream()>>>(gradient.data(), feature.data(),
-                                       backprop.data(), count);
+    GPU_LAUNCH_KERNEL(ReluGradHalfKernel,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+        gradient.data(), feature.data(), backprop.data(), count);
   }
 };
 
-#endif  // TF_HAS_CUDA_FP16
+#endif  // TF_HAS_GPU_FP16
 }  // namespace functor
 
 // Definition of the GPU implementations declared in relu_op.cc.
@@ -132,4 +132,4 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

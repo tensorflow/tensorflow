@@ -128,7 +128,7 @@ REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
 REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
                        (MatrixTriangularSolveOp<double>), double);
 
-#ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // TODO(rmlarsen): Re-factor to
 // 1. Enable buffer forwarding from rhs->out.

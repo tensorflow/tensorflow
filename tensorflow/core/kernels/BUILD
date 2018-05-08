@@ -53,6 +53,7 @@ load(
     "if_mkl",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -2912,9 +2913,14 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS + if_cuda([
+    #deps = MATH_DEPS + if_cuda([
+    #    ":cuda_solvers",
+    #])
+
+    # ROCM TODO: figure this out
+    deps = MATH_DEPS + if_rocm([
         ":cuda_solvers",
-    ]),
+    ])
 )
 
 tf_kernel_library(

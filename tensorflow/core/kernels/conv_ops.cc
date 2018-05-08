@@ -45,10 +45,10 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -452,8 +452,8 @@ TF_CALL_double(REGISTER_CPU);
 // To be used inside depthwise_conv_op.cc.
 template struct LaunchConv2DOp<CPUDevice, float>;
 
-#if GOOGLE_CUDA
-int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                              int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
   if (workspace_limit_in_mb_str != nullptr &&
@@ -681,7 +681,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       AsDeviceMemory(transformed_output.template flat<T>().data(),
                      transformed_output.template flat<T>().size());
 
-  static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+  static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
   );
@@ -717,7 +717,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
@@ -755,7 +755,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
-  CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+  DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   bool cudnn_launch_status =
       stream
           ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
@@ -832,6 +832,6 @@ REGISTER_KERNEL_BUILDER(
 // To be used inside depthwise_conv_op.cc.
 template class LaunchConv2DOp<GPUDevice, float>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

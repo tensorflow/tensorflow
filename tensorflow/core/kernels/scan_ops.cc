@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #define EIGEN_USE_THREADS
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -89,7 +89,7 @@ class ScanOp : public OpKernel {
   bool exclusive_;
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 
 // Forward declarations of GPU functors
@@ -111,7 +111,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_ALL_REDUCERS);
 #undef DECLARE
 
 }  // namespace functor
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Register Cumsum kernels
 #define REGISTER_CPU_KERNELS(type)                                       \
@@ -130,7 +130,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_ALL_REDUCERS);
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNELS(type)                                       \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("Cumsum")                                                     \
@@ -148,7 +148,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Register Cumprod kernels
 #define REGISTER_CPU_KERNELS(type)                                        \
@@ -167,7 +167,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("Cumprod")                                                     \
@@ -185,6 +185,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

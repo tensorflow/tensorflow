@@ -153,22 +153,22 @@ Kernels under tensorflow/core/kernels
 |   O    | control_flow_ops.cc
 |   O    | control_flow_ops.h
 |   O    | control_flow_ops_test.cc
-|        | conv_2d.h
-|        | conv_3d.h
-|        | conv_grad_filter_ops.cc
-|        | conv_grad_input_ops.cc
-|        | conv_grad_ops.cc
-|        | conv_grad_ops.h
-|        | conv_grad_ops_3d.cc
-|        | conv_ops.cc
-|        | conv_ops.h
-|        | conv_ops_3d.cc
-|        | conv_ops_fused.cc
-|        | conv_ops_gpu.h
-|        | conv_ops_gpu_2.cu.cc
-|        | conv_ops_gpu_3.cu.cc
-|        | conv_ops_test.cc
-|        | conv_ops_using_gemm.cc
+|   O    | conv_2d.h
+|   O    | conv_3d.h
+|   O    | conv_grad_filter_ops.cc
+|   O    | conv_grad_input_ops.cc
+|   O    | conv_grad_ops.cc
+|   O    | conv_grad_ops.h
+|   O    | conv_grad_ops_3d.cc
+|   O    | conv_ops.cc
+|   O    | conv_ops.h
+|   O    | conv_ops_3d.cc
+|   O    | conv_ops_fused.cc
+|   O    | conv_ops_gpu.h
+|   O    | conv_ops_gpu_2.cu.cc
+|   O    | conv_ops_gpu_3.cu.cc
+|   O    | conv_ops_test.cc
+|   O    | conv_ops_using_gemm.cc
 |   O    | count_up_to_op.cc
 |   O    | crop_and_resize_op.cc
 |   O    | crop_and_resize_op.h
@@ -183,10 +183,10 @@ Kernels under tensorflow/core/kernels
 |   O    | cuda_device_array.h
 |   O    | cuda_device_array_gpu.h
 |   X    | cuda_solvers.cc
-|   X    | cuda_solvers.h
+|   T    | cuda_solvers.h
 |   O    | cudnn_pooling_gpu.cc
 |   O    | cudnn_pooling_gpu.h
-|        | cudnn_rnn_ops.cc
+|   O    | cudnn_rnn_ops.cc
 |   O    | cwise_op_abs.cc
 |   O    | cwise_op_acos.cc
 |   O    | cwise_op_acosh.cc
@@ -446,21 +446,21 @@ Kernels under tensorflow/core/kernels
 |   O    | dynamic_stitch_op_gpu.cu.cc
 |   O    | dynamic_stitch_op_test.cc
 |   O    | edit_distance_op.cc
-|        | eigen_activations.h
-|        | eigen_activations_test.cc
-|        | eigen_attention.h
-|        | eigen_attention_test.cc
-|        | eigen_backward_cuboid_convolutions.h
-|        | eigen_backward_spatial_convolutions.h
-|        | eigen_backward_spatial_convolutions_test.cc
-|        | eigen_cuboid_convolution.h
-|        | eigen_pooling.h
-|        | eigen_pooling_test.cc
-|        | eigen_softmax.h
-|        | eigen_softmax_test.cc
-|        | eigen_spatial_convolutions.h
-|        | eigen_spatial_convolutions_test.cc
-|        | eigen_volume_patch.h
+|   O    | eigen_activations.h
+|   O    | eigen_activations_test.cc
+|   O    | eigen_attention.h
+|   O    | eigen_attention_test.cc
+|   O    | eigen_backward_cuboid_convolutions.h
+|   O    | eigen_backward_spatial_convolutions.h
+|   O    | eigen_backward_spatial_convolutions_test.cc
+|   O    | eigen_cuboid_convolution.h
+|   O    | eigen_pooling.h
+|   O    | eigen_pooling_test.cc
+|   O    | eigen_softmax.h
+|   O    | eigen_softmax_test.cc
+|   O    | eigen_spatial_convolutions.h
+|   O    | eigen_spatial_convolutions_test.cc
+|   O    | eigen_volume_patch.h
 |   O    | encode_jpeg_op.cc
 |   O    | encode_png_op.cc
 |   O    | encode_proto_op.cc
@@ -699,9 +699,9 @@ Kernels under tensorflow/core/kernels
 |   O    | one_hot_op.cc
 |   O    | one_hot_op.h
 |   O    | one_hot_op_gpu.cu.cc
-|        | ops_testutil.cc
-|        | ops_testutil.h
-|        | ops_testutil_test.cc
+|   X    | ops_testutil.cc
+|   O    | ops_testutil.h
+|   O    | ops_testutil_test.cc
 |   O    | ops_util.cc
 |   O    | ops_util.h
 |   O    | ops_util_test.cc
@@ -738,388 +738,388 @@ Kernels under tensorflow/core/kernels
 |   X    | qr_op_double.cc
 |   X    | qr_op_float.cc
 |   X    | qr_op_impl.h
-|        | quantization_utils.cc
-|        | quantization_utils.h
-|        | quantization_utils_test.cc
-|        | quantize_and_dequantize_op.cc
-|        | quantize_and_dequantize_op.h
-|        | quantize_and_dequantize_op_gpu.cu.cc
-|        | quantize_and_dequantize_op_test.cc
-|        | quantize_down_and_shrink_range.cc
-|        | quantize_down_and_shrink_range_op_test.cc
-|        | quantize_op.cc
-|        | quantize_op_test.cc
-|        | quantized_activation_ops.cc
-|        | quantized_activation_ops_test.cc
-|        | quantized_add_op.cc
-|        | quantized_add_op_test.cc
-|        | quantized_batch_norm_op.cc
-|        | quantized_batch_norm_op_test.cc
-|        | quantized_bias_add_op.cc
-|        | quantized_bias_add_op_test.cc
-|        | quantized_concat_op.cc
-|        | quantized_concat_op_test.cc
-|        | quantized_conv_ops.cc
-|        | quantized_conv_ops_test.cc
-|        | quantized_instance_norm.cc
-|        | quantized_instance_norm_test.cc
-|        | quantized_matmul_op.cc
-|        | quantized_matmul_op_test.cc
-|        | quantized_mul_op.cc
-|        | quantized_mul_op_test.cc
-|        | quantized_pooling_ops.cc
-|        | quantized_pooling_ops_test.cc
-|        | quantized_reshape_op.cc
-|        | quantized_reshape_op_test.cc
-|        | quantized_resize_bilinear_op.cc
-|        | quantized_resize_bilinear_op_test.cc
-|        | queue_base.cc
-|        | queue_base.h
-|        | queue_op.h
-|        | queue_ops.cc
-|        | random_crop_op.cc
-|        | random_op.cc
-|        | random_op.h
-|        | random_op_gpu.cu.cc
-|        | random_op_test.cc
-|        | random_poisson_op.cc
-|        | random_poisson_op.h
-|        | random_poisson_op_test.cc
-|        | random_shuffle_op.cc
-|        | random_shuffle_queue_op.cc
-|        | range_sampler.cc
-|        | range_sampler.h
-|        | range_sampler_test.cc
-|        | reader_ops.cc
-|        | record_input_op.cc
-|        | record_yielder.cc
-|        | record_yielder.h
-|        | reduce_join_op.cc
-|        | reduction_gpu_kernels.cu.h
-|        | reduction_ops.h
-|        | reduction_ops_all.cc
-|        | reduction_ops_any.cc
-|        | reduction_ops_common.cc
-|        | reduction_ops_common.h
-|        | reduction_ops_gpu_bool.cu.cc
-|        | reduction_ops_gpu_complex128.cu.cc
-|        | reduction_ops_gpu_complex64.cu.cc
-|        | reduction_ops_gpu_double.cu.cc
-|        | reduction_ops_gpu_float.cu.cc
-|        | reduction_ops_gpu_int.cu.cc
-|        | reduction_ops_half_mean_sum.cu.cc
-|        | reduction_ops_half_prod_max_min.cu.cc
-|        | reduction_ops_max.cc
-|        | reduction_ops_mean.cc
-|        | reduction_ops_min.cc
-|        | reduction_ops_prod.cc
-|        | reduction_ops_sum.cc
-|        | reduction_ops_test.cc
-|        | reference_gemm.h
-|        | regex_replace_op.cc
-|        | relu_op.cc
-|        | relu_op.h
-|        | relu_op_functor.h
-|        | relu_op_gpu.cu.cc
-|        | remote_fused_graph_execute_op.cc
-|        | remote_fused_graph_execute_op_test.cc
-|        | remote_fused_graph_execute_op_test_utils.cc
-|        | remote_fused_graph_execute_op_test_utils.h
-|        | remote_fused_graph_execute_utils.cc
-|        | remote_fused_graph_execute_utils.h
-|        | remote_fused_graph_execute_utils_test.cc
-|        | remote_fused_graph_rewriter_transform.cc
-|        | remote_fused_graph_rewriter_transform_test.cc
-|        | requantization_range_op.cc
-|        | requantization_range_op_test.cc
-|        | requantize.cc
-|        | requantize_op_test.cc
-|        | reshape_op.cc
-|        | reshape_op.h
-|        | reshape_util.cc
-|        | reshape_util.h
-|        | resize_area_op.cc
-|        | resize_area_op_test.cc
-|        | resize_bicubic_op.cc
-|        | resize_bicubic_op_test.cc
-|        | resize_bilinear_op.cc
-|        | resize_bilinear_op.h
-|        | resize_bilinear_op_gpu.cu.cc
-|        | resize_bilinear_op_test.cc
-|        | resize_nearest_neighbor_op.cc
-|        | resize_nearest_neighbor_op.h
-|        | resize_nearest_neighbor_op_gpu.cu.cc
-|        | resize_nearest_neighbor_op_test.cc
-|        | resize_op_benchmark_test.cc
-|        | resource_variable_ops.cc
-|        | restore_op.cc
-|        | restore_op_test.cc
-|        | restore_v2_op_test.cc
-|        | reverse_op.cc
-|        | reverse_op.h
-|        | reverse_op_gpu.cu.cc
-|        | reverse_op_test.cc
-|        | reverse_sequence_op.cc
-|        | reverse_sequence_op.h
-|        | reverse_sequence_op_gpu.cu.cc
-|        | roll_op.cc
-|        | roll_op_test.cc
-|        | rpc_op.cc
-|        | sample_distorted_bounding_box_op.cc
-|        | save_op.cc
-|        | save_op_test.cc
-|        | save_restore_tensor.cc
-|        | save_restore_tensor.h
-|        | save_restore_v2_ops.cc
-|        | save_v2_op_test.cc
-|        | scan_ops.cc
-|        | scan_ops.h
-|        | scan_ops_gpu.cu.cc
-|        | scatter_functor.cc
-|        | scatter_functor.h
-|        | scatter_functor_gpu.cu.cc
-|        | scatter_functor_gpu.cu.h
-|        | scatter_nd_op.cc
-|        | scatter_nd_op.h
-|        | scatter_nd_op_cpu_impl.h
-|        | scatter_nd_op_cpu_impl_0.cc
-|        | scatter_nd_op_cpu_impl_1.cc
-|        | scatter_nd_op_cpu_impl_2.cc
-|        | scatter_nd_op_cpu_impl_3.cc
-|        | scatter_nd_op_cpu_impl_4.cc
-|        | scatter_nd_op_cpu_impl_5.cc
-|        | scatter_nd_op_cpu_impl_6.cc
-|        | scatter_nd_op_cpu_impl_7.cc
-|        | scatter_nd_op_gpu.cu.cc
-|        | scatter_nd_op_test.cc
-|        | scatter_op.cc
-|        | scatter_op_gpu.cu.cc
-|        | scatter_op_test.cc
-|        | scoped_allocator_ops.cc
-|        | scoped_allocator_ops_test.cc
-|        | sdca_internal.cc
-|        | sdca_internal.h
-|        | sdca_ops.cc
-|        | sdca_ops_test.cc
-|        | segment_reduction_ops.cc
-|        | segment_reduction_ops.h
-|        | segment_reduction_ops_gpu.cu.cc
-|        | segment_reduction_ops_test.cc
-|        | self_adjoint_eig_op.cc
-|        | self_adjoint_eig_v2_op_complex128.cc
-|        | self_adjoint_eig_v2_op_complex64.cc
-|        | self_adjoint_eig_v2_op_double.cc
-|        | self_adjoint_eig_v2_op_float.cc
-|        | self_adjoint_eig_v2_op_gpu.cc
-|        | self_adjoint_eig_v2_op_impl.h
-|        | sendrecv_ops.cc
-|        | sendrecv_ops.h
-|        | sendrecv_ops_test.cc
-|        | sequence_ops.cc
-|        | sequence_ops_test.cc
-|        | serialize_sparse_op.cc
-|        | session_ops.cc
-|        | set_kernels.cc
-|        | shape_op_test.cc
-|        | shape_ops.cc
-|        | shape_ops.h
-|        | slice_op.cc
-|        | slice_op.h
-|        | slice_op_cpu_impl.h
-|        | slice_op_cpu_impl_1.cc
-|        | slice_op_cpu_impl_2.cc
-|        | slice_op_cpu_impl_3.cc
-|        | slice_op_cpu_impl_4.cc
-|        | slice_op_cpu_impl_5.cc
-|        | slice_op_cpu_impl_6.cc
-|        | slice_op_cpu_impl_7.cc
-|        | slice_op_gpu.cu.cc
-|        | slice_op_test.cc
-|        | smooth-hinge-loss.h
-|        | snapshot_op.cc
-|        | snapshot_op.h
-|        | snapshot_op_gpu.cu.cc
-|        | softmax_op.cc
-|        | softmax_op_functor.h
-|        | softmax_op_gpu.cu.cc
-|        | softplus_op.cc
-|        | softplus_op.h
-|        | softplus_op_gpu.cu.cc
-|        | softsign_op.cc
-|        | softsign_op.h
-|        | softsign_op_gpu.cu.cc
-|        | spacetobatch_benchmark_test.cc
-|        | spacetobatch_functor.cc
-|        | spacetobatch_functor.h
-|        | spacetobatch_functor_gpu.cu.cc
-|        | spacetobatch_op.cc
-|        | spacetodepth_op.cc
-|        | spacetodepth_op.h
-|        | spacetodepth_op_gpu.cu.cc
-|        | sparse_add_grad_op.cc
-|        | sparse_add_op.cc
-|        | sparse_add_op_test.cc
-|        | sparse_concat_op.cc
-|        | sparse_conditional_accumulator.h
-|        | sparse_conditional_accumulator_op.cc
-|        | sparse_cross_op.cc
-|        | sparse_dense_binary_op_shared.cc
-|        | sparse_dense_binary_op_shared_test.cc
-|        | sparse_fill_empty_rows_op.cc
-|        | sparse_matmul_op.cc
-|        | sparse_matmul_op.h
-|        | sparse_matmul_op_test.cc
-|        | sparse_reduce_op.cc
-|        | sparse_reduce_sum_op_test.cc
-|        | sparse_reorder_op.cc
-|        | sparse_reshape_op.cc
-|        | sparse_slice_op.cc
-|        | sparse_softmax_op.cc
-|        | sparse_sparse_binary_op_shared.cc
-|        | sparse_split_op.cc
-|        | sparse_tensor_dense_add_op.cc
-|        | sparse_tensor_dense_add_op.h
-|        | sparse_tensor_dense_matmul_op.cc
-|        | sparse_tensor_dense_matmul_op.h
-|        | sparse_tensor_dense_matmul_op_gpu.cu.cc
-|        | sparse_tensor_dense_matmul_op_test.cc
-|        | sparse_tensors_map_ops.cc
-|        | sparse_to_dense_op.cc
-|        | sparse_to_dense_op_test.cc
-|        | sparse_xent_op.cc
-|        | sparse_xent_op.h
-|        | sparse_xent_op_gpu.cu.cc
-|        | sparse_xent_op_test.cc
-|        | spectrogram.cc
-|        | spectrogram.h
-|        | spectrogram_convert_test_data.cc
-|        | spectrogram_op.cc
-|        | spectrogram_op_test.cc
-|        | spectrogram_test.cc
-|        | spectrogram_test_data
-|        | spectrogram_test_data/README
-|        | spectrogram_test_data/short_test_segment.wav
-|        | spectrogram_test_data/short_test_segment_spectrogram.csv.bin
-|        | spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin
-|        | spectrogram_test_utils.cc
-|        | spectrogram_test_utils.h
-|        | split_lib.h
-|        | split_lib_cpu.cc
-|        | split_lib_gpu.cu.cc
-|        | split_op.cc
-|        | split_op_test.cc
-|        | split_v_op.cc
-|        | split_v_op_test.cc
-|        | squared-loss.h
-|        | stack_ops.cc
-|        | stage_op.cc
-|        | stateless_random_ops.cc
-|        | stateless_random_ops.h
-|        | strided_slice_op.cc
-|        | strided_slice_op.h
-|        | strided_slice_op_define_grad.cc
-|        | strided_slice_op_gpu.cu.cc
-|        | strided_slice_op_impl.h
-|        | strided_slice_op_inst_0.cc
-|        | strided_slice_op_inst_1.cc
-|        | strided_slice_op_inst_2.cc
-|        | strided_slice_op_inst_3.cc
-|        | strided_slice_op_inst_4.cc
-|        | strided_slice_op_inst_5.cc
-|        | strided_slice_op_inst_6.cc
-|        | strided_slice_op_inst_7.cc
-|        | strided_slice_op_test.cc
-|        | string_join_op.cc
-|        | string_split_op.cc
-|        | string_strip_op.cc
-|        | string_to_hash_bucket_op.cc
-|        | string_to_hash_bucket_op.h
-|        | string_to_number_op.cc
-|        | substr_op.cc
-|        | summary_audio_op.cc
-|        | summary_audio_op_test.cc
-|        | summary_image_op.cc
-|        | summary_image_op_test.cc
-|        | summary_interface.h
-|        | summary_kernels.cc
-|        | summary_op.cc
-|        | summary_op_test.cc
-|        | summary_tensor_op.cc
-|        | summary_tensor_op_test.cc
-|        | svd_op_complex128.cc
-|        | svd_op_complex64.cc
-|        | svd_op_double.cc
-|        | svd_op_float.cc
-|        | svd_op_gpu.cu.cc
-|        | svd_op_impl.h
-|        | tensor_array.cc
-|        | tensor_array.h
-|        | tensor_array_ops.cc
-|        | text_line_reader_op.cc
-|        | tf_record_reader_op.cc
-|        | tile_functor.h
-|        | tile_functor_cpu.cc
-|        | tile_functor_gpu.cu.cc
-|        | tile_ops.cc
-|        | tile_ops_cpu_impl.h
-|        | tile_ops_cpu_impl_1.cc
-|        | tile_ops_cpu_impl_2.cc
-|        | tile_ops_cpu_impl_3.cc
-|        | tile_ops_cpu_impl_4.cc
-|        | tile_ops_cpu_impl_5.cc
-|        | tile_ops_cpu_impl_6.cc
-|        | tile_ops_cpu_impl_7.cc
-|        | tile_ops_gpu_impl.h
-|        | tile_ops_gpu_impl_1.cu.cc
-|        | tile_ops_gpu_impl_2.cu.cc
-|        | tile_ops_gpu_impl_3.cu.cc
-|        | tile_ops_gpu_impl_4.cu.cc
-|        | tile_ops_gpu_impl_5.cu.cc
-|        | tile_ops_gpu_impl_6.cu.cc
-|        | tile_ops_gpu_impl_7.cu.cc
-|        | tile_ops_gpu_impl_8.cu.cc
-|        | tile_ops_impl.h
-|        | topk_op.cc
-|        | topk_op.h
-|        | topk_op_gpu.cu.cc
-|        | training_op_helpers.cc
-|        | training_op_helpers.h
-|        | training_ops.cc
-|        | training_ops.h
-|        | training_ops_gpu.cu.cc
-|        | training_ops_test.cc
-|        | transpose_functor.h
-|        | transpose_functor_cpu.cc
-|        | transpose_functor_gpu.cu.cc
-|        | transpose_op.cc
-|        | transpose_op.h
-|        | transpose_util_test.cc
-|        | typed_conditional_accumulator_base.h
-|        | typed_queue.h
-|        | unique_op.cc
-|        | unique_op_test.cc
-|        | unpack_op.cc
-|        | unravel_index_op.cc
-|        | variable_ops.cc
-|        | variable_ops.h
-|        | variable_ops_test.cc
-|        | warn_about_ints.cc
-|        | warn_about_ints.h
-|        | where_op.cc
-|        | where_op.h
-|        | where_op_gpu.cu.h
-|        | where_op_gpu_impl_1.cu.cc
-|        | where_op_gpu_impl_2.cu.cc
-|        | where_op_gpu_impl_3.cu.cc
-|        | where_op_gpu_impl_4.cu.cc
-|        | where_op_gpu_impl_5.cu.cc
-|        | whole_file_read_ops.cc
-|        | winograd_transform.h
-|        | word2vec_kernels.cc
-|        | xent_op.cc
-|        | xent_op.h
-|        | xent_op_gpu.cu.cc
-|        | xent_op_test.cc
-|        | xsmm_conv2d.cc
-|        | xsmm_conv2d.h
-|        | xsmm_conv2d_test.cc
+|   O    | quantization_utils.cc
+|   O    | quantization_utils.h
+|   O    | quantization_utils_test.cc
+|   O    | quantize_and_dequantize_op.cc
+|   O    | quantize_and_dequantize_op.h
+|   O    | quantize_and_dequantize_op_gpu.cu.cc
+|   O    | quantize_and_dequantize_op_test.cc
+|   O    | quantize_down_and_shrink_range.cc
+|   O    | quantize_down_and_shrink_range_op_test.cc
+|   O    | quantize_op.cc
+|   O    | quantize_op_test.cc
+|   O    | quantized_activation_ops.cc
+|   O    | quantized_activation_ops_test.cc
+|   O    | quantized_add_op.cc
+|   O    | quantized_add_op_test.cc
+|   O    | quantized_batch_norm_op.cc
+|   O    | quantized_batch_norm_op_test.cc
+|   O    | quantized_bias_add_op.cc
+|   O    | quantized_bias_add_op_test.cc
+|   O    | quantized_concat_op.cc
+|   O    | quantized_concat_op_test.cc
+|   O    | quantized_conv_ops.cc
+|   O    | quantized_conv_ops_test.cc
+|   O    | quantized_instance_norm.cc
+|   O    | quantized_instance_norm_test.cc
+|   O    | quantized_matmul_op.cc
+|   O    | quantized_matmul_op_test.cc
+|   O    | quantized_mul_op.cc
+|   O    | quantized_mul_op_test.cc
+|   O    | quantized_pooling_ops.cc
+|   O    | quantized_pooling_ops_test.cc
+|   O    | quantized_reshape_op.cc
+|   O    | quantized_reshape_op_test.cc
+|   O    | quantized_resize_bilinear_op.cc
+|   O    | quantized_resize_bilinear_op_test.cc
+|   O    | queue_base.cc
+|   O    | queue_base.h
+|   O    | queue_op.h
+|   O    | queue_ops.cc
+|   O    | random_crop_op.cc
+|   O    | random_op.cc
+|   O    | random_op.h
+|   O    | random_op_gpu.cu.cc
+|   O    | random_op_test.cc
+|   O    | random_poisson_op.cc
+|   O    | random_poisson_op.h
+|   O    | random_poisson_op_test.cc
+|   O    | random_shuffle_op.cc
+|   O    | random_shuffle_queue_op.cc
+|   O    | range_sampler.cc
+|   O    | range_sampler.h
+|   O    | range_sampler_test.cc
+|   O    | reader_ops.cc
+|   O    | record_input_op.cc
+|   O    | record_yielder.cc
+|   O    | record_yielder.h
+|   O    | reduce_join_op.cc
+|   X    | reduction_gpu_kernels.cu.h
+|   X    | reduction_ops.h
+|   X    | reduction_ops_all.cc
+|   X    | reduction_ops_any.cc
+|   X    | reduction_ops_common.cc
+|   X    | reduction_ops_common.h
+|   X    | reduction_ops_gpu_bool.cu.cc
+|   X    | reduction_ops_gpu_complex128.cu.cc
+|   X    | reduction_ops_gpu_complex64.cu.cc
+|   X    | reduction_ops_gpu_double.cu.cc
+|   X    | reduction_ops_gpu_float.cu.cc
+|   X    | reduction_ops_gpu_int.cu.cc
+|   X    | reduction_ops_half_mean_sum.cu.cc
+|   X    | reduction_ops_half_prod_max_min.cu.cc
+|   X    | reduction_ops_max.cc
+|   X    | reduction_ops_mean.cc
+|   X    | reduction_ops_min.cc
+|   X    | reduction_ops_prod.cc
+|   X    | reduction_ops_sum.cc
+|   X    | reduction_ops_test.cc
+|   O    | reference_gemm.h
+|   O    | regex_replace_op.cc
+|   O    | relu_op.cc
+|   O    | relu_op.h
+|   O    | relu_op_functor.h
+|   O    | relu_op_gpu.cu.cc
+|   O    | remote_fused_graph_execute_op.cc
+|   O    | remote_fused_graph_execute_op_test.cc
+|   O    | remote_fused_graph_execute_op_test_utils.cc
+|   O    | remote_fused_graph_execute_op_test_utils.h
+|   O    | remote_fused_graph_execute_utils.cc
+|   O    | remote_fused_graph_execute_utils.h
+|   O    | remote_fused_graph_execute_utils_test.cc
+|   O    | remote_fused_graph_rewriter_transform.cc
+|   O    | remote_fused_graph_rewriter_transform_test.cc
+|   O    | requantization_range_op.cc
+|   O    | requantization_range_op_test.cc
+|   O    | requantize.cc
+|   O    | requantize_op_test.cc
+|   O    | reshape_op.cc
+|   O    | reshape_op.h
+|   O    | reshape_util.cc
+|   O    | reshape_util.h
+|   O    | resize_area_op.cc
+|   O    | resize_area_op_test.cc
+|   O    | resize_bicubic_op.cc
+|   O    | resize_bicubic_op_test.cc
+|   O    | resize_bilinear_op.cc
+|   O    | resize_bilinear_op.h
+|   O    | resize_bilinear_op_gpu.cu.cc
+|   O    | resize_bilinear_op_test.cc
+|   O    | resize_nearest_neighbor_op.cc
+|   O    | resize_nearest_neighbor_op.h
+|   O    | resize_nearest_neighbor_op_gpu.cu.cc
+|   O    | resize_nearest_neighbor_op_test.cc
+|   O    | resize_op_benchmark_test.cc
+|   O    | resource_variable_ops.cc
+|   O    | restore_op.cc
+|   O    | restore_op_test.cc
+|   O    | restore_v2_op_test.cc
+|   O    | reverse_op.cc
+|   O    | reverse_op.h
+|   O    | reverse_op_gpu.cu.cc
+|   O    | reverse_op_test.cc
+|   O    | reverse_sequence_op.cc
+|   O    | reverse_sequence_op.h
+|   O    | reverse_sequence_op_gpu.cu.cc
+|   O    | roll_op.cc
+|   O    | roll_op_test.cc
+|   O    | rpc_op.cc
+|   O    | sample_distorted_bounding_box_op.cc
+|   O    | save_op.cc
+|   O    | save_op_test.cc
+|   O    | save_restore_tensor.cc
+|   O    | save_restore_tensor.h
+|   O    | save_restore_v2_ops.cc
+|   O    | save_v2_op_test.cc
+|   O    | scan_ops.cc
+|   O    | scan_ops.h
+|   O    | scan_ops_gpu.cu.cc
+|   O    | scatter_functor.cc
+|   O    | scatter_functor.h
+|   O    | scatter_functor_gpu.cu.cc
+|   O    | scatter_functor_gpu.cu.h
+|   O    | scatter_nd_op.cc
+|   O    | scatter_nd_op.h
+|   O    | scatter_nd_op_cpu_impl.h
+|   O    | scatter_nd_op_cpu_impl_0.cc
+|   O    | scatter_nd_op_cpu_impl_1.cc
+|   O    | scatter_nd_op_cpu_impl_2.cc
+|   O    | scatter_nd_op_cpu_impl_3.cc
+|   O    | scatter_nd_op_cpu_impl_4.cc
+|   O    | scatter_nd_op_cpu_impl_5.cc
+|   O    | scatter_nd_op_cpu_impl_6.cc
+|   O    | scatter_nd_op_cpu_impl_7.cc
+|   O    | scatter_nd_op_gpu.cu.cc
+|   O    | scatter_nd_op_test.cc
+|   O    | scatter_op.cc
+|   O    | scatter_op_gpu.cu.cc
+|   O    | scatter_op_test.cc
+|   O    | scoped_allocator_ops.cc
+|   O    | scoped_allocator_ops_test.cc
+|   O    | sdca_internal.cc
+|   O    | sdca_internal.h
+|   O    | sdca_ops.cc
+|   O    | sdca_ops_test.cc
+|   O    | segment_reduction_ops.cc
+|   O    | segment_reduction_ops.h
+|   O    | segment_reduction_ops_gpu.cu.cc
+|   O    | segment_reduction_ops_test.cc
+|   O    | self_adjoint_eig_op.cc
+|   O    | self_adjoint_eig_v2_op_complex128.cc
+|   O    | self_adjoint_eig_v2_op_complex64.cc
+|   O    | self_adjoint_eig_v2_op_double.cc
+|   O    | self_adjoint_eig_v2_op_float.cc
+|   X    | self_adjoint_eig_v2_op_gpu.cc
+|   O    | self_adjoint_eig_v2_op_impl.h
+|   O    | sendrecv_ops.cc
+|   O    | sendrecv_ops.h
+|   O    | sendrecv_ops_test.cc
+|   O    | sequence_ops.cc
+|   O    | sequence_ops_test.cc
+|   O    | serialize_sparse_op.cc
+|   O    | session_ops.cc
+|   O    | set_kernels.cc
+|   O    | shape_op_test.cc
+|   O    | shape_ops.cc
+|   O    | shape_ops.h
+|   O    | slice_op.cc
+|   O    | slice_op.h
+|   O    | slice_op_cpu_impl.h
+|   O    | slice_op_cpu_impl_1.cc
+|   O    | slice_op_cpu_impl_2.cc
+|   O    | slice_op_cpu_impl_3.cc
+|   O    | slice_op_cpu_impl_4.cc
+|   O    | slice_op_cpu_impl_5.cc
+|   O    | slice_op_cpu_impl_6.cc
+|   O    | slice_op_cpu_impl_7.cc
+|   O    | slice_op_gpu.cu.cc
+|   O    | slice_op_test.cc
+|   O    | smooth-hinge-loss.h
+|   O    | snapshot_op.cc
+|   O    | snapshot_op.h
+|   O    | snapshot_op_gpu.cu.cc
+|   X    | softmax_op.cc
+|   X    | softmax_op_functor.h
+|   X    | softmax_op_gpu.cu.cc
+|   O    | softplus_op.cc
+|   O    | softplus_op.h
+|   O    | softplus_op_gpu.cu.cc
+|   O    | softsign_op.cc
+|   O    | softsign_op.h
+|   O    | softsign_op_gpu.cu.cc
+|   O    | spacetobatch_benchmark_test.cc
+|   O    | spacetobatch_functor.cc
+|   O    | spacetobatch_functor.h
+|   O    | spacetobatch_functor_gpu.cu.cc
+|   O    | spacetobatch_op.cc
+|   O    | spacetodepth_op.cc
+|   O    | spacetodepth_op.h
+|   O    | spacetodepth_op_gpu.cu.cc
+|   O    | sparse_add_grad_op.cc
+|   O    | sparse_add_op.cc
+|   O    | sparse_add_op_test.cc
+|   O    | sparse_concat_op.cc
+|   O    | sparse_conditional_accumulator.h
+|   O    | sparse_conditional_accumulator_op.cc
+|   O    | sparse_cross_op.cc
+|   O    | sparse_dense_binary_op_shared.cc
+|   O    | sparse_dense_binary_op_shared_test.cc
+|   O    | sparse_fill_empty_rows_op.cc
+|   O    | sparse_matmul_op.cc
+|   O    | sparse_matmul_op.h
+|   O    | sparse_matmul_op_test.cc
+|   O    | sparse_reduce_op.cc
+|   O    | sparse_reduce_sum_op_test.cc
+|   O    | sparse_reorder_op.cc
+|   O    | sparse_reshape_op.cc
+|   O    | sparse_slice_op.cc
+|   O    | sparse_softmax_op.cc
+|   O    | sparse_sparse_binary_op_shared.cc
+|   O    | sparse_split_op.cc
+|   O    | sparse_tensor_dense_add_op.cc
+|   O    | sparse_tensor_dense_add_op.h
+|   O    | sparse_tensor_dense_matmul_op.cc
+|   O    | sparse_tensor_dense_matmul_op.h
+|   O    | sparse_tensor_dense_matmul_op_gpu.cu.cc
+|   O    | sparse_tensor_dense_matmul_op_test.cc
+|   O    | sparse_tensors_map_ops.cc
+|   O    | sparse_to_dense_op.cc
+|   O    | sparse_to_dense_op_test.cc
+|   O    | sparse_xent_op.cc
+|   O    | sparse_xent_op.h
+|   O    | sparse_xent_op_gpu.cu.cc
+|   O    | sparse_xent_op_test.cc
+|   O    | spectrogram.cc
+|   O    | spectrogram.h
+|   O    | spectrogram_convert_test_data.cc
+|   O    | spectrogram_op.cc
+|   O    | spectrogram_op_test.cc
+|   O    | spectrogram_test.cc
+|   O    | spectrogram_test_data
+|   O    | spectrogram_test_data/README
+|   O    | spectrogram_test_data/short_test_segment.wav
+|   O    | spectrogram_test_data/short_test_segment_spectrogram.csv.bin
+|   O    | spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin
+|   O    | spectrogram_test_utils.cc
+|   O    | spectrogram_test_utils.h
+|   O    | split_lib.h
+|   O    | split_lib_cpu.cc
+|   O    | split_lib_gpu.cu.cc
+|   O    | split_op.cc
+|   O    | split_op_test.cc
+|   O    | split_v_op.cc
+|   O    | split_v_op_test.cc
+|   O    | squared-loss.h
+|   O    | stack_ops.cc
+|   O    | stage_op.cc
+|   O    | stateless_random_ops.cc
+|   O    | stateless_random_ops.h
+|   O    | strided_slice_op.cc
+|   O    | strided_slice_op.h
+|   O    | strided_slice_op_define_grad.cc
+|   O    | strided_slice_op_gpu.cu.cc
+|   O    | strided_slice_op_impl.h
+|   O    | strided_slice_op_inst_0.cc
+|   O    | strided_slice_op_inst_1.cc
+|   O    | strided_slice_op_inst_2.cc
+|   O    | strided_slice_op_inst_3.cc
+|   O    | strided_slice_op_inst_4.cc
+|   O    | strided_slice_op_inst_5.cc
+|   O    | strided_slice_op_inst_6.cc
+|   O    | strided_slice_op_inst_7.cc
+|   O    | strided_slice_op_test.cc
+|   O    | string_join_op.cc
+|   O    | string_split_op.cc
+|   O    | string_strip_op.cc
+|   O    | string_to_hash_bucket_op.cc
+|   O    | string_to_hash_bucket_op.h
+|   O    | string_to_number_op.cc
+|   O    | substr_op.cc
+|   O    | summary_audio_op.cc
+|   O    | summary_audio_op_test.cc
+|   O    | summary_image_op.cc
+|   O    | summary_image_op_test.cc
+|   O    | summary_interface.h
+|   O    | summary_kernels.cc
+|   O    | summary_op.cc
+|   O    | summary_op_test.cc
+|   O    | summary_tensor_op.cc
+|   O    | summary_tensor_op_test.cc
+|   O    | svd_op_complex128.cc
+|   O    | svd_op_complex64.cc
+|   O    | svd_op_double.cc
+|   O    | svd_op_float.cc
+|   X    | svd_op_gpu.cu.cc
+|   O    | svd_op_impl.h
+|   O    | tensor_array.cc
+|   O    | tensor_array.h
+|   O    | tensor_array_ops.cc
+|   O    | text_line_reader_op.cc
+|   O    | tf_record_reader_op.cc
+|   O    | tile_functor.h
+|   O    | tile_functor_cpu.cc
+|   O    | tile_functor_gpu.cu.cc
+|   O    | tile_ops.cc
+|   O    | tile_ops_cpu_impl.h
+|   O    | tile_ops_cpu_impl_1.cc
+|   O    | tile_ops_cpu_impl_2.cc
+|   O    | tile_ops_cpu_impl_3.cc
+|   O    | tile_ops_cpu_impl_4.cc
+|   O    | tile_ops_cpu_impl_5.cc
+|   O    | tile_ops_cpu_impl_6.cc
+|   O    | tile_ops_cpu_impl_7.cc
+|   O    | tile_ops_gpu_impl.h
+|   O    | tile_ops_gpu_impl_1.cu.cc
+|   O    | tile_ops_gpu_impl_2.cu.cc
+|   O    | tile_ops_gpu_impl_3.cu.cc
+|   O    | tile_ops_gpu_impl_4.cu.cc
+|   O    | tile_ops_gpu_impl_5.cu.cc
+|   O    | tile_ops_gpu_impl_6.cu.cc
+|   O    | tile_ops_gpu_impl_7.cu.cc
+|   O    | tile_ops_gpu_impl_8.cu.cc
+|   O    | tile_ops_impl.h
+|   X    | topk_op.cc
+|   X    | topk_op.h
+|   X    | topk_op_gpu.cu.cc
+|   O    | training_op_helpers.cc
+|   O    | training_op_helpers.h
+|   O    | training_ops.cc
+|   O    | training_ops.h
+|   O    | training_ops_gpu.cu.cc
+|   O    | training_ops_test.cc
+|   O    | transpose_functor.h
+|   O    | transpose_functor_cpu.cc
+|   O    | transpose_functor_gpu.cu.cc
+|   O    | transpose_op.cc
+|   O    | transpose_op.h
+|   O    | transpose_util_test.cc
+|   O    | typed_conditional_accumulator_base.h
+|   O    | typed_queue.h
+|   O    | unique_op.cc
+|   O    | unique_op_test.cc
+|   O    | unpack_op.cc
+|   O    | unravel_index_op.cc
+|   O    | variable_ops.cc
+|   O    | variable_ops.h
+|   O    | variable_ops_test.cc
+|   O    | warn_about_ints.cc
+|   O    | warn_about_ints.h
+|   X    | where_op.cc
+|   X    | where_op.h
+|   X    | where_op_gpu.cu.h
+|   X    | where_op_gpu_impl_1.cu.cc
+|   X    | where_op_gpu_impl_2.cu.cc
+|   X    | where_op_gpu_impl_3.cu.cc
+|   X    | where_op_gpu_impl_4.cu.cc
+|   X    | where_op_gpu_impl_5.cu.cc
+|   O    | whole_file_read_ops.cc
+|   O    | winograd_transform.h
+|   O    | word2vec_kernels.cc
+|   O    | xent_op.cc
+|   O    | xent_op.h
+|   O    | xent_op_gpu.cu.cc
+|   O    | xent_op_test.cc
+|   O    | xsmm_conv2d.cc
+|   O    | xsmm_conv2d.h
+|   O    | xsmm_conv2d_test.cc

@@ -305,8 +305,13 @@ struct google_floor_div {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
     if ((x < T(0)) != (y < T(0))) {
+#if defined(__HIP_DEVICE_COMPILE__)
+      T abs_x = (x < T(0)) ? -x : x;
+      T abs_y = (y < T(0)) ? -y : y;
+#else
       T abs_x = std::abs(x);
       T abs_y = std::abs(y);
+#endif
       return -(abs_x + abs_y - 1) / abs_y;
     } else {
       return x / y;
@@ -660,7 +665,7 @@ struct scalar_rint_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
   operator()(const Scalar& a) const {
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
     return ::rint(a);
 #elif defined(__ANDROID__)
     return rint(a);

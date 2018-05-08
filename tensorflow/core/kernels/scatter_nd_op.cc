@@ -16,9 +16,9 @@ limitations under the License.
 // See docs in ../ops/state_ops.cc.
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 
@@ -244,7 +244,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
 TF_CALL_string(REGISTER_SCATTER_ND_CPU);
 
 // Registers GPU kernels.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_SCATTER_ND_ADD_SUB_GPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB(type, GPU);
@@ -287,7 +287,7 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
 #undef REGISTER_SCATTER_ND_KERNEL
 #undef REGISTER_SCATTER_ND_KERNEL_INDEX
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 // Check whether updates.shape = indices.shape[:batch_dim] +
@@ -509,7 +509,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
 }
 }  // namespace functor
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, IXDIM)           \
@@ -552,6 +552,6 @@ TF_CALL_complex128(DECLARE_GPU_SPECS);
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -523,7 +523,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                             \
@@ -677,7 +677,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
@@ -1142,7 +1142,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                               \
@@ -2379,7 +2379,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                               \
@@ -2754,7 +2754,7 @@ TF_CALL_float(REGISTER_SYCL_KERNELS);
 TF_CALL_double(REGISTER_SYCL_KERNELS);
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
@@ -2884,7 +2884,7 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
@@ -3116,7 +3116,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
@@ -3532,7 +3532,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                           \
@@ -3638,7 +3638,7 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                           \

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -38,7 +38,7 @@ __global__ void ResizeNearestNeighborNHWC(
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
     T* top_data) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
     n /= channels;
@@ -67,7 +67,7 @@ __global__ void ResizeNearestNeighborBackwardNHWC(
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
     T* bottom_diff) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
     n /= channels;
@@ -86,7 +86,7 @@ __global__ void ResizeNearestNeighborBackwardNHWC(
                             : static_cast<int>(floorf(in_x * width_scale)),
             out_width - 1);
     const int idx = (out_y * out_width + out_x) * channels + c;
-    CudaAtomicAdd(bottom_diff_n + idx, ldg(top_diff + index));
+    GpuAtomicAdd(bottom_diff_n + idx, ldg(top_diff + index));
   }
 }
 
@@ -111,11 +111,11 @@ struct ResizeNearestNeighbor<GPUDevice, T, align_corners> {
     const int output_size = batch_size * out_height * out_width * channels;
     if (output_size == 0) return true;
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
-    ResizeNearestNeighborNHWC<T, align_corners>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            output_size, input.data(), in_height, in_width, channels,
-            out_height, out_width, height_scale, width_scale, output.data());
+    GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
+    GPU_LAUNCH_KERNEL(ResizeNearestNeighborNHWC<T, align_corners>,
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+        output_size, input.data(), in_height, in_width, channels,
+        out_height, out_width, height_scale, width_scale, output.data());
     return d.ok();
   }
 };
@@ -144,20 +144,23 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, align_corners> {
 
     const int output_size = batch_size * channels * out_height * out_width;
 
-    CudaLaunchConfig output_config = GetCudaLaunchConfig(output_size, d);
-    SetZero<<<output_config.block_count, output_config.thread_per_block, 0,
-              d.stream()>>>(output_size, output.data());
+    GpuLaunchConfig output_config = GetGpuLaunchConfig(output_size, d);
+    GPU_LAUNCH_KERNEL(SetZero,
+        dim3(output_config.block_count), dim3(output_config.thread_per_block),
+        0, d.stream(),
+        output_size, output.data());
     if (!d.ok()) return false;
 
     const int input_size = batch_size * channels * in_height * in_width;
     if (input_size == 0) return true;
 
-    CudaLaunchConfig input_config = GetCudaLaunchConfig(input_size, d);
-    ResizeNearestNeighborBackwardNHWC<T, align_corners>
-        <<<input_config.block_count, input_config.thread_per_block, 0,
-           d.stream()>>>(input_config.virtual_thread_count, input.data(),
-                         in_height, in_width, channels, out_height, out_width,
-                         height_scale, width_scale, output.data());
+    GpuLaunchConfig input_config = GetGpuLaunchConfig(input_size, d);
+    GPU_LAUNCH_KERNEL(ResizeNearestNeighborBackwardNHWC<T, align_corners>,
+        dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
+        d.stream(),
+        input_config.virtual_thread_count, input.data(), in_height, in_width,
+        channels, out_height, out_width, height_scale, width_scale,
+        output.data());
     return d.ok();
   }
 };
@@ -174,4 +177,4 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

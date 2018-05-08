@@ -21,10 +21,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ struct LaunchConv2DOp {
                   TensorFormat data_format);
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct LaunchConv2DOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -49,7 +49,7 @@ struct LaunchConv2DOp<Eigen::GpuDevice, T> {
                   const Padding& padding, Tensor* output,
                   TensorFormat data_format);
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Used to keep track of persistent memory buffers used within the op.
 // It uses malloc and free to avoid the time cost of initializing the memory.
