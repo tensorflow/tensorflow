@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -41,11 +41,11 @@ template <typename OutputType>
 __global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
                                   const int32 num_samples, const float* scores,
                                   const float* maxima, OutputType* output) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     const int maxima_idx = index / num_classes;
     if (ldg(maxima + maxima_idx) == ldg(scores + index)) {
       using UnsignedOutputType = typename std::make_unsigned<OutputType>::type;
-      CudaAtomicMax(reinterpret_cast<UnsignedOutputType*>(output + maxima_idx),
+      GpuAtomicMax(reinterpret_cast<UnsignedOutputType*>(output + maxima_idx),
                     static_cast<UnsignedOutputType>(index % num_classes));
     }
   }
@@ -104,11 +104,12 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     output.device(d) = output.constant(0LL);
 
     const int32 work_items = batch_size * num_samples * num_classes;
-    CudaLaunchConfig config = GetCudaLaunchConfig(work_items, d);
-    MultinomialKernel<<<config.block_count, config.thread_per_block, 0,
-                        d.stream()>>>(config.virtual_thread_count, num_classes,
-                                      num_samples, scores.data(), maxima.data(),
-                                      output.data());
+    GpuLaunchConfig config = GetGpuLaunchConfig(work_items, d);
+    GPU_LAUNCH_KERNEL(MultinomialKernel<OutputType>,
+        dim3(config.block_count), dim3(config.thread_per_block), 0,
+        d.stream(),
+        config.virtual_thread_count, num_classes, num_samples, scores.data(),
+        maxima.data(), output.data());
   }
 };
 
@@ -128,4 +129,4 @@ template struct MultinomialFunctor<GPUDevice, int64, int64>;
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

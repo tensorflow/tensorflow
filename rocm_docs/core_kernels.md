@@ -474,270 +474,270 @@ Kernels under tensorflow/core/kernels
 |   O    | extract_jpeg_shape_op.cc
 |   O    | eye_functor.h
 |   O    | eye_functor_gpu.cu.cc
-|        | fact_op.cc
-|        | fake_quant_ops.cc
-|        | fake_quant_ops_functor.h
-|        | fake_quant_ops_gpu.cu.cc
-|        | fake_quant_ops_test.cc
-|        | fft_ops.cc
-|        | fifo_queue.cc
-|        | fifo_queue.h
-|        | fifo_queue_op.cc
-|        | fill_functor.cc
-|        | fill_functor.cu.cc
-|        | fill_functor.h
-|        | fixed_length_record_reader_op.cc
-|        | fractional_avg_pool_op.cc
-|        | fractional_max_pool_op.cc
-|        | fractional_pool_common.cc
-|        | fractional_pool_common.h
-|        | function_ops.cc
-|        | functional_ops.cc
-|        | fused_batch_norm_op.cc
-|        | fused_batch_norm_op.cu.cc
-|        | fused_batch_norm_op.h
-|        | fused_batch_norm_op_test.cc
-|        | fuzzing
-|        | fuzzing/BUILD
-|        | fuzzing/decode_base64_fuzz.cc
-|        | fuzzing/decode_bmp_fuzz.cc
-|        | fuzzing/decode_jpeg_fuzz.cc
-|        | fuzzing/decode_json_example_fuzz.cc
-|        | fuzzing/decode_png_fuzz.cc
-|        | fuzzing/decode_wav_fuzz.cc
-|        | fuzzing/encode_base64_fuzz.cc
-|        | fuzzing/encode_jpeg_fuzz.cc
-|        | fuzzing/example_proto_fast_parsing_fuzz.cc
-|        | fuzzing/fuzz_session.h
-|        | fuzzing/identity_fuzz.cc
-|        | fuzzing/parse_tensor_op_fuzz.cc
-|        | fuzzing/string_split_fuzz.cc
-|        | fuzzing/string_to_number_fuzz.cc
-|        | fuzzing/tf_ops_fuzz_target_lib.bzl
-|        | gather_functor.cc
-|        | gather_functor.h
-|        | gather_functor_gpu.cu.cc
-|        | gather_functor_gpu.cu.h
-|        | gather_nd_op.cc
-|        | gather_nd_op.h
-|        | gather_nd_op_cpu_impl.h
-|        | gather_nd_op_cpu_impl_0.cc
-|        | gather_nd_op_cpu_impl_1.cc
-|        | gather_nd_op_cpu_impl_2.cc
-|        | gather_nd_op_cpu_impl_3.cc
-|        | gather_nd_op_cpu_impl_4.cc
-|        | gather_nd_op_cpu_impl_5.cc
-|        | gather_nd_op_cpu_impl_6.cc
-|        | gather_nd_op_cpu_impl_7.cc
-|        | gather_nd_op_gpu.cu.cc
-|        | gather_nd_op_test.cc
-|        | gather_op.cc
-|        | gather_op_test.cc
-|        | gemm_functors.h
-|        | generate_vocab_remapping_op.cc
-|        | gpu_utils.h
-|        | guarantee_const_op.cc
-|        | guarantee_const_op_test.cc
-|        | hexagon
-|        | hexagon/BUILD
-|        | hexagon/graph_transfer_utils.cc
-|        | hexagon/graph_transfer_utils.h
-|        | hexagon/graph_transferer.cc
-|        | hexagon/graph_transferer.h
-|        | hexagon/graph_transferer_test.cc
-|        | hexagon/hexagon_control_wrapper.cc
-|        | hexagon/hexagon_control_wrapper.h
-|        | hexagon/hexagon_graph_execution_test.cc
-|        | hexagon/hexagon_ops_definitions.cc
-|        | hexagon/hexagon_ops_definitions.h
-|        | hexagon/hexagon_remote_fused_graph_executor_build.cc
-|        | hexagon/hexagon_remote_fused_graph_executor_build_test.cc
-|        | hexagon/hexagon_rewriter_transform.cc
-|        | hexagon/hexagon_rewriter_transform_test.cc
-|        | hexagon/soc_interface.cc
-|        | hexagon/soc_interface.h
-|        | hinge-loss.h
-|        | histogram_op.cc
-|        | histogram_op.h
-|        | histogram_op_gpu.cu.cc
-|        | i_remote_fused_graph_executor.h
-|        | i_remote_fused_graph_ops_definitions.cc
-|        | i_remote_fused_graph_ops_definitions.h
-|        | identity_n_op.cc
-|        | identity_n_op.h
-|        | identity_n_op_test.cc
-|        | identity_op.cc
-|        | identity_op.h
-|        | identity_op_test.cc
-|        | identity_reader_op.cc
-|        | image_resizer_state.h
-|        | immutable_constant_op.cc
-|        | immutable_constant_op.h
-|        | immutable_constant_op_test.cc
-|        | in_topk_op.cc
-|        | initializable_lookup_table.cc
-|        | initializable_lookup_table.h
-|        | inplace_ops.cc
-|        | inplace_ops_functor.h
-|        | inplace_ops_functor_gpu.cu.cc
-|        | l2loss_op.cc
-|        | l2loss_op.h
-|        | l2loss_op_gpu.cu.cc
-|        | linalg_ops_common.cc
-|        | linalg_ops_common.h
-|        | list_kernels.cc
-|        | list_kernels.cu.cc
-|        | list_kernels.h
-|        | listdiff_op.cc
-|        | lmdb_reader_op.cc
-|        | load_and_remap_matrix_op.cc
-|        | logging_ops.cc
-|        | logging_ops_test.cc
-|        | logistic-loss.h
-|        | lookup_table_init_op.cc
-|        | lookup_table_init_op.h
-|        | lookup_table_op.cc
-|        | lookup_table_op.h
-|        | lookup_util.cc
-|        | lookup_util.h
-|        | loss.h
-|        | loss_test.cc
-|        | lrn_op.cc
-|        | lrn_op_test.cc
-|        | map_stage_op.cc
-|        | matching_files_op.cc
-|        | matmul_op.cc
-|        | matmul_op.h
-|        | matmul_op_test.cc
-|        | matrix_band_part_op.cc
-|        | matrix_band_part_op.h
-|        | matrix_band_part_op_gpu.cu.cc
-|        | matrix_diag_op.cc
-|        | matrix_diag_op.h
-|        | matrix_diag_op_gpu.cu.cc
-|        | matrix_exponential_op.cc
-|        | matrix_inverse_op.cc
-|        | matrix_logarithm_op.cc
-|        | matrix_set_diag_op.cc
-|        | matrix_set_diag_op.h
-|        | matrix_set_diag_op_gpu.cu.cc
-|        | matrix_solve_ls_op_complex128.cc
-|        | matrix_solve_ls_op_complex64.cc
-|        | matrix_solve_ls_op_double.cc
-|        | matrix_solve_ls_op_float.cc
-|        | matrix_solve_ls_op_impl.h
-|        | matrix_solve_op.cc
-|        | matrix_triangular_solve_op.cc
-|        | maxpooling_op.cc
-|        | maxpooling_op.h
-|        | maxpooling_op_gpu.cu.cc
-|        | maxpooling_op_gpu.h
-|        | merge_v2_checkpoints_op_test.cc
-|        | meta_support.cc
-|        | meta_support.h
-|        | mfcc.cc
-|        | mfcc.h
-|        | mfcc_dct.cc
-|        | mfcc_dct.h
-|        | mfcc_dct_test.cc
-|        | mfcc_mel_filterbank.cc
-|        | mfcc_mel_filterbank.h
-|        | mfcc_mel_filterbank_test.cc
-|        | mfcc_op.cc
-|        | mfcc_op_test.cc
-|        | mfcc_test.cc
-|        | mirror_pad_op.cc
-|        | mirror_pad_op.h
-|        | mirror_pad_op_cpu_impl.h
-|        | mirror_pad_op_cpu_impl_1.cc
-|        | mirror_pad_op_cpu_impl_2.cc
-|        | mirror_pad_op_cpu_impl_3.cc
-|        | mirror_pad_op_cpu_impl_4.cc
-|        | mirror_pad_op_cpu_impl_5.cc
-|        | mirror_pad_op_gpu.cu.cc
-|        | mkl_aggregate_ops.cc
-|        | mkl_avgpooling_op.cc
-|        | mkl_batch_matmul_op.cc
-|        | mkl_concat_op.cc
-|        | mkl_conv_grad_bias_ops.cc
-|        | mkl_conv_grad_filter_ops.cc
-|        | mkl_conv_grad_input_ops.cc
-|        | mkl_conv_ops.cc
-|        | mkl_conv_ops.h
-|        | mkl_cwise_ops_common.cc
-|        | mkl_fused_batch_norm_op.cc
-|        | mkl_identity_op.cc
-|        | mkl_input_conversion_op.cc
-|        | mkl_lrn_op.cc
-|        | mkl_matmul_op.cc
-|        | mkl_maxpooling_op.cc
-|        | mkl_pooling_ops_common.cc
-|        | mkl_pooling_ops_common.h
-|        | mkl_relu_op.cc
-|        | mkl_reshape_op.cc
-|        | mkl_softmax_op.cc
-|        | mkl_tfconv_op.h
-|        | mkl_transpose_op.cc
-|        | multinomial_op.cc
-|        | multinomial_op.h
-|        | multinomial_op_gpu.cu.cc
-|        | multinomial_op_test.cc
-|        | mutex_ops.cc
-|        | neon
-|        | neon/BUILD
-|        | neon/depthwiseconv_float.h
-|        | neon/neon_depthwise_conv_op.cc
-|        | neon/types.h
-|        | nn_ops_test.cc
-|        | no_op.cc
-|        | no_op.h
-|        | non_max_suppression_op.cc
-|        | non_max_suppression_op.h
-|        | non_max_suppression_op_test.cc
-|        | nth_element_op.cc
-|        | nth_element_op.h
-|        | one_hot_op.cc
-|        | one_hot_op.h
-|        | one_hot_op_gpu.cu.cc
+|   O    | fact_op.cc
+|   O    | fake_quant_ops.cc
+|   O    | fake_quant_ops_functor.h
+|   O    | fake_quant_ops_gpu.cu.cc
+|   O    | fake_quant_ops_test.cc
+|   O    | fft_ops.cc
+|   O    | fifo_queue.cc
+|   O    | fifo_queue.h
+|   O    | fifo_queue_op.cc
+|   O    | fill_functor.cc
+|   O    | fill_functor.cu.cc
+|   O    | fill_functor.h
+|   O    | fixed_length_record_reader_op.cc
+|   O    | fractional_avg_pool_op.cc
+|   O    | fractional_max_pool_op.cc
+|   O    | fractional_pool_common.cc
+|   O    | fractional_pool_common.h
+|   O    | function_ops.cc
+|   O    | functional_ops.cc
+|   O    | fused_batch_norm_op.cc
+|   O    | fused_batch_norm_op.cu.cc
+|   O    | fused_batch_norm_op.h
+|   O    | fused_batch_norm_op_test.cc
+|   O    | fuzzing
+|   O    | fuzzing/BUILD
+|   O    | fuzzing/decode_base64_fuzz.cc
+|   O    | fuzzing/decode_bmp_fuzz.cc
+|   O    | fuzzing/decode_jpeg_fuzz.cc
+|   O    | fuzzing/decode_json_example_fuzz.cc
+|   O    | fuzzing/decode_png_fuzz.cc
+|   O    | fuzzing/decode_wav_fuzz.cc
+|   O    | fuzzing/encode_base64_fuzz.cc
+|   O    | fuzzing/encode_jpeg_fuzz.cc
+|   O    | fuzzing/example_proto_fast_parsing_fuzz.cc
+|   O    | fuzzing/fuzz_session.h
+|   O    | fuzzing/identity_fuzz.cc
+|   O    | fuzzing/parse_tensor_op_fuzz.cc
+|   O    | fuzzing/string_split_fuzz.cc
+|   O    | fuzzing/string_to_number_fuzz.cc
+|   O    | fuzzing/tf_ops_fuzz_target_lib.bzl
+|   O    | gather_functor.cc
+|   O    | gather_functor.h
+|   O    | gather_functor_gpu.cu.cc
+|   O    | gather_functor_gpu.cu.h
+|   O    | gather_nd_op.cc
+|   O    | gather_nd_op.h
+|   O    | gather_nd_op_cpu_impl.h
+|   O    | gather_nd_op_cpu_impl_0.cc
+|   O    | gather_nd_op_cpu_impl_1.cc
+|   O    | gather_nd_op_cpu_impl_2.cc
+|   O    | gather_nd_op_cpu_impl_3.cc
+|   O    | gather_nd_op_cpu_impl_4.cc
+|   O    | gather_nd_op_cpu_impl_5.cc
+|   O    | gather_nd_op_cpu_impl_6.cc
+|   O    | gather_nd_op_cpu_impl_7.cc
+|   O    | gather_nd_op_gpu.cu.cc
+|   O    | gather_nd_op_test.cc
+|   O    | gather_op.cc
+|   O    | gather_op_test.cc
+|   O    | gemm_functors.h
+|   O    | generate_vocab_remapping_op.cc
+|   O    | gpu_utils.h
+|   O    | guarantee_const_op.cc
+|   O    | guarantee_const_op_test.cc
+|   O    | hexagon
+|   O    | hexagon/BUILD
+|   O    | hexagon/graph_transfer_utils.cc
+|   O    | hexagon/graph_transfer_utils.h
+|   O    | hexagon/graph_transferer.cc
+|   O    | hexagon/graph_transferer.h
+|   O    | hexagon/graph_transferer_test.cc
+|   O    | hexagon/hexagon_control_wrapper.cc
+|   O    | hexagon/hexagon_control_wrapper.h
+|   O    | hexagon/hexagon_graph_execution_test.cc
+|   O    | hexagon/hexagon_ops_definitions.cc
+|   O    | hexagon/hexagon_ops_definitions.h
+|   O    | hexagon/hexagon_remote_fused_graph_executor_build.cc
+|   O    | hexagon/hexagon_remote_fused_graph_executor_build_test.cc
+|   O    | hexagon/hexagon_rewriter_transform.cc
+|   O    | hexagon/hexagon_rewriter_transform_test.cc
+|   O    | hexagon/soc_interface.cc
+|   O    | hexagon/soc_interface.h
+|   O    | hinge-loss.h
+|   X    | histogram_op.cc
+|   X    | histogram_op.h
+|   X    | histogram_op_gpu.cu.cc
+|   O    | i_remote_fused_graph_executor.h
+|   O    | i_remote_fused_graph_ops_definitions.cc
+|   O    | i_remote_fused_graph_ops_definitions.h
+|   O    | identity_n_op.cc
+|   O    | identity_n_op.h
+|   O    | identity_n_op_test.cc
+|   O    | identity_op.cc
+|   O    | identity_op.h
+|   O    | identity_op_test.cc
+|   O    | identity_reader_op.cc
+|   O    | image_resizer_state.h
+|   O    | immutable_constant_op.cc
+|   O    | immutable_constant_op.h
+|   O    | immutable_constant_op_test.cc
+|   O    | in_topk_op.cc
+|   O    | initializable_lookup_table.cc
+|   O    | initializable_lookup_table.h
+|   O    | inplace_ops.cc
+|   O    | inplace_ops_functor.h
+|   O    | inplace_ops_functor_gpu.cu.cc
+|   X    | l2loss_op.cc
+|   X    | l2loss_op.h
+|   X    | l2loss_op_gpu.cu.cc
+|   O    | linalg_ops_common.cc
+|   O    | linalg_ops_common.h
+|   O    | list_kernels.cc
+|   O    | list_kernels.cu.cc
+|   O    | list_kernels.h
+|   O    | listdiff_op.cc
+|   O    | lmdb_reader_op.cc
+|   O    | load_and_remap_matrix_op.cc
+|   O    | logging_ops.cc
+|   O    | logging_ops_test.cc
+|   O    | logistic-loss.h
+|   O    | lookup_table_init_op.cc
+|   O    | lookup_table_init_op.h
+|   O    | lookup_table_op.cc
+|   O    | lookup_table_op.h
+|   O    | lookup_util.cc
+|   O    | lookup_util.h
+|   O    | loss.h
+|   O    | loss_test.cc
+|   O    | lrn_op.cc
+|   O    | lrn_op_test.cc
+|   O    | map_stage_op.cc
+|   O    | matching_files_op.cc
+|   O    | matmul_op.cc
+|   O    | matmul_op.h
+|   O    | matmul_op_test.cc
+|   O    | matrix_band_part_op.cc
+|   O    | matrix_band_part_op.h
+|   O    | matrix_band_part_op_gpu.cu.cc
+|   O    | matrix_diag_op.cc
+|   O    | matrix_diag_op.h
+|   O    | matrix_diag_op_gpu.cu.cc
+|   O    | matrix_exponential_op.cc
+|   X    | matrix_inverse_op.cc
+|   O    | matrix_logarithm_op.cc
+|   O    | matrix_set_diag_op.cc
+|   O    | matrix_set_diag_op.h
+|   O    | matrix_set_diag_op_gpu.cu.cc
+|   O    | matrix_solve_ls_op_complex128.cc
+|   O    | matrix_solve_ls_op_complex64.cc
+|   O    | matrix_solve_ls_op_double.cc
+|   O    | matrix_solve_ls_op_float.cc
+|   O    | matrix_solve_ls_op_impl.h
+|   X    | matrix_solve_op.cc
+|   O    | matrix_triangular_solve_op.cc
+|   O    | maxpooling_op.cc
+|   O    | maxpooling_op.h
+|   O    | maxpooling_op_gpu.cu.cc
+|   O    | maxpooling_op_gpu.h
+|   O    | merge_v2_checkpoints_op_test.cc
+|   O    | meta_support.cc
+|   O    | meta_support.h
+|   O    | mfcc.cc
+|   O    | mfcc.h
+|   O    | mfcc_dct.cc
+|   O    | mfcc_dct.h
+|   O    | mfcc_dct_test.cc
+|   O    | mfcc_mel_filterbank.cc
+|   O    | mfcc_mel_filterbank.h
+|   O    | mfcc_mel_filterbank_test.cc
+|   O    | mfcc_op.cc
+|   O    | mfcc_op_test.cc
+|   O    | mfcc_test.cc
+|   O    | mirror_pad_op.cc
+|   O    | mirror_pad_op.h
+|   O    | mirror_pad_op_cpu_impl.h
+|   O    | mirror_pad_op_cpu_impl_1.cc
+|   O    | mirror_pad_op_cpu_impl_2.cc
+|   O    | mirror_pad_op_cpu_impl_3.cc
+|   O    | mirror_pad_op_cpu_impl_4.cc
+|   O    | mirror_pad_op_cpu_impl_5.cc
+|   O    | mirror_pad_op_gpu.cu.cc
+|   O    | mkl_aggregate_ops.cc
+|   O    | mkl_avgpooling_op.cc
+|   O    | mkl_batch_matmul_op.cc
+|   O    | mkl_concat_op.cc
+|   O    | mkl_conv_grad_bias_ops.cc
+|   O    | mkl_conv_grad_filter_ops.cc
+|   O    | mkl_conv_grad_input_ops.cc
+|   O    | mkl_conv_ops.cc
+|   O    | mkl_conv_ops.h
+|   O    | mkl_cwise_ops_common.cc
+|   O    | mkl_fused_batch_norm_op.cc
+|   O    | mkl_identity_op.cc
+|   O    | mkl_input_conversion_op.cc
+|   O    | mkl_lrn_op.cc
+|   O    | mkl_matmul_op.cc
+|   O    | mkl_maxpooling_op.cc
+|   O    | mkl_pooling_ops_common.cc
+|   O    | mkl_pooling_ops_common.h
+|   O    | mkl_relu_op.cc
+|   O    | mkl_reshape_op.cc
+|   O    | mkl_softmax_op.cc
+|   O    | mkl_tfconv_op.h
+|   O    | mkl_transpose_op.cc
+|   O    | multinomial_op.cc
+|   O    | multinomial_op.h
+|   O    | multinomial_op_gpu.cu.cc
+|   O    | multinomial_op_test.cc
+|   O    | mutex_ops.cc
+|   O    | neon
+|   O    | neon/BUILD
+|   O    | neon/depthwiseconv_float.h
+|   O    | neon/neon_depthwise_conv_op.cc
+|   O    | neon/types.h
+|   O    | nn_ops_test.cc
+|   O    | no_op.cc
+|   O    | no_op.h
+|   O    | non_max_suppression_op.cc
+|   O    | non_max_suppression_op.h
+|   O    | non_max_suppression_op_test.cc
+|   O    | nth_element_op.cc
+|   O    | nth_element_op.h
+|   O    | one_hot_op.cc
+|   O    | one_hot_op.h
+|   O    | one_hot_op_gpu.cu.cc
 |        | ops_testutil.cc
 |        | ops_testutil.h
 |        | ops_testutil_test.cc
-|        | ops_util.cc
-|        | ops_util.h
-|        | ops_util_test.cc
-|        | pack_op.cc
-|        | pad_op.cc
-|        | pad_op.h
-|        | pad_op_gpu.cu.cc
-|        | padding_fifo_queue.cc
-|        | padding_fifo_queue.h
-|        | padding_fifo_queue_op.cc
-|        | parameterized_truncated_normal_op.cc
-|        | parameterized_truncated_normal_op.h
-|        | parameterized_truncated_normal_op_gpu.cu.cc
-|        | parameterized_truncated_normal_op_test.cc
-|        | parse_tensor_op.cc
-|        | parse_tensor_test.cc
-|        | partitioned_function_ops.cc
-|        | pooling_ops_3d.cc
-|        | pooling_ops_3d.h
-|        | pooling_ops_3d_gpu.cu.cc
-|        | pooling_ops_3d_gpu.h
-|        | pooling_ops_3d_sycl.h
-|        | pooling_ops_common.cc
-|        | pooling_ops_common.h
-|        | pooling_ops_common_gpu.h
-|        | population_count_op.cc
-|        | population_count_op.h
-|        | population_count_op_gpu.cu.cc
-|        | priority_queue.cc
-|        | priority_queue.h
-|        | priority_queue_op.cc
-|        | qr_op_complex128.cc
-|        | qr_op_complex64.cc
-|        | qr_op_double.cc
-|        | qr_op_float.cc
-|        | qr_op_impl.h
+|   O    | ops_util.cc
+|   O    | ops_util.h
+|   O    | ops_util_test.cc
+|   O    | pack_op.cc
+|   O    | pad_op.cc
+|   O    | pad_op.h
+|   O    | pad_op_gpu.cu.cc
+|   O    | padding_fifo_queue.cc
+|   O    | padding_fifo_queue.h
+|   O    | padding_fifo_queue_op.cc
+|   O    | parameterized_truncated_normal_op.cc
+|   O    | parameterized_truncated_normal_op.h
+|   O    | parameterized_truncated_normal_op_gpu.cu.cc
+|   O    | parameterized_truncated_normal_op_test.cc
+|   O    | parse_tensor_op.cc
+|   O    | parse_tensor_test.cc
+|   O    | partitioned_function_ops.cc
+|   O    | pooling_ops_3d.cc
+|   O    | pooling_ops_3d.h
+|   O    | pooling_ops_3d_gpu.cu.cc
+|   O    | pooling_ops_3d_gpu.h
+|   O    | pooling_ops_3d_sycl.h
+|   O    | pooling_ops_common.cc
+|   O    | pooling_ops_common.h
+|   O    | pooling_ops_common_gpu.h
+|   O    | population_count_op.cc
+|   O    | population_count_op.h
+|   O    | population_count_op_gpu.cu.cc
+|   O    | priority_queue.cc
+|   O    | priority_queue.h
+|   O    | priority_queue_op.cc
+|   X    | qr_op_complex128.cc
+|   X    | qr_op_complex64.cc
+|   X    | qr_op_double.cc
+|   X    | qr_op_float.cc
+|   X    | qr_op_impl.h
 |        | quantization_utils.cc
 |        | quantization_utils.h
 |        | quantization_utils_test.cc

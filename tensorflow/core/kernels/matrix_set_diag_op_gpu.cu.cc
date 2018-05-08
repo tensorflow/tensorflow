@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/matrix_set_diag_op.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -31,7 +31,7 @@ __global__ void MatrixSetDiagKernel(const int num_threads, const int m,
                                     const int n, const int minsize,
                                     const Scalar* diag_ptr,
                                     Scalar* output_ptr) {
-  CUDA_1D_KERNEL_LOOP(index, num_threads) {
+  GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int batch = index / minsize;
     const int col = index - batch * minsize;
     const int out_index = batch * m * n + (n + 1) * col;
@@ -43,7 +43,7 @@ template <typename Scalar>
 __global__ void MatrixCopyInputAndSetDiagKernel(
     const int num_threads, const int m, const int n, const int minsize,
     const Scalar* input_ptr, const Scalar* diag_ptr, Scalar* output_ptr) {
-  CUDA_1D_KERNEL_LOOP(index, num_threads) {
+  GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int global_row = index / n;
     const int col = index - global_row * n;
     const int batch = global_row / m;
@@ -71,18 +71,20 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
     CHECK_EQ(diag.dimension(1), minsize);
     if (batch_size == 0 || minsize == 0) return;
     if (input.data() == output.data()) {
-      CudaLaunchConfig config =
-          GetCudaLaunchConfig(batch_size * minsize, device);
-      MatrixSetDiagKernel<Scalar>
-          <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-              config.virtual_thread_count, m, n, minsize, diag.data(),
-              output.data());
+      GpuLaunchConfig config =
+          GetGpuLaunchConfig(batch_size * minsize, device);
+      GPU_LAUNCH_KERNEL(MatrixSetDiagKernel<Scalar>,
+          dim3(config.block_count), dim3(config.thread_per_block), 0,
+          device.stream(),
+          config.virtual_thread_count, m, n, minsize, diag.data(),
+          output.data());
     } else {
-      CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
-      MatrixCopyInputAndSetDiagKernel<Scalar>
-          <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-              config.virtual_thread_count, m, n, minsize, input.data(),
-              diag.data(), output.data());
+      GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
+      GPU_LAUNCH_KERNEL(MatrixCopyInputAndSetDiagKernel<Scalar>,
+          dim3(config.block_count), dim3(config.thread_per_block), 0,
+          device.stream(),
+          config.virtual_thread_count, m, n, minsize, input.data(),
+          diag.data(), output.data());
     }
   }
 };
@@ -97,4 +99,4 @@ TF_CALL_complex128(DEFINE_GPU_SPEC);
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

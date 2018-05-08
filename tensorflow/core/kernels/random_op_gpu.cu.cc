@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -217,13 +217,21 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
     OpKernelContext*, const GPUDevice& d, random::PhiloxRandom gen,
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
+#if GOOGLE_CUDA
   const int32 block_size = d.maxCudaThreadsPerBlock();
   const int32 num_blocks =
       (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
       block_size;
+#elif TENSORFLOW_USE_ROCM
+  const int32 block_size = d.maxHipThreadsPerBlock();
+  const int32 num_blocks =
+      (d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor()) /
+      block_size;
+#endif
 
-  FillPhiloxRandomKernelLaunch<Distribution>
-      <<<num_blocks, block_size, 0, d.stream()>>>(gen, data, size, dist);
+  GPU_LAUNCH_KERNEL(FillPhiloxRandomKernelLaunch<Distribution>,
+      dim3(num_blocks), dim3(block_size), 0, d.stream(),
+      gen, data, size, dist);
 };
 
 // Explicit instantiation of the GPU distributions functors
@@ -259,4 +267,4 @@ template struct FillPhiloxRandom<
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

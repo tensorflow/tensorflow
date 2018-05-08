@@ -239,7 +239,7 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER(TYPE)                                                   \
   REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
                               .Device(DEVICE_GPU)                        \
@@ -259,7 +259,7 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 #undef REGISTER
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T, typename OutputType>
 class StatelessMultinomialOp : public MultinomialOp<Device, T, OutputType> {
@@ -307,7 +307,7 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER(TYPE)                                                    \
   REGISTER_KERNEL_BUILDER(Name("StatelessMultinomial")                    \
                               .Device(DEVICE_GPU)                         \
@@ -329,7 +329,7 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 #undef REGISTER
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace
 

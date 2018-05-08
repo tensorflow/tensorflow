@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // There is a behavior difference between cuDNN v4 and v5 with regard to the
 // scaling factor for function cudnnBatchNormalizationForwardInference.
@@ -55,7 +55,7 @@ struct SetNanFunctor {
   void operator()(const Eigen::GpuDevice& d, typename TTypes<T>::Flat out);
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Functor used by FusedBatchNormGradOp to do the computations when
 // is_training=False. Both CPU and GPU will use this functor.
