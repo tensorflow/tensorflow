@@ -489,6 +489,7 @@ py_library(
 py_test(
     name = "estimator_test",
     srcs = ["estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67510291
     deps = [
