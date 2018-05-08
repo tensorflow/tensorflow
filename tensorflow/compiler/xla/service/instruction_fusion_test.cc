@@ -126,7 +126,7 @@ TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {
   EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1) << module->ToString();
 
   // Make sure the add hasn't been duplicated.
-  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1) << module->ToString();
+  EXPECT_EQ(Count(*module, HloOpcode::kAdd), 1) << module->ToString();
 }
 
 TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
