@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <string>
 #include <algorithm>
-#include <deque>
+#include <list>
 
 #include "tensorflow/java/src/gen/cc/source_writer.h"
 
@@ -83,20 +83,22 @@ SourceWriter& SourceWriter::Append(const StringPiece& str) {
 }
 
 SourceWriter& SourceWriter::AppendType(const Type& type) {
-  if (type.kind() == Type::Kind::GENERIC && type.name().empty()) {
+  if (type.wildcard()) {
     Append("?");
   } else {
     Append(type.name());
-  }
-  if (!type.parameters().empty()) {
-    Append("<");
-    for (const Type& t : type.parameters()) {
-      if (&t != &type.parameters().front()) {
-        Append(", ");
+    if (!type.parameters().empty()) {
+      Append("<");
+      bool first = true;
+      for (const Type& t : type.parameters()) {
+        if (!first) {
+          Append(", ");
+        }
+        AppendType(t);
+        first = false;
       }
-      AppendType(t);
+      Append(">");
     }
-    Append(">");
   }
   return *this;
 }
@@ -107,7 +109,21 @@ SourceWriter& SourceWriter::EndLine() {
   return *this;
 }
 
-SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers) {
+SourceWriter& SourceWriter::BeginBlock(const string& expression) {
+  if (!expression.empty()) {
+    Append(expression + " {");
+  } else {
+    Append(newline_ ? "{" : " {");
+  }
+  return EndLine().Indent(2);
+}
+
+SourceWriter& SourceWriter::EndBlock() {
+  return Indent(-2).Append("}").EndLine();
+}
+
+SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers,
+    const Javadoc* javadoc) {
   GenericNamespace* generic_namespace = PushGenericNamespace(modifiers);
   if (!method.constructor()) {
     generic_namespace->Visit(method.return_type());
@@ -116,8 +132,9 @@ SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers) {
     generic_namespace->Visit(v.type());
   }
   EndLine();
-  WriteDoc(method.description(), method.return_description(),
-      &method.arguments());
+  if (javadoc != nullptr) {
+    WriteJavadoc(*javadoc);
+  }
   if (!method.annotations().empty()) {
     WriteAnnotations(method.annotations());
   }
@@ -130,11 +147,13 @@ SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers) {
     AppendType(method.return_type()).Append(" ");
   }
   Append(method.name()).Append("(");
+  bool first = true;
   for (const Variable& v : method.arguments()) {
-    if (&v != &method.arguments().front()) {
+    if (!first) {
       Append(", ");
     }
     AppendType(v.type()).Append(v.variadic() ? "... " : " ").Append(v.name());
+    first = false;
   }
   return Append(")").BeginBlock();
 }
@@ -145,29 +164,35 @@ SourceWriter& SourceWriter::EndMethod() {
   return *this;
 }
 
-SourceWriter& SourceWriter::BeginType(const Type& type,
-    const std::list<Type>* dependencies, int modifiers) {
+SourceWriter& SourceWriter::BeginType(const Type& type, int modifiers,
+    const std::list<Type>* extra_dependencies, const Javadoc* javadoc) {
   if (!type.package().empty()) {
     Append("package ").Append(type.package()).Append(";").EndLine();
   }
-  if (dependencies != nullptr && !dependencies->empty()) {
-    TypeImporter type_importer(type.package());
-    for (const Type& t : *dependencies) {
+  TypeImporter type_importer(type.package());
+  type_importer.Visit(type);
+  if (extra_dependencies != nullptr) {
+    for (const Type& t : *extra_dependencies) {
       type_importer.Visit(t);
     }
+  }
+  if (!type_importer.imports().empty()) {
     EndLine();
     for (const string& s : type_importer.imports()) {
       Append("import ").Append(s).Append(";").EndLine();
     }
   }
-  return BeginInnerType(type, modifiers);
+  return BeginInnerType(type, modifiers, javadoc);
 }
 
-SourceWriter& SourceWriter::BeginInnerType(const Type& type, int modifiers) {
+SourceWriter& SourceWriter::BeginInnerType(const Type& type, int modifiers,
+    const Javadoc* javadoc) {
   GenericNamespace* generic_namespace = PushGenericNamespace(modifiers);
   generic_namespace->Visit(type);
   EndLine();
-  WriteDoc(type.description());
+  if (javadoc != nullptr) {
+    WriteJavadoc(*javadoc);
+  }
   if (!type.annotations().empty()) {
     WriteAnnotations(type.annotations());
   }
@@ -200,14 +225,15 @@ SourceWriter& SourceWriter::EndType() {
   return *this;
 }
 
-SourceWriter& SourceWriter::WriteFields(const std::list<Variable>& fields,
-    int modifiers) {
-  EndLine();
-  for (const Variable& v : fields) {
-    WriteModifiers(modifiers);
-    AppendType(v.type()).Append(" ").Append(v.name()).Append(";");
-    EndLine();
+SourceWriter& SourceWriter::WriteField(const Variable& field, int modifiers,
+    const Javadoc* javadoc) {
+  // If present, write field javadoc only as one brief line
+  if (javadoc != nullptr && !javadoc->brief().empty()) {
+    Append("/** ").Append(javadoc->brief()).Append(" */").EndLine();
   }
+  WriteModifiers(modifiers);
+  AppendType(field.type()).Append(" ").Append(field.name()).Append(";");
+  EndLine();
   return *this;
 }
 
@@ -228,39 +254,33 @@ SourceWriter& SourceWriter::WriteModifiers(int modifiers) {
   return *this;
 }
 
-SourceWriter& SourceWriter::WriteDoc(const string& description,
-    const string& return_description, const std::list<Variable>* parameters) {
-  if (description.empty() && return_description.empty()
-      && (parameters == nullptr || parameters->empty())) {
-    return *this;  // no doc to write
-  }
+SourceWriter& SourceWriter::WriteJavadoc(const Javadoc& javadoc) {
+  Append("/**").Prefix(" * ").EndLine();
   bool do_line_break = false;
-  Append("/**").EndLine().Prefix(" * ");
-  if (!description.empty()) {
-    Write(description).EndLine();
+  if (!javadoc.brief().empty()) {
+    Write(javadoc.brief()).EndLine();
     do_line_break = true;
   }
-  if (parameters != nullptr && !parameters->empty()) {
+  if (!javadoc.details().empty()) {
+    if (do_line_break) {
+      Append("<p>").EndLine();
+    }
+    Write(javadoc.details()).EndLine();
+    do_line_break = true;
+  }
+  if (!javadoc.tags().empty()) {
     if (do_line_break) {
       EndLine();
-      do_line_break = false;
     }
-    for (const Variable& v : *parameters) {
-      Append("@param ").Append(v.name());
-      if (!v.description().empty()) {
-        Append(" ").Write(v.description());
+    for (const auto& p : javadoc.tags()) {
+      Append("@" + p.first);
+      if (!p.second.empty()) {
+        Append(" ").Write(p.second);
       }
       EndLine();
     }
   }
-  if (!return_description.empty()) {
-    if (do_line_break) {
-      EndLine();
-      do_line_break = false;
-    }
-    Append("@return ").Write(return_description).EndLine();
-  }
-  return Prefix("").Append(" **/").EndLine();
+  return Prefix("").Append(" */").EndLine();
 }
 
 SourceWriter& SourceWriter::WriteAnnotations(
@@ -278,14 +298,16 @@ SourceWriter& SourceWriter::WriteAnnotations(
 SourceWriter& SourceWriter::WriteGenerics(
     const std::list<const Type*>& generics) {
   Append("<");
+  bool first = true;
   for (const Type* pt : generics) {
-    if (pt != generics.front()) {
+    if (!first) {
       Append(", ");
     }
     Append(pt->name());
     if (!pt->supertypes().empty()) {
       Append(" extends ").AppendType(pt->supertypes().front());
     }
+    first = false;
   }
   return Append(">");
 }
@@ -311,20 +333,19 @@ void SourceWriter::PopGenericNamespace() {
 void SourceWriter::TypeVisitor::Visit(const Type& type) {
   DoVisit(type);
   for (const Type& t : type.parameters()) {
-    DoVisit(t);
+    Visit(t);
   }
   for (const Annotation& t : type.annotations()) {
     DoVisit(t);
   }
   for (const Type& t : type.supertypes()) {
-    DoVisit(t);
+    Visit(t);
   }
 }
 
 void SourceWriter::GenericNamespace::DoVisit(const Type& type) {
   // ignore non-generic parameters, wildcards and generics already declared
-  if (type.kind() == Type::GENERIC
-      && !type.IsWildcard()
+  if (type.kind() == Type::GENERIC && !type.wildcard()
       && generic_names_.find(type.name()) == generic_names_.end()) {
     declared_types_.push_back(&type);
     generic_names_.insert(type.name());
@@ -333,7 +354,7 @@ void SourceWriter::GenericNamespace::DoVisit(const Type& type) {
 
 void SourceWriter::TypeImporter::DoVisit(const Type& type) {
   if (!type.package().empty() && type.package() != current_package_) {
-    imports_.insert(type.package() + '.' + type.name());
+    imports_.insert(type.canonical_name());
   }
 }
 
