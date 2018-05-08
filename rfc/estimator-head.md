@@ -5,8 +5,6 @@
 | **Author(s)** | George Roumpos (Google), TensorFlow team          |
 | **Sponsor**   | Mustafa Ispir (Google)                            |
 | **Updated**   | 2018-05-01                                        |
-|---------------|---------------------------------------------------|
-
 
 ## Objective
 
@@ -78,7 +76,7 @@ Here we give example code that constructs an estimator using a pre-defined head.
 Use a pre-defined head with a canned estimator:
 
 
-```
+```python
 # Define feature columns
 column_a = tf.feature_column.sparse_column_with_hash_bucket(
     'column_a', hash_bucket_size=100)
@@ -103,7 +101,7 @@ my_estimator = tf.estimator.DNNEstimator(
 Use multi-head with a canned estimator:
 
 
-```
+```python
 # Define head.
 head_a = tf.estimator.multi_label_head(n_classes=3)
 head_b = tf.estimator.binary_classification_head()
@@ -120,7 +118,7 @@ my_estimator = tf.estimator.DNNEstimator(
 Use a pre-defined head with a custom estimator:
 
 
-```
+```python
 # Define model_fn.
 def _my_model_fn(features, labels, mode):
   n_classes = 3
@@ -151,7 +149,7 @@ The code for the Head interface as of 2018-05-01 can be found [here](https://git
 We plan to expose it as **<code>tf.estimator.Head</code>**.
 Here is the interface (with short pydoc):
 
-```
+```python
 class Head(object):
   """Interface for the head/top of a model."""
   __metaclass__ = abc.ABCMeta
@@ -336,7 +334,7 @@ appropriate for multi-objective learning. Contrib code is in
 and will be exposed in `tf.estimator` as a factory method. Each individual head
 is associated with a scalar weight specified with `head_weights`.
 
-```
+```python
 def multi_head(heads, head_weights=None):
   """Creates a `Head` for multi-objective learning."""
 ```
@@ -377,7 +375,7 @@ existing ones, but where the head is a construction argument. Contrib code is in
 moved to `tensorflow/python/estimator/canned/`.
 
 
-```
+```python
 class DNNEstimator(estimator.Estimator):
   """`Estimator` that uses a DNN network and a custom `Head`."""
 
