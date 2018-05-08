@@ -26,6 +26,7 @@ xla_proto_library(
 xla_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
