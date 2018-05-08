@@ -32,4 +32,5 @@ _periodic_resample_op = loader.load_op_library(
 
 @ops.RegisterGradient("PeriodicResample")
 def _periodic_resample_grad_cc(op, grad):
-  return periodic_resample_op_grad(grad, op.inputs[0].shape, op.get_attr('shape'))
+  return periodic_resample_op_grad(
+      grad, op.inputs[0].shape, op.get_attr('shape'))

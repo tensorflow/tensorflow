@@ -6,13 +6,13 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",
     "tf_cc_test",
     "tf_gen_op_libs",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 cc_library(
     name = "all_ops",
@@ -84,8 +84,8 @@ py_test(
     deps = [
         ":init_py",
         "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:gradient_checker",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradient_checker",
     ],
 )
 
