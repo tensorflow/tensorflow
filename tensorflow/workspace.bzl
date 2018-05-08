@@ -98,11 +98,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_google_absl",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
-          "https://github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/9613678332c976568272c8f4a78631a29159271d.tar.gz",
+          "https://github.com/abseil/abseil-cpp/archive/9613678332c976568272c8f4a78631a29159271d.tar.gz",
       ],
-     sha256 = "5996380e3e8b981f55d1c8d58e709c00dbb4806ba367be75d0925a68cc2f6478",
-     strip_prefix = "abseil-cpp-720c017e30339fd1786ce4aac68bc8559736e53f",
+     sha256 = "1273a1434ced93bc3e703a48c5dced058c95e995c8c009e9bdcb24a69e2180e9",
+     strip_prefix = "abseil-cpp-9613678332c976568272c8f4a78631a29159271d",
      build_file = clean_dep("//third_party:com_google_absl.BUILD"),
   )
 
@@ -301,11 +301,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "absl_py",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
-          "https://github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/ea8c4d2ddbf3fba610c4d613260561699b776db8.tar.gz",
+          "https://github.com/abseil/abseil-py/archive/ea8c4d2ddbf3fba610c4d613260561699b776db8.tar.gz",
       ],
-      sha256 = "29e4584e778bee13aa4093824133d131d927cc160561892880118d9ff7b95a6a",
-      strip_prefix = "abseil-py-acec853355ef987eae48a8d87a79351c15dff593",
+      sha256 = "c30b48e0d2580ef1412e55c5c0e1dab8db2ee4ab56e2075eccff29c90c7c7059",
+      strip_prefix = "abseil-py-ea8c4d2ddbf3fba610c4d613260561699b776db8",
   )
 
   tf_http_archive(
@@ -454,11 +454,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/3b2f0b2c7e66d226a9342be5163da4240e2951a8.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/3b2f0b2c7e66d226a9342be5163da4240e2951a8.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/b3f6a6a61625296bb532a65c0bf51b91b05b3361.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/b3f6a6a61625296bb532a65c0bf51b91b05b3361.tar.gz",
       ],
-      sha256 = "49bb3cbb7c8e9af091c5a743fa7ae749656994408438f38c9b6ac6a052fdce56",
-      strip_prefix = "llvm-3b2f0b2c7e66d226a9342be5163da4240e2951a8",
+      sha256 = "93895b289a78a47a1e75652e12a1b9a6c119f086a509b00e0084cf2bb944b709",
+      strip_prefix = "llvm-b3f6a6a61625296bb532a65c0bf51b91b05b3361",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 

@@ -126,11 +126,20 @@ class WorkerHeartbeatManager(object):
     return WorkerHeartbeatManager(self._session, bad_devices, bad_ops,
                                   self._request_placeholder)
 
+  def __repr__(self):
+    return 'HeartbeatManager(%s)' % ','.join(self._devices)
+
   def shutdown(self, timeout_ms=10000):
     """Shutdown all workers after `shutdown_timeout_secs`."""
+    logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
         watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms))
     self.configure(req)
+
+    # Wait for workers to shutdown.  This isn't strictly required
+    # but it avoids triggering multiple checkpoints with the same lame worker.
+    logging.info('Waiting %dms for worker shutdown.', timeout_ms)
+    time.sleep(timeout_ms / 1000)
 
 
 def all_worker_devices(session):
@@ -250,6 +259,7 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
           ' in your model definition to allow checkpointing.')
 
     with self._graph.as_default():
+      logging.info('Installing graceful shutdown hook.')
       self._session = session_lib.Session(
           target=training_session.sess_str, graph=self._graph)
       self._workers = WorkerHeartbeatManager.from_devices(
@@ -296,16 +306,33 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
         fn(run_context, self._workers, lame_workers)
 
 
-def restart_computation(run_context, all_workers, lame_workers):
-  del run_context, lame_workers
-  logging.info('Shutting down all workers.')
-  all_workers.shutdown()
+class RestartComputation(object):
+  """Restart the entire computation.
 
-  logging.info('Terminating coordinator.')
-  raise CoordinatorShutdownException()
+  This hook shuts down all workers and returns control to the top-level by
+  throwing a CoordinatorShutdownException.
+  """
+
+  def __init__(self, timeout_ms=10000):
+    self.timeout_ms = timeout_ms
+
+  def __call__(self, run_context, all_workers, lame_workers):
+    del run_context, lame_workers
+    all_workers.shutdown(timeout_ms=self.timeout_ms)
+
+    logging.info('Terminating coordinator.')
+    raise CoordinatorShutdownException()
 
 
-def shutdown_lame_workers(run_context, all_workers, lame_workers):
-  del run_context, all_workers
-  logging.info('Shutting down %s', lame_workers)
-  lame_workers.shutdown()
+class ShutdownLameWorkers(object):
+  """Shutdown lamed workers.
+
+  Processing will continue normally (typically by waiting for the down
+  workers to be restarted).
+  """
+
+  def __init__(self, timeout_ms=10000):
+    self.timeout_in_ms = timeout_ms
+
+  def __call__(self, run_context, all_workers, lame_workers):
+    lame_workers.shutdown(timeout_ms=self.timeout_in_ms)

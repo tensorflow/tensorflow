@@ -93,7 +93,7 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
   } else {
     *prefix = "";
   }
-  *node_name = node_name_piece.ToString();
+  *node_name = std::string(node_name_piece);
 }
 
 string NodeNameFromInput(const string& input_name) {

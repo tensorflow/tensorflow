@@ -50,6 +50,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
+from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
@@ -155,12 +156,12 @@ class Estimator(object):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
-      warm_start_from: Optional string filepath to a checkpoint to warm-start
-                       from, or a `tf.estimator.WarmStartSettings` object to
-                       fully configure warm-starting.  If the string filepath is
-                       provided instead of a `WarmStartSettings`, then all
-                       variables are warm-started, and it is assumed that
-                       vocabularies and Tensor names are unchanged.
+      warm_start_from: Optional string filepath to a checkpoint or SavedModel to
+                       warm-start from, or a `tf.estimator.WarmStartSettings`
+                       object to fully configure warm-starting.  If the string
+                       filepath is provided instead of a `WarmStartSettings`,
+                       then all variables are warm-started, and it is assumed
+                       that vocabularies and Tensor names are unchanged.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -400,7 +401,9 @@ class Estimator(object):
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the evaluation call.
       checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
-        latest checkpoint in `model_dir` is used.
+        latest checkpoint in `model_dir` is used.  If there are no checkpoints
+        in `model_dir`, evaluation is run with newly initialized `Variables`
+        instead of restored from checkpoint.
       name: Name of the evaluation if user needs to run multiple evaluations on
         different data sets, such as on training data vs test data. Metrics for
         different evaluations are saved in separate folders, and appear
@@ -464,7 +467,9 @@ class Estimator(object):
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the prediction call.
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
-        latest checkpoint in `model_dir` is used.
+        latest checkpoint in `model_dir` is used.  If there are no checkpoints
+        in `model_dir`, prediction is run with newly initialized `Variables`
+        instead of restored from checkpoint.
       yield_single_examples: If False, yield the whole batch as returned by the
         `model_fn` instead of decomposing the batch into individual elements.
         This is useful if `model_fn` returns some tensors whose first dimension
@@ -487,10 +492,8 @@ class Estimator(object):
       if not checkpoint_path:
         checkpoint_path = saver.latest_checkpoint(self._model_dir)
       if not checkpoint_path:
-        raise ValueError(
-            'Could not find trained model in model_dir: {}.'.format(
-                self._model_dir))
-
+        logging.info('Could not find trained model in model_dir: {}, running '
+                     'initialization to predict.'.format(self._model_dir))
       with ops.Graph().as_default() as g:
         random_seed.set_random_seed(self._config.tf_random_seed)
         self._create_and_assert_global_step(g)
@@ -498,6 +501,10 @@ class Estimator(object):
             input_fn, model_fn_lib.ModeKeys.PREDICT)
         estimator_spec = self._call_model_fn(
             features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
+
+        # Call to warm_start has to be after model_fn is called.
+        self._maybe_warm_start(checkpoint_path)
+
         predictions = self._extract_keys(
             estimator_spec.predictions, predict_keys)
         all_hooks = list(input_hooks)
@@ -880,7 +887,7 @@ class Estimator(object):
             model_fn_lib.ModeKeys.TRAIN,
             self.config)
 
-        # TODO(anjalisridhar): Figure out how to resolve the folowing scaffold
+        # TODO(anjalisridhar): Figure out how to resolve the following scaffold
         # parameters: init_feed_dict, init_fn.
         scaffold_list = self._distribution.unwrap(
             grouped_estimator_spec.scaffold)
@@ -979,9 +986,7 @@ class Estimator(object):
     if self._warm_start_settings:
       logging.info('Warm-starting with WarmStartSettings: %s' %
                    (self._warm_start_settings,))
-      # pylint: disable=protected-access
       warm_starting_util.warm_start(*self._warm_start_settings)
-      # pylint: enable=protected-access
     # Check if the user created a loss summary, and add one if they didn't.
     # We assume here that the summary is called 'loss'. If it is not, we will
     # make another one with the name 'loss' to ensure it shows up in the right
@@ -991,15 +996,18 @@ class Estimator(object):
       summary.scalar('loss', estimator_spec.loss)
     ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
     worker_hooks.extend(hooks)
-    worker_hooks.extend([
-        training.NanTensorHook(estimator_spec.loss),
-        training.LoggingTensorHook(
-            {
-                'loss': estimator_spec.loss,
-                'step': global_step_tensor
-            },
-            every_n_iter=self._config.log_step_count_steps)
-    ])
+    worker_hooks.append(
+        training.NanTensorHook(estimator_spec.loss)
+    )
+    if self._config.log_step_count_steps is not None:
+      worker_hooks.append(
+          training.LoggingTensorHook(
+              {
+                  'loss': estimator_spec.loss,
+                  'step': global_step_tensor
+              },
+              every_n_iter=self._config.log_step_count_steps)
+      )
     worker_hooks.extend(estimator_spec.training_hooks)
 
     if not (estimator_spec.scaffold.saver or
@@ -1066,8 +1074,8 @@ class Estimator(object):
     if not checkpoint_path:
       latest_path = saver.latest_checkpoint(self._model_dir)
       if not latest_path:
-        raise ValueError('Could not find trained model in model_dir: {}.'.
-                         format(self._model_dir))
+        logging.info('Could not find trained model in model_dir: {}, running '
+                     'initialization to evaluate.'.format(self._model_dir))
       checkpoint_path = latest_path
 
     # Setup output directory.
@@ -1082,6 +1090,9 @@ class Estimator(object):
               input_fn, model_fn_lib.ModeKeys.EVAL))
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.config)
+
+      # Call to warm_start has to be after model_fn is called.
+      self._maybe_warm_start(checkpoint_path)
 
       if model_fn_lib.LOSS_METRIC_KEY in estimator_spec.eval_metric_ops:
         raise ValueError(
@@ -1119,6 +1130,12 @@ class Estimator(object):
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
     return eval_results
+
+  def _maybe_warm_start(self, checkpoint_path):
+    if not checkpoint_path and self._warm_start_settings:
+      logging.info('Warm-starting with WarmStartSettings: %s' %
+                   (self._warm_start_settings,))
+      warm_starting_util.warm_start(*self._warm_start_settings)
 
 
 def create_per_tower_ready_op(scaffold):
@@ -1499,7 +1516,7 @@ def _get_default_warm_start_settings(warm_start_from):
 
   Args:
     warm_start_from: Either a string representing the filepath of a checkpoint
-      to initialize from, or an instance of WarmStartSettings.
+      or SavedModel to initialize from, or an instance of WarmStartSettings.
 
   Returns:
     Either None or an instance of WarmStartSettings.
@@ -1510,9 +1527,20 @@ def _get_default_warm_start_settings(warm_start_from):
   """
   if warm_start_from is None:
     return None
-  if isinstance(warm_start_from, six.string_types):
+  if isinstance(warm_start_from, (six.string_types, six.binary_type)):
+    # Infer that this is a SavedModel if export_path +
+    # 'variables/variables.index' exists, and if so, construct the
+    # WarmStartSettings pointing to export_path + 'variables/variables'.
+    if gfile.Exists(os.path.join(compat.as_bytes(warm_start_from),
+                                 compat.as_bytes('variables/variables.index'))):
+      logging.info('Warm-starting from a SavedModel')
+      return WarmStartSettings(ckpt_to_initialize_from=os.path.join(
+          compat.as_bytes(warm_start_from),
+          compat.as_bytes('{}/{}'.format(constants.VARIABLES_DIRECTORY,
+                                         constants.VARIABLES_FILENAME))))
     return WarmStartSettings(ckpt_to_initialize_from=warm_start_from)
   elif isinstance(warm_start_from, WarmStartSettings):
     return warm_start_from
   else:
-    raise ValueError('warm_start_from must be a string or a WarmStartSettings')
+    raise ValueError('warm_start_from must be a string or a WarmStartSettings, '
+                     'instead got {}'.format(type(warm_start_from)))

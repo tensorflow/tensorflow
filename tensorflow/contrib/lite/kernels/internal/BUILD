@@ -303,6 +303,7 @@ cc_library(
     ],
     hdrs = [
         "common.h",
+        "compatibility.h",
         "optimized/cpu_check.h",
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",

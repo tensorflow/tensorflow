@@ -160,10 +160,8 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  VLOG(2) << "HandleConstant: " << constant->ToString();
-  const Literal& literal = constant->literal();
-  llvm::GlobalVariable* global_for_const;
+llvm::GlobalVariable* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
+  llvm::GlobalVariable* result;
 
   // We avoid creating large constants in the LLVM IR since LLVM is not
   // efficient for large constant arrays.  We still emit "small enough" constant
@@ -174,27 +172,42 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
       ByteSizeOf(literal.shape()) >= kMaxInternalConstantSizeInBytes) {
     string global_name = tensorflow::strings::StrCat(
         "constant_global_", external_global_constant_counter_++);
-    global_for_const = new llvm::GlobalVariable(
+    result = new llvm::GlobalVariable(
         /*Module=*/*module_,
         /*Type=*/IrShapeType(literal.shape()),
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/nullptr,
         /*Name=*/AsStringRef(global_name));
-    global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    result->setAlignment(MinimumAlignmentForShape(literal.shape()));
     external_constant_pool_->Insert(global_name, literal,
                                     MinimumAlignmentForShape(literal.shape()));
   } else {
     llvm::Constant* initializer =
         llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-    global_for_const = new llvm::GlobalVariable(
+    result = new llvm::GlobalVariable(
         /*Module=*/*module_,
         /*Type=*/initializer->getType(),
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
         /*Initializer=*/initializer,
         /*Name=*/"");
-    global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    result->setAlignment(MinimumAlignmentForShape(literal.shape()));
+  }
+  return result;
+}
+
+Status IrEmitter::HandleConstant(HloInstruction* constant) {
+  VLOG(2) << "HandleConstant: " << constant->ToString();
+  const Literal& literal = constant->literal();
+  llvm::GlobalVariable* global_for_const;
+
+  auto it = emitted_literals_.find(&literal);
+  if (it != emitted_literals_.end()) {
+    global_for_const = it->second;
+  } else {
+    global_for_const = EmitGlobalForLiteral(literal);
+    emitted_literals_[&literal] = global_for_const;
   }
   emitted_value_[constant] = global_for_const;
   VLOG(2) << "  emitted value: " << llvm_ir::DumpToString(*global_for_const);
@@ -2550,8 +2563,12 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   // nothing to do since the result was already written directly into the output
   // buffer.
   VLOG(2) << "FinishVisit root: " << root->ToString();
-  llvm::Value* root_value = GetEmittedValueFor(root);
-  VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
+  if (root->opcode() == HloOpcode::kOutfeed) {
+    VLOG(2) << "  outfeed with value: "
+            << llvm_ir::DumpToString(*GetEmittedValueFor(root->operand(0)));
+  } else {
+    VLOG(2) << "  value: " << llvm_ir::DumpToString(*GetEmittedValueFor(root));
+  }
 
   auto record_complete_computation = [&](llvm::Value* prof_counter) {
     if (prof_counter) {

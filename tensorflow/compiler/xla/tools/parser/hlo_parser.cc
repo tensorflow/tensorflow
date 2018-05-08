@@ -242,7 +242,7 @@ bool HloParser::Error(LocTy loc, StringPiece msg) {
   std::vector<string> error_lines;
   error_lines.push_back(
       StrCat("was parsing ", line, ":", col, ": error: ", msg));
-  error_lines.push_back(lexer_.GetLine(loc).ToString());
+  error_lines.push_back(std::string(lexer_.GetLine(loc)));
   error_lines.push_back(col == 0 ? "" : StrCat(string(col - 1, ' '), "^"));
 
   error_.push_back(tensorflow::str_util::Join(error_lines, "\n"));
@@ -303,12 +303,18 @@ bool HloParser::ParseComputations() {
     // set the layouts to what the hlo text says.
     for (int p = 0; p < computation->num_parameters(); p++) {
       const Shape& param_shape = computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module_->mutable_entry_computation_layout()
+      TF_CHECK_OK(module_->mutable_host_entry_computation_layout()
+                      ->mutable_parameter_layout(p)
+                      ->CopyLayoutFromShape(param_shape));
+      TF_CHECK_OK(module_->mutable_device_entry_computation_layout()
                       ->mutable_parameter_layout(p)
                       ->CopyLayoutFromShape(param_shape));
     }
     const Shape& result_shape = computation->root_instruction()->shape();
-    TF_CHECK_OK(module_->mutable_entry_computation_layout()
+    TF_CHECK_OK(module_->mutable_host_entry_computation_layout()
+                    ->mutable_result_layout()
+                    ->CopyLayoutFromShape(result_shape));
+    TF_CHECK_OK(module_->mutable_device_entry_computation_layout()
                     ->mutable_result_layout()
                     ->CopyLayoutFromShape(result_shape));
   }

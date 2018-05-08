@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
@@ -98,12 +99,20 @@ class HloModule {
     return entry_computation_;
   }
 
-  ComputationLayout* mutable_entry_computation_layout() {
-    return config_.mutable_entry_computation_layout();
+  ComputationLayout* mutable_host_entry_computation_layout() {
+    return config_.mutable_host_entry_computation_layout();
   }
 
-  const ComputationLayout& entry_computation_layout() const {
-    return config_.entry_computation_layout();
+  const ComputationLayout& host_entry_computation_layout() const {
+    return config_.host_entry_computation_layout();
+  }
+
+  ComputationLayout* mutable_device_entry_computation_layout() {
+    return config_.mutable_device_entry_computation_layout();
+  }
+
+  const ComputationLayout& device_entry_computation_layout() const {
+    return config_.device_entry_computation_layout();
   }
 
   const VersionedComputationHandle& entry_computation_handle() const {
@@ -129,6 +138,10 @@ class HloModule {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
   }
+
+  // Returns the computation in this module that has the name `name`.  Returns
+  // null if there is no such computation.
+  HloComputation* GetComputationWithName(tensorflow::StringPiece name);
 
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }

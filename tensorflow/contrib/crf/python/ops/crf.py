@@ -52,6 +52,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
@@ -147,7 +148,9 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
     # partition function.
     forward_cell = CrfForwardRnnCell(transition_params)
     # Sequence length is not allowed to be less than zero.
-    sequence_lengths_less_one = math_ops.maximum(0, sequence_lengths - 1)
+    sequence_lengths_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_lengths.dtype),
+        sequence_lengths - 1)
     _, alphas = rnn.dynamic_rnn(
         cell=forward_cell,
         inputs=rest_of_input,

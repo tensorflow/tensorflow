@@ -43,6 +43,7 @@ REGISTER_OP("_ScopedAllocatorConcat")
     .Input("inputs: N * T")
     .Attr("shape: shape")
     .Attr("T: type")
+    .Attr("reshape: bool = false")
     .Attr("sa_name: string")
     .Attr("id: int")
     .Attr("N: int >= 2")
@@ -69,10 +70,12 @@ REGISTER_OP("_ScopedAllocatorSplit")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
-Acts like a Concat Op that merges multple tensors into one, however it must
-only be used in conjunction with a ScopedAllocator which is backing the memory
-of all of its input tensors so that actually it just outputs a read-only
-reference to that ScopedAllocator's backing tensor.
+Acts roughly like a SplitV Op that splits one tensor into multiple tensors
+but must only be used in conjunction with corresponding ScopedAllocator
+and ScopedAllocatorConcat instances.  In practice it is provided as inputs
+the backing tensor as first input, which contains the concatenated values,
+and a list of alias tensors as its other input and it simply outputs that
+second list.
 
 This is an experimental op for internal use only.  It is possible to use this
 op in unsafe ways.

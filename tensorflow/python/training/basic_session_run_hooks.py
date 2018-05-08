@@ -380,8 +380,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
                saver=None,
                checkpoint_basename="model.ckpt",
                scaffold=None,
-               listeners=None,
-               steps_per_run=1):
+               listeners=None):
     """Initializes a `CheckpointSaverHook`.
 
     Args:
@@ -394,9 +393,6 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       listeners: List of `CheckpointSaverListener` subclass instances.
         Used for callbacks that run immediately before or after this hook saves
         the checkpoint.
-      steps_per_run: `int`, number of steps that occur between each invocation
-        of the hook. Primarily used for TPU workloads which run multiple steps
-        in a while loop in a single Session.run.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
@@ -412,6 +408,9 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._timer = SecondOrStepTimer(every_secs=save_secs,
                                     every_steps=save_steps)
     self._listeners = listeners or []
+    self._steps_per_run = 1
+
+  def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run
 
   def begin(self):
@@ -522,6 +521,10 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     self._output_dir = output_dir
     self._last_global_step = None
     self._global_step_check_count = 0
+    self._steps_per_run = 1
+
+  def _set_steps_per_run(self, steps_per_run):
+    self._steps_per_run = steps_per_run
 
   def begin(self):
     if self._summary_writer is None and self._output_dir:
@@ -547,7 +550,8 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     _ = run_context
 
     stale_global_step = run_values.results
-    if self._timer.should_trigger_for_step(stale_global_step+1):
+    if self._timer.should_trigger_for_step(
+        stale_global_step + self._steps_per_run):
       # get the real value after train op.
       global_step = run_context.session.run(self._global_step_tensor)
       if self._timer.should_trigger_for_step(global_step):

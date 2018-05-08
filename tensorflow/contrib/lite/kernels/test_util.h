@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 
 #include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/string_util.h"
@@ -131,6 +132,22 @@ class SingleOpModel {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto q = Quantize<T>(data, t->params.scale, t->params.zero_point);
     PopulateTensor(index, 0, q.data(), q.data() + q.size());
+  }
+
+  void SymmetricQuantizeAndPopulate(int index,
+                                    std::initializer_list<float> data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    std::vector<float> values(data);
+    const int length = values.size();
+    std::vector<int8_t> q(length);
+    float min, max, scaling_factor;
+    tensor_utils::SymmetricQuantizeFloats(values.data(), length, q.data(), &min,
+                                          &max, &scaling_factor);
+    // Update quantization params.
+    t->params.scale = scaling_factor;
+    t->params.zero_point = 0;
+    PopulateTensor(index, /*offset=*/0, reinterpret_cast<uint8_t*>(q.data()),
+                   reinterpret_cast<uint8_t*>(q.data() + q.size()));
   }
 
   const std::vector<int>& GetShape(int id) { return tensor_data_.at(id).shape; }

@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "//tensorflow/contrib/lite/testing:util",
         "//tensorflow/core:tflite_portable_logging",
         "@com_google_googletest//:gtest",
@@ -157,6 +158,7 @@ cc_library(
         "mean.cc",
         "mfcc.cc",
         "mul.cc",
+        "neg.cc",
         "pad.cc",
         "pooling.cc",
         "register.cc",
@@ -672,6 +674,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
@@ -846,6 +849,19 @@ tf_cc_test(
     tags = [
         "tflite_not_portable_ios",
     ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "neg_test",
+    size = "small",
+    srcs = ["neg_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

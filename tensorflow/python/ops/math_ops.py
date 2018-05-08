@@ -1285,7 +1285,7 @@ def reduce_sum(input_tensor,
     The reduced tensor, of the same dtype as the input_tensor.
 
   @compatibility(numpy)
-  Equivalent to np.sum appart the fact that numpy upcast uint8 and int32 to
+  Equivalent to np.sum apart the fact that numpy upcast uint8 and int32 to
   int64 while tensorflow returns the same dtype as the input.
   @end_compatibility
   """
@@ -1768,6 +1768,7 @@ def reduce_logsumexp(input_tensor,
                                                     "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
+  input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(
         input_tensor,
@@ -1780,13 +1781,13 @@ def reduce_logsumexp(input_tensor,
             array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
-            gen_math_ops.exp(input_tensor - my_max),
+            gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
             axis,
             keepdims=keepdims,
             reduction_indices=reduction_indices))
     if not keepdims:
       my_max = array_ops.reshape(my_max, array_ops.shape(result))
-    result += my_max
+    result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
@@ -2486,6 +2487,12 @@ def reduced_shape(input_shape, axes):
   """
   # Example:
   # cast needed for SparseTensor reductions
+  if context.executing_eagerly():
+    input_shape = input_shape.numpy()
+    axes = axes.numpy()
+    input_shape[axes] = 1
+    return input_shape
+
   input_shape = to_int32(input_shape)  # [2, 3, 5, 7]
   axes = to_int32(axes)  # [1, 2]
 
@@ -2508,7 +2515,8 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
       of segment entries with 0-entries set to 1 to allow division by N.
   """
   # bincount doesn't support negative indices so we use unsorted_segment_sum
-  ones_tensor = array_ops.ones(segment_ids.shape, dtype=data.dtype)
+  segment_ids_shape = array_ops.shape_internal(segment_ids)
+  ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
   N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
   # add dimensions for all non-reduced axes
   ndims_output = data.shape.ndims - segment_ids.shape.ndims

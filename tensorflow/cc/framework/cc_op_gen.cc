@@ -440,7 +440,7 @@ string AvoidCPPKeywords(StringPiece name) {
   if (IsCPPKeyword(name)) {
     return strings::StrCat(name, "_");
   }
-  return name.ToString();
+  return std::string(name);
 }
 
 void InferArgAttributes(const OpDef::ArgDef& arg,

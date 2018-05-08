@@ -44,6 +44,7 @@ py_library(
     deps = [
         ":convert",
         ":convert_saved_model",
+        ":interpreter",
         ":op_hint",
     ],
 )

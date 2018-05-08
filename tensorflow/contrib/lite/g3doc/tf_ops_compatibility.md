@@ -397,6 +397,17 @@ Options {
 }
 ```
 
+**NEG**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: elementwise negation of the input tensor
+}
+```
+
 **PAD**
 
 ```

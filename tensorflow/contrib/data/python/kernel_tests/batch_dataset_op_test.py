@@ -630,9 +630,7 @@ class BatchDatasetSerializationTest(
         lambda x: array_ops.fill([x], x)).apply(
             batching.dense_to_sparse_batch(4, [12]))
 
-  # TODO(b/70988345): Re-enable when sparse tensors are properly supported by
-  # the DatasetSerializationTestBase.
-  def _testDenseToSparseBatchDatasetCore(self):
+  def testDenseToSparseBatchDatasetCore(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
     diff_comp = np.random.randint(2, size=(100,)).astype(np.int32)
 
