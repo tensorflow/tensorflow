@@ -255,7 +255,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                                         seed_shape.DebugString()));
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
-    auto uniform = RandomUniform(builder, seed, shape, -1.0, 1.0);
+    auto uniform =
+        RandomUniform(builder, seed, shape, std::nextafter(-1.0f, 0.0f), 1.0);
     // Convert uniform distribution to normal distribution by computing
     // sqrt(2) * erfinv(x)
     auto normal = builder->Mul(builder->ConstantR0<float>(std::sqrt(2.0)),
