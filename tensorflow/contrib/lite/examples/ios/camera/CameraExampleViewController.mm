@@ -315,7 +315,7 @@ static void GetTopN(const uint8_t* prediction, const int prediction_size, const 
   labelLayers = [[NSMutableArray alloc] init];
   oldPredictionValues = [[NSMutableDictionary alloc] init];
 
-  NSString* graph_path = FilePathForResourceName(model_file_name, @"tflite");
+  NSString* graph_path = FilePathForResourceName(model_file_name, model_file_type);
   model = tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]);
   if (!model) {
     LOG(FATAL) << "Failed to mmap model " << graph_path;
