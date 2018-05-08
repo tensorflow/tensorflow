@@ -1021,7 +1021,6 @@ def unstack(value, num=None, axis=0, name="unstack"):
       num = value_shape[axis].value
   if num is None:
     raise ValueError("Cannot infer num from shape %s" % value_shape)
-
   elif isinstance(num, ops.Tensor):
     if num.shape.ndims == 0:
       num = expand_dims(num, 0)
