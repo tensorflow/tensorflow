@@ -460,7 +460,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "batch_reshape_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/batch_reshape_test.py"],
     additional_deps = [
         ":distributions_py",
