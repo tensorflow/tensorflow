@@ -211,5 +211,20 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
       sess.run(tf.global_variables_initializer())
       sess.run(train, feed_dict=fd)
 
+  def testMatMul1x2_2x3(self):
+    with tf.device("/device:IPU:0"):
+      with tf.Session() as sess:
+        pa = tf.placeholder(tf.float32, [2, 1], name="a")
+        pb = tf.placeholder(tf.float32, [2, 3], name="b")
+        output = math_ops.matmul(tf.transpose(pa), pb)
+
+        fd = {
+          pa: [[1.],[2.]],
+          pb: [[1., 2., 3.],
+               [4., 5., 6.]]}
+        result = sess.run(output, fd)
+        self.assertAllClose(result, [[9, 12., 15.]])
+
+
 if __name__ == "__main__":
   googletest.main()
