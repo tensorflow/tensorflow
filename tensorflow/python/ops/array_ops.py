@@ -1021,6 +1021,15 @@ def unstack(value, num=None, axis=0, name="unstack"):
       num = value_shape[axis].value
   if num is None:
     raise ValueError("Cannot infer num from shape %s" % value_shape)
+
+  elif isinstance(num, ops.Tensor):
+    if num.shape.ndims == 0:
+      num = expand_dims(num, 0)
+    elif num.shape.ndims != 1:
+      raise ValueError("suffix tensor must be either a scalar or vector, "
+                       "but saw tensor: %s" % num)
+    num = tensor_util.constant_value(num)[0]
+
   return gen_array_ops.unpack(value, num=num, axis=axis, name=name)
 
 
