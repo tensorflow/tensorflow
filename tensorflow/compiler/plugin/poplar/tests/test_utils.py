@@ -30,11 +30,13 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
 
 def get_compute_sets_from_report(report):
   lines = report.split('\n')
-  return [x for x in lines if re.search('  Layer #\d+:', x)]
+  return [x for x in lines if re.search('  Step #\d+:', x)]
 
 def check_all_compute_sets_in_list(cs_list, whitelist):
+  if len(cs_list) < len(whitelist):
+    return False
   for cs in cs_list:
-    if len([x for x in whitelist if re.match("  Layer #\d+: "+x, cs)]) == 0:
+    if len([x for x in whitelist if re.match("  Step #\d+: "+x, cs)]) == 0:
       return False
   return True
 
