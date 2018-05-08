@@ -108,7 +108,8 @@ class BaseLayerTest(test.TestCase):
             'reg_part_var', [4, 4],
             initializer=init_ops.zeros_initializer(),
             regularizer=regularizer)
-    self.assertEqual(len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
+    self.assertEqual(
+        len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
 
   def testNoEagerActivityRegularizer(self):
     with context.eager_mode():
