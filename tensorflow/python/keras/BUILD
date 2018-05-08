@@ -604,6 +604,7 @@ py_test(
     name = "lstm_test",
     size = "medium",
     srcs = ["_impl/keras/layers/lstm_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",  # times out b/63678675
