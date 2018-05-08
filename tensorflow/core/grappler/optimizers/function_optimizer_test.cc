@@ -835,5 +835,30 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
   test::ExpectTensorEqual<float>(tensors_expected[5], tensors[5]);
 }
 
+TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
+  using test::function::NDef;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  DisableFunctionSpecialization(&optimizer);
+  auto func = test::function::XTimesTwo();
+  (*func.mutable_attr())["_noinline"].set_b(true);
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, "/device:CPU:0"),
+       NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
+       NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, "/device:CPU:0")},
+      // FunctionLib
+      {
+          func,
+          test::function::XTimesTwoInt32(),
+          test::function::XTimes16(),
+      });
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.library().function().size(), 1);
+  EXPECT_EQ(output.library().function(0).signature().name(), "XTimesTwo");
+}
+
 }  // namespace grappler
 }  // namespace tensorflow
