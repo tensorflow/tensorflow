@@ -2213,8 +2213,9 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ReverseTopologicalSort(tensorrt::convert::SubGraphParams& s,
-                                          std::list<tensorflow::Node*>* order) {
+tensorflow::Status ReverseTopologicalSort(
+    const tensorrt::convert::SubGraphParams& s,
+    std::list<tensorflow::Node*>* order) {
   std::vector<tensorflow::Node*> order_vec;
   tensorflow::GetPostOrder(s.graph, &order_vec);
   // Select just the subgraph
@@ -2229,7 +2230,7 @@ tensorflow::Status ReverseTopologicalSort(tensorrt::convert::SubGraphParams& s,
 }
 
 tensorflow::Status SetInputList(
-    tensorrt::convert::SubGraphParams& s,
+    const tensorrt::convert::SubGraphParams& s,
     tensorflow::NodeDefBuilder* op_builder,
     const std::vector<string>* input_names,
     std::vector<tensorflow::DataType>* input_dtypes) {
