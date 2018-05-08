@@ -193,15 +193,12 @@ class Layer(base_layer.Layer):
     """
     
     def _should_add_regularizer(variable, existing_variable_set):
-      result = True
       if isinstance(variable, tf_variables.PartitionedVariable):
         for var in variable:
           if var in existing_variable_set:
-            result = False
-            break
+            return False
       else:
-        result = variable not in existing_variable_set
-      return result
+        return variable not in existing_variable_set
 
     init_graph = None
     if not context.executing_eagerly():
