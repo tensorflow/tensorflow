@@ -430,6 +430,15 @@ StatusOr<std::vector<const HloInstruction*>> ListMemoryScheduler(
   return ListScheduler::Run(computation, points_to_analysis, size_function);
 }
 
+StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  const auto& post_order = computation.MakeInstructionPostOrder();
+  return std::vector<const HloInstruction*>{post_order.begin(),
+                                            post_order.end()};
+}
+
 StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
@@ -459,7 +468,22 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
                                   size_function));
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
-  if (list_memory <= dfs_memory) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<const HloInstruction*> post_order_sequence,
+      PostOrderMemoryScheduler(computation, points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(
+      const int64 post_order_memory,
+      MinimumMemoryForComputation(computation, post_order_sequence,
+                                  points_to_analysis, size_function));
+  VLOG(2) << "Min-memory post order sequence: "
+          << HumanReadableNumBytes(post_order_memory);
+
+  if (post_order_memory < std::min(list_memory, dfs_memory)) {
+    VLOG(2) << "Chose min-memory post_order sequence: "
+            << HumanReadableNumBytes(post_order_memory);
+    return post_order_sequence;
+
+  } else if (list_memory <= dfs_memory) {
     VLOG(2) << "Chose min-memory list sequence: "
             << HumanReadableNumBytes(list_memory);
     return list_sequence;

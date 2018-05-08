@@ -253,5 +253,61 @@ TEST_F(InstructionFusionTest, DotOutputFusion) {
                    op::Dot(op::Parameter(), op::Transpose(op::Parameter()))));
 }
 
+// Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
+// duplicated and fused into both reduces.
+TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  Add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = f32[] constant(0)
+    one = f32[] constant(1)
+    p0 = f32[100] parameter(0)
+    recip = f32[100] divide(one, p0)
+    sum1 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT root = (f32[], f32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()));
+}
+
+// Compute sum(100/p0), where p0 has type s32, twice.  Check that the division
+// is *not* duplicated and fused into both reduces, because we say that integer
+// division is not cheap.
+TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  Add {
+    lhs = s32[] parameter(0)
+    rhs = s32[] parameter(1)
+    ROOT add = s32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = s32[] constant(0)
+    one_hundred = s32[] constant(100)
+    p0 = s32[100] parameter(0)
+    recip = s32[100] divide(one_hundred, p0)
+    sum1 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT mul = (s32[], s32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie());
+}
+
 }  // namespace gpu
 }  // namespace xla

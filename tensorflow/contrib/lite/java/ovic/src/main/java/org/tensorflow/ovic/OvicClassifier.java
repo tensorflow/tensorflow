@@ -67,7 +67,7 @@ public class OvicClassifier {
           });
 
   /** Initializes an {@code OvicClassifier}. */
-  OvicClassifier(InputStream labelInputStream, MappedByteBuffer model)
+  public OvicClassifier(InputStream labelInputStream, MappedByteBuffer model)
       throws IOException, RuntimeException {
     if (model == null) {
       throw new RuntimeException("Input model is empty.");
@@ -106,7 +106,7 @@ public class OvicClassifier {
 
   /** Classifies a {@link ByteBuffer} image. */
   // @throws RuntimeException if model is uninitialized.
-  OvicSingleImageResult classifyByteBuffer(ByteBuffer imgData) throws RuntimeException {
+  public OvicSingleImageResult classifyByteBuffer(ByteBuffer imgData) {
     if (tflite == null) {
       throw new RuntimeException(TAG + ": ImageNet classifier has not been initialized; Failed.");
     }

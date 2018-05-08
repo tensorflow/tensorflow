@@ -262,6 +262,10 @@ Status InitializeSession(int num_threads, const string& graph,
   tensorflow::GraphDef tensorflow_graph;
   Status s = ReadBinaryProto(Env::Default(), graph, graph_def->get());
   if (!s.ok()) {
+    s = ReadTextProto(Env::Default(), graph, graph_def->get());
+  }
+
+  if (!s.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return s;
   }

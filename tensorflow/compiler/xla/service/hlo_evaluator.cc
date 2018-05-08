@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -53,19 +53,6 @@ namespace {
 
 using tensorflow::gtl::ArraySlice;
 using tensorflow::gtl::FlatSet;
-using tensorflow::gtl::optional;
-
-template <typename T>
-struct is_complex_t : public std::false_type {};
-
-template <>
-struct is_complex_t<complex64> : public std::true_type {};
-
-template <typename T>
-struct is_complex64_t : public std::false_type {};
-
-template <>
-struct is_complex64_t<complex64> : public std::true_type {};
 
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
@@ -147,82 +134,9 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
   return std::move(result);
 }
 
-template <typename ReturnT, typename NativeT>
-StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
-    HloInstruction* instruction,
-    const std::function<ReturnT(NativeT)>& unary_op,
-    const Literal& operand_literal) {
-  const auto shape = instruction->shape();
-  const auto* operand = instruction->operand(0);
-
-  // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-  // removed.
-  if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
-    return Unimplemented(
-        "Implicit broadcasting is currently unsupported in HLO evaluator "
-        "Shape Mismatch: %s vs %s",
-        ShapeUtil::HumanString(shape).c_str(),
-        ShapeUtil::HumanString(operand->shape()).c_str());
-  }
-
-  auto result = Literal::CreateFromShape(shape);
-
-  TF_RETURN_IF_ERROR(
-      result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
-        return unary_op(operand_literal.Get<NativeT>(multi_index));
-      }));
-  return std::move(result);
-}
-
-// For one particular placement of a window in a base shape (the placement is
-// represented as `window_count_index`), iterates inside the window. Translates
-// the window index into base index. If the base index is within bound, call `f`
-// with the base index.
-void IterateThroughWindow(
-    const Shape& window_shape, const Window& window, const Shape& base_shape,
-    const ArraySlice<int64>& window_count_index,
-    const std::function<void(const std::vector<int64>&)>& f) {
-  const int64 rank = ShapeUtil::Rank(base_shape);
-  DimensionVector window_index(rank);
-  std::fill(window_index.begin(), window_index.end(), 0);
-  do {
-    std::vector<int64> base_index(rank);
-    bool out_of_bound = false;
-    for (int64 i = 0; i < rank; ++i) {
-      base_index[i] = window_count_index[i] * window.dimensions(i).stride() +
-                      window_index[i] - window.dimensions(i).padding_low();
-      if (base_index[i] < 0 || base_index[i] >= base_shape.dimensions(i)) {
-        out_of_bound = true;
-        break;
-      }
-    }
-    if (!out_of_bound) {
-      f(base_index);
-    }
-  } while (IndexUtil::BumpIndices(window_shape, &window_index));
-}
-
-// Creates a vector of multipliers which can be used to create a linear index
-// into shape.
-//
-// Given the multidimensional index {i1, ..., iN} and
-// M = MakeDimMultipliers(shape), the corresponding linear index LI is simply
-//
-//   LI = i1 * M[1] + i2 * M[2] + ... + iN * M[N].
-//
-// This lets you calculate LI given the multidimensional indices in any order.
-DimensionVector MakeDimMultipliers(const Shape& shape) {
-  DimensionVector v(ShapeUtil::Rank(shape));
-  int64 scale = 1;
-  for (auto dim : LayoutUtil::MinorToMajor(shape)) {
-    v[dim] = scale;
-    scale *= shape.dimensions(dim);
-  }
-  return v;
-}
-
 }  // namespace
 
+<<<<<<< HEAD
 template <typename ReturnT, typename ElementwiseT>
 class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
  public:
@@ -2198,41 +2112,47 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   HloEvaluator* parent_;
 };  // class HloEvaluator::TypedVisitor
 
+=======
+>>>>>>> 1af09b57ef663d4ab0c02a00e2af1f1e2819d32f
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
-  typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
-  typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
+  typed_visitors_[PRED] = MakeUnique<HloEvaluatorTypedVisitor<bool>>(this);
+  typed_visitors_[U8] = MakeUnique<HloEvaluatorTypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
     return Unimplemented(
-        "HloEvaluator::TypedVisitor: unhandled primitive type: U16.");
+        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+        "U16.");
   });
-  typed_visitors_[U32] = MakeUnique<TypedVisitor<uint32>>(this);
-  typed_visitors_[U64] = MakeUnique<TypedVisitor<uint64>>(this);
-  typed_visitors_[S8] = MakeUnique<TypedVisitor<int8>>(this);
+  typed_visitors_[U32] = MakeUnique<HloEvaluatorTypedVisitor<uint32>>(this);
+  typed_visitors_[U64] = MakeUnique<HloEvaluatorTypedVisitor<uint64>>(this);
+  typed_visitors_[S8] = MakeUnique<HloEvaluatorTypedVisitor<int8>>(this);
   typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
     return Unimplemented(
-        "HloEvaluator::TypedVisitor: unhandled primitive type: S16.");
+        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+        "S16.");
   });
-  typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
-  typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
-  typed_visitors_[F16] = MakeUnique<TypedVisitor<Eigen::half, float>>(this);
-  typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
-  typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
-  typed_visitors_[C64] = MakeUnique<TypedVisitor<complex64>>(this);
+  typed_visitors_[S32] = MakeUnique<HloEvaluatorTypedVisitor<int32>>(this);
+  typed_visitors_[S64] = MakeUnique<HloEvaluatorTypedVisitor<int64>>(this);
+  typed_visitors_[F16] =
+      MakeUnique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
+  typed_visitors_[F32] = MakeUnique<HloEvaluatorTypedVisitor<float>>(this);
+  typed_visitors_[F64] = MakeUnique<HloEvaluatorTypedVisitor<double>>(this);
+  typed_visitors_[C64] = MakeUnique<HloEvaluatorTypedVisitor<complex64>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
-  typed_visitors_[BF16] = MakeUnique<TypedVisitor<bfloat16, float>>(this);
+  typed_visitors_[BF16] =
+      MakeUnique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
 
   typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
     return Unimplemented(
-        "HloEvaluator::TypedVistor: unhandled primitive type: TUPLE.");
+        "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
   });
   typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
     return Unimplemented(
-        "HloEvaluator::TypedVisitor: unhandled primitive type: OPAQUE.");
+        "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
   });
 }
 
@@ -3034,7 +2954,7 @@ Status HloEvaluator::HandleSelect(HloInstruction* select) {
 
   // If predicate is of scalar type, no element-wise selection would be needed.
   // This would also handle output array of tuple types as the DefaultAction
-  // would go through the TypedVisitor which doesn't handle tuples.
+  // would go through the HloEvaluatorTypedVisitor which doesn't handle tuples.
   if (ShapeUtil::IsScalar(pred.shape())) {
     if (pred.Get<bool>({})) {
       evaluated_[select] = on_true.CloneToUnique();

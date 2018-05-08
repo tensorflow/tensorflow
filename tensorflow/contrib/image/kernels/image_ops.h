@@ -161,7 +161,7 @@ struct FillProjectiveTransform {
   void operator()(const Device& device, OutputType* output,
                   const InputType& images,
                   const TransformsType& transform) const {
-    output->device(device) = images.generate(
+    output->device(device) = output->generate(
         ProjectiveGenerator<Device, T>(images, transform, interpolation_));
   }
 };

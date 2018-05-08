@@ -395,7 +395,7 @@ py_test(
 
 py_test(
     name = "resnet50_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/applications/resnet50_test.py"],
     srcs_version = "PY2AND3",
     deps = [

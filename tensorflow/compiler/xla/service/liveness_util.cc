@@ -173,9 +173,9 @@ bool HasUniqueFusedUseOfOperandAt(
 // (2) Is a loop fusion instruction where the only use of 'operand' at 'index'
 //     in the set 'user.fused_instructions' is a DynamicUpdateSlice fused root
 //     at operand 0. Or...
-// (3) Is a kDot -> kAdd (or fused kTransposeDot -> kAdd) output fusion
-//     instruction where the only use of 'operand' at 'index' in the set
-//     'user.fused_instructions' is a kAdd fused root at operand 0 or 1. Or...
+// (3) Is a kDot -> kAdd output fusion instruction where the only use of
+//     'operand' at 'index' in the set 'user.fused_instructions' is a kAdd fused
+//     root at operand 0 or 1. Or...
 // (4) The 'user' of 'operand' is DynamicUpdateSlice or While at operand index
 //     0.
 //
@@ -209,17 +209,13 @@ bool CanShareOperandBufferWithUser(
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 
-      // Check if one operand of kAdd fused root is either kDot, or nested
-      // kFusion of kind kTransposeDot.
+      // Check if one operand of kAdd fused root is kDot or kConvolution.
       auto* add = user->fused_expression_root();
       auto add_operand_it =
           std::find_if(add->operands().begin(), add->operands().end(),
                        [&](HloInstruction* operand) {
                          return operand->opcode() == HloOpcode::kConvolution ||
-                                operand->opcode() == HloOpcode::kDot ||
-                                (operand->opcode() == HloOpcode::kFusion &&
-                                 operand->fusion_kind() ==
-                                     HloInstruction::FusionKind::kTransposeDot);
+                                operand->opcode() == HloOpcode::kDot;
                        });
       if (add_operand_it == add->operands().end()) {
         return false;
@@ -314,17 +310,13 @@ bool CanShareOperandBufferWithUser(HloInstruction* operand,
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 
-      // Check if one operand of kAdd fused root is either kDot, or nested
-      // kFusion of kind kTransposeDot.
+      // Check if one operand of kAdd fused root is kDot, or kConvolution.
       auto* add = user->fused_expression_root();
       auto add_operand_it =
           std::find_if(add->operands().begin(), add->operands().end(),
                        [&](HloInstruction* operand) {
                          return operand->opcode() == HloOpcode::kConvolution ||
-                                operand->opcode() == HloOpcode::kDot ||
-                                (operand->opcode() == HloOpcode::kFusion &&
-                                 operand->fusion_kind() ==
-                                     HloInstruction::FusionKind::kTransposeDot);
+                                operand->opcode() == HloOpcode::kDot;
                        });
       if (add_operand_it == add->operands().end()) {
         return false;

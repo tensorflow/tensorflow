@@ -157,6 +157,7 @@ cc_library(
         ":quantization_util",
         ":strided_slice_logic",
         ":types",
+        ":reference_base",
         ":round",
         "//third_party/eigen3",
         "@gemmlowp",

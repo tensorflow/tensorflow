@@ -944,6 +944,21 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       # Smoke test to ensure numpy inputs are accepted
       F(x)
 
+  def testRVGradientsDynamicCond(self):
+    with self.test_session():
+      alpha = resource_variable_ops.ResourceVariable(
+          np.random.random((1,)),
+          dtype="float32")
+
+      conditional = array_ops.placeholder_with_default(True, shape=())
+      output = control_flow_ops.cond(
+          conditional, lambda: alpha * 2, lambda: alpha * 3)
+
+      g, = gradients_impl.gradients(output, alpha)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(g.eval(), [2.0])
+      self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
+
 
 if __name__ == "__main__":
   googletest.main()

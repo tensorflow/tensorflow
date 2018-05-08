@@ -27,6 +27,7 @@ namespace grappler {
 
 constexpr int kOpsPerMac = 2;
 constexpr char kConst[] = "Const";
+constexpr char kGuaranteeConst[] = "GuaranteeConst";
 constexpr char kConv2d[] = "Conv2D";
 constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
 constexpr char kConv2dBackpropInput[] = "Conv2DBackpropInput";
@@ -205,6 +206,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kGuaranteeConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
 
       {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
