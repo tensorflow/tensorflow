@@ -2322,13 +2322,23 @@ bool CUDABlas::DoBlasGemmWithAlgorithm(
       computation_type, algorithm, output_profile_result);
 }
 
-template <typename T, typename FuncT>
+template <typename T>
+struct HalfAsFloat {
+  typedef T type;
+};
+
+template <>
+struct HalfAsFloat<Eigen::half> {
+  typedef float type;
+};
+
+template <typename T, typename Scalar, typename FuncT>
 port::Status CUDABlas::DoBlasGemmBatchedInternal(
     FuncT cublas_func, Stream *stream, blas::Transpose transa,
-    blas::Transpose transb, uint64 m, uint64 n, uint64 k, T alpha,
+    blas::Transpose transb, uint64 m, uint64 n, uint64 k, Scalar alpha,
     const port::ArraySlice<DeviceMemory<T> *> &a_ptrs_to_wrappers, int lda,
     const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
-    T beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
+    Scalar beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   std::vector<T *> a_raw_ptrs, b_raw_ptrs, c_raw_ptrs;
   for (int i = 0; i < batch_count; ++i) {
@@ -2337,89 +2347,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
     c_raw_ptrs.push_back(static_cast<T *>(c_ptrs_to_wrappers[i]->opaque()));
   }
 
-  typedef typename CUDAComplexT<T>::type CUDA_T;
-
-  const size_t size = batch_count * sizeof(CUDA_T *);
-
-  // Device-side copy of pointers to matrices.
-  DeviceMemory<CUDA_T *> a;
-  DeviceMemory<CUDA_T *> b;
-  DeviceMemory<CUDA_T *> c;
-
-  // If temporary space is allocated for device-side copies of pointers to
-  // matrices, that temporary space should not be freed until this function
-  // returns. Although the values for these unique_ptrs are not set here, they
-  // are declared at this scope so they will be destroyed when the function
-  // returns.
-  //
-  // If a scratch allocator is provided, these pointers will not be used at all.
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> a_temporary;
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> b_temporary;
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> c_temporary;
-
-  // Decide how to allocate device-side copy of pointers to matrices based on
-  // whether a scratch allocator was passed.
-  if (scratch_allocator != nullptr) {
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> a_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> b_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> c_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
-    a = DeviceMemory<CUDA_T *>(a_bytes);
-    b = DeviceMemory<CUDA_T *>(b_bytes);
-    c = DeviceMemory<CUDA_T *>(c_bytes);
-  } else {
-    SE_ASSIGN_OR_RETURN(a_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    SE_ASSIGN_OR_RETURN(b_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    SE_ASSIGN_OR_RETURN(c_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    a = DeviceMemory<CUDA_T *>(*a_temporary->mutable_device_memory());
-    b = DeviceMemory<CUDA_T *>(*b_temporary->mutable_device_memory());
-    c = DeviceMemory<CUDA_T *>(*c_temporary->mutable_device_memory());
-  }
-
-  if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
-      !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||
-      !stream->ThenMemcpy(&c, c_raw_ptrs.data(), size).ok()) {
-    return port::Status(port::error::INTERNAL,
-                        "failed to copy memory from host to device in "
-                        "CUDABlas::DoBlasGemmBatched");
-  }
-
-  bool ok = DoBlasInternal(
-      cublas_func, stream, true /* = pointer_mode_host */,
-      CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
-      CUDAComplex(&alpha), const_cast<const CUDA_T **>(CUDAMemory(a)), lda,
-      const_cast<const CUDA_T **>(CUDAMemory(b)), ldb, CUDAComplex(&beta),
-      const_cast<CUDA_T **>(CUDAMemory(c)), ldc, batch_count);
-
-  if (ok) {
-    return port::Status::OK();
-  }
-  return port::Status(port::error::INTERNAL,
-                      "failed BLAS call, see log for details");
-}
-
-// Supports tensor ops, use with half and float only
-template <typename T>
-port::Status CUDABlas::DoBlasGemmBatchedInternalTensorOp(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, float alpha,
-    const port::ArraySlice<DeviceMemory<T> *> &a_ptrs_to_wrappers, int lda,
-    const port::ArraySlice<DeviceMemory<T> *> &b_ptrs_to_wrappers, int ldb,
-    float beta, const port::ArraySlice<DeviceMemory<T> *> &c_ptrs_to_wrappers,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  std::vector<T *> a_raw_ptrs, b_raw_ptrs, c_raw_ptrs;
-  for (int i = 0; i < batch_count; ++i) {
-    a_raw_ptrs.push_back(static_cast<T *>(a_ptrs_to_wrappers[i]->opaque()));
-    b_raw_ptrs.push_back(static_cast<T *>(b_ptrs_to_wrappers[i]->opaque()));
-    c_raw_ptrs.push_back(static_cast<T *>(c_ptrs_to_wrappers[i]->opaque()));
-  }
-
-  typedef void CUDA_T;
+  typedef typename HalfAsFloat<typename CUDAComplexT<T>::type>::type CUDA_T;
 
   const size_t size = batch_count * sizeof(CUDA_T *);
 
@@ -2472,7 +2400,6 @@ port::Status CUDABlas::DoBlasGemmBatchedInternalTensorOp(
   }
 
   cudaDataType_t data_type = CUDADataType<T>::type;
-  cudaDataType_t compute_type = CUDA_R_32F;
 
 #if CUDA_VERSION >= 9010
   int cc_major, cc_minor;
@@ -2482,15 +2409,21 @@ port::Status CUDABlas::DoBlasGemmBatchedInternalTensorOp(
     bool use_tensor_ops = TensorOpMathEnabled() && data_type == CUDA_R_16F;
     cublasGemmAlgo_t algo =
         (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+    cudaDataType_t compute_type =
+        (data_type == CUDA_R_16F ? CUDA_R_32F : data_type);
+    const void **a_void_ptrs = reinterpret_cast<const void **>(
+        const_cast<const CUDA_T **>(CUDAMemory(a)));
+    const void **b_void_ptrs = reinterpret_cast<const void **>(
+        const_cast<const CUDA_T **>(CUDAMemory(b)));
+    void **c_void_ptrs =
+        reinterpret_cast<void **>(const_cast<CUDA_T **>(CUDAMemory(c)));
     bool ok;
     ok = DoBlasInternalImpl(
         wrap::cublasGemmBatchedEx, stream, true /* = pointer_mode_host */,
         true /* = err_on_failure */, use_tensor_ops, CUDABlasTranspose(transa),
-        CUDABlasTranspose(transb), m, n, k, &alpha,
-        const_cast<const void **>(CUDAMemory(a)), data_type, lda,
-        const_cast<const void **>(CUDAMemory(b)), data_type, ldb, &beta,
-        const_cast<void **>(CUDAMemory(c)), data_type, ldc, batch_count,
-        compute_type, algo);
+        CUDABlasTranspose(transb), m, n, k, &alpha, a_void_ptrs, data_type, lda,
+        b_void_ptrs, data_type, ldb, &beta, c_void_ptrs, data_type, ldc,
+        batch_count, compute_type, algo);
     if (ok) {
       return port::Status::OK();
     }
@@ -2499,12 +2432,13 @@ port::Status CUDABlas::DoBlasGemmBatchedInternalTensorOp(
   }
 #endif
   // either CUDA_VERSION < 9.1 or SM < 5.0
-  if (data_type == CUDA_R_32F) {
+  if (data_type != CUDA_R_16F) {
     bool ok = DoBlasInternal(
-        wrap::cublasSgemmBatched, stream, true /* = pointer_mode_host */,
-        CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
-        (const float **)(CUDAMemory(a)), lda, (const float **)(CUDAMemory(b)),
-        ldb, &beta, (float **)(CUDAMemory(c)), ldc, batch_count);
+        cublas_func, stream, true /* = pointer_mode_host */,
+        CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+        CUDAComplex(&alpha), const_cast<const CUDA_T **>(CUDAMemory(a)), lda,
+        const_cast<const CUDA_T **>(CUDAMemory(b)), ldb, CUDAComplex(&beta),
+        const_cast<CUDA_T **>(CUDAMemory(c)), ldc, batch_count);
     if (ok) {
       return port::Status::OK();
     }
@@ -2534,9 +2468,11 @@ bool CUDABlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &b_array, int ldb,
     float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  port::Status status = DoBlasGemmBatchedInternalTensorOp(
-      stream, transa, transb, m, n, k, alpha, a_array, lda, b_array, ldb, beta,
-      c_array, ldc, batch_count, scratch_allocator);
+  // Note: The func passed here (cublasSgemmBatched) is not actually called,
+  // due to special handling of fp16 inside DoBlasGemmBatchedInternal.
+  port::Status status = DoBlasGemmBatchedInternal(
+      wrap::cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array,
+      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
@@ -2550,9 +2486,9 @@ bool CUDABlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<float> *> &b_array, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<float> *> &c_array, int ldc,
     int batch_count, ScratchAllocator *scratch_allocator) {
-  port::Status status = DoBlasGemmBatchedInternalTensorOp(
-      stream, transa, transb, m, n, k, alpha, a_array, lda, b_array, ldb, beta,
-      c_array, ldc, batch_count, scratch_allocator);
+  port::Status status = DoBlasGemmBatchedInternal(
+      wrap::cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array,
+      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
