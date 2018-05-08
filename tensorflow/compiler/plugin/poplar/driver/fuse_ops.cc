@@ -51,6 +51,7 @@ static FusedGraphInfo fuse_info[] = {
   {"depthwise_conv", 0},
   {"conv_with_reverse", 0},
   {"conv_with_reverse", 0},
+  //{"depthwise_filter", 13},
   {"bias_apply", 0},
   {"wide_const", 1},
 };
@@ -291,6 +292,24 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kReverse, true, 0, IsConvFilterSpatialReverse, {3}},
    {HloOpcode::kParameter, false, 0, nullptr, {}},
    {HloOpcode::kParameter, false, 1, nullptr, {}}},
+
+  // Depthwise backprop filter convolution
+//  {{HloOpcode::kReshape, true, 0, nullptr, {1}},
+//   {HloOpcode::kReduce, true, 0, nullptr, {2, 4}},
+//   {HloOpcode::kSelect, true, 0, nullptr, {5, 13, 3}},
+//   {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
+//   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+//   {HloOpcode::kEq, true, 0, nullptr, {8, 6}},
+//   {HloOpcode::kBroadcast, true, 0, nullptr, {7}},
+//   {HloOpcode::kConstant, true, 0, nullptr, {}},
+//   {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
+//   {HloOpcode::kDivide, true, 0, nullptr, {12, 10}},
+//   {HloOpcode::kBroadcast, true, 0, nullptr, {11}},
+//   {HloOpcode::kConstant, true, 0, nullptr, {}},
+//   {HloOpcode::kConstant, true, 0, nullptr, {}},
+//   {HloOpcode::kConvolution, true, 0, IsWeightUpdateConvolution, {14, 15}},
+//   {HloOpcode::kParameter, false, 0, nullptr, {}},
+//   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
   // Bias reduction and application
   {{HloOpcode::kSubtract, true, 0, IsOutputFeed, {1, 2}},

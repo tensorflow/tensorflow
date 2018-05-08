@@ -46,6 +46,12 @@ GetConvolutionParameters(const HloInstruction* operands_inst,
   unsigned int n_j = kernel_dims[dims.kernel_input_feature_dimension()];
   unsigned int n_o = output_dims[dims.output_feature_dimension()];
   unsigned int n_p = kernel_dims[dims.kernel_output_feature_dimension()];
+
+//  if (true) {
+//    n_b = input_dims[dims.input_feature_dimension()];
+//    n_i = input_dims[dims.input_batch_dimension()];
+//  }
+
   unsigned int n_g = (n_i / n_j) * (n_o / n_p);
 
   n_i = n_i / n_g;
@@ -340,7 +346,50 @@ Create2DConvWithReverse(poplar::Graph &graph,
   return prog;
 }
 
-StatusOr <poplar::program::Program>
+StatusOr<poplar::program::Program>
+CreateDepthwiseBackpropFilter(poplar::Graph &graph,
+                              CompilerResources& res,
+                              const HloInstruction *inst,
+                              const xla::Shape& output_shape,
+                              TensorMap& tensor_map) {
+  const HloInstruction* conv =
+      inst->to_apply()->root_instruction()->operand(0)->operand(0)->operand(1);
+
+  // Find the input tensor
+  poplar::Tensor in;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+
+  // Find the kernel tensor
+  poplar::Tensor kernel;
+  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
+
+  poplar::OptionFlags opts;
+  opts.set("pass", GetConvolutionPass(inst));
+
+  popconv::ConvParams params;
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
+
+  poplar::program::Sequence prog;
+
+  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(conv, in));
+
+  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
+                                                                false));
+
+  kernel = AddGroupsDimensionToWeights(params, kernel);
+
+  poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
+                                            false, prog, conv->name(), opts,
+                                            &res.convolution_cache);
+
+  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return prog;
+}
+
+StatusOr<poplar::program::Program>
 CreateBiasAddOp(poplar::Graph &graph,
                 CompilerResources& res,
                 const HloInstruction *inst,

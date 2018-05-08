@@ -331,6 +331,13 @@ Create2DConvWithReverse(poplar::Graph &graph,
                         TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program>
+CreateDepthwiseBackpropFilter(poplar::Graph &graph,
+                              CompilerResources& res,
+                              const HloInstruction *inst,
+                              const xla::Shape& output_shape,
+                              TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program>
 ConvBiasApply(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,
