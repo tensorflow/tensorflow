@@ -1867,6 +1867,8 @@ xla_test(
 
 xla_test(
     name = "local_client_execute_test",
+    # TODO(b/79375911): Test times out in LLVM at normal size.
+    size = "large",
     srcs = ["local_client_execute_test.cc"],
     shard_count = 30,
     tags = ["optonly"],
