@@ -104,7 +104,7 @@ ScopedAllocatorContainer::~ScopedAllocatorContainer() {
   // contents deleted via Drop.  When when a step ends early
   // (e.g. through abnormal termination) we need to clean up
   // explicitly.  So long as graph execution of the associated step has
-  // completey terminated this should be safe.
+  // completely terminated this should be safe.
   for (auto& it : allocators_) {
     if (it.second.field_index == ScopedAllocator::kBackingIndex) {
       delete it.second.scoped_allocator;

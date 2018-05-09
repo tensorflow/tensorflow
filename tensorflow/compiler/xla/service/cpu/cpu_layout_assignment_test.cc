@@ -49,7 +49,7 @@ class CpuLayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {
-    cpu::CpuLayoutAssignment layout_assignment(entry_computation_layout);
+    cpu::CpuLayoutAssignment layout_assignment(*entry_computation_layout);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 };
@@ -311,7 +311,7 @@ static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
   result.addend_fusion_param = fusion_instruction->operand(
       fused_add->operand(1 - dot_operand_idx_in_add)->parameter_number());
 
-  cpu::CpuLayoutAssignment layout_assignment(&computation_layout);
+  cpu::CpuLayoutAssignment layout_assignment(computation_layout);
   TF_ASSIGN_OR_RETURN(result.layout_assignment_changed_something,
                       layout_assignment.Run(module));
 

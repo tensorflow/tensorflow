@@ -31,7 +31,7 @@ inline string StripSuffixString(port::StringPiece str, port::StringPiece suffix)
   if (tensorflow::str_util::EndsWith(str, suffix)) {
     str.remove_suffix(suffix.size());
   }
-  return str.ToString();
+  return std::string(str);
 }
 
 using tensorflow::str_util::Lowercase;

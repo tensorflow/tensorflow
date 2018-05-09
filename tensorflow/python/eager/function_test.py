@@ -771,6 +771,21 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
 
+  def testDefunWhileLoopWithCapturedLoopVars(self):
+    n = 3
+    x = constant_op.constant(list(range(n)))
+
+    @function.defun
+    def loop():
+      c = lambda i, x: i < n
+      b = lambda i, x: (i + 1, x + 1)
+      i, out = control_flow_ops.while_loop(c, b, (0, x))
+      return i, out
+
+    i, out = loop()
+    self.assertEqual(int(i), 3)
+    self.assertAllEqual(out, [3, 4, 5])
+
   def testDecorator(self):
     with context.graph_mode(), self.test_session():
       v = resource_variable_ops.ResourceVariable(1.0)

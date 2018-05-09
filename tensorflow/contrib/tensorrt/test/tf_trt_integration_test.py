@@ -45,8 +45,7 @@ class IntegrationTest(test_util.TensorFlowTestCase):
     inp_dims = (100, 24, 24, 2)
     self._input = np.random.random_sample(inp_dims)
     self._original_graph = self.get_simple_graph_def()
-    self._gpu_options = cpb2.GPUOptions(
-        per_process_gpu_memory_fraction=0.50)
+    self._gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
     self._config = cpb2.ConfigProto(gpu_options=self._gpu_options)
     self._reference = self.run_graph(self._original_graph, self._input)
 
@@ -61,11 +60,7 @@ class IntegrationTest(test_util.TensorFlowTestCase):
           name="weights",
           dtype=dtypes.float32)
       conv = nn.conv2d(
-          input=a,
-          filter=e,
-          strides=[1, 2, 2, 1],
-          padding="SAME",
-          name="conv")
+          input=a, filter=e, strides=[1, 2, 2, 1], padding="SAME", name="conv")
       b = cop.constant(
           [4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtypes.float32)
       t = nn.bias_add(conv, b, name="biasAdd")
@@ -86,8 +81,7 @@ class IntegrationTest(test_util.TensorFlowTestCase):
       inp = inp.outputs[0]
       out = out.outputs[0]
     with self.test_session(
-        graph=g, config=self._config, use_gpu=True,
-        force_gpu=True) as sess:
+        graph=g, config=self._config, use_gpu=True, force_gpu=True) as sess:
       val = sess.run(out, {inp: dumm_inp})
     return val
 
@@ -105,15 +99,14 @@ class IntegrationTest(test_util.TensorFlowTestCase):
       # run over real calibration data here, we are mimicking a calibration
       # set of 30 different batches. Use as much calibration data as you want
     with self.test_session(
-        graph=g, config=self._config, use_gpu=True,
-        force_gpu=True) as sess:
+        graph=g, config=self._config, use_gpu=True, force_gpu=True) as sess:
       for _ in range(30):
         val = sess.run(out, {inp: dumm_inp})
     return val
 
   def get_trt_graph(self, mode):
     """Return trt converted graph."""
-    if mode in  ["FP32", "FP16", "INT8"]:
+    if mode in ["FP32", "FP16", "INT8"]:
       return trt.create_inference_graph(
           input_graph_def=self._original_graph,
           outputs=["output"],
@@ -121,7 +114,7 @@ class IntegrationTest(test_util.TensorFlowTestCase):
           max_workspace_size_bytes=1 << 25,
           precision_mode=mode,  # TRT Engine precision "FP32","FP16" or "INT8"
           minimum_segment_size=2  # minimum number of nodes in an engine
-          )
+      )
     return None
 
   def testFP32(self):

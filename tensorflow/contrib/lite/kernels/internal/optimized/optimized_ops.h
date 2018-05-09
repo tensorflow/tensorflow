@@ -31,12 +31,23 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace optimized_ops {
+
+// Unoptimized reference ops:
+using reference_ops::BroadcastGreater;
+using reference_ops::BroadcastGreaterEqual;
+using reference_ops::BroadcastLess;
+using reference_ops::BroadcastLessEqual;
+using reference_ops::Greater;
+using reference_ops::GreaterEqual;
+using reference_ops::Less;
+using reference_ops::LessEqual;
 
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
@@ -2593,7 +2604,7 @@ inline void Add(int left_shift, const uint8* input1_data,
   }
 #endif  // NEON
 
-  for (; i < size; i++) {
+  for (; i < size; ++i) {
     const int32 input1_val = input1_offset + input1_data[i];
     const int32 input2_val = input2_offset + input2_data[i];
     const int32 shifted_input1_val = input1_val * (1 << left_shift);
@@ -2750,7 +2761,7 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                          int32 output_activation_min,
                          int32 output_activation_max, uint8* output_data,
                          const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd/8bit");
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddGeneric/8bit");
 
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
@@ -2799,6 +2810,60 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
   }
 }
 
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/8bit");
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise add of
+  // sections of the arrays.
+  uint8* output_data_ptr = output_data;
+  const uint8* input1_data_ptr = input1_data;
+  const uint8* input2_data_reset = input2_data;
+  for (int i4 = 0; i4 < y4; ++i4) {
+    const uint8* input2_data_ptr;
+    for (int i3 = 0; i3 < y3; ++i3) {
+      input2_data_ptr = input2_data_reset;
+      for (int i2 = 0; i2 < y2; ++i2) {
+        for (int i1 = 0; i1 < y1; ++i1) {
+          for (int i0 = 0; i0 < y0; ++i0) {
+            const int32 input1_val = input1_offset + input1_data_ptr[i0];
+            const int32 input2_val = input2_offset + input2_data_ptr[i0];
+            const int32 shifted_input1_val = input1_val * (1 << left_shift);
+            const int32 shifted_input2_val = input2_val * (1 << left_shift);
+            const int32 scaled_input1_val =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    shifted_input1_val, input1_multiplier, input1_shift);
+            const int32 scaled_input2_val =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    shifted_input2_val, input2_multiplier, input2_shift);
+            const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+            const int32 raw_output =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    raw_sum, output_multiplier, output_shift) +
+                output_offset;
+            const int32 clamped_output =
+                std::min(output_activation_max,
+                         std::max(output_activation_min, raw_output));
+            output_data_ptr[i0] = static_cast<uint8>(clamped_output);
+          }
+          input2_data_ptr += y0;
+          output_data_ptr += y0;
+        }
+        input1_data_ptr += y0;
+      }
+    }
+    input2_data_reset = input2_data_ptr;
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                          const Dims<4>& input1_dims, int32 input1_offset,
@@ -2825,6 +2890,33 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                input2_offset, input2_multiplier, input2_shift, output_offset,
                output_multiplier, output_shift, output_activation_min,
                output_activation_max, output_data, output_dims);
+}
+
+template <FusedActivationFunctionType Ac>
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  BroadcastAddFivefold(y0, y1, y2, y3, y4, left_shift, input1_data, input1_dims,
+                       input1_offset, input1_multiplier, input1_shift,
+                       input2_data, input2_dims, input2_offset,
+                       input2_multiplier, input2_shift, output_offset,
+                       output_multiplier, output_shift, output_activation_min,
+                       output_activation_max, output_data, output_dims);
 }
 
 inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
@@ -3355,7 +3447,7 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
                           const int32 output_zeropoint,
                           const float output_scale) {
   // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization paramaters for all the inputs to the concat
+  // that have the quantization parameters for all the inputs to the concat
   // operator.
   gemmlowp::ScopedProfilingLabel label("Concatenation");
   TFLITE_DCHECK_GT(inputs_count, 1);
@@ -4375,7 +4467,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
+  gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -5770,10 +5862,26 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+void TypedMemset(void* ptr, T value, size_t num) {
+  // Optimization for common cases where memset() will suffice.
+  if (value == 0 || std::is_same<T, uint8_t>::value) {
+    memset(ptr, value, num * sizeof(T));
+  } else {
+    // Default implementation for cases where memset() will not preserve the
+    // bytes, e.g., typically when sizeof(T) > sizeof(uint8_t).
+    char* pos = static_cast<char*>(ptr);
+    for (size_t i = 0; i < num; ++i) {
+      memcpy(pos, &value, sizeof(T));
+      pos = pos + sizeof(T);
+    }
+  }
+}
+
+template <typename T>
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
   gemmlowp::ScopedProfilingLabel label("Pad");
   TFLITE_DCHECK_EQ(left_paddings.size(), 4);
   TFLITE_DCHECK_EQ(right_paddings.size(), 4);
@@ -5796,27 +5904,28 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   const int input_depth = ArraySize(input_dims, 0);
 
   if (left_b_padding != 0) {
-    memset(output_data, pad_value,
-           left_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data, pad_value,
+        left_b_padding * output_height * output_width * output_depth);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), pad_value,
-             left_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(output_data + Offset(output_dims, 0, 0, 0, out_b),
+                     pad_value, left_h_padding * output_width * output_depth);
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), pad_value,
-               left_w_padding * output_depth * sizeof(T));
+        TypedMemset<T>(output_data + Offset(output_dims, 0, 0, out_h, out_b),
+                       pad_value, left_w_padding * output_depth);
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
-          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b),
-                 pad_value, left_d_padding * sizeof(T));
+          TypedMemset<T>(
+              output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+              pad_value, left_d_padding);
         }
 
         T* out = output_data +
@@ -5827,33 +5936,44 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
         memcpy(out, in, input_depth * sizeof(T));
 
         if (right_d_padding != 0) {
-          memset(
+          TypedMemset<T>(
               output_data + Offset(output_dims, output_depth - right_d_padding,
                                    out_w, out_h, out_b),
-              pad_value, right_d_padding * sizeof(T));
+              pad_value, right_d_padding);
         }
       }
       if (right_w_padding != 0) {
-        memset(
+        TypedMemset<T>(
             output_data + Offset(output_dims, 0, output_width - right_w_padding,
                                  out_h, out_b),
-            pad_value, right_w_padding * output_depth * sizeof(T));
+            pad_value, right_w_padding * output_depth);
       }
     }
     if (right_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0,
-                                  output_height - right_h_padding, out_b),
-             pad_value,
-             right_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(
+          output_data +
+              Offset(output_dims, 0, 0, output_height - right_h_padding, out_b),
+          pad_value, right_h_padding * output_width * output_depth);
     }
   }
   if (right_b_padding != 0) {
-    memset(output_data +
-               Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
-           0,
-           right_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data +
+            Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
+        pad_value,
+        right_b_padding * output_height * output_width * output_depth);
   }
+}
+
+// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T>
+inline void Pad(const T* input_data, const Dims<4>& input_dims,
+                const std::vector<int>& left_paddings,
+                const std::vector<int>& right_paddings, T* output_data,
+                const Dims<4>& output_dims, const int32_t pad_value) {
+  const T converted_pad_value = static_cast<T>(pad_value);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, converted_pad_value);
 }
 
 template <typename T>
@@ -6195,6 +6315,59 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
         }
       }
     }
+  }
+}
+
+// UNOPTIMIZED COPY of Select from reference_ops.h.
+template <typename D, typename T>
+inline void Select(const D* input_condition_data,
+                   const Dims<4>& input_condition_dims, const T* input_x_data,
+                   const Dims<4>& input_x_dims, const T* input_y_data,
+                   const Dims<4>& input_y_dims, T* output_data,
+                   const Dims<4>& output_dims) {
+  const int64_t batches =
+      MatchingArraySize(input_condition_dims, 3, input_x_dims, 3, input_y_dims,
+                        3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_condition_dims, 2, input_x_dims, 2, input_y_dims,
+                        2, output_dims, 2);
+  const int64_t width = MatchingArraySize(input_condition_dims, 1, input_x_dims,
+                                          1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth = MatchingArraySize(input_condition_dims, 0, input_x_dims,
+                                          0, input_y_dims, 0, output_dims, 0);
+
+  const int64_t num_elements = batches * height * width * depth;
+  for (int64_t i = 0; i < num_elements; ++i) {
+    output_data[i] =
+        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
+  }
+}
+
+// UNOPTIMIZED COPY of RankOneSelect from reference_ops.h.
+template <typename D, typename T>
+inline void RankOneSelect(const D* input_condition_data,
+                          const Dims<4>& input_condition_dims,
+                          const T* input_x_data, const Dims<4>& input_x_dims,
+                          const T* input_y_data, const Dims<4>& input_y_dims,
+                          T* output_data, const Dims<4>& output_dims) {
+  const int64_t rank = ArraySize(input_condition_dims, 0);
+
+  const int64_t batches =
+      MatchingArraySize(input_x_dims, 3, input_y_dims, 3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_x_dims, 2, input_y_dims, 2, output_dims, 2);
+  const int64_t width =
+      MatchingArraySize(input_x_dims, 1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth =
+      MatchingArraySize(input_x_dims, 0, input_y_dims, 0, output_dims, 0);
+
+  TFLITE_DCHECK_EQ(rank, batches);
+
+  int64_t offset = 0;
+  int64_t size = depth * height * width;
+  for (int64_t i = 0; i < rank; i++) {
+    const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
+    memcpy(output_data + offset, input_data + offset, size * sizeof(T));
   }
 }
 

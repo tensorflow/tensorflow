@@ -51,6 +51,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
                         const std::vector<const XlaExpression*>& expressions,
                         std::vector<XlaCompiler::Argument>* args) {
   auto builder = ctx->builder();
+  auto client = ctx->compiler()->client();
   std::vector<bool> compile_time_constant_flags(expressions.size());
 
   TF_RETURN_IF_ERROR(
@@ -72,8 +73,10 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       arg.kind = XlaCompiler::Argument::kConstant;
       TF_RET_CHECK(expressions[i]->resource() == nullptr)
           << "Input with resource is not yet implemented.";
+      TF_ASSIGN_OR_RETURN(auto constant_graph, builder->BuildConstantSubGraph(
+                                                   expressions[i]->handle()));
       TF_ASSIGN_OR_RETURN(auto literal,
-                          builder->ComputeConstant(expressions[i]->handle()));
+                          client->ComputeConstant(constant_graph));
       TF_RETURN_IF_ERROR(
           LiteralToHostTensor(*literal, arg.type, &arg.constant_value));
     } else {
@@ -212,7 +215,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
 
   TF_RET_CHECK(arguments.size() == expressions.size());
 
-  std::vector<xla::ComputationDataHandle> handles;
+  std::vector<xla::XlaOp> handles;
   for (int64 i = 0; i < expressions.size(); ++i) {
     if (arguments[i].kind == XlaCompiler::Argument::kConstant) {
       continue;

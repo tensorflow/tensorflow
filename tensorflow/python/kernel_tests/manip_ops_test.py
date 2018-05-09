@@ -93,7 +93,7 @@ class RollTest(test_util.TensorFlowTestCase):
   def testNegativeAxis(self):
     self._testAll(np.random.randint(-100, 100, (5)).astype(np.int32), 3, -1)
     self._testAll(np.random.randint(-100, 100, (4, 4)).astype(np.int32), 3, -2)
-    # Make sure negative axis shoudl be 0 <= axis + dims < dims
+    # Make sure negative axis should be 0 <= axis + dims < dims
     with self.test_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "is out of range"):

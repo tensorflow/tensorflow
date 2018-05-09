@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -58,8 +58,8 @@ class XlaOpKernelContext {
  public:
   explicit XlaOpKernelContext(OpKernelContext* context);
 
-  // Returns the XLA ComputationBuilder containing the output of compilation.
-  xla::ComputationBuilder* builder() const;
+  // Returns the XLA XlaBuilder containing the output of compilation.
+  xla::XlaBuilder* builder() const;
 
   // Inputs
 
@@ -72,10 +72,10 @@ class XlaOpKernelContext {
   // Returns the shape of input 'index'.
   TensorShape InputShape(int index);
 
-  // Returns input 'index' as a ComputationDataHandle. Unlike
+  // Returns input 'index' as a XlaOp. Unlike
   // OpKernelContext::Input returns a symbolic value rather than a concrete
   // Tensor.
-  const xla::ComputationDataHandle& Input(int index);
+  const xla::XlaOp& Input(int index);
 
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
@@ -85,8 +85,7 @@ class XlaOpKernelContext {
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list.
-  Status InputList(StringPiece name,
-                   std::vector<xla::ComputationDataHandle>* handles,
+  Status InputList(StringPiece name, std::vector<xla::XlaOp>* handles,
                    std::vector<TensorShape>* shapes);
 
   // Helper methods for constant inputs.
@@ -132,10 +131,10 @@ class XlaOpKernelContext {
     return context_->expected_output_dtype(index);
   }
 
-  // Sets output 'index' to the ComputationDataHandle 'handle'.
+  // Sets output 'index' to the XlaOp 'handle'.
   // All outputs should be set using SetOutput and SetConstantOutput, not
   // via the underlying OpKernelContext.
-  void SetOutput(int index, const xla::ComputationDataHandle& handle);
+  void SetOutput(int index, const xla::XlaOp& handle);
 
   // Sets output 'index' to compile-time constant 'host_tensor', where
   // 'host_tensor' is a tensor in host memory. It is preferable to use
@@ -168,14 +167,13 @@ class XlaOpKernelContext {
   // variable. Returns an error if the variable has not been initialized, or if
   // its type does not match `type`.
   Status ReadVariableInput(int index, DataType type, TensorShape* shape,
-                           xla::ComputationDataHandle* value);
+                           xla::XlaOp* value);
 
   // Assigns the value `handle` to the variable referenced by input
   // `input_index`. The variable must be of `type`. Returns an error if the
   // variable has been initialized with a different type or with a
   // different shape.
-  Status AssignVariable(int input_index, DataType type,
-                        xla::ComputationDataHandle handle);
+  Status AssignVariable(int input_index, DataType type, xla::XlaOp handle);
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);
@@ -205,22 +203,22 @@ class XlaOpKernelContext {
   // Gets an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateMax(const DataType type);
+  const xla::XlaComputation* GetOrCreateMax(const DataType type);
 
   // Gets an XLA lambda to compute Min. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateMin(const DataType type);
+  const xla::XlaComputation* GetOrCreateMin(const DataType type);
 
   // Gets an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateAdd(const DataType type);
+  const xla::XlaComputation* GetOrCreateAdd(const DataType type);
 
   // Gets an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateMul(const DataType type);
+  const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
  private:
   OpKernelContext* const context_;

@@ -22,23 +22,6 @@ namespace tflite {
 using ::testing::FloatNear;
 using ::testing::Matcher;
 
-namespace {
-template <typename T>
-std::pair<float, int32_t> QuantizationParams(float f_min, float f_max) {
-  // These are required by many quantized operations.
-  CHECK_LE(f_min, 0);
-  CHECK_GE(f_max, 0);
-  T q_min = std::numeric_limits<T>::min();
-  T q_max = std::numeric_limits<T>::max();
-  float range = q_max - q_min;
-  float scale = (f_max - f_min) / range;
-  int32_t zero_point = std::min(
-      q_max,
-      std::max(q_min, static_cast<T>(std::round(q_min - f_min / scale))));
-  return {scale, zero_point};
-}
-}  // namespace
-
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
                                            float max_abs_error) {
   std::vector<Matcher<float>> matchers;
@@ -49,69 +32,8 @@ std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
   return matchers;
 }
 
-int SingleOpModel::AddTensor(TensorData t, std::initializer_list<int> data) {
-  int id = tensors_.size();
-
-  // This is slightly different depending on whether we are adding a
-  // quantized or a regular tensor.
-  bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
-
-  flatbuffers::Offset<QuantizationParameters> q_params = 0;
-
-  if (is_quantized) {
-    if (t.min != 0 || t.max != 0) {
-      if (t.type == TensorType_UINT8) {
-        std::tie(t.scale, t.zero_point) =
-            QuantizationParams<uint8_t>(t.min, t.max);
-      } else if (t.type == TensorType_INT32) {
-        std::tie(t.scale, t.zero_point) =
-            QuantizationParams<int32_t>(t.min, t.max);
-      } else {
-        LOG(FATAL) << "No support for the requested quantized type";
-      }
-      t.min = 0;
-      t.max = 0;
-    }
-
-    q_params = CreateQuantizationParameters(
-        builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>({t.scale}),
-        builder_.CreateVector<int64_t>({t.zero_point}));
-  }
-
-  int buffer_id = 0;
-  if (data.size()) {
-    // Initialize buffers list with empty buffer to allow for non-const tensors.
-    if (buffers_.empty()) {
-      buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
-    }
-
-    // Add data as a Buffer to buffers list.
-    buffer_id = buffers_.size();
-    auto data_buffer =
-        builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.begin()),
-                              sizeof(int) * data.size());
-    buffers_.push_back(CreateBuffer(builder_, data_buffer));
-  }
-
-  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>(t.shape),
-                                  t.type, /*buffer=*/buffer_id,
-                                  /*name=*/0, q_params));
-
-  tensor_data_[id] = t;
-
-  return id;
-}
-
 int SingleOpModel::AddInput(const TensorData& t) {
-  int id = AddTensor(t, {});
-  inputs_.push_back(id);
-  return id;
-}
-
-int SingleOpModel::AddConstInput(TensorType type,
-                                 std::initializer_list<int> data,
-                                 std::initializer_list<int> shape) {
-  int id = AddTensor(TensorData{type, shape}, data);
+  int id = AddTensor<float>(t, {});
   inputs_.push_back(id);
   return id;
 }
@@ -123,7 +45,7 @@ int SingleOpModel::AddNullInput() {
 }
 
 int SingleOpModel::AddOutput(const TensorData& t) {
-  int id = AddTensor(t, {});
+  int id = AddTensor<float>(t, {});
   outputs_.push_back(id);
   return id;
 }

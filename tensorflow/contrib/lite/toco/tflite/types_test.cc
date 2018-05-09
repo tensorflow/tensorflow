@@ -44,7 +44,7 @@ template <ArrayDataType T>
 Array ToFlatBufferAndBack(std::initializer_list<::toco::DataType<T>> items) {
   // NOTE: This test does not construct the full buffers list. Since
   // Deserialize normally takes a buffer, we need to synthesize one and provide
-  // an index that is non-zero so the buffer is not assumed to be emtpy.
+  // an index that is non-zero so the buffer is not assumed to be empty.
   Array src;
   src.data_type = T;
   src.GetMutableBuffer<T>().data = items;

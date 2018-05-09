@@ -69,6 +69,30 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
   }
 }
 
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  int batch, row, col;
+  for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
+    const float batch_scaling_factor_inv = 1.0 / scaling_factors[batch];
+    // Get the address of the first row.
+    int8_t* row_ptr = (int8_t*)matrix;  // NOLINT
+    for (row = 0; row < m_rows; ++row, result += result_stride) {
+      // Initialize the dot product sum for the row to 0.
+      int32_t dotprod = 0;
+      // Prefetch the row to cache.
+      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
+                         3 /* temporal locality */);
+      // For every block of 16 8-bit elements (128-bit register) from each row.
+      for (col = 0; col < m_cols; ++col, ++row_ptr) {
+        dotprod += (*row_ptr) * (vectors[col]);
+      }  // for col
+      *result += (dotprod * batch_scaling_factor_inv);
+    }  // for row
+  }    // for batch
+}
+
 void PortableVectorVectorCwiseProduct(const float* vector1,
                                       const float* vector2, int v_size,
                                       float* result) {

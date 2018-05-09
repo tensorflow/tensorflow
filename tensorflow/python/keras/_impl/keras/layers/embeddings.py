@@ -153,7 +153,8 @@ class Embedding(Layer):
       return (input_shape[0],) + tuple(in_lens) + (self.output_dim,)
 
   def call(self, inputs):
-    if K.dtype(inputs) != 'int32':
+    dtype = K.dtype(inputs)
+    if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
     out = embedding_ops.embedding_lookup(self.embeddings, inputs)
     return out

@@ -205,8 +205,9 @@ def regression_head(weight_column=None,
   shape `[D0, D1, ... DN, label_dimension]`.
 
   Also supports custom `inverse_link_fn`, also known as 'mean function'.
-  `inverse_link_fn` takes `logits` as argument and returns predicted values.
-  This function is the inverse of the link function defined in
+  `inverse_link_fn` is only used in `PREDICT` mode. It takes `logits` as
+  argument and returns predicted values. This function is the inverse of the
+  link function defined in
   https://en.wikipedia.org/wiki/Generalized_linear_model#Link_function
   Namely, for poisson regression, set `inverse_link_fn=tf.exp`.
 
@@ -234,7 +235,7 @@ def regression_head(weight_column=None,
   Raises:
     ValueError: If `label_dimension` or `loss_reduction` is invalid.
   """
-  return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
+  return head_lib._regression_head(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
@@ -296,12 +297,75 @@ def poisson_regression_head(
   def _poisson_loss(labels, logits):
     return nn.log_poisson_loss(
         targets=labels, log_input=logits, compute_full_loss=compute_full_loss)
-  return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
+  return head_lib._regression_head(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
       loss_fn=_poisson_loss,
       inverse_link_fn=math_ops.exp,
+      name=name)
+
+
+def logistic_regression_head(
+    weight_column=None,
+    loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
+    name=None):
+  """Creates a `_Head` for logistic regression.
+
+  Uses `sigmoid_cross_entropy_with_logits` loss, which is the same as
+  `binary_classification_head`. The differences compared to
+  `binary_classification_head` are:
+
+  * Does not support `label_vocabulary`. Instead, labels must be float in the
+    range [0, 1].
+  * Does not calculate some metrics that do not make sense, such as AUC.
+  * In `PREDICT` mode, only returns logits and predictions
+    (`=tf.sigmoid(logits)`), whereas `binary_classification_head` also returns
+    probabilities, classes, and class_ids.
+  * Export output defaults to `RegressionOutput`, whereas
+    `binary_classification_head` defaults to `PredictOutput`.
+
+  The head expects `logits` with shape `[D0, D1, ... DN, 1]`.
+  In many applications, the shape is `[batch_size, 1]`.
+
+  The `labels` shape must match `logits`, namely
+  `[D0, D1, ... DN]` or `[D0, D1, ... DN, 1]`.
+
+  If `weight_column` is specified, weights must be of shape
+  `[D0, D1, ... DN]` or `[D0, D1, ... DN, 1]`.
+
+  This is implemented as a generalized linear model, see
+  https://en.wikipedia.org/wiki/Generalized_linear_model.
+
+  Args:
+    weight_column: A string or a `_NumericColumn` created by
+      `tf.feature_column.numeric_column` defining feature column representing
+      weights. It is used to down weight or boost examples during training. It
+      will be multiplied by the loss of the example.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch and label dimension. Defaults to
+      `SUM_OVER_BATCH_SIZE`, namely weighted sum of losses divided by
+      `batch size * label_dimension`. See `tf.losses.Reduction`.
+    name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
+
+  Returns:
+    An instance of `_Head` for logistic regression.
+
+  Raises:
+    ValueError: If `loss_reduction` is invalid.
+  """
+  def _logistic_loss(labels, logits):
+    labels = head_lib._assert_range(  # pylint:disable=protected-access
+        labels, n_classes=2, message='Labels must be in range [0, 1]')
+    return nn.sigmoid_cross_entropy_with_logits(
+        labels=labels, logits=logits)
+  return head_lib._regression_head(  # pylint:disable=protected-access
+      weight_column=weight_column,
+      label_dimension=1,
+      loss_reduction=loss_reduction,
+      loss_fn=_logistic_loss,
+      inverse_link_fn=math_ops.sigmoid,
       name=name)
 
 
@@ -496,10 +560,10 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         weights=weights,
         processed_labels=processed_labels)
 
-  def create_estimator_spec(
+  def _create_tpu_estimator_spec(
       self, features, mode, logits, labels=None, optimizer=None,
       train_op_fn=None, regularization_losses=None):
-    """Returns an `EstimatorSpec`.
+    """Returns an `model_fn._TPUEstimatorSpec`.
 
     Args:
       features: Input `dict` of `Tensor` or `SparseTensor` objects.
@@ -522,7 +586,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
         avoid scaling errors.
     Returns:
-      `EstimatorSpec`.
+      `model_fn._TPUEstimatorSpec`.
     Raises:
       ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
         mode, or if both are set.
@@ -542,7 +606,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         classifier_output = head_lib._classification_output(  # pylint:disable=protected-access
             scores=probabilities, n_classes=self._n_classes,
             label_vocabulary=self._label_vocabulary)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
@@ -565,16 +629,18 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
             loss=regularized_training_loss,
-            eval_metric_ops=self._eval_metric_ops(
-                labels=processed_labels,
-                probabilities=probabilities,
-                weights=weights,
-                unreduced_loss=unreduced_loss,
-                regularization_loss=regularization_loss))
+            eval_metrics=head_lib._create_eval_metrics_tuple(  # pylint:disable=protected-access
+                self._eval_metric_ops, {
+                    'labels': processed_labels,
+                    'probabilities': probabilities,
+                    'weights': weights,
+                    'unreduced_loss': unreduced_loss,
+                    'regularization_loss': regularization_loss,
+                }))
 
       # Train.
       if optimizer is not None:
@@ -608,7 +674,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         summary.scalar(
             head_lib._summary_key(self._name, keys.LOSS_REGULARIZATION),  # pylint:disable=protected-access
             regularization_loss)
-    return model_fn.EstimatorSpec(
+    return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
         loss=regularized_training_loss,

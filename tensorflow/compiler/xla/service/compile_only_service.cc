@@ -70,6 +70,22 @@ CompileOnlyService::CompileAheadOfTime(
     TF_RET_CHECK(instance.computation.has_program_shape());
 
     const DebugOptions& debug_options = options.debug_options();
+
+    // Dump computation proto if flag is set.
+    const string& directory_path = debug_options.xla_dump_computations_to();
+    if (!directory_path.empty()) {
+      HloSnapshot hlo_snapshot;
+      *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = instance.computation;
+      string filename = tensorflow::strings::StrCat(
+          "computation_", instance.computation.id(), "__",
+          instance.computation.entry_computation_name());
+      const string& per_host_path = tensorflow::io::JoinPath(
+          directory_path, tensorflow::port::Hostname());
+
+      TF_RETURN_IF_ERROR(
+          Executable::DumpToDirectory(per_host_path, filename, hlo_snapshot));
+    }
+
     const auto& program_shape = instance.computation.program_shape();
     ExecutionOptions execution_options;
     *execution_options.mutable_debug_options() = debug_options;

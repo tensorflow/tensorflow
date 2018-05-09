@@ -64,6 +64,10 @@ REGISTER_OP("TPUReplicatedOutput")
         "Operator that connects the output of an N-way replicated TPU "
         "computation to N separate outputs.");
 
+REGISTER_OP("TPUCompilationResult")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("TPUReplicate")
     .Attr("computation: func")
     .Attr("num_replicas: int >= 1")

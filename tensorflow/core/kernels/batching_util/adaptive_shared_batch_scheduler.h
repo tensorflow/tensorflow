@@ -76,7 +76,7 @@ class AdaptiveSharedBatchScheduler
           AdaptiveSharedBatchScheduler<TaskType>> {
  public:
   ~AdaptiveSharedBatchScheduler() {
-    // Finish processing batches before destorying other class members.
+    // Finish processing batches before destroying other class members.
     batch_thread_pool_.reset();
   }
 
