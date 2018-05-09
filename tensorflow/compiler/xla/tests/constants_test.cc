@@ -169,9 +169,9 @@ TEST_F(ConstantsTest, DISABLED_TupleConstant) {
       ExecuteAndTransfer(&builder, {}).ConsumeValueOrDie();
 
   LiteralTestUtil::ExpectR2Near<float>(
-      {{1.0}, {2.0}}, LiteralView::Create(*result, {0}), error_spec_);
+      {{1.0}, {2.0}}, LiteralSlice(*result, {0}), error_spec_);
   LiteralTestUtil::ExpectR1Near<float>(
-      {2.0, 42.0}, LiteralView::Create(*result, {1}), error_spec_);
+      {2.0, 42.0}, LiteralSlice(*result, {1}), error_spec_);
 }
 
 }  // namespace

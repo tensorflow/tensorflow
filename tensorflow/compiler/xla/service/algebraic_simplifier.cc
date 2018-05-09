@@ -501,13 +501,13 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
 }
 
 static HloInstruction* BuildTupleConstant(HloComputation* computation,
-                                          const Literal& literal) {
+                                          const LiteralSlice& literal) {
   if (ShapeUtil::IsTuple(literal.shape())) {
     std::vector<HloInstruction*> elems;
     elems.reserve(ShapeUtil::TupleElementCount(literal.shape()));
     for (int i = 0; i < ShapeUtil::TupleElementCount(literal.shape()); ++i) {
       elems.push_back(
-          BuildTupleConstant(computation, LiteralView::Create(literal, {i})));
+          BuildTupleConstant(computation, LiteralSlice(literal, {i})));
     }
     return computation->AddInstruction(HloInstruction::CreateTuple(elems));
   } else {

@@ -108,7 +108,7 @@ class ComputationBuilder {
 
   // Enqueues a constant with the value of the given literal onto the
   // computation.
-  ComputationDataHandle ConstantLiteral(const Literal& literal);
+  ComputationDataHandle ConstantLiteral(const LiteralSlice& literal);
 
   // Enqueues a constant onto the computation. Methods are templated on the
   // native host type (NativeT) which corresponds to a specific XLA

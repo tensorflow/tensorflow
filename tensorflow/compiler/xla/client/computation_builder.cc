@@ -185,7 +185,7 @@ bool ComputationBuilder::MakeWindow(
 }
 
 ComputationDataHandle ComputationBuilder::ConstantLiteral(
-    const Literal& literal) {
+    const LiteralSlice& literal) {
   OpRequest op_request;
   ConstantRequest* request = op_request.mutable_constant_request();
   *request->mutable_literal() = literal.ToProto();
