@@ -407,6 +407,7 @@ py_test(
     srcs = ["sql_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
