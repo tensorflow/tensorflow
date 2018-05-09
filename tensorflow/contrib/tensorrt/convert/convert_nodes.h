@@ -85,6 +85,10 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
 tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
 tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,
                                                       tensorflow::Node* c_node);
+tensorflow::Status ConvertSegmentToGraphDef(
+    tensorflow::tensorrt::convert::SubGraphParams& params,
+    tensorflow::GraphDef* segment_def,
+    std::unordered_map<string,string> input_placeholder_map);
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

@@ -53,8 +53,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+using ::tensorflow::str_util::Split;
+
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
+
 namespace {
 
 inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
@@ -2723,6 +2726,63 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   return tensorflow::Status::OK();
 }
 
+//  This needs to be called before TensorRT nodes inserted in order to correctly
+//  get sizes from the original graph
+tensorflow::Status ConvertSegmentToGraphDef(
+    tensorflow::tensorrt::convert::SubGraphParams& params,
+    tensorflow::GraphDef* segment_def,
+    std::unordered_map<string, string> *input_placeholder_map
+    ) {
+  //std::unordered_map<string,string> input_placeholder_map;
+  for (size_t i = 0; i < params.input_inds.size(); ++i) {
+    auto& inputs = params.input_inds.at(i);
+    auto input_node = params.graph.FindNodeId(inputs.first);
+    if (input_node) {
+      tensorflow::DataType input_type = tensorflow::DT_FLOAT;
+      tensorflow::PartialTensorShape partial_shape;
+
+      if (params.graph_properties.HasOutputProperties(input_node->name())) {
+        auto output_params =
+            params.graph_properties.GetOutputProperties(input_node->name());
+        auto out_shape = output_params.at(inputs.second);
+        input_type = out_shape.dtype();
+        std::vector<tensorflow::int64> dims;
+        for (const auto d : out_shape.shape().dim()) {
+          dims.push_back(d.size());
+        }
+        tensorflow::PartialTensorShape::MakePartialShape(
+            dims.data(), dims.size(), &partial_shape);
+      }
+      tensorflow::NodeDef dummy_placeholder;
+      string node_name("InputPH_");
+      StrAppend(&node_name, i);
+      input_placeholder_map->insert({input_node->name(),node_name});
+      tensorflow::NodeDefBuilder dph_builder(node_name, "Placeholder");
+      auto status = dph_builder.Attr("shape", partial_shape)
+                        .Attr("dtype", input_type)
+                        .Finalize(&dummy_placeholder);
+      auto seg_node = segment_def->add_node();
+      seg_node->CopyFrom(dummy_placeholder);
+    }
+  }
+  for (const auto node_id : params.subgraph_node_ids) {
+    const auto node = params.graph.FindNodeId(node_id);
+    if (node) {
+      auto snode = segment_def->add_node();
+      snode->CopyFrom(node->def());
+      // check node inputs to see if it was connected to input node and update
+      // it to point to placeholder if necessary
+      for (int i = 0; i < snode->input_size(); ++i) {
+        auto node_input = Split(snode->input(i), ":");
+        string node_input_name = node_input[0];
+        auto it = input_placeholder_map->find(node_input_name);
+        if (it != input_placeholder_map->end()) {
+          snode->set_input(i, it->second);
+        }
+      }
+    }
+  }
+}
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
