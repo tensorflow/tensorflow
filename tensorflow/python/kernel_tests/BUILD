@@ -1222,6 +1222,7 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "noasan",  # times out
+        "optonly",  # times out
     ],
 )
 
