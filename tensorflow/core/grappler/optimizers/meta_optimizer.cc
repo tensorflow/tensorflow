@@ -65,7 +65,7 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "arithmetic_optimizer" || name == "loop_optimizer";
+         name == "loop_optimizer";
 }
 
 }  // namespace

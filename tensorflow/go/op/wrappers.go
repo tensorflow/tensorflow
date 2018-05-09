@@ -2544,6 +2544,72 @@ func EditDistance(scope *Scope, hypothesis_indices tf.Output, hypothesis_values 
 	return op.Output(0)
 }
 
+// Reverses specific dimensions of a tensor.
+//
+// Given a `tensor`, and a `bool` tensor `dims` representing the dimensions
+// of `tensor`, this operation reverses each dimension i of `tensor` where
+// `dims[i]` is `True`.
+//
+// `tensor` can have up to 8 dimensions. The number of dimensions
+// of `tensor` must equal the number of elements in `dims`. In other words:
+//
+// `rank(tensor) = size(dims)`
+//
+// For example:
+//
+// ```
+// # tensor 't' is [[[[ 0,  1,  2,  3],
+// #                  [ 4,  5,  6,  7],
+// #                  [ 8,  9, 10, 11]],
+// #                 [[12, 13, 14, 15],
+// #                  [16, 17, 18, 19],
+// #                  [20, 21, 22, 23]]]]
+// # tensor 't' shape is [1, 2, 3, 4]
+//
+// # 'dims' is [False, False, False, True]
+// reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
+//                         [ 7,  6,  5,  4],
+//                         [ 11, 10, 9, 8]],
+//                        [[15, 14, 13, 12],
+//                         [19, 18, 17, 16],
+//                         [23, 22, 21, 20]]]]
+//
+// # 'dims' is [False, True, False, False]
+// reverse(t, dims) ==> [[[[12, 13, 14, 15],
+//                         [16, 17, 18, 19],
+//                         [20, 21, 22, 23]
+//                        [[ 0,  1,  2,  3],
+//                         [ 4,  5,  6,  7],
+//                         [ 8,  9, 10, 11]]]]
+//
+// # 'dims' is [False, False, True, False]
+// reverse(t, dims) ==> [[[[8, 9, 10, 11],
+//                         [4, 5, 6, 7],
+//                         [0, 1, 2, 3]]
+//                        [[20, 21, 22, 23],
+//                         [16, 17, 18, 19],
+//                         [12, 13, 14, 15]]]]
+// ```
+//
+// Arguments:
+//	tensor: Up to 8-D.
+//	dims: 1-D. The dimensions to reverse.
+//
+// Returns The same shape as `tensor`.
+func Reverse(scope *Scope, tensor tf.Output, dims tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Reverse",
+		Input: []tf.Input{
+			tensor, dims,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Clips tensor values to a specified min and max.
 //
 // Given a tensor `t`, this operation returns a tensor of the same type and
@@ -2791,71 +2857,6 @@ func Asin(scope *Scope, x tf.Output) (y tf.Output) {
 		Input: []tf.Input{
 			x,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// SparseToDenseAttr is an optional argument to SparseToDense.
-type SparseToDenseAttr func(optionalAttr)
-
-// SparseToDenseValidateIndices sets the optional validate_indices attribute to value.
-//
-// value: If true, indices are checked to make sure they are sorted in
-// lexicographic order and that there are no repeats.
-// If not specified, defaults to true
-func SparseToDenseValidateIndices(value bool) SparseToDenseAttr {
-	return func(m optionalAttr) {
-		m["validate_indices"] = value
-	}
-}
-
-// Converts a sparse representation into a dense tensor.
-//
-// Builds an array `dense` with shape `output_shape` such that
-//
-// ```
-// # If sparse_indices is scalar
-// dense[i] = (i == sparse_indices ? sparse_values : default_value)
-//
-// # If sparse_indices is a vector, then for each i
-// dense[sparse_indices[i]] = sparse_values[i]
-//
-// # If sparse_indices is an n by d matrix, then for each i in [0, n)
-// dense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]
-// ```
-//
-// All other values in `dense` are set to `default_value`.  If `sparse_values` is a
-// scalar, all sparse indices are set to this single value.
-//
-// Indices should be sorted in lexicographic order, and indices must not
-// contain any repeats. If `validate_indices` is true, these properties
-// are checked during execution.
-//
-// Arguments:
-//	sparse_indices: 0-D, 1-D, or 2-D.  `sparse_indices[i]` contains the complete
-// index where `sparse_values[i]` will be placed.
-//	output_shape: 1-D.  Shape of the dense output tensor.
-//	sparse_values: 1-D.  Values corresponding to each row of `sparse_indices`,
-// or a scalar value to be used for all sparse indices.
-//	default_value: Scalar value to set for indices not specified in
-// `sparse_indices`.
-//
-// Returns Dense output tensor of shape `output_shape`.
-func SparseToDense(scope *Scope, sparse_indices tf.Output, output_shape tf.Output, sparse_values tf.Output, default_value tf.Output, optional ...SparseToDenseAttr) (dense tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseToDense",
-		Input: []tf.Input{
-			sparse_indices, output_shape, sparse_values, default_value,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -6469,72 +6470,6 @@ func SparseFillEmptyRows(scope *Scope, indices tf.Output, values tf.Output, dens
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
-// Reverses specific dimensions of a tensor.
-//
-// Given a `tensor`, and a `bool` tensor `dims` representing the dimensions
-// of `tensor`, this operation reverses each dimension i of `tensor` where
-// `dims[i]` is `True`.
-//
-// `tensor` can have up to 8 dimensions. The number of dimensions
-// of `tensor` must equal the number of elements in `dims`. In other words:
-//
-// `rank(tensor) = size(dims)`
-//
-// For example:
-//
-// ```
-// # tensor 't' is [[[[ 0,  1,  2,  3],
-// #                  [ 4,  5,  6,  7],
-// #                  [ 8,  9, 10, 11]],
-// #                 [[12, 13, 14, 15],
-// #                  [16, 17, 18, 19],
-// #                  [20, 21, 22, 23]]]]
-// # tensor 't' shape is [1, 2, 3, 4]
-//
-// # 'dims' is [False, False, False, True]
-// reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
-//                         [ 7,  6,  5,  4],
-//                         [ 11, 10, 9, 8]],
-//                        [[15, 14, 13, 12],
-//                         [19, 18, 17, 16],
-//                         [23, 22, 21, 20]]]]
-//
-// # 'dims' is [False, True, False, False]
-// reverse(t, dims) ==> [[[[12, 13, 14, 15],
-//                         [16, 17, 18, 19],
-//                         [20, 21, 22, 23]
-//                        [[ 0,  1,  2,  3],
-//                         [ 4,  5,  6,  7],
-//                         [ 8,  9, 10, 11]]]]
-//
-// # 'dims' is [False, False, True, False]
-// reverse(t, dims) ==> [[[[8, 9, 10, 11],
-//                         [4, 5, 6, 7],
-//                         [0, 1, 2, 3]]
-//                        [[20, 21, 22, 23],
-//                         [16, 17, 18, 19],
-//                         [12, 13, 14, 15]]]]
-// ```
-//
-// Arguments:
-//	tensor: Up to 8-D.
-//	dims: 1-D. The dimensions to reverse.
-//
-// Returns The same shape as `tensor`.
-func Reverse(scope *Scope, tensor tf.Output, dims tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Reverse",
-		Input: []tf.Input{
-			tensor, dims,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // BiasAddGradAttr is an optional argument to BiasAddGrad.
 type BiasAddGradAttr func(optionalAttr)
 
@@ -6653,6 +6588,101 @@ func FusedBatchNormV2(scope *Scope, x tf.Output, scale tf.Output, offset tf.Outp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
+}
+
+// Reverses specific dimensions of a tensor.
+//
+// NOTE `tf.reverse` has now changed behavior in preparation for 1.0.
+// `tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.
+//
+// Given a `tensor`, and a `int32` tensor `axis` representing the set of
+// dimensions of `tensor` to reverse. This operation reverses each dimension
+// `i` for which there exists `j` s.t. `axis[j] == i`.
+//
+// `tensor` can have up to 8 dimensions. The number of dimensions specified
+// in `axis` may be 0 or more entries. If an index is specified more than
+// once, a InvalidArgument error is raised.
+//
+// For example:
+//
+// ```
+// # tensor 't' is [[[[ 0,  1,  2,  3],
+// #                  [ 4,  5,  6,  7],
+// #                  [ 8,  9, 10, 11]],
+// #                 [[12, 13, 14, 15],
+// #                  [16, 17, 18, 19],
+// #                  [20, 21, 22, 23]]]]
+// # tensor 't' shape is [1, 2, 3, 4]
+//
+// # 'dims' is [3] or 'dims' is [-1]
+// reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
+//                         [ 7,  6,  5,  4],
+//                         [ 11, 10, 9, 8]],
+//                        [[15, 14, 13, 12],
+//                         [19, 18, 17, 16],
+//                         [23, 22, 21, 20]]]]
+//
+// # 'dims' is '[1]' (or 'dims' is '[-3]')
+// reverse(t, dims) ==> [[[[12, 13, 14, 15],
+//                         [16, 17, 18, 19],
+//                         [20, 21, 22, 23]
+//                        [[ 0,  1,  2,  3],
+//                         [ 4,  5,  6,  7],
+//                         [ 8,  9, 10, 11]]]]
+//
+// # 'dims' is '[2]' (or 'dims' is '[-2]')
+// reverse(t, dims) ==> [[[[8, 9, 10, 11],
+//                         [4, 5, 6, 7],
+//                         [0, 1, 2, 3]]
+//                        [[20, 21, 22, 23],
+//                         [16, 17, 18, 19],
+//                         [12, 13, 14, 15]]]]
+// ```
+//
+// Arguments:
+//	tensor: Up to 8-D.
+//	axis: 1-D. The indices of the dimensions to reverse. Must be in the range
+// `[-rank(tensor), rank(tensor))`.
+//
+// Returns The same shape as `tensor`.
+func ReverseV2(scope *Scope, tensor tf.Output, axis tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReverseV2",
+		Input: []tf.Input{
+			tensor, axis,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Adds `bias` to `value`.
+//
+// This is a deprecated version of BiasAdd and will be soon removed.
+//
+// This is a special case of `tf.add` where `bias` is restricted to be 1-D.
+// Broadcasting is supported, so `value` may have any number of dimensions.
+//
+// Arguments:
+//	value: Any number of dimensions.
+//	bias: 1-D with size the last dimension of `value`.
+//
+// Returns Broadcasted sum of `value` and `bias`.
+func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BiasAddV1",
+		Input: []tf.Input{
+			value, bias,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Transforms a Tensor into a serialized TensorProto proto.
@@ -13814,101 +13844,6 @@ func ResourceApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Output, ms
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Adds `bias` to `value`.
-//
-// This is a deprecated version of BiasAdd and will be soon removed.
-//
-// This is a special case of `tf.add` where `bias` is restricted to be 1-D.
-// Broadcasting is supported, so `value` may have any number of dimensions.
-//
-// Arguments:
-//	value: Any number of dimensions.
-//	bias: 1-D with size the last dimension of `value`.
-//
-// Returns Broadcasted sum of `value` and `bias`.
-func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BiasAddV1",
-		Input: []tf.Input{
-			value, bias,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Reverses specific dimensions of a tensor.
-//
-// NOTE `tf.reverse` has now changed behavior in preparation for 1.0.
-// `tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.
-//
-// Given a `tensor`, and a `int32` tensor `axis` representing the set of
-// dimensions of `tensor` to reverse. This operation reverses each dimension
-// `i` for which there exists `j` s.t. `axis[j] == i`.
-//
-// `tensor` can have up to 8 dimensions. The number of dimensions specified
-// in `axis` may be 0 or more entries. If an index is specified more than
-// once, a InvalidArgument error is raised.
-//
-// For example:
-//
-// ```
-// # tensor 't' is [[[[ 0,  1,  2,  3],
-// #                  [ 4,  5,  6,  7],
-// #                  [ 8,  9, 10, 11]],
-// #                 [[12, 13, 14, 15],
-// #                  [16, 17, 18, 19],
-// #                  [20, 21, 22, 23]]]]
-// # tensor 't' shape is [1, 2, 3, 4]
-//
-// # 'dims' is [3] or 'dims' is [-1]
-// reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
-//                         [ 7,  6,  5,  4],
-//                         [ 11, 10, 9, 8]],
-//                        [[15, 14, 13, 12],
-//                         [19, 18, 17, 16],
-//                         [23, 22, 21, 20]]]]
-//
-// # 'dims' is '[1]' (or 'dims' is '[-3]')
-// reverse(t, dims) ==> [[[[12, 13, 14, 15],
-//                         [16, 17, 18, 19],
-//                         [20, 21, 22, 23]
-//                        [[ 0,  1,  2,  3],
-//                         [ 4,  5,  6,  7],
-//                         [ 8,  9, 10, 11]]]]
-//
-// # 'dims' is '[2]' (or 'dims' is '[-2]')
-// reverse(t, dims) ==> [[[[8, 9, 10, 11],
-//                         [4, 5, 6, 7],
-//                         [0, 1, 2, 3]]
-//                        [[20, 21, 22, 23],
-//                         [16, 17, 18, 19],
-//                         [12, 13, 14, 15]]]]
-// ```
-//
-// Arguments:
-//	tensor: Up to 8-D.
-//	axis: 1-D. The indices of the dimensions to reverse. Must be in the range
-// `[-rank(tensor), rank(tensor))`.
-//
-// Returns The same shape as `tensor`.
-func ReverseV2(scope *Scope, tensor tf.Output, axis tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReverseV2",
-		Input: []tf.Input{
-			tensor, axis,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // RealAttr is an optional argument to Real.
@@ -24879,6 +24814,71 @@ func DecodeJSONExample(scope *Scope, json_examples tf.Output) (binary_examples t
 		Input: []tf.Input{
 			json_examples,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// SparseToDenseAttr is an optional argument to SparseToDense.
+type SparseToDenseAttr func(optionalAttr)
+
+// SparseToDenseValidateIndices sets the optional validate_indices attribute to value.
+//
+// value: If true, indices are checked to make sure they are sorted in
+// lexicographic order and that there are no repeats.
+// If not specified, defaults to true
+func SparseToDenseValidateIndices(value bool) SparseToDenseAttr {
+	return func(m optionalAttr) {
+		m["validate_indices"] = value
+	}
+}
+
+// Converts a sparse representation into a dense tensor.
+//
+// Builds an array `dense` with shape `output_shape` such that
+//
+// ```
+// # If sparse_indices is scalar
+// dense[i] = (i == sparse_indices ? sparse_values : default_value)
+//
+// # If sparse_indices is a vector, then for each i
+// dense[sparse_indices[i]] = sparse_values[i]
+//
+// # If sparse_indices is an n by d matrix, then for each i in [0, n)
+// dense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]
+// ```
+//
+// All other values in `dense` are set to `default_value`.  If `sparse_values` is a
+// scalar, all sparse indices are set to this single value.
+//
+// Indices should be sorted in lexicographic order, and indices must not
+// contain any repeats. If `validate_indices` is true, these properties
+// are checked during execution.
+//
+// Arguments:
+//	sparse_indices: 0-D, 1-D, or 2-D.  `sparse_indices[i]` contains the complete
+// index where `sparse_values[i]` will be placed.
+//	output_shape: 1-D.  Shape of the dense output tensor.
+//	sparse_values: 1-D.  Values corresponding to each row of `sparse_indices`,
+// or a scalar value to be used for all sparse indices.
+//	default_value: Scalar value to set for indices not specified in
+// `sparse_indices`.
+//
+// Returns Dense output tensor of shape `output_shape`.
+func SparseToDense(scope *Scope, sparse_indices tf.Output, output_shape tf.Output, sparse_values tf.Output, default_value tf.Output, optional ...SparseToDenseAttr) (dense tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseToDense",
+		Input: []tf.Input{
+			sparse_indices, output_shape, sparse_values, default_value,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

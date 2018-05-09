@@ -72,7 +72,7 @@ def _any_variable_initalized():
   """Check if any variable has been initialized in the Keras model.
 
   Returns:
-    boolean, True if at least one variable has been initalized, else False.
+    boolean, True if at least one variable has been initialized, else False.
   """
   variables = variables_module.global_variables()
   for v in variables:

@@ -3299,7 +3299,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
-    ] + if_cuda(["@cub_archive//:cub"]),
+    ] + if_cuda([
+        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cudnn",
+    ]),
 )
 
 tf_kernel_library(
@@ -3310,12 +3313,15 @@ tf_kernel_library(
     prefix = "depthwise_conv_grad_op",
     deps = [
         ":bounds_check",
+        ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cudnn",
+    ]),
 )
 
 cc_library(

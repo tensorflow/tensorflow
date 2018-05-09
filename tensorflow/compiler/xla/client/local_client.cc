@@ -51,26 +51,48 @@ LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
 tensorflow::Status LocalExecutable::ValidateExecutionOptions(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutableRunOptions& run_options, const Backend& backend) {
-  const ComputationLayout& computation_layout =
-      executable_->module_config().entry_computation_layout();
+  const ComputationLayout& host_computation_layout =
+      executable_->module_config().host_entry_computation_layout();
+  const ComputationLayout& device_computation_layout =
+      executable_->module_config().device_entry_computation_layout();
 
   // Check argument number, shapes, and layouts.
-  if (arguments.size() != computation_layout.parameter_count()) {
+  if (arguments.size() != host_computation_layout.parameter_count()) {
     return InvalidArgument(
         "invalid number of arguments for computation: expected %d, got %zu",
-        computation_layout.parameter_count(), arguments.size());
+        host_computation_layout.parameter_count(), arguments.size());
+  }
+  if (arguments.size() != device_computation_layout.parameter_count()) {
+    return InvalidArgument(
+        "invalid number of arguments for computation: expected %d, got %zu",
+        device_computation_layout.parameter_count(), arguments.size());
   }
   for (int i = 0; i < arguments.size(); ++i) {
-    if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
+    if (!host_computation_layout.parameter_layout(i).MatchesLayoutInShape(
             arguments[i]->on_host_shape())) {
       return InvalidParameterArgument(
           executable_.get(), i,
-          "Argument does not match shape or layout of computation parameter "
+          "Argument does not match host shape or layout of computation "
+          "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
+          ShapeUtil::HumanString(
+              host_computation_layout.parameter_layout(i).shape())
               .c_str(),
           ShapeUtil::HumanString(arguments[i]->on_host_shape()).c_str());
+    }
+    if (!device_computation_layout.parameter_layout(i).MatchesLayoutInShape(
+            arguments[i]->on_device_shape())) {
+      return InvalidParameterArgument(
+          executable_.get(), i,
+          "Argument does not match device shape or layout of computation "
+          "parameter "
+          "%d: want %s, got %s",
+          i,
+          ShapeUtil::HumanString(
+              device_computation_layout.parameter_layout(i).shape())
+              .c_str(),
+          ShapeUtil::HumanString(arguments[i]->on_device_shape()).c_str());
     }
   }
 

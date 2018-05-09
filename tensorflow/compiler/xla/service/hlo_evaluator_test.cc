@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -827,7 +827,7 @@ TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1046,7 +1046,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1109,7 +1109,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1180,7 +1180,7 @@ TEST_P(HloEvaluatorTest,
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(

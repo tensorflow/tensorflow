@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/lib/gtl/optional.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -510,7 +511,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
         break;
       } else if (must_end) {
         return InvalidArgument("Expected end of tuple; got: \"%s\"",
-                               s->ToString().c_str());
+                               std::string(*s).c_str());
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
@@ -540,7 +541,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       if (!tensorflow::strings::safe_strto64(input.c_str(), &element)) {
         return InvalidArgument(
             "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-            input.c_str(), s->ToString().c_str());
+            input.c_str(), std::string(*s).c_str());
       }
       return element;
     };
@@ -593,7 +594,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   }
 
   return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                         s->ToString().c_str());
+                         std::string(*s).c_str());
 }
 }  // namespace
 
@@ -602,7 +603,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
   if (!s.empty()) {
     return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                           s.ToString().c_str());
+                           std::string(s).c_str());
   }
   return shape;
 }
@@ -1470,6 +1471,28 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
   out << ShapeUtil::HumanString(shape);
   return out;
+}
+
+/*static*/ size_t ShapeUtil::Hash(const Shape& shape) {
+  using tensorflow::hash;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = hash<PrimitiveType>()(shape.element_type());
+
+  if (shape.tuple_shapes().empty()) {
+    for (int64 dim : shape.dimensions()) {
+      hash_value = Hash64Combine(hash_value, hash<int64>()(dim));
+    }
+
+    hash_value = Hash64Combine(hash_value, LayoutUtil::Hash(shape.layout()));
+  } else {
+    hash_value = 0;
+    for (const Shape& subshape : shape.tuple_shapes()) {
+      hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(subshape));
+    }
+  }
+
+  return hash_value;
 }
 
 }  // namespace xla

@@ -241,6 +241,7 @@ struct ParsedTocoFlags {
   Arg<bool> drop_control_dependency = Arg<bool>(false);
   Arg<bool> propagate_fake_quant_num_bits = Arg<bool>(false);
   Arg<bool> allow_nudging_weights_to_use_fast_gemm_kernel = Arg<bool>(false);
+  Arg<int64> dedupe_array_min_size_bytes = Arg<int64>(64);
 };
 
 }  // namespace toco

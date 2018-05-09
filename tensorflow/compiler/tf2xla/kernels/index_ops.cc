@@ -61,10 +61,10 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
 
   DataType index_type = output_type(0);
 
-  xla::ComputationBuilder* b = ctx->builder();
-  xla::ComputationDataHandle input = ctx->Input(0);
+  xla::XlaBuilder* b = ctx->builder();
+  xla::XlaOp input = ctx->Input(0);
 
-  xla::ComputationDataHandle output;
+  xla::XlaOp output;
   if (is_min_) {
     OP_REQUIRES_OK(ctx,
                    XlaHelpers::ArgMin(b, ctx, input, input_shape, input_type(0),

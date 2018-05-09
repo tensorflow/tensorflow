@@ -173,8 +173,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     } else {
       throw new IllegalArgumentException(
           String.format(
-              "Input error: %s is not a valid name for any input. "
-                  + "The indexes of the inputs are %s",
+              "Input error: '%s' is not a valid name for any input. Names of inputs and their "
+                  + "indexes are %s",
               name, inputsIndexes.toString()));
     }
   }
@@ -195,8 +195,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     } else {
       throw new IllegalArgumentException(
           String.format(
-              "Input error: %s is not a valid name for any output. "
-                  + "The indexes of the outputs are %s",
+              "Input error: '%s' is not a valid name for any output. Names of outputs and their "
+                  + "indexes are %s",
               name, outputsIndexes.toString()));
     }
   }

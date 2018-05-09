@@ -40,6 +40,16 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                              int n_batch, float* result,
                                              int result_stride);
 
+// Matrix multiplication for quantized values using symmetric quantization.
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride);
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride);
+
 // Cwise product of two vectors.
 void PortableVectorVectorCwiseProduct(const float* vector1,
                                       const float* vector2, int v_size,

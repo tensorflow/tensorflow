@@ -35,10 +35,9 @@ XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
 
 // Unless BuildFinalizer is overridden the reduction has no
 // finalizer.
-xla::ComputationDataHandle XlaReductionOp::BuildFinalizer(
-    xla::ComputationBuilder* builder,
-    const xla::ComputationDataHandle& reduce_output,
-    int64 num_elements_reduced) {
+xla::XlaOp XlaReductionOp::BuildFinalizer(xla::XlaBuilder* builder,
+                                          const xla::XlaOp& reduce_output,
+                                          int64 num_elements_reduced) {
   return reduce_output;
 }
 
@@ -96,9 +95,9 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   string desc = ctx->op_kernel().name();
 
-  xla::ComputationBuilder* const b = ctx->builder();
+  xla::XlaBuilder* const b = ctx->builder();
   // Construct the builder for the reduction lambda.
-  xla::ComputationBuilder r(b->client(), strings::StrCat(desc, "-reduction"));
+  xla::XlaBuilder r(strings::StrCat(desc, "-reduction"));
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
 
@@ -110,7 +109,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   auto ry = r.Parameter(1, xla::ShapeUtil::MakeShape(type, {}), "y");
   // Call virtual method to build the reduction lambda.
   BuildReducer(&r, rx, ry);
-  xla::Computation reduction_computation = r.Build().ConsumeValueOrDie();
+  xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
 
   auto reduce = b->Reduce(data, initial, reduction_computation, xla_axes);
   auto deconverted = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
