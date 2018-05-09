@@ -300,7 +300,8 @@ nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
 }
 
 template <>
-tensorflow::DataType TFAttrs::get<tensorflow::DataType>(const string& key) const {
+tensorflow::DataType TFAttrs::get<tensorflow::DataType>(
+    const string& key) const {
   return this->at(key)->type();
 }
 
