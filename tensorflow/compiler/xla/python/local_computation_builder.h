@@ -59,15 +59,17 @@ StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
 // client.
 class LocalShapedBuffer {
  public:
-  static LocalShapedBuffer* FromLiteral(
+  static StatusOr<LocalShapedBuffer*> FromLiteral(
       const Literal& argument,
       const tensorflow::gtl::optional<Shape>& shape_with_layout);
-  LocalShapedBuffer(std::unique_ptr<ScopedShapedBuffer> shaped_buffer);
-  const std::unique_ptr<ScopedShapedBuffer>& shaped_buffer() const;
-  std::unique_ptr<Literal> ToLiteral() const;
+
+  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
+  const ScopedShapedBuffer* shaped_buffer() const;
+
+  StatusOr<std::unique_ptr<Literal> > ToLiteral() const;
 
  private:
-  std::unique_ptr<ScopedShapedBuffer> shaped_buffer_;
+  ScopedShapedBuffer shaped_buffer_;
 };
 
 // Wraps a LocalExecutable produced by compiling a

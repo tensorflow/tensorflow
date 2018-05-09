@@ -320,42 +320,50 @@ Status LoopInvariantNodeMotionOptimizer::RevertInvariantNodes() {
   return Status::OK();
 }
 
-Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(NodeDef* node) {
-  auto consumers = node_map_->GetOutputs(node->name());
-  invariant_nodes_.insert(std::make_pair(node, consumers.size()));
-  for (auto* consumer : consumers) {
-    if (invariant_nodes_.count(consumer) || ModifiesFrameInfo(*consumer)) {
-      continue;
-    }
-    bool is_invariant = true;
-    for (const auto& input : consumer->input()) {
-      if (!IsControlInput(input)) {
-        const string name = NodeName(input);
-        auto* producer = node_map_->GetNode(name);
-        if (!invariant_nodes_.count(producer)) {
-          if (IsConstant(*producer)) {
-            invariant_nodes_.insert(
-                std::make_pair(producer, node_map_->GetOutputs(name).size()));
-          } else {
-            is_invariant = false;
-            break;
+Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(
+    NodeDef* start_node) {
+  std::vector<NodeDef*> stack;
+  stack.reserve(32);
+  stack.push_back(start_node);
+  while (!stack.empty()) {
+    NodeDef* node = stack.back();
+    stack.pop_back();
+    auto consumers = node_map_->GetOutputs(node->name());
+    invariant_nodes_.emplace(node, consumers.size());
+    for (auto* consumer : consumers) {
+      if (invariant_nodes_.count(consumer) || ModifiesFrameInfo(*consumer)) {
+        continue;
+      }
+      bool is_invariant = true;
+      for (const auto& input : consumer->input()) {
+        if (!IsControlInput(input)) {
+          const string name = NodeName(input);
+          auto* producer = node_map_->GetNode(name);
+          if (!invariant_nodes_.count(producer)) {
+            if (IsConstant(*producer)) {
+              invariant_nodes_.insert(
+                  std::make_pair(producer, node_map_->GetOutputs(name).size()));
+            } else {
+              is_invariant = false;
+              break;
+            }
           }
         }
       }
-    }
-    if (is_invariant) {
-      std::set<NodeDef*> producers;
-      for (const auto& input : consumer->input()) {
-        auto* producer = node_map_->GetNode(input);
-        producers.insert(producer);
-      }
-      for (auto* producer : producers) {
-        auto iter = invariant_nodes_.find(producer);
-        if (iter != invariant_nodes_.end()) {
-          --iter->second;
+      if (is_invariant) {
+        std::set<NodeDef*> producers;
+        for (const auto& input : consumer->input()) {
+          auto* producer = node_map_->GetNode(input);
+          producers.insert(producer);
         }
+        for (auto* producer : producers) {
+          auto iter = invariant_nodes_.find(producer);
+          if (iter != invariant_nodes_.end()) {
+            --iter->second;
+          }
+        }
+        stack.push_back(consumer);
       }
-      TF_RETURN_IF_ERROR(FindInvariantNodes(consumer));
     }
   }
   return Status::OK();
@@ -466,15 +474,13 @@ std::vector<int> GetStackPushNodesToConvert(
   return nodes_to_convert;
 }
 
-Status RemoveStackOps(const GrapplerItem& item, GraphDef* optimized_graph) {
-  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
-  const GraphDef& graph = item.graph;
-  *optimized_graph = graph;
+Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
+                      GraphDef* optimized_graph) {
   NodeMap node_map(optimized_graph);
   SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
-  for (int node_idx = 0; node_idx < graph.node_size(); ++node_idx) {
-    if (IsStackOp(graph.node(node_idx))) {
+  TF_RETURN_IF_ERROR(graph_view.Initialize(*optimized_graph));
+  for (int node_idx = 0; node_idx < optimized_graph->node_size(); ++node_idx) {
+    if (IsStackOp(optimized_graph->node(node_idx))) {
       for (int push_node_idx : GetStackPushNodesToConvert(
                graph_view, nodes_to_preserve, node_idx)) {
         // We found push nodes without corresponding pops. Convert them to
@@ -509,7 +515,7 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(linm_optimizer.Optimize());
   }
   if (options_.enable_stack_push_removal) {
-    TF_RETURN_IF_ERROR(RemoveStackOps(item, optimized_graph));
+    TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
   }
 
   return Status::OK();

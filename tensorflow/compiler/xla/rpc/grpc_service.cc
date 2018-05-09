@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<GRPCService>> GRPCService::NewService(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   std::unique_ptr<GRPCService> grpc_service(new GRPCService());
   TF_ASSIGN_OR_RETURN(grpc_service->service_,
                       ::xla::Service::NewService(platform));
@@ -73,6 +73,13 @@ namespace xla {
                                     ExecuteResponse* result) {
   return DelegateRPC(
       [this, arg, result]() { return service_->Execute(arg, result); });
+}
+
+::grpc::Status GRPCService::ExecuteGraph(::grpc::ServerContext* /*context*/,
+                                         const ExecuteGraphRequest* arg,
+                                         ExecuteResponse* result) {
+  return DelegateRPC(
+      [this, arg, result]() { return service_->ExecuteGraph(arg, result); });
 }
 
 ::grpc::Status GRPCService::ExecuteAsync(::grpc::ServerContext* context,

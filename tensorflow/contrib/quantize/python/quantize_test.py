@@ -74,7 +74,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                     weights_initializer=self._WeightInit(0.09),
                     activation_fn=None, scope='test/test')
       node = math_ops.add(conv, input2, name='test/add')
-      node = array_ops.identity(node, name='test/identity')
+      node = nn_ops.relu6(node, name='test/relu6')
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
@@ -82,9 +82,22 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
-    add_quant = graph.get_operation_by_name('test/add_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(add_quant.type, quantization_node_name)
+    conv_quant = graph.get_operation_by_name('test/test/conv_quant/' +
+                                             quantization_node_name)
+    self.assertEqual(conv_quant.type, quantization_node_name)
+
+    # Scan through all FakeQuant operations, ensuring that the activation
+    # isn't in the consumers of the operation. Since activations are folded
+    # the preceding operation during inference, the FakeQuant operation after
+    # the activation is all that is needed.
+    for op in graph.get_operations():
+      if op.type == quantization_node_name:
+        quant_op = graph.get_operation_by_name(op.name)
+        consumers = []
+        for output in quant_op.outputs:
+          consumers.extend(output.consumers())
+
+        self.assertNotIn('test/relu6', [c.name for c in consumers])
 
   def testInsertQuantOpForAddAfterSeparableConv2d(self):
     self._RunTestOverParameters(
@@ -101,7 +114,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                               weights_initializer=self._WeightInit(0.09),
                               activation_fn=None, scope='test/test')
       node = math_ops.add(conv, input2, name='test/add')
-      node = array_ops.identity(node, name='test/identity')
+      node = nn_ops.relu6(node, name='test/relu6')
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
@@ -109,9 +122,20 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
-    add_quant = graph.get_operation_by_name('test/add_quant/' +
-                                            quantization_node_name)
-    self.assertEqual(add_quant.type, quantization_node_name)
+    conv_quant = graph.get_operation_by_name('test/test/conv_quant/' +
+                                             quantization_node_name)
+    self.assertEqual(conv_quant.type, quantization_node_name)
+
+    for op in graph.get_operations():
+      if op.type == quantization_node_name:
+        quant_op = graph.get_operation_by_name(op.name)
+        # Scan through all FakeQuant operations, ensuring that the activation
+        # identity op isn't in the consumers of the operation.
+        consumers = []
+        for output in quant_op.outputs:
+          consumers.extend(output.consumers())
+
+        self.assertNotIn('test/relu6', [c.name for c in consumers])
 
   def testFinalLayerQuantized(self):
     self._RunTestOverParameters(self._TestFinalLayerQuantized)
@@ -150,15 +174,24 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           stride=2,
           padding='SAME',
           weights_initializer=self._WeightInit(0.09),
-          activation_fn=array_ops.identity,
+          activation_fn=nn_ops.relu6,
           scope='test/test')
       bypass_tensor = math_ops.add(conv, input2, name='test/add')
-      _ = array_ops.identity(bypass_tensor, name='test/output')
+      # The output of the post_activation bypass will be another layer.
+      _ = conv2d(
+          bypass_tensor,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=nn_ops.relu6,
+          scope='test/unused')
 
       quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
 
-      # Ensure that the bypass node is preceded and followed by
-      # FakeQuantWithMinMaxVars operations.
+      # Ensure that the bypass node is preceded by and followed by a
+      # FakeQuantWithMinMaxVar operation, since the output of the Add isn't an
+      # activation.
       self.assertTrue('FakeQuantWithMinMaxVars' in
                       [c.type for c in bypass_tensor.consumers()])
       self.assertTrue('FakeQuantWithMinMaxVars' in
@@ -179,7 +212,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           stride=2,
           padding='SAME',
           weights_initializer=self._WeightInit(0.09),
-          activation_fn=array_ops.identity,
+          activation_fn=nn_ops.relu6,
           scope='test/test1')
 
       # The bypass of this conv is the post activation bypass of the previous
@@ -194,13 +227,13 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           scope='test/test2')
 
       bypass_tensor = math_ops.add(conv1, conv2, name='test/add')
-      _ = array_ops.identity(bypass_tensor, name='test/output')
+      _ = nn_ops.relu6(bypass_tensor, name='test/output')
 
       quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
 
-      # Ensure that the bypass node is preceded and followed by
-      # FakeQuantWithMinMaxVars operations.
-      self.assertTrue('FakeQuantWithMinMaxVars' in
+      # Ensure that the bypass node is preceded by a FakeQuantWithMinMaxVar
+      # operation, and NOT followed by one.
+      self.assertTrue('FakeQuantWithMinMaxVars' not in
                       [c.type for c in bypass_tensor.consumers()])
       self.assertTrue('FakeQuantWithMinMaxVars' in
                       [i.op.type for i in bypass_tensor.op.inputs])
@@ -215,11 +248,11 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           'test/test1/act_quant/FakeQuantWithMinMaxVars' in op_names)
       self.assertTrue('test/act_quant/FakeQuantWithMinMaxVars' in op_names)
       self.assertEqual(
-          'Identity',
+          'Relu6',
           graph.get_operation_by_name(
               'test/test1/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
       self.assertEqual(
-          'Identity',
+          'Relu6',
           graph.get_operation_by_name(
               'test/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
 

@@ -33,7 +33,7 @@ namespace xla {
 /* static */ tensorflow::Status TextLiteralWriter::WriteToPath(
     const Literal& literal, tensorflow::StringPiece path) {
   std::unique_ptr<tensorflow::WritableFile> f;
-  auto s = tensorflow::Env::Default()->NewWritableFile(path.ToString(), &f);
+  auto s = tensorflow::Env::Default()->NewWritableFile(std::string(path), &f);
   if (!s.ok()) {
     return s;
   }

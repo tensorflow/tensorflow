@@ -38,6 +38,7 @@ class IdentityOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("Identity").CompilationOnly(), IdentityOp);
 
 REGISTER_XLA_OP(Name("IdentityN").CompilationOnly(), IdentityOp);
+REGISTER_XLA_OP(Name("PlaceholderWithDefault"), IdentityOp);
 REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);
 REGISTER_XLA_OP(Name("StopGradient"), IdentityOp);
 REGISTER_XLA_OP(Name("Snapshot"), IdentityOp);

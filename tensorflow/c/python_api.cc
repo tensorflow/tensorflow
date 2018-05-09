@@ -110,7 +110,7 @@ void ExtendSession(TF_Session* session, TF_Status* status) {
   session->extend_before_run = false;
 }
 
-std::string ResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
+std::string GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   Node* node = &output.oper->node;
   CppShapeInferenceResult::HandleData handle_data;
   handle_data.set_is_set(true);
@@ -133,6 +133,32 @@ std::string ResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   string result;
   handle_data.SerializeToString(&result);
   return result;
+}
+
+void SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
+                                   const void* proto, size_t proto_len,
+                                   TF_Status* status) {
+  tensorflow::CppShapeInferenceResult::HandleData handle_data;
+  if (!handle_data.ParseFromArray(proto, proto_len)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Couldn't deserialize HandleData proto");
+    return;
+  }
+  DCHECK(handle_data.is_set());
+
+  tensorflow::mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(&output.oper->node);
+
+  std::vector<tensorflow::shape_inference::ShapeAndType> shapes_and_types;
+  for (const auto& shape_and_type_proto : handle_data.shape_and_type()) {
+    tensorflow::shape_inference::ShapeHandle shape;
+    status->status =
+        ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
+    if (status->status.ok()) return;
+    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype());
+  }
+  ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
 }
 
 }  // namespace tensorflow

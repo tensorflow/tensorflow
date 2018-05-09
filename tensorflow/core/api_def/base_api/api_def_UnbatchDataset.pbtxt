@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "UnbatchDataset"
+  summary: "A dataset that splits the elements of its input into multiple elements."
+}

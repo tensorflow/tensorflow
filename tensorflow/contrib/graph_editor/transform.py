@@ -129,7 +129,7 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
       return None
 
 
-def copy_op_handler(info, op, new_inputs, copy_shape=True):
+def copy_op_handler(info, op, new_inputs, copy_shape=True, nodedef_fn=None):
   """Copy a `tf.Operation`.
 
   Args:
@@ -137,6 +137,11 @@ def copy_op_handler(info, op, new_inputs, copy_shape=True):
     op: the `tf.Operation` to be copied.
     new_inputs: The new inputs for this op.
     copy_shape: also copy the shape of the tensor
+    nodedef_fn: If provided, a function that will be run on the NodeDef
+      and should return a mutated NodeDef before a new Operation is created.
+      This is useful as certain features cannot be set on the Operation and
+      must be modified in NodeDef.
+
   Returns:
     A `(op, op_outputs)` tuple containing the transformed op and its outputs.
   """
@@ -154,6 +159,10 @@ def copy_op_handler(info, op, new_inputs, copy_shape=True):
   name_ = info.new_name(op.name)
   name_ = info.graph_.unique_name(name_)
   node_def_.name = name_
+
+  # Mutate NodeDef if requested:
+  if nodedef_fn is not None:
+    node_def_ = nodedef_fn(node_def_)
 
   # Copy the other inputs needed for initialization
   output_types_ = op._output_types[:]
@@ -668,7 +677,7 @@ def copy_with_input_replacements(sgv, replacement_ts,
 
 
 def _add_control_flow_ops(ops, control_ios):
-  """Complete `ops` so that the tranformed graph is valid.
+  """Complete `ops` so that the transformed graph is valid.
 
   Partially copying a graph can lead to a malformed graph. For instance,
   copying half of a while construct is likely to result in an invalid graph.

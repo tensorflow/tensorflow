@@ -115,7 +115,7 @@ class TreeEnsemble(object):
 
   def get_stamp_token(self):
     """Returns the current stamp token of the resource."""
-    stamp_token, _, _, _ = (
+    stamp_token, _, _, _, _ = (
         gen_boosted_trees_ops.boosted_trees_get_ensemble_states(
             self.resource_handle))
     return stamp_token
@@ -124,17 +124,20 @@ class TreeEnsemble(object):
     """Returns states of the tree ensemble.
 
     Returns:
-      stamp_token, num_trees, num_finalized_trees, num_attempted_layers.
+      stamp_token, num_trees, num_finalized_trees, num_attempted_layers and
+      range of the nodes in the latest layer.
     """
-    stamp_token, num_trees, num_finalized_trees, num_attempted_layers = (
-        gen_boosted_trees_ops.boosted_trees_get_ensemble_states(
-            self.resource_handle))
+    (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+     nodes_range) = (
+         gen_boosted_trees_ops.boosted_trees_get_ensemble_states(
+             self.resource_handle))
     # Use identity to give names.
     return (array_ops.identity(stamp_token, name='stamp_token'),
             array_ops.identity(num_trees, name='num_trees'),
             array_ops.identity(num_finalized_trees, name='num_finalized_trees'),
             array_ops.identity(
-                num_attempted_layers, name='num_attempted_layers'))
+                num_attempted_layers, name='num_attempted_layers'),
+            array_ops.identity(nodes_range, name='last_layer_nodes_range'))
 
   def serialize(self):
     """Serializes the ensemble into proto and returns the serialized proto.

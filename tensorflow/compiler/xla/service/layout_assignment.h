@@ -281,14 +281,14 @@ class LayoutAssignment : public HloPassInterface {
   // the case that no particular layout is requested.
   //
   // channel_constraints is both an input and output. Any sends or recvs that
-  // are present in channel_constraints will be layed out as constrained. Any
-  // unconstrained sends or recvs will be layed out as locally optimal and their
+  // are present in channel_constraints will be laid out as constrained. Any
+  // unconstrained sends or recvs will be laid out as locally optimal and their
   // layout will be added as a constraint to channel_constraints.
   //
   // If channel_constraints is nullptr, no kSend or kRecvs must be contained
   // within any module passed to `Run`.
   explicit LayoutAssignment(
-      ComputationLayout* entry_computation_layout,
+      const ComputationLayout& entry_computation_layout,
       ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
   tensorflow::StringPiece name() const override { return "layout-assignment"; }
@@ -402,9 +402,32 @@ class LayoutAssignment : public HloPassInterface {
   // necessary conditions.
   Status CheckLayouts(HloModule* module);
 
-  ComputationLayout* entry_computation_layout_;
+  const ComputationLayout& entry_computation_layout_;
 
  protected:
+  // Sets up the copy instruction according to the characteristic (sharding,
+  // metadata, ...) of the reference instruction. The index argument is used
+  // when the instruction is a tuple, and in such case the index represents
+  // the location from where the copy instruction was created from.
+  // If the index is empty, the whole sharding will be propagated, even in case
+  // the intruction has a tuple sharding.
+  static void SetupCopiedInstruction(const HloInstruction& instruction,
+                                     HloInstruction* copy,
+                                     const ShapeIndex& index);
+
+  // Creates and returns a copy of the given instruction with a different
+  // layout. Tuple-shaped instructions will be deep-copied, and the last Tuple
+  // instruction producing the copy is returned.
+  static StatusOr<HloInstruction*> CreateCopyWithNewLayout(
+      const Shape& shape_with_layout, HloInstruction* instruction);
+
+  // Creates a copy of the given operand if the operand's layout does not match
+  // the given layout. This copy replaces the use in the given instruction.
+  // Tuple operands will be deep-copied.
+  static Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                           HloInstruction* instruction,
+                                           int64 operand_no);
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller

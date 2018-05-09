@@ -23,11 +23,10 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
-from tensorflow.python.keras._impl.keras.engine import base_layer
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
-from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
+from tensorflow.python.keras._impl.keras.utils import generic_utils
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -183,7 +182,7 @@ class TimeDistributed(Wrapper):
 
   def call(self, inputs, training=None, mask=None):
     kwargs = {}
-    if has_arg(self.layer.call, 'training'):
+    if generic_utils.has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
     uses_learning_phase = False  # pylint: disable=redefined-outer-name
 
@@ -202,6 +201,7 @@ class TimeDistributed(Wrapper):
           step,
           inputs,
           initial_states=[],
+          input_length=input_shape[0],
           unroll=False)
       y = outputs
     else:
@@ -213,7 +213,7 @@ class TimeDistributed(Wrapper):
         input_length = array_ops.shape(inputs)[1]
       # Shape: (num_samples * timesteps, ...). And track the
       # transformation in self._input_map.
-      input_uid = base_layer.object_list_uid(inputs)
+      input_uid = generic_utils.object_list_uid(inputs)
       inputs = array_ops.reshape(inputs, (-1,) + input_shape[2:])
       self._input_map[input_uid] = inputs
       # (num_samples * timesteps, ...)
@@ -305,7 +305,7 @@ class Bidirectional(Wrapper):
     self.forward_layer.set_weights(weights[:nw // 2])
     self.backward_layer.set_weights(weights[nw // 2:])
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     output_shape = tuple(self.forward_layer.compute_output_shape(
         input_shape).as_list())
@@ -383,12 +383,13 @@ class Bidirectional(Wrapper):
 
   def call(self, inputs, training=None, mask=None, initial_state=None):
     kwargs = {}
-    if has_arg(self.layer.call, 'training'):
+    if generic_utils.has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
-    if has_arg(self.layer.call, 'mask'):
+    if generic_utils.has_arg(self.layer.call, 'mask'):
       kwargs['mask'] = mask
 
-    if initial_state is not None and has_arg(self.layer.call, 'initial_state'):
+    if initial_state is not None and generic_utils.has_arg(
+        self.layer.call, 'initial_state'):
       forward_state = initial_state[:len(initial_state) // 2]
       backward_state = initial_state[len(initial_state) // 2:]
       y = self.forward_layer.call(inputs, initial_state=forward_state, **kwargs)

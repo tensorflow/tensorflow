@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 using ::tensorflow::strings::Appendf;
@@ -68,6 +66,8 @@ ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
   return *this;
 }
 
+ShapedBuffer::~ShapedBuffer() {}
+
 void ShapedBuffer::clear() {
   for (auto& pair : buffers_) {
     // A default constructed DeviceMemoryBase is a null pointer.
@@ -104,18 +104,6 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
   return out;
 }
 
-/* static */
-StatusOr<std::unique_ptr<ScopedShapedBuffer>> ScopedShapedBuffer::MakeScoped(
-    ShapedBuffer* shaped_buffer, DeviceMemoryAllocator* allocator) {
-  auto scoped_buffer = WrapUnique(new ScopedShapedBuffer(
-      shaped_buffer->on_host_shape(), shaped_buffer->on_device_shape(),
-      allocator, shaped_buffer->device_ordinal()));
-  scoped_buffer->buffers_ = shaped_buffer->buffers();
-  shaped_buffer->clear();
-
-  return std::move(scoped_buffer);
-}
-
 ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
                                        const Shape& on_device_shape,
                                        DeviceMemoryAllocator* allocator,
@@ -128,7 +116,25 @@ ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
                                        DeviceMemoryAllocator* allocator)
     : ShapedBuffer(std::move(shaped_buffer)), allocator_(allocator) {}
 
+ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
+    : ShapedBuffer(static_cast<ShapedBuffer&&>(s)), allocator_(s.allocator_) {
+  // Null out s.allocator_ so it doesn't try to free anything in its destructor.
+  s.allocator_ = nullptr;
+}
+
+ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
+  *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));
+  allocator_ = s.allocator_;
+  // Null out s.allocator_ so it doesn't try to free anything in its destructor.
+  s.allocator_ = nullptr;
+  return *this;
+}
+
 ScopedShapedBuffer::~ScopedShapedBuffer() {
+  // allocator_ will be null if we were moved-from.
+  if (allocator_ == nullptr) {
+    return;
+  }
   // Deallocate all non-null buffers. A buffer may appear in more than one spot
   // in the shape (eg, a tuple with a repeated element) so keep track of what
   // has been deallocated.
@@ -144,9 +150,9 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
   }
 }
 
-std::unique_ptr<ShapedBuffer> ScopedShapedBuffer::release() {
-  auto shaped_buffer = MakeUnique<ShapedBuffer>(std::move(*this));
-  buffers_ = ShapeTree<perftools::gputools::DeviceMemoryBase>();
+ShapedBuffer ScopedShapedBuffer::release() {
+  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
+  buffers_ = ShapeTree<se::DeviceMemoryBase>();
   return shaped_buffer;
 }
 

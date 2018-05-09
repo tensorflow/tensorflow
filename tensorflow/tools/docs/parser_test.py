@@ -408,67 +408,98 @@ class ParserTest(googletest.TestCase):
 
     # pylint: disable=protected-access
     # Make sure everything works for regular functions.
-    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
-                                      varargs=None, varkw=None, defaults=(1, 2),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(1, 2),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     self.assertEqual(expected, parser._get_arg_spec(test_function_for_partial1))
 
     # Make sure doing nothing works.
-    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
-                                      varargs=None, varkw=None, defaults=(1, 2),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg1', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(1, 2),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting args from the front works.
-    expected = tf_inspect.FullArgSpec(args=['arg2', 'kwarg1', 'kwarg2'],
-                                      varargs=None, varkw=None, defaults=(1, 2),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=['arg2', 'kwarg1', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(1, 2),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.FullArgSpec(args=['kwarg2'],
-                                      varargs=None, varkw=None, defaults=(2,),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=['kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(2,),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, 1, 2, 3)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting kwargs works.
-    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg2'],
-                                      varargs=None, varkw=None, defaults=(2,),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg2'],
+        varargs=None,
+        varkw=None,
+        defaults=(2,),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, kwarg1=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.FullArgSpec(args=['arg1', 'arg2', 'kwarg1'],
-                                      varargs=None, varkw=None, defaults=(1,),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1', 'arg2', 'kwarg1'],
+        varargs=None,
+        varkw=None,
+        defaults=(1,),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = tf_inspect.FullArgSpec(args=['arg1'],
-                                      varargs=None, varkw=None, defaults=(),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=['arg1'],
+        varargs=None,
+        varkw=None,
+        defaults=(),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial1,
                                 arg2=0, kwarg1=0, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure *args, *kwargs is accounted for.
-    expected = tf_inspect.FullArgSpec(args=[],
-                                      varargs='my_args', varkw='my_kwargs',
-                                      defaults=(),
-                                      kwonlyargs=[], kwonlydefaults=None,
-                                      annotations={})
+    expected = tf_inspect.FullArgSpec(
+        args=[],
+        varargs='my_args',
+        varkw='my_kwargs',
+        defaults=(),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
     partial = functools.partial(test_function_for_partial2, 0, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
-    
+
     # pylint: enable=protected-access
 
   def testSaveReferenceResolver(self):

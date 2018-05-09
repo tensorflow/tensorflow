@@ -18,12 +18,15 @@ limitations under the License.
 
 #include <string>
 #include <list>
+#include <map>
+#include <utility>
 
 namespace tensorflow {
 namespace java {
 
 // An enumeration of different modifiers commonly used in Java
 enum Modifier {
+  PACKAGE   = 0,
   PUBLIC    = (1 << 0),
   PROTECTED = (1 << 1),
   PRIVATE   = (1 << 2),
@@ -72,6 +75,12 @@ class Type {
     // Reflection API does
     return Type(Type::PRIMITIVE, "void");
   }
+  static Type Generic(const string& name) {
+    return Type(Type::GENERIC, name);
+  }
+  static Type Wildcard() {
+    return Type(Type::GENERIC, "");
+  }
   static Type Class(const string& name, const string& package = "") {
     return Type(Type::CLASS, name, package);
   }
@@ -80,9 +89,6 @@ class Type {
   }
   static Type Enum(const string& name, const string& package = "") {
     return Type(Type::ENUM, name, package);
-  }
-  static Type Generic(const string& name = "") {
-    return Type(Type::GENERIC, name);
   }
   static Type ClassOf(const Type& type) {
     return Class("Class").add_parameter(type);
@@ -96,11 +102,10 @@ class Type {
   const Kind& kind() const { return kind_; }
   const string& name() const { return name_; }
   const string& package() const { return package_; }
-  const string& description() const { return description_; }
-  Type& description(const string& description) {
-    description_ = description;
-    return *this;
+  const string canonical_name() const {
+    return package_.empty() ? name_ : package_ + "." + name_;
   }
+  bool wildcard() const { return name_.empty(); }  // only wildcards has no name
   const std::list<Type>& parameters() const { return parameters_; }
   Type& add_parameter(const Type& parameter) {
     parameters_.push_back(parameter);
@@ -120,14 +125,6 @@ class Type {
     }
     return *this;
   }
-  // Returns true if "type" is of a known collection type (only a few for now)
-  bool IsCollection() const {
-    return name_ == "List" || name_ == "Iterable";
-  }
-  // Returns true if this instance is a wildcard (<?>)
-  bool IsWildcard() const {
-    return kind_ == GENERIC && name_.empty();
-  }
 
  protected:
   Type(Kind kind, const string& name, const string& package = "")
@@ -137,7 +134,6 @@ class Type {
   Kind kind_;
   string name_;
   string package_;
-  string description_;
   std::list<Type> parameters_;
   std::list<Annotation> annotations_;
   std::list<Type> supertypes_;
@@ -180,16 +176,11 @@ class Variable {
   const string& name() const { return name_; }
   const Type& type() const { return type_; }
   bool variadic() const { return variadic_; }
-  const string& description() const { return description_; }
-  Variable& description(const string& description) {
-    description_ = description;
-    return *this;
-  }
+
  private:
   string name_;
   Type type_;
   bool variadic_;
-  string description_;
 
   Variable(const string& name, const Type& type, bool variadic)
     : name_(name), type_(type), variadic_(variadic) {}
@@ -210,16 +201,6 @@ class Method {
   bool constructor() const { return constructor_; }
   const string& name() const { return name_; }
   const Type& return_type() const { return return_type_; }
-  const string& description() const { return description_; }
-  Method& description(const string& description) {
-    description_ = description;
-    return *this;
-  }
-  const string& return_description() const { return return_description_; }
-  Method& return_description(const string& description) {
-    return_description_ = description;
-    return *this;
-  }
   const std::list<Variable>& arguments() const { return arguments_; }
   Method& add_argument(const Variable& var) {
     arguments_.push_back(var);
@@ -235,13 +216,40 @@ class Method {
   string name_;
   Type return_type_;
   bool constructor_;
-  string description_;
-  string return_description_;
   std::list<Variable> arguments_;
   std::list<Annotation> annotations_;
 
   Method(const string& name, const Type& return_type, bool constructor)
     : name_(name), return_type_(return_type), constructor_(constructor) {}
+};
+
+// A definition of a documentation bloc for a Java element (JavaDoc)
+class Javadoc {
+ public:
+  static Javadoc Create(const string& brief = "") {
+    return Javadoc(brief);
+  }
+  const string& brief() const { return brief_; }
+  const string& details() const { return details_; }
+  Javadoc& details(const string& details) {
+    details_ = details;
+    return *this;
+  }
+  const std::list<std::pair<string, string>>& tags() const { return tags_; }
+  Javadoc& add_tag(const string& tag, const string& text) {
+    tags_.push_back(std::make_pair(tag, text));
+    return *this;
+  }
+  Javadoc& add_param_tag(const string& name, const string& text) {
+    return add_tag("param", name + " " + text);
+  }
+
+ private:
+  string brief_;
+  string details_;
+  std::list<std::pair<string, string>> tags_;
+
+  explicit Javadoc(const string& brief) : brief_(brief) {}
 };
 
 }  // namespace java

@@ -264,7 +264,7 @@ genrule(
 # Rules that apply the LLVM tblgen tool.
 gentbl(
     name = "intrinsics_gen",
-    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.gen")],
+    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Intrinsics.td",
     td_srcs = glob([
@@ -275,7 +275,7 @@ gentbl(
 
 gentbl(
     name = "attributes_gen",
-    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.gen")],
+    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Attributes.td",
     td_srcs = ["include/llvm/IR/Attributes.td"],
@@ -2006,7 +2006,6 @@ cc_library(
     ]) + [
         "include/llvm/BinaryFormat/MachO.def",
         "include/llvm/Support/VCSRevision.h",
-        "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
     deps = [
         ":config",
@@ -2053,6 +2052,7 @@ cc_library(
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
         "include/llvm/CodeGen/*.def",
+        "include/llvm/CodeGen/*.inc",
     ]),
     deps = [
         ":analysis",

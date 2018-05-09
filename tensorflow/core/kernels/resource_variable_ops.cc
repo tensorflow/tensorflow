@@ -211,6 +211,11 @@ class AssignVariableOp : public OpKernel {
  public:
   explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+    if (!c->GetAttr("_grappler_relax_allocator_constraints",
+                    &relax_constraints_)
+             .ok()) {
+      relax_constraints_ = false;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -228,8 +233,10 @@ class AssignVariableOp : public OpKernel {
               PersistentTensor unused;
               Tensor* tmp;
               AllocatorAttributes attr;
-              attr.set_gpu_compatible(true);
-              attr.set_nic_compatible(true);
+              if (!relax_constraints_) {
+                attr.set_gpu_compatible(true);
+                attr.set_nic_compatible(true);
+              }
               TF_RETURN_IF_ERROR(context->allocate_persistent(
                   dtype_, context->input(1).shape(), &unused, &tmp, attr));
               *(*ptr)->tensor() = *tmp;
@@ -245,8 +252,10 @@ class AssignVariableOp : public OpKernel {
 
     const Tensor& value = context->input(1);
     AllocatorAttributes attr;
-    attr.set_gpu_compatible(true);
-    attr.set_nic_compatible(true);
+    if (!relax_constraints_) {
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+    }
 
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
@@ -277,6 +286,7 @@ class AssignVariableOp : public OpKernel {
 
  private:
   DataType dtype_;
+  bool relax_constraints_;
 };
 
 template <typename Device>
@@ -306,8 +316,9 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(DT_VARIANT)));
 
+    // For purposes of forwarding DT_VARIANT, we want the least
+    // restrictive attr; we already know the input is on host.
     AllocatorAttributes attr;
-    attr.set_on_host(true);
 
     // Copying is unnecessary if we are the last user of the value
     // tensor, we can just adopt the input tensor's buffer instead.
@@ -320,7 +331,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     std::unique_ptr<Tensor> input_alias = context->forward_input(
         1, OpKernelContext::Params::kNoReservation /*output_index*/, DT_VARIANT,
         value.shape(),
-        std::is_same<Device, CPUDevice>::value ? HOST_MEMORY : DEVICE_MEMORY,
+        DEVICE_MEMORY /* HOST_MEMORY is only reserved for special cases */,
         attr);
 
     mutex_lock ml(*variable->mu());
@@ -337,6 +348,8 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
         !variable->tensor()->shape().IsSameSize(value.shape())) {
       PersistentTensor unused;
       Tensor* tmp;
+      // Allocation of DT_VARIANT is always on host.
+      attr.set_on_host(true);
       OP_REQUIRES_OK(context,
                      context->allocate_persistent(DT_VARIANT, value.shape(),
                                                   &unused, &tmp, attr));

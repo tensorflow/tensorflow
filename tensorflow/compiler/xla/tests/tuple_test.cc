@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
@@ -269,7 +268,7 @@ XLA_TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesOnFalse)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesOnFalse) {
   // Tests a selection between tuples with "false" path taken.
   XlaBuilder builder(TestName());
 
@@ -287,13 +286,13 @@ XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesOnFalse)) {
 }
 
 XLA_TEST_F(TupleTest, TuplesInAMap) {
-  Computation tuple_computation;
+  XlaComputation tuple_computation;
   {
     // tuple_computation(x) = 100 * min(x, x^2) + max(x, x^2) using tuples.
     //
     // Need to put a select in there to prevent HLO-level optimizations from
     // optimizing out the tuples.
-    ComputationBuilder b(client_, "sort_square");
+    XlaBuilder b("sort_square");
     auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
     auto x2 = b.Mul(x, x);
     auto x_smaller_tuple = b.Tuple({x, x2});
@@ -307,13 +306,13 @@ XLA_TEST_F(TupleTest, TuplesInAMap) {
     tuple_computation = computation_status.ConsumeValueOrDie();
   }
 
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   auto input = b.ConstantR1<float>({-1.0f, 1.0f, 2.1f});
   b.Map({input}, tuple_computation, {0});
   ComputeAndCompareR1<float>(&b, {-99.0f, 101.0f, 214.41f}, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesOnTrue)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesOnTrue) {
   // Tests a selection between tuples with "true" path taken.
   XlaBuilder builder(TestName());
 
@@ -350,7 +349,7 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesElementResult) {
 }
 
 // Cascaded selects between tuple types.
-XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesCascaded)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesCascaded) {
   //
   //                       vec1     vec2   vec2     vec1
   //                        |        |      |        |
@@ -390,8 +389,7 @@ XLA_TEST_F(TupleTest, DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesCascaded)) {
   ComputeAndCompareR1<float>(&builder, {3.f, 6.f, 9.f}, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest,
-           DISABLED_ON_CPU_PARALLEL(SelectBetweenTuplesReuseConstants)) {
+XLA_TEST_F(TupleTest, SelectBetweenTuplesReuseConstants) {
   // Similar to SelectBetweenTuples, but the constants are shared between the
   // input tuples.
   XlaBuilder builder(TestName());
@@ -516,10 +514,8 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 
 class TupleHloTest : public HloTestBase {};
 
-// Disabled on CPU parallel because that's broken and will be removed soon.
 // Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-TEST_F(TupleHloTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_CPU_PARALLEL(BitcastAfterGTE))) {
+TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   const char* testcase = R"(
     HloModule m
 
@@ -535,8 +531,7 @@ TEST_F(TupleHloTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::MakeTupleOwned(Literal::CreateR1<float>({1, 2, 3}));
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          ExecuteNoHloPasses(std::move(module), {param.get()}));
+  auto result = ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *result,
       *Literal::MakeTupleOwned(Literal::CreateR2<float>({{1, 2, 3}}))));

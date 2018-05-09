@@ -113,6 +113,9 @@ TEST_F(OperatorTest, SimpleOperators) {
       "MAXIMUM", OperatorType::kTensorFlowMaximum);
   CheckSimpleOperator<TensorFlowMinimumOperator>(
       "MINIMUM", OperatorType::kTensorFlowMinimum);
+  CheckSimpleOperator<TensorFlowLessOperator>("LESS",
+                                              OperatorType::kTensorFlowLess);
+  CheckSimpleOperator<NegOperator>("NEG", OperatorType::kNeg);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

@@ -1211,5 +1211,124 @@ class PoissonRegressionHead(test.TestCase):
       self.assertAllClose(logits, spec.predictions[keys.LOGITS].eval())
 
 
+class LogisticRegressionHead(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
+
+  def test_train(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    labels = np.array([[.4], [.6], [.8]], dtype=np.float32)
+    # Following the documentation in
+    # tf.nn.sigmoid_cross_entropy_with_logits:
+    # With x = logits, z = labels.
+    # loss  = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    # loss = [0 - 0 * 0.4 + ln(1 + exp(-0)),
+    #         0 + 1 * 0.6 + ln(1 + exp(-1)),
+    #         1 - 1 * 0.8 + ln(1 + exp(-1))]
+    #      = [0.6931, 0.9133, 0.5133]
+    # training_loss = (0.6931 + 0.9133 + 0.5133) / 3
+    expected_loss = 0.7066
+    atol = 0.001
+    expected_train_result = b'my_train_op'
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_near(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          atol=atol, name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run([spec.loss, spec.train_op])
+      self.assertAlmostEqual(expected_loss, loss, delta=atol)
+      self.assertEqual(expected_train_result, train_result)
+
+  def test_train_labels_too_large(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    labels = np.array([[.4], [1.2], [.8]], dtype=np.float32)
+    expected_train_result = b'my_train_op'
+    def _train_op_fn(loss):
+      del loss
+      return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[Labels must be in range \[0, 1\]\] .* \[\[0.4\]\[1.2\]\[0.8\]\]'):
+        _ = sess.run(spec.loss)
+
+  def test_train_labels_negative(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    labels = np.array([[.4], [-0.2], [.8]], dtype=np.float32)
+    expected_train_result = b'my_train_op'
+    def _train_op_fn(loss):
+      del loss
+      return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[Labels must be in range \[0, 1\]\] .* \[\[0.4\]\[-0.2\]\[0.8\]\]'
+      ):
+        _ = sess.run(spec.loss)
+
+  def test_predict(self):
+    head = head_lib.logistic_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    expected_predictions = 1. / (1. + np.exp(-logits))
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    # Assert spec contains expected tensors.
+    keys = prediction_keys.PredictionKeys
+    self.assertItemsEqual(
+        (keys.PREDICTIONS, keys.LOGITS), spec.predictions.keys())
+    self.assertEqual(dtypes.float32, spec.predictions[keys.PREDICTIONS].dtype)
+    self.assertEqual(dtypes.float32, spec.predictions[keys.LOGITS].dtype)
+
+    # Assert predictions.
+    with self.test_session():
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllClose(
+          expected_predictions, spec.predictions[keys.PREDICTIONS].eval())
+      self.assertAllClose(logits, spec.predictions[keys.LOGITS].eval())
+
+
 if __name__ == '__main__':
   test.main()

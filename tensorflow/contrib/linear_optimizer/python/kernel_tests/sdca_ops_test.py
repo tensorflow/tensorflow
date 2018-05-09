@@ -39,8 +39,8 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import googletest
 
 _MAX_ITERATIONS = 100
-_SHARD_NUMBERS = [None, 1, 3, 10]
-_NUM_LOSS_PARTITIONS = [2, 4]
+_SHARD_NUMBERS = [None, 1, 3]
+_NUM_LOSS_PARTITIONS = [4]
 
 
 def make_example_proto(feature_dict, target, value=1.0):
@@ -105,11 +105,13 @@ def make_example_dict(example_protos, example_weights):
 
 def make_random_examples_and_variables_dicts(num_examples, dim, num_non_zero):
   random.seed(1)
+
   sparse_features = [
       SparseFeatureColumn(
-          [int(i / num_non_zero) for i in range(num_examples * num_non_zero)],
-          [int(random.random() * dim) for _ in range(
-              num_examples * num_non_zero)],
+          [i for i in range(num_examples) for _ in range(num_non_zero)], [
+              i for _ in range(num_examples)
+              for i in random.sample(range(dim), num_non_zero)
+          ],
           [num_non_zero**(-0.5) for _ in range(num_examples * num_non_zero)])
   ]
   examples_dict = dict(
@@ -288,6 +290,34 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
       # Duality gap is 1.4e-5.
       # It would be 0.01 without shuffling and 0.02 with adaptive sampling.
       self.assertNear(0.0, lr.approximate_duality_gap().eval(), err=1e-3)
+
+  def testSparseDuplicate(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({
+            'age': [0] * 5,
+            'gender': [0] * 5
+        }, 0),
+        make_example_proto({
+            'age': [1] * 5,
+            'gender': [1] * 5
+        }, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(
+          symmetric_l2_regularization=1,
+          symmetric_l1_regularization=0,
+          loss_type='logistic_loss')
+
+      lr = SdcaModel(examples, variables, options)
+      variables_lib.global_variables_initializer().run()
+      train_op = lr.minimize()
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   'Duplicate'):
+        train_op.run()
 
   def testDistributedSimple(self):
     # Setup test data

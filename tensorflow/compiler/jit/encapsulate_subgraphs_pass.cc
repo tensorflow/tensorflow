@@ -22,9 +22,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/compiler/jit/graph_to_functiondef.h"
+#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/legacy_flags/encapsulate_subgraphs_pass_flags.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
+#include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -33,9 +34,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -158,6 +161,11 @@ class Encapsulator {
             std::move(outside_compilation_attribute)),
         graph_in_(graph_in) {}
 
+  // Find dependencies between subgraphs and outside_compilation clusters that
+  // only manifest via edges between outside_compilation clusters in the outer
+  // (non-compiled) graph.
+  Status FindClusterDependencies();
+
   // Find subgraphs marked with 'group_attribute', and build a new
   // subgraph, one for each value of 'group_attribute'.
   Status SplitIntoSubgraphs();
@@ -228,6 +236,19 @@ class Encapsulator {
   // the shapes of any ancestor RAH outputs. If it can be determined that the
   // shape of the SFH inputs will not be inferrable even once the shapes of the
   // RAH outputs are known, an error is returned by the rewriter.
+  //
+  // Once edges between compiled and outside_compilation clusters have been
+  // replaced by send/recv ops, some dependencies may no longer be apparent.
+  // A clustering pass finds all the dependencies between HC nodes that are only
+  // present as a result of edges between nodes in outside_compilation clusters.
+  // Suppose there is a path from outside_compilation cluster C in subgraph S
+  // to outside_compilation cluster D in subgraph T. If S != T then a control
+  // edge is added from the call node for S to the call node for T, which
+  // ensures that C will execute before D because S executes before T. If S==T
+  // then a control dependency is added between the HC nodes for C and D in S,
+  // and the HC node for C is added to an 'ancestors' attr in the HC node for D
+  // so that during compilation of the HC node for D, an XLA control dependency
+  // can be added to ensure C's SendToHost executes before D's RecvFromHost.
   class Subgraph {
    public:
     // Creates a graph to build the subgraph in, if it doesn't already exist,
@@ -322,6 +343,18 @@ class Encapsulator {
     void RecordOutsideCompilationOutputOrControl(
         const string& outside_compilation_id, const Edge* edge);
 
+    // Records the fact that there is a path from a node in outside_compilation
+    // cluster ancestor to node in cluster successor that does not go through
+    // the subgraph.
+    void RecordOutsideCompilationDependency(const string& successor,
+                                            const string& ancestor);
+
+    // Returns the mapping from outside_compilation cluster C to the set of
+    // outside_compilation clusters that have a path to C entirely outside
+    // compiled subgraphs.
+    const std::unordered_map<string, std::unordered_set<string>>
+    OutsideCompilationAncestorMap() const;
+
     // Adds the HostCompute nodes for each outside_compilation subgraph.
     Status AddHostComputes(
         const string& subgraph_name,
@@ -404,6 +437,13 @@ class Encapsulator {
     Status AddHostComputeKeyPlaceholder(OutsideCompilationSubgraph* oc_subgraph,
                                         Graph* graph_out);
 
+    // Get the set of outside_compilation clusters and the dependency edges
+    // between them.
+    void GetActiveClusterDependencyGraph(
+        std::unordered_set<string>* clusters,
+        std::unordered_set<string>* has_successor,
+        std::unordered_map<string, std::unordered_set<string>>* ancestors_map);
+
     // Builds a _RecvAtHost node producing all the inputs of an
     // outside_compilation subgraph and stores it in oc_subgraph.recv_at_host.
     Status AddRecvAtHostNode(const string& group_attribute,
@@ -466,6 +506,14 @@ class Encapsulator {
     // The outside_compilation clusters in this subgraph.
     std::unordered_map<string, OutsideCompilationSubgraph>
         outside_compilation_subgraphs_;
+    // For each outside_compilation cluster C, the outside_compilation clusters
+    // that have a path to C outside the compiled graph.
+    std::unordered_map<string, std::unordered_set<string>>
+        outside_compilation_ancestors_;
+    // For each outside_compilation cluster C, the outside_compilation clusters
+    // that have a path from C outside the compiled graph.
+    std::unordered_map<string, std::unordered_set<string>>
+        outside_compilation_successors_;
 
     // NoOp node in the output graph that is sequenced after the call node and
     // used to prevent host-side outside_compilation sends and recvs from being
@@ -554,6 +602,10 @@ class Encapsulator {
       std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>*
           edges_added);
 
+  // Adds control dependencies between subgraph call nodes that have
+  // dependencies via outside_compilation edges.
+  Status AddCallNodeDependencies(Graph* graph_out);
+
   // Adds all edges to the output graph.
   Status AddEdgesToOutputGraph(
       const std::unordered_map<const Node*, Node*>& node_images,
@@ -576,7 +628,8 @@ class Encapsulator {
   // satisfied, e.g., because send_node depends on a node that doesn't have a
   // registered shape inference function.
   Status DoStaticShapeInferenceForOutsideCompilationSend(
-      const Graph& graph_in, const ShapeRefiner& shape_refiner,
+      const Graph& graph_in, const BackEdgeHelper& back_edge_helper,
+      const ShapeRefiner& shape_refiner,
       const std::unordered_set<string>& recv_at_host_nodes, Node* send_node,
       FunctionLibraryDefinition* library,
       std::vector<TensorShapeProto>* static_shape_out,
@@ -599,7 +652,7 @@ class Encapsulator {
   // to nodes in pruned_graph.
   Status MakeGraphForOutsideCompilationSends(
       const Graph& graph, std::unique_ptr<Graph>* pruned_graph,
-      ShapeRefiner* shape_refiner,
+      BackEdgeHelper* back_edge_helper, ShapeRefiner* shape_refiner,
       std::unordered_map<const Node*, Node*>* node_images,
       FunctionLibraryDefinition* library);
 
@@ -617,9 +670,64 @@ class Encapsulator {
   const Graph* graph_in_;
 
   std::unordered_map<string, Subgraph> subgraphs_;
+  // For each subgraph S the subgraphs S' such that there is a path in some
+  // outside_compilation cluster C in S to some outside_compilation cluster C'
+  // in S', that goes only through the uncompiled graph.
+  std::unordered_map<string, std::unordered_set<string>> subgraph_ancestors_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Encapsulator);
 };
+
+namespace {
+
+// Return in 'sorted' a topological sort of clusters according to the
+// dependencies encoded in ancestors. clusters is the list of all clusters
+// including clusters that are not present in the ancestors map. has_successors
+// is the set of clusters that are ancestors of some other cluster.
+void TopologicalClusterSort(
+    const std::unordered_set<string>& clusters,
+    const std::unordered_set<string>& has_successors,
+    const std::unordered_map<string, std::unordered_set<string>>& ancestors,
+    std::vector<string>* sorted) {
+  // The nodes are placed in 'sorted' in topological order.
+  sorted->clear();
+  // We don't use the standard DFS because we are not operating on Node*
+  // objects.
+  struct Work {
+    string cluster;
+    bool leave;
+  };
+  std::set<string> visited;
+  std::vector<Work> stack;
+  // Seed the processing list with clusters that have no successors.
+  for (const auto& cluster : clusters) {
+    if (has_successors.find(cluster) == has_successors.end()) {
+      stack.push_back({cluster, false});
+    }
+  }
+  while (!stack.empty()) {
+    const Work item = stack.back();
+    stack.pop_back();
+    if (item.leave) {
+      sorted->push_back(item.cluster);
+      continue;
+    }
+
+    if (visited.find(item.cluster) != visited.end()) continue;
+    visited.insert(item.cluster);
+
+    stack.push_back({item.cluster, true});
+    const auto& iter = ancestors.find(item.cluster);
+    if (iter != ancestors.end()) {
+      for (const auto& ancestor : iter->second) {
+        stack.push_back({ancestor, false});
+      }
+    }
+  }
+  CHECK(sorted->size() == clusters.size());
+}
+
+}  // namespace
 
 Node* Encapsulator::Subgraph::GetCallNodeForInputs() const {
   return call_node_inputs_;
@@ -783,12 +891,71 @@ void Encapsulator::Subgraph::RecordOutsideCompilationOutputOrControl(
   }
 }
 
+void Encapsulator::Subgraph::RecordOutsideCompilationDependency(
+    const string& successor, const string& ancestor) {
+  outside_compilation_ancestors_[successor].insert(ancestor);
+  outside_compilation_successors_[ancestor].insert(successor);
+}
+
+const std::unordered_map<string, std::unordered_set<string>>
+Encapsulator::Subgraph::OutsideCompilationAncestorMap() const {
+  return outside_compilation_ancestors_;
+}
+
+void Encapsulator::Subgraph::GetActiveClusterDependencyGraph(
+    std::unordered_set<string>* clusters,
+    std::unordered_set<string>* has_successor,
+    std::unordered_map<string, std::unordered_set<string>>* ancestors_map) {
+  // During initial clustering the ancestor and successor datastructures may
+  // have been built including oc_cluster names that never turned into subgraphs
+  // because they had no edges into or out of the compiled cluster. Remove them
+  // before proceeding to simplify the logic. Get the set of clusters that was
+  // actually added, then remove references to the others.
+  for (const auto& oc_subgraph : outside_compilation_subgraphs_) {
+    clusters->insert(oc_subgraph.first);
+  }
+  for (const auto& cluster : outside_compilation_successors_) {
+    if (clusters->find(cluster.first) != clusters->end()) {
+      for (const auto& successor : cluster.second) {
+        if (clusters->find(successor) != clusters->end()) {
+          has_successor->insert(cluster.first);
+          break;
+        }
+      }
+    }
+  }
+  for (const auto& cluster : outside_compilation_ancestors_) {
+    if (clusters->find(cluster.first) != clusters->end()) {
+      std::unordered_set<string>& ancestors = (*ancestors_map)[cluster.first];
+      for (const auto& ancestor : cluster.second) {
+        if (clusters->find(ancestor) != clusters->end()) {
+          ancestors.insert(ancestor);
+        }
+      }
+    }
+  }
+}
+
 Status Encapsulator::Subgraph::AddHostComputes(
     const string& subgraph_name,
     const std::unordered_map<const Node*, Node*>& node_images) {
-  for (auto& oc_subgraph_iter : outside_compilation_subgraphs_) {
-    const string& oc_subgraph_name = oc_subgraph_iter.first;
-    OutsideCompilationSubgraph& oc_subgraph = oc_subgraph_iter.second;
+  // Get the set of outside_compilation clusters and the dependency edges
+  // between them.
+  std::unordered_set<string> clusters;
+  std::unordered_set<string> has_successor;
+  std::unordered_map<string, std::unordered_set<string>> ancestors_map;
+  GetActiveClusterDependencyGraph(&clusters, &has_successor, &ancestors_map);
+  // Topologically sort the outside_compilation clusters according to their
+  // dependency relation.
+  std::vector<string> sorted_clusters;
+  TopologicalClusterSort(clusters, has_successor, ancestors_map,
+                         &sorted_clusters);
+
+  // The host compute nodes added for each outside_compilation_cluster;
+  std::unordered_map<string, Node*> host_compute_node;
+  for (const string& oc_subgraph_name : sorted_clusters) {
+    OutsideCompilationSubgraph& oc_subgraph =
+        outside_compilation_subgraphs_[oc_subgraph_name];
     if (!oc_subgraph.inputs.empty() || !oc_subgraph.control_inputs.empty() ||
         !oc_subgraph.outputs_by_src.empty() ||
         !oc_subgraph.control_outputs.empty()) {
@@ -808,11 +975,20 @@ Status Encapsulator::Subgraph::AddHostComputes(
         inputs[input_index].Reset(src_image->name(), src_slot, dtype);
         input_dtypes[input_index] = dtype;
       }
-
       for (const auto& output : oc_subgraph.outputs_by_src) {
         DataType dtype = output.first.dtype;
         int output_index = output.second;
         output_dtypes[output_index] = dtype;
+      }
+
+      std::vector<string> host_compute_ancestors;
+      const auto iter = ancestors_map.find(oc_subgraph_name);
+      if (iter != ancestors_map.end()) {
+        for (const string& ancestor_cluster : iter->second) {
+          host_compute_ancestors.push_back(
+              outside_compilation_subgraphs_[ancestor_cluster]
+                  .host_compute_name);
+        }
       }
 
       NodeDef host_compute_def;
@@ -822,6 +998,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       builder.Input(inputs);
       builder.Attr("Tinputs", input_dtypes);
       builder.Attr("Toutputs", output_dtypes);
+      builder.Attr("ancestors", host_compute_ancestors);
       builder.Attr("key",
                    strings::StrCat("host_compute_channel_", subgraph_name, "_",
                                    oc_subgraph_name));
@@ -831,6 +1008,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
 
       Node* host_compute = graph_->AddNode(host_compute_def, &s);
       if (!s.ok()) return s;
+      host_compute_node[host_compute->name()] = host_compute;
       oc_subgraph.host_compute_name = host_compute->name();
 
       // Connect the _HostCompute node to its producers in the subgraph.
@@ -847,6 +1025,12 @@ Status Encapsulator::Subgraph::AddHostComputes(
       for (const auto& src_node : oc_subgraph.control_inputs) {
         Node* src_image = node_images.at(src_node);
         graph_->AddControlEdge(src_image, host_compute);
+      }
+
+      // Connect the _HostCompute node to its ancestor host compute nodes.
+      for (const auto& ancestor_name : host_compute_ancestors) {
+        Node* ancestor = host_compute_node[ancestor_name];
+        graph_->AddControlEdge(ancestor, host_compute);
       }
 
       // Connect the consumers in the subgraph to the _HostCompute node.
@@ -1651,6 +1835,17 @@ Status Encapsulator::CopyEdgeToOutputGraph(
   return Status::OK();
 }
 
+Status Encapsulator::AddCallNodeDependencies(Graph* graph_out) {
+  for (const auto& ancestors : subgraph_ancestors_) {
+    const string& subgraph = ancestors.first;
+    for (const string& ancestor : ancestors.second) {
+      graph_out->AddControlEdge(subgraphs_[ancestor].GetCallNodeForOutputs(),
+                                subgraphs_[subgraph].GetCallNodeForInputs());
+    }
+  }
+  return Status::OK();
+}
+
 Status Encapsulator::AddEdgesToOutputGraph(
     const std::unordered_map<const Node*, Node*>& node_images,
     bool parallel_checking, Graph* graph_out) {
@@ -1700,6 +1895,7 @@ Status Encapsulator::AddEdgesToOutputGraph(
     Subgraph& subgraph = subgraph_entry.second;
     subgraph.ConnectSequencerToCallNode(graph_out);
   }
+  TF_RETURN_IF_ERROR(AddCallNodeDependencies(graph_out));
 
   return Status::OK();
 }
@@ -1712,9 +1908,13 @@ namespace {
 // matter because it will only be used subsequently for shape inference. (It
 // would be possible to add a switch statement over data_type to create a value
 // for the constant, but that would entail maintaining the logic as new types
-// are added, and is not necessary.)
-Node* AddDummyShapedNode(DataType data_type, const TensorShapeProto& shape,
-                         Graph* graph_out) {
+// are added, and is not necessary.) If the node being replaced was within a
+// control flow frame, adds appropriate Enter nodes so that the use of the Const
+// is well-formed.
+Node* AddDummyShapedNode(const Node* src_node, int src_port,
+                         const std::vector<ControlFlowInfo>& control_flow_info,
+                         const TensorShapeProto& shape, Graph* graph_out) {
+  DataType data_type = src_node->output_type(src_port);
   TensorProto dummy_proto;
   dummy_proto.set_dtype(data_type);
   *dummy_proto.mutable_tensor_shape() = shape;
@@ -1725,7 +1925,23 @@ Node* AddDummyShapedNode(DataType data_type, const TensorShapeProto& shape,
   NodeBuilder node_builder(options.GetNameForOp("KnownShape"), "Const",
                            options.op_registry());
   node_builder.Attr("dtype", data_type).Attr("value", dummy_proto);
-  return options.FinalizeBuilder(&node_builder);
+  Node* node = options.FinalizeBuilder(&node_builder);
+  // Add any Enter nodes required to bring the constant to the correct control
+  // flow frame.
+  while (!control_flow_info[src_node->id()].frame_name.empty()) {
+    NodeBuilder enter_builder(options.GetNameForOp("Enter"), "Enter",
+                              options.op_registry());
+    enter_builder.Attr("frame_name",
+                       control_flow_info[src_node->id()].frame_name);
+    enter_builder.Attr("is_constant", true);
+    enter_builder.Input(node, 0);
+    Node* enter_node = options.FinalizeBuilder(&enter_builder);
+    // Adopt the new Enter node as the value in the current frame.
+    node = enter_node;
+    // Recurse to the parent frame to see if more Enter nodes need to be added.
+    src_node = control_flow_info[src_node->id()].parent_frame;
+  }
+  return node;
 }
 
 // Adds a copy of node_in to graph_out and adds the mapping to
@@ -1767,17 +1983,30 @@ Status CopyShapeInferenceNodeToGraph(
       }
     }
   }
+  // Work around the fact that Enter nodes refuse to propagate shape information
+  // unless they are marked loop invariant. Since we are never going to execute
+  // this graph, marking them all loop invariant is fine.
+  if (node_out->type_string() == "Enter") {
+    node_out->ClearAttr("is_constant");
+    node_out->AddAttr("is_constant", true);
+  }
   return Status::OK();
 }
 
 }  // namespace
 
 Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
-    const Graph& graph_in, const ShapeRefiner& shape_refiner,
+    const Graph& graph_in, const BackEdgeHelper& back_edge_helper,
+    const ShapeRefiner& shape_refiner,
     const std::unordered_set<string>& recv_at_host_nodes, Node* send_node,
     FunctionLibraryDefinition* library,
     std::vector<TensorShapeProto>* static_shape_out,
     std::unique_ptr<Graph>* graph_out) {
+  // Get the control flow structure of the input graph so we can build
+  // well-formed output graphs.
+  std::vector<ControlFlowInfo> control_flow_info;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(&graph_in, &control_flow_info));
+
   // Maps from nodes in graph_in to nodes in graph_out.
   //
   // When an edge has fully defined shape the source node in graph_in is
@@ -1802,7 +2031,6 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
 
   // We don't use the standard ReverseDFS because we want to cut off traversal
   // whenever we find an output with fully defined shape.
-  // TODO(misard) make this work properly in the presence of control flow.
   struct Work {
     Node* node;
     bool leave;  // Are we entering or leaving node?
@@ -1840,8 +2068,9 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
             TensorShapeProto proto;
             context->ShapeHandleToProto(shape, &proto);
             if (dummy_node_images.find(src_node) == dummy_node_images.end()) {
-              dummy_node_images[src_node] = AddDummyShapedNode(
-                  src_node->output_type(src_port), proto, graph_out->get());
+              dummy_node_images[src_node] =
+                  AddDummyShapedNode(src_node, src_port, control_flow_info,
+                                     proto, graph_out->get());
             }
             // The final input to the send node is the dynamic key, which we
             // don't include in the static shapes.
@@ -1889,6 +2118,214 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
     }
   }
 
+  for (const auto edge : back_edge_helper.RemovedEdges()) {
+    if (copied_node_images.find(edge.dst) != copied_node_images.end()) {
+      // The destination of this back edge was added to the inference graph, so
+      // fix it up.
+      Node* dst = copied_node_images[edge.dst];
+      if (dst->type_string() != "Merge") {
+        return errors::InvalidArgument(
+            "outside_compilation cluster contains a back-edge to node ",
+            dst->name(), " of type ", dst->type_string(),
+            ". The analysis pass only supports back-edges to Merge nodes.");
+      }
+      const Edge* existing_input_edge;
+      if (edge.dst_input != 1 || dst->num_inputs() != 2 ||
+          !dst->input_edge(0, &existing_input_edge).ok()) {
+        // TODO(misard) if we see graphs built with a different structure, relax
+        // this constraint. Leaving it here for now to avoid writing unnecessary
+        // complex code since we believe graphs generated by front ends all have
+        // the back edge as the second input to the merge node.
+        return errors::Internal(
+            "Internal assumption failed while rewriting an outside_compilation "
+            "cluster that contains a while loop. Logic assumes back-edge is to "
+            "port 1 of a 2-input "
+            "Merge node.");
+      }
+      // Connect the existing edge to both inputs of the Merge node so that the
+      // graph will be well-formed.
+      (*graph_out)
+          ->AddEdge(existing_input_edge->src(),
+                    existing_input_edge->src_output(), dst, edge.dst_input);
+    }
+  }
+
+  return Status::OK();
+}
+
+namespace {
+
+// Helper struct for building cluster dependencies and also debugging cycles in
+// the dependencies. While computing dependencies we construct a mapping from
+// Node* to PathDetails.
+struct PathDetails {
+  struct SubgraphAndCluster {
+    string subgraph;
+    string outside_compilation_cluster;
+    bool operator==(const SubgraphAndCluster& other) const {
+      return subgraph == other.subgraph &&
+             outside_compilation_cluster == other.outside_compilation_cluster;
+    }
+  };
+
+  struct SubgraphAndClusterHash {
+    inline std::size_t operator()(const SubgraphAndCluster& v) const {
+      return hash<string>()(
+          strings::StrCat(v.subgraph, v.outside_compilation_cluster));
+    }
+  };
+
+  typedef std::unordered_set<SubgraphAndCluster, SubgraphAndClusterHash>
+      SubgraphAndClusterSet;
+
+  // Returns the set of (subgraph, oc_cluster) pairs that should be recorded as
+  // ancestors for any successor of this node. If the node is in the outer
+  // graph, it returns the transitive union of the ancestors of the node's
+  // inputs. If the node is in an outside_compilation cluster, it returns just
+  // that cluster. If the node is compiled, it returns the empty set.
+  SubgraphAndClusterSet AncestorsForSuccessor() {
+    if (subgraph.empty()) {
+      return ancestor_clusters;
+    } else if (outside_compilation_cluster.empty()) {
+      return SubgraphAndClusterSet();
+    } else {
+      SubgraphAndCluster entry;
+      entry.subgraph = subgraph;
+      entry.outside_compilation_cluster = outside_compilation_cluster;
+      return SubgraphAndClusterSet({entry});
+    }
+  }
+
+  // The transitive union of the ancestor's of this node's inputs. This is only
+  // saved for debugging in order to print out enough information to debug a
+  // discovered cycle.
+  SubgraphAndClusterSet ancestor_clusters;
+  // The subgraph attr on this node.
+  string subgraph;
+  // The outside_compilation attr on this node.
+  string outside_compilation_cluster;
+};
+
+// Adds an edge from ancestor to successor to the cycle detector, and returns an
+// error if that edge causes the formation of a cycle. In the error case, logs
+// the contents of the node_ancestors_map to facilitate debugging.
+Status CheckClusterDependencyForCycles(
+    const string& ancestor, const string& successor,
+    const std::unordered_map<string, std::unordered_set<string>>& ancestors,
+    const std::unordered_map<Node*, PathDetails>& node_ancestors_map,
+    GraphCycles* cycle_detector, std::map<string, int>* cycle_detector_map) {
+  if (cycle_detector_map->find(ancestor) == cycle_detector_map->end()) {
+    (*cycle_detector_map)[ancestor] = cycle_detector->NewNode();
+  }
+  if (cycle_detector_map->find(successor) == cycle_detector_map->end()) {
+    (*cycle_detector_map)[successor] = cycle_detector->NewNode();
+  }
+
+  if (!cycle_detector->InsertEdge((*cycle_detector_map)[ancestor],
+                                  (*cycle_detector_map)[successor])) {
+    LOG(ERROR) << "Cycle in outside_compilation clusters";
+    for (const auto& cluster : ancestors) {
+      LOG(ERROR) << "Cluster " << cluster.first << " depends on:";
+      for (const auto& ancestor : cluster.second) {
+        LOG(ERROR) << "  " << ancestor;
+      }
+    }
+    for (const auto& node_ancestors : node_ancestors_map) {
+      LOG(ERROR) << "Node " << node_ancestors.first->name() << " ("
+                 << node_ancestors.second.subgraph << ";"
+                 << node_ancestors.second.outside_compilation_cluster
+                 << ") has ancestor clusters:";
+      for (const auto& ancestor : node_ancestors.second.ancestor_clusters) {
+        LOG(ERROR) << "  " << ancestor.subgraph << ";"
+                   << ancestor.outside_compilation_cluster;
+      }
+    }
+    return errors::InvalidArgument(
+        "Can't compile outside_compilation clusters because there is a "
+        "dependency cycle: see error log for details.");
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status Encapsulator::FindClusterDependencies() {
+  // Map from nodes to ancestor details. A node is entered into the map if it is
+  // in a compilation subgraph, and outside_compilation cluster, or appears on a
+  // path in the outer graph leading from an outside_compilation subgraph.
+  std::unordered_map<Node*, PathDetails> node_ancestors_map;
+  // We check that clusters are acyclic using this cycle detector.
+  GraphCycles cycle_detector;
+  // Map from cluster name to cycle detector node id.
+  std::map<string, int> cycle_detector_map;
+  // Process the nodes in topologically-sorted order.
+  std::vector<Node*> nodes;
+  GetReversePostOrder(*graph_in_, &nodes);
+  for (Node* node : nodes) {
+    string subgraph_name;
+    string oc_cluster;
+    TF_RETURN_IF_ERROR(GetFunctionNameAttr(node, &subgraph_name, &oc_cluster));
+    // First create an entry in the ancestors map if the node is in a compiled
+    // subgraph or outside_compilation cluster, or if any incoming edge is from
+    // a node with an ancestor map entry; and find the union of all the
+    // ancestors.
+    if (!subgraph_name.empty()) {
+      node_ancestors_map[node].subgraph = subgraph_name;
+      node_ancestors_map[node].outside_compilation_cluster = oc_cluster;
+    }
+    for (Node* src : node->in_nodes()) {
+      const auto iter = node_ancestors_map.find(src);
+      if (iter != node_ancestors_map.end()) {
+        const auto& ancestors_to_follow = iter->second.AncestorsForSuccessor();
+        for (const auto& ancestor : ancestors_to_follow) {
+          if (ancestor.subgraph != subgraph_name ||
+              ancestor.outside_compilation_cluster != oc_cluster) {
+            node_ancestors_map[node].ancestor_clusters.insert(ancestor);
+          }
+        }
+      }
+    }
+    if (!subgraph_name.empty()) {
+      // The node is in a compiled subgraph or an outside_compilation cluster.
+      if (oc_cluster.empty()) {
+        // The node is not in an outside_compilation cluster. Record the
+        // subgraph's ancestor dependencies.
+        for (const auto& cluster : node_ancestors_map[node].ancestor_clusters) {
+          if (cluster.subgraph != subgraph_name) {
+            subgraph_ancestors_[subgraph_name].insert(cluster.subgraph);
+            TF_RETURN_IF_ERROR(CheckClusterDependencyForCycles(
+                cluster.subgraph, subgraph_name, subgraph_ancestors_,
+                node_ancestors_map, &cycle_detector, &cycle_detector_map));
+          }
+        }
+      } else {
+        Subgraph& subgraph = subgraphs_[subgraph_name];
+        // The node is in an outside_compilation cluster. Record the cluster
+        // and/or subgraph ancestor dependencies.
+        for (const auto& cluster : node_ancestors_map[node].ancestor_clusters) {
+          if (cluster.subgraph == subgraph_name) {
+            // The ancestor is in the same subgraph.
+            if (cluster.outside_compilation_cluster != oc_cluster) {
+              // But not in the same oc_cluster, so record the dependency.
+              subgraph.RecordOutsideCompilationDependency(
+                  oc_cluster, cluster.outside_compilation_cluster);
+              TF_RETURN_IF_ERROR(CheckClusterDependencyForCycles(
+                  cluster.outside_compilation_cluster, oc_cluster,
+                  subgraph.OutsideCompilationAncestorMap(), node_ancestors_map,
+                  &cycle_detector, &cycle_detector_map));
+            }
+          } else {
+            // The ancestor is in a different subgraph, so record the
+            // dependency.
+            subgraph_ancestors_[subgraph_name].insert(cluster.subgraph);
+            TF_RETURN_IF_ERROR(CheckClusterDependencyForCycles(
+                cluster.subgraph, subgraph_name, subgraph_ancestors_,
+                node_ancestors_map, &cycle_detector, &cycle_detector_map));
+          }
+        }
+      }
+    }
+  }
   return Status::OK();
 }
 
@@ -1956,7 +2393,7 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
 
 Status Encapsulator::MakeGraphForOutsideCompilationSends(
     const Graph& graph, std::unique_ptr<Graph>* pruned_graph,
-    ShapeRefiner* shape_refiner,
+    BackEdgeHelper* back_edge_helper, ShapeRefiner* shape_refiner,
     std::unordered_map<const Node*, Node*>* node_images,
     FunctionLibraryDefinition* library) {
   // Find all the send_from_host nodes in all subgraphs, to use as roots for the
@@ -1978,10 +2415,15 @@ Status Encapsulator::MakeGraphForOutsideCompilationSends(
   // nodes, inlining any functions as needed.
   TF_RETURN_IF_ERROR(MakePrunedGraphCopyAndInline(
       graph, send_from_host_nodes, pruned_graph, node_images, library));
+  FixupSourceAndSinkEdges(pruned_graph->get());
+
+  // Remove back edges from any cycles in the pruned graph to simplify shape
+  // inference traversal. They will be fixed up in the per-subgraph shape
+  // inference graphs stored in the function library.
+  TF_RETURN_IF_ERROR(back_edge_helper->Remove(pruned_graph->get()));
 
   // Perform shape inference on the pruned graph.
   shape_refiner->set_require_shape_inference_fns(false);
-  FixupSourceAndSinkEdges(pruned_graph->get());
   std::vector<Node*> post_order;
   GetReversePostOrder(*(*pruned_graph), &post_order);
   for (auto node : post_order) {
@@ -1999,11 +2441,13 @@ Status Encapsulator::MakeGraphForOutsideCompilationSends(
 
 Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
     Graph* graph_out, FunctionLibraryDefinition* library) {
+  BackEdgeHelper back_edge_helper;
   std::unique_ptr<Graph> pruned_graph;
   ShapeRefiner shape_refiner(graph_out->versions(), graph_out->op_registry());
   std::unordered_map<const Node*, Node*> node_images;
   TF_RETURN_IF_ERROR(MakeGraphForOutsideCompilationSends(
-      *graph_out, &pruned_graph, &shape_refiner, &node_images, library));
+      *graph_out, &pruned_graph, &back_edge_helper, &shape_refiner,
+      &node_images, library));
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile("pruned_graph_for_shape_inference",
@@ -2033,7 +2477,7 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
       std::unique_ptr<Graph> graph;
       if (send_node != nullptr) {
         TF_RETURN_IF_ERROR(DoStaticShapeInferenceForOutsideCompilationSend(
-            *pruned_graph, shape_refiner, recv_at_host_names,
+            *pruned_graph, back_edge_helper, shape_refiner, recv_at_host_names,
             node_images[send_node], library, &static_shape, &graph));
         if (graph == nullptr) {
           VLOG(2) << "Send node  " << send_node->name() << " shapes";
@@ -2091,6 +2535,7 @@ Status EncapsulateSubgraphsInFunctions(
   Encapsulator encapsulator(std::move(group_attribute),
                             std::move(outside_compilation_attribute),
                             &graph_in);
+  TF_RETURN_IF_ERROR(encapsulator.FindClusterDependencies());
   TF_RETURN_IF_ERROR(encapsulator.SplitIntoSubgraphs());
 
   TF_RETURN_IF_ERROR(encapsulator.BuildFunctionDefs(

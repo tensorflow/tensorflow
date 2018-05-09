@@ -17,11 +17,15 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -30,14 +34,24 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class LayoutOptimizerTest : public ::testing::Test {
+class LayoutOptimizerTest : public GrapplerTest {
  protected:
   void SetUp() override {
-    DeviceProperties device_properties;
-    device_properties.set_type("GPU");
-    device_properties.mutable_environment()->insert({"architecture", "6"});
-    virtual_cluster_.reset(new VirtualCluster({{"/GPU:1", device_properties}}));
+    gpu_available_ = GetNumAvailableGPUs() > 0;
+
+    if (gpu_available_) {
+      virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
+    } else {
+      DeviceProperties device_properties;
+      device_properties.set_type("GPU");
+      device_properties.mutable_environment()->insert({"architecture", "6"});
+      virtual_cluster_.reset(
+          new VirtualCluster({{"/GPU:1", device_properties}}));
+    }
+    TF_CHECK_OK(virtual_cluster_->Provision());
   }
+
+  void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
 
   Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
                       const string& padding) {
@@ -94,10 +108,8 @@ class LayoutOptimizerTest : public ::testing::Test {
 
     TensorShape filter_shape(
         {filter_size, filter_size, input_depth, filter_count});
-    Tensor filter_data(DT_FLOAT, filter_shape);
-    test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
-        ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
+        ops::Variable(s->WithOpName("Filter"), filter_shape, DT_FLOAT);
 
     int output_height = input_height;
     int output_width = input_width;
@@ -127,6 +139,10 @@ class LayoutOptimizerTest : public ::testing::Test {
     Tensor tensor;
     CHECK(tensor.FromProto(node.attr().at({"value"}).tensor()));
     return tensor;
+  }
+
+  TensorShape GetAttrShape(const NodeDef& node) {
+    return TensorShape(node.attr().at({"shape"}).shape());
   }
 
   Output SimpleFusedBatchNormGrad(tensorflow::Scope* s, bool is_training) {
@@ -160,6 +176,7 @@ class LayoutOptimizerTest : public ::testing::Test {
   }
 
   std::unique_ptr<Cluster> virtual_cluster_;
+  bool gpu_available_;
 };
 
 TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
@@ -183,6 +200,18 @@ TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
   Tensor input_sizes_expected(DT_INT32, {4});
   test::FillValues<int>(&input_sizes_expected, {128, 3, 7, 7});
   test::ExpectTensorEqual<int>(input_sizes_expected, input_sizes);
+
+  if (gpu_available_) {
+    TensorShape filter_shape = GetAttrShape(*node_map.GetNode("Filter"));
+    Tensor filter_data = GenerateRandomTensor<DT_FLOAT>(filter_shape);
+    std::vector<string> fetch = {"Fetch"};
+    auto tensors_expected =
+        EvaluateNodes(item.graph, fetch, {{"Filter", filter_data}});
+    auto tensors = EvaluateNodes(output, fetch, {{"Filter", filter_data}});
+    EXPECT_EQ(1, tensors_expected.size());
+    EXPECT_EQ(1, tensors.size());
+    test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  }
 }
 
 TEST_F(LayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
@@ -1150,7 +1179,7 @@ TEST_F(LayoutOptimizerTest, DevicePlacement) {
   NodeMap node_map(&output);
   auto vec_permute =
       node_map.GetNode("s-0-0-VecPermuteNCHWToNHWC-LayoutOptimizer");
-  EXPECT_EQ(vec_permute->device(), "/device:CPU:0");
+  EXPECT_EQ(vec_permute->attr().at("_kernel").s(), "host");
 }
 }  // namespace
 }  // namespace grappler

@@ -130,6 +130,7 @@ class Dropout(Layer):
     return nn_ops._get_noise_shape(inputs, self.noise_shape)  # pylint: disable=protected-access
 
   def call(self, inputs, training=None):
+    original_training_value = training
     if training is None:
       training = K.learning_phase()
 
@@ -141,7 +142,7 @@ class Dropout(Layer):
                                  dropped_inputs,
                                  lambda: array_ops.identity(inputs))
     # EagerTensor object has no attribute _uses_learning_phase
-    if not context.executing_eagerly() and training is K.learning_phase():
+    if not context.executing_eagerly() and original_training_value is None:
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 

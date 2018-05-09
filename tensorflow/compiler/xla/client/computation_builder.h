@@ -48,6 +48,8 @@ namespace xla {
 // deferred from being handled until Build() is called.
 //
 // Thread-compatible.
+//
+// TODO(b/74197823): Deprecated. Use XlaBuilder instead.
 class ComputationBuilder {
  public:
   // client: client in which to build the computation.
@@ -656,6 +658,9 @@ class ComputationBuilder {
 
   // Enqueues a negate instruction onto the computation.
   ComputationDataHandle Neg(const ComputationDataHandle& operand);
+
+  // Enqueues a count-leading-zeros instruction onto the computation.
+  ComputationDataHandle Clz(const ComputationDataHandle& operand);
 
   // Enqueues a transpose instruction onto the computation.
   ComputationDataHandle Transpose(

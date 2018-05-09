@@ -48,7 +48,7 @@ class LocalVariabletest(test.TestCase):
       variables = variables_lib.local_variables()
       self.assertEquals(2, len(variables))
       self.assertRaises(errors_impl.OpError, sess.run, variables)
-      variables_lib.initialize_variables(variables).run()
+      variables_lib.variables_initializer(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
 

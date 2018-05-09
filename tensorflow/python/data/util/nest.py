@@ -44,7 +44,6 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
-from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _sorted(dict_):
@@ -115,7 +114,7 @@ def is_sequence(seq):
   NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
   which *does* treat a Python list as a sequence. For ergonomic
   reasons, `tf.data` users would prefer to treat lists as
-  implict `tf.Tensor` objects, and dicts as (nested) sequences.
+  implicit `tf.Tensor` objects, and dicts as (nested) sequences.
 
   Args:
     seq: an input sequence.
@@ -538,16 +537,3 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
 
-
-_allowed_symbols = [
-    "assert_same_structure",
-    "is_sequence",
-    "flatten",
-    "pack_sequence_as",
-    "map_structure",
-    "assert_shallow_structure",
-    "flatten_up_to",
-    "map_structure_up_to",
-]
-
-remove_undocumented(__name__, _allowed_symbols)

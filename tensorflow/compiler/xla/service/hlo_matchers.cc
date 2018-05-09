@@ -132,6 +132,69 @@ bool HloCustomCallMatcher::MatchAndExplain(
   return result;
 }
 
+bool HloShapeMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (ShapeUtil::Compatible(instruction->shape(), shape_)) {
+    return true;
+  }
+  *listener << instruction->ToString() << " has incorrect shape (expected: "
+            << ShapeUtil::HumanString(shape_) << ")";
+  return false;
+}
+
+void HloShapeMatcher::DescribeTo(std::ostream* os) const {
+  *os << ShapeUtil::HumanString(shape_);
+}
+
+bool HloShapeAndLayoutMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (ShapeUtil::Equal(instruction->shape(), shape_)) {
+    return true;
+  }
+  *listener << instruction->ToString() << " has incorrect shape (expected: "
+            << ShapeUtil::HumanStringWithLayout(shape_) << ")";
+  return false;
+}
+
+void HloShapeAndLayoutMatcher::DescribeTo(std::ostream* os) const {
+  *os << ShapeUtil::HumanStringWithLayout(shape_);
+}
+
+bool HloShardingMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!sharding_.has_value()) {
+    if (!instruction->has_sharding()) {
+      return true;
+    }
+    *listener << instruction->ToString() << " expected to have no sharding.";
+    return false;
+  }
+  if (instruction->has_sharding()) {
+    if (instruction->sharding() == sharding_.value()) {
+      return true;
+    }
+    *listener << instruction->ToString()
+              << " has incorrect sharding (expected: " << sharding_->ToString()
+              << ")";
+    return false;
+  } else {
+    *listener << instruction->ToString()
+              << " has no sharding (expected: " << sharding_->ToString() << ")";
+    return false;
+  }
+}
+
+void HloShardingMatcher::DescribeTo(std::ostream* os) const {
+  if (sharding_.has_value()) {
+    *os << sharding_->ToString();
+  } else {
+    *os << "<no-sharding>";
+  }
+}
+
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {

@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
-CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
+CompileOnlyService::NewService(se::Platform* platform) {
   ServiceOptions default_options;
   default_options.set_platform(platform);
   return NewService(default_options);
@@ -45,7 +45,7 @@ CompileOnlyService::NewService(perftools::gputools::Platform* platform) {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
 CompileOnlyService::NewService(const ServiceOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
@@ -60,6 +60,49 @@ CompileOnlyService::NewService(const ServiceOptions& options) {
 CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
                                        Compiler* compiler)
     : Service(options, /*execute_backend=*/nullptr), compiler_(compiler) {}
+
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+CompileOnlyService::CompileAheadOfTime(
+    const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+    const AotCompilationOptions& options) {
+  std::vector<std::unique_ptr<HloModule>> hlo_modules;
+  for (const AotXlaComputationInstance& instance : computations) {
+    TF_RET_CHECK(instance.computation.has_program_shape());
+
+    const DebugOptions& debug_options = options.debug_options();
+
+    // Dump computation proto if flag is set.
+    const string& directory_path = debug_options.xla_dump_computations_to();
+    if (!directory_path.empty()) {
+      HloSnapshot hlo_snapshot;
+      *hlo_snapshot.mutable_hlo()->mutable_hlo_module() = instance.computation;
+      string filename = tensorflow::strings::StrCat(
+          "computation_", instance.computation.id(), "__",
+          instance.computation.entry_computation_name());
+      const string& per_host_path = tensorflow::io::JoinPath(
+          directory_path, tensorflow::port::Hostname());
+
+      TF_RETURN_IF_ERROR(
+          Executable::DumpToDirectory(per_host_path, filename, hlo_snapshot));
+    }
+
+    const auto& program_shape = instance.computation.program_shape();
+    ExecutionOptions execution_options;
+    *execution_options.mutable_debug_options() = debug_options;
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleConfig> module_config,
+        CreateModuleConfig(program_shape, instance.argument_layouts,
+                           &execution_options));
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> hlo_module,
+        HloModule::CreateFromProto(instance.computation, *module_config));
+    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
+    hlo_modules.push_back(std::move(hlo_module));
+  }
+
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
+}
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(

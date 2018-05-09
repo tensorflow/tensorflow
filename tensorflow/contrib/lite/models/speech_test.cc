@@ -131,8 +131,8 @@ TEST_P(SpeechTest, SpeakerIdOkGoogleTest) {
   ASSERT_TRUE(ConvertCsvData(
       "speech_speakerid_model.tflite", "speech_speakerid_model_in.csv",
       "speech_speakerid_model_out.csv", /*input_tensor=*/"0",
-      /*output_tensor=*/"66",
-      /*persistent_tensors=*/"19,20,40,41,61,62",
+      /*output_tensor=*/"63",
+      /*persistent_tensors=*/"18,19,38,39,58,59",
       /*sequence_size=*/80, &os));
   testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
@@ -144,8 +144,8 @@ TEST_P(SpeechTest, AsrAmTest) {
   ASSERT_TRUE(
       ConvertCsvData("speech_asr_am_model.tflite", "speech_asr_am_model_in.csv",
                      "speech_asr_am_model_out.csv", /*input_tensor=*/"0",
-                     /*output_tensor=*/"109",
-                     /*persistent_tensors=*/"19,20,40,41,61,62,82,83,103,104",
+                     /*output_tensor=*/"104",
+                     /*persistent_tensors=*/"18,19,38,39,58,59,78,79,98,99",
                      /*sequence_size=*/320, &os));
   testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
@@ -170,8 +170,8 @@ TEST_P(SpeechTest, EndpointerTest) {
   ASSERT_TRUE(ConvertCsvData(
       "speech_endpointer_model.tflite", "speech_endpointer_model_in.csv",
       "speech_endpointer_model_out.csv", /*input_tensor=*/"0",
-      /*output_tensor=*/"58",
-      /*persistent_tensors=*/"28,29,49,50",
+      /*output_tensor=*/"56",
+      /*persistent_tensors=*/"27,28,47,48",
       /*sequence_size=*/320, &os));
   testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
@@ -183,8 +183,8 @@ TEST_P(SpeechTest, TtsTest) {
   ASSERT_TRUE(ConvertCsvData("speech_tts_model.tflite",
                              "speech_tts_model_in.csv",
                              "speech_tts_model_out.csv", /*input_tensor=*/"0",
-                             /*output_tensor=*/"74",
-                             /*persistent_tensors=*/"25,26,46,47,67,68,73",
+                             /*output_tensor=*/"71",
+                             /*persistent_tensors=*/"24,25,44,45,64,65,70",
                              /*sequence_size=*/334, &os));
   testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))

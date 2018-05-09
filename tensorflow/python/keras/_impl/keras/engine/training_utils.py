@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import losses
+from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.ops import math_ops
 
 
@@ -61,22 +62,21 @@ def check_num_samples(ins,
   Raises:
       ValueError: In case of invalid arguments.
   """
-  if steps is not None:
-    num_samples = None
-    if batch_size is not None:
-      raise ValueError(
-          'If ' + steps_name + ' is set, the `batch_size` must be None.')
-  if has_symbolic_tensors(ins) and steps is None:
-    raise ValueError('If your data is in the form of symbolic tensors, '
-                     'you should specify the `' + steps_name + '` argument '
-                     '(instead of the `batch_size` argument).')
-  if ins and hasattr(ins[0], 'shape'):
-    num_samples = int(ins[0].shape[0])
-  elif steps is None:
+  if steps is not None and batch_size is not None:
     raise ValueError(
-        'Either the input data should have '
-        'a defined shape, or ' + steps_name + ' should be specified.')
-  return num_samples
+        'If ' + steps_name + ' is set, the `batch_size` must be None.')
+
+  if not ins or has_symbolic_tensors(ins):
+    if steps is None:
+      raise ValueError('If your data is in the form of symbolic tensors, '
+                       'you should specify the `' + steps_name + '` argument '
+                       '(instead of the `batch_size` argument, '
+                       'because symbolic tensors are expected to produce '
+                       'batches of input data).')
+    return None
+  if hasattr(ins[0], 'shape'):
+    return int(ins[0].shape[0])
+  return None  # Edge case where ins == [static_learning_phase]
 
 
 def standardize_single_array(x):
@@ -553,3 +553,64 @@ def standardize_weights(y,
 def has_symbolic_tensors(ls):
   return (any(tensor_util.is_tensor(v) for v in ls)
           and not context.executing_eagerly())
+
+
+def populate_metric_names(model):
+  for i in range(len(model.outputs)):
+    metrics = model.nested_metrics[i]
+    for metric in metrics:
+      base_metric_name = get_base_metric_name(metric)
+      add_metric_name(model, base_metric_name, i)
+
+
+def get_base_metric_name(metric, weighted=False):
+  """Returns the metric name given the metric function.
+
+  Arguments:
+      metric: Metric function name or reference.
+      weighted: Boolean indicating if the metric for which we are adding
+          names is weighted.
+
+  Returns:
+      a metric name.
+  """
+  metric_name_prefix = 'weighted_' if weighted else ''
+  if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
+    if metric in ('accuracy', 'acc'):
+      suffix = 'acc'
+    elif metric in ('crossentropy', 'ce'):
+      suffix = 'ce'
+    metric_name = metric_name_prefix + suffix
+  else:
+    metric_fn = metrics_module.get(metric)
+    # Get metric name as string
+    if hasattr(metric_fn, 'name'):
+      metric_name = metric_fn.name
+    else:
+      metric_name = metric_fn.__name__
+    metric_name = metric_name_prefix + metric_name
+
+  return metric_name
+
+
+def add_metric_name(model, metric_name, index):
+  """Makes the metric name unique and adds it to the model's metric name list.
+
+    If there are multiple outputs for which the metrics are calculated, the
+    metric names have to be made unique by appending an integer.
+
+  Arguments:
+    model: Model to which we are adding metric names.
+    metric_name: Metric name that corresponds to the metric specified by the
+        user. For example: 'acc'
+    index: The index of the model output for which the metric name is being
+        added.
+  """
+  if len(model.output_names) > 1:
+    metric_name = '%s_%s' % (model.output_names[index], metric_name)
+  j = 1
+  base_metric_name = metric_name
+  while metric_name in model.metrics_names:
+    metric_name = '%s_%d' % (base_metric_name, j)
+    j += 1
+  model.metrics_names.append(metric_name)

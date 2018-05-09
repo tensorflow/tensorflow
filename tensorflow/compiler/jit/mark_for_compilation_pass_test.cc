@@ -609,5 +609,29 @@ TEST(XlaCompilationTest, DontCountIdentityOpsWithLocalJit) {
   EXPECT_TRUE(clusters.empty());
 }
 
+TEST(XlaCompilationTest, ConstOp) {
+  // valid data type
+  {
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    Scope root = Scope::NewRootScope().ExitOnError();
+    auto c = ops::Const(root.WithOpName("const"), 0.5f);
+    c.node()->AddAttr(kXlaCompileAttr, true);
+    TF_ASSERT_OK(root.ToGraph(graph.get()));
+    TF_ASSERT_OK(MarkForCompilation(&graph));
+    EXPECT_EQ(1, GetClusters(*graph).size());
+  }
+
+  // invalid data type
+  {
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    Scope root = Scope::NewRootScope().ExitOnError();
+    auto c = ops::Const(root.WithOpName("const"), string("string"));
+    c.node()->AddAttr(kXlaCompileAttr, true);
+    TF_ASSERT_OK(root.ToGraph(graph.get()));
+    TF_ASSERT_OK(MarkForCompilation(&graph));
+    EXPECT_TRUE(GetClusters(*graph).empty());
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

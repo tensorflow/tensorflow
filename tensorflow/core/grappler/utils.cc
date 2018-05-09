@@ -142,36 +142,10 @@ bool IsSameInput(const string& name1, const string& name2) {
     return true;
   }
   int position1;
-  string node1 = ParseNodeName(name1, &position1);
+  StringPiece node1 = ParseNodeNameAsStringPiece(name1, &position1);
   int position2;
-  string node2 = ParseNodeName(name2, &position2);
+  StringPiece node2 = ParseNodeNameAsStringPiece(name2, &position2);
   return (position1 == position2) && (node1 == node2);
-}
-
-string ParseNodeName(const string& name, int* position) {
-  // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
-  // to get a node name.
-  strings::Scanner scan(name);
-  scan.ZeroOrOneLiteral("^")
-      .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
-      .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
-  StringPiece capture;
-  StringPiece remaining;
-  if (scan.Peek(':') != ':' || !scan.GetResult(&remaining, &capture)) {
-    *position = 0;
-    return "";
-  } else {
-    if (name[0] == '^') {
-      *position = -1;
-    } else if (remaining.empty()) {
-      *position = 0;
-    } else {
-      // Skip the first ':' character.
-      CHECK(strings::safe_strto32(remaining.substr(1), position));
-    }
-    return capture.ToString();
-  }
 }
 
 bool IsControlInput(const string& name) {
@@ -185,7 +159,7 @@ string NodeName(const string& name) {
 
 int NodePosition(const string& name) {
   int position;
-  ParseNodeName(name, &position);
+  ParseNodeNameAsStringPiece(name, &position);
   return position;
 }
 
@@ -275,13 +249,20 @@ int NumNonControlInputs(const NodeDef& node) {
 
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   int num_outputs = 0;
+  int pos;
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
     for (const string& node_as_input : output->input()) {
       if (IsControlInput(node_as_input)) {
         break;
       }
-      if (NodeName(node_as_input) == node.name()) {
+      if (node_as_input == node.name()) {
         ++num_outputs;
+      } else {
+        const StringPiece name =
+            ParseNodeNameAsStringPiece(node_as_input, &pos);
+        if (name == node.name()) {
+          ++num_outputs;
+        }
       }
     }
   }
@@ -380,8 +361,11 @@ inline void STLSortAndRemoveDuplicates(T* v) {
 }
 }  // namespace
 
-Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
-                                   bool dedup_outputs) {
+Status SimpleGraphView::Initialize(
+    const GraphDef& graph,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies,
+    bool dedup_inputs, bool dedup_outputs) {
   graph_ = &graph;
   const int num_nodes = graph.node_size();
   inputs_.clear();
@@ -398,6 +382,23 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
     const NodeDef& node = graph.node(node_idx);
     name_to_index_.emplace(node.name(), node_idx);
     index_to_name_.push_back(node.name());
+  }
+
+  if (extra_dependencies) {
+    for (const auto& dep : *extra_dependencies) {
+      auto itr_src = name_to_index_.find(dep.first->name());
+      if (itr_src == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent src ", dep.first->name());
+      }
+      auto itr_tgt = name_to_index_.find(dep.second->name());
+      if (itr_tgt == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent tgt ", dep.second->name());
+      }
+      const int src_idx = itr_src->second;
+      const int tgt_idx = itr_tgt->second;
+      inputs_[tgt_idx].push_back(src_idx);
+      outputs_[src_idx].push_back(tgt_idx);
+    }
   }
 
   // Build forward and reverse adjacency lists.
@@ -434,7 +435,8 @@ void SimpleGraphView::DepthFirstSearch(
     std::set<int>* nodes_found) const {
   nodes_found->clear();
   const string& op_type = graph_->node(root_node).op();
-  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
+  if (!op_types_to_traverse.empty() &&
+      op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
   std::vector<int> stack;
@@ -445,7 +447,8 @@ void SimpleGraphView::DepthFirstSearch(
     stack.pop_back();
     nodes_found->insert(node_idx);
     const string& op_type = graph_->node(node_idx).op();
-    if (op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
+    if (op_types_to_traverse.empty() ||
+        op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
       for (auto output_idx : this->outputs(node_idx)) {
         if (nodes_found->find(output_idx) == nodes_found->end()) {
           stack.push_back(output_idx);

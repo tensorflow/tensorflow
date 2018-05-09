@@ -557,8 +557,6 @@ DotOpEmitter::DotOpEmitter(
   return dot_emitter.Emit();
 }
 
-bool DotOpEmitter::ShapesAreLegalForRuntimeDot() const { return true; }
-
 bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   if (dot_.shape().dimensions_size() != 2) {
     return false;
@@ -908,8 +906,6 @@ tensorflow::Status DotOpEmitter::EmitScalarDot() {
 }
 
 tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
-  DCHECK(ShapesAreLegalForRuntimeDot());
-
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
@@ -1070,7 +1066,8 @@ static bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   // 1) be matrices with no padding, and
   // 2) have an allowed element type.
   PrimitiveType output_primitive_type = output_shape.element_type();
-  return (output_primitive_type == F32 || output_primitive_type == F16) &&
+  return (output_primitive_type == F64 || output_primitive_type == F32 ||
+          output_primitive_type == F16) &&
          IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape);
 }

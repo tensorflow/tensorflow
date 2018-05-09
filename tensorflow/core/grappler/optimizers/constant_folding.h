@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -78,12 +78,15 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
-  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
-  void ReplaceOperationWithSnapshot(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
+  void ReplaceOperationWithIdentity(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithSnapshot(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
   void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
-  Status ReplaceOperationWithConstant(double value, const AttrValue& dtype_attr,
+  Status ReplaceOperationWithConstant(double value,
+                                      const GraphProperties& properties,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
@@ -116,4 +119,4 @@ class ConstantFolding : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_

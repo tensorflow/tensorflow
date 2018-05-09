@@ -28,7 +28,6 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 # imports for backwards namespace compatibility
 # pylint: disable=unused-import
 from tensorflow.python.keras._impl.keras.layers.pooling import AveragePooling1D
@@ -39,6 +38,7 @@ from tensorflow.python.keras._impl.keras.layers.pooling import MaxPooling2D
 from tensorflow.python.keras._impl.keras.layers.pooling import MaxPooling3D
 # pylint: enable=unused-import
 from tensorflow.python.keras._impl.keras.utils import conv_utils
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
@@ -148,7 +148,7 @@ class Conv(Layer):
     if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis].value
+    input_dim = int(input_shape[channel_axis])
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
     self.kernel = self.add_variable(name='kernel',
@@ -705,6 +705,7 @@ class Conv2DTranspose(Conv2D):
         **kwargs)
 
   def build(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
     if len(input_shape) != 4:
       raise ValueError('Inputs should have rank 4. Received input shape: ' +
                        str(input_shape))
@@ -712,10 +713,10 @@ class Conv2DTranspose(Conv2D):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis] is None:
+    if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis]
+    input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
@@ -945,6 +946,7 @@ class Conv3DTranspose(Conv3D):
         **kwargs)
 
   def build(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
     if len(input_shape) != 5:
       raise ValueError('Inputs should have rank 5, received input shape:',
                        str(input_shape))
@@ -952,10 +954,10 @@ class Conv3DTranspose(Conv3D):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis] is None:
+    if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined, found None: ' + str(input_shape))
-    input_dim = input_shape[channel_axis]
+    input_dim = int(input_shape[channel_axis])
     kernel_shape = self.kernel_size + (self.filters, input_dim)
     self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
 
@@ -1212,7 +1214,7 @@ class SeparableConv(Conv):
     if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis].value
+    input_dim = int(input_shape[channel_axis])
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
     depthwise_kernel_shape = self.kernel_size + (input_dim,
@@ -1729,7 +1731,7 @@ class DepthwiseConv2D(Conv2D):
 
     return outputs
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self.data_format == 'channels_first':
       rows = input_shape[2]

@@ -125,7 +125,7 @@ def configure(src_base_path, gen_path, debug=False):
       try:
         # In python 3.5, symlink function exists even on Windows. But requires
         # Windows Admin privileges, otherwise an OSError will be thrown.
-        if hasattr(os, 'symlink'):
+        if hasattr(os, "symlink"):
           os.symlink(src, os.path.join(gen_path, target))
         else:
           shutil.copy2(src, os.path.join(gen_path, target))
@@ -139,7 +139,7 @@ def configure(src_base_path, gen_path, debug=False):
     print("gen_git_source.py: spec is %r" % spec)
 
 
-def get_git_version(git_base_path):
+def get_git_version(git_base_path, git_tag_override):
   """Get the git version from the repository.
 
   This function runs `git describe ...` in the path given as `git_base_path`.
@@ -152,6 +152,9 @@ def get_git_version(git_base_path):
 
   Args:
     git_base_path: where the .git directory is located
+    git_tag_override: Override the value for the git tag. This is useful for
+      releases where we want to build the release before the git tag is
+      created.
   Returns:
     A bytestring representing the git version
   """
@@ -161,8 +164,16 @@ def get_git_version(git_base_path):
         "git", str("--git-dir=%s/.git" % git_base_path),
         str("--work-tree=" + git_base_path), "describe", "--long", "--tags"
     ]).strip())
+    if git_tag_override:
+      split_val = val.split("-")
+      if len(split_val) != 3:
+        raise Exception(
+            ("Expected git version in format 'TAG-COMMITS AFTER TAG-HASH' "
+             "but got '%s'") % val)
+      split_val[0] = git_tag_override
+      val = bytes("-".join(split_val))
     return val if val else unknown_label
-  except subprocess.CalledProcessError:
+  except (subprocess.CalledProcessError, OSError):
     return unknown_label
 
 
@@ -205,7 +216,7 @@ const int tf_monolithic_build() {
   open(filename, "w").write(contents)
 
 
-def generate(arglist):
+def generate(arglist, git_tag_override=None):
   """Generate version_info.cc as given `destination_file`.
 
   Args:
@@ -225,6 +236,10 @@ def generate(arglist):
   `ref_symlink` is unused in this script but passed, because the build
     system uses that file to detect when commits happen.
 
+    git_tag_override: Override the value for the git tag. This is useful for
+      releases where we want to build the release before the git tag is
+      created.
+
   Raises:
     RuntimeError: If ./configure needs to be run, RuntimeError will be raised.
   """
@@ -242,11 +257,11 @@ def generate(arglist):
       raise RuntimeError(
           "Run ./configure again, branch was '%s' but is now '%s'" %
           (old_branch, new_branch))
-    git_version = get_git_version(data["path"])
+    git_version = get_git_version(data["path"], git_tag_override)
   write_version_info(dest_file, git_version)
 
 
-def raw_generate(output_file, source_dir):
+def raw_generate(output_file, source_dir, git_tag_override=None):
   """Simple generator used for cmake/make build systems.
 
   This does not create any symlinks. It requires the build system
@@ -255,9 +270,12 @@ def raw_generate(output_file, source_dir):
   Args:
     output_file: Output filename for the version info cc
     source_dir: Base path of the source code
+    git_tag_override: Override the value for the git tag. This is useful for
+      releases where we want to build the release before the git tag is
+      created.
   """
 
-  git_version = get_git_version(source_dir)
+  git_version = get_git_version(source_dir, git_tag_override)
   write_version_info(output_file, git_version)
 
 
@@ -278,6 +296,11 @@ parser.add_argument(
 parser.add_argument(
     "--gen_root_path", type=str,
     help="Root path to place generated git files (created by --configure).")
+
+parser.add_argument(
+    "--git_tag_override", type=str,
+    help="Override git tag value in the __git_version__ string. Useful when "
+         "creating release builds before the release tag is created.")
 
 parser.add_argument(
     "--generate",
@@ -302,12 +325,12 @@ if args.configure is not None:
     raise RuntimeError("Must pass --gen_root_path arg when running --configure")
   configure(args.configure, args.gen_root_path, debug=args.debug)
 elif args.generate is not None:
-  generate(args.generate)
+  generate(args.generate, args.git_tag_override)
 elif args.raw_generate is not None:
   source_path = "."
   if args.source_dir is not None:
     source_path = args.source_dir
-  raw_generate(args.raw_generate, source_path)
+  raw_generate(args.raw_generate, source_path, args.git_tag_override)
 else:
   raise RuntimeError("--configure or --generate or --raw_generate "
                      "must be used")

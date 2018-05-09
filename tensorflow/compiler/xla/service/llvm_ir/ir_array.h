@@ -97,6 +97,10 @@ class IrArray {
     llvm::Value*& operator[](size_t i) { return multidim()[i]; }
 
     void push_back(llvm::Value* value) { multidim().push_back(value); }
+    void InsertAt(int64 index, llvm::Value* value) {
+      CHECK_LE(index, size());
+      multidim().insert(multidim().begin() + index, value);
+    }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;

@@ -1,4 +1,3 @@
-
 # Find where we're running from, so we can store generated files here.
 ifeq ($(origin MAKEFILE_DIR), undefined)
 	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -69,12 +68,12 @@ LIB_NAME := libtensorflow-lite.a
 LIB_PATH := $(LIBDIR)$(LIB_NAME)
 
 # A small example program that shows how to link against the library.
-BENCHMARK_PATH := $(BINDIR)benchmark_model
+MINIMAL_PATH := $(BINDIR)minimal
 
-BENCHMARK_SRCS := \
-tensorflow/contrib/lite/tools/benchmark_model.cc
-BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS))))
+MINIMAL_SRCS := \
+tensorflow/contrib/lite/examples/minimal/minimal.cc
+MINIMAL_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
 
 # What sources we want to compile, must be kept in sync with the main Bazel
 # build files.
@@ -90,7 +89,8 @@ $(wildcard tensorflow/contrib/lite/kernels/*.c) \
 $(wildcard tensorflow/contrib/lite/kernels/internal/*.c) \
 $(wildcard tensorflow/contrib/lite/kernels/internal/optimized/*.c) \
 $(wildcard tensorflow/contrib/lite/kernels/internal/reference/*.c) \
-$(wildcard tensorflow/contrib/lite/downloads/farmhash/src/farmhash.cc)
+$(wildcard tensorflow/contrib/lite/downloads/farmhash/src/farmhash.cc) \
+$(wildcard tensorflow/contrib/lite/downloads/fft2d/fftsg.c)
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
@@ -99,7 +99,7 @@ $(wildcard tensorflow/contrib/lite/*/*test.cc) \
 $(wildcard tensorflow/contrib/lite/*/*/*test.cc) \
 $(wildcard tensorflow/contrib/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/contrib/lite/kernels/test_util.cc) \
-$(BENCHMARK_SRCS)
+$(MINIMAL_SRCS)
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # File names of the intermediate files target compilation generates.
@@ -118,17 +118,17 @@ $(OBJDIR)%.o: %.c
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
-all: $(LIB_PATH) $(BENCHMARK_PATH)
+all: $(LIB_PATH)  $(MINIMAL_PATH)
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 
-$(BENCHMARK_PATH): $(BENCHMARK_OBJS) $(LIB_PATH)
+$(MINIMAL_PATH): $(MINIMAL_OBJS) $(LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(BENCHMARK_PATH) $(BENCHMARK_OBJS) \
+	-o $(MINIMAL_PATH) $(MINIMAL_OBJS) \
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 # Gets rid of all generated files.

@@ -77,6 +77,7 @@ py_test(
     tags = [
         "no_pip",
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
         ":dnn",
@@ -210,7 +211,7 @@ py_library(
 
 py_test(
     name = "head_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/head_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -250,7 +251,7 @@ py_library(
 
 py_test(
     name = "linear_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/linear_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -367,6 +368,7 @@ py_library(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:model_fn",
@@ -447,21 +449,27 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
+        "noasan",  # times out
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
+        ":head",
         ":rnn",
+        "//tensorflow/contrib/data",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:parsing_utils",
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
         "@six_archive//:six",

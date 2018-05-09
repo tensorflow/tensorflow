@@ -120,8 +120,8 @@ void PrepOp(DataType dtype, int32 id,
 
 class ScopedAllocatorConcatOpTest : public OpsTestBase {
  protected:
-  void MakeOp(const TensorShape& shape, DataType dtype, const string& name,
-              int32 id, int32 num_tensors) {
+  void BuildNodeDef(const TensorShape& shape, DataType dtype,
+                    const string& name, int32 id, int32 num_tensors) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_concat_op", "_ScopedAllocatorConcat")
             .Attr("shape", shape)
@@ -132,6 +132,31 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
             .Input(FakeInput(dtype))               // backing tensor
             .Input(FakeInput(num_tensors, dtype))  // list of tensors
             .Finalize(node_def()));
+    shape_ = shape;
+    reshape_ = false;
+  }
+
+  void BuildNodeDefWithReshape(const TensorShape& shape, DataType dtype,
+                               bool reshape, const string& name, int32 id,
+                               int32 num_tensors) {
+    TF_EXPECT_OK(
+        NodeDefBuilder("scoped_allocator_concat_op", "_ScopedAllocatorConcat")
+            .Attr("shape", shape)
+            .Attr("T", dtype)
+            .Attr("reshape", reshape)
+            .Attr("N", num_tensors)
+            .Attr("sa_name", name)
+            .Attr("id", id)
+            .Input(FakeInput(dtype))               // backing tensor
+            .Input(FakeInput(num_tensors, dtype))  // list of tensors
+            .Finalize(node_def()));
+    shape_ = shape;
+    reshape_ = reshape;
+  }
+
+  void MakeOp(const TensorShape& shape, DataType dtype, bool reshape,
+              const string& name, int32 id, int32 num_tensors) {
+    BuildNodeDefWithReshape(shape, dtype, reshape, name, id, num_tensors);
     TF_EXPECT_OK(InitOp());
   }
 
@@ -141,7 +166,7 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
     std::vector<Tensor> tensors;
     std::vector<ScopedAllocator::Field> fields;
     PrepOp(dtype, id, fields_shapes, &fields, &backing_tensor, allocator(),
-           device_->GetScopedAllocatorMgr(), "split", &tensors, &inputs_,
+           device_->GetScopedAllocatorMgr(), "concat", &tensors, &inputs_,
            input_types_);
 
     TF_ASSERT_OK(RunOpKernel());
@@ -155,34 +180,55 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
     CHECK_EQ(DMAHelper::base(&input), DMAHelper::base(&output));
     CHECK_EQ(input.dtype(), output.dtype());
     CHECK_EQ(input.NumElements(), output.NumElements());
+    if (reshape_) {
+      CHECK_EQ(shape_, output.shape());
+    } else {
+      TensorShape expected_shape({input.NumElements()});
+      CHECK_EQ(expected_shape, output.shape());
+    }
 
     // Free the backing tensor which was allocated in PrepOp.
     delete backing_tensor;
   }
+
+ private:
+  TensorShape shape_;
+  bool reshape_;
 };
 
 TEST_F(ScopedAllocatorConcatOpTest, Success1) {
-  MakeOp({32}, DT_FLOAT, "test", 120, 2);
+  MakeOp({32}, DT_FLOAT, false, "test", 120, 2);
   ExecOp(DT_FLOAT, 120, {{16}, {16}});
 }
 
 TEST_F(ScopedAllocatorConcatOpTest, Success2) {
-  MakeOp({2, 2, 2}, DT_DOUBLE, "test", 120, 2);
+  MakeOp({2, 2, 2}, DT_DOUBLE, false, "test", 120, 2);
   ExecOp(DT_DOUBLE, 120, {{2, 2}, {2, 2}});
 }
 
 TEST_F(ScopedAllocatorConcatOpTest, Success3) {
-  MakeOp({3, 3, 3}, DT_HALF, "test", 120, 3);
+  MakeOp({3, 3, 3}, DT_HALF, false, "test", 120, 3);
   ExecOp(DT_HALF, 120, {{3, 3}, {3, 3}, {3, 3}});
 }
 
+TEST_F(ScopedAllocatorConcatOpTest, Reshape) {
+  MakeOp({2, 2, 2}, DT_DOUBLE, true, "test", 120, 2);
+  ExecOp(DT_DOUBLE, 120, {{2, 2}, {2, 2}});
+}
+
+TEST_F(ScopedAllocatorConcatOpTest, NoReshapeAttr) {
+  BuildNodeDef({3, 4, 4}, DT_HALF, "test", 120, 3);
+  TF_EXPECT_OK(InitOp());
+  ExecOp(DT_HALF, 120, {{4, 4}, {4, 4}, {4, 4}});
+}
+
 TEST_F(ScopedAllocatorConcatOpTest, FailDtypeCheck) {
-  MakeOp({8}, DT_FLOAT, "test", 120, 2);
+  MakeOp({8}, DT_FLOAT, false, "test", 120, 2);
   EXPECT_DEATH(ExecOp(DT_DOUBLE, 120, {{4}, {4}}), "");
 }
 
 TEST_F(ScopedAllocatorConcatOpTest, FailNumElementsCheck) {
-  MakeOp({32}, DT_FLOAT, "test", 120, 2);
+  MakeOp({32}, DT_FLOAT, false, "test", 120, 2);
   AddInputFromArray<float>({8}, {0, 1, 2, 3, 4, 5, 6, 7});
   AddInputFromArray<float>({4}, {0, 1, 2, 3});
   AddInputFromArray<float>({4}, {4, 5, 6, 7});
@@ -193,7 +239,7 @@ TEST_F(ScopedAllocatorConcatOpTest, FailNumElementsCheck) {
 // This test should fail because the backing tensor and the input tensors are
 // unrelated, i.e. the inputs are not slices of the backing tensor.
 TEST_F(ScopedAllocatorConcatOpTest, FailBounds) {
-  MakeOp({8}, DT_DOUBLE, "test", 120, 2);
+  MakeOp({8}, DT_DOUBLE, false, "test", 120, 2);
   AddInputFromArray<double>({8}, {0, 1, 2, 3, 4, 5, 6, 7});
   AddInputFromArray<double>({4}, {0, 1, 2, 3});
   AddInputFromArray<double>({4}, {4, 5, 6, 7});

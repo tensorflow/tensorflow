@@ -33,7 +33,7 @@ from tensorflow.python.platform import tf_logging as logging
 _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
 
 # Activations that are supported by the quantization rewrite.
-_ACTIVATION_TYPES = {'Relu', 'Relu6', 'Identity'}
+_ACTIVATION_TYPES = {'Relu', 'Relu6'}
 
 
 def Quantize(graph,
@@ -133,19 +133,27 @@ def Quantize(graph,
           bits=activation_bits,
           producer_scope=scope,
           consumer_scope=scope)
-      _InsertQuantOp(
-          add_context,
-          'add_quant',
-          layer_match.bypass_op,
-          input_to_ops_map.ConsumerOperations(layer_match.bypass_op),
-          is_training,
-          moving_avg=True,
-          ema_decay=ema_decay,
-          quant_delay=quant_delay,
-          vars_collection=vars_collection,
-          bits=activation_bits,
-          producer_scope=scope,
-          consumer_scope=scope)
+      # Make sure the op following this isn't an activation. In which case, we
+      # shouldn't quantize it, since the activation will be Fused into the
+      # Add at inference time.
+      consumers = input_to_ops_map.ConsumerOperations(layer_match.bypass_op)
+      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+        logging.info('Skipping %s, because its followed by an activation.',
+                     layer_match.bypass_op.name)
+      else:
+        _InsertQuantOp(
+            add_context,
+            'add_quant',
+            layer_match.bypass_op,
+            input_to_ops_map.ConsumerOperations(layer_match.bypass_op),
+            is_training,
+            moving_avg=True,
+            ema_decay=ema_decay,
+            quant_delay=quant_delay,
+            vars_collection=vars_collection,
+            bits=activation_bits,
+            producer_scope=scope,
+            consumer_scope=scope)
 
     # Quantize bypass ops that occur after the activation.
     if layer_match.post_activation_bypass_op is not None:
@@ -153,19 +161,27 @@ def Quantize(graph,
           r'^(.*)/([^/]+)', layer_match.post_activation_bypass_op.name).group(1)
       # If `scope` is given, only quantize it if the producer is in the right
       # scope.
-      _InsertQuantOp(
-          post_activation_bypass_context,
-          'post_activation_bypass_quant',
-          layer_match.post_activation_bypass_op,
-          input_to_ops_map.ConsumerOperations(
-              layer_match.post_activation_bypass_op),
-          is_training,
-          moving_avg=True,
-          ema_decay=ema_decay,
-          quant_delay=quant_delay,
-          vars_collection=vars_collection,
-          bits=activation_bits,
-          producer_scope=scope)
+      # Make sure the op following this isn't an activation. In which case, we
+      # shouldn't quantize it, since the activation will be Fused into the
+      # Add at inference time.
+      consumers = input_to_ops_map.ConsumerOperations(
+          layer_match.post_activation_bypass_op)
+      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+        logging.info('Skipping %s, because its followed by an activation.',
+                     layer_match.post_activation_bypass_op.name)
+      else:
+        _InsertQuantOp(
+            post_activation_bypass_context,
+            'post_activation_bypass_quant',
+            layer_match.post_activation_bypass_op,
+            consumers,
+            is_training,
+            moving_avg=True,
+            ema_decay=ema_decay,
+            quant_delay=quant_delay,
+            vars_collection=vars_collection,
+            bits=activation_bits,
+            producer_scope=scope)
 
 
 def _FindLayersToQuantize(graph):
@@ -251,8 +267,10 @@ def _FindLayersToQuantize(graph):
 
   # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
+  # TODO(suharshs): We should ideally skip Identity operations instead of
+  # treating them as an activation.
   activation_pattern = graph_matcher.OpTypePattern(
-      '|'.join(_ACTIVATION_TYPES),
+      '|'.join(_ACTIVATION_TYPES) + '|Identity',
       inputs=[
           graph_matcher.OneofPattern([
               bias_add_pattern, folded_bias_add_pattern, bypass_pattern_a,

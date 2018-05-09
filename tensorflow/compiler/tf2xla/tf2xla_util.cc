@@ -232,7 +232,7 @@ Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
     // Push input nodes of the currently visited node to name_queue.
     for (const string& in_edge : map_entry.second->input()) {
       auto id = ParseTensorName(in_edge);
-      const string node_name = id.first.ToString();
+      const string node_name = std::string(id.first);
       if (feed_tensors.find(std::make_pair(node_name, id.second)) ==
           feed_tensors.end()) {
         name_queue.push(node_name);
@@ -286,6 +286,15 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
     n->set_requested_device(matching_node->requested_device());
   }
   return Status::OK();
+}
+
+void AddDtypeToKernalDefConstraint(StringPiece name, DataType dtype,
+                                   KernelDef* kdef) {
+  for (KernelDef::AttrConstraint& constraint : *kdef->mutable_constraint()) {
+    if (constraint.name() == name) {
+      constraint.mutable_allowed_values()->mutable_list()->add_type(dtype);
+    }
+  }
 }
 
 }  // namespace tensorflow

@@ -91,11 +91,15 @@ Status OpRegistry::LookUp(const string& op_type_name,
         }
       }
     }
-    Status status =
-        errors::NotFound("Op type not registered '", op_type_name,
-                         "' in binary running on ", port::Hostname(), ". ",
-                         "Make sure the Op and Kernel are registered in the "
-                         "binary running in this process.");
+    Status status = errors::NotFound(
+        "Op type not registered '", op_type_name, "' in binary running on ",
+        port::Hostname(), ". ",
+        "Make sure the Op and Kernel are registered in the "
+        "binary running in this process. Note that if you "
+        "are loading a saved graph which used ops from "
+        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done"
+        "before importing the graph, as contrib ops are lazily registered "
+        "when the module is first accessed.");
     VLOG(1) << status.ToString();
     return status;
   }
@@ -246,10 +250,15 @@ Status OpListOpRegistry::LookUp(const string& op_type_name,
   auto iter = index_.find(op_type_name);
   if (iter == index_.end()) {
     *op_reg_data = nullptr;
-    return errors::NotFound("Op type not registered '", op_type_name,
-                            "' in binary running on ", port::Hostname(), ". ",
-                            "Make sure the Op and Kernel are registered in the "
-                            "binary running in this process.");
+    return errors::NotFound(
+        "Op type not registered '", op_type_name, "' in binary running on ",
+        port::Hostname(), ". ",
+        "Make sure the Op and Kernel are registered in the "
+        "binary running in this process. Note that if you "
+        "are loading a saved graph which used ops from "
+        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done"
+        "before importing the graph, as contrib ops are lazily registered "
+        "when the module is first accessed.");
   }
   *op_reg_data = iter->second;
   return Status::OK();

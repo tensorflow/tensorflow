@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
 
@@ -43,6 +44,18 @@ Status MakeIteratorFromInputElement(
   *out_iterator = returned_dataset->MakeIterator(
       strings::StrCat(prefix, "[", thread_index, "]"));
   return Status::OK();
+}
+
+IteratorContext MakeIteratorContext(OpKernelContext* ctx) {
+  IteratorContext::Params params;
+  params.env = ctx->env();
+  params.runner = *(ctx->runner());
+  params.lib = ctx->function_library();
+  DeviceBase* device = ctx->function_library()->device();
+  params.allocator_getter = [device](AllocatorAttributes attrs) {
+    return device->GetAllocator(attrs);
+  };
+  return IteratorContext(params);
 }
 
 }  // namespace dataset

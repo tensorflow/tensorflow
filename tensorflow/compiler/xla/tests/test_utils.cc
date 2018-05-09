@@ -339,9 +339,8 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
   return std::move(arguments);
 }
 
-Status VerifyHloModule(const perftools::gputools::Platform& platform,
-                       HloModule* const module) {
-  return HloVerifier().Run(module).status();
+Status VerifyHloModule(HloModule* const module, bool allow_mixed_precision) {
+  return HloVerifier(allow_mixed_precision).Run(module).status();
 }
 
 }  // namespace xla

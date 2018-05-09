@@ -59,18 +59,6 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 
 )"
 },
-// broadcast size-one dimensions
-{
-"BroadcastDimOne",
-R"(HloModule broadcast_dim_one_module
-
-ENTRY %broadcast-dim-one () -> f32[2,2] {
-  %constant = f32[1,2]{1,0} constant(f32[1,2] { { 1.1, 2.2 } })
-  ROOT %broadcast-dim-one = f32[2,2]{1,0} broadcast-dim-one(f32[1,2]{1,0} %constant)
-}
-
-)"
-},
 // pred constant
 {
 "ConstantPred",
@@ -1251,7 +1239,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = Parse(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->entry_computation_layout();
+  auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();

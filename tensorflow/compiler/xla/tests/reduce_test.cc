@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -59,10 +59,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using FuncGeneratorForType = Computation (*)(PrimitiveType,
-                                             ComputationBuilder*);
+using FuncGeneratorForType = XlaComputation (*)(PrimitiveType, XlaBuilder*);
 
-using FuncGenerator = Computation (*)(ComputationBuilder*);
+using FuncGenerator = XlaComputation (*)(XlaBuilder*);
 
 class ReduceTest : public ClientLibraryTestBase {
  protected:
@@ -88,8 +87,8 @@ class ReduceTest : public ClientLibraryTestBase {
 
   // Runs an R1 => R0 reduction test with the given number of elements.
   void RunR1ToR0Test(int64 element_count) {
-    ComputationBuilder builder(client_, TestName());
-    Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+    XlaBuilder builder(TestName());
+    XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
     const Shape input_shape = ShapeUtil::MakeShape(F32, {element_count});
     auto input = builder.Parameter(0, input_shape, "input");
     auto zero = builder.ConstantR0<float>(0.0);
@@ -118,13 +117,13 @@ class ReduceTest : public ClientLibraryTestBase {
   void RunR1ToR0PredTest(bool and_reduce,
                          tensorflow::gtl::ArraySlice<int> input_data) {
     const int element_count = input_data.size();
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     const Shape input_shape = ShapeUtil::MakeShape(S32, {element_count});
     auto input_par = builder.Parameter(0, input_shape, "input");
     auto pred_values =
         builder.Eq(input_par, builder.ConstantR1<int>(element_count, 1));
-    ComputationDataHandle init_value;
-    Computation reduce;
+    XlaOp init_value;
+    XlaComputation reduce;
     if (and_reduce) {
       init_value = builder.ConstantR0<bool>(true);
       reduce = CreateScalarAndComputation(&builder);
@@ -156,13 +155,13 @@ class ReduceTest : public ClientLibraryTestBase {
   template <int64 cols>
   void RunR2ToR1PredTest(bool and_reduce, int64 rows, int64 minor = 1,
                          int64 major = 0) {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     const Shape input_shape = ShapeUtil::MakeShape(U8, {rows, cols});
     auto input = builder.Parameter(0, input_shape, "input");
     auto input_pred = builder.Eq(input, builder.ConstantR0<uint8>(1));
 
-    ComputationDataHandle init_value;
-    Computation reduce_op;
+    XlaOp init_value;
+    XlaComputation reduce_op;
     if (and_reduce) {
       init_value = builder.ConstantR0<bool>(true);
       reduce_op = CreateScalarAndComputation(&builder);
@@ -201,8 +200,8 @@ class ReduceTest : public ClientLibraryTestBase {
 
   // Runs an R2 => R0 reduction test with the given number of (rows, cols).
   void RunR2ToR0Test(int64 rows, int64 cols, int64 minor = 1, int64 major = 0) {
-    ComputationBuilder builder(client_, TestName());
-    Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+    XlaBuilder builder(TestName());
+    XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
     const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
     auto input = builder.Parameter(0, input_shape, "input");
     auto zero = builder.ConstantR0<float>(0.0);
@@ -229,8 +228,8 @@ class ReduceTest : public ClientLibraryTestBase {
 
   // Runs an R2 => R1 reduction test with the given number of (rows, cols).
   void RunR2ToR1Test(int64 rows, int64 cols, int64 minor = 1, int64 major = 0) {
-    ComputationBuilder builder(client_, TestName());
-    Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+    XlaBuilder builder(TestName());
+    XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
     const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
     auto input = builder.Parameter(0, input_shape, "input");
     auto zero = builder.ConstantR0<float>(0.0);
@@ -260,7 +259,7 @@ class ReduceTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_floating_point<NativeT>::value,
-                              ComputationBuilder>::type* builder,
+                              XlaBuilder>::type* builder,
       tensorflow::gtl::ArraySlice<NativeT> expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments,
@@ -270,7 +269,7 @@ class ReduceTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void ComputeAndCompareGeneric(
       typename std::enable_if<std::is_integral<NativeT>::value,
-                              ComputationBuilder>::type* builder,
+                              XlaBuilder>::type* builder,
       tensorflow::gtl::ArraySlice<NativeT> expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
     ComputeAndCompareR1<NativeT>(builder, expected, arguments);
@@ -278,15 +277,15 @@ class ReduceTest : public ClientLibraryTestBase {
 
   template <typename NativeT>
   void RunVectorizedReduceTestForType(
-      const std::function<Computation(ComputationBuilder*)>&
+      const std::function<XlaComputation(XlaBuilder*)>&
           reduction_function_generator,
       const std::function<NativeT(NativeT, NativeT)>&
           reference_reduction_function,
       const NativeT& initial_value) {
     const int rows = 64, cols = 128;
     const int minor = 1, major = 0;
-    ComputationBuilder builder(client_, TestName());
-    Computation reduction_function = reduction_function_generator(&builder);
+    XlaBuilder builder(TestName());
+    XlaComputation reduction_function = reduction_function_generator(&builder);
     const Shape input_shape = ShapeUtil::MakeShape(
         xla::primitive_util::NativeToPrimitiveType<NativeT>(), {rows, cols});
     auto input = builder.Parameter(0, input_shape, "input");
@@ -321,7 +320,7 @@ class ReduceTest : public ClientLibraryTestBase {
   }
 
   void RunVectorizedReduceTest(
-      const std::function<Computation(PrimitiveType, ComputationBuilder*)>&
+      const std::function<XlaComputation(PrimitiveType, XlaBuilder*)>&
           reduction_function_generator_for_type,
       const std::function<float(float, float)>&
           reference_reduction_function_for_floats,
@@ -333,21 +332,21 @@ class ReduceTest : public ClientLibraryTestBase {
       uint32 unsigned_int_identity) {
     // Float version
     RunVectorizedReduceTestForType<float>(
-        [&](ComputationBuilder* builder) {
+        [&](XlaBuilder* builder) {
           return reduction_function_generator_for_type(F32, builder);
         },
         reference_reduction_function_for_floats, floating_point_identity);
 
     // Signed int version
     RunVectorizedReduceTestForType<int32>(
-        [&](ComputationBuilder* builder) {
+        [&](XlaBuilder* builder) {
           return reduction_function_generator_for_type(S32, builder);
         },
         reference_reduction_function_for_ints, signed_int_identity);
 
     // Unsigned int version
     RunVectorizedReduceTestForType<uint32>(
-        [&](ComputationBuilder* builder) {
+        [&](XlaBuilder* builder) {
           return reduction_function_generator_for_type(U32, builder);
         },
         reference_reduction_function_for_uints, unsigned_int_identity);
@@ -441,8 +440,8 @@ XLA_TEST_F(ReduceTest, OrReduceOnesAndZerosR1_10_Pred) {
 XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   const int64 rows = 111, cols = 50;
 
-  ComputationBuilder builder(client_, TestName());
-  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  XlaBuilder builder(TestName());
+  XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
   const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
   auto input = builder.Parameter(0, input_shape, "input");
   auto zero = builder.ConstantR0<float>(0.0);
@@ -472,8 +471,8 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
 XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
   const int64 rows = 111, cols = 50;
 
-  ComputationBuilder builder(client_, TestName());
-  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  XlaBuilder builder(TestName());
+  XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
   const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
   auto input = builder.Parameter(0, input_shape, "input");
   auto zero = builder.ConstantR0<float>(0.0);
@@ -521,8 +520,8 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceR3_12x111x50_To_R2) {
 XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   const int64 rows = 111, cols = 50;
 
-  ComputationBuilder builder(client_, TestName());
-  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  XlaBuilder builder(TestName());
+  XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
   const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, 2, cols / 2});
   auto input = builder.Parameter(0, input_shape, "input");
   auto zero = builder.ConstantR0<float>(0.0);
@@ -568,7 +567,7 @@ void PrintTo(const BoundsLayout& spec, std::ostream* os) {
 
 // Add-reduces a broadcasted scalar matrix among dimension 1 and 0.
 XLA_TEST_F(ReduceTest, AddReduce2DScalarToR0) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto add = CreateScalarAddComputation(F32, &builder);
   auto scalar = builder.ConstantR0<float>(42.0);
   auto broadcasted = builder.Broadcast(scalar, {500, 500});
@@ -580,7 +579,7 @@ XLA_TEST_F(ReduceTest, AddReduce2DScalarToR0) {
 
 // Max-reduces a broadcasted scalar matrix among dimension 1 and 0.
 XLA_TEST_F(ReduceTest, MaxReduce2DScalarToR0) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto max = CreateScalarMaxComputation(F32, &builder);
   auto scalar = builder.ConstantR0<float>(42.0);
   auto broadcasted = builder.Broadcast(scalar, {500, 500});
@@ -592,7 +591,7 @@ XLA_TEST_F(ReduceTest, MaxReduce2DScalarToR0) {
 
 // Max-reduces a matrix among dimension 1 and 0.
 XLA_TEST_F(ReduceTest, MaxReduce2DToR0) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto max = CreateScalarMaxComputation(F32, &builder);
   Array2D<float> input(300, 250);
   input.FillRandom(214.0f);
@@ -607,7 +606,7 @@ XLA_TEST_F(ReduceTest, MaxReduce2DToR0) {
 
 // Min-reduces matrix among dimension 1 and 0.
 XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto min = CreateScalarMinComputation(F32, &builder);
   Array2D<float> input(150, 130);
   input.FillRandom(214.0f);
@@ -622,7 +621,7 @@ XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
 }
 
 XLA_TEST_F(ReduceTest, UnsignedInt_MinReduce) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   Array2D<uint32> input({{1}, {2}});
   auto min = CreateScalarMinComputation(U32, &builder);
   auto input_literal = Literal::CreateR2FromArray2D(input);
@@ -635,7 +634,7 @@ XLA_TEST_F(ReduceTest, UnsignedInt_MinReduce) {
 }
 
 XLA_TEST_F(ReduceTest, UnsignedInt_MaxReduce) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   Array2D<uint32> input({{1}, {2}});
   auto max = CreateScalarMaxComputation(U32, &builder);
   auto input_literal = Literal::CreateR2FromArray2D(input);
@@ -649,7 +648,7 @@ XLA_TEST_F(ReduceTest, UnsignedInt_MaxReduce) {
 
 // Reduces a matrix among dimension 1.
 XLA_TEST_F(ReduceTest, Reduce2DAmong1) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_2d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {1});
@@ -660,7 +659,7 @@ XLA_TEST_F(ReduceTest, Reduce2DAmong1) {
 
 XLA_TEST_F(ReduceTest, Reduce2DAmong0and1) {
   // Reduce a matrix among dimensions 0 and 1 (sum it up to a scalar).
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_2d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {0, 1});
@@ -670,7 +669,7 @@ XLA_TEST_F(ReduceTest, Reduce2DAmong0and1) {
 
 // Tests 2D matrix ReduceToRow operation.
 XLA_TEST_F(ReduceTest, Reduce2DAmongY) {
-  ComputationBuilder builder(client_, "reduce_among_y");
+  XlaBuilder builder("reduce_among_y");
   auto m = builder.ConstantLiteral(*literal_2d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {0});
@@ -680,7 +679,7 @@ XLA_TEST_F(ReduceTest, Reduce2DAmongY) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDims_1_2) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {1, 2});
@@ -690,7 +689,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDims_1_2) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDims_0_1) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {0, 1});
@@ -700,7 +699,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDims_0_1) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceR3ToR0) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {0, 1, 2});
@@ -710,7 +709,7 @@ XLA_TEST_F(ReduceTest, ReduceR3ToR0) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDim0) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {0});
@@ -725,7 +724,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDim0) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDim1) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {1});
@@ -742,7 +741,7 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDim1) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceR3AmongDim2) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantLiteral(*literal_3d_);
   auto add = CreateScalarAddComputation(F32, &builder);
   builder.Reduce(m, builder.ConstantR0<float>(0.0f), add, {2});
@@ -816,7 +815,7 @@ class ReduceR3ToR2Test : public ReduceTest,
                          public ::testing::WithParamInterface<BoundsLayout> {};
 
 XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   const auto& bounds = GetParam().bounds;
   Array3D<float> input_array(bounds[0], bounds[1], bounds[2]);
   //  input_array.FillRandom(3.14f, 0.05);
@@ -830,7 +829,7 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
 
   auto input_activations =
       builder.Parameter(0, input_literal->shape(), "input");
-  Computation add = CreateScalarAddComputation(F32, &builder);
+  XlaComputation add = CreateScalarAddComputation(F32, &builder);
   auto sum = builder.Reduce(input_activations, builder.ConstantR0<float>(0.0f),
                             add, GetParam().reduce_dims);
 
@@ -870,8 +869,8 @@ INSTANTIATE_TEST_CASE_P(
 // IrEmitterUnnested::EmitInitializer() for the Reduce operator.  Failed on
 // 2017-07-26.
 XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
-  ComputationBuilder builder(client_, TestName());
-  Computation max_f32 = CreateScalarMaxComputation(F32, &builder);
+  XlaBuilder builder(TestName());
+  XlaComputation max_f32 = CreateScalarMaxComputation(F32, &builder);
 
   auto a = builder.ConstantR0<float>(2.0f);
   auto a2 = builder.Abs(a);
@@ -898,8 +897,8 @@ class ReduceInitializerTest : public ReduceTest {
  protected:
   template <typename T>
   void DoTest(T initializer, int num_elems) {
-    ComputationBuilder builder(client_, TestName());
-    Computation max_fn = CreateScalarMaxComputation(
+    XlaBuilder builder(TestName());
+    XlaComputation max_fn = CreateScalarMaxComputation(
         primitive_util::NativeToPrimitiveType<T>(), &builder);
 
     auto init = builder.ConstantR0<T>(initializer);
@@ -932,6 +931,37 @@ XLA_TEST_F(ReduceInitializerTest, U64InitializerOne) {
 
 XLA_TEST_F(ReduceInitializerTest, U64InitializerBigValue) {
   DoTest<uint64>(1234556789123, 1024);
+}
+
+// Test the operational semantic that the init value is passed on the lhs for
+// reduces. Can be tested by performing an "identity" reduce (that simply
+// returns one of the parameters). In this case, we return the rhs, which for
+// a 1D array with one element, should not be the init value.
+XLA_TEST_F(ReduceTest, ReduceIdentity) {
+  XlaBuilder builder(TestName());
+  Shape single_float = ShapeUtil::MakeShape(F32, {});
+  builder.Parameter(0, single_float, "lhs-unused");
+  builder.Parameter(1, single_float, "rhs-used");
+  auto computation_status = builder.Build();
+  TF_ASSERT_OK(computation_status.status());
+
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {1});
+  builder.Reduce(builder.Parameter(0, operand_shape, "operand"),
+                 builder.Parameter(1, single_float, "init"),
+                 computation_status.ValueOrDie(), {0});
+
+  float operand[] = {42.0f};
+  float init = 58.5f;
+  float expected = 42.0f;
+  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(operand);
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+  std::unique_ptr<Literal> input_literal2 = Literal::CreateR0<float>(init);
+  std::unique_ptr<GlobalData> input_global_data2 =
+      client_->TransferToServer(*input_literal2).ConsumeValueOrDie();
+  ComputeAndCompareR0<float>(
+      &builder, expected, {input_global_data.get(), input_global_data2.get()},
+      ErrorSpec(0.0001));
 }
 
 }  // namespace
