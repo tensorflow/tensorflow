@@ -17,10 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.training import checkpointable
+from tensorflow.python.training import checkpointable_utils
 
 
 def dot_graph_from_checkpoint(save_path):
@@ -52,20 +51,9 @@ def dot_graph_from_checkpoint(save_path):
     A graph in DOT format as a string.
   """
   reader = pywrap_tensorflow.NewCheckpointReader(save_path)
-  try:
-    object_graph_string = reader.get_tensor(
-        checkpointable.OBJECT_GRAPH_PROTO_KEY)
-  except errors_impl.NotFoundError:
-    raise ValueError(
-        ('The specified checkpoint "%s" does not appear to be object-based (it '
-         'is missing the key "%s"). Likely it was created with a name-based '
-         'saver and does not contain an object dependency graph.') % (
-             save_path, checkpointable.OBJECT_GRAPH_PROTO_KEY))
+  object_graph = checkpointable_utils.object_metadata(save_path)
   shape_map = reader.get_variable_to_shape_map()
   dtype_map = reader.get_variable_to_dtype_map()
-  object_graph = (
-      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
-  object_graph.ParseFromString(object_graph_string)
   graph = 'digraph {\n'
   def _escape(name):
     return name.replace('"', '\\"')

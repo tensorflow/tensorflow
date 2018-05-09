@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -85,7 +86,7 @@ class HeapSimulatorTracker {
     // size of the buffers doesn't matter, so we always return 0.  We rely on
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls by
     // buffer id, for determinism in the tests.
-    auto zero_size = [](const LogicalBuffer& buffer) { return 0; };
+    auto zero_size = [](const BufferValue& buffer) { return 0; };
     auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
         MakeUnique<HeapCallRecorder>(&actual_calls_));
     result_ = HeapSimulator::Run(
@@ -119,7 +120,7 @@ class HeapSimulatorTracker {
     // the sequence. This lets us ensure the Alloc calls are in the sequence
     // order. The Free calls are sorted by LogicalBuffer.id, which is at least
     // deterministic.
-    auto size_fn = [&reverse_position](const LogicalBuffer& buffer) {
+    auto size_fn = [&reverse_position](const BufferValue& buffer) {
       return reverse_position[buffer.instruction()];
     };
     auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(

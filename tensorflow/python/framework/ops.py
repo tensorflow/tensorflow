@@ -1057,13 +1057,19 @@ def internal_convert_to_tensor(value,
 
   """
   if ctx is None: ctx = context.context()
-  if ctx.executing_eagerly():
-    # Fast path for EagerTensors that don't need any conversion.
-    if isinstance(value, EagerTensor):
+  if isinstance(value, EagerTensor):
+    if ctx.executing_eagerly():
+      # Fast path for EagerTensors that don't need any conversion.
       # Note that we don't check that value's dtype matches the dtype
       # argument.  We expect that the C runtime will do that checking
       # when we execute the kernel.
       return value
+    else:
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError("Attempting to capture an EagerTensor without "
+                           "building a function.")
+      return graph.capture(value, name=name)
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1251,7 +1257,10 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, _TensorLike):
+  if isinstance(value, EagerTensor) and not context.executing_eagerly():
+    return internal_convert_to_tensor(
+        value, dtype=dtype, name=name, as_ref=as_ref)
+  elif isinstance(value, _TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
@@ -5402,36 +5411,30 @@ def enable_eager_execution(config=None, device_policy=None,
       in which operations are executed. Note that @{tf.ConfigProto} is also
       used to configure graph execution (via @{tf.Session}) and many options
       within `tf.ConfigProto` are not implemented (or are irrelevant) when
-     eager execution is enabled.
+      eager execution is enabled.
     device_policy: (Optional.) Policy controlling how operations requiring
-     inputs on a specific device (e.g., a GPU 0) handle inputs on a different
-     device  (e.g. GPU 1 or CPU). When set to None, an appropriate value will be
-     picked automatically. The value picked may change between TensorFlow
-     releases.
-     Valid values:
-
+      inputs on a specific device (e.g., a GPU 0) handle inputs on a different
+      device  (e.g. GPU 1 or CPU). When set to None, an appropriate value will be
+      picked automatically. The value picked may change between TensorFlow
+      releases.
+      Valid values:
       - tf.contrib.eager.DEVICE_PLACEMENT_EXPLICIT: raises an error if the
         placement is not correct.
-
       - tf.contrib.eager.DEVICE_PLACEMENT_WARN: copies the tensors which are not
         on the right device but logs a warning.
-
       - tf.contrib.eager.DEVICE_PLACEMENT_SILENT: silently copies the tensors.
         Note that this may hide performance problems as there is no notification
         provided when operations are blocked on the tensor being copied between
         devices.
-
       - tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies
         int32 tensors, raising errors on the other ones.
     execution_mode: (Optional.) Policy controlling how operations dispatched are
       actually executed. When set to None, an appropriate value will be picked
       automatically. The value picked may change between TensorFlow releases.
       Valid values:
-
-        - tf.contrib.eager.SYNC: executes each operation synchronously.
-
-        - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
-          operations may return "non-ready" handles.
+      - tf.contrib.eager.SYNC: executes each operation synchronously.
+      - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+        operations may return "non-ready" handles.
 
   Raises:
     ValueError: If eager execution is enabled after creating/executing a

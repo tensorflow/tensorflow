@@ -414,7 +414,8 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor):
 def _FoldFusedBatchNormGrad(op, unused_grad_y, grad_mean, grad_var, unused_1,
                             unused_2):
   x = op.inputs[0]
-  n = x.get_shape().num_elements() / grad_mean.get_shape().num_elements()
+  n = math_ops.cast(
+      array_ops.size(x) / array_ops.size(grad_mean), dtypes.float32)
   dmean_dx = grad_mean / n
   dvar_dx = 2 * grad_var * (x - op.outputs[1]) / (n - 1)
   return (dmean_dx + dvar_dx), None, None, None, None

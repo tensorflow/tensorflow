@@ -27,9 +27,6 @@ namespace tensorflow {
 DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
     : name_backing_store_(128) {
   for (Device* d : devices) {
-    CHECK(d->device_mgr_ == nullptr);
-    d->device_mgr_ = this;
-
     devices_.push_back(d);
 
     // Register under the (1) full name and (2) canonical name.

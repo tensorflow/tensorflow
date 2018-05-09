@@ -70,40 +70,24 @@ filegroup(
 
 tf_java_op_gen_srcjar(
     name = "java_op_gen_sources",
-    gen_base_package = "org.tensorflow.op",
-    gen_tool = "java_op_gen_tool",
-    ops_libs = [
-        "array_ops",
-        "candidate_sampling_ops",
-        "control_flow_ops",
-        "data_flow_ops",
-        "image_ops",
-        "io_ops",
-        "linalg_ops",
-        "logging_ops",
-        "math_ops",
-        "nn_ops",
-        "no_op",
-        "parsing_ops",
-        "random_ops",
-        "sparse_ops",
-        "state_ops",
-        "string_ops",
-        "training_ops",
-        "user_ops",
+    api_def_srcs = [
+        "//tensorflow/core/api_def:base_api_def",
     ],
+    base_package = "org.tensorflow.op",
+    gen_tool = ":java_op_gen_tool",
 )
 
-# Build the gen tool as a library, as it will be linked to a core/ops binary
-# file before making it an executable. See tf_java_op_gen_srcjar().
-cc_library(
+tf_cc_binary(
     name = "java_op_gen_tool",
     srcs = [
         "src/gen/cc/op_gen_main.cc",
     ],
     copts = tf_copts(),
+    linkopts = ["-lm"],
+    linkstatic = 1,
     deps = [
         ":java_op_gen_lib",
+        "//tensorflow/core:ops",
     ],
 )
 
@@ -111,11 +95,13 @@ cc_library(
     name = "java_op_gen_lib",
     srcs = [
         "src/gen/cc/op_generator.cc",
+        "src/gen/cc/op_specs.cc",
         "src/gen/cc/source_writer.cc",
     ],
     hdrs = [
         "src/gen/cc/java_defs.h",
         "src/gen/cc/op_generator.h",
+        "src/gen/cc/op_specs.h",
         "src/gen/cc/source_writer.h",
     ],
     copts = tf_copts(),
@@ -124,6 +110,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:op_gen_lib",
     ],
 )
 

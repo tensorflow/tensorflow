@@ -351,6 +351,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_DEQUANTIZE:
     case BuiltinOperator_PRELU:
     case BuiltinOperator_FLOOR:
+    case BuiltinOperator_NEG:
       break;
     case BuiltinOperator_CAST: {
       TfLiteCastParams* params = MallocPOD<TfLiteCastParams>();
@@ -568,6 +569,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_PAD: {
       break;
     }
+    case BuiltinOperator_PADV2: {
+      break;
+    }
     case BuiltinOperator_RESHAPE: {
       auto* params = MallocPOD<TfLiteReshapeParams>();
       if (auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
@@ -668,7 +672,11 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_LESS: {
+    case BuiltinOperator_GREATER:
+    case BuiltinOperator_GREATER_EQUAL:
+    case BuiltinOperator_LESS:
+    case BuiltinOperator_LESS_EQUAL:
+    case BuiltinOperator_SELECT: {
       break;
     }
     case BuiltinOperator_DELEGATE: {

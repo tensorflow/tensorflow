@@ -197,18 +197,38 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   // We don't put any data in these buffers, because (in theory, anyway) the
   // speed of a conv isn't affected by the data being convolved.
   ScratchAllocator input_output_allocator(device_ordinal, allocator);
-  se::port::StatusOr<DeviceMemoryBase> input_buf =
+  StatusOr<DeviceMemoryBase> maybe_input_buf =
       input_output_allocator.AllocateBytes(&stream,
                                            ShapeUtil::ByteSizeOf(input_shape));
-  se::port::StatusOr<DeviceMemoryBase> filter_buf =
+  StatusOr<DeviceMemoryBase> maybe_filter_buf =
       input_output_allocator.AllocateBytes(&stream,
                                            ShapeUtil::ByteSizeOf(filter_shape));
-  se::port::StatusOr<DeviceMemoryBase> output_buf =
+  StatusOr<DeviceMemoryBase> maybe_output_buf =
       input_output_allocator.AllocateBytes(&stream,
                                            ShapeUtil::ByteSizeOf(output_shape));
-  if (!input_buf.ok() || !filter_buf.ok() || !output_buf.ok()) {
+  if (!maybe_input_buf.ok() || !maybe_filter_buf.ok() ||
+      !maybe_output_buf.ok()) {
     LOG(WARNING)
         << "Couldn't allocate space for input/filter/output of convolution "
+        << instr->ToString() << ".  Falling back to default algorithm.";
+    return nullopt;
+  }
+
+  DeviceMemoryBase input_buf = maybe_input_buf.ValueOrDie();
+  DeviceMemoryBase filter_buf = maybe_filter_buf.ValueOrDie();
+  DeviceMemoryBase output_buf = maybe_output_buf.ValueOrDie();
+
+  // Although we don't have evidence this matters, zero out the buffers before
+  // autotuning.  It's conceivable that using uninitialized memory as the inputs
+  // might affect performance if e.g. the inputs contain denormals, and this is
+  // easy enough.
+  if (!stream.ThenMemZero(&input_buf, input_buf.size())
+           .ThenMemZero(&filter_buf, filter_buf.size())
+           .ThenMemZero(&output_buf, output_buf.size())
+           .BlockHostUntilDone()
+           .ok()) {
+    LOG(WARNING)
+        << "Couldn't zero out input/filter/output buffer for convolution "
         << instr->ToString() << ".  Falling back to default algorithm.";
     return nullopt;
   }
@@ -225,12 +245,12 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    bool launch_ok = RunCudnnConvolution(
-                         kind, input_shape, filter_shape, output_shape,
-                         input_buf.ValueOrDie(), filter_buf.ValueOrDie(),
-                         output_buf.ValueOrDie(), &scratch_allocator, window,
-                         dnums, AlgorithmConfig(alg), &stream, &profile_result)
-                         .ok();
+    bool launch_ok =
+        RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
+                            input_buf, filter_buf, output_buf,
+                            &scratch_allocator, window, dnums,
+                            AlgorithmConfig(alg), &stream, &profile_result)
+            .ok();
 
     if (launch_ok && profile_result.is_valid()) {
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();

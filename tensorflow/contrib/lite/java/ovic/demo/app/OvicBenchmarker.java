@@ -1,4 +1,4 @@
-/*Copyright 2018 Google LLC
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-package org.tensorflow.ovic;
+package ovic.demo.app;
 
 import android.graphics.Bitmap;
 import android.os.SystemClock;
@@ -22,6 +22,8 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
+import org.tensorflow.ovic.OvicClassifier;
+import org.tensorflow.ovic.OvicSingleImageResult;
 
 /**
  * Class that benchmarks image classifier models.

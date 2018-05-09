@@ -47,18 +47,30 @@ class ConstantFoldingTest : public GrapplerTest {
     }
     Output zeros = ops::Const(s.WithOpName("zeros"), zeros_t);
     Output ones = ops::Const(s.WithOpName("ones"), ones_t);
-    Output mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
-    Output mul2 = ops::Mul(s.WithOpName("mul2"), x, ones);
-
+    Output mul1;
+    Output mul2;
+    Output add1;
+    Output add2;
+    if (DTYPE == DT_BOOL) {
+      mul1 = ops::LogicalAnd(s.WithOpName("mul1"), x, zeros);
+      mul2 = ops::LogicalAnd(s.WithOpName("mul2"), x, ones);
+      add1 = ops::LogicalOr(s.WithOpName("add1"), x, zeros);
+      add2 = ops::LogicalOr(s.WithOpName("add2"), x, ones);
+    } else {
+      mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
+      mul2 = ops::Mul(s.WithOpName("mul2"), x, ones);
+      add1 = ops::Add(s.WithOpName("add1"), x, zeros);
+      add1 = ops::Add(s.WithOpName("add2"), x, ones);
+    }
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
-    item.fetch = {"mul1", "mul2"};
+    item.fetch = {"mul1", "mul2", "add1", "add2"};
     ConstantFolding optimizer(nullptr /* cpu_device */);
     GraphDef output;
     Status status = optimizer.Optimize(nullptr, item, &output);
     TF_EXPECT_OK(status);
-    LOG(INFO) << output.DebugString();
-    EXPECT_EQ(5, output.node_size());
+
+    EXPECT_EQ(7, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -70,14 +82,27 @@ class ConstantFoldingTest : public GrapplerTest {
         EXPECT_EQ("Snapshot", node.op());
         EXPECT_EQ("x", node.input(0));
         EXPECT_EQ("^ones", node.input(1));
+      } else if (name == "add1") {
+        EXPECT_EQ("Snapshot", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
+      } else if (name == "add2") {
+        if (DTYPE == DT_BOOL) {
+          EXPECT_EQ("Const", node.op());
+          EXPECT_EQ("^x", node.input(0));
+          EXPECT_EQ("^ones", node.input(1));
+        } else {
+          EXPECT_EQ("Add", node.op());
+          EXPECT_EQ("x", node.input(0));
+          EXPECT_EQ("ones", node.input(1));
+        }
       }
     }
-    auto tensors_expected =
-        EvaluateNodes(item.graph, {"mul1", "mul2"}, {{"x", x_t}});
-    auto tensors = EvaluateNodes(output, {"mul1", "mul2"}, {{"x", x_t}});
-    EXPECT_EQ(2, tensors_expected.size());
-    EXPECT_EQ(2, tensors.size());
-    for (int i = 0; i < 2; ++i) {
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+    auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+    EXPECT_EQ(4, tensors_expected.size());
+    EXPECT_EQ(4, tensors.size());
+    for (int i = 0; i < item.fetch.size(); ++i) {
       test::ExpectTensorEqual<T>(tensors_expected[i], tensors[i]);
     }
   }
@@ -393,6 +418,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
 }
 
 TEST_F(ConstantFoldingTest, NeutralElement_ShortFloats) {
+  SimpleNeutralElementTest<DT_BOOL>();
   SimpleNeutralElementTest<DT_HALF>();
   SimpleNeutralElementTest<DT_BFLOAT16>();
 }

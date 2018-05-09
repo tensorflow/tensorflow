@@ -370,22 +370,27 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       expected_sum = 0.0
       expected_mean = 0.0
       for i, d in enumerate(dist.worker_devices):
-        # Test access within a device scope, should see different values.
-        with ops.device(d):
-          v_sum_value = self.evaluate(ret_v_sum.read_value())
-          v_mean_value = self.evaluate(ret_v_mean.read_value())
-          expected = i + 3.0
-          self.assertEqual(expected, v_sum_value)
-          expected_sum += expected
-          expected = i * 6.0
-          self.assertEqual(expected, v_mean_value)
-          expected_mean += expected
-
-      # fetch() should return the value you get by applying the
-      # reduction across all towers.
-      self.assertEqual(expected_sum, self.evaluate(dist.fetch(ret_v_sum)))
+        # Should see different values on different devices.
+        v_sum_value = self.evaluate(ret_v_sum.get(d).read_value())
+        v_mean_value = self.evaluate(ret_v_mean.get(d).read_value())
+        expected = i + 3.0
+        self.assertEqual(expected, v_sum_value)
+        expected_sum += expected
+        expected = i * 6.0
+        self.assertEqual(expected, v_mean_value)
+        expected_mean += expected
       expected_mean /= len(dist.worker_devices)
+
+      # Without get(device), should return the value you get by
+      # applying the reduction across all towers (whether you use
+      # fetch(), get(), or nothing).
+      self.assertEqual(expected_sum, self.evaluate(dist.fetch(ret_v_sum)))
       self.assertEqual(expected_mean, self.evaluate(dist.fetch(ret_v_mean)))
+      self.assertEqual(expected_sum, self.evaluate(ret_v_sum.get()))
+      self.assertEqual(expected_mean, self.evaluate(ret_v_mean.get()))
+      if not context.executing_eagerly():
+        self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
+        self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
 
   # NOTE(priyag): Names and name scopes are ignored in eager, hence we are not
   # testing this in eager mode.

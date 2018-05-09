@@ -46,6 +46,18 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
       config_(config),
       unique_id_(next_unique_module_id_++) {}
 
+StatusOr<HloInstruction*> HloModule::LaunderConstInstructionFromModule(
+    const HloInstruction* hlo) {
+  if (hlo == nullptr) {
+    return nullptr;
+  }
+
+  TF_RET_CHECK(hlo->GetModule() == this);
+
+  // TODO(b/78350259): Eliminate const laundering.
+  return const_cast<HloInstruction*>(hlo);
+}
+
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
     bool uniquify_names) {
@@ -538,6 +550,14 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation) {
 uint64 HloModule::RandomNew64() const {
   tensorflow::mutex_lock l(rng_mutex_);
   return rng_();
+}
+
+HloComputation* HloModule::GetComputationWithName(
+    tensorflow::StringPiece name) {
+  auto it = c_find_if(computations(), [&](HloComputation* computation) {
+    return computation->name() == name;
+  });
+  return it == computations().end() ? nullptr : *it;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -290,7 +290,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArrayFree(node->temporaries);
   node->temporaries = TfLiteIntArrayCreate(1);
   node->temporaries->data[0] = *scratch_tensor_index;
-  TfLiteTensor* scratch_buffer = &context->tensors[node->temporaries->data[0]];
+  TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
   scratch_buffer->type = input->type;
   scratch_buffer->allocation_type = kTfLiteArenaRw;
 
@@ -378,7 +378,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const bool use_peephole = (cell_to_output_weights != nullptr);
 
   // Index the scratch buffers pointers to the global scratch buffer.
-  TfLiteTensor* scratch_buffer = &context->tensors[node->temporaries->data[0]];
+  TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
 
   float* input_gate_scratch = nullptr;
   float* cell_scratch = nullptr;

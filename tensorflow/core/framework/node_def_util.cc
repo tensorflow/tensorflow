@@ -245,7 +245,7 @@ DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
 
 bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name) {
-  return node_def.attr().find(attr_name.ToString()) != node_def.attr().end();
+  return node_def.attr().find(std::string(attr_name)) != node_def.attr().end();
 }
 
 static const string& kEmptyString = *new string();
@@ -639,7 +639,7 @@ Status AttachDef(const Status& status, const Node& node) {
 
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {
   node_def->mutable_attr()->insert(
-      AttrValueMap::value_type(name.ToString(), value));
+      AttrValueMap::value_type(std::string(name), value));
 }
 
 #define ADD_NODE_ATTR(T)                                           \
@@ -677,7 +677,7 @@ ADD_NODE_ATTR(gtl::ArraySlice<NameAttrList>)
 #undef ADD_NODE_ATTR
 
 void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map) {
-  map->insert(AttrValueMap::value_type(name.ToString(), value));
+  map->insert(AttrValueMap::value_type(std::string(name), value));
 }
 
 #define ADD_ATTR(T)                                            \
