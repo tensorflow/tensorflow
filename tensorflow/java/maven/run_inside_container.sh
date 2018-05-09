@@ -39,8 +39,6 @@ if [[ "${DEPLOY_BINTRAY}" != "true" && "${DEPLOY_OSSRH}" != "true" ]]; then
   exit 2
 fi
 
-IS_SNAPSHOT="true"
-
 set -ex
 
 clean() {
@@ -48,7 +46,9 @@ clean() {
   # (though if run inside a clean docker container, there won't be any dirty
   # artifacts lying around)
   mvn -q clean
-  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target libtensorflow/src libtensorflow/target tensorflow-android/target
+  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target \
+    libtensorflow/src libtensorflow/target tensorflow-android/target \
+    tensorflow-hadoop/src spark-tensorflow-connector/src
 }
 
 update_version_in_pom() {
@@ -188,6 +188,9 @@ generate_java_protos() {
 }
 
 
+# Download the TensorFlow ecosystem source from git.
+# The pom files from this repo do not inherit from the parent pom so the maven version
+# is updated for each module.
 download_tf_ecosystem() {
   ECOSYSTEM_DIR="/tmp/tensorflow-ecosystem"
   HADOOP_DIR="${DIR}/tensorflow-hadoop"
@@ -203,18 +206,15 @@ download_tf_ecosystem() {
 
   # Copy the TensorFlow Hadoop source
   cp -r "${ECOSYSTEM_DIR}/ecosystem/hadoop/src" "${HADOOP_DIR}"
-  python ${HADOOP_DIR}/update.py --template ${HADOOP_DIR}/pom-hadoop.xml.template \
-    --input_pom ${ECOSYSTEM_DIR}/ecosystem/hadoop/pom.xml \
-    --output_pom ${HADOOP_DIR}/pom.xml \
-    --version ${TF_VERSION}
+  cp "${ECOSYSTEM_DIR}/ecosystem/hadoop/pom.xml" "${HADOOP_DIR}"
+  cd "${HADOOP_DIR}"
+  update_version_in_pom
 
   # Copy the TensorFlow Spark connector source
   cp -r "${ECOSYSTEM_DIR}/ecosystem/spark/spark-tensorflow-connector/src" "${SPARK_DIR}"
-  python ${SPARK_DIR}/update.py --template ${SPARK_DIR}/pom-spark.xml.template \
-    --input_pom ${ECOSYSTEM_DIR}/ecosystem/spark/spark-tensorflow-connector/pom.xml \
-    --output_pom ${SPARK_DIR}/pom.xml \
-    --version ${TF_VERSION} \
-    --scala_version 2.11
+  cp "${ECOSYSTEM_DIR}/ecosystem/spark/spark-tensorflow-connector/pom.xml" "${SPARK_DIR}"
+  cd "${SPARK_DIR}"
+  update_version_in_pom
 
   # Cleanup
   rm -rf "${ECOSYSTEM_DIR}"
@@ -280,6 +280,7 @@ cd "${DIR}"
 # process.
 # gnupg2 is required for signing
 apt-get -qq update && apt-get -qqq install -y gnupg2 && apt-get -qqq install -y git
+
 clean
 update_version_in_pom
 download_libtensorflow
@@ -288,6 +289,7 @@ download_libtensorflow_jni_gpu
 update_tensorflow_android
 generate_java_protos
 download_tf_ecosystem
+
 # Build the release artifacts
 mvn verify
 # Push artifacts to repository
