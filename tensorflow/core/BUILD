@@ -224,6 +224,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "protobuf/named_tensor.proto",
     "protobuf/saved_model.proto",
     "protobuf/tensorflow_server.proto",
+    "protobuf/transport_options.proto",
     "util/test_log.proto",
 ]
 
