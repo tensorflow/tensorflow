@@ -235,9 +235,9 @@ class PrintModelAnalysisTest(test.TestCase):
         #The graph is modifed when MKL is enabled,total_float_ops will
         #be different
         if test_util.IsMklEnabled():
-            self.assertLess(101600, tfprof_node.total_float_ops)
+          self.assertLess(101600, tfprof_node.total_float_ops)
         else:
-            self.assertLess(145660, tfprof_node.total_float_ops)
+          self.assertLess(145660, tfprof_node.total_float_ops)
         self.assertEqual(8, len(tfprof_node.children))
         self.assertEqual('_TFProfRoot', tfprof_node.name)
         self.assertEqual(
