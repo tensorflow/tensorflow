@@ -2233,6 +2233,9 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
         new_square_node->set_input(i - 1, new_square_node->input(i));
       }
       new_square_node->mutable_input()->RemoveLast();
+      for (const string& input : new_square_node->input()) {
+        node_map_->AddOutput(NodeName(input), new_square_node->name());
+      }
       return new_square_node->name();
     }
   }
