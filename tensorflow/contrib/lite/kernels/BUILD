@@ -164,6 +164,7 @@ cc_library(
         "register.cc",
         "reshape.cc",
         "resize_bilinear.cc",
+        "select.cc",
         "skip_gram.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
@@ -862,6 +863,23 @@ tf_cc_test(
     size = "small",
     srcs = ["neg_test.cc"],
     tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "select_test",
+    size = "small",
+    srcs = [
+        "select_test.cc",
+    ],
+    tags = [
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

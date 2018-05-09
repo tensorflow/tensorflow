@@ -78,15 +78,11 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
       // The size of the reduction dimension should match. The shape inference
       // guarantees this invariant, so the check here is for programming
       // errors.
-      CHECK_EQ(lhs_shape.dimensions(1), rhs_shape.dimensions(0));
+      const DotDimensionNumbers& dim_numbers = hlo.dot_dimension_numbers();
+      CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+               rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
       return true;
     }
-  }
-
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    return true;
   }
 
   if (hlo.opcode() == HloOpcode::kFusion &&

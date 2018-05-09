@@ -57,7 +57,7 @@ class TFETest(test_util.TensorFlowTestCase):
       return math_ops.multiply(x, x)
 
     grad = tfe.gradients_function(square)
-    self.assertEquals([6], [x.numpy() for x in grad(3)])
+    self.assertEquals([6], [x.numpy() for x in grad(3.)])
 
   def testGradOfGrad(self):
 
@@ -66,7 +66,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     grad = tfe.gradients_function(square)
     gradgrad = tfe.gradients_function(lambda x: grad(x)[0])
-    self.assertEquals([2], [x.numpy() for x in gradgrad(3)])
+    self.assertEquals([2], [x.numpy() for x in gradgrad(3.)])
 
   def testCustomGrad(self):
 
@@ -80,7 +80,7 @@ class TFETest(test_util.TensorFlowTestCase):
       return y, grad_fn
 
     grad = tfe.gradients_function(f)
-    self.assertEquals([12], [x.numpy() for x in grad(3)])
+    self.assertEquals([12], [x.numpy() for x in grad(3.)])
 
   def testGPU(self):
     if tfe.num_gpus() <= 0:

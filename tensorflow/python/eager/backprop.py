@@ -358,6 +358,8 @@ def gradients_function(f, params=None):
   assert y_grad.numpy() == (2 ** 3) - 2 * 2 * 3
   ```
 
+  Note that only tensors with real or complex dtypes are differentiable.
+
   Args:
    f: function to be differentiated. If `f` returns a scalar, this scalar will
      be differentiated. If `f` returns a tensor or list of tensors, by default
@@ -700,6 +702,9 @@ class GradientTape(object):
   dz_dx = g.gradient(z, x)  # 108.0 (4*x^3 at x = 3)
   dy_dx = g.gradient(y, x)  # 6.0
   del g  # Drop the reference to the tape
+  ```
+
+  Note that only tensors with real or complex dtypes are differentiable.
   """
 
   def __init__(self, persistent=False):
