@@ -62,7 +62,10 @@ XlaAllocator::~XlaAllocator() {}
 
 xla::StatusOr<se::DeviceMemoryBase> XlaAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
-  void* data = wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size);
+  AllocationAttributes attrs;
+  attrs.no_retry_on_failure = !retry_on_failure;
+  void* data =
+      wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size, attrs);
   if (data == nullptr) {
     return errors::ResourceExhausted("Out of memory while trying to allocate ",
                                      size, " bytes.");
