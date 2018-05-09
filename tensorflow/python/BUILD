@@ -3036,9 +3036,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
         ":dtypes",
         ":io_ops_gen",
         ":ops",
+        ":saveable_object",
         ":util",
         "//tensorflow/python/eager:context",
     ],
@@ -3220,6 +3223,18 @@ py_test(
         ":math_ops",
         ":util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "util_serialization_test",
+    size = "small",
+    srcs = ["util/serialization_test.py"],
+    main = "util/serialization_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
     ],
 )
 
