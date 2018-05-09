@@ -161,6 +161,17 @@ class UnstackOpTest(test.TestCase):
       y = array_ops.unstack(x, axis=1)[0].eval()
       self.assertEqual(y.shape, (0, 2))
 
+  def testNumWithTensor(self):
+    dynamic_feed_shape = (2,None)
+    static_feed_shape_dict = {'scalar': (2, ()),'one_dim': (2, [1])}
+    x = array_ops.constant([[1,2,3],[4,5,6]])
+    with self.test_session() as sess:
+      for feed, shape in (dynamic_feed_shape, static_feed_shape_dict['scalar'],static_feed_shape_dict['one_dim']):
+        num = array_ops.placeholder(shape=shape)
+        out = sess.run(array_ops.unstack(value=x, num=num), feed_dict={num:feed})
+        self.assertAllEqual(out[0],[1,2,3])
+        self.assertAllEqual(out[1],[4,5,6])
+
 
 if __name__ == '__main__':
   test.main()
