@@ -1206,16 +1206,16 @@ CudnnRnnParamsDescriptor::CudnnRnnParamsDescriptor(
     int dims[] = {1, rnn_desc.input_size(), 1};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
     status = cudnnSetTensorNdDescriptor(
-        /*tensorDesc=*/input_desc, rnn_desc.data_type() /*dataType*/,
-        sizeof(dims) / sizeof(dims[0]) /*nbDims*/, /*dimA=*/dims,
+        /*tensorDesc=*/input_desc, /*dataType=*/rnn_desc.data_type(),
+        /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides);
     CUDNN_RETURN_IF_FAIL(status, "Cudnn fails to set tensor descriptor");
 
     size_t params_size = 0;
     status = cudnnGetRNNParamsSize(
-        cudnn.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
         /*xDesc=*/input_desc, /*sizeInBytes=*/&params_size,
-        rnn_desc.data_type() /*dataType*/);
+        /*dataType=*/rnn_desc.data_type());
     CUDNN_RETURN_IF_FAIL(status, "Cudnn fails to get RNN parameter size");
     params_size_in_bytes_ = static_cast<int64>(params_size);
   }
@@ -1226,8 +1226,8 @@ CudnnRnnParamsDescriptor::CudnnRnnParamsDescriptor(
     CUDNN_RETURN_IF_FAIL(status, "Cudnn fails to create RNN filter descriptor");
     int dims[] = {static_cast<int>(params_size_in_bytes_), 1, 1};
     status = cudnnSetFilterNdDescriptor(
-        /*filterDesc=*/handle_, rnn_desc.data_type() /*dataType*/,
-        /*format=*/CUDNN_TENSOR_NCHW, sizeof(dims) / sizeof(dims[0]) /*nbDims*/,
+        /*filterDesc=*/handle_, /*dataType=*/rnn_desc.data_type(),
+        /*format=*/CUDNN_TENSOR_NCHW, /*nbDims=*/sizeof(dims) / sizeof(dims[0]),
         /*filterDimA=*/dims);
     CUDNN_RETURN_IF_FAIL(status, "Cudnn fails to update RNN filter descriptor");
   }
@@ -1247,7 +1247,7 @@ CudnnRnnParamsDescriptor::CudnnRnnParamsDescriptor(
           void* offset = nullptr;
           if (type == 0) {
             status = cudnnGetRNNLinLayerMatrixParams(
-                cudnn.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
+                /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
                 /*layer=*/layer, /*xDesc=*/input_desc, /*wDesc=*/handle_,
                 /*w=*/nullptr, /*linLayerID=*/region,
                 /*linLayerMatDesc=*/region_desc_handle,
@@ -1256,7 +1256,7 @@ CudnnRnnParamsDescriptor::CudnnRnnParamsDescriptor(
                 status, "Cudnn fails to call cudnnGetRNNLinLayerMatrixParams");
           } else {
             status = cudnnGetRNNLinLayerBiasParams(
-                cudnn.handle() /*rnnDesc*/, rnn_desc.handle() /*rnnDesc*/,
+                /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
                 /*layer=*/layer, /*xDesc=*/input_desc, /*wDesc=*/handle_,
                 /*w=*/nullptr, /*linLayerID=*/region,
                 /*linLayerBiasDesc=*/region_desc_handle,
@@ -1270,7 +1270,7 @@ CudnnRnnParamsDescriptor::CudnnRnnParamsDescriptor(
           int n_dims;
           status = cudnnGetFilterNdDescriptor(
               /*filterDesc=*/region_desc_handle,
-              sizeof(dims) / sizeof(dims[0]) /*nbDimsRequested*/,
+              /*nbDimsRequested=*/sizeof(dims) / sizeof(dims[0]),
               /*dataType=*/&data_type, /*format=*/&tensor_format,
               /*nbDims=*/&n_dims, /*filterDimA=*/dims);
           CUDNN_RETURN_IF_FAIL(status, "Cudnn fails to get filter description");
@@ -1338,7 +1338,7 @@ class CudnnRnnSequenceTensorDescriptor
     int strides[] = {dims[1] * dims[2], dims[2], 1};
     status = cudnnSetTensorNdDescriptor(
         /*tensorDesc=*/handle, /*dataType=*/data_type,
-        sizeof(dims) / sizeof(dims[0]) /*nbDims*/, /*dimA=*/dims,
+        /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides);
     CUDNN_RETURN_IF_FAIL(status, "Failed to update tensor descriptor");
     // Replicate handle across the number of steps.
@@ -1390,7 +1390,7 @@ class CudnnRnnStateTensorDescriptor
     int strides[] = {dims[1] * dims[2], dims[2], 1};
     status = cudnnSetTensorNdDescriptor(
         /*tensorDesc=*/handle_, /*dataType=*/data_type,
-        sizeof(dims) / sizeof(dims[0]) /*nbDims*/, /*dimA=*/dims,
+        /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides);
     CUDNN_RETURN_IF_FAIL(status, "Failed to update tensor descriptor");
   }
@@ -1497,9 +1497,9 @@ bool CheckRNNParameterSize(const CudnnHandle& cudnn,
                            const CudnnRnnSequenceTensorDescriptor& input_desc) {
   size_t params_size_in_bytes = 0;
   cudnnStatus_t status = cudnnGetRNNParamsSize(
-      /*handle=*/cudnn.handle(), rnn_desc.handle() /*rnnDesc*/,
-      input_desc.handles()[0] /*xDesc*/, /*sizeInBytes=*/&params_size_in_bytes,
-      rnn_desc.data_type() /*dataType*/);
+      /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+      /*xDesc=*/input_desc.handles()[0], /*sizeInBytes=*/&params_size_in_bytes,
+      /*dataType=*/rnn_desc.data_type());
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "Unable to check RNN param size: " << ToString(status);
     return false;
@@ -1592,8 +1592,8 @@ bool CudnnSupport::DoRnnForwardImpl(
   if (is_training) {
     size_t reserve_space_size_in_bytes = 0;
     cudnnStatus_t status = cudnnGetRNNTrainingReserveSize(
-        cudnn.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
-        /*seqLength=*/model_dims.seq_length, input_desc.handles() /*xDesc*/,
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*seqLength=*/model_dims.seq_length, /*xDesc=*/input_desc.handles(),
         /*sizeInBytes=*/&reserve_space_size_in_bytes);
     if (status != CUDNN_STATUS_SUCCESS) {
       LOG(ERROR) << "Unable to query reserve space size: " << ToString(status);
@@ -1630,30 +1630,30 @@ bool CudnnSupport::DoRnnForwardImpl(
   cudnnStatus_t status;
   if (!is_training) {
     status = cudnnRNNForwardInference(
-        cudnn.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
-        model_dims.seq_length /*seqLength*/, input_desc.handles() /*xDesc*/,
-        input_data.opaque() /*x*/, input_h_desc.handle() /*hxDesc*/,
-        input_h_data.opaque() /*hx*/, input_c_desc.handle() /*cxDesc*/,
-        input_c_data.opaque() /*cx*/, rnn_desc.params_handle() /*wDesc*/,
-        params.opaque() /*w*/, output_desc.handles() /*yDesc*/,
-        output_data->opaque() /*y*/, output_h_desc.handle() /*hyDesc*/,
-        output_h_data->opaque() /*hy*/, output_c_desc.handle() /*cyDesc*/,
-        output_c_data->opaque() /*cy*/, workspace.opaque() /*workspace*/,
-        workspace.size() /*workSpaceSizeInBytes*/);
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*seqLength=*/model_dims.seq_length, /*xDesc=*/input_desc.handles(),
+        /*x=*/input_data.opaque(), /*hxDesc=*/input_h_desc.handle(),
+        /*hx=*/input_h_data.opaque(), /*cxDesc=*/input_c_desc.handle(),
+        /*cx=*/input_c_data.opaque(), /*wDesc=*/rnn_desc.params_handle(),
+        /*w=*/params.opaque(), /*yDesc=*/output_desc.handles(),
+        /*y=*/output_data->opaque(), /*hyDesc=*/output_h_desc.handle(),
+        /*hy=*/output_h_data->opaque(), /*cyDesc=*/output_c_desc.handle(),
+        /*cy=*/output_c_data->opaque(), /*workspace=*/workspace.opaque(),
+        /*workSpaceSizeInBytes=*/workspace.size());
   } else {
     status = cudnnRNNForwardTraining(
-        cudnn.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
-        model_dims.seq_length /*seqLength*/, input_desc.handles() /*xDesc*/,
-        input_data.opaque() /*x*/, input_h_desc.handle() /*hxDesc*/,
-        input_h_data.opaque() /*hx*/, input_c_desc.handle() /*cxDesc*/,
-        input_c_data.opaque() /*cx*/, rnn_desc.params_handle() /*wDesc*/,
-        params.opaque() /*w*/, output_desc.handles() /*yDesc*/,
-        output_data->opaque() /*y*/, output_h_desc.handle() /*hyDesc*/,
-        output_h_data->opaque() /*hy*/, output_c_desc.handle() /*cyDesc*/,
-        output_c_data->opaque() /*cy*/, workspace.opaque() /*workspace*/,
-        workspace.size() /*workSpaceSizeInBytes*/,
-        reserve_space.opaque() /*reserveSpace*/,
-        reserve_space.size() /*reserveSpaceSizeInBytes*/);
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*seqLength=*/model_dims.seq_length, /*xDesc=*/input_desc.handles(),
+        /*x=*/input_data.opaque(), /*hxDesc=*/input_h_desc.handle(),
+        /*hx=*/input_h_data.opaque(), /*cxDesc=*/input_c_desc.handle(),
+        /*cx=*/input_c_data.opaque(), /*wDesc=*/rnn_desc.params_handle(),
+        /*w=*/params.opaque(), /*yDesc=*/output_desc.handles(),
+        /*y=*/output_data->opaque(), /*hyDesc=*/output_h_desc.handle(),
+        /*hy=*/output_h_data->opaque(), /*cyDesc=*/output_c_desc.handle(),
+        /*cy=*/output_c_data->opaque(), /*workspace=*/workspace.opaque(),
+        /*workSpaceSizeInBytes=*/workspace.size(),
+        /*reserveSpace=*/reserve_space.opaque(),
+        /*reserveSpaceSizeInBytes=*/reserve_space.size());
   }
   if (is_profiling) {
     if (!timer->Stop(AsCUDAStream(stream))) {
@@ -1748,24 +1748,24 @@ bool CudnnSupport::DoRnnBackwardImpl(
   }
   // make the backward data call
   cudnnStatus_t status = cudnnRNNBackwardData(
-      cudnn.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
-      model_dims.seq_length /*seqLength*/, output_desc.handles() /*yDesc*/,
-      output_data.opaque() /*y*/, output_desc.handles() /*dyDesc*/,
-      output_backprop_data.opaque() /*dy*/, output_h_desc.handle() /*dhyDesc*/,
-      output_h_backprop_data.opaque() /*dhy*/,
-      output_c_desc.handle() /*dcyDesc*/,
-      output_c_backprop_data.opaque() /*dcy*/,
-      rnn_desc.params_handle() /*wDesc*/, params.opaque() /*w*/,
-      input_h_desc.handle() /*hxDesc*/, input_h_data.opaque() /*hx*/,
-      input_c_desc.handle() /*cxDesc*/, input_c_data.opaque() /*cx*/,
-      input_desc.handles() /*dxDesc*/, input_backprop_data->opaque() /*dx*/,
-      input_h_desc.handle() /*dhxDesc*/,
-      input_h_backprop_data->opaque() /*dhx*/,
-      input_c_desc.handle() /*dcxDesc*/,
-      input_c_backprop_data->opaque() /*dcx*/, workspace.opaque() /*workspace*/,
-      workspace.size() /*workSpaceSizeInBytes*/,
-      reserve_space_data->opaque() /*reserveSpace*/,
-      reserve_space_data->size() /*reserveSpaceSizeInBytes*/);
+      /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+      /*seqLength=*/model_dims.seq_length, /*yDesc=*/output_desc.handles(),
+      /*y=*/output_data.opaque(), /*dyDesc=*/output_desc.handles(),
+      /*dy=*/output_backprop_data.opaque(), /*dhyDesc=*/output_h_desc.handle(),
+      /*dhy=*/output_h_backprop_data.opaque(),
+      /*dcyDesc=*/output_c_desc.handle(),
+      /*dcy=*/output_c_backprop_data.opaque(),
+      /*wDesc=*/rnn_desc.params_handle(), /*w=*/params.opaque(),
+      /*hxDesc=*/input_h_desc.handle(), /*hx=*/input_h_data.opaque(),
+      /*cxDesc=*/input_c_desc.handle(), /*cx=*/input_c_data.opaque(),
+      /*dxDesc=*/input_desc.handles(), /*dx=*/input_backprop_data->opaque(),
+      /*dhxDesc=*/input_h_desc.handle(),
+      /*dhx=*/input_h_backprop_data->opaque(),
+      /*dcxDesc=*/input_c_desc.handle(),
+      /*dcx=*/input_c_backprop_data->opaque(), /*workspace=*/workspace.opaque(),
+      /*workSpaceSizeInBytes=*/workspace.size(),
+      /*reserveSpace=*/reserve_space_data->opaque(),
+      /*reserveSpaceSizeInBytes=*/reserve_space_data->size());
 
   if (status != CUDNN_STATUS_SUCCESS) {
     if (is_profiling) {
@@ -1780,16 +1780,16 @@ bool CudnnSupport::DoRnnBackwardImpl(
     stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
     // make the backward weight call
     status = cudnnRNNBackwardWeights(
-        cudnn.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
-        model_dims.seq_length /*seqLength*/, input_desc.handles() /*xDesc*/,
-        input_data.opaque() /*x*/, input_h_desc.handle() /*hxDesc*/,
-        input_h_data.opaque() /*hx*/, output_desc.handles() /*yDesc*/,
-        output_data.opaque() /*y*/, workspace.opaque() /*workspace*/,
-        workspace.size() /*workSpaceSizeInBytes*/,
-        rnn_desc.params_handle() /*dwDesc*/,
-        params_backprop_data->opaque() /*dw*/,
-        reserve_space_data->opaque() /*reserveSpace*/,
-        reserve_space_data->size() /*reserveSpaceSizeInBytes*/);
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
+        /*seqLength=*/model_dims.seq_length, /*xDesc=*/input_desc.handles(),
+        /*x=*/input_data.opaque(), /*hxDesc=*/input_h_desc.handle(),
+        /*hx=*/input_h_data.opaque(), /*yDesc=*/output_desc.handles(),
+        /*y=*/output_data.opaque(), /*workspace=*/workspace.opaque(),
+        /*workSpaceSizeInBytes=*/workspace.size(),
+        /*dwDesc=*/rnn_desc.params_handle(),
+        /*dw=*/params_backprop_data->opaque(),
+        /*reserveSpace=*/reserve_space_data->opaque(),
+        /*reserveSpaceSizeInBytes=*/reserve_space_data->size());
     if (status != CUDNN_STATUS_SUCCESS) {
       if (is_profiling) {
         timer->Stop(AsCUDAStream(stream));
