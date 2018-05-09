@@ -192,22 +192,6 @@ py_library(
     ],
 )
 
-cc_library(
-    name = "python_eager_op_gen",
-    srcs = ["python_eager_op_gen.cc"],
-    hdrs = ["python_eager_op_gen.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python:python_op_gen",
-    ],
-)
-
 py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],

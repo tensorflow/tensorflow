@@ -502,7 +502,10 @@ py_test(
 
 cc_library(
     name = "python_op_gen",
-    srcs = ["framework/python_op_gen.cc"],
+    srcs = [
+        "framework/python_op_gen.cc",
+        "framework/python_op_gen_internal.cc",
+    ],
     hdrs = [
         "framework/python_op_gen.h",
         "framework/python_op_gen_internal.h",
@@ -524,12 +527,12 @@ cc_library(
     srcs = ["framework/python_op_gen_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python/eager:python_eager_op_gen",
     ],
 )
 
@@ -3526,7 +3529,6 @@ tf_py_wrap_cc(
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/python/eager:python_eager_op_gen",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
