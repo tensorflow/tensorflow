@@ -2364,6 +2364,9 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = [
+        "optonly",  # flaky timeouts unless optimized
+    ],
 )
 
 cuda_py_test(
