@@ -250,7 +250,7 @@ def update_md_files(old_version, new_version):
 
   # Update any links to colab notebooks.
   def colab_url(version):
-    version_string = "%d.%d.%d" % (version.major, version.minor, version.patch)
+    version_string = "%s.%s.%s" % (version.major, version.minor, version.patch)
     prefix = "https://colab.research.google.com/github/tensorflow/models/blob/r"
     return prefix + version_string + "/"
 
