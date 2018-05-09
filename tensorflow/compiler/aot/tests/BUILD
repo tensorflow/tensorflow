@@ -15,6 +15,7 @@ test_suite(
         ":test_graph_tfadd_with_ckpt_saver_test",
         ":test_graph_tfadd_with_ckpt_test",
         ":test_graph_tfassert_eq_test",
+        ":test_graph_tfcond_test",
         ":test_graph_tffunction_test",
         ":test_graph_tfgather_test",
         ":test_graph_tfmatmul_test",
@@ -55,6 +56,7 @@ genrule(
         "test_graph_tfadd_with_ckpt_saver.pb",
         "test_graph_tfadd_with_ckpt_saver.saver",
         "test_graph_tfassert_eq.pb",
+        "test_graph_tfcond.pb",
         "test_graph_tffunction.pb",
         "test_graph_tfgather.pb",
         "test_graph_tfmatmul.pb",
@@ -113,6 +115,17 @@ tf_library(
     config = "test_graph_tfassert_eq.config.pbtxt",
     cpp_class = "AssertComp",
     graph = "test_graph_tfassert_eq.pb",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfcond",
+    testonly = 1,
+    config = "test_graph_tfcond.config.pbtxt",
+    cpp_class = "CondComp",
+    graph = "test_graph_tfcond.pb",
     tags = [
         "manual",
     ],
@@ -194,6 +207,7 @@ tf_cc_test(
         ":test_graph_tfadd_with_ckpt",
         ":test_graph_tfadd_with_ckpt_saver",
         ":test_graph_tfassert_eq",
+        ":test_graph_tfcond",
         ":test_graph_tffunction",
         ":test_graph_tfgather",
         ":test_graph_tfmatmul",

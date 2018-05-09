@@ -24,7 +24,7 @@ limitations under the License.
 #include "grpc++/security/credentials.h"
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -84,7 +84,7 @@ TEST_F(GRPCClientTestBase, ItsAlive) {
 }
 
 TEST_F(GRPCClientTestBase, AxpyTenValues) {
-  ComputationBuilder builder(client_.get(), "axpy_10");
+  XlaBuilder builder("axpy_10");
   auto alpha = builder.ConstantR0<float>(3.1415926535);
   auto x = builder.ConstantR1<float>(
       {-1.0, 1.0, 2.0, -2.0, -3.0, 3.0, 4.0, -4.0, -5.0, 5.0});

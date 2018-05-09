@@ -1049,8 +1049,8 @@ For a more intuitive description, see the "Informal Description" section below.
 :                  :                         : from.                           :
 |`gather_indices`  | `ComputationDataHandle` | Tensor containing the starting  |
 :                  :                         : indices of the slices we're     :
-:                  :                         : we're stitching together into   :
-:                  :                         : the output tensor.              :
+:                  :                         : stitching together into the     :
+:                  :                         : output tensor.                  :
 |`index_vector_dim`  | `int64`               | The dimension in                |
 :                  :                         : `gather_indices` that contains  :
 :                  :                         : the starting indices.           :

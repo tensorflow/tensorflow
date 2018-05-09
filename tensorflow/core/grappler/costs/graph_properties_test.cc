@@ -282,20 +282,11 @@ TEST_F(GraphPropertiesTest, Queues) {
   auto dequeue2 =
       ops::QueueDequeue(root.WithOpName("Dequeue2"), q2, {DataType::DT_FLOAT});
 
-  // Create a queue that feeds itself.
-  auto q3 =
-      ops::RandomShuffleQueue(root.WithOpName("Queue3"), {DataType::DT_FLOAT});
-  auto dequeue3 =
-      ops::QueueDequeue(root.WithOpName("Dequeue3"), q3, {DataType::DT_FLOAT});
-  auto merge3 = ops::Merge(root.WithOpName("Merge3"), {dequeue3[0], square2});
-  auto enqueue3 =
-      ops::QueueEnqueue(root.WithOpName("Enqueue3"), q3, {merge3.output});
-
   auto q4 =
       ops::RandomShuffleQueue(root.WithOpName("Queue4"), {DataType::DT_FLOAT});
   auto enqueue4 = ops::QueueEnqueue(root.WithOpName("Enqueue4"), q4, {square2});
   auto enqueue4_2 =
-      ops::QueueEnqueue(root.WithOpName("Enqueue4_2"), q4, {dequeue3[0]});
+      ops::QueueEnqueue(root.WithOpName("Enqueue4_2"), q4, {dequeue2[0]});
   auto dequeue4 =
       ops::QueueDequeue(root.WithOpName("Dequeue4"), q4, {DataType::DT_FLOAT});
 
@@ -326,10 +317,6 @@ TEST_F(GraphPropertiesTest, Queues) {
   const auto props2 = properties.GetOutputProperties("Dequeue2");
   ASSERT_EQ(1, props2.size());
   EXPECT_EQ("float: [3,7]", PropToString(props2[0]));
-
-  const auto props3 = properties.GetOutputProperties("Dequeue3");
-  ASSERT_EQ(1, props3.size());
-  EXPECT_EQ("float: [3,7]", PropToString(props3[0]));
 
   // The dequeue3 op shape is unknown. The square2 op shape is known. Verify
   // that we merge the 2 properly to determine the shape of the data coming out

@@ -234,7 +234,7 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
 
 // Returns true iff there were no "internal" errors. In other words,
 // errors that has nothing to do with structure checking.
-// If an "internal" error occured, the appropriate Python error will be
+// If an "internal" error occurred, the appropriate Python error will be
 // set and the caller can propage it directly to the user.
 //
 // Both `error_msg` and `is_type_error` must be non-null. `error_msg` must

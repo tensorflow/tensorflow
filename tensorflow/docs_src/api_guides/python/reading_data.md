@@ -184,7 +184,7 @@ The recommended way to read a TFRecord file is with a @{tf.data.TFRecordDataset}
     dataset = dataset.map(decode)
 ```
 
-To acomplish the same task with a queue based input pipeline requires the following code 
+To accomplish the same task with a queue based input pipeline requires the following code
 (using the same `decode` function from the above example): 
 
 ``` python

@@ -172,11 +172,11 @@ tensorflow::Status ExpectNotTupleOrOpaque(const Shape& shape,
                                           tensorflow::StringPiece op_type) {
   if (ShapeUtil::IsTuple(shape)) {
     return InvalidArgument("Expected non-tuple argument for %s, but got %s.",
-                           op_type.ToString().c_str(),
+                           std::string(op_type).c_str(),
                            ShapeUtil::HumanString(shape).c_str());
   } else if (ShapeUtil::IsOpaque(shape)) {
     return InvalidArgument("Expected non-opaque argument for %s, but got %s.",
-                           op_type.ToString().c_str(),
+                           std::string(op_type).c_str(),
                            ShapeUtil::HumanString(shape).c_str());
   } else {
     return tensorflow::Status::OK();

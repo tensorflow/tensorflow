@@ -650,6 +650,9 @@ class ShapeUtil {
               .ok());
   }
 
+  // Compute a hash for `shape`.
+  static size_t Hash(const Shape& shape);
+
  private:
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.

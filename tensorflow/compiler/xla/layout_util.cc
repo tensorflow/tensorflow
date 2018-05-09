@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -463,6 +464,27 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
 std::ostream& operator<<(std::ostream& out, const Layout& layout) {
   out << LayoutUtil::HumanString(layout);
   return out;
+}
+
+/*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
+  using tensorflow::hash;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = hash<Format>()(layout.format());
+
+  for (int64 minor_to_major : layout.minor_to_major()) {
+    hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
+  }
+
+  for (int64 padded_dim : layout.padded_dimensions()) {
+    hash_value = Hash64Combine(hash_value, hash<int64>()(padded_dim));
+  }
+
+  hash_value =
+      Hash64Combine(hash_value, hash<PaddingValue>()(layout.padding_value()));
+  hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
+
+  return hash_value;
 }
 
 }  // namespace xla

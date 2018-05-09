@@ -25,6 +25,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -181,9 +182,9 @@ class Compiler {
 
   // Returns a function that computes the size in bytes of a given
   // logical buffer.
-  std::function<int64(const LogicalBuffer&)> BufferSizeBytesFunction() {
+  std::function<int64(const BufferValue&)> BufferSizeBytesFunction() {
     HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
-    return [shape_size](const LogicalBuffer& buffer) {
+    return [shape_size](const BufferValue& buffer) {
       return shape_size(buffer.shape());
     };
   }

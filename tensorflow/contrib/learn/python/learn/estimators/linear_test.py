@@ -863,6 +863,38 @@ class LinearClassifierTest(test.TestCase):
     scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
+  def testSdcaOptimizerWeightedSparseFeaturesOOVWithNoOOVBuckets(self):
+    """LinearClassifier with SDCAOptimizer with OOV features (-1 IDs)."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              sparse_tensor.SparseTensor(
+                  values=[2., 3., 1.],
+                  indices=[[0, 0], [1, 0], [2, 0]],
+                  dense_shape=[3, 5]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  # 'GB' is out of the vocabulary.
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 0], [2, 0]],
+                  dense_shape=[3, 5])
+      }, constant_op.constant([[1], [0], [1]])
+
+    country = feature_column_lib.sparse_column_with_keys(
+        'country', keys=['US', 'CA', 'MK', 'IT', 'CN'])
+    country_weighted_by_price = feature_column_lib.weighted_sparse_column(
+        country, 'price')
+    sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(
+        example_id_column='example_id')
+    classifier = linear.LinearClassifier(
+        feature_columns=[country_weighted_by_price], optimizer=sdca_optimizer)
+    classifier.fit(input_fn=input_fn, steps=50)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
   def testSdcaOptimizerCrossedFeatures(self):
     """Tests LinearClassifier with SDCAOptimizer and crossed features."""
 

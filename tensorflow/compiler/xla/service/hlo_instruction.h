@@ -66,6 +66,7 @@ class HloPrintOptions {
       : print_large_constants_(false),
         print_subcomputation_references_(true),
         print_metadata_(true),
+        print_backend_config_(true),
         compact_operands_(false),
         print_operand_shape_(true),
         print_program_shape_(true),
@@ -77,6 +78,7 @@ class HloPrintOptions {
         .set_print_large_constants(true)
         .set_print_subcomputation_references(true)
         .set_print_metadata(false)
+        .set_print_backend_config(false)
         .set_print_operand_shape(false)
         .set_print_program_shape(false)
         .set_print_percent(false);
@@ -99,9 +101,15 @@ class HloPrintOptions {
     return *this;
   }
 
-  // If true, metatdata will be printed.
+  // If true, metadata will be printed.
   HloPrintOptions& set_print_metadata(bool value) {
     print_metadata_ = value;
+    return *this;
+  }
+
+  // If true, backend_config will be printed.
+  HloPrintOptions& set_print_backend_config(bool value) {
+    print_backend_config_ = value;
     return *this;
   }
 
@@ -141,6 +149,7 @@ class HloPrintOptions {
     return print_subcomputation_references_;
   }
   bool print_metadata() const { return print_metadata_; }
+  bool print_backend_config() const { return print_metadata_; }
   bool compact_operands() const { return compact_operands_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_program_shape() const { return print_program_shape_; }
@@ -151,6 +160,7 @@ class HloPrintOptions {
   bool print_large_constants_;
   bool print_subcomputation_references_;
   bool print_metadata_;
+  bool print_backend_config_;
   bool compact_operands_;
   bool print_operand_shape_;
   bool print_program_shape_;
@@ -167,7 +177,6 @@ class HloInstruction {
     kOutput,        // Op's output is fused into the op itself.
                     // REQUIRES: At least one operand buffer must be able
                     // to alias the output buffer.
-    kTransposeDot,  // Fused into a dot with transposed operands.
     kCustom,        // Custom category for backend-specific fusions that
                     // do not match any of the more specific ones.
   };
@@ -643,6 +652,8 @@ class HloInstruction {
   // Detaches an instruction from its operands. That is, remove the instruction
   // from each operand's user set. This should only be called prior to
   // deallocating the instruction.
+  //
+  // TODO(b/78305363): Make this automatic when deleting an instruction.
   void DetachFromOperands();
 
   // Performs a postorder DFS visit using this node as the root. If
@@ -1157,23 +1168,30 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kRng
   RandomDistribution random_distribution() const;
 
+  // See documentation for Clone().
+  using CloneMap = std::unordered_map<const HloInstruction*, HloInstruction*>;
+
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
-  // the instruction to form the name of the cloned instruction.  If the module
-  // pointer is not nullptr, it will be the module where the cloned computations
-  // will be added to (in order to support deep cloning).  Ignores the control
-  // predecessors and successors of this HLO instruction.
+  // the instruction to form the name of the cloned instruction. Ignores the
+  // control predecessors and successors of this HLO instruction.
+  //
+  // If the module pointer is not nullptr, then any cloned computations will be
+  // added to this module in order to support deep cloning. Otherwise the module
+  // of the instruction is used.
+  //
+  // If clone_map is not nullptr, then each original instruction that is cloned
+  // will be inserted and map to its clone. clone_map should not already contain
+  // any of the instructions to clone.
   std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone",
-                                        HloModule* module = nullptr) const;
+                                        HloModule* module = nullptr,
+                                        CloneMap* clone_map = nullptr) const;
 
-  // Clones the HLO instruction as above but with new shape and operands.  If
-  // the module pointer is not nullptr, it will be the module where the cloned
-  // computations will be added to (in order to support deep cloning).  Ignores
-  // the control predecessors and successors of this HLO instruction.
+  // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloModule* module = nullptr) const;
+      HloModule* module = nullptr, CloneMap* clone_map = nullptr) const;
 
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
@@ -1245,7 +1263,7 @@ class HloInstruction {
 
   // Gets/sets the string identifier for this instruction.
   const string& name() const { return name_; }
-  void set_name(tensorflow::StringPiece name) { name_ = name.ToString(); }
+  void set_name(tensorflow::StringPiece name) { name_ = std::string(name); }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
@@ -1261,6 +1279,19 @@ class HloInstruction {
   // Return the unique ID assigned to this node via SetUniqueId (or -1
   // if no id has been assigned yet).
   int unique_id() const { return unique_id_; }
+
+  // Returns the backend-specific configuration for how a backend should compile
+  // this HLO. The meaning of the field is backend specific. Not for use before
+  // or during general HLO optimization, since HLO optimizations do not preserve
+  // this field and they cannot interpret it due to its meaning being backend
+  // specific.
+  //
+  // TODO(b/78194644): Introduce structured configuration format as per
+  // go/xla-heuristics.
+  const string& backend_config() const { return backend_config_; }
+  void set_backend_config(string backend_config) {
+    backend_config_ = std::move(backend_config);
+  }
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -1283,6 +1314,7 @@ class HloInstruction {
   // Get/Set the number of partitions per outer dimension (in order, starting
   // with outer-most dimension first). Currently used by the parallel cpu
   // backend to partition HLOs into parallel tasks.
+  //
   // TODO(b/62783254) Replace these methods with a more general way to
   // annotate HLOs with backend-specific information.
   const std::vector<int64>& outer_dimension_partitions() const {
@@ -1509,6 +1541,10 @@ class HloInstruction {
 
   // The string representation of the infeed configuration.
   string infeed_config_;
+
+  // The backend-specific configuration for how a backend should compile this
+  // HLO. See the documentation on backend_config().
+  string backend_config_;
 
   // String identifier for instruction.
   string name_;

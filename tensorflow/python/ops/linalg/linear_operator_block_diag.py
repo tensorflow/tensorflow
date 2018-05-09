@@ -27,8 +27,14 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.util.tf_export import tf_export
+
+__all__ = [
+    "LinearOperatorBlockDiag",
+]
 
 
+@tf_export("linalg.LinearOperatorBlockDiag")
 class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   """Combines one or more `LinearOperators` in to a Block Diagonal matrix.
 

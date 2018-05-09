@@ -28,6 +28,25 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+// These nodes can always be duplicated into consumers, even if
+// InstructionFusion::may_duplicate_ is false.
+//
+// In general these should be nodes that get *cheaper* the more they're
+// duplicated (and fused into consumers).
+//
+// TODO(jlebar): Duplicating instructions when we have a variable called "may
+// duplicate" that's equal to false is not pretty.
+bool IsAlwaysDuplicable(const HloInstruction& instruction) {
+  // We are always willing to duplicate a widening type-conversion instruction
+  // if it means we can fuse the convert into a consumer.  This allows the
+  // consumer to read less memory, which is almost always a performance win.
+  return instruction.opcode() == HloOpcode::kConvert &&
+         ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
+             ShapeUtil::ByteSizeOf(instruction.shape());
+}
+}  // namespace
+
 /*static*/ bool InstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
   switch (instruction.opcode()) {
@@ -418,9 +437,11 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
 bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                    int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
+
   // Cost condition: don't duplicate expensive instructions.
   if (FusionWouldDuplicate(*producer, *consumer) &&
-      (is_expensive_(*producer) || !may_duplicate_)) {
+      (!may_duplicate_ || is_expensive_(*producer)) &&
+      !IsAlwaysDuplicable(*producer)) {
     return false;
   }
 

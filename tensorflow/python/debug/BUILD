@@ -449,7 +449,6 @@ py_binary(
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )

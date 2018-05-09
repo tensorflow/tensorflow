@@ -201,7 +201,7 @@ class Interpreter {
   // Overrides execution plan. This bounds checks indices sent in.
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
-  // Get a tensor data structure.
+  // Get a mutable tensor data structure.
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
@@ -210,9 +210,14 @@ class Interpreter {
     return &context_.tensors[tensor_index];
   }
 
+  // Get an immutable tensor data structure.
+  const TfLiteTensor* tensor(int tensor_index) const {
+    if (tensor_index >= context_.tensors_size || tensor_index < 0)
+      return nullptr;
+    return &context_.tensors[tensor_index];
+  }
+
   // Get a pointer to an operation and registration data structure if in bounds.
-  // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
-  // read/write access to structure
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
     if (node_index >= nodes_and_registration_.size() || node_index < 0)
@@ -220,12 +225,25 @@ class Interpreter {
     return &nodes_and_registration_[node_index];
   }
 
-  // Perform a checked cast to the appropriate tensor type.
+  // Perform a checked cast to the appropriate tensor type (mutable pointer
+  // version).
   template <class T>
   T* typed_tensor(int tensor_index) {
     if (TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
       if (tensor_ptr->type == typeToTfLiteType<T>()) {
         return reinterpret_cast<T*>(tensor_ptr->data.raw);
+      }
+    }
+    return nullptr;
+  }
+
+  // Perform a checked cast to the appropriate tensor type (immutable pointer
+  // version).
+  template <class T>
+  const T* typed_tensor(int tensor_index) const {
+    if (const TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
+      if (tensor_ptr->type == typeToTfLiteType<T>()) {
+        return reinterpret_cast<const T*>(tensor_ptr->data.raw);
       }
     }
     return nullptr;
@@ -238,10 +256,17 @@ class Interpreter {
     return typed_tensor<T>(inputs_[index]);
   }
 
-  // Return a pointer into the data of a given output tensor. The given index
-  // must be between 0 and outputs().size().
+  // Return a mutable pointer into the data of a given output tensor. The given
+  // index must be between 0 and outputs().size().
   template <class T>
   T* typed_output_tensor(int index) {
+    return typed_tensor<T>(outputs_[index]);
+  }
+
+  // Return an immutable pointer into the data of a given output tensor. The
+  // given index must be between 0 and outputs().size().
+  template <class T>
+  const T* typed_output_tensor(int index) const {
     return typed_tensor<T>(outputs_[index]);
   }
 
@@ -325,9 +350,7 @@ class Interpreter {
 
   void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
 
-  profiling::Profiler* GetProfiler(profiling::Profiler* profiler) {
-    return profiler_;
-  }
+  profiling::Profiler* GetProfiler() { return profiler_; }
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;

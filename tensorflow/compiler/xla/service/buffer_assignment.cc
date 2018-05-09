@@ -292,112 +292,6 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   return proto;
 }
 
-std::pair<int64, std::vector<const LogicalBuffer*>>
-BufferAllocation::ComputePeakMemoryLogicalBuffers() const {
-  if (HeapTraces().empty()) {
-    // Just return the largest LogicalBuffer in the allocation.
-    const LogicalBuffer* largest_buffer = nullptr;
-    int64 largest_size = 0;
-    for (const auto& pair : assigned_buffers()) {
-      const LogicalBuffer* buffer = pair.first;
-      int64 size = pair.second.size;
-      if (largest_buffer == nullptr) {
-        largest_buffer = buffer;
-        largest_size = size;
-        continue;
-      }
-      // Tie-break with LogicalBuffer::Id so the return value is stable relative
-      // to changing addresses.
-      if (size > largest_size ||
-          ((size == largest_size) && (largest_buffer->id() > buffer->id()))) {
-        largest_buffer = buffer;
-        largest_size = size;
-      }
-    }
-    CHECK(largest_buffer != nullptr)
-        << "No logical buffers in allocation: " << ToString();
-    return {largest_size, {largest_buffer}};
-  }
-
-  // Create a map from LogicalBuffer::Id to LogicalBuffer* for the logical
-  // buffers in this allocation.
-  tensorflow::gtl::FlatMap<LogicalBuffer::Id, const LogicalBuffer*>
-      id_to_buffer;
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, int64> buffer_sizes;
-  for (const auto& pair : assigned_buffers()) {
-    const LogicalBuffer* buffer = pair.first;
-    const OffsetSize& offset_size = pair.second;
-    id_to_buffer[buffer->id()] = buffer;
-    buffer_sizes[buffer] = offset_size.size;
-  }
-
-  // Returns how much the given event increases the total size of live
-  // buffers. Can be negative.
-  auto memory_delta = [this, &id_to_buffer, &buffer_sizes](
-                          const HeapSimulatorTrace::Event& event) -> int64 {
-    const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
-    const int64 buffer_size = buffer_sizes.at(buffer);
-    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
-      return buffer_size;
-    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
-      // Sharing a buffer does not change the live set size for the purposes of
-      // the heap simulator. Even though the shared-with buffer may be smaller,
-      // the entire allocation remains live.
-      return 0;
-    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
-      return -1 * buffer_size;
-    }
-    LOG(FATAL) << "Unknown event kind: " << event.kind();
-  };
-
-  int64 total_max_live_size = 0;
-  std::vector<const LogicalBuffer*> live_buffers_vector;
-  for (const HeapSimulatorTrace& heap_trace : HeapTraces()) {
-    // First compute the size of the maximal live set.
-    int64 max_live_size = 0;
-    int64 live_size = 0;
-    for (const auto& event : heap_trace.events()) {
-      live_size += memory_delta(event);
-      if (max_live_size < live_size) {
-        max_live_size = live_size;
-      }
-    }
-
-    // Next gather the set of logical buffers live at the earliest point of
-    // maximal live set size.
-    tensorflow::gtl::FlatSet<const LogicalBuffer*> live_buffers;
-    live_size = 0;
-    for (const auto& event : heap_trace.events()) {
-      const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
-      if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
-        InsertOrDie(&live_buffers, buffer);
-      } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
-        // Nothing to do.
-      } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
-        CHECK(ContainsKey(live_buffers, buffer));
-        live_buffers.erase(buffer);
-      }
-
-      live_size += memory_delta(event);
-      if (live_size == max_live_size) {
-        break;
-      }
-    }
-    CHECK_EQ(live_size, max_live_size);
-    total_max_live_size += max_live_size;
-
-    live_buffers_vector.insert(live_buffers_vector.end(), live_buffers.begin(),
-                               live_buffers.end());
-  }
-
-  // Stabily sort the live buffers.
-  std::sort(live_buffers_vector.begin(), live_buffers_vector.end(),
-            [](const LogicalBuffer* a, const LogicalBuffer* b) {
-              return a->id() < b->id();
-            });
-  return {total_max_live_size, live_buffers_vector};
-}
-
 string BufferAllocation::ToString() const {
   string output;
   Appendf(&output, "allocation %lld: %p, size %lld", index_, this, size());
@@ -610,6 +504,7 @@ BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
   BufferAllocation* allocation =
       NewEmptyAllocation(size, is_thread_local, is_reusable, buffer.color());
   AddAssignment(allocation, buffer, /*offset=*/0, size);
+  allocation->peak_buffers_.push_back(&buffer);
   return allocation;
 }
 
@@ -680,6 +575,10 @@ void BufferAssignment::CombineTempAllocations() {
         CHECK_EQ(temp_allocation.HeapTraces().size(), 1);
         combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
       }
+      combined_allocation->peak_buffers_.insert(
+          combined_allocation->peak_buffers_.end(),
+          temp_allocation.peak_buffers_.begin(),
+          temp_allocation.peak_buffers_.end());
     }
     // Replace all existing temporary allocations with the new combined
     // allocations.
@@ -1228,6 +1127,89 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   return Status::OK();
 }
 
+namespace {
+
+// Computes and returns the set of logical buffers live at the point of maximal
+// liveness in the given heap trace. LogicalBuffers are (stabily) sorted by id.
+std::vector<const LogicalBuffer*> ComputePeakMemoryLogicalBuffers(
+    const BufferAllocation& allocation, const HeapSimulatorTrace& heap_trace) {
+  // Create a map from LogicalBuffer::Id to LogicalBuffer* for the logical
+  // buffers in this allocation.
+  tensorflow::gtl::FlatMap<LogicalBuffer::Id, const LogicalBuffer*>
+      id_to_buffer;
+  tensorflow::gtl::FlatMap<const LogicalBuffer*, int64> buffer_sizes;
+  for (const auto& pair : allocation.assigned_buffers()) {
+    const LogicalBuffer* buffer = pair.first;
+    const BufferAllocation::OffsetSize& offset_size = pair.second;
+    id_to_buffer[buffer->id()] = buffer;
+    buffer_sizes[buffer] = offset_size.size;
+  }
+
+  // Returns how much the given event increases the total size of live
+  // buffers. Can be negative.
+  auto memory_delta = [&id_to_buffer, &buffer_sizes](
+                          const HeapSimulatorTrace::Event& event) -> int64 {
+    const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
+    const int64 buffer_size = buffer_sizes.at(buffer);
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      return buffer_size;
+    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      // Sharing a buffer does not change the live set size for the purposes of
+      // the heap simulator. Even though the shared-with buffer may be smaller,
+      // the entire allocation remains live.
+      return 0;
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      return -1 * buffer_size;
+    }
+    LOG(FATAL) << "Unknown event kind: " << event.kind();
+  };
+
+  // First compute the size of the maximal live set.
+  int64 max_live_size = 0;
+  int64 live_size = 0;
+  for (const auto& event : heap_trace.events()) {
+    live_size += memory_delta(event);
+    if (max_live_size < live_size) {
+      max_live_size = live_size;
+    }
+  }
+
+  // Next gather the set of logical buffers live at the earliest point of
+  // maximal live set size.
+  tensorflow::gtl::FlatSet<const LogicalBuffer*> live_buffers;
+  live_size = 0;
+  for (const auto& event : heap_trace.events()) {
+    const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      InsertOrDie(&live_buffers, buffer);
+    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      // Nothing to do.
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      CHECK(ContainsKey(live_buffers, buffer));
+      live_buffers.erase(buffer);
+    }
+
+    live_size += memory_delta(event);
+    if (live_size == max_live_size) {
+      break;
+    }
+  }
+  CHECK_EQ(live_size, max_live_size);
+
+  std::vector<const LogicalBuffer*> live_buffers_vector;
+  live_buffers_vector.insert(live_buffers_vector.end(), live_buffers.begin(),
+                             live_buffers.end());
+
+  // Stabily sort the live buffers.
+  std::sort(live_buffers_vector.begin(), live_buffers_vector.end(),
+            [](const LogicalBuffer* a, const LogicalBuffer* b) {
+              return a->id() < b->id();
+            });
+  return live_buffers_vector;
+}
+
+}  // namespace
+
 void BufferAssigner::AssignBuffersFromHeapSimulator(
     const HeapSimulator::Result& result, BufferAssignment* assignment,
     LogicalBuffer::Color color) {
@@ -1246,6 +1228,8 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
     const HeapSimulator::Chunk& chunk = buffer_chunk.second;
     assignment->AddAssignment(allocation, buffer, chunk.offset, chunk.size);
   }
+  allocation->peak_buffers_ =
+      ComputePeakMemoryLogicalBuffers(*allocation, result.debug_trace);
 
   VLOG(1) << "Ran heap simulation for allocation: " << allocation->ToString();
   allocation->AddHeapTrace(result.debug_trace);

@@ -88,6 +88,10 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
 Operator* GetOpWithInput(const Model& model, const string& array_name);
 Operator* GetFirstOpWithInput(const Model& model, const string& array_name);
 
+// Replaces all uses of the |old_array_name| with the |new_array_name|.
+void ReplaceArrayUsage(Model* model, const string& old_array_name,
+                       const string& new_array_name);
+
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOp(
     const Model& model, const Operator* op);
 std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
@@ -138,6 +142,9 @@ int RequiredBufferSizeForShape(const Shape& shape);
 
 bool IsConstantParameterArray(const Model& model, const string& name);
 
+// Compares two constant parameter arrays for exact equality.
+bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array);
+
 void CheckNoMissingArray(const Model& model);
 void CheckInvariants(const Model& model);
 
@@ -149,6 +156,15 @@ void FixNoOrphanedArray(Model* model);
 
 // Fixes input/output arrays that may have issues during export or inference.
 void FixEdgeArrays(Model* model);
+
+// Finds and deduplicates large constant arrays in the model.
+// After constant propagation runs it's possible to end up with several of the
+// same large array (whether they be zeros or otherwise).
+//
+// |min_size| is used to adjust the minimum size in bytes of an array before
+// it's considered for deduping. As deduping can make the graphs more difficult
+// to read this helps prevent small arrays from spidering out.
+void DedupeConstantArrays(Model* model, size_t min_size);
 
 // Copies the contents of an array into another.
 // Expects that the shape and data type match.
@@ -293,6 +309,35 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 void FinishBuildingRNNStates(Model* model);
 
 void UseArraysExtraInfo(Model* model, bool quantize_output);
+
+// Calculates the number of elements in tensor given a shape. Shape elements
+// are assumed to be of type T, while the result total is of type U. If U
+// doesn't have enough range to represent the sum of elements, an error is
+// returned.
+template <typename T, typename U>
+port::Status NumElements(const std::vector<T>& shape, U* num_elements) {
+  static_assert(
+      std::numeric_limits<T>::max() <= std::numeric_limits<uint64_t>::max(),
+      "vector type exceed capabilities of NumElements");
+
+  *num_elements = 1;
+  for (const T& dim : shape) {
+    if (dim < 0) {
+      // TensorFlow's shapes sometimes include -1 to represent an "unknown"
+      // size but TOCO isn't able to create arrays of unknown sizes and will
+      // crash in RequiredBufferSizeForShape().
+      return port::Status(false,
+                          "Tensor shape should not include negative values");
+    }
+    if (static_cast<uint64_t>(dim) >
+        std::numeric_limits<U>::max() / *num_elements) {
+      *num_elements = 0;
+      return port::Status(false, "Tensor shape is too large");
+    }
+    *num_elements *= dim;
+  }
+  return port::Status::OK();
+}
 
 }  // namespace toco
 
