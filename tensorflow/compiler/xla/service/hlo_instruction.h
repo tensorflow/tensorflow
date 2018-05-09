@@ -185,8 +185,6 @@ class HloInstruction {
 
   // Creates an instruction from the given proto. Arguments:
   //
-  //   module: the module which will contain the instruction. The newly created
-  //     instruction is *not* added to the module or any computation, however.
   //   proto: the proto to convert from.
   //   instruction_map: a map from instruction id to HloInstruction*. This map
   //     must contain all operands of the newly constructed instruction.
@@ -194,7 +192,7 @@ class HloInstruction {
   //     must contain all computations which the newly constructed instruction
   //     calls.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
-      HloModule* module, const HloInstructionProto& proto,
+      const HloInstructionProto& proto,
       const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
       const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 

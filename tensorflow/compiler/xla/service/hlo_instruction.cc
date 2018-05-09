@@ -51,7 +51,7 @@ using ::tensorflow::strings::StrCat;
 
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
-    HloModule* module, const HloInstructionProto& proto,
+    const HloInstructionProto& proto,
     const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
     const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map) {
   TF_RET_CHECK(!proto.opcode().empty());
@@ -2394,6 +2394,10 @@ HloInstructionProto HloInstruction::ToProto() const {
   proto.set_fft_type(fft_type_);
   for (int64 fft_len : fft_length_) {
     proto.add_fft_length(fft_len);
+  }
+
+  if (has_sharding()) {
+    *proto.mutable_sharding() = sharding().ToProto();
   }
 
   proto.set_channel_name(channel_name_);
