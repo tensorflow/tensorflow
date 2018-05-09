@@ -1217,7 +1217,10 @@ tensorflow::Status ConvertPlugin(Converter& ctx,
     // TODO(jie): support only list of float for toy example here.
     auto data = attrs.get<std::vector<float>>(attr_key);
     size_t size_data = data.size() * sizeof(float);
-    plugin->SetAttribute(attr_key, static_cast<void*>(data.data()), size_data);
+    if (!plugin->SetAttribute(attr_key, static_cast<void*>(data.data()),
+                              size_data)) {
+      return tensorflow::errors::InvalidArgument("plugin SetAttribute failed");
+    }
   }
 
   nvinfer1::IPluginLayer* layer =
