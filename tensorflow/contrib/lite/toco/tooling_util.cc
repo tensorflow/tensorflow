@@ -143,6 +143,10 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
     for (auto& input : op->inputs) {
       if (input == array_name) {
         count++;
+        // Breaking here is important: some graphs have ops that use the
+        // same array as more than one of their inputs, and in that case
+        // we want it counted only once.
+        break;
       }
     }
   }
@@ -352,6 +356,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
     HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
+    HANDLE_OPERATORTYPENAME_CASE(PadV2)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
     HANDLE_OPERATORTYPENAME_CASE(Stack)
     HANDLE_OPERATORTYPENAME_CASE(Range)
@@ -386,6 +391,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Exp)
     HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
+    HANDLE_OPERATORTYPENAME_CASE(Select)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -2092,6 +2098,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt32;
     case INT64:
       return ArrayDataType::kInt64;
+    case BOOL:
+      return ArrayDataType::kBool;
     default:
       return ArrayDataType::kNone;
   }

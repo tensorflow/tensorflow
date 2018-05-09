@@ -33,9 +33,12 @@ gen_zipped_test_files(
         "fused_batch_norm.zip",
         "gather.zip",
         "global_batch_norm.zip",
+        "greater.zip",
+        "greater_equal.zip",
         "l2_pool.zip",
         "l2norm.zip",
         "less.zip",
+        "less_equal.zip",
         "local_response_norm.zip",
         "log_softmax.zip",
         "max_pool.zip",
@@ -45,6 +48,7 @@ gen_zipped_test_files(
         "mul.zip",
         "neg.zip",
         "pad.zip",
+        "padv2.zip",
         "relu.zip",
         "relu1.zip",
         "relu6.zip",
@@ -60,6 +64,7 @@ gen_zipped_test_files(
         "sub.zip",
         "topk.zip",
         "transpose.zip",
+        "where.zip",
     ],
 )
 

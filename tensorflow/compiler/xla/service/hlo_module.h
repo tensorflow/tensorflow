@@ -217,6 +217,25 @@ class HloModule {
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
 
+  // Returns a non-const version of the passed-in const HloInstruction*. This is
+  // safe on the argument that if you have a non-const module, then you can
+  // access all instructions in the module as non-const.
+  //
+  // Returns an error if the passed-in instruction is not from this module,
+  // except that it is allowed to pass in a null pointer.
+  //
+  // TODO(b/78350259): Eliminate const laundering. The argument above is not
+  // reliable since at any time someone could add or discover a way for a
+  // non-const module to transitively contain a const HloInstruction. The
+  // reliable way to do this would be to create a const laundering map from a
+  // module, mapping each encountered HloInstruction to its non-const version
+  // and then look up each instruction in need of laundering in that map, but
+  // this is much more expensive and complicated. This returns a Status instead
+  // of doing a CHECK-failure in part to make it strongly apparent that this is
+  // something that can fail.
+  StatusOr<HloInstruction*> LaunderConstInstructionFromModule(
+      const HloInstruction* hlo);
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,

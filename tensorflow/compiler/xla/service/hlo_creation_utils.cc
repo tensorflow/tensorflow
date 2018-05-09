@@ -269,7 +269,7 @@ StatusOr<HloInstruction*> BroadcastZeros(
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     ArraySlice<const Shape*> domain, const Shape& range,
     tensorflow::StringPiece name) {
-  HloComputation::Builder b(name.ToString());
+  HloComputation::Builder b{std::string(name)};
   int64 param_idx = 0;
   for (const Shape* param_shape : domain) {
     b.AddInstruction(HloInstruction::CreateParameter(

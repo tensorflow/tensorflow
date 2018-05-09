@@ -46,8 +46,23 @@ android_library(
     ],
 )
 
-java_library(
+android_library(
     name = "ovicbenchmarkerlib",
+    srcs = [
+        "ovic/src/main/java/org/tensorflow/ovic/OvicClassifier.java",
+        "ovic/src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
+    ],
+    manifest = "AndroidManifest.xml",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tensorflowlite",
+        "//tensorflow/contrib/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library(
+    name = "ovicbenchmarkerlib_java",
     srcs = [
         "ovic/src/main/java/org/tensorflow/ovic/OvicClassifier.java",
         "ovic/src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
@@ -170,18 +185,14 @@ java_test(
     size = "medium",
     srcs = ["ovic/src/test/java/org/tensorflow/ovic/OvicClassifierTest.java"],
     data = [
-        "ovic/src/testdata/float_model.lite",
-        "ovic/src/testdata/labels.txt",
-        "ovic/src/testdata/low_res_model.lite",
-        "ovic/src/testdata/quantized_model.lite",
-        "ovic/src/testdata/test_image_128.jpg",
-        "ovic/src/testdata/test_image_224.jpg",
+        "//tensorflow/contrib/lite/java/ovic/src/testdata:labels.txt",
+        "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.ovic.OvicClassifierTest",
     visibility = ["//visibility:public"],
     deps = [
-        ":ovicbenchmarkerlib",
+        ":ovicbenchmarkerlib_java",
         "@com_google_truth",
         "@junit",
     ],

@@ -925,6 +925,19 @@ void ConvertPadOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertPadV2Operator(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "PadV2");
+  CheckInputsCount(node, tf_import_flags, 3);
+  auto* op = new PadV2Operator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertShapeOperator(const NodeDef& node,
                           const TensorFlowImportFlags& tf_import_flags,
                           Model* model) {
@@ -1329,6 +1342,19 @@ void ConvertUnsupportedOperator(const NodeDef& node,
       op->output_data_types.push_back(ConvertDataType(output_types.type(i)));
     }
   }
+}
+
+void ConvertSelectOperator(const NodeDef& node,
+                           const TensorFlowImportFlags& tf_import_flags,
+                           Model* model) {
+  CheckInputsCount(node, tf_import_flags, 3);
+
+  auto* op = new SelectOperator;
+  for (const auto& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
 }
 
 void ConvertStridedSliceOperator(const NodeDef& node,
@@ -2169,6 +2195,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertMergeOperator(node, tf_import_flags, model);
   } else if (node.op() == "Pad") {
     ConvertPadOperator(node, tf_import_flags, model);
+  } else if (node.op() == "PadV2") {
+    ConvertPadV2Operator(node, tf_import_flags, model);
   } else if (node.op() == "StridedSlice") {
     ConvertStridedSliceOperator(node, tf_import_flags, model);
   } else if (node.op() == "Shape") {
@@ -2239,6 +2267,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertDynamicStitchOperator(node, tf_import_flags, model);
   } else if (node.op() == "RandomUniform") {
     ConvertRandomUniform(node, tf_import_flags, model);
+  } else if (node.op() == "Select") {
+    ConvertSelectOperator(node, tf_import_flags, model);
   } else {
     ConvertUnsupportedOperator(node, tf_import_flags, model);
   }

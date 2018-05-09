@@ -109,19 +109,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
           substitutions);
 
  protected:
-  // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
-  // literal type of each evaluated Handle* method of a TypedVisitor.
-  // There are however a few notable exceptions to this rule, notably:
-  // - HandleCompare and HandleIsFinite: where the resulting literal type is
-  // always boolean.
-  // These operations are handled outside of the parent HloEvaluator handlers
-  // instead of from within TypedVisitor.
+  // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
+  // class.
   //
-  // Type params:
-  //   - ReturnT: The type of input and output of each operation.
-  //   - ElementwiseT: The type in which internal computation are done.
-  template <typename ReturnT, typename ElementwiseT = ReturnT>
-  class TypedVisitor;
+  // A straightforward implementation would be to make it a nested class
+  // declared and defined in hlo_evaluator.cc.  Instead HloEvaluatorTypedVisitor
+  // lives as a separate class with its own header because its template gets
+  // instantiated many times and we want to use extern templates to shard out
+  // the compilation of those instantiations across multiple cc files.
+  template <typename ReturnT, typename ElementwiseT>
+  friend class HloEvaluatorTypedVisitor;
 
   // Wraps around instruction handling to infer types before dispatching to
   // the corresponding typed Visitor.
@@ -169,6 +166,33 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleSelect(HloInstruction* select) override;
 
  private:
+  template <typename ReturnT, typename NativeT>
+  static StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
+      HloInstruction* instruction,
+      const std::function<ReturnT(NativeT)>& unary_op,
+      const Literal& operand_literal) {
+    const auto shape = instruction->shape();
+    const auto* operand = instruction->operand(0);
+
+    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
+    // removed.
+    if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
+      return Unimplemented(
+          "Implicit broadcasting is currently unsupported in HLO evaluator "
+          "Shape Mismatch: %s vs %s",
+          ShapeUtil::HumanString(shape).c_str(),
+          ShapeUtil::HumanString(operand->shape()).c_str());
+    }
+
+    auto result = Literal::CreateFromShape(shape);
+
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          return unary_op(operand_literal.Get<NativeT>(multi_index));
+        }));
+    return std::move(result);
+  }
+
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
   // returned directly without looking up the cache.

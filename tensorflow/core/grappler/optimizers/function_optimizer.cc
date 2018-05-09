@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
+
 #include <unordered_map>
+
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -74,6 +77,73 @@ string UniqueSpecializedFunctionName(const FunctionDef& func,
   return unique_name;
 }
 
+// Specialized function instantiation type parameters, body parameters, and
+// const inputs.
+struct FunctionSpecializationSignature {
+  string func_name;
+  std::unordered_map<string, DataType> type_parameters;
+  std::unordered_map<string, AttrValue> body_parameters;
+  std::unordered_map<int, string> const_inputs;
+
+  bool operator==(const FunctionSpecializationSignature& other) const {
+    bool equals = func_name == other.func_name &&
+                  type_parameters == other.type_parameters &&
+                  const_inputs == other.const_inputs;
+
+    if (!equals) return false;
+
+    // Equality is not defined for AttrValue.
+    if (body_parameters.size() != other.body_parameters.size()) return false;
+
+    for (const auto& lhs : body_parameters) {
+      auto it = other.body_parameters.find(lhs.first);
+      if (it == other.body_parameters.end()) return false;
+      if (!AreAttrValuesEqual(lhs.second, (*it).second)) return false;
+    }
+
+    return true;
+  }
+
+  struct Hash {
+    uint64 operator()(FunctionSpecializationSignature const& s) const {
+      uint64 h = Hash64(s.func_name);
+
+      // Use std::map for deterministic iteration order.
+
+      std::map<string, DataType> types(s.type_parameters.begin(),
+                                       s.type_parameters.end());
+      for (const auto& pair : types) {
+        AttrValue attr_value;
+        attr_value.set_type(pair.second);
+        h = Hash64Combine(Hash64(pair.first), h);
+        h = Hash64Combine(AttrValueHash(attr_value), h);
+      }
+
+      std::map<string, AttrValue> body(s.body_parameters.begin(),
+                                       s.body_parameters.end());
+      for (const auto& pair : body) {
+        h = Hash64Combine(Hash64(pair.first), h);
+        h = Hash64Combine(AttrValueHash(pair.second), h);
+      }
+
+      std::map<int, string> inputs(s.const_inputs.begin(),
+                                   s.const_inputs.end());
+      for (const auto& pair : inputs) {
+        h = Hash64Combine(std::hash<int>()(pair.first), h);
+        h = Hash64Combine(Hash64(pair.second), h);
+      }
+
+      return h;
+    }
+  };
+};
+
+struct FunctionSpecialization {
+  string specialized_func_name;
+  std::unordered_set<string> const_inputs;
+  std::unordered_set<string> control_deps;
+};
+
 class FunctionOptimizerContext {
  public:
   explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
@@ -106,6 +176,16 @@ class FunctionOptimizerContext {
   // Find inlining candidate by name. Return nullptr if not found.
   const FunctionDef* FindInlinedFunction(const string& name) const {
     return gtl::FindWithDefault(inlined_functions_, name, nullptr);
+  }
+
+  const FunctionSpecialization* FindFunctionSpecialization(
+      const FunctionSpecializationSignature& sig) const {
+    return gtl::FindOrNull(specialized_functions_, sig);
+  }
+
+  void AddSpecializedFunction(const FunctionSpecializationSignature& sig,
+                              const FunctionSpecialization& specialized_func) {
+    specialized_functions_.emplace(sig, specialized_func);
   }
 
  private:
@@ -147,6 +227,12 @@ class FunctionOptimizerContext {
   std::unordered_map<string, const FunctionDef*> inlined_functions_;
   // Nodes that are Const and not in feed.
   std::unordered_map<string, const NodeDef*> truly_const_nodes_;
+
+  // Specialized functions.
+  std::unordered_map<FunctionSpecializationSignature,
+                     const FunctionSpecialization,
+                     FunctionSpecializationSignature::Hash>
+      specialized_functions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionOptimizerContext);
 };
@@ -303,12 +389,32 @@ void RemovePushedDownConstInputs(const std::unordered_set<string>& const_inputs,
 
     for (const string& ctrl : control_deps) {
       if (existing_control_deps.find(ctrl) == existing_control_deps.end()) {
-        VLOG(3) << "Forward control dependency to function caller node: input="
-                << ctrl;
+        VLOG(3) << "Forward control dependency: input=" << ctrl;
         specialized_func_node->add_input(ctrl);
       }
     }
   }
+}
+
+Status InitializeFunctionSpecializationSignature(
+    const NodeDef& func_node, const FunctionDef& func,
+    const AttrValueMap& func_attr, const FunctionOptimizerContext& ctx,
+    FunctionSpecializationSignature* sig) {
+  sig->func_name = func.signature().name();
+
+  TF_RETURN_IF_ERROR(
+      InstantiationTypeParameters(func, func_attr, &sig->type_parameters));
+  TF_RETURN_IF_ERROR(
+      InstantiationBodyParameters(func, func_attr, &sig->body_parameters));
+
+  for (int i = 0; i < func_node.input_size(); ++i) {
+    const string& input = func_node.input(i);
+    if (ctx.IsTrulyConst(input)) {
+      sig->const_inputs.emplace(i, input);
+    }
+  }
+
+  return Status::OK();
 }
 
 Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
@@ -320,6 +426,32 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   const std::unordered_map<string, AttrValue> func_attr(
       func_node.attr().begin(), func_node.attr().end());
 
+  FunctionSpecializationSignature signature;
+  TF_RETURN_IF_ERROR(InitializeFunctionSpecializationSignature(
+      func_node, func, func_attr, *ctx, &signature));
+
+  // Check if function was already specialized for identical context.
+  const FunctionSpecialization* already_specialized =
+      ctx->FindFunctionSpecialization(signature);
+
+  if (already_specialized) {
+    VLOG(2) << "Function was already specialized in identical context: "
+               "specialized_name="
+            << already_specialized->specialized_func_name;
+
+    // Add a function call node for the specialized function.
+    NodeDef* specialized_func_node = optimized_graph->add_node();
+    *specialized_func_node = func_node;
+    specialized_func_node->set_op(already_specialized->specialized_func_name);
+
+    RemovePushedDownConstInputs(already_specialized->const_inputs,
+                                already_specialized->control_deps,
+                                specialized_func_node);
+
+    return Status::OK();
+  }
+
+  // Add a new specialized function definition to the library.
   const auto& flib = ctx->function_library();
 
   // Make a GrapplerFunctionItem and convert it back to FunctionDef after
@@ -358,6 +490,10 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   // Update specialized node to remove inputs for pushed down consts.
   RemovePushedDownConstInputs(const_inputs, control_deps,
                               specialized_func_node);
+
+  ctx->AddSpecializedFunction(
+      signature, {specialized_func_name, const_inputs, control_deps});
+
   return Status::OK();
 }
 
