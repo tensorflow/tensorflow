@@ -137,6 +137,11 @@ enum BuiltinOperator : byte {
   MINIMUM = 57,
   LESS = 58,
   NEG = 59,
+  PADV2 = 60,
+  GREATER = 61,
+  GREATER_EQUAL = 62,
+  LESS_EQUAL = 63,
+  SELECT = 64,
 }
 
 // Options for the builtin operators.
@@ -183,6 +188,11 @@ union BuiltinOptions {
   ArgMaxOptions,
   LessOptions,
   NegOptions,
+  PadV2Options,
+  GreaterOptions,
+  GreaterEqualOptions,
+  LessEqualOptions,
+  SelectOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -316,6 +326,9 @@ table CallOptions {
 table PadOptions {
 }
 
+table PadV2Options {
+}
+
 table ReshapeOptions {
   new_shape:[int];
 }
@@ -405,10 +418,22 @@ table ArgMaxOptions {
   output_type : TensorType;
 }
 
+table GreaterOptions {
+}
+
+table GreaterEqualOptions {
+}
+
 table LessOptions {
 }
 
+table LessEqualOptions {
+}
+
 table NegOptions {
+}
+
+table SelectOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

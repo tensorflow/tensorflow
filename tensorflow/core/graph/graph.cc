@@ -695,7 +695,7 @@ Status Graph::AddWhileContext(StringPiece frame_name,
                               std::vector<OutputTensor> body_outputs,
                               WhileContext** result) {
   auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
-      frame_name.ToString(),
+      std::string(frame_name),
       WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
                    cond_output, std::move(body_inputs),
                    std::move(body_outputs))));

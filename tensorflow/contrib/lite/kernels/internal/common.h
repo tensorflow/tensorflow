@@ -113,6 +113,20 @@ inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
                              right_shift);
 }
 
+template <typename T>
+int CountLeadingZeros(T integer_input) {
+  static_assert(std::is_unsigned<T>::value,
+                "Only unsigned integer types handled.");
+  const T one_in_leading_positive = static_cast<T>(1)
+                                    << (std::numeric_limits<T>::digits - 1);
+  int leading_zeros = 0;
+  while (integer_input < one_in_leading_positive) {
+    integer_input <<= 1;
+    ++leading_zeros;
+  }
+  return leading_zeros;
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_COMMON_H_

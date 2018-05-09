@@ -65,7 +65,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 R"(HloModule constant_pred_module
 
 ENTRY %constant_pred () -> pred[] {
-  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="\"it\'s not a problem\n" source_file="path/to/test.cc" source_line=68}
+  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="\"it\'s not a problem\n" source_file="path/to/test.cc" source_line=68}, backend_config="foo\" bar"
 }
 
 )"
@@ -81,13 +81,14 @@ ENTRY %constant_s32 () -> s32[] {
 
 )"
 },
-// f32 constant, but the value is not a decimal
+// f32 constant, but the value is not a decimal and there is a backend
+// configuration
 {
 "ConstantF32",
 R"(HloModule ConstantF32_module
 
 ENTRY %ConstantF32.v4 () -> f32[] {
-  ROOT %constant = f32[] constant(42)
+  ROOT %constant = f32[] constant(42), backend_config="this is a configuration"
 }
 
 )"
@@ -1013,6 +1014,19 @@ ENTRY %SelectScalarS32True.v4 () -> s32[] {
   // but the constant names will not be exactly the same.
 }
 
+TEST_F(HloParserTest, ConfigurationField) {
+  const string original = R"(HloModule AModule
+ENTRY %configuration_test() -> s32[] {
+  %constant = s32[] constant(42), backend_config="foo bar"
+})";
+  auto result = Parse(original);
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ("foo bar", result.ValueOrDie()
+                           ->entry_computation()
+                           ->root_instruction()
+                           ->backend_config());
+}
+
 TEST_F(HloParserTest, LiteralDimensionsMismatch_1) {
   const string original = R"(HloModule some_2_module
 
@@ -1092,7 +1106,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
   %input = f32[1,2,1]{2,1,0} parameter(0)
   %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
   %filter = f32[1,1,1]{2,1,0} parameter(1)
-  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), sharding={maximal device=1}, dim_labels=b0f_0io->b0f, window={pad=1_1 size=2}
+  ROOT %convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), sharding={maximal device=1}, backend_config="foo", dim_labels=b0f_0io->b0f, window={pad=1_1 size=2}
 }
 
 )";
@@ -1138,7 +1152,7 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 
 )";
   ExpectHasSubstr(Parse(original).status().error_message(),
-                  "unexpected attribute calls");
+                  "unexpected attribute \"calls\"");
 }
 
 TEST_F(HloParserTest, MissingAttribute) {

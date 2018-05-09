@@ -795,15 +795,15 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     };
   }
 
-  if (run_opts.runner == nullptr) {
-    run_opts.runner = &default_runner_;
-  }
-  DCHECK(run_opts.runner != nullptr);
-
   if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
     parent_->Run(run_opts, handle, args, rets, done);
     return;
   }
+
+  if (run_opts.runner == nullptr) {
+    run_opts.runner = &default_runner_;
+  }
+  DCHECK(run_opts.runner != nullptr);
 
   Executor::Args* exec_args = new Executor::Args;
   // Inherit the step_id from the caller.

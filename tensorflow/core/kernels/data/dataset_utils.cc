@@ -46,18 +46,6 @@ Status MakeIteratorFromInputElement(
   return Status::OK();
 }
 
-IteratorContext MakeIteratorContext(OpKernelContext* ctx) {
-  IteratorContext::Params params;
-  params.env = ctx->env();
-  params.runner = *(ctx->runner());
-  params.lib = ctx->function_library();
-  DeviceBase* device = ctx->function_library()->device();
-  params.allocator_getter = [device](AllocatorAttributes attrs) {
-    return device->GetAllocator(attrs);
-  };
-  return IteratorContext(params);
-}
-
 }  // namespace dataset
 
 }  // namespace tensorflow

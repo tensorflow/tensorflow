@@ -372,6 +372,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -459,7 +460,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "batch_reshape_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/batch_reshape_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -578,7 +579,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "wishart_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/wishart_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -866,7 +867,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "batch_normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/bijectors/batch_normalization_test.py"],
     additional_deps = [
         ":bijectors_py",

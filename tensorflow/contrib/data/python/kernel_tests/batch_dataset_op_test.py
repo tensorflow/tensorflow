@@ -427,7 +427,9 @@ class BatchDatasetTest(test.TestCase):
     self.assertEqual([None], dataset.output_shapes[1][0].as_list())
     self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
 
-  def _testMapAndBatchDatasetHelper(self, num_parallel_batches=1):
+  def _testMapAndBatchDatasetHelper(self,
+                                    num_parallel_calls=None,
+                                    num_parallel_batches=None):
     """Test a dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset ->
     # RepeatDataset(count) -> MapAndBatchDataset(square_3, batch_size).
@@ -446,6 +448,7 @@ class BatchDatasetTest(test.TestCase):
             batching.map_and_batch(
                 map_func=_map_fn,
                 batch_size=batch_size,
+                num_parallel_calls=num_parallel_calls,
                 num_parallel_batches=num_parallel_batches))
         .make_initializable_iterator())
     init_op = iterator.initializer
@@ -497,11 +500,17 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={count: 14, batch_size: 0})
 
-  def testMapAndBatchDataset(self):
+  def testMapAndBatch(self):
     return self._testMapAndBatchDatasetHelper()
 
-  def testMapAndBatchDatasetWithParallelBatching(self):
+  def testMapAndBatchWithParallelBatches(self):
     return self._testMapAndBatchDatasetHelper(num_parallel_batches=10)
+
+  def testMapAndBatchWithSequentialCalls(self):
+    return self._testMapAndBatchDatasetHelper(num_parallel_calls=1)
+
+  def testMapAndBatchWithParallelCalls(self):
+    return self._testMapAndBatchDatasetHelper(num_parallel_calls=2)
 
   def _testMapAndBatchPartialBatchHelper(self, drop_remainder=False):
     iterator = (
@@ -682,7 +691,7 @@ class UnbatchDatasetSerializationTest(
 class MapAndBatchDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
-  def testSerializationCore(self):
+  def testNumParallelBatches(self):
     range_size = 11
     num_repeats = 2
     batch_size = 5
@@ -702,6 +711,33 @@ class MapAndBatchDatasetSerializationTest(
                   map_func=_map_fn,
                   batch_size=batch_size,
                   num_parallel_batches=num_parallel_batches,
+                  drop_remainder=drop_remainder))
+
+    self.run_core_tests(lambda: build_ds(10), lambda: build_ds(15),
+                        num_outputs_keep_remainder)
+    self.run_core_tests(lambda: build_ds(10, True), lambda: build_ds(15, True),
+                        num_outputs_drop_remainder)
+
+  def testNumParallelCalls(self):
+    range_size = 11
+    num_repeats = 2
+    batch_size = 5
+    total_outputs = range_size * num_repeats
+    num_outputs_drop_remainder = total_outputs // batch_size
+    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
+    num_parallel_calls = 7
+
+    def build_ds(range_start, drop_remainder=False):
+
+      def _map_fn(x):
+        return math_ops.square(x)
+
+      return dataset_ops.Dataset.range(
+          range_start, range_start + range_size).repeat(num_repeats).apply(
+              batching.map_and_batch(
+                  map_func=_map_fn,
+                  batch_size=batch_size,
+                  num_parallel_calls=num_parallel_calls,
                   drop_remainder=drop_remainder))
 
     self.run_core_tests(lambda: build_ds(10), lambda: build_ds(15),

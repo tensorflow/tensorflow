@@ -77,9 +77,7 @@ class SCOPED_LOCKABLE mutex_lock {
 
   // Manually nulls out the source to prevent double-free.
   // (std::move does not null the source pointer by default.)
-  explicit mutex_lock(mutex_lock&& ml) noexcept : mu_(ml.mu_) {
-    ml.mu_ = nullptr;
-  }
+  mutex_lock(mutex_lock&& ml) noexcept : mu_(ml.mu_) { ml.mu_ = nullptr; }
   ~mutex_lock() UNLOCK_FUNCTION() {
     if (mu_ != nullptr) {
       mu_->unlock();
