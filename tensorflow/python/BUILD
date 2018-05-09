@@ -4219,7 +4219,7 @@ tf_py_test(
 
 py_test(
     name = "basic_session_run_hooks_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/basic_session_run_hooks_test.py"],
     srcs_version = "PY2AND3",
     tags = [
