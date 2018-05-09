@@ -86,11 +86,10 @@ const typename Collection::value_type::second_type& FindOrDefault(
 
 // Inserts the key-value pair into the collection. Dies if key was already
 // present.
-template <class Collection>
-void InsertOrDie(Collection* const collection,
-                 const typename Collection::value_type::first_type& key,
-                 const typename Collection::value_type::second_type& data) {
-  auto p = collection->insert(std::make_pair(key, data));
+template <class Collection, class Key, class Value>
+void InsertOrDie(Collection* const collection, Key&& key, Value&& value) {
+  auto p = collection->insert(
+      std::make_pair(std::forward<Key>(key), std::forward<Value>(value)));
   CHECK(p.second) << "duplicate key: " << key;
 }
 
@@ -101,9 +100,10 @@ bool ContainsKey(const Collection& collection, const Key& key) {
 }
 
 // Inserts `value` into `set`. Dies if it was already present.
-template <class Set>
-void InsertOrDie(Set* const set, const typename Set::value_type& value) {
-  CHECK(set->insert(value).second) << "duplicate value: " << value;
+template <class Set, class Value>
+void InsertOrDie(Set* const set, Value&& value) {
+  CHECK(set->insert(std::forward<Value>(value)).second)
+      << "duplicate value: " << value;
 }
 
 }  // namespace xla
