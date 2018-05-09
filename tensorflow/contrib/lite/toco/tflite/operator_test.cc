@@ -117,6 +117,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                               OperatorType::kTensorFlowLess);
   CheckSimpleOperator<NegOperator>("NEG", OperatorType::kNeg);
   CheckSimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect);
+  CheckSimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

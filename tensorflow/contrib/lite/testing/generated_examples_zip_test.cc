@@ -67,6 +67,9 @@ std::map<string, string> kBrokenTests = {
     // non-const tensors as crops.
     {R"(^\/batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\])", "70594634"},
 
+    // Softmax graphs are too complex.
+    {R"(^\/softmax.*input_shape=\[1,3,4,3\])", "67749831"},
+
     // SpaceToBatchND only supports 4D tensors.
     {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
@@ -281,6 +284,7 @@ INSTANTIATE_TESTS(relu6)
 INSTANTIATE_TESTS(reshape)
 INSTANTIATE_TESTS(resize_bilinear)
 INSTANTIATE_TESTS(sigmoid)
+INSTANTIATE_TESTS(slice)
 INSTANTIATE_TESTS(softmax)
 INSTANTIATE_TESTS(space_to_batch_nd)
 INSTANTIATE_TESTS(space_to_depth)
