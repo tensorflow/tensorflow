@@ -37,7 +37,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 18.
+// Next ID to use: 19.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -127,7 +127,7 @@ message TocoFlags {
   // transformations that are necessary in order to generate inference
   // code for these graphs. Such graphs should be fixed, but as a
   // temporary work-around, setting this reorder_across_fake_quant flag
-  // allows toco to perform necessary graph transformaitons on them,
+  // allows toco to perform necessary graph transformations on them,
   // at the cost of no longer faithfully matching inference and training
   // arithmetic.
   optional bool reorder_across_fake_quant = 8;
@@ -161,4 +161,8 @@ message TocoFlags {
   // This flag allows nudging them to 1 to allow proceeding, with moderate
   // inaccuracy.
   optional bool allow_nudging_weights_to_use_fast_gemm_kernel = 17;
+
+  // Minimum size of constant arrays to deduplicate; arrays smaller will not be
+  // deduplicated.
+  optional int64 dedupe_array_min_size_bytes = 18 [default = 64];
 }

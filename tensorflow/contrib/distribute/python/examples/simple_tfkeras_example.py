@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""An example tf.keras model that is trained using MirroredStrategy."""
+"""An example of training tf.keras Model using MirroredStrategy."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from sys import argv
+
+import sys
+
 import numpy as np
 import tensorflow as tf
 
@@ -33,30 +35,37 @@ def input_fn():
 
 def main(args):
   if len(args) < 2:
-    print('You must specify  model_dir for checkpoints such as'
-          ' /tmp/tfkeras_example./')
+    print('You must specify model_dir for checkpoints such as'
+          ' /tmp/tfkeras_example/.')
     return
 
-  print('Using %s to store checkpoints.' % args[1])
+  model_dir = args[1]
+  print('Using %s to store checkpoints.' % model_dir)
 
-  strategy = tf.contrib.distribute.MirroredStrategy(
-      ['/device:GPU:0', '/device:GPU:1'])
-  config = tf.estimator.RunConfig(train_distribute=strategy)
-  optimizer = tf.train.GradientDescentOptimizer(0.2)
-
+  # Define tf.keras Model.
   model = tf.keras.Sequential()
   model.add(tf.keras.layers.Dense(16, activation='relu', input_shape=(10,)))
   model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 
+  # Compile tf.keras Model.
+  optimizer = tf.train.GradientDescentOptimizer(0.2)
   model.compile(loss='binary_crossentropy', optimizer=optimizer)
   model.summary()
   tf.keras.backend.set_learning_phase(True)
-  keras_estimator = tf.keras.estimator.model_to_estimator(
-      keras_model=model, config=config, model_dir=args[1])
 
+  # Define a DistributionStrategy and convert the tf.keras Model to a
+  # tf.Estimator that utilizes the DistributionStrategy.
+  strategy = tf.contrib.distribute.MirroredStrategy(
+      ['/device:GPU:0', '/device:GPU:1'])
+  config = tf.estimator.RunConfig(train_distribute=strategy)
+  keras_estimator = tf.keras.estimator.model_to_estimator(
+      keras_model=model, config=config, model_dir=model_dir)
+
+  # Train and evaluate the tf.Estimator.
   keras_estimator.train(input_fn=input_fn, steps=10)
   eval_result = keras_estimator.evaluate(input_fn=input_fn)
   print('Eval result: {}'.format(eval_result))
 
+
 if __name__ == '__main__':
-  tf.app.run(argv=argv)
+  tf.app.run(argv=sys.argv)

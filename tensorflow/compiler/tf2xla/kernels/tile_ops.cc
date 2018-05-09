@@ -112,7 +112,7 @@ class TileOp : public XlaOpKernel {
       flattened.push_back(i);
       flattened.push_back(i + output_shape.size());
     }
-    xla::ComputationDataHandle output =
+    xla::XlaOp output =
         ctx->builder()->Reshape(broadcasted, flattened, output_shape);
 
     ctx->SetOutput(0, output);

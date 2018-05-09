@@ -240,7 +240,7 @@ class Encapsulator {
   // Once edges between compiled and outside_compilation clusters have been
   // replaced by send/recv ops, some dependencies may no longer be apparent.
   // A clustering pass finds all the dependencies between HC nodes that are only
-  // present as a result of edges between nodes in outside_compilaton clusters.
+  // present as a result of edges between nodes in outside_compilation clusters.
   // Suppose there is a path from outside_compilation cluster C in subgraph S
   // to outside_compilation cluster D in subgraph T. If S != T then a control
   // edge is added from the call node for S to the call node for T, which

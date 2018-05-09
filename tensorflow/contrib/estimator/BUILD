@@ -17,6 +17,7 @@ py_library(
         ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
+        ":export",
         ":extenders",
         ":head",
         ":linear",
@@ -77,6 +78,7 @@ py_test(
     tags = [
         "no_pip",
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
         ":dnn",
@@ -176,6 +178,43 @@ py_test(
         "//tensorflow/python/estimator:linear",
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "export",
+    srcs = [
+        "python/estimator/export.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator:model_fn",
+    ],
+)
+
+py_test(
+    name = "export_test",
+    size = "medium",
+    srcs = ["python/estimator/export_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/62863147
+    deps = [
+        ":export",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -450,20 +489,25 @@ py_test(
         "no_pip",
         "noasan",  # times out
         "notsan",
+        "optonly",  # times out http://b/79220679
     ],
     deps = [
+        ":head",
         ":rnn",
+        "//tensorflow/contrib/data",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:parsing_utils",
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
         "@six_archive//:six",

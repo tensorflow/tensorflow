@@ -238,10 +238,6 @@ Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env, jclass clazz, jlong handle) {
   if (tensor == nullptr) return nullptr;
   int num_dims = tensor->dims->size;
   jintArray result = env->NewIntArray(num_dims);
-  jint* dims = env->GetIntArrayElements(result, nullptr);
-  for (int i = 0; i < num_dims; ++i) {
-    dims[i] = static_cast<jint>(tensor->dims->data[i]);
-  }
-  env->ReleaseIntArrayElements(result, dims, 0);
+  env->SetIntArrayRegion(result, 0, num_dims, tensor->dims->data);
   return result;
 }

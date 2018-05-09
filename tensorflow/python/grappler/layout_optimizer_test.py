@@ -150,10 +150,14 @@ def _loop_with_vec_and_4d():
 def _get_config(layout_optimizer=True):
   if layout_optimizer:
     rewrite_options = rewriter_config_pb2.RewriterConfig(
-        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON,
+        # do not remove duplicated nodes
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   else:
     rewrite_options = rewriter_config_pb2.RewriterConfig(
-        layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF)
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
+        # do not remove duplicated nodes
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   graph_options = config_pb2.GraphOptions(
       rewrite_options=rewrite_options, build_cost_model=1)
   config = config_pb2.ConfigProto(graph_options=graph_options)

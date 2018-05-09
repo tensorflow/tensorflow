@@ -485,6 +485,7 @@ py_test(
     name = "state_saving_rnn_estimator_test",
     size = "medium",
     srcs = ["python/learn/estimators/state_saving_rnn_estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["noasan"],
     deps = [

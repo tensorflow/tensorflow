@@ -20,10 +20,9 @@ from __future__ import print_function
 
 import itertools
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
 
 
@@ -34,15 +33,6 @@ __all__ = [
 
 def _use_static_shape(input_tensor, ndims):
   return input_tensor.shape.is_fully_defined() and isinstance(ndims, int)
-
-
-def _maybe_get_event_ndims_statically(event_ndims):
-  static_event_ndims = (event_ndims if isinstance(event_ndims, int)
-                        else tensor_util.constant_value(event_ndims))
-  if static_event_ndims is not None:
-    return static_event_ndims
-
-  return event_ndims
 
 
 def _compute_min_event_ndims(bijector_list, compute_forward=True):
@@ -238,13 +228,13 @@ class Chain(bijector.Bijector):
     return y
 
   def _inverse_log_det_jacobian(self, y, **kwargs):
-    ildj = constant_op.constant(
-        0., dtype=y.dtype.base_dtype, name="inverse_log_det_jacobian")
+    y = ops.convert_to_tensor(y, name="y")
+    ildj = math_ops.cast(0., dtype=y.dtype.base_dtype)
 
     if not self.bijectors:
       return ildj
 
-    event_ndims = _maybe_get_event_ndims_statically(
+    event_ndims = self._maybe_get_event_ndims_statically(
         self.inverse_min_event_ndims)
 
     if _use_static_shape(y, event_ndims):
@@ -258,11 +248,12 @@ class Chain(bijector.Bijector):
 
       if _use_static_shape(y, event_ndims):
         event_shape = b.inverse_event_shape(event_shape)
-        event_ndims = _maybe_get_event_ndims_statically(event_shape.ndims)
+        event_ndims = self._maybe_get_event_ndims_statically(
+            event_shape.ndims)
       else:
         event_shape = b.inverse_event_shape_tensor(event_shape)
-        event_ndims = _maybe_get_event_ndims_statically(
-            array_ops.rank(event_shape))
+        event_ndims = self._maybe_get_event_ndims_statically(
+            array_ops.size(event_shape))
       y = b.inverse(y, **kwargs.get(b.name, {}))
     return ildj
 
@@ -274,13 +265,12 @@ class Chain(bijector.Bijector):
   def _forward_log_det_jacobian(self, x, **kwargs):
     x = ops.convert_to_tensor(x, name="x")
 
-    fldj = constant_op.constant(
-        0., dtype=x.dtype, name="inverse_log_det_jacobian")
+    fldj = math_ops.cast(0., dtype=x.dtype.base_dtype)
 
     if not self.bijectors:
       return fldj
 
-    event_ndims = _maybe_get_event_ndims_statically(
+    event_ndims = self._maybe_get_event_ndims_statically(
         self.forward_min_event_ndims)
 
     if _use_static_shape(x, event_ndims):
@@ -293,13 +283,21 @@ class Chain(bijector.Bijector):
           x, event_ndims=event_ndims, **kwargs.get(b.name, {}))
       if _use_static_shape(x, event_ndims):
         event_shape = b.forward_event_shape(event_shape)
-        event_ndims = _maybe_get_event_ndims_statically(event_shape.ndims)
+        event_ndims = self._maybe_get_event_ndims_statically(event_shape.ndims)
       else:
         event_shape = b.forward_event_shape_tensor(event_shape)
-        event_ndims = _maybe_get_event_ndims_statically(
-            array_ops.rank(event_shape))
+        event_ndims = self._maybe_get_event_ndims_statically(
+            array_ops.size(event_shape))
 
       x = b.forward(x, **kwargs.get(b.name, {}))
 
     return fldj
+
+  def _maybe_get_event_ndims_statically(self, event_ndims):
+    event_ndims_ = super(Chain, self)._maybe_get_event_ndims_statically(
+        event_ndims)
+    if event_ndims_ is None:
+      return event_ndims
+    return event_ndims_
+
 

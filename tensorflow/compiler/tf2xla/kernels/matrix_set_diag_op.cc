@@ -54,16 +54,16 @@ class MatrixSetDiagOp : public XlaOpKernel {
                     input_shape.DebugString(),
                     " and diagonal shape: ", diag_shape.DebugString()));
 
-    xla::ComputationBuilder* builder = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle diag = context->Input(1);
+    xla::XlaBuilder* builder = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp diag = context->Input(1);
 
     auto zero = XlaHelpers::Zero(builder, context->input_type(0));
 
     // Create an indicator tensor that is true only on the diagonal.
-    xla::ComputationDataHandle iota_m;
+    xla::XlaOp iota_m;
     OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, DT_INT32, m, &iota_m));
-    xla::ComputationDataHandle iota_n;
+    xla::XlaOp iota_n;
     OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, DT_INT32, n, &iota_n));
     auto indicator = builder->Eq(iota_m,
                                  builder->Broadcast(iota_n, {m}),

@@ -21,7 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-
 bool IsAdd(const NodeDef& node);
 bool IsAddN(const NodeDef& node);
 bool IsAll(const NodeDef& node);
@@ -31,6 +30,7 @@ bool IsAnyDiv(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
+bool IsAssign(const NodeDef& node);
 bool IsAtan2(const NodeDef& node);
 bool IsBetainc(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
@@ -98,7 +98,9 @@ bool IsPolygamma(const NodeDef& node);
 bool IsPrint(const NodeDef& node);
 bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
+bool IsQueue(const NodeDef& node);
 bool IsRandomShuffle(const NodeDef& node);
+bool IsRank(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu6Grad(const NodeDef& node);
@@ -115,11 +117,13 @@ bool IsRsqrtGrad(const NodeDef& node);
 bool IsSelect(const NodeDef& node);
 bool IsSeluGrad(const NodeDef& node);
 bool IsSend(const NodeDef& node);
+bool IsSize(const NodeDef& node);
 bool IsSlice(const NodeDef& node);
 bool IsShape(const NodeDef& node);
 bool IsShapeN(const NodeDef& node);
 bool IsShuffle(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
+bool IsSnapshot(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
@@ -171,6 +175,10 @@ bool ModifiesInputsInPlace(const NodeDef& node);
 // own inverse such that f(f(x)) == x.
 bool IsInvolution(const NodeDef& node);
 
+// Returns true if the op preserves the order and value of elements
+// and shape of its first input tensor.
+bool IsValueAndOrderAndShapePreserving(const NodeDef& node);
+
 // Returns true if the op preserves the order and value of elements in its
 // first input tensor and possible changes its shape.
 bool IsValueAndOrderPreserving(const NodeDef& node);
@@ -179,6 +187,10 @@ bool IsValueAndOrderPreserving(const NodeDef& node);
 // first input tensor and possible changes its shape. More precisely, this
 // function returns true if the op commutes with all element-wise operations.
 bool IsValuePreserving(const NodeDef& node);
+
+// Returns true if node is idempotent w.r.t. its first input, i.e. if
+// Op(Op(x, y, z), y, z) = Op(x, y, z).
+bool IsIdempotent(const NodeDef& node);
 
 bool IsUnaryElementWise(const NodeDef& node);
 

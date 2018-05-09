@@ -17,7 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.lite.python.interpreter_wrapper import tensorflow_wrap_interpreter_wrapper as interpreter_wrapper
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# Lazy load since some of the performance benchmark skylark rules
+# break dependencies. Must use double quotes to match code internal rewrite
+# rule.
+# pylint: disable=g-inconsistent-quotes
+_interpreter_wrapper = LazyLoader(
+    "_interpreter_wrapper", globals(),
+    "tensorflow.contrib.lite.python.interpreter_wrapper."
+    "tensorflow_wrap_interpreter_wrapper")
+# pylint: enable=g-inconsistent-quotes
+
+del LazyLoader
 
 
 class Interpreter(object):
@@ -35,13 +47,13 @@ class Interpreter(object):
     """
     if model_path and not model_content:
       self._interpreter = (
-          interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
+          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
               model_path))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
       self._interpreter = (
-          interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
+          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
               model_content, len(model_content)))
       if not self._interpreter:
         raise ValueError(

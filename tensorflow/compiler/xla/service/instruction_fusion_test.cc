@@ -21,6 +21,8 @@ limitations under the License.
 
 namespace xla {
 
+namespace op = xla::testing::opcode_matchers;
+
 using InstructionFusionTest = HloTestBase;
 
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
@@ -124,7 +126,7 @@ TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {
   EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1) << module->ToString();
 
   // Make sure the add hasn't been duplicated.
-  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1) << module->ToString();
+  EXPECT_EQ(Count(*module, HloOpcode::kAdd), 1) << module->ToString();
 }
 
 TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
@@ -289,6 +291,31 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest,
+       WideningConvertsAreAlwaysDuplicableIntoConsumers) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f16[100] parameter(0)
+    c = f32[100] convert(p0)
+    add = f32[100] add(c, c)
+    ROOT mul = f32[100] multiply(c, c)
+  })")
+                    .ValueOrDie();
+
+  // The convert should be fused into the add and mul, even though may_duplicate
+  // is false, because it's always beneficial to fuse/duplicate widening
+  // converts into consumers.
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter()));
 }
 
 }  // namespace xla

@@ -48,13 +48,18 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kLogSoftmax ||
          type == OperatorType::kTensorFlowSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
+         type == OperatorType::kPadV2 ||
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToDepth ||
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
-         type == OperatorType::kTranspose || type == OperatorType::kMean;
+         type == OperatorType::kTranspose || type == OperatorType::kMean ||
+         type == OperatorType::kTensorFlowGreater ||
+         type == OperatorType::kTensorFlowGreaterEqual ||
+         type == OperatorType::kTensorFlowLess ||
+         type == OperatorType::kTensorFlowLessEqual;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
@@ -95,6 +100,11 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
     for (auto val : data) {
       min = std::min(min, val);
       max = std::max(max, val);
+    }
+    if (min == 0.f && max == 0.f) {
+      // Prevent downstream anger from quantized math that expects min and max
+      // to not be equal.
+      max = 1.f;
     }
     auto& minmax = array.GetOrCreateMinMax();
     minmax.min = min;
@@ -251,8 +261,7 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
         IsExactlyRepresentable(0., *quantized_data_type, *quantization_params));
     return true;
   }
-  if ((op.type == OperatorType::kLogistic) ||
-      (op.type == OperatorType::kSoftmax)) {
+  if (op.type == OperatorType::kLogistic || op.type == OperatorType::kSoftmax) {
     // Logistic and Softmax have range: [0, 1].
     //
     // For Logistic, 0.5 should be exactly representable, as implementations

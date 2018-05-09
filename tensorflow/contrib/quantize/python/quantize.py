@@ -33,7 +33,7 @@ from tensorflow.python.platform import tf_logging as logging
 _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
 
 # Activations that are supported by the quantization rewrite.
-_ACTIVATION_TYPES = {'Relu', 'Relu6', 'Identity'}
+_ACTIVATION_TYPES = {'Relu', 'Relu6'}
 
 
 def Quantize(graph,
@@ -267,8 +267,10 @@ def _FindLayersToQuantize(graph):
 
   # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
+  # TODO(suharshs): We should ideally skip Identity operations instead of
+  # treating them as an activation.
   activation_pattern = graph_matcher.OpTypePattern(
-      '|'.join(_ACTIVATION_TYPES),
+      '|'.join(_ACTIVATION_TYPES) + '|Identity',
       inputs=[
           graph_matcher.OneofPattern([
               bias_add_pattern, folded_bias_add_pattern, bypass_pattern_a,

@@ -106,6 +106,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
+  transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
@@ -343,6 +344,11 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
 
   if (output_format == TENSORFLOW_GRAPHDEF) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
+  }
+
+  // Deduplicate large constant arrays.
+  if (toco_flags.has_dedupe_array_min_size_bytes()) {
+    DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
   }
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);

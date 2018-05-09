@@ -696,7 +696,7 @@ class _FuncGraph(ops.Graph):
     return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
                                              **kwargs)
 
-  def capture(self, tensor):
+  def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
     if tensor in self._captured:
       # Captured already.
@@ -704,15 +704,16 @@ class _FuncGraph(ops.Graph):
     elif self._capture_by_value:
       return self._add_tensor_and_parents(tensor)
     else:
-      return self._capture_tensor_as_extra_input(tensor)
+      return self._capture_tensor_as_extra_input(tensor, name)
 
-  def _capture_tensor_as_extra_input(self, tensor):
+  def _capture_tensor_as_extra_input(self, tensor, name=None):
     # Substitute with a placeholder.
     self.extra_inputs.append(tensor)
     # Hoist the new input placeholder out of any control flow context
     # we're currently in.
     with ops.control_dependencies(None):
-      ph = array_ops.placeholder(tensor.dtype, shape=tensor.get_shape())
+      ph = array_ops.placeholder(
+          tensor.dtype, shape=tensor.get_shape(), name=name)
     # pylint: disable=protected-access
     if ops._USE_C_SHAPES:
       handle_data = c_api.GetResourceHandleShapeAndType(tensor.graph._c_graph,
