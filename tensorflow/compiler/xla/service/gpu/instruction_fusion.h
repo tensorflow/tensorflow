@@ -27,6 +27,8 @@ class GpuInstructionFusion : public InstructionFusion {
   explicit GpuInstructionFusion(bool may_duplicate)
       : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate) {}
 
+  static bool IsExpensive(const HloInstruction& instruction);
+
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
 
   HloInstruction::FusionKind ChooseKind(

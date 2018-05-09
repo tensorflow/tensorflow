@@ -36,9 +36,7 @@ def device_and_data_format():
                                                               'channels_last')
 
 
-def random_batch(batch_size, device_and_format=None):
-  _, data_format = device_and_format or device_and_data_format()
-
+def random_batch(batch_size, data_format):
   shape = (3, 224, 224) if data_format == 'channels_first' else (224, 224, 3)
   shape = (batch_size,) + shape
 
@@ -70,7 +68,7 @@ class ResNet50Test(tf.test.TestCase):
     if defun:
       model.call = tfe.defun(model.call)
     with tf.device(device), tfe.execution_mode(execution_mode):
-      images, _ = random_batch(2)
+      images, _ = random_batch(2, data_format)
       output = model(images, training=False)
       tfe.async_wait()
     self.assertEqual((2, 1000), output.shape)
@@ -91,7 +89,7 @@ class ResNet50Test(tf.test.TestCase):
     device, data_format = device_and_data_format()
     model = resnet50.ResNet50(data_format, include_top=False)
     with tf.device(device):
-      images, _ = random_batch(2)
+      images, _ = random_batch(2, data_format)
       output = model(images, training=False)
     output_shape = ((2, 2048, 1, 1)
                     if data_format == 'channels_first' else (2, 1, 1, 2048))
@@ -101,7 +99,7 @@ class ResNet50Test(tf.test.TestCase):
     device, data_format = device_and_data_format()
     model = resnet50.ResNet50(data_format, include_top=False, pooling='avg')
     with tf.device(device):
-      images, _ = random_batch(2)
+      images, _ = random_batch(2, data_format)
       output = model(images, training=False)
     self.assertEqual((2, 2048), output.shape)
 
@@ -115,7 +113,7 @@ class ResNet50Test(tf.test.TestCase):
         name='t0').as_default(), tf.contrib.summary.always_record_summaries():
       with tf.device(device), tfe.execution_mode(execution_mode):
         optimizer = tf.train.GradientDescentOptimizer(0.1)
-        images, labels = random_batch(2)
+        images, labels = random_batch(2, data_format)
         train_one_step(model, images, labels, optimizer)
         self.assertEqual(320, len(model.variables))
         tfe.async_wait()
@@ -134,7 +132,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format)
     optimizer = tf.train.GradientDescentOptimizer(0.1)
     with tf.device(device):
-      images, labels = random_batch(2)
+      images, labels = random_batch(2, data_format)
       gc.disable()
       # Warm up. Note that this first run does create significant amounts of
       # garbage to be collected. The hope is that this is a build-only effect,
@@ -202,18 +200,18 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     # which forces a sync. This is a roundabout way, yes.
     tf.constant(1.).cpu()
 
-  def _benchmark_eager_apply(self, label, defun=False, execution_mode=None,
-                             device_and_format=None):
+  def _benchmark_eager_apply(self, label, device_and_format, defun=False,
+                             execution_mode=None, compiled=False):
     with tfe.execution_mode(execution_mode):
-      device, data_format = device_and_format or device_and_data_format()
+      device, data_format = device_and_format
       model = resnet50.ResNet50(data_format)
       if defun:
-        model.call = tfe.defun(model.call)
+        model.call = tfe.defun(model.call, compiled=compiled)
       batch_size = 64
       num_burn = 5
       num_iters = 30
       with tf.device(device):
-        images, _ = random_batch(batch_size, device_and_format)
+        images, _ = random_batch(batch_size, data_format)
         for _ in xrange(num_burn):
           model(images, training=False).cpu()
         if execution_mode:
@@ -227,30 +225,34 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_apply_sync(self):
-    self._benchmark_eager_apply('eager_apply', defun=False)
+    self._benchmark_eager_apply('eager_apply', device_and_data_format(),
+                                defun=False)
 
   def benchmark_eager_apply_async(self):
     self._benchmark_eager_apply(
-        'eager_apply_async', defun=False, execution_mode=tfe.ASYNC)
+        'eager_apply_async', device_and_data_format(), defun=False,
+        execution_mode=tfe.ASYNC)
 
   def benchmark_eager_apply_with_defun(self):
-    self._benchmark_eager_apply('eager_apply_with_defun', defun=True)
+    self._benchmark_eager_apply('eager_apply_with_defun',
+                                device_and_data_format(), defun=True)
 
   def _benchmark_eager_train(self,
                              label,
                              make_iterator,
+                             device_and_format,
                              defun=False,
                              execution_mode=None,
-                             device_and_format=None):
+                             compiled=False):
     with tfe.execution_mode(execution_mode):
-      device, data_format = device_and_format or device_and_data_format()
+      device, data_format = device_and_format
       for batch_size in self._train_batch_sizes():
-        (images, labels) = random_batch(batch_size, device_and_format)
+        (images, labels) = random_batch(batch_size, data_format)
         num_burn = 3
         num_iters = 10
         model = resnet50.ResNet50(data_format)
         if defun:
-          model.call = tfe.defun(model.call)
+          model.call = tfe.defun(model.call, compiled=compiled)
         optimizer = tf.train.GradientDescentOptimizer(0.1)
 
         with tf.device(device):
@@ -273,18 +275,21 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_train_sync(self):
-    self._benchmark_eager_train('eager_train', MockIterator, defun=False)
+    self._benchmark_eager_train('eager_train', MockIterator,
+                                device_and_data_format(), defun=False)
 
   def benchmark_eager_train_async(self):
     self._benchmark_eager_train(
         'eager_train_async',
         MockIterator,
+        device_and_data_format(),
         defun=False,
         execution_mode=tfe.ASYNC)
 
   def benchmark_eager_train_with_defun(self):
     self._benchmark_eager_train(
-        'eager_train_with_defun', MockIterator, defun=True)
+        'eager_train_with_defun', MockIterator,
+        device_and_data_format(), defun=True)
 
   def benchmark_eager_train_datasets(self):
 
@@ -294,7 +299,8 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       return tfe.Iterator(ds)
 
     self._benchmark_eager_train(
-        'eager_train_dataset', make_iterator, defun=False)
+        'eager_train_dataset', make_iterator,
+        device_and_data_format(), defun=False)
 
   def benchmark_eager_train_datasets_with_defun(self):
 
@@ -304,7 +310,8 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       return tfe.Iterator(ds)
 
     self._benchmark_eager_train(
-        'eager_train_dataset_with_defun', make_iterator, defun=True)
+        'eager_train_dataset_with_defun', make_iterator,
+        device_and_data_format(), defun=True)
 
 
 if __name__ == '__main__':

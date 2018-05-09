@@ -560,10 +560,10 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         weights=weights,
         processed_labels=processed_labels)
 
-  def create_estimator_spec(
+  def _create_tpu_estimator_spec(
       self, features, mode, logits, labels=None, optimizer=None,
       train_op_fn=None, regularization_losses=None):
-    """Returns an `EstimatorSpec`.
+    """Returns an `model_fn._TPUEstimatorSpec`.
 
     Args:
       features: Input `dict` of `Tensor` or `SparseTensor` objects.
@@ -586,7 +586,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
         avoid scaling errors.
     Returns:
-      `EstimatorSpec`.
+      `model_fn._TPUEstimatorSpec`.
     Raises:
       ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
         mode, or if both are set.
@@ -606,7 +606,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         classifier_output = head_lib._classification_output(  # pylint:disable=protected-access
             scores=probabilities, n_classes=self._n_classes,
             label_vocabulary=self._label_vocabulary)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
@@ -629,16 +629,18 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
             loss=regularized_training_loss,
-            eval_metric_ops=self._eval_metric_ops(
-                labels=processed_labels,
-                probabilities=probabilities,
-                weights=weights,
-                unreduced_loss=unreduced_loss,
-                regularization_loss=regularization_loss))
+            eval_metrics=head_lib._create_eval_metrics_tuple(  # pylint:disable=protected-access
+                self._eval_metric_ops, {
+                    'labels': processed_labels,
+                    'probabilities': probabilities,
+                    'weights': weights,
+                    'unreduced_loss': unreduced_loss,
+                    'regularization_loss': regularization_loss,
+                }))
 
       # Train.
       if optimizer is not None:
@@ -672,7 +674,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         summary.scalar(
             head_lib._summary_key(self._name, keys.LOSS_REGULARIZATION),  # pylint:disable=protected-access
             regularization_loss)
-    return model_fn.EstimatorSpec(
+    return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
         loss=regularized_training_loss,

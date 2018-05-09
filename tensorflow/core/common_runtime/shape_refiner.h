@@ -215,8 +215,17 @@ class ShapeRefiner {
                                 bool keep_nested_shapes,
                                 ExtendedInferenceContext* outer_context);
 
+  // Attempts to evaluate the 'dst_idx'-th input to 'node'. If the input edge
+  // value can be evaluated, 'evaluated' is set to true and the value returned
+  // in 'result'. Otherwise 'evaluated' is set to false.
   Status EvaluateConstantTensorForEdge(const Node* node, int dst_idx,
                                        bool* evaluated, Tensor* result);
+
+  // Wrapper around EvaluateConstantTensorForEdge for scalar int32/int64 input
+  // tensors. The caller is responsible for checking that the specified edge is
+  // scalar and int32 or int64.
+  Status EvaluateConstantIntScalarEdge(const Node* node, int dst_idx,
+                                       bool* evaluated, int64* result);
 
   // This function tries to materialize as much information about the 'node''s
   // dst_idx input as a statically computable shape, and the result may be
@@ -242,6 +251,11 @@ class ShapeRefiner {
   Status ConstantPartialShape(shape_inference::InferenceContext* target_context,
                               const Node* node, int dst_idx,
                               shape_inference::ShapeHandle* result);
+
+  // Implementation of ConstantPartialShape for StridedSlice nodes.
+  Status PartialStridedSliceShape(Node* slice_node,
+                                  shape_inference::InferenceContext* ctx,
+                                  shape_inference::ShapeHandle* result);
 
   Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
                     ExtendedInferenceContext* ec);

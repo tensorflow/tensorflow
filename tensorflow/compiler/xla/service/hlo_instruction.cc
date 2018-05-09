@@ -109,6 +109,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->name_ = proto.name();
 
   instruction->metadata_ = proto.metadata();
+  instruction->set_backend_config(proto.backend_config());
   if (proto.has_literal()) {
     TF_ASSIGN_OR_RETURN(instruction->literal_,
                         Literal::CreateFromProto(proto.literal()));
@@ -437,7 +438,7 @@ HloInstruction::CreateCrossReplicaSum(
       << "Outfeed shape " << shape << " must be compatible with operand shape "
       << operand->shape();
   instruction->AppendOperand(operand);
-  instruction->outfeed_config_ = outfeed_config.ToString();
+  instruction->outfeed_config_ = std::string(outfeed_config);
   instruction->outfeed_shape_ = shape;
   return instruction;
 }
@@ -792,23 +793,11 @@ HloInstruction::CreateBroadcastSequence(
   return instruction;
 }
 
-// We put the fusion kind into the instruction's name for transpose-dot fusions,
-// since those fusions are really just describing a type of dot rather than
-// generating a novel computation.
-static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
-  switch (fusion_kind) {
-    case HloInstruction::FusionKind::kTransposeDot:
-      return "dot_fusion";
-    default:
-      return "fusion";
-  }
-}
-
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
   instruction->fusion_kind_ = fusion_kind;
-  instruction->name_ = FusionNodeName(fusion_kind);
+  instruction->name_ = "fusion";
   instruction->set_parent(fused_root->parent());
   instruction->set_metadata(fused_root->metadata());
   instruction->CloneAndFuseInternal(fused_root);
@@ -824,7 +813,7 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
     instruction->AppendOperand(operand);
   }
   instruction->fusion_kind_ = fusion_kind;
-  instruction->name_ = FusionNodeName(fusion_kind);
+  instruction->name_ = "fusion";
   instruction->called_computations_.push_back(fusion_computation);
   fusion_computation->SetFusionInstruction(instruction.get());
   return instruction;
@@ -1167,7 +1156,7 @@ bool HloInstruction::HasSideEffect() const {
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
-  instruction->custom_call_target_ = custom_call_target.ToString();
+  instruction->custom_call_target_ = std::string(custom_call_target);
   return instruction;
 }
 
@@ -1179,7 +1168,7 @@ bool HloInstruction::HasSideEffect() const {
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
-  instruction->channel_name_ = channel_name.ToString();
+  instruction->channel_name_ = std::string(channel_name);
   instruction->cost_estimate_ns_ = cost_estimate_ns;
   return instruction;
 }
@@ -1231,11 +1220,14 @@ bool HloInstruction::HasSideEffect() const {
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
-    HloModule* module) const {
+    HloModule* module, CloneMap* clone_map) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
     VLOG(3) << "    %" << new_operand->name();
+  }
+  if (module == nullptr) {
+    module = GetModule();
   }
 
   std::unique_ptr<HloInstruction> clone;
@@ -1342,7 +1334,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kFft:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateFft(shape, new_operands[0], fft_type_, fft_length_);
+      clone = CreateFft(shape, new_operands[0], fft_type_, fft_length_);
+      break;
     case HloOpcode::kCrossReplicaSum:
       clone = CreateCrossReplicaSum(shape, new_operands);
       break;
@@ -1415,9 +1408,15 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kConstant:
       clone = CreateConstant(literal_->CloneToUnique());
       break;
-    case HloOpcode::kFusion:
-      clone = CloneFusionWithNewOperands(shape, new_operands, module);
+    case HloOpcode::kFusion: {
+      CHECK_NE(module, nullptr);
+      auto new_fused_computation = module->AddEmbeddedComputation(
+          fused_instructions_computation()->Clone("clone", module, clone_map));
+      clone = CreateFusion(/*shape=*/shape, /*fusion_kind=*/fusion_kind(),
+                           /*operands=*/new_operands,
+                           /*fusion_computation=*/new_fused_computation);
       break;
+    }
     case HloOpcode::kParameter:
       clone = CreateParameter(parameter_number_, shape, name_);
       break;
@@ -1481,15 +1480,19 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
+  clone->set_backend_config(backend_config());
+  if (clone_map != nullptr) {
+    InsertOrDie(clone_map, this, clone.get());
+  }
   return clone;
 }
 
 HloInstruction::~HloInstruction() {}
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix,
-                                                      HloModule* module) const {
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix, HloModule* module, CloneMap* clone_map) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape_, operands_, module);
+      CloneWithNewOperands(shape_, operands_, module, clone_map);
   if (suffix.empty()) {
     clone->name_ = name();
   } else {
@@ -1524,71 +1527,6 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix,
     }
   }
   return clone;
-}
-
-std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloModule* module) const {
-  CHECK_EQ(opcode_, HloOpcode::kFusion);
-  CHECK(parent() != nullptr);
-
-  auto new_instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
-  // Add the operands to our new fusion instruction.
-  for (HloInstruction* new_operand : operands) {
-    new_instruction->AppendOperand(new_operand);
-  }
-  // Clone all the fused instructions for the new fusion instruction.
-  HloInstructionMap<HloInstruction*> old_to_new;
-  std::list<std::unique_ptr<HloInstruction>> new_fused_instructions;
-  // Create the list of fused parameters by mapping through the cloned,
-  // fused instructions.
-  for (HloInstruction* old_fused_parameter :
-       fused_instructions_computation()->parameter_instructions()) {
-    new_fused_instructions.push_back(
-        old_fused_parameter->Clone("clone", module));
-    HloInstruction* new_fusion_parameter = new_fused_instructions.back().get();
-    InsertOrDie(&old_to_new, old_fused_parameter, new_fusion_parameter);
-  }
-  for (auto old_fused_instruction :
-       fused_instructions_computation()->MakeInstructionPostOrder()) {
-    if (old_fused_instruction->opcode() == HloOpcode::kParameter) {
-      FindOrDie(old_to_new, old_fused_instruction);
-      continue;
-    }
-    std::vector<HloInstruction*> new_operands;
-    for (int64 operand_idx = 0;
-         operand_idx < old_fused_instruction->operand_count(); ++operand_idx) {
-      HloInstruction* old_operand =
-          old_fused_instruction->mutable_operand(operand_idx);
-      new_operands.push_back(FindOrDie(old_to_new, old_operand));
-    }
-    new_fused_instructions.push_back(
-        old_fused_instruction->CloneWithNewOperands(
-            old_fused_instruction->shape(), new_operands, module));
-    HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
-    new_fused_instruction->set_parent(parent_);
-    InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
-  }
-  new_instruction->fusion_kind_ = fusion_kind_;
-  auto computation_builder = HloComputation::Builder(
-      fused_instructions_computation()->name() + ".clone",
-      new_instruction.get());
-  // We iterated the fusion instructions in reverse post order which means
-  // that we must reverse our new list of fusion instructions.
-  for (auto new_fused_instruction_iter = new_fused_instructions.rbegin();
-       new_fused_instruction_iter != new_fused_instructions.rend();
-       ++new_fused_instruction_iter) {
-    computation_builder.AddInstruction(std::move(*new_fused_instruction_iter));
-  }
-  if (module == nullptr) {
-    module = GetModule();
-  }
-  auto fused_root_ = fused_expression_root();
-  new_instruction->called_computations_.push_back(
-      CHECK_NOTNULL(module)->AddEmbeddedComputation(
-          computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
-  return new_instruction;
 }
 
 std::pair<const HloInstruction*, ShapeIndex>
@@ -2172,6 +2110,9 @@ string HloInstruction::ToString(const HloPrintOptions& options) const {
        !metadata_.source_file().empty())) {
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
+  if (options.print_backend_config() && !backend_config().empty()) {
+    StrAppend(&result, ", backend_config=\"", CEscape(backend_config()), "\"");
+  }
   return result;
 }
 
@@ -2357,6 +2298,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(
         StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
   }
+
   return extra;
 }
 
@@ -2386,6 +2328,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_metadata() = metadata_;
+  proto.set_backend_config(backend_config());
   if (literal_ != nullptr) {
     *proto.mutable_literal() = literal_->ToProto();
   }
@@ -2487,8 +2430,6 @@ string HloInstruction::ToCategory() const {
         return "input fusion";
       case FusionKind::kOutput:
         return "output fusion";
-      case FusionKind::kTransposeDot:
-        return "dot";
       case FusionKind::kCustom:
         return "custom fusion";
     }
@@ -2971,6 +2912,7 @@ Status HloInstruction::AcceptOrdered(
       continue;
     }
 
+    // TODO(b/78350259): Eliminate const laundering.
     HloInstruction* instruction =
         const_cast<HloInstruction*>(const_instruction);
 
@@ -3270,8 +3212,6 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kInput";
     case HloInstruction::FusionKind::kOutput:
       return "kOutput";
-    case HloInstruction::FusionKind::kTransposeDot:
-      return "kTransposeDot";
     case HloInstruction::FusionKind::kCustom:
       return "kCustom";
   }
@@ -3287,9 +3227,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   }
   if (kind_name == "kOutput") {
     return HloInstruction::FusionKind::kOutput;
-  }
-  if (kind_name == "kTransposeDot") {
-    return HloInstruction::FusionKind::kTransposeDot;
   }
   if (kind_name == "kCustom") {
     return HloInstruction::FusionKind::kCustom;

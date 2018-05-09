@@ -22,6 +22,7 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
@@ -65,14 +66,7 @@ def check_num_samples(ins,
   if steps is not None and batch_size is not None:
     raise ValueError(
         'If ' + steps_name + ' is set, the `batch_size` must be None.')
-
-  if not ins or has_symbolic_tensors(ins):
-    if steps is None:
-      raise ValueError('If your data is in the form of symbolic tensors, '
-                       'you should specify the `' + steps_name + '` argument '
-                       '(instead of the `batch_size` argument, '
-                       'because symbolic tensors are expected to produce '
-                       'batches of input data).')
+  if check_steps_argument(ins, steps, steps_name):
     return None
   if hasattr(ins[0], 'shape'):
     return int(ins[0].shape[0])
@@ -551,8 +545,11 @@ def standardize_weights(y,
 
 
 def has_symbolic_tensors(ls):
-  return (any(tensor_util.is_tensor(v) for v in ls)
-          and not context.executing_eagerly())
+  if context.executing_eagerly():
+    return False
+  if isinstance(ls, (list, tuple)):
+    return any(tensor_util.is_tensor(v) for v in ls)
+  return tensor_util.is_tensor(ls)
 
 
 def populate_metric_names(model):
@@ -614,3 +611,77 @@ def add_metric_name(model, metric_name, index):
     metric_name = '%s_%d' % (base_metric_name, j)
     j += 1
   model.metrics_names.append(metric_name)
+
+
+def validate_iterator_input(x, y, sample_weight, validation_split=None):
+  """Validates user input arguments when a dataset iterator is passed.
+
+  Arguments:
+    x: Input data. A `tf.data` dataset iterator.
+    y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
+        Expected to be `None` when `x` is a dataset iterator.
+    sample_weight: An optional sample-weight array passed by the user to
+        weight the importance of each sample in `x`. Expected to be `None` when
+        `x` is a dataset iterator
+    validation_split: Float between 0 and 1. Fraction of the training data to
+        be used as validation data. Expected to be `None` when `x` is a dataset
+        iterator.
+
+  Raises:
+    ValueError: if argument `y` or `sample_weight` or `validation_split` are
+        provided by user.
+  """
+  if y is not None:
+    raise ValueError('You passed a dataset iterator (%s) as input `x` to '
+                     'your model. In that case, you should not specify '
+                     'a target (`y`) argument, since the dataset iterator '
+                     'generates both input data and target data. '
+                     'Received: %s' % (x, y))
+  if sample_weight is not None:
+    raise ValueError('`sample_weight` argument is not supported when input'
+                     ' `x` is a dataset iterator. '
+                     'Received: x=%s, sample_weight=%s' % (x, sample_weight))
+  if validation_split is not None and validation_split != 0.0:
+    raise ValueError(
+        '`validation_split` argument is not supported when '
+        'input `x` is a dataset iterator. '
+        'Received: x=%s, validation_split=%f' % (x, validation_split))
+
+
+def check_steps_argument(input_data, steps, steps_name):
+  """Validates `steps` argument based on input data's type.
+
+  The cases when `steps` value must be provided are when
+    1. input data passed is an iterator.
+    2. model was built on top of symbolic tensors, input data is not
+       required and is `None`.
+    3. input data passed is a symbolic tensor.
+
+  Arguments:
+      input_data: Input data. Can be Numpy array(s) or TensorFlow tensor(s) or
+        tf.data.Dataset iterator or `None`.
+      steps: Integer or `None`. Total number of steps (batches of samples) to
+        execute.
+      steps_name: The public API's parameter name for `steps`.
+
+  Returns:
+    boolean, True if `steps` argument is required, else False.
+
+  Raises:
+      ValueError: if `steps` argument is required for given input data type
+        but not provided.
+  """
+
+  is_x_iterator = (
+      isinstance(input_data, iterator_ops.Iterator) or
+      isinstance(input_data, iterator_ops.EagerIterator))
+
+  if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
+      (isinstance(input_data, list) and not input_data)):
+    if steps is None:
+      input_type_str = 'iterators' if is_x_iterator else 'data tensors'
+      raise ValueError('When using {input_type} as input to a model, you should'
+                       ' specify the `{steps_name}` argument.'.format(
+                           input_type=input_type_str, steps_name=steps_name))
+    return True
+  return False

@@ -56,16 +56,15 @@ class DotOpEmitter {
   // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
   // for Matrix-vector products.
   static tensorflow::Status EmitDotOperation(
-      const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
-      const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-      const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
+      const HloInstruction& dot, const llvm_ir::IrArray& target_array,
+      const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
+      const llvm_ir::IrArray* addend_array,
       llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
       const HloModuleConfig& hlo_module_config,
       const TargetMachineFeatures& target_machine_features);
 
  private:
-  DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
-               bool transpose_rhs, const llvm_ir::IrArray& target_array,
+  DotOpEmitter(const HloInstruction& dot, const llvm_ir::IrArray& target_array,
                const llvm_ir::IrArray& lhs_array,
                const llvm_ir::IrArray& rhs_array,
                const llvm_ir::IrArray* addend_array,
@@ -114,8 +113,14 @@ class DotOpEmitter {
     // True if the LHS matrix column major.
     bool lhs_column_major;
 
+    // True if the LHS contraction dimension is not 1.
+    bool lhs_non_canonical;
+
     // True if the RHS matrix column major.
     bool rhs_column_major;
+
+    // True if the RHS contraction dimension is not 0.
+    bool rhs_non_canonical;
   };
 
   // Get the MatMultDims instance for the dot product this DotOpEmitter
@@ -132,8 +137,6 @@ class DotOpEmitter {
   }
 
   const HloInstruction& dot_;
-  const bool transpose_lhs_;
-  const bool transpose_rhs_;
   const llvm_ir::IrArray& target_array_;
   const llvm_ir::IrArray& lhs_array_;
   const llvm_ir::IrArray& rhs_array_;

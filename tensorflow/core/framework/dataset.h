@@ -619,6 +619,12 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 // The ownership of `dataset` is transferred to `tensor`.
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
 
+namespace dataset {
+
+IteratorContext MakeIteratorContext(OpKernelContext* ctx);
+
+}  // namespace dataset
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_DATASET_H_

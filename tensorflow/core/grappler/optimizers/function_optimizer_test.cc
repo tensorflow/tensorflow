@@ -718,5 +718,147 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_PushDownConstInput) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
+  using test::function::NDef;
+
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+
+  // Mark MyMul as noinline.
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, int32}"},
+      {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+  (*mul_func.mutable_attr())["_noinline"].set_b(true);
+  std::vector<FunctionDef> function_library = {mul_func};
+
+  const Tensor kTwo = test::AsScalar<float>(2.0);
+  const Tensor kThree = test::AsScalar<float>(3.0);
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("init", "NoOp", {}, {}, kDevice),
+
+       // Float placeholders.
+       NDef("xf", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("yf", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+
+       // Int32 placeholders.
+       NDef("xi", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
+       NDef("yi", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
+
+       // Consts. Control inputs has to be attached to specialized func calls.
+       NDef("two", "Const", {"^init", "^xf"},
+            {{"dtype", DT_FLOAT}, {"value", kTwo}}, kDevice),
+       NDef("three", "Const", {"^init", "^xf"},
+            {{"dtype", DT_FLOAT}, {"value", kThree}}, kDevice),
+
+       // Specialization #1: DT_FLOAT type parameter.
+       NDef("mul_1", "MyMul", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("mul_2", "MyMul", {"yf", "xf"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #2: DT_INT32 type parameter.
+       NDef("mul_3", "MyMul", {"xi", "yi"}, {{"T", DT_INT32}}, kDevice),
+
+       // Specialization #3: DT_FLOAT type parameter + const input kTwo.
+       NDef("mul_4", "MyMul", {"xf", "two"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("mul_5", "MyMul", {"yf", "two"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #4: DT_FLOAT type parameter + const input kThree.
+       NDef("mul_6", "MyMul", {"three", "xf"}, {{"T", DT_FLOAT}}, kDevice)},
+      function_library);
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Make sure that MyMul was specialized once per unique context.
+  EXPECT_EQ(4, output.library().function_size());
+
+  // And graph nodes calling specialized functions.
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "mul_1" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_1", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("yf", node.input(1));
+
+    } else if (node.name() == "mul_2" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_1", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("yf", node.input(0));
+      EXPECT_EQ("xf", node.input(1));
+
+    } else if (node.name() == "mul_3" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_3", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xi", node.input(0));
+      EXPECT_EQ("yi", node.input(1));
+
+    } else if (node.name() == "mul_4" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_4", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+
+    } else if (node.name() == "mul_5" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_4", node.op());
+      ASSERT_EQ(3, node.input_size());
+      EXPECT_EQ("yf", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+      EXPECT_EQ("^xf", node.input(2));
+
+    } else if (node.name() == "mul_6" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_6", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+    }
+  }
+  EXPECT_EQ(6, count);
+
+  // And that graph evaluation yields the same result.
+  Tensor pi = test::AsScalar<float>(3.14f);
+  Tensor four = test::AsScalar<int32>(4);
+  item.fetch = {"mul_1", "mul_2", "mul_3", "mul_4", "mul_5", "mul_6"};
+  item.feed = {{"xf", pi}, {"yf", pi}, {"xi", four}, {"yi", four}};
+
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
+  test::ExpectTensorEqual<int32>(tensors_expected[2], tensors[2]);
+  test::ExpectTensorEqual<float>(tensors_expected[3], tensors[3]);
+  test::ExpectTensorEqual<float>(tensors_expected[4], tensors[4]);
+  test::ExpectTensorEqual<float>(tensors_expected[5], tensors[5]);
+}
+
+TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
+  using test::function::NDef;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  DisableFunctionSpecialization(&optimizer);
+  auto func = test::function::XTimesTwo();
+  (*func.mutable_attr())["_noinline"].set_b(true);
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, "/device:CPU:0"),
+       NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
+       NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, "/device:CPU:0")},
+      // FunctionLib
+      {
+          func,
+          test::function::XTimesTwoInt32(),
+          test::function::XTimes16(),
+      });
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.library().function().size(), 1);
+  EXPECT_EQ(output.library().function(0).signature().name(), "XTimesTwo");
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

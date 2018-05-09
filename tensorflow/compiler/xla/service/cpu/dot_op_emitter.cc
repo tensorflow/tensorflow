@@ -522,16 +522,16 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
 
 }  // namespace
 
-DotOpEmitter::DotOpEmitter(
-    const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
-    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
-    const HloModuleConfig& hlo_module_config,
-    const TargetMachineFeatures& target_machine_features)
+DotOpEmitter::DotOpEmitter(const HloInstruction& dot,
+                           const llvm_ir::IrArray& target_array,
+                           const llvm_ir::IrArray& lhs_array,
+                           const llvm_ir::IrArray& rhs_array,
+                           const llvm_ir::IrArray* addend_array,
+                           llvm::Value* executable_run_options_value,
+                           llvm::IRBuilder<>* ir_builder,
+                           const HloModuleConfig& hlo_module_config,
+                           const TargetMachineFeatures& target_machine_features)
     : dot_(dot),
-      transpose_lhs_(transpose_lhs),
-      transpose_rhs_(transpose_rhs),
       target_array_(target_array),
       lhs_array_(lhs_array),
       rhs_array_(rhs_array),
@@ -542,18 +542,18 @@ DotOpEmitter::DotOpEmitter(
       target_machine_features_(target_machine_features) {}
 
 /* static */ tensorflow::Status DotOpEmitter::EmitDotOperation(
-    const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
-    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
+    const HloInstruction& dot, const llvm_ir::IrArray& target_array,
+    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
+    const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
-  DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
-                           lhs_array, rhs_array, addend_array,
-                           executable_run_options_value, ir_builder,
-                           hlo_module_config, target_machine_features);
+  DotOpEmitter dot_emitter(dot, target_array, lhs_array, rhs_array,
+                           addend_array, executable_run_options_value,
+                           ir_builder, hlo_module_config,
+                           target_machine_features);
   return dot_emitter.Emit();
 }
 
@@ -578,7 +578,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
 
   if (mat_mult_dims.m == 1) {
     bool rhs_effectively_row_major =
-        transpose_rhs_ ^ !mat_mult_dims.rhs_column_major;
+        mat_mult_dims.rhs_non_canonical ^ !mat_mult_dims.rhs_column_major;
     if (rhs_effectively_row_major) {
       k = mat_mult_dims.k;
       m = mat_mult_dims.n;
@@ -594,7 +594,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
 
   if (mat_mult_dims.n == 1) {
     bool lhs_effectively_column_major =
-        transpose_lhs_ ^ mat_mult_dims.lhs_column_major;
+        mat_mult_dims.lhs_non_canonical ^ mat_mult_dims.lhs_column_major;
     if (lhs_effectively_column_major) {
       m = mat_mult_dims.m;
       k = mat_mult_dims.k;
@@ -741,16 +741,10 @@ tensorflow::Status DotOpEmitter::Emit() {
   // Reduce along dimension 0 of the LHS and 1 of the RHS. Vectors are a special
   // case where the reduction dimension is 0 for both LHS and RHS. This results
   // in a vector dot product producing a scalar.
-  int64 lhs_reduction_dimension = 0;
-  if (ShapeUtil::Rank(lhs_shape) >= 2) {
-    lhs_reduction_dimension =
-        ShapeUtil::GetDimensionNumber(lhs_shape, transpose_lhs_ ? -2 : -1);
-  }
-  int64 rhs_reduction_dimension = 0;
-  if (ShapeUtil::Rank(rhs_shape) >= 2) {
-    rhs_reduction_dimension =
-        ShapeUtil::GetDimensionNumber(rhs_shape, transpose_rhs_ ? -1 : -2);
-  }
+  int64 lhs_reduction_dimension =
+      dot_.dot_dimension_numbers().lhs_contracting_dimensions(0);
+  int64 rhs_reduction_dimension =
+      dot_.dot_dimension_numbers().rhs_contracting_dimensions(0);
 
   // Verify the reduction dimension in the two operands are the same size.
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
@@ -986,8 +980,8 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
 
   const llvm_ir::IrArray* lhs = &lhs_array_;
   const llvm_ir::IrArray* rhs = &rhs_array_;
-  bool transpose_lhs = transpose_lhs_;
-  bool transpose_rhs = transpose_rhs_;
+  bool transpose_lhs = mat_mult_dims.lhs_non_canonical;
+  bool transpose_rhs = mat_mult_dims.rhs_non_canonical;
 
   if (!mat_mult_dims.lhs_column_major) {
     std::swap(mat_mult_dims.m, mat_mult_dims.n);
@@ -1015,12 +1009,16 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
+  const DotDimensionNumbers& dim_nums = dot_.dot_dimension_numbers();
 
-  return {lhs_shape.dimensions(transpose_lhs_ ? 1 : 0),
-          lhs_shape.dimensions(transpose_lhs_ ? 0 : 1),
-          rhs_shape.dimensions(transpose_rhs_ ? 0 : 1),
-          LayoutUtil::Minor(lhs_shape.layout(), 0) == 0,
-          LayoutUtil::Minor(rhs_shape.layout(), 0) == 0};
+  return {
+      /*m=*/lhs_shape.dimensions(1 - dim_nums.lhs_contracting_dimensions(0)),
+      /*k=*/lhs_shape.dimensions(dim_nums.lhs_contracting_dimensions(0)),
+      /*n=*/rhs_shape.dimensions(1 - dim_nums.rhs_contracting_dimensions(0)),
+      /*lhs_column_major=*/LayoutUtil::Minor(lhs_shape.layout(), 0) == 0,
+      /*lhs_non_canonical=*/dim_nums.lhs_contracting_dimensions(0) == 0,
+      /*rhs_column_major=*/LayoutUtil::Minor(rhs_shape.layout(), 0) == 0,
+      /*rhs_non_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 1};
 }
 
 llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
@@ -1090,25 +1088,14 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
     // If gemm can accept the operand shapes, use it rather than a custom
     // kernel.
     if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
+      const DotDimensionNumbers& dim_numbers = hlo.dot_dimension_numbers();
       // The size of the reduction dimension should match. The shape inference
       // guarantees this invariant, so the check here is for programming
       // errors.
-      CHECK_EQ(lhs_shape.dimensions(1), rhs_shape.dimensions(0));
+      CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+               rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
       return true;
     }
-  }
-
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    auto* dot = hlo.fused_expression_root();
-    const Shape& lhs_shape = dot->operand(0)->shape();
-    const Shape& rhs_shape = dot->operand(1)->shape();
-    if (ShapeUtil::HasZeroElements(lhs_shape) ||
-        ShapeUtil::HasZeroElements(rhs_shape)) {
-      return false;
-    }
-    return true;
   }
 
   return false;

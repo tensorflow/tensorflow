@@ -124,6 +124,14 @@ class BackpropTest(test.TestCase):
     grad_fn = backprop.gradients_function(f)
     self.assertAllEqual(2., grad_fn(1., dy=2.)[0])
 
+  def testGradientInteger(self):
+
+    def f(x):
+      return x + x
+
+    int_tensor = constant_op.constant(1)
+    self.assertEqual(backprop.gradients_function(f)(int_tensor)[0], None)
+
   def testErrors(self):
 
     @custom_gradient.custom_gradient
@@ -753,7 +761,7 @@ class BackpropTest(test.TestCase):
       return result, grad
 
     x = resource_variable_ops.ResourceVariable(
-        initial_value=3, name='X.' + self.id())
+        initial_value=3., name='X.' + self.id())
 
     def f():
       return my_square(x)

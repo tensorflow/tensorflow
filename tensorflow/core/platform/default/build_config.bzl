@@ -335,6 +335,8 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
         name = cc_name,
         deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] +
                if_static([name + "_cc_impl"]),
+        testonly = testonly,
+        visibility = visibility,
     )
     native.cc_library(
         name = cc_name + "_impl",
@@ -378,8 +380,10 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
     )
     native.py_library(
         name = py_name,
-        deps = py_deps + ["@protobuf_archive//:protobuf_python"])
-
+        deps = py_deps + ["@protobuf_archive//:protobuf_python"],
+        testonly = testonly,
+        visibility = visibility,
+    )
     return
 
   py_proto_library(

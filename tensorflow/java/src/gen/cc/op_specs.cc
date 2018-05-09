@@ -382,8 +382,7 @@ EndpointSpec CreateEndpoint(const OpDef& op_def, const ApiDef& api_def,
   return EndpointSpec(package,
       name,
       Javadoc::Create(ParseDocumentation(api_def.summary()))
-          .details(ParseDocumentation(api_def.description())),
-      endpoint_def.deprecation_version() > 0);
+          .details(ParseDocumentation(api_def.description())));
 }
 
 }  // namespace
