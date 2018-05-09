@@ -710,6 +710,7 @@ cuda_py_test(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
     tags = ["noasan"],  # times out, http://b/78588814
 )
 
