@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
@@ -42,7 +43,6 @@ extern const PluginId kCuDnnPlugin;
 class CudnnSupport : public dnn::DnnSupport {
  public:
   explicit CudnnSupport(CUDAExecutor* parent);
-  ~CudnnSupport() override;
 
   port::Status Init() override;
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
@@ -624,54 +624,11 @@ class CudnnSupport : public dnn::DnnSupport {
                          dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
 
-  const Stream* GetCurrentDnnStream() const
-      SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
-    return current_dnn_stream_;
-  }
-
-  void SetCurrentDnnStream(Stream* stream)
-      EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_) {
-    current_dnn_stream_ = stream;
-  }
-
-  CUDAExecutor* GetParentExecutor() { return parent_; }
-
-  // Guards the enqueueing of DNN operations via the dnn_handle_ below, and
-  // access to current_dnn_stream_.
-  //
-  // This is a public member because we need to add thread safety annotations in
-  // the cudnn wrapper functions in the cc file, which need to access this
-  // mutex (the annotations require C++ permission checks).
-  mutex dnn_handle_mutex_;
-
  private:
   CUDAExecutor* parent_;  // Parent executor object. Not owned.
 
-  // cudnn library handle. cudnnHandle_t type is not present in this header to
-  // prevent third-party library header inclusions from leaking outside the
-  // single cuda_dnn translation unit.
-  void* dnn_handle_ GUARDED_BY(dnn_handle_mutex_);
-
-  // The current cudnn stream that is set by cudnnSetStream().
-  Stream* current_dnn_stream_ GUARDED_BY(dnn_handle_mutex_);
-
-  // NOTE(keveman): Temporary data layout transformation until cuDNN supports
-  // kBatchYXDepth for backward pass. This function allocates temporary memory,
-  // lays out the source data into the temporary but in the kBatchDepthXY
-  // layout, and returns the temporary memory. The caller is responsible for
-  // deallocating the temporary. Since the allocation is done using Stream's
-  // AllocateTemporaryMemory, a later BlockHostUntilDone could be used for
-  // deallocation.
-  //
-  // transform_scratch is populated with a legitimate temporary allocation iff
-  // the original output data needs to be transformed.
-  template<class T>
-  DeviceMemory<T> MaybeTransformLayout(
-      Stream* stream,
-      dnn::BatchDescriptor* output_descriptor,
-      DeviceMemory<T> backward_output_data,
-      std::unique_ptr<TemporaryDeviceMemory<T>>* transform_scratch)
-      EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_);
+  // Provides access to the cuDNN handle.
+  std::unique_ptr<class CudnnAccess> cudnn_;
 
   template <class T, class U>
   bool DoBatchNormalizationForwardImpl(
@@ -700,7 +657,7 @@ class CudnnSupport : public dnn::DnnSupport {
 
   template <class T>
   bool DoConvolveImpl(Stream* stream,
-                      const dnn::BatchDescriptor& batch_descriptor,
+                      const dnn::BatchDescriptor& input_descriptor,
                       const DeviceMemory<T>& input_data,
                       const dnn::FilterDescriptor& filter_descriptor,
                       const DeviceMemory<T>& filter_data,

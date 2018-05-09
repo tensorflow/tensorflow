@@ -127,7 +127,7 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
   // Currently, we do not assign parallel tasks to instructions with at least
   // one of the following properties:
   // *) Internal threading (library calls to kConv, kDot, kFft, kCustomCall).
-  // *) Emit custom loops (kSelectAndScatter, FusionKind::kTransposeDot).
+  // *) Emit custom loops (kSelectAndScatter).
   // *) Operations that are not thread safe (like infeed and rng).
   // *) Tuple-shaped.
   // TODO(b/27458679) Parallelize instructions which are skipped here.

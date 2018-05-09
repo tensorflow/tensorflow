@@ -88,6 +88,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:testing",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",

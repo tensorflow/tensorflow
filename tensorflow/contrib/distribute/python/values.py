@@ -27,12 +27,14 @@ import weakref
 import six
 
 from tensorflow.contrib.data.python.ops import batching
+from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import checkpointable
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
@@ -59,7 +61,7 @@ class DistributedValues(object):
       else:
         device = distribute_lib.get_update_device()
         if device is None:
-          device = device_util.current()
+          return self._get_cross_tower()
     device = device_util.canonicalize(device)
     try:
       return self._index[device]
@@ -230,12 +232,6 @@ class DistributedVariable(DistributedDelegate):
                               self._primary_var.op.type)
     return self.get().op
 
-  def _as_graph_element(self):
-    # pylint: disable=protected-access
-    if distribute_lib.get_cross_tower_context():
-      return self._primary_var._as_graph_element()
-    return self.get()._as_graph_element()
-
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
@@ -319,6 +315,18 @@ class MirroredVariable(DistributedVariable, Mirrored,
   def assign(self, *args, **kwargs):
     return self.get(device=_get_update_device()).assign(*args, **kwargs)
 
+  def _get_cross_tower(self):
+    device = device_util.canonicalize(device_util.current())
+    if device in self._index:
+      return array_ops.identity(self._index[device])
+    return array_ops.identity(self._primary_var)
+
+  def _as_graph_element(self):
+    # pylint: disable=protected-access
+    if distribute_lib.get_cross_tower_context():
+      return self._primary_var._as_graph_element()
+    return self.get()._as_graph_element()
+
   def _gather_saveables_for_checkpoint(self):
     """Overrides CheckpointableBase method.
 
@@ -363,6 +371,12 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
         for d, v in six.iteritems(self._tower_local_variable._index)])  # pylint: disable=protected-access
 
 
+def _assert_tower_context():
+  if not distribute_lib.get_tower_context():
+    raise RuntimeError(
+        "Tower-local variables may only be assigned in a tower context.")
+
+
 class TowerLocalVariable(DistributedVariable, PerDevice,
                          checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are reduced on save."""
@@ -373,17 +387,34 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     super(TowerLocalVariable, self).__init__(index)
 
   def assign_sub(self, *args, **kwargs):
+    _assert_tower_context()
     return self.get().assign_sub(*args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
+    _assert_tower_context()
     return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
+    _assert_tower_context()
     return self.get().assign(*args, **kwargs)
 
   @property
   def reduce_method(self):
     return self._reduce_method
+
+  def _get_cross_tower(self):
+    all_components = tuple(self._index.values())
+    # TODO(josh11b): Use a strategy-specific method.
+    total = math_ops.add_n(all_components)
+    if self._reduce_method == "mean":
+      return total * (1./ len(all_components))
+    return total
+
+  def _as_graph_element(self):
+    # pylint: disable=protected-access
+    if distribute_lib.get_cross_tower_context():
+      return self._get_cross_tower()
+    return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides CheckpointableBase method.
@@ -651,8 +682,8 @@ class MultiWorkerDataset(object):
         six.iteritems(worker_device_map)):
       with ops.device(worker):
         worker_input = dataset_fn()
-        # TODO(yuefengz, priyag): support efficient sharding.
-        worker_input = worker_input.shard(len(worker_device_map), i)
+        worker_input = input_ops.auto_shard_dataset(
+            worker_input, len(worker_device_map), i)
         self._datasets[worker] = PerDeviceDataset(
             worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
 
@@ -671,11 +702,12 @@ class MultiWorkerDataset(object):
     return MultiWorkerDataIterator(iterators, self._worker_device_map)
 
 
-class PerIteration(object):
-  """Holds input for multiple iterations at once."""
+class _PerKey(object):
+  """Holds data associated by keys."""
 
-  def __init__(self, index):
-    self._index = index
+  def __init__(self, *index):
+    # pylint: disable=protected-access
+    self._index = list(index)
 
   def get(self, iteration):
     return array_ops.gather(self._index, iteration)
@@ -685,6 +717,24 @@ class PerIteration(object):
 
   def get_dtype(self):
     return self._index[-1][-1].dtype
+
+  def __str__(self):
+    return "%s:%s" % (self.__class__.__name__, self._index)
+
+  def __repr__(self):
+    return "%s(%r)" % (self.__class__.__name__, self._index)
+
+
+class PerIteration(_PerKey):
+  """Holds input for multiple iterations at once."""
+
+  def __init__(self, *index):
+    # pylint: disable=protected-access
+    super(PerIteration, self).__init__(*[batch._index for batch in index])
+
+
+class Batches(_PerKey):
+  pass
 
 
 class MultiIterator(object):
@@ -696,11 +746,31 @@ class MultiIterator(object):
     self._batches_per_iteration = batches_per_iteration
 
   def get_next(self, name=None):
-    return PerIteration([[
-        self._dataset_iterator.get_next(name=name)
-        for _ in range(self._batches_per_iteration)
-    ]
-                         for _ in range(self._iterations)])
+    """Return PerIteration with `iterations x batches_per_iteration` inputs."""
+    data = []
+    for _ in range(self._batches_per_iteration):
+      batch = []
+      for _ in range(self._iterations):
+        batch.append(self._dataset_iterator.get_next(name=name))
+      data.append(batch)
+
+    # Here is an example.  Suppose each get_next returns a tuple of two tensors.
+    # For 3 `iterations` and 2 `batches_per_iteration`, the `data` is:
+    # [[(a,z), (b,y), (c,x)], [(A,Z), (B,Y), (C,X)]]
+    #
+    # After the first `map_structure` it gets transformed to:
+    #  [(Batches(a, A), Batches(z, Z)),
+    #   (Batches(b, B), Batches(y, Y)),
+    #   (Batches(c, C), Batches(x, X))]
+    #
+    # After the second `map_structure` it gets transformed to a tuple of:
+    # (PerIteration([Batches(a, A), Batches(b, B), Batches(c, C)]),
+    #  PerIteration([Batches(z, Z), Batches(y, Y), Batches(x, X)]))
+
+    data = nest.map_structure(Batches, *data)
+    data = nest.map_structure(PerIteration, *data)
+
+    return data
 
   @property
   def initializer(self):

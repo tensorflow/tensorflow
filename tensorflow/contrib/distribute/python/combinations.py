@@ -265,6 +265,10 @@ class NamedDistribution(object):
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", one_device_strategy.OneDeviceStrategy("/cpu:0"),
     None)
+tpu_strategy_single_iteration = NamedDistribution(
+    "TPUSingleIteration",
+    tpu_strategy.TPUStrategy(iterations_per_step=1),
+    required_tpu=True)
 tpu_strategy = NamedDistribution(
     "TPU", tpu_strategy.TPUStrategy(), required_tpu=True)
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(

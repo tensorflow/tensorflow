@@ -230,7 +230,7 @@ TokKind HloLexer::LexIdentifier() {
     }
   }
 
-  str_val_ = identifier.ToString();
+  str_val_ = std::string(identifier);
   return TokKind::kIdent;
 }
 

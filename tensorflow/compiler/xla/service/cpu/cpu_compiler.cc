@@ -87,6 +87,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
@@ -270,6 +271,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
 
     pass.AddPass<WhileLoopInvariantCodeMotion>();
     pass.AddPass<TupleSimplifier>();
+    pass.AddPass<WhileLoopConstantSinking>();
     pass.AddPass<WhileLoopSimplifier>();
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
@@ -533,7 +535,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(
       SequentialHloOrdering::HloModuleSequence module_sequence,
-      CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction()));
+      CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction(),
+                                     DFSMemoryScheduler));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
