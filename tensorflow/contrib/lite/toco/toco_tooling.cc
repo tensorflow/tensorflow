@@ -86,6 +86,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSlice);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
