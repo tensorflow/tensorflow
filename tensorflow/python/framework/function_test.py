@@ -182,6 +182,8 @@ class FunctionTest(test.TestCase):
     def APlus2B(a, b):
       return a + b * 2
 
+    # APlus2B is stateless.
+    self.assertEqual([], APlus2B.stateful_ops)
     with ops.Graph().as_default():
       call = APlus2B([1.0], [2.0])
       self.assertEqual("APlus2B", call.op.name)
@@ -428,6 +430,8 @@ class FunctionTest(test.TestCase):
       with ops.control_dependencies([check]):
         return x * 2
 
+    # Foo contains a stateful op (Assert).
+    self.assertEqual([("Assert", "Assert")], Foo.stateful_ops)
     g = ops.Graph()
     with g.as_default(), self.test_session():
       self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)

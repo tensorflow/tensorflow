@@ -313,6 +313,16 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     return self._extra_inputs
 
+  @property
+  def stateful_ops(self):
+    """Returns the list of stateful ops in function definition.
+
+    Returns:
+      A list of (op.name, op.type) pairs.
+    """
+    self._create_definition_if_needed()
+    return self._stateful_ops
+
   def _create_definition_if_needed(self):
     """Creates the function definition if it's not created yet."""
     with context.graph_mode():
@@ -423,6 +433,10 @@ class _DefinedFunction(object):
         assert self._func_name == self._op_def.name
       else:
         self._func_name = compat.as_str(self._op_def.name)
+
+    self._stateful_ops = [(op.name, op.type)
+                          for op in temp_graph.get_operations()
+                          if op.op_def.is_stateful]
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
