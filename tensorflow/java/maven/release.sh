@@ -48,7 +48,6 @@ fi
 
 set -ex
 docker run \
-  $DOCKER_PROXY_RUN_ARGS \
   -e TF_VERSION="${TF_VERSION}" \
   -e DEPLOY_OSSRH="${DEPLOY_OSSRH:-true}" \
   -e DEPLOY_BINTRAY="${DEPLOY_BINTRAY:-true}" \
