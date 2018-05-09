@@ -2491,6 +2491,9 @@ cc_library(
     ],
 )
 
+# ROCM TODO: figure this out
+# at least one op depend on utility routines in this target without actually
+# using cuSOLVER
 tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
@@ -2507,10 +2510,11 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ] + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "@local_config_cuda//cuda:cublas",
         "@local_config_cuda//cuda:cusolver",
-    ],
+    ])
 )
 
 LINALG_DEPS = [
