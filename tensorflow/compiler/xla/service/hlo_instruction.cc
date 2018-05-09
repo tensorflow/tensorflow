@@ -1557,6 +1557,8 @@ const Literal& HloInstruction::literal() const {
   return *literal_;
 }
 
+bool HloInstruction::HasLiteral() const { return literal_ != nullptr; }
+
 bool HloInstruction::CanHaveDimensionsField() const {
   return (opcode() == HloOpcode::kReverse ||
           opcode() == HloOpcode::kConcatenate ||

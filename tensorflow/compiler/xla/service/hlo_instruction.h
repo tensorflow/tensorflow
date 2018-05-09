@@ -706,6 +706,9 @@ class HloInstruction {
   // Note: only constant and parameter opcodes have an associated literal.
   const Literal& literal() const;
 
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const;
+
   // Returns the parameter number associated with this instruction.
   //
   // Note: only parameter opcodes have an associated parameter number.

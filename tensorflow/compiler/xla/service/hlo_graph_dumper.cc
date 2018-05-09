@@ -825,7 +825,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
         *elem_count *= dim;
       }
     }
-    if (elem_count.has_value() && *elem_count <= 8) {
+    if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
       return Printf("%s (%s)", constant->literal().ToString(),
                     ShapeUtil::HumanString(constant->shape()));
     }
