@@ -37,7 +37,7 @@ unzip -j /tmp/ovic.zip -d tensorflow/contrib/lite/java/ovic/src/testdata/
 You can run test with Bazel as below. This helps to ensure that the installation is correct.
 
 ```sh
-bazel test --cxxopt=--std=c++11 //tensorflow/contrib/lite/java:OvicClassifierTest --test_output=all
+bazel test --cxxopt=--std=c++11 //tensorflow/contrib/lite/java:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
 ```
 
 ### Test your submissions
@@ -56,28 +56,27 @@ cp /tmp/my_model.lite tensorflow/contrib/lite/java/ovic/src/testdata/
 
 The test images can be found at `tensorflow/contrib/lite/java/ovic/src/testdata/test_image_*.jpg`. You may reuse these images if your image resolutions are 128x128 or 224x224.
 
-* Add your model and test image to the BUILD rule:
+* Add your model and test image to the BUILD rule at `tensorflow/contrib/lite/java/ovic/src/testdata/BUILD`:
 
 ```JSON
-java_test(
-  name = "OvicClassifierTest",
-  size = "medium",
-  srcs = ["ovic/src/test/java/org/tensorflow/ovic/OvicClassifierTest.java"],
-  data = [
-      "ovic/src/testdata/float_model.lite",
-      "ovic/src/testdata/labels.txt",
-      "ovic/src/testdata/low_res_model.lite",
-      "ovic/src/testdata/quantized_model.lite",
-      "ovic/src/testdata/test_image_128.jpg",
-      "ovic/src/testdata/test_image_224.jpg",
-      "ovic/src/testdata/my_model.lite",        # <--- Your submission.
-      "ovic/src/testdata/my_test_image.jpg",    # <--- Your test image.
-  ],
-      ...
+filegroup(
+    name = "ovic_testdata",
+    srcs = [
+        "@tflite_ovic_testdata//:float_model.lite",
+        "@tflite_ovic_testdata//:low_res_model.lite",
+        "@tflite_ovic_testdata//:quantized_model.lite",
+        "@tflite_ovic_testdata//:test_image_128.jpg",
+        "@tflite_ovic_testdata//:test_image_224.jpg"
+        "my_model.lite",        # <--- Your submission.
+        "my_test_image.jpg",    # <--- Your test image.
+    ],
+    ...
 ```
 
 * Modify `OvicClassifierTest.java` to test your model.
 
-Change `TEST_IMAGE_PATH` to `testdata/my_test_image.jpg`. If your model runs inference in floating point, change `FLOAT_MODEL_PATH` to `testdata/my_model.lite`. If your model runs [quantized inference](https://www.tensorflow.org/performance/quantization), change `QUANTIZED_MODEL_PATH` to `testdata/my_model.lite`.
+Change `TEST_IMAGE_PATH` to `my_test_image.jpg`. Change either `FLOAT_MODEL_PATH` or `QUANTIZED_MODEL_PATH` to `my_model.lite` depending on whether your model runs inference in float or [8-bit](https://www.tensorflow.org/performance/quantization).
 
 Now you can run the bazel tests to catch any runtime issues with the submission.
+
+Note: Please make sure that your submission passes the test. If a submission fails to pass the test it will not be processed by the submission server.

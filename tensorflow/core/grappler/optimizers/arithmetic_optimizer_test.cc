@@ -696,6 +696,9 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
         item.fetch = {"id"};
         TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+        auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+        EXPECT_EQ(1, tensors_expected.size());
+
         ArithmeticOptimizer optimizer;
         EnableOnlyHoistCommonFactor(&optimizer);
 
@@ -733,6 +736,13 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
           ASSERT_TRUE(id_node != nullptr) << "Id node not found";
           EXPECT_EQ("id", id_node->name());
           EXPECT_EQ(HoistDivName("add"), id_node->input(0));
+        }
+        auto tensors = EvaluateNodes(output, item.fetch);
+        EXPECT_EQ(1, tensors.size());
+        if (use_ints) {
+          test::ExpectTensorEqual<int32>(tensors_expected[0], tensors[0]);
+        } else {
+          test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
         }
       }
     }
@@ -1156,6 +1166,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({8, 12, 28, 28}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveIdentityTranspose(&optimizer);
@@ -1168,6 +1183,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
       EXPECT_EQ(node.input(2), "Split:2");
     }
   }
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
@@ -1184,6 +1203,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 3}));
+  item.feed = {{"Placeholder", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveIdentityTranspose(&optimizer);
@@ -1194,6 +1218,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
   EXPECT_EQ(2, outputs_node->input_size());
   EXPECT_EQ(outputs_node->input(0), "outputs_const");
   EXPECT_EQ(outputs_node->input(1), "^Placeholder");
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
@@ -1440,6 +1468,11 @@ TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_UINT8>(TensorShape({2, 3}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveRedundantBitcast(&optimizer);
@@ -1451,6 +1484,10 @@ TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
   EXPECT_EQ(3, output.node_size());
   EXPECT_EQ(1, CountOpNodes(output, "Bitcast"));
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "bc2"));
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int8>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
@@ -1465,6 +1502,11 @@ TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_INT8>(TensorShape({2, 3}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveRedundantBitcast(&optimizer);
@@ -1476,6 +1518,10 @@ TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
   EXPECT_EQ(2, output.node_size());
   EXPECT_EQ(0, CountOpNodes(output, "Bitcast"));
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int8>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
@@ -1489,6 +1535,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_INT8>(TensorShape({2, 3}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveRedundantCast(&optimizer);
@@ -1500,6 +1551,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   EXPECT_EQ(2, output.node_size());
   EXPECT_EQ(0, CountOpNodes(output, "Cast"));
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int8>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfIdenticalShape) {

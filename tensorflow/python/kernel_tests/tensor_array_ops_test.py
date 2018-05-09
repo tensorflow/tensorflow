@@ -438,7 +438,6 @@ class TensorArrayTest(test.TestCase):
           "Tried to read from index 3 but array size is: 3"):
         self.evaluate(ta.read(3))
 
-  @test_util.run_in_graph_and_eager_modes()
   def testTensorArrayWriteMultipleFails(self):
     with self.test_session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(

@@ -652,7 +652,7 @@ class CudnnSupport : public dnn::DnnSupport {
   // single cuda_dnn translation unit.
   void* dnn_handle_ GUARDED_BY(dnn_handle_mutex_);
 
-  // The current cudnn stream that is set by cudnnSetStream().
+  // The current cudnn stream that is set by SetCurrentDnnStream().
   Stream* current_dnn_stream_ GUARDED_BY(dnn_handle_mutex_);
 
   // NOTE(keveman): Temporary data layout transformation until cuDNN supports

@@ -827,13 +827,6 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
         "Dot with multiple contracting dimensions not implemented.");
   }
 
-  if (dnums.lhs_contracting_dimensions(0) !=
-          std::min(lhs->shape().dimensions_size() - 1, 1) ||
-      dnums.rhs_contracting_dimensions(0) != 0) {
-    return Unimplemented(
-        "Dot with non-standard contracting dimensions not implemented.");
-  }
-
   llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
   llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
 
@@ -850,8 +843,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   // Dot operation is complicated so we delegate to a helper class.
   return DotOpEmitter::EmitDotOperation(
-      *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-      lhs_array, rhs_array, /*addend_array=*/nullptr,
+      *dot, target_array, lhs_array, rhs_array, /*addend_array=*/nullptr,
       GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_,
       target_machine_features_);
 }
@@ -2086,44 +2078,7 @@ static const HloInstruction* StripTranspose(const HloInstruction& hlo) {
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   auto* root = fusion->fused_expression_root();
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kTransposeDot) {
-    DCHECK(root->opcode() == HloOpcode::kDot);
-    const HloInstruction* lhs_parameter = StripTranspose(*root->operand(0));
-    const HloInstruction* rhs_parameter = StripTranspose(*root->operand(1));
-    DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
-           rhs_parameter->opcode() == HloOpcode::kParameter);
-    const HloInstruction* lhs =
-        fusion->operand(lhs_parameter->parameter_number());
-    const HloInstruction* rhs =
-        fusion->operand(rhs_parameter->parameter_number());
-
-    TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
-        /*instruction=*/*root, /*operands=*/{lhs, rhs},
-        /*supported_types=*/{F16, F32, F64}));
-
-    llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
-    llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
-
-    Shape target_shape = fusion->shape();
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
-    llvm_ir::IrArray target_array = GetIrArrayFor(fusion);
-    VLOG(2) << "HandleFusion kTransposeDot: ";
-    VLOG(2) << "  lhs operand: "
-            << llvm_ir::DumpToString(*lhs_array.GetBasePointer());
-    VLOG(2) << "  rhs operand: "
-            << llvm_ir::DumpToString(*rhs_array.GetBasePointer());
-    VLOG(2) << "  target: "
-            << llvm_ir::DumpToString(*target_array.GetBasePointer());
-
-    // Dot operation is complicated so we delegate to a helper class.
-    TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *root, root->operand(0)->IsRank2Transpose(),
-        root->operand(1)->IsRank2Transpose(), target_array, lhs_array,
-        rhs_array, /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(),
-        &ir_builder_, hlo_module_config_, target_machine_features_));
-    return Status::OK();
-  } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion,
-                                                            assignment_)) {
+  if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
@@ -2166,9 +2121,9 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-        lhs_array, rhs_array, &addend_array, GetExecutableRunOptionsArgument(),
-        &ir_builder_, hlo_module_config_, target_machine_features_));
+        *dot, target_array, lhs_array, rhs_array, &addend_array,
+        GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_,
+        target_machine_features_));
     return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");

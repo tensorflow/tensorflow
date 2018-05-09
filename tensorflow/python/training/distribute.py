@@ -816,6 +816,7 @@ class DistributionStrategy(object):
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
     _require_cross_tower_context(self)
+    assert method_string in ("sum", "mean")
     return self._reduce(method_string, value, destinations)
 
   def _reduce(self, method_string, value, destinations):

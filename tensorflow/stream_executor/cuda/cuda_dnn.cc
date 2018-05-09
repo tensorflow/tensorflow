@@ -138,27 +138,6 @@ cudnnDataType_t GetCudnnDataType<Eigen::half>() {
 
 namespace wrap {
 
-static port::ThreadPool* InitCudnnThreadpool() {
-  port::ThreadPool* cudnn_threadpool_;
-  port::ThreadOptions options;
-  // TBD(keveman): Conservatively setting the stack size and guard size to 2MB,
-  // until we can get some guarantees from NVIDIA on the minimum stack space
-  // they will work with.
-  options.stack_size = 2 * 1024 * 1024;
-  options.guard_size = 2 * 1024 * 1024;
-  cudnn_threadpool_ = new port::ThreadPool(port::Env::Default(), options,
-                                           "cudnn_threadpool", 1);
-  CHECK(cudnn_threadpool_);
-  return cudnn_threadpool_;
-}
-
-static mutex cudnn_threadpool_mu(LINKER_INITIALIZED);
-static port::ThreadPool* GetCudaThreadpool() {
-  mutex_lock lock(cudnn_threadpool_mu);
-  static port::ThreadPool* cudnn_threadpool = InitCudnnThreadpool();
-  return cudnn_threadpool;
-}
-
 #define STREAM_EXECUTOR_CUDNN_WRAP(__name)                         \
   struct WrapperShim__##__name {                                   \
     template <typename... Args>                                    \
@@ -184,6 +163,9 @@ static port::ThreadPool* GetCudaThreadpool() {
   } __name;
 
 // Handles cudnnSetStream differently in order to add debug information.
+// It stores a reference to 'stream' in 'dnn', and checks that all calls from
+// that dnn instance use the same stream (see
+// STREAM_EXECUTOR_CUDNN_WRAP_WITH_CHECKED_STREAM macro).
 struct WrapperShim__cudnnSetStream {
   cudnnStatus_t operator()(CudnnSupport* dnn, Stream* stream,
                            cudnnHandle_t handle)
