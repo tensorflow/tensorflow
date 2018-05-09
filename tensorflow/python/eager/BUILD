@@ -25,6 +25,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
