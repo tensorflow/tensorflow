@@ -742,9 +742,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "regex_match_op_test",
+    name = "regex_full_match_op_test",
     size = "small",
-    srcs = ["regex_match_op_test.py"],
+    srcs = ["regex_full_match_op_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

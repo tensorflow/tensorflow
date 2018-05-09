@@ -23,9 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-class RegexMatchOp : public OpKernel {
+class RegexFullMatchOp : public OpKernel {
  public:
-  explicit RegexMatchOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit RegexFullMatchOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
@@ -53,7 +53,7 @@ class RegexMatchOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("RegexMatch").Device(DEVICE_CPU),
-                        RegexMatchOp);
+REGISTER_KERNEL_BUILDER(Name("RegexFullMatch").Device(DEVICE_CPU),
+                        RegexFullMatchOp);
 
 }  // namespace tensorflow

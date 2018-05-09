@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for RegexMatch op from string_ops."""
+"""Tests for RegexFullMatch op from string_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,20 +24,20 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-class RegexMatchOpTest(test.TestCase):
+class RegexFullMatchOpTest(test.TestCase):
 
-  def testRegexMatch(self):
+  def testRegexFullMatch(self):
     values = ["abaaba", "abcdabcde"]
     with self.test_session():
       input_vector = constant_op.constant(values, dtypes.string)
-      matched = string_ops.regex_match(input_vector, "a.*a").eval()
+      matched = string_ops.regex_full_match(input_vector, "a.*a").eval()
       self.assertAllEqual([True, False], matched)
 
   def testEmptyMatch(self):
     values = ["abc", "1"]
     with self.test_session():
       input_vector = constant_op.constant(values, dtypes.string)
-      matched = string_ops.regex_match(input_vector, "").eval()
+      matched = string_ops.regex_full_match(input_vector, "").eval()
       self.assertAllEqual([False, False], matched)
 
   def testInvalidPattern(self):
@@ -45,7 +45,7 @@ class RegexMatchOpTest(test.TestCase):
     with self.test_session():
       input_vector = constant_op.constant(values, dtypes.string)
       invalid_pattern = "A["
-      matched = string_ops.regex_match(input_vector, invalid_pattern)
+      matched = string_ops.regex_full_match(input_vector, invalid_pattern)
       with self.assertRaisesOpError("Invalid pattern"):
         matched.eval()
 

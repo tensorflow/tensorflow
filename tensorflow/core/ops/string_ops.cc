@@ -37,7 +37,7 @@ REGISTER_OP("RegexReplace")
       return Status::OK();
     });
 
-REGISTER_OP("RegexMatch")
+REGISTER_OP("RegexFullMatch")
     .Input("input: string")
     .Input("pattern: string")
     .Output("output: bool")
