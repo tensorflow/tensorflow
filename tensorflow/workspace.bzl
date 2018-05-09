@@ -228,6 +228,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
       strip_prefix = "libpng-1.6.34",
       build_file = clean_dep("//third_party:png.BUILD"),
+      patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
   )
 
   tf_http_archive(
@@ -452,11 +453,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/b3f6a6a61625296bb532a65c0bf51b91b05b3361.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/b3f6a6a61625296bb532a65c0bf51b91b05b3361.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/7b8a8728fbd27086efbf3c57cf2bb35a557108c9.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/7b8a8728fbd27086efbf3c57cf2bb35a557108c9.tar.gz",
       ],
-      sha256 = "93895b289a78a47a1e75652e12a1b9a6c119f086a509b00e0084cf2bb944b709",
-      strip_prefix = "llvm-b3f6a6a61625296bb532a65c0bf51b91b05b3361",
+      sha256 = "c620859c3ae5818f316de4837f340b3bba1646f8add0a28e6d4da34ce47e3969",
+      strip_prefix = "llvm-7b8a8728fbd27086efbf3c57cf2bb35a557108c9",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
@@ -742,6 +743,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip"
       ],
       build_file = clean_dep("//third_party:tflite_smartreply.BUILD"),
+  )
+
+  tf_http_archive(
+      name = "tflite_ovic_testdata",
+      sha256 = "a9a705d8d519220178e2e65d383fdb21da37fdb31d1e909b0a1acdac46479e9c",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+      ],
+      build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
+      strip_prefix = "ovic",
   )
 
   ##############################################################################

@@ -26,6 +26,7 @@ xla_proto_library(
 xla_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
@@ -200,7 +201,22 @@ tf_cc_test(
 
 cc_library(
     name = "hlo_evaluator",
-    srcs = ["hlo_evaluator.cc"],
+    srcs = [
+        "hlo_evaluator.cc",
+        "hlo_evaluator_typed_visitor.h",
+        "hlo_evaluator_typed_visitor_bfloat16.cc",
+        "hlo_evaluator_typed_visitor_bool.cc",
+        "hlo_evaluator_typed_visitor_complex64.cc",
+        "hlo_evaluator_typed_visitor_double.cc",
+        "hlo_evaluator_typed_visitor_float.cc",
+        "hlo_evaluator_typed_visitor_half.cc",
+        "hlo_evaluator_typed_visitor_int32.cc",
+        "hlo_evaluator_typed_visitor_int64.cc",
+        "hlo_evaluator_typed_visitor_int8.cc",
+        "hlo_evaluator_typed_visitor_uint32.cc",
+        "hlo_evaluator_typed_visitor_uint64.cc",
+        "hlo_evaluator_typed_visitor_uint8.cc",
+    ],
     hdrs = ["hlo_evaluator.h"],
     deps = [
         ":hlo",
@@ -370,6 +386,7 @@ tf_cc_test(
         ":hlo_matchers",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
     ],
 )
 
@@ -2467,6 +2484,7 @@ tf_cc_test(
     srcs = ["transpose_folding_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_matchers",
         ":shape_inference",
         ":transpose_folding",
         "//tensorflow/compiler/xla:literal_util",
@@ -2478,6 +2496,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
         "//tensorflow/core:lib",
     ],
 )

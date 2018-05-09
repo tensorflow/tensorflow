@@ -395,7 +395,7 @@ py_test(
 
 py_test(
     name = "resnet50_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/applications/resnet50_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -563,7 +563,7 @@ py_test(
 
 py_test(
     name = "normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
@@ -604,6 +604,7 @@ py_test(
     name = "lstm_test",
     size = "medium",
     srcs = ["_impl/keras/layers/lstm_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",  # times out b/63678675

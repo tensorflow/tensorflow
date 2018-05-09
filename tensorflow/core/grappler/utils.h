@@ -65,7 +65,7 @@ class NodeMap {
 // A vector with a set. The set stores the same elements as the vector, and
 // quickly answers whether a value is in the vector. Duplicated elements are not
 // allowed for now.
-template <class T>
+template <class T, class Hash = std::hash<T>>
 class SetVector {
  public:
   // Returns false if value already existed in the set, true otherwise.
@@ -91,7 +91,7 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T> set_;
+  std::unordered_set<T, Hash> set_;
   std::vector<T> vector_;
 };
 
