@@ -376,6 +376,31 @@ TEST_F(FreezeTest, GraphDefWithMultiOutputOperation) {
   GraphDefEqual(frozen_graph_def, graph_def);
 }
 
+TEST_F(FreezeTest, GraphDefWithControlDependency) {
+  // Inputs that are control dependencies get tensor prefixes,
+  // i.e. ^control_dependency.
+  // Test that we traverse those correctly.
+  SavedModelBundle saved_model_bundle;
+  GraphDef graph_def;
+  Scope scope = Scope::NewRootScope();
+  Output source = ops::Const(scope.WithOpName("source"), 10.0f, {});
+  Output a = ops::Const(scope.WithOpName("a").WithControlDependencies(source),
+                        {10.0f, 10.0f}, {2});
+  Output b = ops::Const(scope.WithOpName("b"), 10.0f, {});
+  Output c = ops::Mul(scope.WithOpName("c"), a, b);
+  TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
+  TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(graph_def, {"c:0"}, "",
+                                                        &saved_model_bundle));
+
+  GraphDef frozen_graph_def;
+  std::unordered_set<string> inputs;
+  std::unordered_set<string> outputs;
+  TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
+                                &outputs));
+
+  GraphDefEqual(frozen_graph_def, graph_def);
+}
+
 TEST_F(FreezeTest, GraphDefWithoutDependentVariables) {
   TestFreezeGraphWithoutDependentVariables(false);
 }
