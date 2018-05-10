@@ -175,6 +175,21 @@ class MultiLabelHead(test.TestCase):
         r'loss_fn has unexpected args: \[\'name\'\]'):
       head_lib.multi_label_head(n_classes=3, loss_fn=_loss_fn)
 
+  def test_classes_for_class_based_metrics_invalid(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'All classes_for_class_based_metrics must be in range \[0, 2\]\. '
+        r'Given: -1'):
+      head_lib.multi_label_head(
+          n_classes=3, classes_for_class_based_metrics=[2, -1])
+
+  def test_classes_for_class_based_metrics_string_invalid(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'\'z\' is not in list'):
+      head_lib.multi_label_head(
+          n_classes=3, label_vocabulary=['a', 'b', 'c'],
+          classes_for_class_based_metrics=['c', 'z'])
+
   def test_name(self):
     head = head_lib.multi_label_head(n_classes=4, name='foo')
     self.assertEqual('foo', head.name)
@@ -582,6 +597,81 @@ class MultiLabelHead(test.TestCase):
         keys.ACCURACY_AT_THRESHOLD % thresholds[2]: 2. / 4.,
         keys.PRECISION_AT_THRESHOLD % thresholds[2]: 1. / 1.,
         keys.RECALL_AT_THRESHOLD % thresholds[2]: 1. / 3.,
+    }
+
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
+  def test_eval_with_classes_for_class_based_metrics(self):
+    head = head_lib.multi_label_head(
+        n_classes=2, classes_for_class_based_metrics=[0, 1])
+
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels, logits=logits))
+
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+        keys.PROBABILITY_MEAN_AT_CLASS % 0: np.sum(_sigmoid(logits[:, 0])) / 2.,
+        keys.AUC_AT_CLASS % 0: 0.,
+        keys.AUC_PR_AT_CLASS % 0: 1.,
+        keys.PROBABILITY_MEAN_AT_CLASS % 1: np.sum(_sigmoid(logits[:, 1])) / 2.,
+        keys.AUC_AT_CLASS % 1: 1.,
+        keys.AUC_PR_AT_CLASS % 1: 1.,
+    }
+
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
+  def test_eval_with_classes_for_class_based_metrics_string(self):
+    head = head_lib.multi_label_head(
+        n_classes=2, label_vocabulary=['a', 'b'],
+        classes_for_class_based_metrics=['a', 'b'])
+
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels = sparse_tensor.SparseTensor(
+        values=['a', 'a', 'b'],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    labels_onehot = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels_onehot, logits=logits))
+
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+        keys.PROBABILITY_MEAN_AT_CLASS % 0: np.sum(_sigmoid(logits[:, 0])) / 2.,
+        keys.AUC_AT_CLASS % 0: 0.,
+        keys.AUC_PR_AT_CLASS % 0: 1.,
+        keys.PROBABILITY_MEAN_AT_CLASS % 1: np.sum(_sigmoid(logits[:, 1])) / 2.,
+        keys.AUC_AT_CLASS % 1: 1.,
+        keys.AUC_PR_AT_CLASS % 1: 1.,
     }
 
     self._test_eval(
