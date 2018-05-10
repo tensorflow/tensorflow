@@ -71,8 +71,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['convolution.2.3.clone/Conv_3x3',
-            'Copy_{<const>,arg0.2.0_input}',
+      ok = ['convolution.*clone/Conv_3x3',
+            'Copy_{<const>,arg0.*_input}',
             'call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -101,10 +101,69 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['convolution.3.3.clone/Conv_8x8_stride4x4',
+      ok = ['convolution.*clone/Conv_8x8_stride4x4',
             'call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
+  def testConvBackpropInput(self):
+    with tf.device("/device:IPU:0"):
+      ins = tf.constant([2,8,8,3], tf.int32)
+      fil = tf.placeholder(tf.float32, [2,2,3,5], name="inp")
+      bck = tf.placeholder(tf.float32, [2,8,8,5], name="wei")
+
+      output = nn_ops.conv2d_backprop_input(ins, fil, bck, strides=[1,1,1,1],
+                                            padding="SAME")
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        fil: np.zeros([2,2,3,5]),
+        bck: np.zeros([2,8,8,5]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([2,8,8,3]))
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 2)
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_arg0.*_to_bwdWeights',
+            'Copy_bwdWeights_to_weightsRearranged',
+            'convolution.*clone/Conv_2x2']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+
+  def testConvBackpropFilter(self):
+    with tf.device("/device:IPU:0"):
+      inp = tf.placeholder(tf.float32, [2,8,8,3])
+      fil = tf.constant([2,2,3,5], tf.int32)
+      bck = tf.placeholder(tf.float32, [2,8,8,5], name="wei")
+
+      output = nn_ops.conv2d_backprop_filter(inp, fil, bck, strides=[1,1,1,1],
+                                            padding="SAME")
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        inp: np.zeros([2,8,8,3]),
+        bck: np.zeros([2,8,8,5]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([2,2,3,5]))
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 2)
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_{<const>,arg0.*_input,arg1.*_weights}',
+            'convolution.*clone/Conv_8x8']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testDepthwiseConv3x2(self):
     with tf.device("/device:IPU:0"):
@@ -142,7 +201,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['call.1.clone/Conv_1x1',
+      ok = ['call.*clone/Conv_1x1',
             'Copy_partials_to_call',
             'call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -183,7 +242,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['call.1.clone/Conv_1x1',
+      ok = ['call.*clone/Conv_1x1',
             'Copy_partials_to_call',
             'call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -215,9 +274,9 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_arg0.6.0_to_bwdWeights',
+      ok = ['Copy_arg0.*_to_bwdWeights',
             'Copy_bwdWeights_to_weightsRearranged/OnTileCopy',
-            'convolution.6.19.clone/Conv_3x3']
+            'convolution.*clone/Conv_3x3']
 
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 

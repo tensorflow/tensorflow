@@ -16,6 +16,7 @@ from tensorflow.python.ops.summary_ops import tensor_summary
 
 import contextlib
 import re
+import fnmatch
 
 @contextlib.contextmanager
 def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
@@ -30,13 +31,17 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
 
 def get_compute_sets_from_report(report):
   lines = report.split('\n')
-  return [x for x in lines if re.search('  Step #\d+:', x)]
+  cs = [x for x in lines if re.search('  Step #\d+:', x)]
+  cs = [x.split(":")[1].strip() for x in cs]
+  cs = [x.split()[0] for x in cs]
+  return cs
 
 def check_all_compute_sets_in_list(cs_list, whitelist):
-  if len(cs_list) < len(whitelist):
+  wl = [x+'*' for x in whitelist]
+  if len(cs_list) < len(wl):
     return False
   for cs in cs_list:
-    if len([x for x in whitelist if re.match("  Step #\d+: "+x, cs)]) == 0:
+    if len([x for x in wl if fnmatch.fnmatch(cs, x)]) == 0:
       return False
   return True
 

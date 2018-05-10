@@ -36,7 +36,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(result) == 2)
       cs_list = tu.get_compute_sets_from_report(result[1])
 
-      ok = ['Copy_arg0_to_call',
+      ok = ['Copy_arg0.*_to_call',
             'call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -83,7 +83,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(result) == 2)
       cs_list = tu.get_compute_sets_from_report(result[1])
 
-      ok = ['Copy_arg0_to_call',
+      ok = ['Copy_arg0.*_to_call',
             'call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
