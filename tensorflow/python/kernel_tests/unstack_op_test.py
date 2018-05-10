@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
@@ -162,15 +163,16 @@ class UnstackOpTest(test.TestCase):
       self.assertEqual(y.shape, (0, 2))
 
   def testNumWithTensor(self):
-    dynamic_feed_shape = (2,None)
-    static_feed_shape_dict = {'scalar': (2, ()),'one_dim': (2, [1])}
-    x = array_ops.constant([[1,2,3],[4,5,6]])
+    dynamic_shape = None
+    static_shape_dict = {'scalar': (), 'one_dim': [1]}
+    x = array_ops.constant([[1, 2, 3], [4, 5, 6]])
     with self.test_session() as sess:
-      for feed, shape in (dynamic_feed_shape, static_feed_shape_dict['scalar'],static_feed_shape_dict['one_dim']):
-        num = array_ops.placeholder(shape=shape)
+      for shape in (dynamic_shape, static_shape_dict['scalar'], static_shape_dict['one_dim']):
+        feed = 2
+        num = array_ops.placeholder(shape=shape, dtype=dtypes.int32)
         out = sess.run(array_ops.unstack(value=x, num=num), feed_dict={num:feed})
-        self.assertAllEqual(out[0],[1,2,3])
-        self.assertAllEqual(out[1],[4,5,6])
+        self.assertAllEqual(out[0], [1, 2, 3])
+        self.assertAllEqual(out[1], [4, 5, 6])
 
 
 if __name__ == '__main__':
