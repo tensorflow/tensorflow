@@ -3621,7 +3621,7 @@ inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-template <typename T, ComparisonFn<T> F>
+template <typename T, ComparisonFn<int32> F>
 inline void Comparison(int left_shift, const T* input1_data,
                        const Dims<4>& input1_dims, int32 input1_offset,
                        int32 input1_multiplier, int input1_shift,
@@ -3672,7 +3672,7 @@ inline void BroadcastComparison(const T* input1_data,
   }
 }
 
-template <typename T, ComparisonFn<T> F>
+template <typename T, ComparisonFn<int32> F>
 inline void BroadcastComparison(int left_shift, const T* input1_data,
                                 const Dims<4>& input1_dims, int32 input1_offset,
                                 int32 input1_multiplier, int input1_shift,
@@ -3724,11 +3724,11 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
     gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
-    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
-                                     input1_offset, input1_multiplier,        \
-                                     input1_shift, input2_data, input2_dims,  \
-                                     input2_offset, input2_multiplier,        \
-                                     input2_shift, output_data, output_dims); \
+    Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,             \
+                            input1_offset, input1_multiplier, input1_shift,   \
+                            input2_data, input2_dims, input2_offset,          \
+                            input2_multiplier, input2_shift, output_data,     \
+                            output_dims);                                     \
   }                                                                           \
   template <typename T>                                                       \
   inline void Broadcast##name(                                                \
