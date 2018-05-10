@@ -6242,6 +6242,7 @@ op {
     allowed_values {
       list {
         s: "bilinear"
+        s: "nearest"
       }
     }
   }
@@ -6347,6 +6348,7 @@ op {
     allowed_values {
       list {
         s: "bilinear"
+        s: "nearest"
       }
     }
   }
