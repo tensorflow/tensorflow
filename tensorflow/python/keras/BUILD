@@ -644,6 +644,7 @@ py_test(
     name = "wrappers_test",
     size = "medium",
     srcs = ["_impl/keras/layers/wrappers_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",  # http://b/78599823

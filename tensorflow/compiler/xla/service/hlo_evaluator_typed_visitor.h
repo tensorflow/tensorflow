@@ -256,6 +256,29 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <
       typename NativeT,
       typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleExpm1(HloInstruction* expm1) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[expm1],
+        ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
+          return std::expm1(elem_operand);
+        }));
+    return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleExpm1(HloInstruction* floor) {
+    return InvalidArgument("Unsupported type for Expm1");
+  }
+
+  Status HandleExpm1(HloInstruction* floor) override {
+    return HandleExpm1<ReturnT>(floor);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
   Status HandleFloor(HloInstruction* floor) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[floor],
@@ -282,6 +305,29 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                           return std::log(elem_operand);
                         }));
     return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleLog1p(HloInstruction* expm1) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[expm1],
+        ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
+          return std::log1p(elem_operand);
+        }));
+    return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleLog1p(HloInstruction* floor) {
+    return InvalidArgument("Unsupported type for Log1p");
+  }
+
+  Status HandleLog1p(HloInstruction* floor) override {
+    return HandleLog1p<ReturnT>(floor);
   }
 
   template <typename NativeT,

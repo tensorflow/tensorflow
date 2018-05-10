@@ -286,8 +286,8 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
   se::StreamExecutor* executor = run_options->stream()->parent();
   TF_ASSIGN_OR_RETURN(
       auto buffer_allocations,
-      buffer_allocations_builder.Build(*assignment_, executor->device_ordinal(),
-                                       memory_allocator));
+      buffer_allocations_builder.Build(
+          assignment_.get(), executor->device_ordinal(), memory_allocator));
 
   bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
@@ -329,8 +329,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
         buffers_in_result.insert(src_base);
         return Status::OK();
       }));
-  TF_RETURN_IF_ERROR(
-      buffer_allocations->TearDown(buffers_in_result, *assignment_));
+  TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
 
   return std::move(shaped_buffer);
 }

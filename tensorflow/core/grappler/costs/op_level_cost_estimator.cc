@@ -865,6 +865,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
     conv_dims.oz *= conv_dims.iz;
     ops *= conv_dims.oz;
   }
+  ops *= kOpsPerMac;
 
   VLOG(1) << "Operations for" << op_features.op() << "  " << ops;
 
@@ -921,7 +922,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
     conv_dims.oz *= conv_dims.iz;
     ops *= conv_dims.oz;
   }
-
+  ops *= kOpsPerMac;
   VLOG(1) << "Operations for" << op_features.op() << "  " << ops;
 
   if (returned_conv_dims != nullptr) {

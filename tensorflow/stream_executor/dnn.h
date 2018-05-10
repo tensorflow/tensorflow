@@ -882,8 +882,8 @@ enum class ElementwiseOperation { kAdd, kMultiply };
 
 string ElementwiseOperationString(ElementwiseOperation op);
 
-// A simple class representing the version of the backing library, to 
-// workaround the "too perfect forwarding" issue in gcc6+ compilers. 
+// A simple class representing the version of the backing library, to
+// workaround the "too perfect forwarding" issue in gcc6+ compilers.
 // See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
@@ -2036,8 +2036,8 @@ class DnnSupport {
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64 seed,
                       ScratchAllocator* state_allocator) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnDescriptor is unimplemented");
   }
 
   // Create a RNN sequence descriptor that specifies either the input or output
@@ -2051,8 +2051,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnSequenceTensorDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
   // Create an RNN state descriptor that specifies the input or hidden state.
@@ -2060,8 +2060,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnStateTensorDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnStateTensorDescriptor is unimplemented");
   }
 
   // Enqueue a forward operation of the RNN model onto the stream.

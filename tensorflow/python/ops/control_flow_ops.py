@@ -1685,12 +1685,12 @@ class CondContext(ControlFlowContext):
       self._pivot = pivot  # The predicate tensor in this branch
       self._branch = branch  # 0 or 1 representing this branch
 
-      # Values considered to have been already seen in this context. They are
-      # not included in this context.
+      # Values considered to have been already seen in this context. pred is not
+      # included in this context.
       self._values.add(pred.name)
       self._external_values[pred.name] = pred
       self._values.add(pivot.name)
-      self._external_values[pivot.name] = pivot
+      pivot.op._set_control_flow_context(self)  # pylint: disable=protected-access
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `CondContext` from protocol buffer.

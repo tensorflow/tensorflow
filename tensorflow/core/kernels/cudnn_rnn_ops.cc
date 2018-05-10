@@ -571,7 +571,7 @@ Status ExtractForwardInput(OpKernelContext* context,
           : 1;
 
   if ((*input_h)->dims() != 3) {
-    return errors::InvalidArgument("RNN input must be a 3-D vector.");
+    return errors::InvalidArgument("RNN input_h must be a 3-D vector.");
   }
   model_shapes->num_layers = (*input_h)->dim_size(0) / model_shapes->dir_count;
   model_shapes->num_units = (*input_h)->dim_size(2);

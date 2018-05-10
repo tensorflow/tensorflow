@@ -31,7 +31,9 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo);
+bool PotentiallyImplementedAsEigenDot(
+    const HloInstruction& hlo,
+    const TargetMachineFeatures& target_machine_features);
 
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot

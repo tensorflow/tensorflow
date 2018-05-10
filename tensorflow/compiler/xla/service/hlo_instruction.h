@@ -185,8 +185,6 @@ class HloInstruction {
 
   // Creates an instruction from the given proto. Arguments:
   //
-  //   module: the module which will contain the instruction. The newly created
-  //     instruction is *not* added to the module or any computation, however.
   //   proto: the proto to convert from.
   //   instruction_map: a map from instruction id to HloInstruction*. This map
   //     must contain all operands of the newly constructed instruction.
@@ -194,7 +192,7 @@ class HloInstruction {
   //     must contain all computations which the newly constructed instruction
   //     calls.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
-      HloModule* module, const HloInstructionProto& proto,
+      const HloInstructionProto& proto,
       const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
       const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
@@ -705,6 +703,9 @@ class HloInstruction {
   //
   // Note: only constant and parameter opcodes have an associated literal.
   const Literal& literal() const;
+
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const;
 
   // Returns the parameter number associated with this instruction.
   //
@@ -1576,13 +1577,20 @@ std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 // an HloInstruction* or a const HloInstruction*.
 // To make the iteration order over the map deterministic, the comparator
 // should not be using the pointer values, but rather an intrinsic property of
-// the hlo.
+// the hlo. Exception: null pointer values compare less than non-null.
 //
 // Note that this cannot be used for HLO instructions across multiple modules
 // since the id of HLO instructions are only unique within each HLO module.
 struct HloPtrComparator {
   bool operator()(const HloInstruction* const& lhs,
                   const HloInstruction* const& rhs) const {
+    if (rhs == nullptr) {
+      // Nothing compares less than nullptr.
+      return false;
+    }
+    if (lhs == nullptr) {
+      return true;
+    }
     return lhs->unique_id() < rhs->unique_id();
   }
 };

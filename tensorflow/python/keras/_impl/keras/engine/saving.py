@@ -30,6 +30,7 @@ from tensorflow.python.keras._impl.keras import optimizers
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=g-import-not-at-top
@@ -74,40 +75,6 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
   if h5py is None:
     raise ImportError('`save_model` requires h5py.')
 
-  def get_json_type(obj):
-    """Serializes any object to a JSON-serializable structure.
-
-    Arguments:
-        obj: the object to serialize
-
-    Returns:
-        JSON-serializable structure representing `obj`.
-
-    Raises:
-        TypeError: if `obj` cannot be serialized.
-    """
-    # if obj is a serializable Keras class instance
-    # e.g. optimizer, layer
-    if hasattr(obj, 'get_config'):
-      return {'class_name': obj.__class__.__name__, 'config': obj.get_config()}
-
-    # if obj is any numpy type
-    if type(obj).__module__ == np.__name__:
-      if isinstance(obj, np.ndarray):
-        return {'type': type(obj), 'value': obj.tolist()}
-      else:
-        return obj.item()
-
-    # misc functions (e.g. loss function)
-    if callable(obj):
-      return obj.__name__
-
-    # if obj is a python 'type'
-    if type(obj).__name__ == type.__name__:
-      return obj.__name__
-
-    raise TypeError('Not JSON Serializable:', obj)
-
   from tensorflow.python.keras._impl.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
 
   # If file exists and should not be overwritten.
@@ -124,7 +91,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
             'class_name': model.__class__.__name__,
             'config': model.get_config()
         },
-        default=get_json_type).encode('utf8')
+        default=serialization.get_json_type).encode('utf8')
 
     model_weights_group = f.create_group('model_weights')
     model_layers = model.layers
@@ -154,7 +121,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
                 'sample_weight_mode': model.sample_weight_mode,
                 'loss_weights': model.loss_weights,
             },
-            default=get_json_type).encode('utf8')
+            default=serialization.get_json_type).encode('utf8')
 
         # Save optimizer weights.
         symbolic_weights = getattr(model.optimizer, 'weights')

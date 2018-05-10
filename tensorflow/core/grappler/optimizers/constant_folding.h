@@ -106,6 +106,11 @@ class ConstantFolding : public GraphOptimizer {
   bool PartialConcatConstFolding(GraphDef* optimized_graph,
                                  GraphProperties* properties, NodeDef* node);
 
+  // Applies partial constant folding for associative operators AddN and
+  // AccumulateNV2. Returns true if the transformation applied successfully.
+  bool PartialAssocOpConstFolding(GraphDef* optimized_graph,
+                                  GraphProperties* properties, NodeDef* node);
+
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
