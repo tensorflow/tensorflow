@@ -71,6 +71,12 @@ void GetNodeNameToNodeDefMap(
   }
 }
 
+// Strips off the tensor part of the tensor_name to get the node_name.
+const string GetNodeNameFromTensorName(const string& tensor_name) {
+  std::vector<string> tensor_name_parts = str_util::Split(tensor_name, ':');
+  return tensor_name_parts[0];
+}
+
 // Gets the set of node names needed by `outputs` and the corresponding set of
 // variable nodes to convert.
 void GetReachableNodesAndVariables(
@@ -83,10 +89,8 @@ void GetReachableNodesAndVariables(
       new std::unordered_set<string>({"Variable", "VariableV2", "VarHandleOp"});
 
   std::queue<string> nodes_to_visit;
-  for (const string& tensor_name : outputs) {
-    // We need to strip off the tensor part to get the node name.
-    std::vector<string> tensor_name_parts = str_util::Split(tensor_name, ':');
-    nodes_to_visit.push(tensor_name_parts[0]);
+  for (const string& output_tensor_name : outputs) {
+    nodes_to_visit.push(GetNodeNameFromTensorName(output_tensor_name));
   }
   // We do a traversal backwards from the outputs specified in the MetaGraphDef.
   while (!nodes_to_visit.empty()) {
@@ -100,8 +104,8 @@ void GetReachableNodesAndVariables(
     if (kVariableTypes->find(node->op()) != kVariableTypes->end()) {
       variable_node_names->insert(node->name());
     }
-    for (const string& input : node->input()) {
-      nodes_to_visit.push(input);
+    for (const string& input_tensor_name : node->input()) {
+      nodes_to_visit.push(GetNodeNameFromTensorName(input_tensor_name));
     }
   }
 }
