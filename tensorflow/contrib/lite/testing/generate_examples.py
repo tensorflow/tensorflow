@@ -20,6 +20,9 @@ Usage:
 generate_examples <output directory>
 
 bazel run //tensorflow/contrib/lite/testing:generate_examples
+
+To more easily debug failures use (or override) the --save_graphdefs flag to
+place text proto graphdefs into the generated zip files.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -427,7 +430,7 @@ def make_zip_of_tests(zip_path,
         report["toco_log"] = toco_log
 
         if FLAGS.save_graphdefs:
-          archive.writestr(label + ".pb",
+          archive.writestr(label + ".pbtxt",
                            text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
 
