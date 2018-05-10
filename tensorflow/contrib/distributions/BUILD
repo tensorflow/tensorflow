@@ -94,7 +94,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "distribution_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/distribution_test.py"],
     additional_deps = [
         ":distributions_py",
