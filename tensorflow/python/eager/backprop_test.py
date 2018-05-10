@@ -96,6 +96,18 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(grads_and_vars[0][0], 1.0)
     self.assertAllEqual(id(grads_and_vars[0][1]), id(x))
 
+  def testWhereGradient(self):
+    # Note: where is special because only some of its arguments are of
+    # differentiable dtypes.
+
+    def f(x):
+      return array_ops.where(x < 10, x, x * x)
+
+    g = backprop.gradients_function(f)
+
+    self.assertAllEqual(g(5.)[0], 1.0)
+    self.assertAllEqual(g(50.)[0], 100.0)
+
   def testTwoTargets(self):
     with backprop.GradientTape() as t:
       x = constant_op.constant(3.0)
@@ -123,6 +135,14 @@ class BackpropTest(test.TestCase):
 
     grad_fn = backprop.gradients_function(f)
     self.assertAllEqual(2., grad_fn(1., dy=2.)[0])
+
+  def testGradientInteger(self):
+
+    def f(x):
+      return x + x
+
+    int_tensor = constant_op.constant(1)
+    self.assertEqual(backprop.gradients_function(f)(int_tensor)[0], None)
 
   def testErrors(self):
 
@@ -753,7 +773,7 @@ class BackpropTest(test.TestCase):
       return result, grad
 
     x = resource_variable_ops.ResourceVariable(
-        initial_value=3, name='X.' + self.id())
+        initial_value=3., name='X.' + self.id())
 
     def f():
       return my_square(x)
