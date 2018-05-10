@@ -96,8 +96,6 @@ KNOWN_BUGS = {
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
-    # TOCO require matching dimensions in strided_slice.
-    r"strided_slice.*begin=\[0\].*end=\[1\].*": "73170889",
     # No support for SplitV
     r"split.*num_or_size_splits=\[2,2\]": "73377559",
     # Needs support for dimensions other than the last one in argmax.
@@ -1811,7 +1809,19 @@ def make_strided_slice_tests(zip_path):
           "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
           "constant_indices": [False, True],
       },
-      # TODO(b/73170889) Restore test paramaters removed in cl/191608113.
+      # Begin, end, strides dim are different from input shape
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0]],
+          "end": [[1]],
+          "strides": [None, [1]],
+          "begin_mask": [0],
+          "end_mask": [0],
+          "shrink_axis_mask": [1],
+          "constant_indices": [True],
+      },
       # 2-D
       {
           "dtype": [tf.float32, tf.int32, tf.int64],
