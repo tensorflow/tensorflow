@@ -64,11 +64,8 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
       dtypes.bfloat16.as_numpy_dtype:
           SlowAppendBFloat16ArrayToTensorProto,
-      # TODO(sesse): We should have a
-      # fast_tensor_util.AppendFloat16ArrayToTensorProto,
-      # but it seems np.float16_t doesn't exist?
       np.float16:
-          SlowAppendFloat16ArrayToTensorProto,
+          fast_tensor_util.AppendFloat16ArrayToTensorProto,
       np.float32:
           fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64:
