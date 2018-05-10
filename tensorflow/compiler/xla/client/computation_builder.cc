@@ -895,6 +895,11 @@ ComputationDataHandle ComputationBuilder::Exp(
   return UnaryOp(UNOP_EXP, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Expm1(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_EXPM1, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Floor(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_FLOOR, operand);
@@ -913,6 +918,11 @@ ComputationDataHandle ComputationBuilder::Round(
 ComputationDataHandle ComputationBuilder::Log(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_LOG, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Log1p(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_LOG1P, operand);
 }
 
 ComputationDataHandle ComputationBuilder::Sign(

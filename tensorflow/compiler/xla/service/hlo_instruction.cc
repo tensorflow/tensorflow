@@ -257,10 +257,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCos:
     case HloOpcode::kClz:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
@@ -1245,10 +1247,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
@@ -1699,6 +1703,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
@@ -1706,6 +1711,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
@@ -2620,6 +2626,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleNegate(this);
     case HloOpcode::kExp:
       return visitor->HandleExp(this);
+    case HloOpcode::kExpm1:
+      return visitor->HandleExpm1(this);
     case HloOpcode::kFloor:
       return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
@@ -2628,6 +2636,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleClz(this);
     case HloOpcode::kLog:
       return visitor->HandleLog(this);
+    case HloOpcode::kLog1p:
+      return visitor->HandleLog1p(this);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this);
     case HloOpcode::kCos:
@@ -2974,10 +2984,12 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:

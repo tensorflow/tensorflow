@@ -584,6 +584,9 @@ class ComputationBuilder {
   // Enqueues an exp instruction onto the computation.
   ComputationDataHandle Exp(const ComputationDataHandle& operand);
 
+  // Enqueues an expm1 instruction onto the computation.
+  ComputationDataHandle Expm1(const ComputationDataHandle& operand);
+
   // Enqueues a floor instruction onto the computation.
   ComputationDataHandle Floor(const ComputationDataHandle& operand);
 
@@ -596,6 +599,9 @@ class ComputationBuilder {
 
   // Enqueues an log instruction (natural logarithm) onto the computation.
   ComputationDataHandle Log(const ComputationDataHandle& operand);
+
+  // Enqueues an log1p instruction onto the computation.
+  ComputationDataHandle Log1p(const ComputationDataHandle& operand);
 
   // Enqueues a sign instruction onto the computation.
   ComputationDataHandle Sign(const ComputationDataHandle& operand);

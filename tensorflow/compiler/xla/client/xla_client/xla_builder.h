@@ -571,6 +571,9 @@ class XlaBuilder {
   // Enqueues an exp instruction onto the computation.
   XlaOp Exp(const XlaOp& operand);
 
+  // Enqueues an expm1 instruction onto the computation.
+  XlaOp Expm1(const XlaOp& operand);
+
   // Enqueues a floor instruction onto the computation.
   XlaOp Floor(const XlaOp& operand);
 
@@ -583,6 +586,9 @@ class XlaBuilder {
 
   // Enqueues an log instruction (natural logarithm) onto the computation.
   XlaOp Log(const XlaOp& operand);
+
+  // Enqueues an log1p instruction (log(x+1)) onto the computation.
+  XlaOp Log1p(const XlaOp& operand);
 
   // Enqueues a sign instruction onto the computation.
   XlaOp Sign(const XlaOp& operand);
