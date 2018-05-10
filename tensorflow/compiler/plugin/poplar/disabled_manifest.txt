@@ -13,3 +13,4 @@ PoolGradTest.testMaxPool # Tests MaxPoolGradGrad
 OutOfMemoryTest.testOutputOutOfMemory # Don't do out of memory yet
 WhileTest.testCountingLoopHandrolledC64 # C64
 EagerTest # Eager test crashing
+EagerFunctionTest # Eager function test crashing

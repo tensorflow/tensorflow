@@ -242,3 +242,12 @@ GatherClientLibraryTest POPLAR
 ArrayElementwiseOpTest.ClzU32s POPLAR // Don't support counting leading zeros
 
 TestUtilsTest.UnusedParam POPLAR // Decide what to do with strange reductions
+
+DotOperationTest.DotOfGatherOptimizationWithConstLHSReverseMM POPLAR // Dot contracting dims
+DotOperationTest.DotOfGatherOptimizationWithConstRHSReverseMM POPLAR
+DotOperationTest.DotOfGatherOptimizationWithConstLHSRows POPLAR
+DotOperationTest.DotOfGatherOptimizationWithConstLHSCols POPLAR
+DotOperationTest.DotOfGatherOptimizationWithConstRHSCols POPLAR
+DotOperationTest.DotOfGatherOptimizationWithConstRHSRows POPLAR
+
+
