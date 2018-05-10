@@ -49,9 +49,6 @@ def fit_generator(model,
   epoch = initial_epoch
 
   do_validation = bool(validation_data)
-  model._make_train_function()
-  if do_validation:
-    model._make_test_function()
 
   is_sequence = isinstance(generator, Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
@@ -252,8 +249,6 @@ def evaluate_generator(model,
                        workers=1,
                        use_multiprocessing=False):
   """See docstring for `Model.evaluate_generator`."""
-  model._make_test_function()
-
   steps_done = 0
   wait_time = 0.01
   all_outs = []
@@ -346,8 +341,6 @@ def predict_generator(model,
                       use_multiprocessing=False,
                       verbose=0):
   """See docstring for `Model.predict_generator`."""
-  model._make_predict_function()
-
   steps_done = 0
   wait_time = 0.01
   all_outs = []
