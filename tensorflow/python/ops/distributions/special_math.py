@@ -216,11 +216,11 @@ def _ndtri(p):
   z = math_ops.sqrt(-2. * math_ops.log(sanitized_mcp))
   first_term = z - math_ops.log(z) / z
   second_term_small_p = (
-      _create_polynomial(math_ops.reciprocal(z), p2) /
-      _create_polynomial(math_ops.reciprocal(z), q2) / z)
+      _create_polynomial(1. / z, p2) /
+      _create_polynomial(1. / z, q2) / z)
   second_term_otherwise = (
-      _create_polynomial(math_ops.reciprocal(z), p1) /
-      _create_polynomial(math_ops.reciprocal(z), q1) / z)
+      _create_polynomial(1. / z, p1) /
+      _create_polynomial(1. / z, q1) / z)
   x_for_small_p = first_term - second_term_small_p
   x_otherwise = first_term - second_term_otherwise
 
