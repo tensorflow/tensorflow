@@ -30,6 +30,7 @@
 @@Invert
 @@Kumaraswamy
 @@MaskedAutoregressiveFlow
+@@Ordered
 @@Permute
 @@PowerTransform
 @@RealNVP
@@ -38,6 +39,7 @@
 @@SinhArcsinh
 @@SoftmaxCentered
 @@Softplus
+@@Softsign
 @@Square
 @@Weibull
 
@@ -66,6 +68,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
 from tensorflow.contrib.distributions.python.ops.bijectors.kumaraswamy import *
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import *
+from tensorflow.contrib.distributions.python.ops.bijectors.ordered import *
 from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *
 from tensorflow.contrib.distributions.python.ops.bijectors.real_nvp import *
@@ -74,6 +77,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import *
 from tensorflow.contrib.distributions.python.ops.bijectors.softplus import *
+from tensorflow.contrib.distributions.python.ops.bijectors.softsign import *
 from tensorflow.contrib.distributions.python.ops.bijectors.square import *
 from tensorflow.python.ops.distributions.bijector import *
 from tensorflow.python.ops.distributions.identity_bijector import Identity

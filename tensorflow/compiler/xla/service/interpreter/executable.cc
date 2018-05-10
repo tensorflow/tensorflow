@@ -38,8 +38,6 @@ limitations under the License.
 namespace xla {
 namespace interpreter {
 
-namespace se = ::perftools::gputools;
-
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<const HloModule> hlo_module)
     : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
@@ -47,7 +45,7 @@ InterpreterExecutable::InterpreterExecutable(
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
-StatusOr<std::unique_ptr<ShapedBuffer>> InterpreterExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -90,12 +88,12 @@ StatusOr<std::unique_ptr<ShapedBuffer>> InterpreterExecutable::ExecuteOnStream(
       evaluator.Evaluate<std::unique_ptr<Literal>>(*computation, arg_literals));
 
   // Transform the result literal back into a ShapedBuffer.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result,
-                      transfer_manager->AllocateShapedBuffer(
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                      transfer_manager->AllocateScopedShapedBuffer(
                           result_literal->shape(), run_options->allocator(),
                           executor->device_ordinal()));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
-      executor, *result_literal, *result));
+      executor, *result_literal, result));
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -108,8 +106,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> InterpreterExecutable::ExecuteOnStream(
   return std::move(result);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>>
-InterpreterExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   return tensorflow::errors::Unimplemented(

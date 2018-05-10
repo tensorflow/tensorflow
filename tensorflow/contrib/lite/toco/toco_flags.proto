@@ -37,7 +37,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 14.
+// Next ID to use: 19.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -103,8 +103,14 @@ message TocoFlags {
   // for experimentation purposes only and should not be used in production:
   // they make it easy to quantize models, but the resulting quantized model
   // will be inaccurate.
+  //
+  // These values only apply to arrays quantized with the kUint8 data type.
   optional float default_ranges_min = 5;
   optional float default_ranges_max = 6;
+  // Equivalent versions of default_ranges_min/_max for arrays quantized with
+  // the kInt16 data type.
+  optional float default_int16_ranges_min = 15;
+  optional float default_int16_ranges_max = 16;
 
   // Ignore and discard FakeQuant nodes. For instance, that can be used to
   // generate plain float code without fake-quantization from a quantized
@@ -121,7 +127,7 @@ message TocoFlags {
   // transformations that are necessary in order to generate inference
   // code for these graphs. Such graphs should be fixed, but as a
   // temporary work-around, setting this reorder_across_fake_quant flag
-  // allows toco to perform necessary graph transformaitons on them,
+  // allows toco to perform necessary graph transformations on them,
   // at the cost of no longer faithfully matching inference and training
   // arithmetic.
   optional bool reorder_across_fake_quant = 8;
@@ -141,4 +147,22 @@ message TocoFlags {
   // Disables transformations that fuse subgraphs such as known LSTMs (not all
   // LSTMs are identified).
   optional bool debug_disable_recurrent_cell_fusion = 13;
+
+  // Uses the FakeQuantWithMinMaxArgs.num_bits attribute to adjust quantized
+  // array data types throughout the graph. The graph must be properly annotated
+  // with FakeQuant* ops on at least the edges and may contain additional ops on
+  // the interior of the graph to widen/narrow as desired.
+  //
+  // Input and output array data types may change because of this propagation
+  // and users must be sure to query the final data_type values.
+  optional bool propagate_fake_quant_num_bits = 14;
+
+  // Some fast uint8 GEMM kernels require uint8 weights to avoid the value 0.
+  // This flag allows nudging them to 1 to allow proceeding, with moderate
+  // inaccuracy.
+  optional bool allow_nudging_weights_to_use_fast_gemm_kernel = 17;
+
+  // Minimum size of constant arrays to deduplicate; arrays smaller will not be
+  // deduplicated.
+  optional int64 dedupe_array_min_size_bytes = 18 [default = 64];
 }

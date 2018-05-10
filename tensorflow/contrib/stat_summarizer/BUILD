@@ -31,4 +31,5 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],
 )

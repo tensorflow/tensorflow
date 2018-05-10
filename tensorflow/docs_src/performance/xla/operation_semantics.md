@@ -25,7 +25,7 @@ Calculates gradients of batch norm.
 <b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
 
 | Arguments       | Type                    | Semantics                        |
-| --------------  | ----------------------- | -------------------------------- |
+| --------------- | ----------------------- | -------------------------------- |
 | `operand`       | `ComputationDataHandle` | n dimensional array to be        |
 :                 :                         : normalized (x)                   :
 | `scale`         | `ComputationDataHandle` | 1 dimensional array              |
@@ -45,31 +45,37 @@ feature dimension in `operand`), the operation calculates the gradients with
 respect to `operand`, `offset` and `scale` across all the other dimensions. The
 `feature_index` must be a valid index for the feature dimension in `operand`.
 
-The three gradients are defined by the following formulas (Assuming a
-4-dimensional tensor as `operand` and (l) is the index for feature dimension):
+The three gradients are defined by the following formulas (assuming a
+4-dimensional tensor as `operand` and with feature dimension index \\(l\\),
+batch size `m` and spatial sizes `w` and `h`):
 
-\\( coef_l = \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (\nabla y_{ijkl} * (x_{ijkl} - \mu_l) / (\sigma^2_{l}+\epsilon)) \\)
+\\[ \begin{split} c_l&=
+\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h
+\left( \nabla y_{ijkl} \frac{x_{ijkl} - \mu_l}{\sigma^2_l+\epsilon} \right)
+\\\\
+\nabla x_{ijkl} &= \frac{\gamma_{l}}{\sqrt{\sigma^2_{l}+\epsilon}}
+\left( \nabla y_{ijkl} - \mathrm{mean}(\nabla y) - c_l (x_{ijkl} - \mu_{l})
+\right)
+\\\\
+\nabla \gamma_l &= \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \left( \nabla y_{ijkl}
+\frac{x_{ijkl} - \mu_l}{\sqrt{\sigma^2_{l}+\epsilon}} \right)
+\\\\\
+\nabla \beta_l &= \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl}
+\end{split} \\]
 
-\\( \nabla x_{ijkl} = \gamma_{l} * (1/\sqrt{\sigma^2_{l}+\epsilon}) * [\nabla y_{ijkl} - mean(\nabla y) - (x_{ijkl} - \mu_{l}) * coef_l] \\)
-
-\\( \nabla \beta_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} \\)
-
-\\( \nabla \gamma_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} * ((x_{ijkl} - \mu_l) / \sqrt{\sigma^2_{l}+\epsilon}) \\)
-
-The inputs `mean` and `variance` represents moments value
+The inputs `mean` and `variance` represent moments value
 across batch and spatial dimensions.
 
 The output type is a tuple of three handles:
 
-|Outputs       | Type                    | Semantics                            |
-|------------- | ----------------------- | ------------------------------------ |
-|`grad_operand`| `ComputationDataHandle` | gradient with respect to input       |
-:              :                         : `operand` (\\( \nabla x\\))          :
-|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input       |
-:              :                         : `scale` (\\( \nabla \gamma\\))       :
-|`grad_offset` | `ComputationDataHandle` | gradient with respect to input       |
-:              :                         : `offset`(\\( \nabla \beta\\))        :
-
+| Outputs        | Type                    | Semantics                         |
+| -------------  | ----------------------- | --------------------------------- |
+| `grad_operand` | `ComputationDataHandle` | gradient with respect to input    |
+:                :                         : `operand` (\\( \nabla x\\))       :
+| `grad_scale`   | `ComputationDataHandle` | gradient with respect to input    |
+:                :                         : `scale` (\\( \nabla \gamma\\))    :
+| `grad_offset`  | `ComputationDataHandle` | gradient with respect to input    |
+:                :                         : `offset`(\\( \nabla \beta\\))     :
 
 ## BatchNormInference
 
@@ -440,13 +446,11 @@ area and a computation is performed for each possible position of the window.
 | `lhs`            | `ComputationDataHandle` | rank n+2 array of inputs      |
 | `rhs`            | `ComputationDataHandle` | rank n+2 array of kernel      |
 :                  :                         : weights                       :
-| `window_strides` | `ArraySlice<int64>`     | size n array of kernel strides|
-| `padding`        | `ArraySlice<pair<int64, | size n array of (low, high)   |
+| `window_strides` | `ArraySlice<int64>`     | n-d array of kernel strides   |
+| `padding`        | `ArraySlice<pair<int64, | n-d array of (low, high)      |
 :                  : int64>>`                : padding                       :
-| `lhs_dilation`   | `ArraySlice<int64>`     | size n lhs dilation factor    |
-:                  :                         : array                         |
-| `rhs_dilation`   | `ArraySlice<int64>`     | size n rhs dilation factor
-:                  :                         : array                         |
+| `lhs_dilation`   | `ArraySlice<int64>`     | n-d lhs dilation factor array |
+| `rhs_dilation`   | `ArraySlice<int64>`     | n-d rhs dilation factor array |
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -854,12 +858,13 @@ calculation of 'start_indices') is currently implementation-defined.
 | `operand`       | `ComputationDataHandle` | N dimensional array of type T    |
 | `update`        | `ComputationDataHandle` | N dimensional array of type T    |
 :                 :                         : containing the slice update.     :
-:                 :                         : Each dimension of update shape    :
+:                 :                         : Each dimension of update shape   :
 :                 :                         : must be strictly greater than    :
 :                 :                         : zero, and start + update must be :
-:                 :                         : less than operand size for each  :
-:                 :                         : dimension to avoid generating    :
-:                 :                         : out-of-bounds update indices.    :
+:                 :                         : less than or equal to the operand:
+:                 :                         : size for each dimension to avoid :
+:                 :                         : generating out-of-bounds update  :
+:                 :                         : indices.                         :
 | `start_indices` | `ComputationDataHandle` | Rank 1 array of N integers       |
 :                 :                         : containing the starting indices  :
 :                 :                         : of the slice for each dimension. :
@@ -1044,8 +1049,8 @@ For a more intuitive description, see the "Informal Description" section below.
 :                  :                         : from.                           :
 |`gather_indices`  | `ComputationDataHandle` | Tensor containing the starting  |
 :                  :                         : indices of the slices we're     :
-:                  :                         : we're stitching together into   :
-:                  :                         : the output tensor.              :
+:                  :                         : stitching together into the     :
+:                  :                         : output tensor.                  :
 |`index_vector_dim`  | `int64`               | The dimension in                |
 :                  :                         : `gather_indices` that contains  :
 :                  :                         : the starting indices.           :
@@ -1416,12 +1421,12 @@ Applies a reduction function to an array.
 | `dimensions`  | `int64` array           | unordered array of dimensions to |
 :               :                         : reduce                           :
 
-Conceptually, this operation reduces one or more dimensions in the input array
-into scalars. The rank of the result array is `rank(operand) - len(dimensions)`.
-`init_value` is the initial value used for every reduction and may also be
-inserted anywhere during computation if the back-end chooses to do so. So in
-most cases `init_value` should be an identity of the reduction function (for
-example, 0 for addition).
+This operation reduces one or more dimensions of the input array into scalars.
+The rank of the returned array is `rank(operand) - len(dimensions)`.
+`init_value` is the initial value used for every reduction and may be inserted
+anywhere during computation by the back-end. In most cases, `init_value` is an
+identity of the reduction function (for example, 0 for addition). The applied
+`computation` is always passed the `init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly
@@ -1441,8 +1446,7 @@ could be computed as
 
 but there are also many other possibilities, e.g.
 
-`f(init_value, f(f(10, f(init_value, 11)), f(f(init_value, 12), f(13,
-init_value))))`
+`f(init_value, f(f(10, f(init_value, 11)), f(f(init_value, 12), f(init_value, 13))))`
 
 The following is a rough pseudo-code example of how reduction could be
 implemented, using summation as the reduction computation with an initial value
@@ -1560,7 +1564,9 @@ See also
 Applies a reduction function to all elements in each window of the input
 multi-dimensional array, producing an output multi-dimensional array with the
 same number of elements as the number of valid positions of the window. A
-pooling layer can be expressed as a `ReduceWindow`.
+pooling layer can be expressed as a `ReduceWindow`. Similar to
+[`Reduce`](#reduce), the applied `computation` is always passed the `init_value`
+on the left-hand side.
 
 <b> `ReduceWindow(operand, init_value, computation, window_dimensions,
 window_strides, padding)` </b>

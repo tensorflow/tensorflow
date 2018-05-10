@@ -258,13 +258,15 @@ REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
+REGISTER_KERNEL(GPU, complex64);
+REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, bool);
-// Currently we do not support filling strings and complex64 on GPU
+// Currently we do not support filling strings on GPU
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

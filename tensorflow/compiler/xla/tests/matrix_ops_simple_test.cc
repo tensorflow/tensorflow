@@ -19,8 +19,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -51,16 +52,11 @@ class MatOpsSimpleTest : public ClientLibraryTestBase {};
 template <typename T>
 class MatOpsSimpleTest_F16F32 : public MatOpsSimpleTest {};
 
-// TODO(bixia): This test for F16 failed on GPU 02-25-2018.
-#ifdef XLA_TEST_BACKEND_GPU
-TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, ::testing::Types<float>);
-#else
 TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, TypesF16F32);
-#endif
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, "exp_2x2");
+  XlaBuilder builder("exp_2x2");
   auto data = builder.ConstantR2FromArray2D<T>({
       {1.0f, 0.0f},   // row 0
       {-1.0f, 0.5f},  // row 1
@@ -71,16 +67,15 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
       Literal::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
                                        {0.36788f, 1.64872f}});  // row 1
 
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-5));
+  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   using T = TypeParam;
-  Computation add_half;
+  XlaComputation add_half;
   {
     // add_half(x) = x + 0.5
-    ComputationBuilder builder(this->client_, "add_half");
+    XlaBuilder builder("add_half");
     auto x_value =
         builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({}), "x_value");
     auto half = builder.ConstantR0<T>(static_cast<T>(0.5));
@@ -90,7 +85,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
     add_half = computation_status.ConsumeValueOrDie();
   }
 
-  ComputationBuilder builder(this->client_, "map_2x2");
+  XlaBuilder builder("map_2x2");
   auto data = builder.ConstantR2FromArray2D<T>({
       {1.0f, 0.0f},   // row 0
       {-1.0f, 0.5f},  // row 1
@@ -100,13 +95,12 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
                                        {-0.5f, 1.0f}});  // row 1
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-5));
+  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   using T = TypeParam;
-  ComputationBuilder builder(this->client_, "max_2x2");
+  XlaBuilder builder("max_2x2");
   auto lhs = builder.ConstantR2FromArray2D<T>({
       {7.0f, 2.0f},   // row 0
       {3.0f, -4.0f},  // row 1
@@ -120,8 +114,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
                                        {3.0f, -4.0f}});  // row 1
-  this->template ComputeAndCompareLiteral(&builder, *expected, {},
-                                          ErrorSpec(1e-6));
+  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6));
 }
 
 struct TestLinspaceMaxParam {
@@ -143,8 +136,7 @@ class TestLinspaceMaxParametric
         MakeLinspaceArray2D<T>(from, to, rows, cols);
     auto arhs = MakeUnique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
-    ComputationBuilder builder(
-        client_,
+    XlaBuilder builder(
         tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));
     auto lhs = builder.ConstantR2FromArray2D<T>(*alhs);
     auto rhs = builder.ConstantR2FromArray2D<T>(*arhs);
@@ -171,10 +163,7 @@ string PrintTestLinspaceMaxParam(
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-// TODO(bixia): This test failed on GPU 02-25-2018
-#ifdef XLA_TEST_BACKEND_CPU
 XLA_TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
-#endif
 #endif
 XLA_TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
 
@@ -219,7 +208,7 @@ class MatOpsDotAddTest
         client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<T>(
             rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto lhs_arg = builder.Parameter(0, lhs_shape, "lhs");
     auto lhs_mat_arg = lhs_arg;
     if (transpose) {

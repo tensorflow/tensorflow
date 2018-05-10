@@ -32,7 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import template as template_ops
 from tensorflow.python.ops import variable_scope as variable_scope_lib
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [
@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 
-class MaskedAutoregressiveFlow(bijector_lib.Bijector):
+class MaskedAutoregressiveFlow(bijector.Bijector):
   """Affine MaskedAutoregressiveFlow bijector for vector-valued events.
 
   The affine autoregressive flow [(Papamakarios et al., 2016)][3] provides a
@@ -61,7 +61,7 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
   this property by zeroing out weights in its `masked_dense` layers.
 
   In the `tf.distributions` framework, a "normalizing flow" is implemented as a
-  `tf.distributions.bijectors.Bijector`. The `forward` "autoregression"
+  `tf.contrib.distributions.bijectors.Bijector`. The `forward` "autoregression"
   is implemented using a `tf.while_loop` and a deep neural network (DNN) with
   masked weights such that the autoregressive property is automatically met in
   the `inverse`.
@@ -220,6 +220,7 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
     self._shift_and_log_scale_fn = shift_and_log_scale_fn
     self._unroll_loop = unroll_loop
     super(MaskedAutoregressiveFlow, self).__init__(
+        forward_min_event_ndims=1,
         is_constant_jacobian=is_constant_jacobian,
         validate_args=validate_args,
         name=name)

@@ -33,12 +33,14 @@
   # Returns a list of all the weight tensors that have been masked
   get_weights()
 
-  The Pruning class uses a proto (defined in pruning.proto) to set up the
-  parameters for a pruning specification. Here's a typical usage:
+  The Pruning class uses a tf.hparams object to set up the
+  parameters for a model pruning. Here's a typical usage:
 
-  # Initialize a pruning spec from a proto
-  pruning_spec = '/tmp/pruning.pb'
-  p = Pruning(pruning_spec)
+  # Parse pruning hyperparameters
+  pruning_hparams = pruning.get_pruning_hparams().parse(FLAGS.pruning_hparams)
+
+  # Create a pruning object using the pruning_hparams
+  p = pruning.Pruning(pruning_hparams)
 
   # Add mask update ops to the graph
   mask_update_op = p.conditional_mask_update_op()
@@ -51,24 +53,20 @@
 
   # An object of the pruning also accepts externally defined sparsity:
   sparsity = tf.Variable(0.5, name = "ConstantSparsity")
-  pruning_spec = '/tmp/pruning.pb'
-  p = Pruning(pruning_spec, sparsity=sparsity)
-
+  p = pruning.Pruning(pruning_hparams, sparsity=sparsity)
 """
 # pylint: disable=missing-docstring
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
+from tensorflow.contrib.model_pruning.python import pruning_utils
 from tensorflow.contrib.model_pruning.python.layers import core_layers as core
 from tensorflow.contrib.training.python.training import hparam
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
@@ -87,172 +85,18 @@ _WEIGHT_COLLECTION = core.WEIGHT_COLLECTION
 _MASKED_WEIGHT_NAME = core.MASKED_WEIGHT_NAME
 
 
-def _weight_mask_variable(var, scope):
-  """Create a mask for the weights.
-
-  This function adds a variable 'mask' to the graph.
-
-  Args:
-    var: the weight variable that needs to be masked
-    scope: The variable scope of the variable var
-
-  Returns:
-    the mask variable of the same size and shape as var, initialized to all 1s.
-  """
-  with variable_scope.variable_scope(scope):
-    mask = variable_scope.get_variable(
-        'mask',
-        var.get_shape(),
-        initializer=init_ops.ones_initializer(),
-        trainable=False,
-        dtype=var.dtype)
-  return mask
-
-
-def _weight_threshold_variable(var, scope):
-  """Create a scalar threshold for the weights.
-
-  This function adds a variable
-  'threshold' to the graph.
-
-  Args:
-    var: The weight variable that needs to be masked
-    scope: The variable scope of the variable var
-
-  Returns:
-    a scalar threshold variable initialized to 0.
-  """
-  with variable_scope.variable_scope(scope):
-    threshold = variable_scope.get_variable(
-        'threshold', [],
-        initializer=init_ops.zeros_initializer(),
-        trainable=False,
-        dtype=var.dtype)
-    return threshold
-
-
-def _kronecker_product(mat1, mat2):
-  """Computes the Kronecker product of two matrices mat1 and mat2.
-
-  Args:
-    mat1: A matrix of size m x n
-    mat2: A matrix of size p x q
-  Returns:
-    Kronecker product of matrices mat1 and mat2 of size mp x nq
-  """
-
-  m1, n1 = mat1.get_shape().as_list()
-  mat1_rsh = array_ops.reshape(mat1, [m1, 1, n1, 1])
-  m2, n2 = mat2.get_shape().as_list()
-  mat2_rsh = array_ops.reshape(mat2, [1, m2, 1, n2])
-  return array_ops.reshape(mat1_rsh * mat2_rsh, [m1 * m2, n1 * n2])
-
-
-def _histogram(values, value_range, nbins=100, dtype=np.int32, name=None):
-  """Return histogram of values.
-
-  Given the tensor `values`, this operation returns a rank 1 histogram counting
-  the number of entries in `values` that fell into every bin.  The bins are
-  equal width and determined by the arguments `value_range` and `nbins`.
-
-  Args:
-    values:  Numeric `Tensor`.
-    value_range:  Shape [2] `Tensor` of same `dtype` as `values`.
-      values <= value_range[0] will be mapped to hist[0],
-      values >= value_range[1] will be mapped to hist[-1].
-    nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
-    dtype:  dtype for returned histogram.
-    name:  A name for this operation (defaults to 'histogram').
-
-  Returns:
-    A 1-D `Tensor` holding histogram of values.
-
-  """
-  with ops.name_scope(name, 'histogram', [values, value_range, nbins]) as scope:
-    values = ops.convert_to_tensor(values, name='values')
-    values = gen_array_ops.reshape(values, [-1])
-    value_range = ops.convert_to_tensor(value_range, name='value_range')
-    nbins = ops.convert_to_tensor(nbins, dtype=np.int32, name='nbins')
-    nbins_float = math_ops.cast(nbins, values.dtype)
-
-    # Map tensor values that fall within value_range to [0, 1].
-    scaled_values = math_ops.truediv(
-        values - value_range[0],
-        value_range[1] - value_range[0],
-        name='scaled_values')
-
-    # map tensor values within the open interval value_range to {0,.., nbins-1},
-    # values outside the open interval will be zero or less, or nbins or more.
-    indices = math_ops.floor(nbins_float * scaled_values, name='indices')
-
-    # Clip edge cases (e.g. value = value_range[1]) or "outliers."
-    indices = math_ops.cast(
-        clip_ops.clip_by_value(indices, 0, nbins_float - 1), np.int32)
-
-    return math_ops.unsorted_segment_sum(
-        array_ops.ones_like(indices, dtype=dtype), indices, nbins, name=scope)
-
-
-def _determine_partitioned_axis(partitioned_variable):
-  partitioned_axis = 0
-  concatenated_variable_shape = partitioned_variable.get_shape()
-  for partition in partitioned_variable:
-    partition_shape = partition.get_shape()
-    maybe_partitioned_axis = np.less(partition_shape,
-                                     concatenated_variable_shape)
-    # Sanity check: make sure number of partitioned axis == 1
-    if np.count_nonzero(maybe_partitioned_axis) != 1:
-      raise ValueError('Number of partitioned axes %s not equal to 1' %
-                       np.count_nonzero(maybe_partitioned_axis))
-    partitioned_axis = np.where(maybe_partitioned_axis)[0][0]
-  return partitioned_axis
-
-
-def _variable_assign(var, new_value):
-  return state_ops.assign(var, new_value, name=var.op.name + '_assign')
-
-
-def _partitioned_variable_assign(partitioned_var, new_value):
-  """Assign op for partitioned variables.
-
-  Args:
-    partitioned_var: A partitioned tensorflow variable
-    new_value: Value to be assigned to the variable var
-
-  Returns:
-    A tensorflow op that groups the assign ops for each of the variable slices
-  """
-  # Determine which axis was used to partition the variable. Currently
-  # tensorflow allows partitioning variable only along 1 axis.
-  axis = 0 if len(partitioned_var) == 1 else _determine_partitioned_axis(
-      partitioned_var)
-
-  partition_sizes = np.array(
-      [partition.get_shape()[axis] for partition in partitioned_var])
-  new_partitioned_values = array_ops.split(
-      new_value,
-      ops.convert_to_tensor(partition_sizes, dtype=np.int32),
-      axis=axis)
-  op_list = []
-  for partition in partitioned_var:
-    op_list.append(
-        _variable_assign(partition, new_partitioned_values[len(op_list)]))
-  return control_flow_ops.group(
-      *op_list, name=partitioned_var.name + '_group_assign')
-
-
 def apply_mask(x, scope=''):
   """Apply mask to a given weight tensor.
 
   Args:
     x: Input weight tensor
-    scope: The current variable scope. Defaults to ""
+    scope: The current variable scope. Defaults to "".
   Returns:
     Tensor representing masked_weights
   """
 
-  mask = _weight_mask_variable(x, scope)
-  threshold = _weight_threshold_variable(x, scope)
+  mask = pruning_utils.weight_mask_variable(x, scope)
+  threshold = pruning_utils.weight_threshold_variable(x, scope)
   # Add masked_weights in the weights namescope so as to make it easier
   # for the quantization library to add quant ops.
   masked_weights = math_ops.multiply(mask, x, _MASKED_WEIGHT_NAME)
@@ -335,6 +179,8 @@ def get_pruning_hparams():
     sparsity_function_exponent: float
       exponent = 1 is linearly varying sparsity between initial and final.
       exponent > 1 varies more slowly towards the end than the beginning
+    use_tpu: False
+      Indicates whether to use TPU
 
     We use the following sparsity function:
 
@@ -357,7 +203,7 @@ def get_pruning_hparams():
       do_not_prune=[''],
       threshold_decay=0.9,
       pruning_frequency=10,
-      nbins=255,
+      nbins=256,
       block_height=1,
       block_width=1,
       block_pooling_function='AVG',
@@ -365,7 +211,8 @@ def get_pruning_hparams():
       target_sparsity=0.5,
       sparsity_function_begin_step=0,
       sparsity_function_end_step=100,
-      sparsity_function_exponent=3)
+      sparsity_function_exponent=3,
+      use_tpu=False)
 
 
 class Pruning(object):
@@ -414,7 +261,7 @@ class Pruning(object):
     if graph_global_step is None:
       graph_global_step = training_util.get_global_step()
 
-    return math_ops.cast(graph_global_step, np.int32)
+    return math_ops.cast(graph_global_step, dtypes.int32)
 
   def _setup_sparsity(self):
     begin_step = self._spec.sparsity_function_begin_step
@@ -429,13 +276,13 @@ class Pruning(object):
           (begin_step, end_step))
 
     with ops.name_scope(self._spec.name):
-      p = math_ops.minimum(1.0,
-                           math_ops.maximum(
-                               0.0,
-                               math_ops.div(
-                                   math_ops.cast(self._global_step - begin_step,
-                                                 np.float32),
-                                   end_step - begin_step)))
+      p = math_ops.minimum(
+          1.0,
+          math_ops.maximum(
+              0.0,
+              math_ops.div(
+                  math_ops.cast(self._global_step - begin_step, dtypes.float32),
+                  end_step - begin_step)))
       sparsity = math_ops.add(
           math_ops.multiply(initial_sparsity - target_sparsity,
                             math_ops.pow(1 - p, exponent)),
@@ -445,17 +292,18 @@ class Pruning(object):
     return sparsity
 
   def _setup_last_update_step(self):
-    with variable_scope.variable_scope(self._spec.name) as scope:
+    with variable_scope.variable_scope(
+        self._spec.name, use_resource=self._spec.use_tpu) as scope:
       try:
         last_update_step = variable_scope.get_variable(
             'last_mask_update_step', [],
             initializer=init_ops.zeros_initializer(),
             trainable=False,
-            dtype=np.int32)
+            dtype=dtypes.int32)
       except ValueError:
         scope.reuse_variables()
         last_update_step = variable_scope.get_variable(
-            'last_mask_update_step', dtype=np.int32)
+            'last_mask_update_step', dtype=dtypes.int32)
     return last_update_step
 
   def _exists_in_do_not_prune_list(self, tensor_name):
@@ -497,18 +345,16 @@ class Pruning(object):
     with ops.name_scope(weights.op.name + '_pruning_ops'):
       abs_weights = math_ops.abs(weights)
       max_value = math_ops.reduce_max(abs_weights)
-      histogram = _histogram(
-          abs_weights, [0.0, max_value],
-          nbins=self._spec.nbins,
-          dtype=np.float32)
+      cdf_fn = pruning_utils.compute_cdf_from_histogram
+      if self._spec.use_tpu:
+        cdf_fn = pruning_utils.compute_cdf
 
-      cdf = math_ops.cumsum(histogram)
-      norm_cdf = math_ops.div(cdf, math_ops.reduce_sum(histogram))
+      norm_cdf = cdf_fn(abs_weights, [0.0, max_value], nbins=self._spec.nbins)
       current_threshold = math_ops.multiply(
           math_ops.div(
               math_ops.reduce_sum(
                   math_ops.cast(
-                      math_ops.less(norm_cdf, self._sparsity), np.float32)),
+                      math_ops.less(norm_cdf, self._sparsity), dtypes.float32)),
               float(self._spec.nbins)), max_value)
 
       smoothed_threshold = math_ops.add_n([
@@ -516,7 +362,7 @@ class Pruning(object):
           math_ops.multiply(threshold, self._spec.threshold_decay)
       ])
       new_mask = math_ops.cast(
-          math_ops.greater(abs_weights, smoothed_threshold), np.float32)
+          math_ops.greater(abs_weights, smoothed_threshold), dtypes.float32)
     return smoothed_threshold, new_mask
 
   def _maybe_update_block_mask(self, weights, threshold):
@@ -550,14 +396,19 @@ class Pruning(object):
                        self._block_pooling_function)
 
     with ops.name_scope(weights.op.name + '_pruning_ops'):
-      abs_weights = math_ops.abs(
-          array_ops.reshape(weights, [
-              1,
-              squeezed_weights.get_shape()[0],
-              squeezed_weights.get_shape()[1], 1
-          ]))
+      abs_weights = math_ops.abs(squeezed_weights)
+
       pool_window = [self._block_dim[0], self._block_dim[1]]
-      pooled_weights = nn_ops.pool(
+      pool_fn = pruning_utils.factorized_pool
+
+      if not self._spec.use_tpu:
+        pool_fn = nn_ops.pool
+        abs_weights = array_ops.reshape(
+            abs_weights,
+            [1, abs_weights.get_shape()[0],
+             abs_weights.get_shape()[1], 1])
+
+      pooled_weights = pool_fn(
           abs_weights,
           window_shape=pool_window,
           pooling_type=self._block_pooling_function,
@@ -565,19 +416,18 @@ class Pruning(object):
           padding='SAME',
           name=weights.op.name + '_pooled')
 
+      if pooled_weights.get_shape().ndims != 2:
+        pooled_weights = array_ops.squeeze(pooled_weights)
+
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)
-
-      reshaped_mask = array_ops.reshape(
-          new_mask,
-          [pooled_weights.get_shape()[1],
-           pooled_weights.get_shape()[2]])
-      updated_mask = _kronecker_product(reshaped_mask,
-                                        array_ops.ones(self._block_dim))
+      updated_mask = pruning_utils.kronecker_product(
+          new_mask, array_ops.ones(self._block_dim))
       sliced_mask = array_ops.slice(
           updated_mask, [0, 0],
           [squeezed_weights.get_shape()[0],
            squeezed_weights.get_shape()[1]])
+
     return smoothed_threshold, array_ops.reshape(sliced_mask,
                                                  array_ops.shape(weights))
 
@@ -608,11 +458,12 @@ class Pruning(object):
           continue
 
       new_threshold, new_mask = self._maybe_update_block_mask(weight, threshold)
-      self._assign_ops.append(_variable_assign(threshold, new_threshold))
+      self._assign_ops.append(
+          pruning_utils.variable_assign(threshold, new_threshold))
 
       self._assign_ops.append(
-          _partitioned_variable_assign(mask, new_mask)
-          if is_partitioned else _variable_assign(mask, new_mask))
+          pruning_utils.partitioned_variable_assign(mask, new_mask)
+          if is_partitioned else pruning_utils.variable_assign(mask, new_mask))
 
   def mask_update_op(self):
     with ops.name_scope(self._spec.name):

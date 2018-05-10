@@ -31,7 +31,6 @@ from tensorflow.python.eager import imperative_grad
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -50,12 +49,10 @@ def op_attr_type(op_type, attr_name):
   try:
     return _op_attr_type_cache[(op_type, attr_name)]
   except KeyError:
-    with errors.raise_exception_on_not_ok_status() as status:
-      h = context.context()._handle  # pylint: disable=protected-access
-      attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(
-          h, op_type, attr_name, status)
-    _op_attr_type_cache[(op_type, attr_name)] = attr_type
-    return attr_type
+    h = context.context()._handle  # pylint: disable=protected-access
+    attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(h, op_type, attr_name)
+  _op_attr_type_cache[(op_type, attr_name)] = attr_type
+  return attr_type
 
 
 def make_attr(attr_type, value):
@@ -360,6 +357,8 @@ def gradients_function(f, params=None):
   (y_grad,) = ygrad_fn(x, y)
   assert y_grad.numpy() == (2 ** 3) - 2 * 2 * 3
   ```
+
+  Note that only tensors with real or complex dtypes are differentiable.
 
   Args:
    f: function to be differentiated. If `f` returns a scalar, this scalar will
@@ -684,8 +683,8 @@ class GradientTape(object):
     with tfe.GradientTape() as gg:
       gg.watch(x)
       y = x * x
-    dy_dx = gg.gradient(y, [x])[0]     # Will compute to 6.0
-  d2y_dx2 = g.gradient(dy_dx, [x])[0]  # Will compute to 2.0
+    dy_dx = gg.gradient(y, x)     # Will compute to 6.0
+  d2y_dx2 = g.gradient(dy_dx, x)  # Will compute to 2.0
   ```
 
   By default, the resources held by a GradientTape are released as soon as
@@ -700,9 +699,12 @@ class GradientTape(object):
     g.watch(x)
     y = x * x
     z = y * y
-  dy_dx = g.gradient(z, [x])[0]  # 6.0
-  dz_dx = g.gradient(y, [x])[0]  # 108.0 (4*x^3 at x = 3)
+  dz_dx = g.gradient(z, x)  # 108.0 (4*x^3 at x = 3)
+  dy_dx = g.gradient(y, x)  # 6.0
   del g  # Drop the reference to the tape
+  ```
+
+  Note that only tensors with real or complex dtypes are differentiable.
   """
 
   def __init__(self, persistent=False):
@@ -743,7 +745,7 @@ class GradientTape(object):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:
-      target: Tensor to be differentiated.
+      target: Tensor (or list of tensors) to be differentiated.
       sources: a list or nested structure of Tensors or Variables. `target`
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
@@ -765,8 +767,12 @@ class GradientTape(object):
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 
+    if output_gradients is not None:
+      output_gradients = [None if x is None else ops.convert_to_tensor(x)
+                          for x in nest.flatten(output_gradients)]
+
     flat_grad = imperative_grad.imperative_grad(
-        _default_vspace, self._tape, [target], flat_sources,
+        _default_vspace, self._tape, nest.flatten(target), flat_sources,
         output_gradients=output_gradients)
 
     if not self._persistent:

@@ -947,5 +947,28 @@ class CaseTest(test_util.TensorFlowTestCase):
         sess.run(output, feed_dict={x: 4})
 
 
+@test_util.with_c_api
+class WhileLoopTestCase(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testWhileLoopWithSingleVariable(self):
+    i = constant_op.constant(0)
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: math_ops.add(i, 1)
+    r = control_flow_ops.while_loop(c, b, [i])
+
+    self.assertEqual(self.evaluate(r), 10)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerWhileLoopWithSingleVariable_bodyReturnsTuple(self):
+    i = constant_op.constant(0)
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: (math_ops.add(i, 1),)
+    r = control_flow_ops.while_loop(c, b, [i])
+
+    # Expect a tuple since that is what the body returns.
+    self.assertEqual(self.evaluate(r), (10,))
+
+
 if __name__ == "__main__":
   googletest.main()

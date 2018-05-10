@@ -72,7 +72,7 @@ tensors in the execution of a step.
 
 If `t` is a @{tf.Tensor} object,
 @{tf.Tensor.eval} is shorthand for
-@{tf.Session.run} (where `sess` is the
+@{tf.Session.run}, where `sess` is the
 current @{tf.get_default_session}. The
 two following snippets of code are equivalent:
 
@@ -101,9 +101,8 @@ sessions, it may be more straightforward to make explicit calls to
 Sessions can own resources, such as
 @{tf.Variable},
 @{tf.QueueBase}, and
-@{tf.ReaderBase}; and these resources can use
-a significant amount of memory. These resources (and the associated memory) are
-released when the session is closed, by calling
+@{tf.ReaderBase}. These resources can sometimes use
+a significant amount of memory, and can be released when the session is closed by calling
 @{tf.Session.close}.
 
 The intermediate tensors that are created as part of a call to
@@ -121,7 +120,7 @@ dimensions:
   devices, which makes it possible to speed up
   @{$deep_cnn$CIFAR-10 training using multiple GPUs}.
 * The Session API allows multiple concurrent steps (i.e. calls to
-  @{tf.Session.run} in parallel. This
+  @{tf.Session.run} in parallel). This
   enables the runtime to get higher throughput, if a single step does not use
   all of the resources in your computer.
 
@@ -137,7 +136,7 @@ TensorFlow also has a
 to help build support for more client languages.  We invite contributions of new
 language bindings.
 
-Bindings for various other languages (such as [C#](https://github.com/migueldeicaza/TensorFlowSharp), [Julia](https://github.com/malmaud/TensorFlow.jl), [Ruby](https://github.com/somaticio/tensorflow.rb) and [Scala](https://github.com/eaplatanios/tensorflow_scala)) created and supported by the opensource community build on top of the C API supported by the TensorFlow maintainers.
+Bindings for various other languages (such as [C#](https://github.com/migueldeicaza/TensorFlowSharp), [Julia](https://github.com/malmaud/TensorFlow.jl), [Ruby](https://github.com/somaticio/tensorflow.rb) and [Scala](https://github.com/eaplatanios/tensorflow_scala)) created and supported by the open source community build on top of the C API supported by the TensorFlow maintainers.
 
 #### Does TensorFlow make use of all the devices (GPUs and CPUs) available on my machine?
 
@@ -210,8 +209,8 @@ a new tensor with a different dynamic shape.
 
 #### How do I build a graph that works with variable batch sizes?
 
-It is often useful to build a graph that works with variable batch sizes, for
-example so that the same code can be used for (mini-)batch training, and
+It is often useful to build a graph that works with variable batch sizes 
+so that the same code can be used for (mini-)batch training, and
 single-instance inference. The resulting graph can be
 @{tf.Graph.as_graph_def$saved as a protocol buffer}
 and
@@ -260,7 +259,7 @@ See the how-to documentation for
 There are three main options for dealing with data in a custom format.
 
 The easiest option is to write parsing code in Python that transforms the data
-into a numpy array. Then use @{tf.data.Dataset.from_tensor_slices} to
+into a numpy array. Then, use @{tf.data.Dataset.from_tensor_slices} to
 create an input pipeline from the in-memory data.
 
 If your data doesn't fit in memory, try doing the parsing in the Dataset
@@ -274,7 +273,7 @@ If your data is not easily parsable with the built-in TensorFlow operations,
 consider converting it, offline, to a format that is easily parsable, such
 as @{tf.python_io.TFRecordWriter$`TFRecord`} format.
 
-The more efficient method to customize the parsing behavior is to
+The most efficient method to customize the parsing behavior is to
 @{$adding_an_op$add a new op written in C++} that parses your
 data format. The @{$new_data_formats$guide to handling new data formats} has
 more information about the steps for doing this.

@@ -43,6 +43,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/keras",
         "@six_archive//:six",
     ],
 )

@@ -21,6 +21,35 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Constructor.
+BoostedTreesEnsembleResource::BoostedTreesEnsembleResource()
+    : tree_ensemble_(
+          protobuf::Arena::CreateMessage<boosted_trees::TreeEnsemble>(
+              &arena_)) {}
+
+string BoostedTreesEnsembleResource::DebugString() {
+  return strings::StrCat("TreeEnsemble[size=", tree_ensemble_->trees_size(),
+                         "]");
+}
+
+bool BoostedTreesEnsembleResource::InitFromSerialized(const string& serialized,
+                                                      const int64 stamp_token) {
+  CHECK_EQ(stamp(), -1) << "Must Reset before Init.";
+  if (ParseProtoUnlimited(tree_ensemble_, serialized)) {
+    set_stamp(stamp_token);
+    return true;
+  }
+  return false;
+}
+
+string BoostedTreesEnsembleResource::SerializeAsString() const {
+  return tree_ensemble_->SerializeAsString();
+}
+
+int32 BoostedTreesEnsembleResource::num_trees() const {
+  return tree_ensemble_->trees_size();
+}
+
 int32 BoostedTreesEnsembleResource::next_node(
     const int32 tree_id, const int32 node_id, const int32 index_in_batch,
     const std::vector<TTypes<int32>::ConstVec>& bucketized_features) const {
@@ -47,6 +76,115 @@ float BoostedTreesEnsembleResource::node_value(const int32 tree_id,
   } else {
     return node.metadata().original_leaf().scalar();
   }
+}
+
+int32 BoostedTreesEnsembleResource::GetNumLayersGrown(
+    const int32 tree_id) const {
+  DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+  return tree_ensemble_->tree_metadata(tree_id).num_layers_grown();
+}
+
+void BoostedTreesEnsembleResource::SetNumLayersGrown(
+    const int32 tree_id, int32 new_num_layers) const {
+  DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+  tree_ensemble_->mutable_tree_metadata(tree_id)->set_num_layers_grown(
+      new_num_layers);
+}
+
+void BoostedTreesEnsembleResource::UpdateLastLayerNodesRange(
+    const int32 node_range_start, int32 node_range_end) const {
+  tree_ensemble_->mutable_growing_metadata()->set_last_layer_node_start(
+      node_range_start);
+  tree_ensemble_->mutable_growing_metadata()->set_last_layer_node_end(
+      node_range_end);
+}
+
+void BoostedTreesEnsembleResource::GetLastLayerNodesRange(
+    int32* node_range_start, int32* node_range_end) const {
+  *node_range_start =
+      tree_ensemble_->growing_metadata().last_layer_node_start();
+  *node_range_end = tree_ensemble_->growing_metadata().last_layer_node_end();
+}
+
+int64 BoostedTreesEnsembleResource::GetNumNodes(const int32 tree_id) {
+  DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+  return tree_ensemble_->trees(tree_id).nodes_size();
+}
+
+int32 BoostedTreesEnsembleResource::GetNumLayersAttempted() {
+  return tree_ensemble_->growing_metadata().num_layers_attempted();
+}
+
+bool BoostedTreesEnsembleResource::is_leaf(const int32 tree_id,
+                                           const int32 node_id) const {
+  DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+  DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
+  const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
+  return node.node_case() == boosted_trees::Node::kLeaf;
+}
+
+int32 BoostedTreesEnsembleResource::feature_id(const int32 tree_id,
+                                               const int32 node_id) const {
+  const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
+  DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
+  return node.bucketized_split().feature_id();
+}
+
+int32 BoostedTreesEnsembleResource::bucket_threshold(
+    const int32 tree_id, const int32 node_id) const {
+  const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
+  DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
+  return node.bucketized_split().threshold();
+}
+
+int32 BoostedTreesEnsembleResource::left_id(const int32 tree_id,
+                                            const int32 node_id) const {
+  const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
+  DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
+  return node.bucketized_split().left_id();
+}
+
+int32 BoostedTreesEnsembleResource::right_id(const int32 tree_id,
+                                             const int32 node_id) const {
+  const auto node = tree_ensemble_->trees(tree_id).nodes(node_id);
+  DCHECK_EQ(node.node_case(), boosted_trees::Node::kBucketizedSplit);
+  return node.bucketized_split().right_id();
+}
+
+std::vector<float> BoostedTreesEnsembleResource::GetTreeWeights() const {
+  return {tree_ensemble_->tree_weights().begin(),
+          tree_ensemble_->tree_weights().end()};
+}
+
+float BoostedTreesEnsembleResource::GetTreeWeight(const int32 tree_id) const {
+  return tree_ensemble_->tree_weights(tree_id);
+}
+
+float BoostedTreesEnsembleResource::IsTreeFinalized(const int32 tree_id) const {
+  DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+  return tree_ensemble_->tree_metadata(tree_id).is_finalized();
+}
+
+float BoostedTreesEnsembleResource::IsTreePostPruned(
+    const int32 tree_id) const {
+  DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+  return tree_ensemble_->tree_metadata(tree_id).post_pruned_nodes_meta_size() >
+         0;
+}
+
+void BoostedTreesEnsembleResource::SetIsFinalized(const int32 tree_id,
+                                                  const bool is_finalized) {
+  DCHECK_LT(tree_id, tree_ensemble_->trees_size());
+  return tree_ensemble_->mutable_tree_metadata(tree_id)->set_is_finalized(
+      is_finalized);
+}
+
+// Sets the weight of i'th tree.
+void BoostedTreesEnsembleResource::SetTreeWeight(const int32 tree_id,
+                                                 const float weight) {
+  DCHECK_GE(tree_id, 0);
+  DCHECK_LT(tree_id, num_trees());
+  tree_ensemble_->set_tree_weights(tree_id, weight);
 }
 
 void BoostedTreesEnsembleResource::UpdateGrowingMetadata() const {

@@ -235,6 +235,11 @@ class WeightedQuantilesSummary {
   // The resulting boundaries are guaranteed to both contain at least
   // num_boundaries unique elements and maintain approximation bounds.
   std::vector<ValueType> GenerateBoundaries(int64 num_boundaries) const {
+    std::vector<ValueType> output;
+    if (entries_.empty()) {
+      return output;
+    }
+
     // Generate soft compressed summary.
     WeightedQuantilesSummary<ValueType, WeightType, CompareFn>
         compressed_summary;
@@ -246,7 +251,6 @@ class WeightedQuantilesSummary {
     compressed_summary.Compress(num_boundaries, compression_eps);
 
     // Return boundaries.
-    std::vector<ValueType> output;
     output.reserve(compressed_summary.entries_.size());
     for (const auto& entry : compressed_summary.entries_) {
       output.push_back(entry.value);
@@ -260,6 +264,9 @@ class WeightedQuantilesSummary {
   // full rank queries O(nlogn).
   std::vector<ValueType> GenerateQuantiles(int64 num_quantiles) const {
     std::vector<ValueType> output;
+    if (entries_.empty()) {
+      return output;
+    }
     num_quantiles = std::max(num_quantiles, 2LL);
     output.reserve(num_quantiles + 1);
 

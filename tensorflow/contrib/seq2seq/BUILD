@@ -3,9 +3,12 @@
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
+package(default_visibility = [
+    "//learning/brain/google/xla/tests:__subpackages__",
+    "//tensorflow:__subpackages__",
+])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -38,6 +41,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:functional_ops",

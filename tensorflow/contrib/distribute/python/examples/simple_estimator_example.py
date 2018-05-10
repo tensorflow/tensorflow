@@ -59,7 +59,7 @@ def build_model_fn_optimizer():
 def main(_):
   distribution = tf.contrib.distribute.MirroredStrategy(
       ["/device:GPU:0", "/device:GPU:1"])
-  config = tf.estimator.RunConfig(distribute=distribution)
+  config = tf.estimator.RunConfig(train_distribute=distribution)
 
   def input_fn():
     features = tf.data.Dataset.from_tensors([[1.]]).repeat(10)

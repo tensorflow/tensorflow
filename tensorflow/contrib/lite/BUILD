@@ -89,7 +89,10 @@ cc_library(
     hdrs = [
         "builtin_op_data.h",
     ],
+    deps = [":context"],
 )
+
+exports_files(["builtin_ops.h"])
 
 cc_library(
     name = "string",
@@ -136,6 +139,7 @@ cc_library(
         "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
+        "//tensorflow/contrib/lite/profiling:profiler",
         "//tensorflow/contrib/lite/schema:schema_fbs",
     ],
 )

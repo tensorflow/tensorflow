@@ -24,6 +24,8 @@ import warnings
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -31,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
@@ -44,9 +47,11 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
@@ -743,6 +748,47 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         "of unknown shape. This may consume a large amount of memory." in
         str(w[0].message))
 
+
+@test_util.with_c_api
+class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
+
+  def testRealOnly(self):
+    x = constant_op.constant(7+3j, dtype=dtypes.complex64)
+    y = math_ops.square(x)
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Gradients of complex tensors must set grad_ys "
+        r"\(y\.dtype = tf\.complex64\)"):
+      gradients.gradients(y, x)
+
+
+class ResourceCondTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    gamma = resource_variable_ops.ResourceVariable(
+        np.random.random((3,)),
+        dtype="float32", name="gamma")
+
+    inputs = array_ops.ones(shape=(3,), dtype="float32")
+
+    def TestFn():
+      output = inputs + gamma
+      return output
+
+    training = array_ops.placeholder_with_default(True, shape=())
+    output = control_flow_ops.cond(
+        training, TestFn, lambda: inputs)
+
+    loss = output
+
+    grads = gradients.gradients(
+        loss, [gamma])
+    self.assertTrue(None not in grads)
+
+
+@test_util.with_c_api
+class CustomGradientTest(test_util.TensorFlowTestCase):
+
   def testCustomGradientTrivial(self):
 
     @custom_gradient.custom_gradient
@@ -796,18 +842,122 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       with self.assertRaises(RuntimeError):
         gradients.gradients(y, x)
 
+  def testCustomGradientWithVariables(self):
 
-@test_util.with_c_api
-class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
+    @custom_gradient.custom_gradient
+    def F(x):
+      out = core_layers.dense(x, 3, use_bias=False)
 
-  def testRealOnly(self):
-    x = constant_op.constant(7+3j, dtype=dtypes.complex64)
-    y = math_ops.square(x)
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"Gradients of complex tensors must set grad_ys "
-        r"\(y\.dtype = tf\.complex64\)"):
-      gradients.gradients(y, x)
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((4, 3))]
+
+      return out, Grad
+
+    with ops.Graph().as_default():
+      x = array_ops.ones((2, 4))
+      with variable_scope.variable_scope("f", use_resource=True) as vs:
+        y = F(x)
+        all_vars = vs.global_variables()
+        assert len(all_vars) == 1
+      grads = gradients.gradients(y, [x, all_vars[0]])
+      for g in grads:
+        self.assertTrue(g is not None)
+      with session.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        dw = sess.run(math_ops.reduce_sum(grads[1]))
+        self.assertEqual(12., dw)
+
+  def testCustomGradientWithVariablesEager(self):
+    with context.eager_mode():
+      layer = core_layers.Dense(4, use_bias=False)
+
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = layer(x)
+
+        def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+          del out_grad
+          self.assertEqual(1, len(variables))
+          return (array_ops.ones((3, 2)),
+                  [array_ops.ones((2, 4))])
+
+        return out, Grad
+
+      x = array_ops.ones((3, 2)) + 2.
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = F(x)
+      w, = layer.variables
+      dx, dw = tape.gradient(y, [x, w])
+      self.assertEqual(6., math_ops.reduce_sum(dx).numpy())
+      self.assertEqual(8., math_ops.reduce_sum(dw).numpy())
+
+  def testCustomGradientErrorsWithNonResourceVariables(self):
+
+    def F(x, use_resource=False):
+      with variable_scope.variable_scope("f", use_resource=use_resource):
+        out = core_layers.dense(x, 4, use_bias=False)
+
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        del out_grad
+        self.assertEqual(1, len(variables))
+        return (array_ops.ones((3, 2)), [array_ops.ones((2, 4))])
+
+      return out, Grad
+
+    @custom_gradient.custom_gradient
+    def FResource(x):
+      return F(x, use_resource=True)
+
+    @custom_gradient.custom_gradient
+    def FNonResource(x):
+      return F(x, use_resource=False)
+
+    x = array_ops.ones((3, 2)) + 2.
+
+    # Wrapping scope has use_resource=True but inner scope sets to False. Fails.
+    with variable_scope.variable_scope("vs1", use_resource=True):
+      with self.assertRaisesWithPredicateMatch(TypeError,
+                                               "must be `ResourceVariable`s"):
+        FNonResource(x)
+
+    # Wrapping scope has use_resource=False but inner scope sets to True.
+    # Passes.
+    with variable_scope.variable_scope("vs2", use_resource=False):
+      FResource(x)
+
+  def testWithNumpyInputs(self):
+    with context.eager_mode():
+
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = x
+
+        def Grad(_):
+          return (None, None)
+
+        return out, Grad
+
+      x = np.ones((3, 2), dtype=np.float32)
+      # Smoke test to ensure numpy inputs are accepted
+      F(x)
+
+  def testRVGradientsDynamicCond(self):
+    with self.test_session():
+      alpha = resource_variable_ops.ResourceVariable(
+          np.random.random((1,)),
+          dtype="float32")
+
+      conditional = array_ops.placeholder_with_default(True, shape=())
+      output = control_flow_ops.cond(
+          conditional, lambda: alpha * 2, lambda: alpha * 3)
+
+      g, = gradients_impl.gradients(output, alpha)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(g.eval(), [2.0])
+      self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
 
 if __name__ == "__main__":

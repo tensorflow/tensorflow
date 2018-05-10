@@ -117,7 +117,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
                    const string& function_name)
       : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name) {
     op_name_ = function_name_;
-    op_name_.Consume("_");
+    str_util::ConsumePrefix(&op_name_, "_");
   }
   ~GenEagerPythonOp() override {}
 
@@ -366,8 +366,8 @@ string GenEagerPythonOp::Code() {
 void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   // Handle graph-mode case
   strings::StrAppend(&result_,
-                     "  _ctx = _context.context()\n"
-                     "  if not _ctx.executing_eagerly():\n",
+                     "  _ctx = _context._context\n"
+                     "  if _ctx is None or not _ctx._eager_context.is_eager:\n",
                      function_setup,
                      "    _, _, _op = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn("        ");
@@ -492,7 +492,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
       strings::StrAppend(function_setup, indentation, "  ", attr_api_name,
                          " = ", default_value, "\n");
     }
-    if (attr_type.starts_with("list(")) {
+    if (str_util::StartsWith(attr_type, "list(")) {
       ExpectListArg(indentation, attr_api_name, function_setup);
     }
 
@@ -683,13 +683,14 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
     return true;
   }
 
-  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix), parameters);
+  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix),
+             strings::StrCat(parameters, ", ctx=None"));
   strings::StrAppend(
       &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
   strings::StrAppend(&result_, "  This is for function ", function_name_,
                      "\n  \"\"\"\n");
 
-  strings::StrAppend(&result_, "  _ctx = _context.context()\n");
+  strings::StrAppend(&result_, "  _ctx = ctx if ctx else _context.context()\n");
 
   string function_setup;
   if (!GetEagerFunctionSetup("  ", &function_setup)) {
@@ -712,9 +713,9 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 }
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
-  string fastpath_execute_params =
-      strings::StrCat("_ctx._handle, _ctx.device_name, \"", op_def_.name(),
-                      "\", ", "name, _ctx._post_execution_callbacks");
+  string fastpath_execute_params = strings::StrCat(
+      "_ctx._context_handle, _ctx._eager_context.device_name, \"",
+      op_def_.name(), "\", ", "name, _ctx._post_execution_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {
@@ -755,6 +756,8 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   strings::StrAppend(&result_, "      ", "return _result\n");
 
   // Handle fallback.
+  if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
+  strings::StrAppend(&fallback_params, "ctx=_ctx");
   strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
   strings::StrAppend(
       &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,

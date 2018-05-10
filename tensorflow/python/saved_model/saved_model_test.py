@@ -734,6 +734,96 @@ class SavedModelTest(test.TestCase):
         builder.add_meta_graph_and_variables(
             sess, ["foo"], legacy_init_op=legacy_init_op)
 
+  def testTrainOp(self):
+    export_dir = self._get_export_dir("test_train_op")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = variables.Variable(1, name="v1")
+      ops.add_to_collection("v", v1)
+      v2 = variables.Variable(2, name="v2")
+      ops.add_to_collection("v", v2)
+
+      sess.run(variables.global_variables_initializer())
+      train_op = state_ops.assign_add(v1, v2)
+
+      sess.run(train_op)
+      # TODO(karmel): remove explicit call when in the public method.
+      builder._add_train_op(train_op)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(3, ops.get_collection("v")[0].eval())
+      self.assertEqual(2, ops.get_collection("v")[1].eval())
+      self.assertIsInstance(
+          ops.get_collection(constants.TRAIN_OP_KEY)[0], ops.Tensor)
+
+  def testTrainOpGroup(self):
+    export_dir = self._get_export_dir("test_train_op_group")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = variables.Variable(1, name="v1")
+      ops.add_to_collection("v", v1)
+      v2 = variables.Variable(2, name="v2")
+      ops.add_to_collection("v", v2)
+
+      sess.run(variables.global_variables_initializer())
+      train_op = control_flow_ops.group()
+
+      sess.run(train_op)
+      # TODO(karmel): remove explicit call when in the public method.
+      builder._add_train_op(train_op)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(1, ops.get_collection("v")[0].eval())
+      self.assertEqual(2, ops.get_collection("v")[1].eval())
+      self.assertIsInstance(
+          ops.get_collection(constants.TRAIN_OP_KEY)[0], ops.Operation)
+
+  def testTrainOpAfterVariables(self):
+    export_dir = self._get_export_dir("test_train_op_after_variables")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = variables.Variable(1, name="v1")
+      ops.add_to_collection("v", v1)
+      v2 = variables.Variable(2, name="v2")
+      ops.add_to_collection("v", v2)
+
+      sess.run(variables.global_variables_initializer())
+      builder.add_meta_graph_and_variables(sess, ["pre_foo"])
+
+      train_op = state_ops.assign_add(v1, v2)
+      sess.run(train_op)
+      # TODO(karmel): remove explicit call when in the public method.
+      builder._add_train_op(train_op)
+      builder.add_meta_graph(["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertIsInstance(
+          ops.get_collection(constants.TRAIN_OP_KEY)[0], ops.Tensor)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["pre_foo"], export_dir)
+      self.assertFalse(ops.get_collection(constants.TRAIN_OP_KEY))
+
   def testMultipleAssets(self):
     export_dir = self._get_export_dir("test_multiple_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)

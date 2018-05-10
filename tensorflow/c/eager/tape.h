@@ -130,13 +130,15 @@ class GradientTape {
     }
   }
 
-  bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids);
+  bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids,
+                    gtl::ArraySlice<tensorflow::DataType> dtypes);
 
   void Watch(int64 tensor_id);
 
   void RecordOperation(const string& op_type,
                        gtl::ArraySlice<TapeTensor> output_tensors,
                        gtl::ArraySlice<int64> input_tensor_id,
+                       gtl::ArraySlice<tensorflow::DataType> input_dtypes,
                        BackwardFunction* backward_function,
                        const std::function<void()>& backward_function_deleter);
 
@@ -170,12 +172,30 @@ class GradientTape {
 
 // Template instantiations here
 
+inline bool IsDtypeTrainable(DataType dtype) {
+  switch (dtype) {
+    case DT_HALF:
+    case DT_BFLOAT16:
+    case DT_FLOAT:
+    case DT_DOUBLE:
+    case DT_COMPLEX64:
+    case DT_COMPLEX128:
+    case DT_RESOURCE:
+    case DT_VARIANT:
+      return true;
+    default:
+      return false;
+  }
+}
+
 template <typename Gradient, typename BackwardFunction>
 bool GradientTape<Gradient, BackwardFunction>::ShouldRecord(
-    gtl::ArraySlice<int64> tensor_ids) {
-  for (int64 i : tensor_ids) {
-    if (tensor_tape_.find(i) != tensor_tape_.end()) {
-      return true;
+    gtl::ArraySlice<int64> tensor_ids,
+    gtl::ArraySlice<tensorflow::DataType> dtypes) {
+  CHECK_EQ(tensor_ids.size(), dtypes.size());
+  for (int i = 0; i < tensor_ids.size(); ++i) {
+    if (tensor_tape_.find(tensor_ids[i]) != tensor_tape_.end()) {
+      return IsDtypeTrainable(dtypes[i]);
     }
   }
   return false;
@@ -189,9 +209,11 @@ void GradientTape<Gradient, BackwardFunction>::Watch(int64 tensor_id) {
 template <typename Gradient, typename BackwardFunction>
 void GradientTape<Gradient, BackwardFunction>::RecordOperation(
     const string& op_type, gtl::ArraySlice<TapeTensor> output_tensors,
-    gtl::ArraySlice<int64> input_tensor_id, BackwardFunction* backward_function,
+    gtl::ArraySlice<int64> input_tensor_id,
+    gtl::ArraySlice<tensorflow::DataType> input_dtypes,
+    BackwardFunction* backward_function,
     const std::function<void()>& backward_function_deleter) {
-  if (!ShouldRecord(input_tensor_id)) {
+  if (!ShouldRecord(input_tensor_id, input_dtypes)) {
     backward_function_deleter();
     return;
   }
@@ -380,49 +402,39 @@ Status InitialGradients(const VSpace<Gradient, BackwardFunction>& vspace,
                         gtl::ArraySlice<Gradient*> output_gradients,
                         const TensorTape& tensor_tape,
                         const OpTape<BackwardFunction>& op_tape,
-                        const gtl::FlatMap<int64, int64>& tensor_usage_counts,
                         gtl::FlatMap<int64, std::vector<Gradient*>>* result) {
   for (int i = 0; i < target_tensor_ids.size(); ++i) {
     const int64 id = target_tensor_ids[i];
-    if (tensor_usage_counts.find(id) != tensor_usage_counts.end()) {
-      if (!output_gradients.empty() && output_gradients[i] != nullptr) {
-        // TODO(apassos) figure out how to print debugging information here.
-        return errors::InvalidArgument(
-            "A gradient was provided for a tensor which is used as part of the "
-            "computation.");
-      }
-    } else {
-      if (output_gradients.empty() || output_gradients[i] == nullptr) {
-        auto tensor_it = tensor_tape.find(id);
-        if (tensor_it != tensor_tape.end() && tensor_it->second != -1) {
-          auto op_it = op_tape.find(tensor_it->second);
-          if (op_it == op_tape.end()) {
-            return errors::Internal(
-                "Internal state of the gradient tape is invalid: "
-                "failed to find operation producing a tensor");
+    if (output_gradients.empty() || output_gradients[i] == nullptr) {
+      auto tensor_it = tensor_tape.find(id);
+      if (tensor_it != tensor_tape.end() && tensor_it->second != -1) {
+        auto op_it = op_tape.find(tensor_it->second);
+        if (op_it == op_tape.end()) {
+          return errors::Internal(
+              "Internal state of the gradient tape is invalid: "
+              "failed to find operation producing a tensor");
+        }
+        bool found = false;
+        for (int j = 0; j < op_it->second.output_tensor_info.size(); ++j) {
+          if (op_it->second.output_tensor_info[j].id == id) {
+            found = true;
+            (*result)[id].push_back(
+                vspace.Ones(op_it->second.output_tensor_info[j].shape,
+                            op_it->second.output_tensor_info[j].dtype));
+            break;
           }
-          bool found = false;
-          for (int j = 0; j < op_it->second.output_tensor_info.size(); ++j) {
-            if (op_it->second.output_tensor_info[j].id == id) {
-              found = true;
-              (*result)[id].push_back(
-                  vspace.Ones(op_it->second.output_tensor_info[j].shape,
-                              op_it->second.output_tensor_info[j].dtype));
-              break;
-            }
-          }
-          if (!found) {
-            return errors::Internal(
-                "Internal state of the gradient tape is invalid: "
-                "none of operations outputs match expected tensor");
-          }
-        } else {
-          // No record of the target tensor found on the tape, so no gradient
-          // needs to be computed from it. Do nothing.
+        }
+        if (!found) {
+          return errors::Internal(
+              "Internal state of the gradient tape is invalid: "
+              "none of operations outputs match expected tensor");
         }
       } else {
-        (*result)[id].push_back(output_gradients[i]);
+        // No record of the target tensor found on the tape, so no gradient
+        // needs to be computed from it. Do nothing.
       }
+    } else {
+      (*result)[id].push_back(output_gradients[i]);
     }
   }
   return Status::OK();
@@ -451,8 +463,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
       InitialStack(state.op_tape, state.op_missing_tensor);
   gtl::FlatMap<int64, std::vector<Gradient*>> gradients;
   Status s = InitialGradients(vspace, target_tensor_ids, output_gradients,
-                              tensor_tape_, state.op_tape,
-                              state.tensor_usage_counts, &gradients);
+                              tensor_tape_, state.op_tape, &gradients);
   auto cleanup = [this, &state]() {
     if (!persistent_) {
       // Release all backprop functions

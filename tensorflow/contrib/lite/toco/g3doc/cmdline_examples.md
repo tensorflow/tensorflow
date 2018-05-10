@@ -115,7 +115,7 @@ bazel run --config=opt \
 
 In order to evaluate the possible benefit of generating a quantized graph, TOCO
 allows "dummy-quantization" on float graphs. The flags `--default_ranges_min`
-and `--default_ranges_max` accept plausable values for the min-max ranges of the
+and `--default_ranges_max` accept plausible values for the min-max ranges of the
 values in all arrays that do not have min-max information. "Dummy-quantization"
 will produce lower accuracy but will emulate the performance of a correctly
 quantized model.
@@ -338,7 +338,7 @@ below outline the use cases for each.
 ### Using `--output_format=GRAPHVIZ_DOT`
 
 The first way to get a graphviz rendering is to pass `GRAPHVIZ_DOT` into
-`--output_format`. This results in a plausable visualization of the graph. This
+`--output_format`. This results in a plausible visualization of the graph. This
 reduces the requirements that normally exist during conversion between other
 input and output formats. For example, this may be useful if conversion from
 TENSORFLOW_GRAPHDEF to TFLITE is failing.

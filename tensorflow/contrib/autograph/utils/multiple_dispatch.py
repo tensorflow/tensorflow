@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.contrib.autograph.utils.type_check import is_tensor
 from tensorflow.python.ops import control_flow_ops
 
@@ -66,42 +64,3 @@ def py_cond(condition, true_fn, false_fn):
   if len(results) == 1:
     return results[0]
   return results
-
-
-def run_while(cond_fn, body_fn, init_args):
-  """Type-dependent functional while loop.
-
-  Args:
-    cond_fn: A Python callable implementing the stop conditions of the loop.
-    body_fn: A Python callable implementing the body of the loop.
-    init_args: The initial values of the arguments that will be passed to both
-      cond_fn and body_fn.
-
-  Returns:
-    result: A list of values with the same shape and type as init_args. If any
-    of the init_args, or any variables closed-over in cond_fn are Tensors,
-    tf.while_loop will be used, otherwise a Python while loop will be ran.
-
-  Raises:
-    ValueError: if init_args is not a tuple or list with one or more elements.
-  """
-  if not isinstance(init_args, (tuple, list)) or not init_args:
-    raise ValueError(
-        'init_args must be a non-empty list or tuple, found %s' % init_args)
-
-  # TODO(alexbw): statically determine all active variables in cond_fn,
-  # and pass them directly
-  closure_vars = tuple(
-      [c.cell_contents for c in six.get_function_closure(cond_fn) or []])
-  possibly_tensors = tuple(init_args) + closure_vars
-  if is_tensor(*possibly_tensors):
-    return control_flow_ops.while_loop(cond_fn, body_fn, init_args)
-  else:
-    return py_while_loop(cond_fn, body_fn, init_args)
-
-
-def py_while_loop(cond_fn, body_fn, init_args):
-  state = init_args
-  while cond_fn(*state):
-    state = body_fn(*state)
-  return state

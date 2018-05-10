@@ -31,9 +31,9 @@ cc_library(
     hdrs = ["xla_computation.h"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -44,6 +44,7 @@ cc_library(
     hdrs = ["xla_builder.h"],
     deps = [
         ":xla_computation",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdlib.h>
 #include <string.h>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
+#include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
 namespace tflite {
@@ -25,6 +27,28 @@ float PortableClip(float f, float abs_limit) {
   float result = (abs_limit < f) ? abs_limit : f;
   result = (-abs_limit > result) ? -abs_limit : result;
   return result;
+}
+
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float* min,
+                                     float* max, float* scaling_factor) {
+  auto minmax = std::minmax_element(values, values + size);
+  *min = *minmax.first;
+  *max = *minmax.second;
+  const int kScale = 127;
+  const float range = std::max(std::abs(*min), std::abs(*max));
+  if (range == 0) {
+    memset(quantized_values, 0, size * sizeof(int8_t));
+    *scaling_factor = 1;
+    return;
+  }
+  *scaling_factor = kScale / range;
+  for (int i = 0; i < size; ++i) {
+    const int32_t quantized_value =
+        static_cast<int32_t>(TfLiteRound(*scaling_factor * values[i]));
+    // Clamp: just in case some odd numeric offset.
+    quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
+  }
 }
 
 void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
@@ -43,6 +67,30 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
       result_in_batch += result_stride;
     }
   }
+}
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  int batch, row, col;
+  for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
+    const float batch_scaling_factor_inv = 1.0 / scaling_factors[batch];
+    // Get the address of the first row.
+    int8_t* row_ptr = (int8_t*)matrix;  // NOLINT
+    for (row = 0; row < m_rows; ++row, result += result_stride) {
+      // Initialize the dot product sum for the row to 0.
+      int32_t dotprod = 0;
+      // Prefetch the row to cache.
+      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
+                         3 /* temporal locality */);
+      // For every block of 16 8-bit elements (128-bit register) from each row.
+      for (col = 0; col < m_cols; ++col, ++row_ptr) {
+        dotprod += (*row_ptr) * (vectors[col]);
+      }  // for col
+      *result += (dotprod * batch_scaling_factor_inv);
+    }  // for row
+  }    // for batch
 }
 
 void PortableVectorVectorCwiseProduct(const float* vector1,

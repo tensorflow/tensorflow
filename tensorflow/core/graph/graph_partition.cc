@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -372,7 +373,7 @@ string ControlLoopName(const string& name) {
 
 bool IsControlLoop(const Node* node) {
   const string& name = node->name();
-  return StringPiece(name).starts_with("_cloop");
+  return str_util::StartsWith(name, "_cloop");
 }
 
 // An enter node for control flow.
@@ -784,7 +785,7 @@ Status TopologicalSortNodesWithTimePriority(
   for (int n = 0; n < gdef->node_size(); ++n) {
     const NodeDef* ndef = &gdef->node(n);
     for (int i = 0; i < ndef->input_size(); ++i) {
-      node_to_output_nodes[ParseTensorName(ndef->input(i)).first.ToString()]
+      node_to_output_nodes[std::string(ParseTensorName(ndef->input(i)).first)]
           .push_back(ndef);
     }
     int64 start_time;

@@ -35,7 +35,7 @@ limitations under the License.
 #ifdef SWIG
 #define TF_CAPI_EXPORT
 #else
-#if defined(COMPILER_MSVC)
+#if defined(_WIN32)
 #ifdef TF_COMPILE_LIBRARY
 #define TF_CAPI_EXPORT __declspec(dllexport)
 #else
@@ -43,7 +43,7 @@ limitations under the License.
 #endif  // TF_COMPILE_LIBRARY
 #else
 #define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // COMPILER_MSVC
+#endif  // _WIN32
 #endif  // SWIG
 
 #ifdef __cplusplus
@@ -59,27 +59,6 @@ extern "C" {
 // cannot read/write the tensorflow.ConfigProto proto.
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
-
-// Initializes TPU system. Must be called exactly once before TF_SessionRun() is
-// called on a TPU graph.
-//
-// The session graph must contain a node named ConfigureDistributedTPU.
-// TODO(b/74774824): Improve the API on initializing TPU system.
-TF_CAPI_EXPORT extern void TF_InitializeTPU(TF_Session* session,
-                                            TF_Status* status);
-
-// Shuts down TPU system. For any `session` where TF_InitializeTPU() has
-// been successfully called, this call must be made exactly once before the
-// session is closed.
-// The session graph must contain a node named ShutdownDistributedTPU.
-TF_CAPI_EXPORT extern void TF_ShutdownTPU(TF_Session* session,
-                                          TF_Status* status);
-
-// Returns the graph content in a human-readable format, with length set in
-// `len`. The format is subject to change in the future.
-// The returned string is heap-allocated, and caller should call free() on it.
-TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
-                                                      size_t* len);
 
 // Returns the graph content in a human-readable format, with length set in
 // `len`. The format is subject to change in the future.
@@ -106,6 +85,35 @@ TF_CAPI_EXPORT extern TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(
 TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
     TF_Graph* graph, const char* file_path, int batch_size,
     unsigned char is_mnist, TF_Status* status);
+
+// On success, dequeues a tensor from a TF-managed FifoQueue given by
+// `tensor_id`, associated with `session`. There must be a graph node named
+// "fifo_queue_dequeue_<tensor_id>", to be executed by this API call.
+
+// Caller must call TF_DeleteTensor() over the returned tensor. If the queue is
+// empty, this call is blocked.
+//
+// Tensors are enqueued via the corresponding TF enqueue op.
+// TODO(hongm): Add support for `timeout_ms`.
+TF_CAPI_EXPORT extern TF_Tensor* TF_DequeueNamedTensor(TF_Session* session,
+                                                       int tensor_id,
+                                                       TF_Status* status);
+
+// On success, enqueues `tensor` into a TF-managed FifoQueue given by
+// `tensor_id`, associated with `session`. There must be a graph node named
+// "fifo_queue_enqueue_<tensor_id>", to be executed by this API call. It reads
+// from a placeholder node "arg_tensor_enqueue_<tensor_id>".
+//
+// `tensor` is still owned by the caller. This call will be blocked if the queue
+// has reached its capacity, and will be unblocked when the queued tensors again
+// drop below the capacity due to dequeuing.
+//
+// Tensors are dequeued via the corresponding TF dequeue op.
+// TODO(hongm): Add support for `timeout_ms`.
+TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
+                                                 int tensor_id,
+                                                 TF_Tensor* tensor,
+                                                 TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

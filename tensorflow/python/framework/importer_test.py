@@ -219,6 +219,23 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(outer_inner.name, "outer/inner_1")
       self.assertEqual(outer_inner_c.name, "outer/inner/c_1")
 
+  def testEmptyNameScope(self):
+    with ops.Graph().as_default():
+      # Create name scope but don't create any ops with it
+      with ops.name_scope("foo"):
+        pass
+
+      # Import graph def that uses name scope name
+      op, = importer.import_graph_def(
+          self._MakeGraphDef("node { name: 'foo' op: 'IntOutput' }"),
+          return_elements=["foo"],
+          name="")
+
+      if ops._USE_C_API:
+        self.assertEqual(op.name, "foo")
+      else:
+        self.assertEqual(op.name, "foo_1")
+
   def testInputMap(self):
     with ops.Graph().as_default():
       feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)

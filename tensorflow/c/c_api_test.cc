@@ -53,7 +53,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 namespace {
 
 static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(StringPiece(s).contains(expected))
+  EXPECT_TRUE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
@@ -1368,7 +1368,7 @@ TEST(CAPI, SavedModel) {
   }
 
   const tensorflow::string input_op_name =
-      tensorflow::ParseTensorName(input_name).first.ToString();
+      std::string(tensorflow::ParseTensorName(input_name).first);
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
   ASSERT_TRUE(input_op != nullptr);
@@ -1376,7 +1376,7 @@ TEST(CAPI, SavedModel) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   const tensorflow::string output_op_name =
-      tensorflow::ParseTensorName(output_name).first.ToString();
+      std::string(tensorflow::ParseTensorName(output_name).first);
   TF_Operation* output_op =
       TF_GraphOperationByName(graph, output_op_name.c_str());
   ASSERT_TRUE(output_op != nullptr);
@@ -1700,7 +1700,7 @@ TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_NoGradInputs) {
   TestGradientsError(false);
 }
 
-// REGISTER_OP for CApiTestAttributesTest test cases.
+// REGISTER_OP for CApiAttributesTest test cases.
 // Registers two ops, each with a single attribute called 'v'.
 // The attribute in one op will have a type 'type', the other
 // will have list(type).

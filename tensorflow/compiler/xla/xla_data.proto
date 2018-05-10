@@ -134,6 +134,8 @@ enum Format {
 // example, Convert) are ignored.
 //
 // See the XLA documentation for more information on shapes and layouts.
+//
+// LINT.IfChange
 message Layout {
   // The method used to store the data in memory. The format determines which of
   // the other fields are used by the layout.
@@ -159,9 +161,12 @@ message Layout {
   // memory.  This field must be unset unless the format is SPARSE.
   int64 max_sparse_elements = 5;
 
-  // Important: if any field is added, be sure to modify ShapeUtil::Equal()
-  // appropriately to account for the new field.
+  // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
+  // LayoutUtil::Hash appropriately to account for the new field.
 }
+// LINT.ThenChange( \
+//     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \
+//     https://www.tensorflow.org/code/tensorflow/compiler/xla/layout_util.cc)
 
 // A shape describes the number of dimensions in the array, the size of each
 // dimension, and the primitive component type.
@@ -170,6 +175,8 @@ message Layout {
 // defined.
 //
 // See the XLA documentation for more information on shapes and layouts.
+//
+// LINT.IfChange
 message Shape {
   reserved 1;
   reserved "rank";
@@ -190,9 +197,12 @@ message Shape {
   // The layout used to back this shape.
   Layout layout = 5;
 
-  // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
-  // ShapeUtil::Compatible() appropriately to account for the new field.
+  // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
+  // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for
+  // the new field.
 }
+// LINT.ThenChange( \
+//     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc)
 
 // Shape of the parameters and output of a computation (like a traditional
 // function signature).
@@ -355,17 +365,19 @@ message WindowDimension {
   // positions of the window in this dimension.
   int64 stride = 2;
 
-  // If positive, means the amount of padding with zeroes to add to the base
-  // area at the low end of this dimension; if negative, its negative means the
-  // number of elements removed from the low end of this dimension. For example,
-  // in the horizontal dimension of a rectangle, this would be the number of
-  // zeroes to pad on the left, given that indices increase when going right.
+  // If positive, means the amount of padding to add to the base area at the low
+  // end of this dimension; if negative, its negative means the number of
+  // elements removed from the low end of this dimension. For example, in the
+  // horizontal dimension of a rectangle, this would be the number of padding
+  // values to pad on the left, given that indices increase when going right.
+  // The actual padding value depends upon the context. Convolution pads with
+  // zeros. ReduceWindow and SelectAndScatter pads with the reduce function's
+  // init value.
   int64 padding_low = 3;
 
-  // As padding_low, but on the high end of this dimension. For
-  // example, in the horizontal dimension of a rectangle, this would
-  // be the number of zeroes to pad on the right, given that indices
-  // increase when going right.
+  // As padding_low, but on the high end of this dimension. For example, in the
+  // horizontal dimension of a rectangle, this would be the number of values to
+  // pad on the right, given that indices increase when going right.
   int64 padding_high = 4;
 
   // Dilation factor of the sliding window in this dimension. A dilation factor
@@ -799,6 +811,9 @@ enum UnaryOperation {
 
   // Elementwise, extract real component of complex x.
   UNOP_IMAG = 16;
+
+  // Elementwise, computes clz(x).
+  UNOP_CLZ = 17;
 }
 
 message UnaryOpRequest {

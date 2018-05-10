@@ -201,7 +201,7 @@ class GraphDefBuilderWrapper {
   // Also looks up the `op_def->name` in the global
   // `WhitelistedStatefulOpRegistry`.
   bool IsOpWhitelisted(const OpDef* op_def) const {
-    return (StringPiece(op_def->name()).ends_with("Dataset") &&
+    return (str_util::EndsWith(op_def->name(), "Dataset") &&
             op_def->output_arg_size() == 1 &&
             op_def->output_arg(0).type() == DT_VARIANT) ||
            dataset::WhitelistedStatefulOpRegistry::Global()->Contains(
@@ -364,7 +364,7 @@ class IteratorBase {
  protected:
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
+  // `RepeatDatasetOp::Dataset`.
   Status SaveParent(IteratorStateWriter* writer,
                     const std::unique_ptr<IteratorBase>& parent) {
     return parent->SaveInternal(writer);
@@ -372,7 +372,7 @@ class IteratorBase {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their parent iterators, e.g., in
-  // `RepeatDataasetOp::Dataset`.
+  // `RepeatDatasetOp::Dataset`.
   Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
                        const std::unique_ptr<IteratorBase>& parent) {
     return parent->RestoreInternal(ctx, reader);
@@ -474,11 +474,11 @@ class GraphDatasetBase : public DatasetBase {
   }
 
   // Key for storing the Dataset graph in the serialized format.
-  static const char kDatasetGraphKey[];
+  TF_EXPORT static const char kDatasetGraphKey[];
 
   // Key for storing the output node of the Dataset graph in the serialized
   // format.
-  static const char kDatasetGraphOutputNodeKey[];
+  TF_EXPORT static const char kDatasetGraphOutputNodeKey[];
 
  private:
   Status Serialize(OpKernelContext* ctx, string* serialized_graph_def,
@@ -521,7 +521,7 @@ class DatasetIterator : public IteratorBase {
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
-    port::Tracing::TraceMe activity(params_.prefix);
+    tracing::ScopedActivity activity(params_.prefix);
     Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(
@@ -618,6 +618,12 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 //
 // The ownership of `dataset` is transferred to `tensor`.
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
+
+namespace dataset {
+
+IteratorContext MakeIteratorContext(OpKernelContext* ctx);
+
+}  // namespace dataset
 
 }  // namespace tensorflow
 

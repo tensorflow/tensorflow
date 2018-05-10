@@ -45,8 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace cpu {
 
@@ -75,7 +73,7 @@ CpuExecutable::CpuExecutable(
 
 Status CpuExecutable::AllocateBuffers(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* buffers) {
+    std::vector<se::DeviceMemoryBase>* buffers) {
   CHECK_EQ(buffers->size(), assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();
@@ -245,19 +243,19 @@ static Status DeallocateTempBuffers(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::CreateResultShapedBuffer(
+StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        allocated_buffers,
+    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
     std::vector<bool>* buffers_in_result) {
   se::Stream* stream = run_options->stream();
-  auto result_buffer = MakeUnique<ShapedBuffer>(
-      /*on_host_shape=*/result_shape(), /*on_device_shape=*/result_shape(),
-      stream->parent()->platform(), stream->parent()->device_ordinal());
+  ScopedShapedBuffer result_buffer(
+      /*on_host_shape=*/host_result_shape(),
+      /*on_device_shape=*/host_result_shape(), run_options->allocator(),
+      stream->parent()->device_ordinal());
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.
-  TF_RETURN_IF_ERROR(result_buffer->buffers().ForEachMutableElementWithStatus(
+  TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
         // The points to set is unambiguous so the set should be a
@@ -284,7 +282,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::CreateResultShapedBuffer(
   return std::move(result_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -303,7 +301,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
 
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result_buffer,
+      ScopedShapedBuffer result_buffer,
       CreateResultShapedBuffer(run_options, buffers, &buffers_in_result));
 
   // Free all buffers not in the result.
@@ -313,7 +311,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
   return std::move(result_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   if (hlo_profiling_enabled()) {
@@ -322,7 +320,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteAsyncOnStream(
         "supported on CPU.");
   }
 
-  auto* host_stream = dynamic_cast<perftools::gputools::host::HostStream*>(
+  auto* host_stream = dynamic_cast<se::host::HostStream*>(
       run_options->stream()->implementation());
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
@@ -333,7 +331,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteAsyncOnStream(
 
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result_buffer,
+      ScopedShapedBuffer result_buffer,
       CreateResultShapedBuffer(run_options, buffers, &buffers_in_result));
 
   LogLiveAddresses(buffers, buffers_in_result);

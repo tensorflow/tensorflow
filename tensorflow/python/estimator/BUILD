@@ -7,7 +7,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "estimator_py",
@@ -25,7 +24,6 @@ py_library(
         ":linear",
         ":model_fn",
         ":parsing_utils",
-        ":replicate_model_fn",
         ":run_config",
         ":training",
         "//tensorflow/python:util",
@@ -93,6 +91,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:tag_constants",
         "@six_archive//:six",
     ],
 )
@@ -207,6 +206,7 @@ py_test(
         "no_pip",
         "noasan",  # test flakily times out in asan mode.
         "notsan",  # b/67510291
+        "optonly",  # flakily times out in fastbuild
     ],
     deps = [
         ":baseline",
@@ -251,6 +251,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:boosted_trees_ops",
         "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
@@ -327,6 +328,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -383,6 +385,7 @@ py_library(
         ":model_fn",
         ":optimizers",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
@@ -466,6 +469,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:metrics",
         "//tensorflow/python:platform",
@@ -475,6 +479,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/data",
         "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -484,6 +489,7 @@ py_library(
 py_test(
     name = "estimator_test",
     srcs = ["estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67510291
     deps = [
@@ -743,6 +749,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -902,69 +909,5 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
-    ],
-)
-
-py_library(
-    name = "replicate_model_fn",
-    srcs = [
-        "replicate_model_fn.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":export_output",
-        ":model_fn",
-        ":util",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:device",
-        "//tensorflow/python:device_lib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/ops/losses",
-        "@six_archive//:six",
-    ],
-)
-
-cuda_py_test(
-    name = "replicate_model_fn_test",
-    size = "medium",
-    srcs = ["replicate_model_fn_test.py"],
-    additional_deps = [
-        "//tensorflow/python/estimator",
-        ":dnn",
-        ":export_export",
-        ":export_output",
-        ":model_fn",
-        ":numpy_io",
-        ":optimizers",
-        ":prediction_keys",
-        "//tensorflow/python/feature_column",
-        "//tensorflow/python/ops/losses",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        ":replicate_model_fn",
-    ],
-    tags = [
-        "multi_gpu",
-        "noasan",  # flaky time outs
     ],
 )

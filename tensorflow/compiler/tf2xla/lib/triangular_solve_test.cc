@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -80,9 +80,9 @@ xla::Array2D<float> AValsFull() {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -102,9 +102,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -124,9 +124,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -146,9 +146,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -168,9 +168,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -191,9 +191,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -214,9 +214,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -237,9 +237,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   auto result = TriangularSolve(&builder, a, b,
@@ -260,9 +260,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data =
       CreateR2Parameter<complex64>(AValsLowerComplex(), 0, "a", &builder, &a);
   auto b_data =
@@ -288,9 +288,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data =
       CreateR2Parameter<complex64>(AValsUpperComplex(), 0, "a", &builder, &a);
   auto b_data =
@@ -318,9 +318,9 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
 }
 
 XLA_TEST_F(TriangularSolveLeftLookingTest, Simple) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   auto result = TriangularSolveLeftLooking(&builder, a, b,
@@ -340,9 +340,9 @@ XLA_TEST_F(TriangularSolveLeftLookingTest, Simple) {
 }
 
 XLA_TEST_F(TriangularSolveLeftLookingTest, NonzeroUpperTriangle) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsFull(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   auto result = TriangularSolveLeftLooking(&builder, a, b,

@@ -23,17 +23,17 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
 KernelThunk::KernelThunk(
     tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
-    const string& kernel_name, const HloInstruction* hlo_instruction)
+    const string& kernel_name, const HloInstruction* hlo_instruction,
+    int unroll_factor)
     : Thunk(Kind::kKernel, hlo_instruction),
       args_(args.begin(), args.end()),
-      kernel_name_(kernel_name) {}
+      kernel_name_(kernel_name),
+      unroll_factor_(unroll_factor) {}
 
 tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
   tensorflow::mutex_lock lock(mutex_);

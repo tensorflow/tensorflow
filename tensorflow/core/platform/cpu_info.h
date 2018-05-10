@@ -18,15 +18,16 @@ limitations under the License.
 
 #include <string>
 
+// TODO(ahentz): This is not strictly required here but, for historical
+// reasons, many people depend on cpu_info.h in order to use kLittleEndian.
+#include "tensorflow/core/platform/byte_order.h"
+
 #if defined(_MSC_VER)
 #include "tensorflow/core/platform/windows/cpu_info.h"
 #endif
 
 namespace tensorflow {
 namespace port {
-
-// TODO(jeff,sanjay): Make portable
-constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
 // Returns an estimate of the number of schedulable CPUs for this
 // process.  Usually, it's constant throughout the lifetime of a

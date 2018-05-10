@@ -29,11 +29,9 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-inline perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
-                                                           uint64 size) {
-  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory),
-                                                size * sizeof(T));
-  perftools::gputools::DeviceMemory<T> typed(wrapped);
+inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
@@ -125,7 +123,8 @@ class AutoTuneMap {
   string GetActionSummary(StringPiece action, const Parameters& params,
                           const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
-                           action.ToString().c_str(), params.ToString().c_str(),
+                           std::string(action).c_str(),
+                           params.ToString().c_str(),
                            config.ToString().c_str());
   }
 
