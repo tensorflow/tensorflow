@@ -746,7 +746,7 @@ py_test(
 
 tf_py_test(
     name = "graph_io_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
     additional_deps = [
         ":learn",
