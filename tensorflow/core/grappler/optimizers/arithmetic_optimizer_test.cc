@@ -1122,7 +1122,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposes) {
       ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
   Output perm1 = ops::Const(s.WithOpName("perm1"), {0, 2, 3, 1}, {4});
   Output perm2 = ops::Const(s.WithOpName("perm2"), {0, 3, 1, 2}, {4});
-  Output perm3 = ops::Const(s.WithOpName("perm2"), {0, 1, 2, 3}, {4});
+  Output perm3 = ops::Const(s.WithOpName("perm3"), {0, 1, 2, 3}, {4});
   Output transpose1 = ops::Transpose(s.WithOpName("transpose1"), inputs, perm1);
   Output transpose2 =
       ops::Transpose(s.WithOpName("transpose2"), transpose1, perm2);
@@ -1246,6 +1246,47 @@ TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   OptimizeAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(6, output.node_size());
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs_shape =
+      ops::Const(s.WithOpName("inputs_shape"), {8, 3, 28, 28}, {4});
+  Output inputs =
+      ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
+  Output perm1 = ops::Const(s.WithOpName("perm1"), {0, 2, 3, 1}, {4});
+  Output perm2 = ops::Const(s.WithOpName("perm2"), {0, 3, 1, 2}, {4});
+  Output transpose1 = ops::Transpose(
+      s.WithOpName("transpose1").WithControlDependencies(perm2), inputs, perm1);
+  Output identity = ops::Identity(s.WithOpName("id"), transpose1);
+  Output transpose2 =
+      ops::Transpose(s.WithOpName("transpose2"), identity, perm2);
+  Output id1 = ops::Identity(s.WithOpName("id1"), transpose2);
+
+  GrapplerItem item;
+  item.fetch = {"id1"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  std::set<string> nodes_after_optimization;
+  for (const NodeDef& node : output.node()) {
+    nodes_after_optimization.insert(node.name());
+    if (node.name() == "id") {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("inputs", node.input(0));
+      EXPECT_EQ("^perm2", node.input(1));
+    }
+    if (node.name() == "id1") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("id", node.input(0));
+    }
+  }
+  EXPECT_EQ(nodes_after_optimization,
+            std::set<string>({"id", "id1", "inputs_shape", "inputs", "perm2"}));
 }
 
 TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
