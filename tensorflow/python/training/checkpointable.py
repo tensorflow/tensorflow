@@ -659,6 +659,31 @@ class CheckpointableBase(object):
     return {}
 
 
+class NoDependency(object):
+  """Allows attribute assignment to `Checkpointable` objects with no dependency.
+
+  Example usage:
+  ```python
+  obj = Checkpointable()
+  obj.has_dependency = tf.Variable(0., name="dep")
+  obj.no_dependency = NoDependency(tf.Variable(1., name="nodep"))
+  assert obj.no_dependency.name == "nodep:0"
+  ```
+
+  `obj` in this example has a dependency on the variable "dep", and both
+  attributes contain un-wrapped `Variable` objects.
+
+  `NoDependency` also works with `tf.keras.Model`, but only for checkpoint
+  dependencies: wrapping a `Layer` in `NoDependency` will assign the (unwrapped)
+  `Layer` to the attribute without a checkpoint dependency, but the `Model` will
+  still track the `Layer` (so it will appear in `Model.layers`, and its
+  variables will appear in `Model.variables`).
+  """
+
+  def __init__(self, value):
+    self.value = value
+
+
 class Checkpointable(CheckpointableBase):
   """Manages dependencies on other objects.
 
@@ -691,8 +716,11 @@ class Checkpointable(CheckpointableBase):
     """Support self.foo = checkpointable syntax."""
     # Perform the attribute assignment, and potentially call other __setattr__
     # overrides such as that for tf.keras.Model.
+    no_dependency = isinstance(value, NoDependency)
+    if no_dependency:
+      value = value.value
     super(Checkpointable, self).__setattr__(name, value)
-    if isinstance(value, CheckpointableBase):
+    if not no_dependency and isinstance(value, CheckpointableBase):
       self._track_checkpointable(
           value, name=name,
           # Allow the user to switch the Checkpointable which is tracked by this

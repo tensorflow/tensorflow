@@ -504,7 +504,7 @@ string Print(const NodeDef& n) {
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
     if (str_util::ConsumePrefix(&s, "^")) {
-      dep.push_back(s.ToString());
+      dep.push_back(std::string(s));
     } else {
       dat.push_back(s);
     }

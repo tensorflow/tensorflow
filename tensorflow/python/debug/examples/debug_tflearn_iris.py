@@ -140,7 +140,7 @@ def main(_):
 
   # Make predictions, using tfdbg hook.
   predict_results = classifier.predict(test_input_fn, hooks=hooks)
-  print("A prediction result: %s" % predict_results.next())
+  print("A prediction result: %s" % next(predict_results))
 
 
 if __name__ == "__main__":

@@ -99,6 +99,7 @@ cc_library(
     hdrs = ["service_interface.h"],
     visibility = [":friends"],
     deps = [
+        ":xla_data_proto",
         ":xla_proto",
         "//tensorflow/core:lib",
     ],
