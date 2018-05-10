@@ -2499,52 +2499,17 @@ inline void Add(const float* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void Add(const float* input1_data, const Dims<4>& input1_dims,
-         const float* input2_data, const Dims<4>& input2_dims,
-         float* output_data, const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-
-  Add(input1_data, input1_dims, input2_data, input2_dims, output_activation_min,
-      output_activation_max, output_data, output_dims);
-}
-
-template <FusedActivationFunctionType Ac>
-inline void Add(int left_shift, const uint8* input1_data,
-                const Dims<4>& input1_dims, int32 input1_offset,
-                int32 input1_multiplier, int input1_shift,
-                const uint8* input2_data, const Dims<4>& input2_dims,
-                int32 input2_offset, int32 input2_multiplier, int input2_shift,
-                int32 output_offset, int32 output_multiplier, int output_shift,
-                int32 output_activation_min, int32 output_activation_max,
-                uint8* output_data, const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, 0);
-    TFLITE_DCHECK_EQ(output_activation_max, 255);
-  }
-  gemmlowp::ScopedProfilingLabel label("Add/8bit");
-  /* const int batches = */ MatchingArraySize(input1_dims, 3, input2_dims, 3,
-                                              output_dims, 3);
-  /* const int height = */ MatchingArraySize(input1_dims, 2, input2_dims, 2,
-                                             output_dims, 2);
-  /* const int width = */ MatchingArraySize(input1_dims, 1, input2_dims, 1,
-                                            output_dims, 1);
-  /* const int depth = */ MatchingArraySize(input1_dims, 0, input2_dims, 0,
-                                            output_dims, 0);
-  TFLITE_DCHECK(IsPackedWithoutStrides(input1_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(input2_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-
+// Element-wise add that can often be used for inner loop of broadcast add as
+// well as the non-broadcast add.
+inline void AddElementwise(int size, int left_shift, const uint8* input1_data,
+                           int32 input1_offset, int32 input1_multiplier,
+                           int input1_shift, const uint8* input2_data,
+                           int32 input2_offset, int32 input2_multiplier,
+                           int input2_shift, int32 output_offset,
+                           int32 output_multiplier, int output_shift,
+                           int32 output_activation_min,
+                           int32 output_activation_max, uint8* output_data) {
   int i = 0;
-  const int size = input1_dims.sizes[3] * input1_dims.strides[3];
   TFLITE_DCHECK_GT(input1_offset, -256);
   TFLITE_DCHECK_GT(input2_offset, -256);
   TFLITE_DCHECK_LT(input1_offset, 256);
@@ -2621,6 +2586,54 @@ inline void Add(int left_shift, const uint8* input1_data,
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = static_cast<uint8>(clamped_output);
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void Add(const float* input1_data, const Dims<4>& input1_dims,
+         const float* input2_data, const Dims<4>& input2_dims,
+         float* output_data, const Dims<4>& output_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  Add(input1_data, input1_dims, input2_data, input2_dims, output_activation_min,
+      output_activation_max, output_data, output_dims);
+}
+
+template <FusedActivationFunctionType Ac>
+inline void Add(int left_shift, const uint8* input1_data,
+                const Dims<4>& input1_dims, int32 input1_offset,
+                int32 input1_multiplier, int input1_shift,
+                const uint8* input2_data, const Dims<4>& input2_dims,
+                int32 input2_offset, int32 input2_multiplier, int input2_shift,
+                int32 output_offset, int32 output_multiplier, int output_shift,
+                int32 output_activation_min, int32 output_activation_max,
+                uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  gemmlowp::ScopedProfilingLabel label("Add/8bit");
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input1_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(input2_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+
+  TFLITE_DCHECK_GT(input1_offset, -256);
+  TFLITE_DCHECK_GT(input2_offset, -256);
+  TFLITE_DCHECK_LT(input1_offset, 256);
+  TFLITE_DCHECK_LT(input2_offset, 256);
+  AddElementwise(flat_size, left_shift, input1_data, input1_offset,
+                 input1_multiplier, input1_shift, input2_data, input2_offset,
+                 input2_multiplier, input2_shift, output_offset,
+                 output_multiplier, output_shift, output_activation_min,
+                 output_activation_max, output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -2833,27 +2846,11 @@ inline void BroadcastAddFivefold(
       input2_data_ptr = input2_data_reset;
       for (int i2 = 0; i2 < y2; ++i2) {
         for (int i1 = 0; i1 < y1; ++i1) {
-          for (int i0 = 0; i0 < y0; ++i0) {
-            const int32 input1_val = input1_offset + input1_data_ptr[i0];
-            const int32 input2_val = input2_offset + input2_data_ptr[i0];
-            const int32 shifted_input1_val = input1_val * (1 << left_shift);
-            const int32 shifted_input2_val = input2_val * (1 << left_shift);
-            const int32 scaled_input1_val =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    shifted_input1_val, input1_multiplier, input1_shift);
-            const int32 scaled_input2_val =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    shifted_input2_val, input2_multiplier, input2_shift);
-            const int32 raw_sum = scaled_input1_val + scaled_input2_val;
-            const int32 raw_output =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    raw_sum, output_multiplier, output_shift) +
-                output_offset;
-            const int32 clamped_output =
-                std::min(output_activation_max,
-                         std::max(output_activation_min, raw_output));
-            output_data_ptr[i0] = static_cast<uint8>(clamped_output);
-          }
+          AddElementwise(
+              y0, left_shift, input1_data_ptr, input1_offset, input1_multiplier,
+              input1_shift, input2_data_ptr, input2_offset, input2_multiplier,
+              input2_shift, output_offset, output_multiplier, output_shift,
+              output_activation_min, output_activation_max, output_data_ptr);
           input2_data_ptr += y0;
           output_data_ptr += y0;
         }
