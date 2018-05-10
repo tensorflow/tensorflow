@@ -22,23 +22,26 @@ from __future__ import print_function
 import copy
 import json
 import os
+import weakref
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras._impl.keras import backend as K
+from tensorflow.python.keras._impl.keras import backend
 from tensorflow.python.keras._impl.keras.engine import base_layer
 from tensorflow.python.keras._impl.keras.engine import saving
 from tensorflow.python.keras._impl.keras.utils import generic_utils
+from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary as print_layer_summary
-from tensorflow.python.layers import base as tf_base_layers
-from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpointable
+from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -82,7 +85,7 @@ class Network(base_layer.Layer):
     # self.losses
     # self.updates
 
-    self._init_set_name(name)
+    self._init_set_name(name, zero_based=True)
     self._activity_regularizer = None
     # This acts just like the `trainable` attribute of any layer instance.
     # It does not affect users of the underlying layers, only users of the
@@ -112,9 +115,16 @@ class Network(base_layer.Layer):
     # Entries are unique. Includes input and output layers.
     self._layers = []
 
-    # Used in symbolic mode only, only in conjonction with graph-networks
+    # Used in symbolic mode only, only in conjunction with graph-networks
     self._outbound_nodes = []
     self._inbound_nodes = []
+
+    self._checkpointable_saver = checkpointable_utils.CheckpointableSaver(
+        weakref.ref(self))
+    # A zero-argument function which should be called and set back to None as
+    # soon as the network is built (only applicable to subclassed Models). Runs
+    # restore operations when graph building.
+    self._in_progress_restore_finalizer = None
 
   def _init_graph_network(self, inputs, outputs, name=None):
     self._uses_inputs_arg = True
@@ -128,18 +138,18 @@ class Network(base_layer.Layer):
     else:
       self.outputs = [outputs]
 
-    # User-prodived argument validation.
+    # User-provided argument validation.
     if context.executing_eagerly():
       # Check that all inputs/outputs are DeferredTensors.
       for tensor in self.inputs:
-        if not isinstance(tensor, tf_base_layers._DeferredTensor):  # pylint: disable=protected-access
+        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
           raise TypeError('When eager execution is enabled, '
                           'inputs must come from a call to '
                           '`tf.keras.Input` (called after '
                           'tfe.enable_eager_execution()). '
                           'Received invalid input: ' + str(tensor))
       for tensor in self.outputs:
-        if not isinstance(tensor, tf_base_layers._DeferredTensor):  # pylint: disable=protected-access
+        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
           raise TypeError('When eager execution is enabled, '
                           'outputs must come from a call to '
                           'a layer (called after '
@@ -229,8 +239,10 @@ class Network(base_layer.Layer):
     self._layers = layers
     self._layers_by_depth = layers_by_depth
 
+    self._track_layers(layers)
+
     # Create the node linking internal inputs to internal outputs.
-    tf_base_layers.Node(
+    base_layer.Node(
         outbound_layer=self,
         inbound_layers=[],
         node_indices=[],
@@ -243,8 +255,8 @@ class Network(base_layer.Layer):
     for x in self.inputs:
       mask = x._keras_mask if hasattr(x, '_keras_mask') else None  # pylint: disable=protected-access
       masks.append(mask)
-    mask_cache_key = (tf_layers_util.object_list_uid(self.inputs) + '_' +
-                      tf_layers_util.object_list_uid(masks))
+    mask_cache_key = (generic_utils.object_list_uid(self.inputs) + '_' +
+                      generic_utils.object_list_uid(masks))
     masks = []
     for x in self.outputs:
       mask = x._keras_mask if hasattr(x, '_keras_mask') else None  # pylint: disable=protected-access
@@ -265,7 +277,7 @@ class Network(base_layer.Layer):
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
-        self._feed_input_shapes.append(K.int_shape(self.inputs[i]))
+        self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
         # layer.input gives an error in eager mode
         if not context.executing_eagerly():
           self._feed_inputs.append(layer.input)
@@ -288,8 +300,28 @@ class Network(base_layer.Layer):
     self.inputs = None
     self.built = False
 
+  def _track_layers(self, layers):
+    """Add Checkpointable dependencies on a list of Layers."""
+    weight_layer_index = 0
+    for layer_index, layer in enumerate(layers):
+      if layer.weights:
+        # Keep a separate index for layers which have weights. This allows users
+        # to insert Layers without weights anywhere in the network without
+        # breaking checkpoints.
+        self._track_checkpointable(
+            layer, name='layer_with_weights-%d' % weight_layer_index,
+            overwrite=True)
+        weight_layer_index += 1
+      # Even if it doesn't have weights, we should still track everything in
+      # case it has/will have Checkpointable dependencies.
+      self._track_checkpointable(
+          layer, name='layer-%d' % layer_index, overwrite=True)
+
   def __setattr__(self, name, value):
-    if isinstance(value, (tf_base_layers.Layer, Network)):
+    no_dependency = isinstance(value, checkpointable.NoDependency)
+    if no_dependency:
+      value = value.value
+    if isinstance(value, (base_layer.Layer, Network)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -299,7 +331,12 @@ class Network(base_layer.Layer):
       if not is_graph_network:
         if value not in self._layers:
           self._layers.append(value)
-    if isinstance(value, checkpointable.CheckpointableBase):
+          if hasattr(value, '_use_resource_variables'):
+            # In subclassed models, legacy layers (tf.layers) must always use
+            # resource variables.
+            value._use_resource_variables = True
+    if (not no_dependency
+        and isinstance(value, checkpointable.CheckpointableBase)):
       # Layer (and therefore Network/Model) inherit from CheckpointableBase
       # rather than Checkpointable, which means there is no Checkpointable
       # __setattr__ override (it would be a performance issue for functional
@@ -360,7 +397,7 @@ class Network(base_layer.Layer):
     weights = []
     for layer in self.layers:
       weights += layer.weights
-    return K.batch_get_value(weights)
+    return backend.batch_get_value(weights)
 
   def set_weights(self, weights):
     """Sets the weights of the model.
@@ -376,7 +413,7 @@ class Network(base_layer.Layer):
       for sw, w in zip(layer.weights, layer_weights):
         tuples.append((sw, w))
       weights = weights[num_param:]
-    K.batch_set_value(tuples)
+    backend.batch_set_value(tuples)
 
   def compute_mask(self, inputs, mask):
     if not self._is_graph_network:
@@ -387,8 +424,8 @@ class Network(base_layer.Layer):
       masks = [None for _ in range(len(inputs))]
     else:
       masks = generic_utils.to_list(mask)
-    cache_key = (tf_layers_util.object_list_uid(inputs)
-                 + '_' + tf_layers_util.object_list_uid(masks))
+    cache_key = (generic_utils.object_list_uid(inputs)
+                 + '_' + generic_utils.object_list_uid(masks))
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
@@ -502,8 +539,7 @@ class Network(base_layer.Layer):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
-    reachable = tf_layers_util.get_reachable_from_inputs(relevant_inputs,
-                                                         updates)
+    reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
     relevant_conditional_updates = [x for x in updates if x in reachable]
     unconditional_updates = [
         x for x in updates if x._unconditional_update]  # pylint: disable=protected-access
@@ -540,8 +576,7 @@ class Network(base_layer.Layer):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
-    reachable = tf_layers_util.get_reachable_from_inputs(relevant_inputs,
-                                                         losses)
+    reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, losses)
     relevant_conditional_losses = [x for x in losses if x in reachable]
     unconditional_losses = [
         x for x in losses if x._unconditional_loss]  # pylint: disable=protected-access
@@ -623,8 +658,8 @@ class Network(base_layer.Layer):
     if not context.executing_eagerly():
       # Try to retrieve cached outputs if the layer has already been called
       # on these exact inputs.
-      cache_key = (tf_layers_util.object_list_uid(inputs)
-                   + '_' + tf_layers_util.object_list_uid(masks))
+      cache_key = (generic_utils.object_list_uid(inputs)
+                   + '_' + generic_utils.object_list_uid(masks))
       if cache_key in self._output_tensor_cache:
         # Cache hit.
         return self._output_tensor_cache[cache_key]
@@ -656,7 +691,7 @@ class Network(base_layer.Layer):
                        ': model has ' + str(len(self._input_layers)) +
                        ' tensor inputs.')
 
-    cache_key = tf_layers_util.object_list_uid(input_shapes)
+    cache_key = generic_utils.object_list_uid(input_shapes)
     if cache_key not in self._output_shape_cache:
       # Cache miss. We have to run the network graph manually (recursive calls
       # to `compute_output_shape`).
@@ -845,7 +880,7 @@ class Network(base_layer.Layer):
     for x in self.outputs:
       assert str(id(x)) in tensor_map, 'Could not compute output ' + str(x)
       tensor, mask = tensor_map[str(id(x))]
-      output_shapes.append(tf_layers_util.static_shape(x))
+      output_shapes.append(backend.int_shape(x))
       output_tensors.append(tensor)
       output_masks.append(mask)
 
@@ -859,14 +894,14 @@ class Network(base_layer.Layer):
     if not context.executing_eagerly():
       # Update cache;
       # keys are based on ids on input tensors and inputs masks.
-      cache_key = (tf_layers_util.object_list_uid(inputs)
-                   + '_' + tf_layers_util.object_list_uid(masks))
+      cache_key = (generic_utils.object_list_uid(inputs)
+                   + '_' + generic_utils.object_list_uid(masks))
       self._output_tensor_cache[cache_key] = output_tensors
       self._output_mask_cache[cache_key] = output_masks
 
       if output_shapes is not None:
-        input_shapes = [tf_layers_util.static_shape(x) for x in inputs]
-        cache_key = tf_layers_util.object_list_uid(input_shapes)
+        input_shapes = [backend.int_shape(x) for x in inputs]
+        cache_key = generic_utils.object_list_uid(input_shapes)
         self._output_shape_cache[cache_key] = output_shapes
 
     return output_tensors, output_masks
@@ -1125,62 +1160,160 @@ class Network(base_layer.Layer):
     from tensorflow.python.keras._impl.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)
 
-  def save_weights(self, filepath, overwrite=True):
-    """Dumps all layer weights to a HDF5 file.
+  def save_weights(self, filepath, overwrite=True, save_format=None):
+    """Saves all layer weights.
 
-    The weight file has:
-        - `layer_names` (attribute), a list of strings
-            (ordered names of model layers).
-        - For every layer, a `group` named `layer.name`
-            - For every such layer group, a group attribute `weight_names`,
-                a list of strings
-                (ordered names of weights tensor of the layer).
-            - For every weight in the layer, a dataset
-                storing the weight value, named after the weight tensor.
+    Either saves in HDF5 or in TensorFlow format based on the `save_format`
+    argument.
+
+    When saving in HDF5 format, the weight file has:
+      - `layer_names` (attribute), a list of strings
+          (ordered names of model layers).
+      - For every layer, a `group` named `layer.name`
+          - For every such layer group, a group attribute `weight_names`,
+              a list of strings
+              (ordered names of weights tensor of the layer).
+          - For every weight in the layer, a dataset
+              storing the weight value, named after the weight tensor.
+
+    When saving in TensorFlow format, all objects referenced by the network are
+    saved in the same format as `tf.train.Checkpoint`, including any `Layer`
+    instances or `Optimizer` instances assigned to object attributes. For
+    networks constructed from inputs and outputs using `tf.keras.Model(inputs,
+    outputs)`, `Layer` instances used by the network are tracked/saved
+    automatically. For user-defined classes which inherit from `tf.keras.Model`,
+    `Layer` instances must be assigned to object attributes, typically in the
+    constructor. See the documentation of `tf.train.Checkpoint` and
+    `tf.keras.Model` for details.
 
     Arguments:
-        filepath: String, path to the file to save the weights to.
+        filepath: String, path to the file to save the weights to. When saving
+            in TensorFlow format, this is the prefix used for checkpoint files
+            (multiple files are generated). Note that the '.h5' suffix causes
+            weights to be saved in HDF5 format.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
+        save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
+            '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
+            `None` defaults to 'tf'.
 
     Raises:
-        ImportError: If h5py is not available.
+        ImportError: If h5py is not available when attempting to save in HDF5
+            format.
+        ValueError: For invalid/unknown format arguments.
     """
-    if h5py is None:
-      raise ImportError('`save_weights` requires h5py.')
+    filepath_is_h5 = filepath.endswith('.h5') or filepath.endswith('.keras')
+    if save_format is None:
+      if filepath_is_h5:
+        save_format = 'h5'
+      else:
+        save_format = 'tf'
+    else:
+      user_format = save_format.lower().strip()
+      if user_format in ('tensorflow', 'tf'):
+        save_format = 'tf'
+      elif user_format in ('hdf5', 'h5', 'keras'):
+        save_format = 'h5'
+      else:
+        raise ValueError(
+            'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
+                save_format,))
+    if save_format == 'tf' and filepath_is_h5:
+      raise ValueError(
+          ('save_weights got save_format="tf"/"tensorflow", but the '
+           'filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras" '
+           'when saving in TensorFlow format.')
+          % filepath)
+
+    if save_format == 'h5' and h5py is None:
+      raise ImportError(
+          '`save_weights` requires h5py when saving in hdf5.')
+    if save_format == 'tf':
+      check_filepath = filepath + '.index'
+    else:
+      check_filepath = filepath
     # If file exists and should not be overwritten:
-    if not overwrite and os.path.isfile(filepath):
-      proceed = ask_to_proceed_with_overwrite(filepath)
+    if not overwrite and os.path.isfile(check_filepath):
+      proceed = ask_to_proceed_with_overwrite(check_filepath)
       if not proceed:
         return
-    with h5py.File(filepath, 'w') as f:
-      saving.save_weights_to_hdf5_group(f, self.layers)
+    if save_format == 'h5':
+      with h5py.File(filepath, 'w') as f:
+        saving.save_weights_to_hdf5_group(f, self.layers)
+    else:
+      self._checkpointable_saver.save(filepath)
 
   def load_weights(self, filepath, by_name=False):
-    """Loads all layer weights from a HDF5 save file.
+    """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
-    If `by_name` is False (default) weights are loaded
-    based on the network's topology, meaning the architecture
-    should be the same as when the weights were saved.
-    Note that layers that don't have weights are not taken
-    into account in the topological ordering, so adding or
-    removing layers is fine as long as they don't have weights.
+    If `by_name` is False weights are loaded based on the network's
+    topology. This means the architecture should be the same as when the weights
+    were saved.  Note that layers that don't have weights are not taken into
+    account in the topological ordering, so adding or removing layers is fine as
+    long as they don't have weights.
 
-    If `by_name` is True, weights are loaded into layers
-    only if they share the same name. This is useful
-    for fine-tuning or transfer-learning models where
+    If `by_name` is True, weights are loaded into layers only if they share the
+    same name. This is useful for fine-tuning or transfer-learning models where
     some of the layers have changed.
 
+    Only topological loading (`by_name=False`) is supported when loading weights
+    from the TensorFlow format. Note that topological loading differs slightly
+    between TensorFlow and HDF5 formats for user-defined classes inheriting from
+    `tf.keras.Model`: HDF5 loads based on a flattened list of weights, while the
+    TensorFlow format loads based on the object-local names of attributes to
+    which layers are assigned in the `Model`'s constructor.
+
     Arguments:
-        filepath: String, path to the weights file to load.
-        by_name: Boolean, whether to load weights by name
-            or by topological order.
+        filepath: String, path to the weights file to load. For weight files in
+            TensorFlow format, this is the file prefix (the same as was passed
+            to `save_weights`).
+        by_name: Boolean, whether to load weights by name or by topological
+            order. Only topological loading is supported for weight files in
+            TensorFlow format.
+
+    Returns:
+        When loading a weight file in TensorFlow format, returns the same status
+        object as `tf.train.Checkpoint.restore`. When graph building, restore
+        ops are run automatically as soon as the network is built (on first call
+        for user-defined classes inheriting from `Model`, immediately if it is
+        already built).
+
+        When loading weights in HDF5 format, returns `None`.
 
     Raises:
-        ImportError: If h5py is not available.
+        ImportError: If h5py is not available and the weight file is in HDF5
+            format.
     """
+    try:
+      pywrap_tensorflow.NewCheckpointReader(filepath)
+      save_format = 'tf'
+    except errors_impl.DataLossError:
+      # The checkpoint is not readable in TensorFlow format. Try HDF5.
+      save_format = 'h5'
+    if save_format == 'tf':
+      status = self._checkpointable_saver.restore(filepath)
+      if by_name:
+        raise NotImplementedError(
+            'Weights may only be loaded based on topology into Models when '
+            'loading TensorFlow-formatted weights (got by_name=True to '
+            'load_weights).')
+      if not context.executing_eagerly():
+        finalizer = status.run_restore_ops
+        if self.built:
+          finalizer()
+        else:
+          # Hold on to this status object until the network is built (for
+          # subclassed Models). Then we'll run restore ops if necessary.
+          self._in_progress_restore_finalizer = finalizer
+      return status
     if h5py is None:
-      raise ImportError('`load_weights` requires h5py.')
+      raise ImportError(
+          '`load_weights` requires h5py when loading weights from HDF5.')
+    if self._is_graph_network and not self.built:
+      raise NotImplementedError(
+          'Unable to load weights saved in HDF5 format into a subclassed '
+          'Model which has not created its variables yet. Call the Model '
+          'first, then load the weights.')
     with h5py.File(filepath, 'r') as f:
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
@@ -1188,6 +1321,14 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
+
+  def _post_build_cleanup(self):
+    super(Network, self)._post_build_cleanup()
+    if self._in_progress_restore_finalizer is not None:
+      # Runs queued restore operations left over from load_weights when graph
+      # building.
+      self._in_progress_restore_finalizer()
+      self._in_progress_restore_finalizer = None
 
   def _updated_config(self):
     """Util shared between different serialization methods.
@@ -1202,7 +1343,7 @@ class Network(base_layer.Layer):
         'class_name': self.__class__.__name__,
         'config': config,
         'keras_version': keras_version,
-        'backend': K.backend()
+        'backend': backend.backend()
     }
     return model_config
 

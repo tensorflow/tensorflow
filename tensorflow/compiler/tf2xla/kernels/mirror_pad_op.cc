@@ -25,10 +25,11 @@ class MirrorPadOp : public XlaOpKernel {
  public:
   explicit MirrorPadOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
 
-  xla::StatusOr<xla::ComputationDataHandle> DoMirrorPad(
-      const xla::ComputationDataHandle& t, const xla::Shape& original_shape,
-      const xla::Literal& pad_literal, xla::ComputationBuilder* b) {
-    xla::ComputationDataHandle accum = t;
+  xla::StatusOr<xla::XlaOp> DoMirrorPad(const xla::XlaOp& t,
+                                        const xla::Shape& original_shape,
+                                        const xla::Literal& pad_literal,
+                                        xla::XlaBuilder* b) {
+    xla::XlaOp accum = t;
     for (int64 dimno = xla::ShapeUtil::Rank(original_shape) - 1; dimno >= 0;
          --dimno) {
       auto t_rev = b->Rev(accum, {dimno});
@@ -76,12 +77,12 @@ class MirrorPadOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->ConstantInputReshaped(1, {fixed_dims, 2}, &pad_literal));
 
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
     auto in0 = ctx->Input(0);
-    xla::StatusOr<std::unique_ptr<xla::Shape>> in0_shape = b->GetShape(in0);
+    xla::StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
     OP_REQUIRES(ctx, in0_shape.ok(), in0_shape.status());
-    xla::StatusOr<xla::ComputationDataHandle> accum_status =
-        DoMirrorPad(in0, *in0_shape.ValueOrDie(), pad_literal, b);
+    xla::StatusOr<xla::XlaOp> accum_status =
+        DoMirrorPad(in0, in0_shape.ValueOrDie(), pad_literal, b);
 
     OP_REQUIRES_OK(ctx, accum_status.status());
 

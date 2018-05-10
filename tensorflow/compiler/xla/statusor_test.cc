@@ -75,6 +75,14 @@ TEST(StatusOr, ElementType) {
   static_assert(std::is_same<StatusOr<char>::element_type, char>(), "");
 }
 
+TEST(StatusOr, NullPointerStatusOr) {
+  // As a very special case, null-plain-pointer StatusOr used to be an
+  // error. Test that it no longer is.
+  StatusOr<int*> null_status(nullptr);
+  EXPECT_TRUE(null_status.ok());
+  EXPECT_EQ(null_status.ValueOrDie(), nullptr);
+}
+
 TEST(StatusOr, TestNoDefaultConstructorInitialization) {
   // Explicitly initialize it with an error code.
   StatusOr<NoDefaultConstructor> statusor(tensorflow::errors::Cancelled(""));

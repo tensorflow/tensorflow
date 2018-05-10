@@ -39,16 +39,15 @@ limitations under the License.
 #include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
+namespace {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 using Callback = std::function<void()>;
-
-namespace {
 
 static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                            const Tensor& box_index,
@@ -753,8 +752,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
       context->allocate_temp(DataTypeToEnum<bool>::value, TensorShape({}),
                              &isvalid_host_tensor, alloc_attr),
       done);
-  perftools::gputools::DeviceMemoryBase wrapped(isvalid_dev.data(),
-                                                sizeof(bool));
+  se::DeviceMemoryBase wrapped(isvalid_dev.data(), sizeof(bool));
   const bool status =
       stream
           ->ThenMemcpy(

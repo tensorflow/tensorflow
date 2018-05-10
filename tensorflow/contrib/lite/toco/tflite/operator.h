@@ -25,10 +25,10 @@ namespace tflite {
 
 class BaseOperator;
 
-// Return a map contained all knwo TF Lite Operators, keyed by their names.
+// Return a map contained all know TF Lite Operators, keyed by their names.
 std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap();
 
-// Return a map contained all knwo TF Lite Operators, keyed by the type of
+// Return a map contained all know TF Lite Operators, keyed by the type of
 // their tf.mini counterparts.
 std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap();
 

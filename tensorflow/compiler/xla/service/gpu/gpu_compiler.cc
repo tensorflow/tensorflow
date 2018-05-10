@@ -91,8 +91,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
@@ -102,7 +100,7 @@ namespace gpu {
 
 namespace {
 
-using tensorflow::port::Tracing;
+namespace tracing = tensorflow::tracing;
 
 // Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
 // should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
@@ -250,7 +248,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("layout_assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout());
+        hlo_module->device_entry_computation_layout());
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -412,7 +410,7 @@ void WarnIfBadDriverJITVersion() {
 // code (i.e. a cubin) as a byte array.
 StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
                                         int cc_minor) {
-  Tracing::TraceMe annotation("Compile PTX", /*is_expensive=*/true);
+  tracing::ScopedActivity activity("Compile PTX", /*is_expensive=*/true);
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
   VLOG(2) << "Using ptxas at " << ptxas_path;
@@ -483,8 +481,8 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
-  Tracing::TraceMe annotation("HLO Transforms", module->name(),
-                              /*is_expensive=*/true);
+  tracing::ScopedActivity activity("HLO Transforms", module->name(),
+                                   /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), stream_exec, device_allocator));
   return std::move(module);
@@ -694,7 +692,7 @@ std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
                                                             int cc_major,
                                                             int cc_minor) {
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::CompilePtxOrGetCachedResult");
-  Tracing::TraceMe annotation("PTX->CUBIN", /*is_expensive=*/true);
+  tracing::ScopedActivity activity("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are
@@ -779,9 +777,9 @@ se::Platform::Id GpuCompiler::PlatformId() const {
 }  // namespace xla
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(se::cuda::kCudaPlatformId, []() {
-    return xla::MakeUnique<xla::gpu::GpuCompiler>();
-  });
+  xla::Compiler::RegisterCompilerFactory(
+      stream_executor::cuda::kCudaPlatformId,
+      []() { return xla::MakeUnique<xla::gpu::GpuCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

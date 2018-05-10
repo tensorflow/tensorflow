@@ -18,10 +18,9 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/str_join.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 struct CudnnVersion {
@@ -30,8 +29,9 @@ struct CudnnVersion {
   CudnnVersion(int major, int minor, int patch)
       : major_version(major), minor_version(minor), patch_level(patch) {}
 
-  std::string ToString() const {
-    return absl::StrJoin({major_version, minor_version, patch_level}, ".");
+  tensorflow::string ToString() const {
+    return tensorflow::strings::StrCat(major_version, ".", minor_version, ".",
+                                       patch_level);
   }
 
   int major_version;
@@ -45,7 +45,6 @@ bool IsSourceCompatibleWithCudnnLibrary(CudnnVersion source_version,
                                         CudnnVersion loaded_version);
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDNN_VERSION_H_

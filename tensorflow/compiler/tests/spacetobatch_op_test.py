@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
@@ -156,14 +157,32 @@ class SpaceToBatchNDTest(XLATestCase):
     paddings = np.array(paddings).reshape((len(block_shape), 2))
     with self.test_session() as sess, self.test_scope():
       for dtype in self.float_types:
+        # TODO(b/68813416): Skip bfloat16's as the input type for direct is
+        # float32 and results in a mismatch, while making testDirect provide the
+        # correctly typed input results in 'no fill-function for data-type'
+        # error.
+        if dtype == dtypes.bfloat16.as_numpy_dtype:
+          continue
+        if dtype == np.float16:
+          actual_inputs = np.array(inputs).astype(dtype)
+          actual_paddings = np.array(paddings).astype(dtype)
+          expected_outputs = np.array(outputs).astype(dtype)
+        else:
+          actual_inputs = inputs
+          actual_paddings = paddings
+          expected_outputs = outputs
         placeholder = array_ops.placeholder(dtype)
         # outputs = space_to_batch(inputs)
-        x_tf = array_ops.space_to_batch_nd(placeholder, block_shape, paddings)
-        self.assertAllEqual(sess.run(x_tf, {placeholder: inputs}), outputs)
+        x_tf = array_ops.space_to_batch_nd(placeholder, block_shape,
+                                           actual_paddings)
+        self.assertAllEqual(
+            sess.run(x_tf, {placeholder: actual_inputs}), expected_outputs)
         # inputs = batch_to_space(outputs)
         placeholder = array_ops.placeholder(dtype)
-        x_tf = array_ops.batch_to_space_nd(placeholder, block_shape, paddings)
-        self.assertAllEqual(sess.run(x_tf, {placeholder: outputs}), inputs)
+        x_tf = array_ops.batch_to_space_nd(placeholder, block_shape,
+                                           actual_paddings)
+        self.assertAllEqual(
+            sess.run(x_tf, {placeholder: expected_outputs}), actual_inputs)
 
   def _testDirect(self, input_shape, block_shape, paddings):
     inputs = np.arange(np.prod(input_shape), dtype=np.float32)

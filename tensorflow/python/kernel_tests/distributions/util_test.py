@@ -147,6 +147,32 @@ class AssertCloseTest(test.TestCase):
           array_ops.identity(w).eval(feed_dict=feed_dict)
 
 
+class MaybeGetStaticTest(test.TestCase):
+
+  def testGetStaticInt(self):
+    x = 2
+    self.assertEqual(x, du.maybe_get_static_value(x))
+    self.assertAllClose(
+        np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
+
+  def testGetStaticNumpyArray(self):
+    x = np.array(2, dtype=np.int32)
+    self.assertEqual(x, du.maybe_get_static_value(x))
+    self.assertAllClose(
+        np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
+
+  def testGetStaticConstant(self):
+    x = constant_op.constant(2, dtype=dtypes.int32)
+    self.assertEqual(np.array(2, dtype=np.int32), du.maybe_get_static_value(x))
+    self.assertAllClose(
+        np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
+
+  def testGetStaticPlaceholder(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
+    self.assertEqual(None, du.maybe_get_static_value(x))
+    self.assertEqual(None, du.maybe_get_static_value(x, dtype=np.float64))
+
+
 @test_util.with_c_api
 class GetLogitsAndProbsTest(test.TestCase):
 
@@ -703,7 +729,7 @@ class FillTriangularTest(test.TestCase):
       raise ValueError("Invalid shape.")
     n = np.int32(n)
     # We can't do: `x[..., -(n**2-m):]` because this doesn't correctly handle
-    # `m == n == 1`. Hence, we do absoulte indexing.
+    # `m == n == 1`. Hence, we do absolute indexing.
     x_tail = x[..., (m - (n * n - m)):]
     y = np.concatenate(
         [x, x_tail[..., ::-1]] if upper else [x_tail, x[..., ::-1]],

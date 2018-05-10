@@ -9,6 +9,7 @@ exports_files(["LICENSE"])
 
 # For platform specific build config
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 tf_proto_library(
     name = "protos_all",
@@ -81,6 +82,7 @@ py_test(
     size = "small",
     srcs = ["plugins/trace/trace_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":trace",
         "//tensorflow/python:client_testlib",

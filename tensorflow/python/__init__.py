@@ -120,63 +120,26 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.all_util import make_all
 from tensorflow.python.util.tf_export import tf_export
-
-# Import modules whose docstrings contribute, for use by remove_undocumented
-# below.
-from tensorflow.python.client import client_lib
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import framework_lib
-from tensorflow.python.framework import subscribe
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import histogram_ops
-from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import script_ops
-from tensorflow.python.ops import session_ops
-from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import tensor_array_ops
 
 # Eager execution
 from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.framework.ops import enable_eager_execution
 
-# Symbols whitelisted for export without documentation.
-# TODO(cwhipkey): review these and move to contrib, expose through
-# documentation, or remove.
-_allowed_symbols = [
-    'AttrValue',
-    'ConfigProto',
-    'ClusterDef',
-    'DeviceSpec',
-    'Event',
-    'GPUOptions',
-    'GRAPH_DEF_VERSION',
-    'GRAPH_DEF_VERSION_MIN_CONSUMER',
-    'GRAPH_DEF_VERSION_MIN_PRODUCER',
-    'GraphDef',
-    'GraphOptions',
-    'HistogramProto',
-    'LogMessage',
-    'MetaGraphDef',
-    'NameAttrList',
-    'NodeDef',
-    'OptimizerOptions',
-    'RunOptions',
-    'RunMetadata',
-    'SessionLog',
-    'Summary',
-    'SummaryMetadata',
-    'TensorInfo',  # Used for tf.saved_model functionality.
-]
+# Necessary for the symbols in this module to be taken into account by
+# the namespace management system (API decorators).
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
+
+# Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
+# (due to a circular dependency issue: rnn depends on layers).
+nn.dynamic_rnn = rnn.dynamic_rnn
+nn.static_rnn = rnn.static_rnn
+nn.raw_rnn = rnn.raw_rnn
+nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
+nn.static_state_saving_rnn = rnn.static_state_saving_rnn
+nn.rnn_cell = rnn_cell
 
 # Export protos
 # pylint: disable=undefined-variable
@@ -201,121 +164,6 @@ tf_export('SummaryMetadata')(SummaryMetadata)
 tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
 tf_export('TensorInfo')(TensorInfo)
 # pylint: enable=undefined-variable
-
-
-# The following symbols are kept for compatibility. It is our plan
-# to remove them in the future.
-_allowed_symbols.extend([
-    'arg_max',
-    'arg_min',
-    'create_partitioned_variables',
-    'deserialize_many_sparse',
-    'lin_space',
-    'listdiff',  # Use tf.listdiff instead.
-    'parse_single_sequence_example',
-    'serialize_many_sparse',
-    'serialize_sparse',
-    'sparse_matmul',  ## use tf.matmul instead.
-])
-
-# This is needed temporarily because we import it explicitly.
-_allowed_symbols.extend([
-    'pywrap_tensorflow',
-])
-
-# Dtypes exported by framework/dtypes.py.
-# TODO(cwhipkey): expose these through documentation.
-_allowed_symbols.extend([
-    'QUANTIZED_DTYPES',
-    'bfloat16',
-    'bool',
-    'complex64',
-    'complex128',
-    'double',
-    'half',
-    'float16',
-    'float32',
-    'float64',
-    'int16',
-    'int32',
-    'int64',
-    'int8',
-    'qint16',
-    'qint32',
-    'qint8',
-    'quint16',
-    'quint8',
-    'string',
-    'uint64',
-    'uint32',
-    'uint16',
-    'uint8',
-    'resource',
-    'variant',
-])
-
-# Export modules and constants.
-_allowed_symbols.extend([
-    'app',
-    'bitwise',
-    'compat',
-    'data',
-    'distributions',
-    'errors',
-    'estimator',
-    'feature_column',
-    'flags',
-    'gfile',
-    'graph_util',
-    'image',
-    'initializers',
-    'keras',
-    'layers',
-    'linalg',
-    'logging',
-    'losses',
-    'manip',
-    'metrics',
-    'newaxis',
-    'nn',
-    'profiler',
-    'python_io',
-    'resource_loader',
-    'saved_model',
-    'sets',
-    'spectral',
-    'summary',
-    'sysconfig',
-    'test',
-    'train',
-    'user_ops',
-])
-
-# Variables framework.versions:
-_allowed_symbols.extend([
-    'VERSION',
-    'GIT_VERSION',
-    'COMPILER_VERSION',
-    'CXX11_ABI_FLAG',
-    'MONOLITHIC_BUILD',
-])
-
-# Eager execution
-_allowed_symbols.extend([
-    'enable_eager_execution',
-    'executing_eagerly',
-])
-
-# Remove all extra symbols that don't have a docstring or are not explicitly
-# referenced in the whitelist.
-remove_undocumented(__name__, _allowed_symbols, [
-    framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
-    control_flow_ops, confusion_matrix_m, data, distributions,
-    functional_ops, histogram_ops, io_ops, keras, layers,
-    losses, math_ops, metrics, nn, profiler, resource_loader, sets, script_ops,
-    session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
-    train
-])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

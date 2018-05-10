@@ -72,6 +72,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_INT64;
     case kTfLiteString:
       return NPY_OBJECT;
+    case kTfLiteBool:
+      return NPY_BOOL;
     case kTfLiteNoType:
       return -1;
   }
@@ -90,6 +92,8 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
       return kTfLiteUInt8;
     case NPY_INT64:
       return kTfLiteInt64;
+    case NPY_BOOL:
+      return kTfLiteBool;
     case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE:
@@ -112,7 +116,7 @@ PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
 PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
   PyObject* result = PyTuple_New(2);
   PyTuple_SET_ITEM(result, 0, PyFloat_FromDouble(param.scale));
-  PyTuple_SET_ITEM(result, 1, PyInt_FromLong(param.zero_point));
+  PyTuple_SET_ITEM(result, 1, PyLong_FromLong(param.zero_point));
   return result;
 }
 
@@ -186,7 +190,7 @@ bool InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
   std::vector<int> dims(PyArray_SHAPE(array)[0]);
   memcpy(dims.data(), PyArray_BYTES(array), dims.size() * sizeof(int));
 
-  return interpreter_->ResizeInputTensor(i, dims);
+  return (interpreter_->ResizeInputTensor(i, dims) == kTfLiteOk);
 }
 
 std::string InterpreterWrapper::TensorName(int i) const {

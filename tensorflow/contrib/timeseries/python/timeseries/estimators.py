@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.contrib.timeseries.python.timeseries import ar_model
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import head as ts_head_lib
@@ -44,7 +46,7 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
   """An Estimator to fit and evaluate a time series model."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None):
+               config=None, head_type=ts_head_lib.TimeSeriesRegressionHead):
     """Initialize the Estimator.
 
     Args:
@@ -55,16 +57,21 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
           from tf.train.Optimizer. Defaults to Adam with step size 0.02.
       model_dir: See `Estimator`.
       config: See `Estimator`.
+      head_type: The kind of head to use for the model (inheriting from
+          `TimeSeriesRegressionHead`).
     """
     input_statistics_generator = math_utils.InputStatisticsFromMiniBatch(
         dtype=model.dtype, num_features=model.num_features)
     if state_manager is None:
-      state_manager = state_management.PassthroughStateManager()
+      if isinstance(model, ar_model.ARModel):
+        state_manager = state_management.FilteringOnlyStateManager()
+      else:
+        state_manager = state_management.PassthroughStateManager()
     if optimizer is None:
       optimizer = train.AdamOptimizer(0.02)
     self._model = model
-    ts_regression_head = ts_head_lib.time_series_regression_head(
-        model, state_manager, optimizer,
+    ts_regression_head = head_type(
+        model=model, state_manager=state_manager, optimizer=optimizer,
         input_statistics_generator=input_statistics_generator)
     model_fn = ts_regression_head.create_estimator_spec
     super(TimeSeriesRegressor, self).__init__(
@@ -188,7 +195,7 @@ class ARRegressor(TimeSeriesRegressor):
 
   def __init__(
       self, periodicities, input_window_size, output_window_size,
-      num_features, num_time_buckets=10,
+      num_features, exogenous_feature_columns=None, num_time_buckets=10,
       loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS, hidden_layer_sizes=None,
       anomaly_prior_probability=None, anomaly_distribution=None,
       optimizer=None, model_dir=None, config=None):
@@ -203,7 +210,12 @@ class ARRegressor(TimeSeriesRegressor):
       output_window_size: Number of future time steps to predict. Note that
         setting it to > 1 empirically seems to give a better fit.
       num_features: The dimensionality of the time series (one for univariate,
-          more than one for multivariate).
+        more than one for multivariate).
+      exogenous_feature_columns: A list of `tf.feature_column`s (for example
+        `tf.feature_column.embedding_column`) corresponding to exogenous
+        features which provide extra information to the model but are not part
+        of the series to be predicted. Passed to
+        `tf.feature_column.input_layer`.
       num_time_buckets: Number of buckets into which to divide (time %
         periodicity) for generating time based features.
       loss: Loss function to use for training. Currently supported values are
@@ -239,10 +251,13 @@ class ARRegressor(TimeSeriesRegressor):
         anomaly_distribution = ar_model.AnomalyMixtureARModel.GAUSSIAN_ANOMALY
       model = ar_model.ARModel(
           periodicities=periodicities, num_features=num_features,
+          prediction_model_factory=functools.partial(
+              ar_model.FlatPredictionModel,
+              hidden_layer_sizes=hidden_layer_sizes),
+          exogenous_feature_columns=exogenous_feature_columns,
           num_time_buckets=num_time_buckets,
           input_window_size=input_window_size,
-          output_window_size=output_window_size, loss=loss,
-          hidden_layer_sizes=hidden_layer_sizes)
+          output_window_size=output_window_size, loss=loss)
     else:
       if loss != ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS:
         raise ValueError(
@@ -253,8 +268,11 @@ class ARRegressor(TimeSeriesRegressor):
           input_window_size=input_window_size,
           output_window_size=output_window_size,
           num_features=num_features,
+          prediction_model_factory=functools.partial(
+              ar_model.FlatPredictionModel,
+              hidden_layer_sizes=hidden_layer_sizes),
+          exogenous_feature_columns=exogenous_feature_columns,
           num_time_buckets=num_time_buckets,
-          hidden_layer_sizes=hidden_layer_sizes,
           anomaly_prior_probability=anomaly_prior_probability,
           anomaly_distribution=anomaly_distribution)
     state_manager = state_management.FilteringOnlyStateManager()

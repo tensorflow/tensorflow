@@ -4,29 +4,28 @@
 
 [TOC]
 
-TensorFlow debugger (**tfdbg**) is a specialized debugger for TensorFlow. It
-lets you view the internal structure and states of running TensorFlow graphs
-during training and inference, which is difficult to debug with general-purpose
-debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
+`tfdbg` is a specialized debugger for TensorFlow. It lets you view the internal
+structure and states of running TensorFlow graphs during training and inference,
+which is difficult to debug with general-purpose debuggers such as Python's `pdb`
+due to TensorFlow's computation-graph paradigm.
 
-> NOTE: TensorFlow debugger uses a
-> [curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based
-> text user interface. On Mac OS X, the `ncurses` library is required and can
-> be installed with `brew install homebrew/dupes/ncurses`. On Windows, curses
-> isn't as well supported, so a
-> [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based interface can
-> be used with tfdbg by installing `pyreadline` with pip.
-> If you use Anaconda3, you can install it with a command
-> such as `"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`.
-> Unofficial Windows curses packages can be downloaded
-> [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
-> installed using `pip install <your_version>.whl`, however curses on Windows
-> may not work as reliably as curses on Linux or Mac.
+This guide focuses on the command-line interface (CLI) of `tfdbg`. For guide on
+how to use the graphical user interface (GUI) of tfdbg, i.e., the
+**TensorBoard Debugger Plugin**, please visit
+[its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
 
-> NOTE: This guide focuses on the command-line interface (CLI) of tfdbg. For
-> guide on how to use the graphical user interface (GUI) of tfdbg, i.e., the
-> **TensorBoard Debugger Plugin**, please visit
-> [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
+Note: The TensorFlow debugger uses a
+[curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based text
+user interface. On Mac OS X, the `ncurses` library is required and can be
+installed with `brew install homebrew/dupes/ncurses`. On Windows, curses isn't as
+well supported, so a [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based
+interface can be used with tfdbg by installing `pyreadline` with `pip`. If you
+use Anaconda3, you can install it with a command such as
+`"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`. Unofficial
+Windows curses packages can be downloaded
+[here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses), then subsequently
+installed using `pip install <your_version>.whl`, however curses on Windows may
+not work as reliably as curses on Linux or Mac.
 
 This tutorial demonstrates how to use the **tfdbg** CLI to debug the appearance
 of [`nan`s](https://en.wikipedia.org/wiki/NaN)
@@ -35,7 +34,7 @@ type of bug in TensorFlow model development.
 The following example is for users who use the low-level
 [`Session`](https://www.tensorflow.org/api_docs/python/tf/Session) API of
 TensorFlow. A later section of this document describes how to use **tfdbg**
-with a higher-level API, namely tf-learn `Estimator`s and `Experiment`s.
+with a higher-level API, namely `Estimator`s.
 To *observe* such an issue, run the following command without the debugger (the
 source code can be found
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/debug/examples/debug_mnist.py)):
@@ -401,7 +400,7 @@ diff = -(y_ * tf.log(y))
 to the built-in, numerically-stable implementation of softmax cross-entropy:
 
 ```python
-diff = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=logits)
+diff = tf.losses.softmax_cross_entropy(labels=y_, logits=logits)
 ```
 
 Rerun with the `--debug` flag as follows:
@@ -419,21 +418,20 @@ run -f has_inf_or_nan`
 Confirm that no tensors are flagged as containing `nan` or `inf` values, and
 accuracy now continues to rise rather than getting stuck. Success!
 
-## Debugging tf-learn Estimators and Experiments
+## Debugging TensorFlow Estimators
 
 This section explains how to debug TensorFlow programs that use the `Estimator`
-and `Experiment` APIs. Part of the convenience provided by these APIs is that
+APIs. Part of the convenience provided by these APIs is that
 they manage `Session`s internally. This makes the `LocalCLIDebugWrapperSession`
 described in the preceding sections inapplicable. Fortunately, you can still
 debug them by using special `hook`s provided by `tfdbg`.
 
-### Debugging tf.contrib.learn Estimators
-
-Currently, `tfdbg` can debug the
-@{tf.contrib.learn.BaseEstimator.fit$`fit()`}
-@{tf.contrib.learn.BaseEstimator.evaluate$`evaluate()`}
-methods of tf-learn `Estimator`s. To debug `Estimator.fit()`,
-create a `LocalCLIDebugHook` and supply it in the `monitors` argument. For example:
+`tfdbg` can debug the
+@{tf.estimator.Estimator.train$`train()`},
+@{tf.estimator.Estimator.evaluate$`evaluate()`} and
+@{tf.estimator.Estimator.predict$`predict()`}
+methods of tf-learn `Estimator`s. To debug `Estimator.train()`,
+create a `LocalCLIDebugHook` and supply it in the `hooks` argument. For example:
 
 ```python
 # First, let your BUILD target depend on "//tensorflow/python/debug:debug_py"
@@ -444,65 +442,31 @@ from tensorflow.python import debug as tf_debug
 # Create a LocalCLIDebugHook and use it as a monitor when calling fit().
 hooks = [tf_debug.LocalCLIDebugHook()]
 
-classifier.fit(x=training_set.data,
-               y=training_set.target,
-               steps=1000,
-               monitors=hooks)
+# To debug `train`:
+classifier.train(input_fn,
+                 steps=1000,
+                 hooks=hooks)
 ```
 
-To debug `Estimator.evaluate()`, assign hooks to the `hooks` parameter, as in
-the following example:
+Similarly, to debug `Estimator.evaluate()` and `Estimator.predict()`, assign
+hooks to the `hooks` parameter, as in the following example:
 
 ```python
-accuracy_score = classifier.evaluate(x=test_set.data,
-                                     y=test_set.target,
+# To debug `evaluate`:
+accuracy_score = classifier.evaluate(eval_input_fn,
                                      hooks=hooks)["accuracy"]
+
+# To debug `predict`:
+predict_results = classifier.predict(predict_input_fn, hooks=hooks)
 ```
 
-
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.2/get_started/tflearn), contains a full example of how to
-use the tfdbg with `Estimator`s. To run this example, do:
+based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.8/get_started/tflearn),
+contains a full example of how to use the tfdbg with `Estimator`s.
+To run this example, do:
 
 ```none
 python -m tensorflow.python.debug.examples.debug_tflearn_iris --debug
-```
-
-### Debugging tf.contrib.learn Experiments
-
-`Experiment` is a construct in `tf.contrib.learn` at a higher level than
-`Estimator`.
-It provides a single interface for training and evaluating a model. To debug
-the `train()` and `evaluate()` calls to an `Experiment` object, you can
-use the keyword arguments `train_monitors` and `eval_hooks`, respectively, when
-calling its constructor. For example:
-
-```python
-# First, let your BUILD target depend on "//tensorflow/python/debug:debug_py"
-# (You don't need to worry about the BUILD dependency if you are using a pip
-#  install of open-source TensorFlow.)
-from tensorflow.python import debug as tf_debug
-
-hooks = [tf_debug.LocalCLIDebugHook()]
-
-ex = experiment.Experiment(classifier,
-                           train_input_fn=iris_input_fn,
-                           eval_input_fn=iris_input_fn,
-                           train_steps=FLAGS.train_steps,
-                           eval_delay_secs=0,
-                           eval_steps=1,
-                           train_monitors=hooks,
-                           eval_hooks=hooks)
-
-ex.train()
-accuracy_score = ex.evaluate()["accuracy"]
-```
-
-To build and run the `debug_tflearn_iris` example in the `Experiment` mode, do:
-
-```none
-python -m tensorflow.python.debug.examples.debug_tflearn_iris \
-    --use_experiment --debug
 ```
 
 The `LocalCLIDebugHook` also allows you to configure a `watch_fn` that can be
@@ -574,7 +538,7 @@ Often, your model is running on a remote machine or a process that you don't
 have terminal access to. To perform model debugging in such cases, you can use
 the `offline_analyzer` binary of `tfdbg` (described below). It operates on
 dumped data directories. This can be done to both the lower-level `Session` API
-and the higher-level `Estimator` and `Experiment` APIs.
+and the higher-level `Estimator` API.
 
 ### Debugging Remote tf.Sessions
 
@@ -637,7 +601,7 @@ can be inspected offline. See
 [the proto definition](https://www.tensorflow.org/code/tensorflow/core/protobuf/debug.proto)
 for more details.
 
-### Debugging Remotely-Running tf-learn Estimators and Experiments
+### Debugging Remotely-Running Estimators
 
 If your remote TensorFlow server runs `Estimator`s,
 you can use the non-interactive `DumpingDebugHook`. For example:
@@ -653,8 +617,8 @@ hooks = [tf_debug.DumpingDebugHook("/shared/storage/location/tfdbg_dumps_1")]
 
 Then this `hook` can be used in the same way as the `LocalCLIDebugHook` examples
 described earlier in this document.
-As the training and/or evalution of `Estimator` or `Experiment`
-happens, tfdbg creates directories having the following name pattern:
+As the training, evalution or prediction happens with `Estimator`,
+tfdbg creates directories having the following name pattern:
 `/shared/storage/location/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>`.
 Each directory corresponds to a `Session.run()` call that underlies
 the `fit()` or `evaluate()` call. You can load these directories and inspect
@@ -748,16 +712,16 @@ There are three possible workarounds or solutions:
    to which tfdbg dumps the debug data. You can use it to let tfdbg dump the
    debug data on a disk with larger free space. For example:
 
-   ``` python
-   # For LocalCLIDebugWrapperSession
-   sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
+```python
+# For LocalCLIDebugWrapperSession
+sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
 
-   # For LocalCLIDebugHook
-   hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
-   ```
-
+# For LocalCLIDebugHook
+hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
+```
    Make sure that the directory pointed to by dump_root is empty or nonexistent.
-   tfdbg cleans up the dump directories before exiting.
+   `tfdbg` cleans up the dump directories before exiting.
+
 *  Reduce the batch size used during the runs.
 *  Use the filtering options of tfdbg's `run` command to watch only specific
    nodes in the graph. For example:

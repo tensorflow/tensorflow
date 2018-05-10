@@ -35,8 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 namespace {
@@ -91,15 +89,17 @@ HloTestBase::HloTestBase()
 HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform)
     : test_runner_(test_platform), reference_runner_(reference_platform) {
-  hlo_verifier_ = MakeUnique<HloVerifier>();
+  hlo_verifier_ = MakeUnique<HloVerifier>(/*allow_mixed_precision=*/true);
 }
 
 /* static */
-std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
+std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
   HloModuleConfig config;
-  config.set_debug_options(GetDebugOptionsForTest());
-  return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
-                               config);
+  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  config.set_debug_options(debug_options);
+
+  return MakeUnique<HloModule>(name, VersionedComputationHandle(), config);
 }
 
 /*static*/ DebugOptions HloTestBase::GetDebugOptionsForTest() {
@@ -115,11 +115,13 @@ StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
   return test_runner_.Execute(std::move(module), arguments);
 }
 
-StatusOr<std::unique_ptr<Literal>> HloTestBase::ExecuteNoHloPasses(
+std::unique_ptr<Literal> HloTestBase::ExecuteNoHloPasses(
     std::unique_ptr<HloModule> module,
     tensorflow::gtl::ArraySlice<Literal*> arguments) {
-  return test_runner_.Execute(std::move(module), arguments,
-                              /*run_hlo_passes=*/false);
+  return test_runner_
+      .Execute(std::move(module), arguments,
+               /*run_hlo_passes=*/false)
+      .ValueOrDie();
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
@@ -142,8 +144,7 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
           "reference preprocessor must not modify the program shape");
     }
   }
-  TF_RETURN_IF_ERROR(VerifyHloModule(*reference_runner_.backend().platform(),
-                                     reference_module.get()));
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(reference_module.get()).status());
   return std::move(reference_module);
 }
 
@@ -151,8 +152,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
     const optional<ErrorSpec>& error, bool run_hlo_passes,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  TF_RETURN_IF_ERROR(
-      VerifyHloModule(*test_runner_.backend().platform(), module.get()));
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module.get()).status());
   TF_ASSIGN_OR_RETURN(auto reference_module,
                       MakeReferenceModule(*module, reference_preprocessor));
 

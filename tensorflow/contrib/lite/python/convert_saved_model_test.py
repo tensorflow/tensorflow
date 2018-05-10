@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TF Lite SavedModel Conversion test cases.
+"""TFLite SavedModel conversion test cases.
 
- - test on generated saved_models from simple graphs (sanity check)
- - test mnist savedmodel generated on-the-fly
-
+  - Tests converting simple SavedModel graph to TFLite FlatBuffer.
+  - Tests converting simple SavedModel graph to frozen graph.
+  - Tests converting MNIST SavedModel to TFLite FlatBuffer.
 """
 
 from __future__ import absolute_import
@@ -25,27 +25,29 @@ from __future__ import print_function
 
 import os
 from tensorflow.contrib.lite.python import convert_saved_model
-from tensorflow.python import estimator
+from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.python import keras
-from tensorflow.python import layers
-from tensorflow.python import losses
-from tensorflow.python import nn
-from tensorflow.python import saved_model
-from tensorflow.python import train
 from tensorflow.python.client import session
+from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.losses import losses
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import saved_model
+from tensorflow.python.training import training as train
 
 
 class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
 
   def _createSimpleSavedModel(self, shape):
-    """Create a simple savedmodel on the fly."""
+    """Create a simple SavedModel on the fly."""
     saved_model_dir = os.path.join(self.get_temp_dir(), "simple_savedmodel")
     with session.Session() as sess:
       in_tensor = array_ops.placeholder(shape=shape, dtype=dtypes.float32)
@@ -56,44 +58,78 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
     return saved_model_dir
 
   def testSimpleSavedModel(self):
-    """Test a simple savedmodel created on the fly."""
-    # Create a simple savedmodel
+    """Test a simple SavedModel created on the fly."""
+    # Create a simple SavedModel
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
     # Convert to tflite
-    result = convert_saved_model.convert(saved_model_dir=saved_model_dir)
+    result = convert_saved_model.tflite_from_saved_model(
+        saved_model_dir=saved_model_dir)
     self.assertTrue(result)
 
   def testSimpleSavedModelWithNoneBatchSizeInShape(self):
-    """Test a simple savedmodel, with None in input tensor's shape."""
+    """Test a simple SavedModel, with None in input tensor's shape."""
     saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, 16, 3])
-    result = convert_saved_model.convert(saved_model_dir=saved_model_dir)
+    result = convert_saved_model.tflite_from_saved_model(
+        saved_model_dir=saved_model_dir)
     self.assertTrue(result)
 
   def testSimpleSavedModelWithMoreNoneInShape(self):
-    """Test a simple savedmodel, fail as more None in input shape."""
+    """Test a simple SavedModel, fail as more None in input shape."""
     saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, None, 3])
     # Convert to tflite: this should raise ValueError, as 3rd dim is None.
     with self.assertRaises(ValueError):
-      convert_saved_model.convert(saved_model_dir=saved_model_dir)
+      convert_saved_model.tflite_from_saved_model(
+          saved_model_dir=saved_model_dir)
 
   def testSimpleSavedModelWithWrongSignatureKey(self):
-    """Test a simple savedmodel, fail as given signature is invalid."""
+    """Test a simple SavedModel, fail as given signature is invalid."""
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
     # Convert to tflite: this should raise ValueError, as
     # signature_key does not exit in the saved_model.
     with self.assertRaises(ValueError):
-      convert_saved_model.convert(
+      convert_saved_model.tflite_from_saved_model(
           saved_model_dir=saved_model_dir, signature_key="wrong-key")
 
   def testSimpleSavedModelWithWrongOutputArray(self):
-    """Test a simple savedmodel, fail as given output_arrays is invalid."""
-    # Create a simple savedmodel
+    """Test a simple SavedModel, fail as given output_arrays is invalid."""
+    # Create a simple SavedModel
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
     # Convert to tflite: this should raise ValueError, as
     # output_arrays is not valid for the saved_model.
     with self.assertRaises(ValueError):
-      convert_saved_model.convert(
-          saved_model_dir=saved_model_dir, output_arrays="wrong-output")
+      convert_saved_model.tflite_from_saved_model(
+          saved_model_dir=saved_model_dir, output_arrays=["wrong-output"])
+
+  def testSimpleSavedModelWithWrongInputArrays(self):
+    """Test a simple SavedModel, fail as given input_arrays is invalid."""
+    saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
+    # Checks invalid input_arrays.
+    with self.assertRaises(ValueError):
+      convert_saved_model.tflite_from_saved_model(
+          saved_model_dir=saved_model_dir, input_arrays=["wrong-input"])
+    # Checks valid and invalid input_arrays.
+    with self.assertRaises(ValueError):
+      convert_saved_model.tflite_from_saved_model(
+          saved_model_dir=saved_model_dir,
+          input_arrays=["Placeholder", "wrong-input"])
+
+  def testSimpleSavedModelWithCorrectArrays(self):
+    """Test a simple SavedModel, with correct input_arrays and output_arrays."""
+    saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, 16, 3])
+    result = convert_saved_model.tflite_from_saved_model(
+        saved_model_dir=saved_model_dir,
+        input_arrays=["Placeholder"],
+        output_arrays=["add"])
+    self.assertTrue(result)
+
+  def testSimpleSavedModelWithCorrectInputArrays(self):
+    """Test a simple SavedModel, with correct input_arrays and input_shapes."""
+    saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
+    result = convert_saved_model.tflite_from_saved_model(
+        saved_model_dir=saved_model_dir,
+        input_arrays=["Placeholder"],
+        input_shapes={"Placeholder": [1, 16, 16, 3]})
+    self.assertTrue(result)
 
   def testMultipleMetaGraphDef(self):
     """Test saved model with multiple MetaGraphDef."""
@@ -119,20 +155,103 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
           sess,
           tags=[saved_model.tag_constants.SERVING, "additional_test_tag"],
           signature_def_map=signature_def_map)
+
       # MetaGraphDef 2
       builder.add_meta_graph(tags=["tflite"])
       builder.save(True)
 
     # Convert to tflite
-    convert_saved_model.convert(
+    convert_saved_model.tflite_from_saved_model(
         saved_model_dir=saved_model_dir,
         tag_set=set([saved_model.tag_constants.SERVING, "additional_test_tag"]))
+
+
+class ConvertSavedModelTestBasicGraphToText(test_util.TensorFlowTestCase):
+
+  def _createSimpleSavedModel(self, shape):
+    """Create a simple SavedModel."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), "simple_savedmodel")
+    with session.Session() as sess:
+      in_tensor_1 = array_ops.placeholder(
+          shape=shape, dtype=dtypes.float32, name="inputB")
+      in_tensor_2 = array_ops.placeholder(
+          shape=shape, dtype=dtypes.float32, name="inputA")
+      out_tensor = in_tensor_1 + in_tensor_2
+      inputs = {"x": in_tensor_1, "y": in_tensor_2}
+      outputs = {"z": out_tensor}
+      saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return saved_model_dir
+
+  def _getInputArrayNames(self, model_proto):
+    return [data.name for data in model_proto.input_arrays]
+
+  def _getInputArrayShapes(self, model_proto):
+    return [
+        [dim for dim in data.shape.dims] for data in model_proto.input_arrays
+    ]
+
+  def _get_model_flags_proto_from_file(self, filename):
+    proto = _model_flags_pb2.ModelFlags()
+    with gfile.Open(filename, "rb") as output_file:
+      proto.ParseFromString(output_file.read())
+      output_file.close()
+    return proto
+
+  def testSimpleSavedModel(self):
+    """Test a simple SavedModel."""
+    saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
+    output_file_model = os.path.join(self.get_temp_dir(), "model.pb")
+    output_file_flags = os.path.join(self.get_temp_dir(), "model.pbtxt")
+
+    convert_saved_model.saved_model_to_frozen_graphdef(
+        saved_model_dir=saved_model_dir,
+        output_file_model=output_file_model,
+        output_file_flags=output_file_flags,
+        input_arrays=["inputB", "inputA"])
+
+    proto = self._get_model_flags_proto_from_file(output_file_flags)
+    self.assertEqual(proto.output_arrays, ["add"])
+    self.assertEqual(self._getInputArrayNames(proto), ["inputA", "inputB"])
+    self.assertEqual(
+        self._getInputArrayShapes(proto), [[1, 16, 16, 3], [1, 16, 16, 3]])
+
+  def testSimpleSavedModelWithDifferentInputNames(self):
+    """Test a simple SavedModel."""
+    saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
+    output_file_model = os.path.join(self.get_temp_dir(), "model.pb")
+    output_file_flags = os.path.join(self.get_temp_dir(), "model.pbtxt")
+
+    # Check case where input shape is given.
+    convert_saved_model.saved_model_to_frozen_graphdef(
+        saved_model_dir=saved_model_dir,
+        output_file_model=output_file_model,
+        output_file_flags=output_file_flags,
+        input_arrays=["inputA"],
+        input_shapes={"inputA": [1, 16, 16, 3]})
+
+    proto = self._get_model_flags_proto_from_file(output_file_flags)
+    self.assertEqual(proto.output_arrays, ["add"])
+    self.assertEqual(self._getInputArrayNames(proto), ["inputA"])
+    self.assertEqual(self._getInputArrayShapes(proto), [[1, 16, 16, 3]])
+
+    # Check case where input shape is None.
+    convert_saved_model.saved_model_to_frozen_graphdef(
+        saved_model_dir=saved_model_dir,
+        output_file_model=output_file_model,
+        output_file_flags=output_file_flags,
+        input_arrays=["inputA"],
+        input_shapes={"inputA": None})
+
+    proto = self._get_model_flags_proto_from_file(output_file_flags)
+    self.assertEqual(proto.output_arrays, ["add"])
+    self.assertEqual(self._getInputArrayNames(proto), ["inputA"])
+    self.assertEqual(self._getInputArrayShapes(proto), [[1, 16, 16, 3]])
 
 
 class Model(keras.Model):
   """Model to recognize digits in the MNIST dataset.
 
-  Train and export savedmodel, used for testOnflyTrainMnistSavedModel
+  Train and export SavedModel, used for testOnflyTrainMnistSavedModel
 
   Network structure is equivalent to:
   https://github.com/tensorflow/tensorflow/blob/r1.5/tensorflow/examples/tutorials/mnist/mnist_deep.py
@@ -238,7 +357,7 @@ def dummy_input_fn():
 class ConvertSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
 
   def testTrainedMnistSavedModel(self):
-    """Test mnist savedmodel, trained with dummy data and small steps."""
+    """Test mnist SavedModel, trained with dummy data and small steps."""
     # Build classifier
     classifier = estimator.Estimator(
         model_fn=model_fn,
@@ -253,21 +372,20 @@ class ConvertSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
         "image": image,
     })
 
-    # Export savedmodel
+    # Export SavedModel
     saved_model_dir = os.path.join(self.get_temp_dir(), "mnist_savedmodel")
     classifier.export_savedmodel(saved_model_dir, pred_input_fn)
 
     # Convert to tflite and test output
     saved_model_name = os.listdir(saved_model_dir)[0]
     saved_model_final_dir = os.path.join(saved_model_dir, saved_model_name)
-    output_tflite = os.path.join(saved_model_dir,
-                                 saved_model_final_dir + ".lite")
+    output_file = os.path.join(saved_model_dir, saved_model_final_dir + ".lite")
     # TODO(zhixianyan): no need to limit output_arrays to `Softmax'
     # once b/74205001 fixed and argmax implemented in tflite.
-    result = convert_saved_model.convert(
+    result = convert_saved_model.tflite_from_saved_model(
         saved_model_dir=saved_model_final_dir,
-        output_arrays="Softmax",
-        output_tflite=output_tflite)
+        output_arrays=["Softmax"],
+        output_file=output_file)
 
     self.assertTrue(result)
 

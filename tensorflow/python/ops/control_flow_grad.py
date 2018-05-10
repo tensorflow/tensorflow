@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
@@ -74,6 +75,11 @@ def _SwitchGrad(op, *grad):
     # At this point, we have created zero_grad guarded by the right switch.
     # Unfortunately, we may still get None here for not trainable data types.
     if zero_grad is None:
+      # For resource variables we get None always on the other branch, so bypass
+      # this.
+      if op.inputs[0].dtype == dtypes.resource:
+        return merge(
+            [grad[op_ctxt.branch]] * 2, name="cond_resource_grad")[0], None
       return None, None
     return merge(grad, name="cond_grad")[0], None
   else:

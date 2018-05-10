@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.kernels.boosted_trees import boosted_trees_pb2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator.canned import boosted_trees
@@ -45,6 +46,7 @@ INPUT_FEATURES = np.array(
         [3.0, 20.0, 50.0, -100.0, 102.75],     # feature_2 quantized:[2,3,3,0,3]
     ],
     dtype=np.float32)
+
 CLASSIFICATION_LABELS = [[0.], [1.], [1.], [0.], [0.]]
 REGRESSION_LABELS = [[1.5], [0.3], [0.2], [2.], [5.]]
 FEATURES_DICT = {'f_%d' % i: INPUT_FEATURES[i] for i in range(NUM_FEATURES)}
@@ -58,18 +60,37 @@ def _make_train_input_fn(is_classification):
   """Makes train input_fn for classification/regression."""
 
   def _input_fn():
-    features = dict(FEATURES_DICT)
-    features[EXAMPLE_ID_COLUMN] = constant_op.constant(EXAMPLE_IDS)
-    if is_classification:
-      labels = CLASSIFICATION_LABELS
-    else:
-      labels = REGRESSION_LABELS
-    return features, labels
+    features_dict = dict(FEATURES_DICT)
+    features_dict[EXAMPLE_ID_COLUMN] = constant_op.constant(EXAMPLE_IDS)
+    labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
+    return features_dict, labels
 
   return _input_fn
 
 
-class BoostedTreesClassifierTest(test_util.TensorFlowTestCase):
+def _make_train_input_fn_dataset(is_classification, batch=None, repeat=None):
+  """Makes input_fn using Dataset."""
+
+  def _input_fn():
+    features_dict = dict(FEATURES_DICT)
+    features_dict[EXAMPLE_ID_COLUMN] = constant_op.constant(EXAMPLE_IDS)
+    labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
+    if batch:
+      ds = dataset_ops.Dataset.zip(
+          (dataset_ops.Dataset.from_tensor_slices(features_dict),
+           dataset_ops.Dataset.from_tensor_slices(labels))).batch(batch)
+    else:
+      ds = dataset_ops.Dataset.zip(
+          (dataset_ops.Dataset.from_tensors(features_dict),
+           dataset_ops.Dataset.from_tensors(labels)))
+    # repeat indefinitely by default, or stop at the given step.
+    ds = ds.repeat(repeat)
+    return ds
+
+  return _input_fn
+
+
+class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._feature_columns = {
@@ -79,10 +100,26 @@ class BoostedTreesClassifierTest(test_util.TensorFlowTestCase):
         for i in range(NUM_FEATURES)
     }
 
-  def _assert_checkpoint(self, model_dir, expected_global_step):
-    self.assertEqual(expected_global_step,
-                     checkpoint_utils.load_variable(model_dir,
-                                                    ops.GraphKeys.GLOBAL_STEP))
+  def _assert_checkpoint(self, model_dir, global_step, finalized_trees,
+                         attempted_layers):
+    self._assert_checkpoint_and_return_model(model_dir, global_step,
+                                             finalized_trees, attempted_layers)
+
+  def _assert_checkpoint_and_return_model(self, model_dir, global_step,
+                                          finalized_trees, attempted_layers):
+    reader = checkpoint_utils.load_checkpoint(model_dir)
+    self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
+    serialized = reader.get_tensor('boosted_trees:0_serialized')
+    ensemble_proto = boosted_trees_pb2.TreeEnsemble()
+    ensemble_proto.ParseFromString(serialized)
+
+    self.assertEqual(
+        finalized_trees,
+        sum([1 for t in ensemble_proto.tree_metadata if t.is_finalized]))
+    self.assertEqual(attempted_layers,
+                     ensemble_proto.growing_metadata.num_layers_attempted)
+
+    return ensemble_proto
 
   def testTrainAndEvaluateBinaryClassifier(self):
     input_fn = _make_train_input_fn(is_classification=True)
@@ -97,7 +134,8 @@ class BoostedTreesClassifierTest(test_util.TensorFlowTestCase):
     num_steps = 100
     # Train for a few steps, and validate final checkpoint.
     est.train(input_fn, steps=num_steps)
-    self._assert_checkpoint(est.model_dir, 6)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
     eval_res = est.evaluate(input_fn=input_fn, steps=1)
     self.assertAllClose(eval_res['accuracy'], 1.0)
 
@@ -116,31 +154,30 @@ class BoostedTreesClassifierTest(test_util.TensorFlowTestCase):
     num_steps = 100
     # Train for a few steps, and validate final checkpoint.
     est.train(train_input_fn, steps=num_steps)
-
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
     predictions = list(est.predict(input_fn=predict_input_fn))
-    self.assertEquals(5, len(predictions))
-    # All labels are correct.
-    self.assertAllClose([0], predictions[0]['class_ids'])
-    self.assertAllClose([1], predictions[1]['class_ids'])
-    self.assertAllClose([1], predictions[2]['class_ids'])
-    self.assertAllClose([0], predictions[3]['class_ids'])
-    self.assertAllClose([0], predictions[4]['class_ids'])
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
 
+  def testTrainClassifierWithDataset(self):
+    train_input_fn = _make_train_input_fn_dataset(is_classification=True)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
 
-class BoostedTreesRegressionTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    self._feature_columns = {
-        feature_column.bucketized_column(
-            feature_column.numeric_column('f_%d' % i, dtype=dtypes.float32),
-            BUCKET_BOUNDARIES)
-        for i in range(NUM_FEATURES)
-    }
-
-  def _assert_checkpoint(self, model_dir, expected_global_step):
-    self.assertEqual(expected_global_step,
-                     checkpoint_utils.load_variable(model_dir,
-                                                    ops.GraphKeys.GLOBAL_STEP))
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+    est.train(train_input_fn, steps=100)  # will stop after 5 steps anyway.
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
 
   def testTrainAndEvaluateRegressor(self):
     input_fn = _make_train_input_fn(is_classification=False)
@@ -155,9 +192,10 @@ class BoostedTreesRegressionTest(test_util.TensorFlowTestCase):
     num_steps = 100
     # Train for a few steps, and validate final checkpoint.
     est.train(input_fn, steps=num_steps)
-    self._assert_checkpoint(est.model_dir, 11)
+    self._assert_checkpoint(
+        est.model_dir, global_step=10, finalized_trees=2, attempted_layers=10)
     eval_res = est.evaluate(input_fn=input_fn, steps=1)
-    self.assertAllClose(eval_res['average_loss'], 0.913176)
+    self.assertAllClose(eval_res['average_loss'], 1.008551)
 
   def testInferRegressor(self):
     train_input_fn = _make_train_input_fn(is_classification=False)
@@ -174,16 +212,176 @@ class BoostedTreesRegressionTest(test_util.TensorFlowTestCase):
     num_steps = 100
     # Train for a few steps, and validate final checkpoint.
     est.train(train_input_fn, steps=num_steps)
-    self._assert_checkpoint(est.model_dir, 6)
-
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
     predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
 
-    self.assertEquals(5, len(predictions))
-    self.assertAllClose([0.703549], predictions[0]['predictions'])
-    self.assertAllClose([0.266539], predictions[1]['predictions'])
-    self.assertAllClose([0.256479], predictions[2]['predictions'])
-    self.assertAllClose([1.088732], predictions[3]['predictions'])
-    self.assertAllClose([1.901732], predictions[4]['predictions'])
+  def testTrainRegressorWithDataset(self):
+    train_input_fn = _make_train_input_fn_dataset(is_classification=False)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+    est.train(train_input_fn, steps=100)  # will stop after 5 steps anyway.
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['average_loss'], 2.478283)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
+
+  def testTrainRegressorWithDatasetBatch(self):
+    # The batch_size as the entire data size should yield the same result as
+    # dataset without batching.
+    train_input_fn = _make_train_input_fn_dataset(
+        is_classification=False, batch=5)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+    est.train(train_input_fn, steps=100)  # will stop after 5 steps anyway.
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['average_loss'], 2.478283)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
+
+  def testTrainRegressorWithDatasetLargerBatch(self):
+    # The batch_size as the multiple of the entire data size should still yield
+    # the same result.
+    train_input_fn = _make_train_input_fn_dataset(
+        is_classification=False, batch=15)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+    est.train(train_input_fn, steps=100)  # will stop after 5 steps anyway.
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['average_loss'], 2.478283)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
+
+  def testTrainRegressorWithDatasetSmallerBatch(self):
+    # Even when using small batches, if (n_batches_per_layer * batch_size) makes
+    # the same entire data size, the result should be the same.
+    train_input_fn = _make_train_input_fn_dataset(
+        is_classification=False, batch=1)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=5,
+        n_trees=1,
+        max_depth=5)
+    # Train stops after (n_batches_per_layer * n_trees * max_depth) steps.
+    est.train(train_input_fn, steps=100)
+    self._assert_checkpoint(
+        est.model_dir, global_step=25, finalized_trees=1, attempted_layers=5)
+    # 5 batches = one epoch.
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=5)
+    self.assertAllClose(eval_res['average_loss'], 2.478283)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose(
+        [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
+        [pred['predictions'] for pred in predictions])
+
+  def testTrainRegressorWithDatasetWhenInputIsOverEarlier(self):
+    train_input_fn = _make_train_input_fn_dataset(
+        is_classification=False, repeat=3)  # to stop input after 3 steps.
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+    # Note that training will stop when input exhausts.
+    # This might not be a typical pattern, but dataset.repeat(3) causes
+    # the input stream to cease after 3 steps.
+    est.train(train_input_fn, steps=100)
+    self._assert_checkpoint(
+        est.model_dir, global_step=3, finalized_trees=0, attempted_layers=3)
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['average_loss'], 3.777295)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose(
+        [[0.353850], [0.254100], [0.106850], [0.712100], [1.012100]],
+        [pred['predictions'] for pred in predictions])
+
+  def testTrainEvaluateAndPredictWithIndicatorColumn(self):
+    categorical = feature_column.categorical_column_with_vocabulary_list(
+        key='categorical', vocabulary_list=('bad', 'good', 'ok'))
+    feature_indicator = feature_column.indicator_column(categorical)
+    bucketized_col = feature_column.bucketized_column(
+        feature_column.numeric_column(
+            'an_uninformative_feature', dtype=dtypes.float32),
+        BUCKET_BOUNDARIES)
+
+    labels = np.array([[0.], [5.7], [5.7], [0.], [0.]], dtype=np.float32)
+    # Our categorical feature defines the labels perfectly
+    input_fn = numpy_io.numpy_input_fn(
+        x={
+            'an_uninformative_feature': np.array([1, 1, 1, 1, 1]),
+            'categorical': np.array(['bad', 'good', 'good', 'ok', 'bad']),
+        },
+        y=labels,
+        batch_size=5,
+        shuffle=False)
+
+    # Train depth 1 tree.
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=[bucketized_col, feature_indicator],
+        n_batches_per_layer=1,
+        n_trees=1,
+        learning_rate=1.0,
+        max_depth=1)
+
+    num_steps = 1
+    est.train(input_fn, steps=num_steps)
+    ensemble = self._assert_checkpoint_and_return_model(
+        est.model_dir, global_step=1, finalized_trees=1, attempted_layers=1)
+
+    # We learnt perfectly.
+    eval_res = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertAllClose(eval_res['loss'], 0)
+
+    predictions = list(est.predict(input_fn))
+    self.assertAllClose(
+        labels,
+        [pred['predictions'] for pred in predictions])
+
+    self.assertEqual(3, len(ensemble.trees[0].nodes))
+
+    # Check that the split happened on 'good' value, which will be encoded as
+    # feature with index 2 (0-numeric, 1 - 'bad')
+    self.assertEqual(2, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
+    self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
 
 
 class ModelFnTests(test_util.TensorFlowTestCase):
@@ -201,7 +399,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         learning_rate=0.1,
         l1=0.,
         l2=0.01,
-        tree_complexity=0.)
+        tree_complexity=0.,
+        min_node_weight=0.)
 
   def _get_expected_ensembles_for_classification(self):
     first_round = """
@@ -236,6 +435,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 1
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     second_round = """
@@ -320,6 +521,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 2
+          last_layer_node_start: 0
+          last_layer_node_end: 1
         }
         """
     third_round = """
@@ -420,6 +623,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 2
           num_layers_attempted: 3
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     return (first_round, second_round, third_round)
@@ -457,6 +662,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 1
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     second_round = """
@@ -541,6 +748,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 1
           num_layers_attempted: 2
+          last_layer_node_start: 0
+          last_layer_node_end: 1
         }
         """
     third_round = """
@@ -641,6 +850,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         growing_metadata {
           num_trees_attempted: 2
           num_layers_attempted: 3
+          last_layer_node_start: 1
+          last_layer_node_end: 3
         }
         """
     return (first_round, second_round, third_round)

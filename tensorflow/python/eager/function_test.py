@@ -29,9 +29,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
+from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -39,6 +42,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
 
 
+@test_util.with_c_shapes
 class FunctionTest(test.TestCase):
 
   def testBasic(self):
@@ -104,6 +108,7 @@ class FunctionTest(test.TestCase):
     matmul = function.defun(math_ops.matmul)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
+
     def a_times_b(inputs):
       return matmul(inputs.a['a'], inputs.b['b'])
 
@@ -304,7 +309,7 @@ class FunctionTest(test.TestCase):
     def g(x):
       return backprop.gradients_function(f, [0])(x)[0]
 
-    self.assertAllEqual(2, g(constant_op.constant(2)))
+    self.assertAllEqual(2, g(constant_op.constant(2.)))
 
   def testGraphModeEagerGradError(self):
     with context.graph_mode():
@@ -312,6 +317,7 @@ class FunctionTest(test.TestCase):
         x = variable_scope.get_variable(
             'v', initializer=constant_op.constant(1.0))
         return x * constant_op.constant(2.0)
+
       with self.assertRaisesRegexp(ValueError,
                                    'No trainable variables were accessed'):
         backprop.implicit_val_and_grad(f)()
@@ -581,6 +587,7 @@ class FunctionTest(test.TestCase):
       with ops.name_scope('foo'):
         v = resource_variable_ops.ResourceVariable(0.0, name='bar')
       self.assertEqual(v.name, 'foo/bar:0')
+
     create_variable()
 
   def testVariableNamesRespectNameScopesWithDefunInGraph(self):
@@ -590,10 +597,27 @@ class FunctionTest(test.TestCase):
         with ops.name_scope('foo'):
           v = resource_variable_ops.ResourceVariable([1.0, 2.0], name='bar')
         self.assertEqual(v.name, 'foo/bar:0')
+
       with ops.get_default_graph().as_default():
         create_variable()
 
+  def testLayerInDefun(self):
+    conv = convolutional.Conv2D(
+        filters=1,
+        kernel_size=2,
+        kernel_initializer=init_ops.ones_initializer(),
+        bias_initializer=init_ops.zeros_initializer())
 
+    @function.defun
+    def model(x):
+      return conv(x)
+
+    x = array_ops.ones([1, 2, 2, 1])
+    y = model(x)
+    self.assertAllEqual([[[[4.0]]]], y.numpy())
+
+
+@test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
 
   def testBasic(self):
@@ -746,6 +770,21 @@ class AutomaticControlDependenciesTest(test.TestCase):
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
+
+  def testDefunWhileLoopWithCapturedLoopVars(self):
+    n = 3
+    x = constant_op.constant(list(range(n)))
+
+    @function.defun
+    def loop():
+      c = lambda i, x: i < n
+      b = lambda i, x: (i + 1, x + 1)
+      i, out = control_flow_ops.while_loop(c, b, (0, x))
+      return i, out
+
+    i, out = loop()
+    self.assertEqual(int(i), 3)
+    self.assertAllEqual(out, [3, 4, 5])
 
   def testDecorator(self):
     with context.graph_mode(), self.test_session():

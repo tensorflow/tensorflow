@@ -177,7 +177,7 @@ int64 AvailableRam() {
   struct sysinfo info;
   int err = sysinfo(&info);
   if (err == 0) {
-    return info.freeram / 1024;
+    return info.freeram;
   }
 #endif
   return INT64_MAX;

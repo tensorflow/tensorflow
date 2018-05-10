@@ -457,7 +457,7 @@ class AudioProcessor(object):
           self.time_shift_offset_placeholder_: time_shift_offset,
       }
       # Choose a section of background noise to mix in.
-      if use_background:
+      if use_background or sample['label'] == SILENCE_LABEL:
         background_index = np.random.randint(len(self.background_data))
         background_samples = self.background_data[background_index]
         background_offset = np.random.randint(
@@ -465,7 +465,9 @@ class AudioProcessor(object):
         background_clipped = background_samples[background_offset:(
             background_offset + desired_samples)]
         background_reshaped = background_clipped.reshape([desired_samples, 1])
-        if np.random.uniform(0, 1) < background_frequency:
+        if sample['label'] == SILENCE_LABEL:
+          background_volume = np.random.uniform(0, 1)
+        elif np.random.uniform(0, 1) < background_frequency:
           background_volume = np.random.uniform(0, background_volume_range)
         else:
           background_volume = 0

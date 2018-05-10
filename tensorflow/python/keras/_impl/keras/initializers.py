@@ -201,6 +201,8 @@ def deserialize(config, custom_objects=None):
 
 @tf_export('keras.initializers.get')
 def get(identifier):
+  if identifier is None:
+    return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):

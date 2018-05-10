@@ -22,9 +22,13 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import losses
+from tensorflow.python.keras._impl.keras import metrics as metrics_module
+from tensorflow.python.ops import math_ops
 
 
 def check_num_samples(ins,
@@ -59,18 +63,24 @@ def check_num_samples(ins,
   Raises:
       ValueError: In case of invalid arguments.
   """
-  if steps is not None:
-    num_samples = None
-    if batch_size is not None:
-      raise ValueError(
-          'If ' + steps_name + ' is set, the `batch_size` must be None.')
-  elif ins and hasattr(ins[0], 'shape'):
-    num_samples = ins[0].shape[0]
-  else:
+  if steps is not None and batch_size is not None:
     raise ValueError(
-        'Either the input data should have '
-        'a defined shape, or ' + steps_name + ' should be specified.')
-  return num_samples
+        'If ' + steps_name + ' is set, the `batch_size` must be None.')
+  if check_steps_argument(ins, steps, steps_name):
+    return None
+  if hasattr(ins[0], 'shape'):
+    return int(ins[0].shape[0])
+  return None  # Edge case where ins == [static_learning_phase]
+
+
+def standardize_single_array(x):
+  if x is None:
+    return None
+  elif tensor_util.is_tensor(x):
+    return x
+  elif x.ndim == 1:
+    x = np.expand_dims(x, 1)
+  return x
 
 
 def standardize_input_data(data,
@@ -130,9 +140,7 @@ def standardize_input_data(data,
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
-  data = [
-      np.expand_dims(x, 1) if x is not None and x.ndim == 1 else x for x in data
-  ]
+  data = [standardize_single_array(x) for x in data]
 
   if len(data) != len(names):
     if data and hasattr(data[0], 'shape'):
@@ -158,7 +166,7 @@ def standardize_input_data(data,
   # Check shapes compatibility.
   if shapes:
     for i in range(len(names)):
-      if shapes[i] is not None:
+      if shapes[i] is not None and not tensor_util.is_tensor(data[i]):
         data_shape = data[i].shape
         shape = shapes[i]
         if data[i].ndim != len(shape):
@@ -245,12 +253,13 @@ def check_array_lengths(inputs, targets, weights=None):
   """
 
   def set_of_lengths(x):
-    # return a set with the variation between
+    # Returns a set with the variation between
     # different shapes, with None => 0
     if x is None:
       return {}
     else:
-      return set([y.shape[0] for y in x if y is not None])
+      return set([y.shape[0] for y in x
+                  if y is not None and not tensor_util.is_tensor(y)])
 
   set_x = set_of_lengths(inputs)
   set_y = set_of_lengths(targets)
@@ -422,7 +431,7 @@ def weighted_masked_objective(fn):
     score_array = fn(y_true, y_pred)
     if mask is not None:
       # Cast the mask to floatX to avoid float64 upcasting in theano
-      mask = K.cast(mask, K.floatx())
+      mask = math_ops.cast(mask, K.floatx())
       # mask should have the same shape as score_array
       score_array *= mask
       #  the loss per batch should be proportional
@@ -436,7 +445,8 @@ def weighted_masked_objective(fn):
       weight_ndim = K.ndim(weights)
       score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
       score_array *= weights
-      score_array /= K.mean(K.cast(K.not_equal(weights, 0), K.floatx()))
+      score_array /= K.mean(
+          math_ops.cast(math_ops.not_equal(weights, 0), K.floatx()))
     return K.mean(score_array)
 
   return weighted
@@ -532,3 +542,146 @@ def standardize_weights(y,
     return weights
   else:
     return None
+
+
+def has_symbolic_tensors(ls):
+  if context.executing_eagerly():
+    return False
+  if isinstance(ls, (list, tuple)):
+    return any(tensor_util.is_tensor(v) for v in ls)
+  return tensor_util.is_tensor(ls)
+
+
+def populate_metric_names(model):
+  for i in range(len(model.outputs)):
+    metrics = model.nested_metrics[i]
+    for metric in metrics:
+      base_metric_name = get_base_metric_name(metric)
+      add_metric_name(model, base_metric_name, i)
+
+
+def get_base_metric_name(metric, weighted=False):
+  """Returns the metric name given the metric function.
+
+  Arguments:
+      metric: Metric function name or reference.
+      weighted: Boolean indicating if the metric for which we are adding
+          names is weighted.
+
+  Returns:
+      a metric name.
+  """
+  metric_name_prefix = 'weighted_' if weighted else ''
+  if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
+    if metric in ('accuracy', 'acc'):
+      suffix = 'acc'
+    elif metric in ('crossentropy', 'ce'):
+      suffix = 'ce'
+    metric_name = metric_name_prefix + suffix
+  else:
+    metric_fn = metrics_module.get(metric)
+    # Get metric name as string
+    if hasattr(metric_fn, 'name'):
+      metric_name = metric_fn.name
+    else:
+      metric_name = metric_fn.__name__
+    metric_name = metric_name_prefix + metric_name
+
+  return metric_name
+
+
+def add_metric_name(model, metric_name, index):
+  """Makes the metric name unique and adds it to the model's metric name list.
+
+    If there are multiple outputs for which the metrics are calculated, the
+    metric names have to be made unique by appending an integer.
+
+  Arguments:
+    model: Model to which we are adding metric names.
+    metric_name: Metric name that corresponds to the metric specified by the
+        user. For example: 'acc'
+    index: The index of the model output for which the metric name is being
+        added.
+  """
+  if len(model.output_names) > 1:
+    metric_name = '%s_%s' % (model.output_names[index], metric_name)
+  j = 1
+  base_metric_name = metric_name
+  while metric_name in model.metrics_names:
+    metric_name = '%s_%d' % (base_metric_name, j)
+    j += 1
+  model.metrics_names.append(metric_name)
+
+
+def validate_iterator_input(x, y, sample_weight, validation_split=None):
+  """Validates user input arguments when a dataset iterator is passed.
+
+  Arguments:
+    x: Input data. A `tf.data` dataset iterator.
+    y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
+        Expected to be `None` when `x` is a dataset iterator.
+    sample_weight: An optional sample-weight array passed by the user to
+        weight the importance of each sample in `x`. Expected to be `None` when
+        `x` is a dataset iterator
+    validation_split: Float between 0 and 1. Fraction of the training data to
+        be used as validation data. Expected to be `None` when `x` is a dataset
+        iterator.
+
+  Raises:
+    ValueError: if argument `y` or `sample_weight` or `validation_split` are
+        provided by user.
+  """
+  if y is not None:
+    raise ValueError('You passed a dataset iterator (%s) as input `x` to '
+                     'your model. In that case, you should not specify '
+                     'a target (`y`) argument, since the dataset iterator '
+                     'generates both input data and target data. '
+                     'Received: %s' % (x, y))
+  if sample_weight is not None:
+    raise ValueError('`sample_weight` argument is not supported when input'
+                     ' `x` is a dataset iterator. '
+                     'Received: x=%s, sample_weight=%s' % (x, sample_weight))
+  if validation_split is not None and validation_split != 0.0:
+    raise ValueError(
+        '`validation_split` argument is not supported when '
+        'input `x` is a dataset iterator. '
+        'Received: x=%s, validation_split=%f' % (x, validation_split))
+
+
+def check_steps_argument(input_data, steps, steps_name):
+  """Validates `steps` argument based on input data's type.
+
+  The cases when `steps` value must be provided are when
+    1. input data passed is an iterator.
+    2. model was built on top of symbolic tensors, input data is not
+       required and is `None`.
+    3. input data passed is a symbolic tensor.
+
+  Arguments:
+      input_data: Input data. Can be Numpy array(s) or TensorFlow tensor(s) or
+        tf.data.Dataset iterator or `None`.
+      steps: Integer or `None`. Total number of steps (batches of samples) to
+        execute.
+      steps_name: The public API's parameter name for `steps`.
+
+  Returns:
+    boolean, True if `steps` argument is required, else False.
+
+  Raises:
+      ValueError: if `steps` argument is required for given input data type
+        but not provided.
+  """
+
+  is_x_iterator = (
+      isinstance(input_data, iterator_ops.Iterator) or
+      isinstance(input_data, iterator_ops.EagerIterator))
+
+  if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
+      (isinstance(input_data, list) and not input_data)):
+    if steps is None:
+      input_type_str = 'iterators' if is_x_iterator else 'data tensors'
+      raise ValueError('When using {input_type} as input to a model, you should'
+                       ' specify the `{steps_name}` argument.'.format(
+                           input_type=input_type_str, steps_name=steps_name))
+    return True
+  return False

@@ -546,7 +546,7 @@ In brief, here's what the three graphs tell you:
 
 * accuracy: The accuracy is recorded by the following two lines:
 
-    * `eval_metric_ops={'my_accuracy': accuracy})`, during evaluation.
+    * `eval_metric_ops={'my_accuracy': accuracy}`, during evaluation.
     * `tf.summary.scalar('accuracy', accuracy[1])`, during training.
 
 These tensorboard graphs are one of the main reasons it's important to pass a

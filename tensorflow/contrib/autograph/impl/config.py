@@ -33,7 +33,7 @@ DEFAULT_UNCOMPILED_MODULES = set((
     (utils.__name__,),
 
     # All of tensorflow's subpackages. Unlike the root tf module, they don't
-    # have well-known names. Not refering to the module directly to avoid
+    # have well-known names. Not referring to the module directly to avoid
     # circular imports.
     (
         utils.__name__[:-len('.contrib.autograph.utils')],),
@@ -41,10 +41,9 @@ DEFAULT_UNCOMPILED_MODULES = set((
 
 NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 
-# TODO(mdan): Also allow controlling the generated names (for testability).
+# TODO(mdan): Also allow controlling the generated names.
+# TODO(mdan); Consolidate all internal imports into a single __ag module.
 COMPILED_IMPORT_STATEMENTS = (
-    'from __future__ import print_function', 'import tensorflow as tf',
-    'from tensorflow.contrib.autograph.impl import api as '
-    'autograph_api',
-    'from tensorflow.contrib.autograph import utils as '
-    'autograph_utils')
+    'from __future__ import print_function',
+    'import tensorflow as tf',
+)

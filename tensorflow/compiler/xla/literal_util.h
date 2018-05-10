@@ -74,6 +74,10 @@ class Literal {
   Literal(const Literal& other) = delete;
   Literal& operator=(const Literal& other) = delete;
   Literal(Literal&& other);
+  // 'allocate_arrays' indicates whether to allocate memory for the arrays in
+  // the shape. If false, buffer pointers inside of the Literal::Pieces are set
+  // to nullptr.
+  Literal(const Shape& shape, bool allocate_arrays);
   Literal& operator=(Literal&& other);
 
   // Literals are equal if they have compatible shapes and the same data
@@ -282,7 +286,7 @@ class Literal {
 
   // Creates a new value that has the equivalent value as this literal, but
   // conforms to new_layout; e.g. a literal matrix that was in {0, 1}
-  // minor-to-major dimension layout can be re-layed-out as {1, 0}
+  // minor-to-major dimension layout can be re-laid-out as {1, 0}
   // minor-to-major dimension layout and the value in the cell at any given
   // logical index (i0, i1) will be the same.
   //
@@ -333,9 +337,17 @@ class Literal {
   template <typename NativeT>
   std::unique_ptr<Literal> Replicate(int64 times) const;
 
-  // Converts this literal to another primitive type. Returns an error if the
-  // conversion is not possible. This literal must be array-shaped.
+  // Converts this literal to another primitive type using
+  // static_cast<>. Returns an error if the conversion is not possible. This
+  // literal must be array-shaped.
   StatusOr<std::unique_ptr<Literal>> Convert(
+      PrimitiveType primitive_dest_type) const;
+
+  // Converts this literal to another primitive type using a bitcast
+  // conversion. The to and from primitive types must have the same bit
+  // width. Returns an error if the conversion is not possible. This literal
+  // must be array-shaped.
+  StatusOr<std::unique_ptr<Literal>> BitcastConvert(
       PrimitiveType primitive_dest_type) const;
 
   // Converts this literal to the given shape. Returns an error is the
@@ -587,6 +599,12 @@ class Literal {
   template <typename NativeT, typename FnType>
   Status Populate(const FnType& generator);
 
+  // A parallel version of Populate(). This can be used if the generator is
+  // thread-safe and the values for the shape's different elements are
+  // independent.
+  template <typename NativeT, typename FnType>
+  Status PopulateParallel(const FnType& generator);
+
   // Fills this literal with the given value.
   template <typename NativeT>
   void PopulateWithValue(NativeT value);
@@ -644,12 +662,11 @@ class Literal {
   // LayoutUtil::MaxSparseElements(SetSubshape(shape(), index).layout()).
   int64 sparse_element_count() const;
 
- protected:
-  // 'allocate_arrays' indicates whether to allocate memory for the arrays in
-  // the shape. If false, buffer pointers inside of the Literal::Pieces are set
-  // to nullptr.
-  Literal(const Shape& shape, bool allocate_arrays);
+  // Compute a hash for this literal.  This literal must not be a sparse tensor
+  // or a tuple containing a sparse tensor.
+  size_t Hash() const;
 
+ protected:
   // Internal template helper for the Literal::CopySliceFrom(), matching its
   // arguments one by one.
   template <typename NativeT>
@@ -727,7 +744,13 @@ class Literal {
     int64 size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
 
     // Returns the number of elements in this piece's array.
-    int64 element_count() const { return ShapeUtil::ElementsIn(subshape()); }
+    int64 element_count() const {
+      // If this is a sparse array, use the number of elements represented by
+      // the indices in the associated SparseIndexArray.
+      return LayoutUtil::IsSparseArray(subshape())
+                 ? sparse_indices()->index_count()
+                 : ShapeUtil::ElementsIn(subshape());
+    }
 
     // Copy the data from 'src' into this piece's buffer. Shapes of this piece
     // and src must be compatible.
@@ -785,6 +808,10 @@ class Literal {
   // buffer).
   void DeallocateBuffers();
 
+  // Implementation details shared between Populate() and PopulateParallel()
+  template <typename NativeT, typename FnType>
+  Status PopulateInternal(const FnType& generator, bool parallel);
+
   Shape shape_;
   ShapeTree<Piece> pieces_;
 
@@ -835,8 +862,7 @@ tensorflow::gtl::ArraySlice<NativeT> Literal::Piece::data() const {
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
   return tensorflow::gtl::ArraySlice<NativeT>(
-      reinterpret_cast<const NativeT*>(buffer()),
-      ShapeUtil::ElementsIn(subshape()));
+      reinterpret_cast<const NativeT*>(buffer()), element_count());
 }
 
 template <typename NativeT>
@@ -849,7 +875,7 @@ tensorflow::gtl::MutableArraySlice<NativeT> Literal::Piece::data() {
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
   return tensorflow::gtl::MutableArraySlice<NativeT>(
-      reinterpret_cast<NativeT*>(buffer()), ShapeUtil::ElementsIn(subshape()));
+      reinterpret_cast<NativeT*>(buffer()), element_count());
 }
 
 template <typename NativeT>
@@ -1264,19 +1290,20 @@ void Literal::PopulateSparse(SparseIndexArray indices,
   CHECK_LE(num_elements, max_elements);
   CHECK_EQ(num_elements, indices.index_count());
   auto root_data = root_piece().data<NativeT>();
-  root_data.remove_suffix(max_elements - values.size());
+  // Piece::data() returns an ArraySlice of size equal to the number of indices
+  // in the SparseIndexArray. So there is no need to adjust the size of the data
+  // here. It is enough to just copy the incoming values into the data buffer.
   std::copy(values.begin(), values.end(), root_data.begin());
   *this->root_piece().sparse_indices() = std::move(indices);
   if (sort) {
     auto root_data = this->root_piece().data<NativeT>();
-    root_data.remove_suffix(root_data.size() - num_elements);
     this->root_piece().sparse_indices()->SortWithValues(root_data);
   }
   DCHECK(this->root_piece().sparse_indices()->Validate(shape()));
 }
 
 template <typename NativeT, typename FnType>
-Status Literal::Populate(const FnType& generator) {
+Status Literal::PopulateInternal(const FnType& generator, bool parallel) {
   const Shape& this_shape = shape();
   const int64 rank = ShapeUtil::Rank(this_shape);
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
@@ -1286,11 +1313,11 @@ Status Literal::Populate(const FnType& generator) {
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape,
                                AsInt64Slice(this_shape.dimensions()));
-    DimensionVector minor_scan_indexes(rank, 0);
     int64 minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
     auto init_function = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+      DimensionVector minor_scan_indexes(rank, 0);
       const int64 index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
@@ -1298,16 +1325,34 @@ Status Literal::Populate(const FnType& generator) {
         minor_scan_indexes[stride_config.minor_dimension] = i;
         literal_data.at(index + i) = generator(minor_scan_indexes);
       }
-      return true;
     };
-    ShapeUtil::ForEachIndex(this_shape, stride_config.base,
-                            stride_config.dimensions, stride_config.step,
-                            init_function);
+    if (parallel) {
+      ShapeUtil::ForEachIndexParallel(this_shape, stride_config.base,
+                                      stride_config.dimensions,
+                                      stride_config.step, init_function);
+    } else {
+      ShapeUtil::ForEachIndex(
+          this_shape, stride_config.base, stride_config.dimensions,
+          stride_config.step,
+          [&init_function](tensorflow::gtl::ArraySlice<int64> indexes) {
+            init_function(indexes);
+            return true;
+          });
+    }
   } else {
     // For scalars.
     literal_data.at(0) = generator({});
   }
   return Status::OK();
+}
+template <typename NativeT, typename FnType>
+Status Literal::Populate(const FnType& generator) {
+  return PopulateInternal<NativeT>(generator, /*parallel=*/false);
+}
+
+template <typename NativeT, typename FnType>
+Status Literal::PopulateParallel(const FnType& generator) {
+  return PopulateInternal<NativeT>(generator, /*parallel=*/true);
 }
 
 template <typename NativeT>

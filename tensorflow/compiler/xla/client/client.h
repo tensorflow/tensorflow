@@ -194,6 +194,27 @@ class Client {
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
+  // Computes the value of the given computation using a non-optimized
+  // interpreter on the host.
+  //
+  // The computation must not depend on any parameters, or on stateful operators
+  // such as `RngNormal` or `Infeed`.
+  //
+  // This functionality can be useful when translating a computation into XLA
+  // where something that looked dynamic is required by XLA to be specified as a
+  // constant. E.g. the source computation (outside of XLA) may include a
+  // dynamic computation of the shape of something and ComputeConstant lets you
+  // determine what the value of that computation is in the case where the value
+  // can be determined at compile time.
+  //
+  // If output_layout is non-null, then the output of the computation will be
+  // stored using that layout.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
+      const XlaComputation& computation,
+      const Layout* output_layout = nullptr) const;
+
   // Unregister the memory for the given GlobalData on the device.
   Status Unregister(const GlobalData& data);
 
@@ -233,6 +254,9 @@ class Client {
   StatusOr<ChannelHandle> CreateChannelHandle();
 
   StatusOr<Computation> LoadSnapshot(const SessionModule& module);
+
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<XlaComputation> LoadSnapshot(const HloSnapshot& module);
 
   ServiceInterface* stub() { return stub_; }
 

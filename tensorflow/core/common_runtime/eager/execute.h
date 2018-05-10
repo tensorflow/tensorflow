@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -24,6 +25,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
+
+// Utility function that executes a fully constructed EagerOperation.
+Status EagerExecute(
+    EagerOperation* op,
+    tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* retvals,
+    int* num_retvals);
 
 // Low-level utility to execute the kernel specified by kernel on device device,
 // with the inputs op_inputs, in the context ctx.

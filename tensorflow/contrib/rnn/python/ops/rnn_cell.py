@@ -2891,7 +2891,7 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
 
     output_size = weight.get_shape().as_list()[1]
     g = vs.get_variable(name, [output_size], dtype=weight.dtype)
-    return nn_impl.l2_normalize(weight, dim=0) * g
+    return nn_impl.l2_normalize(weight, axis=0) * g
 
   def _linear(self,
               args,

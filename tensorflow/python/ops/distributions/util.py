@@ -58,8 +58,7 @@ def assert_close(
   if data is None:
     data = [
         message,
-        "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
-        y.name, y
+        "Condition x ~= y did not hold element-wise: x = ", x, "y = ", y
     ]
 
   if x.dtype.is_integer:
@@ -95,7 +94,7 @@ def assert_integer_form(
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype.is_integer:
       return control_flow_ops.no_op()
-    message = message or "{} has non-integer components".format(x.op.name)
+    message = message or "{} has non-integer components".format(x)
     if int_dtype is None:
       try:
         int_dtype = {
@@ -123,13 +122,13 @@ def embed_check_nonnegative_integer_form(
     x = ops.convert_to_tensor(x, name="x")
     assertions = [
         check_ops.assert_non_negative(
-            x, message="'{}' must be non-negative.".format(x.op.name)),
+            x, message="'{}' must be non-negative.".format(x)),
     ]
     if not x.dtype.is_integer:
       assertions += [
           assert_integer_form(
               x, message="'{}' cannot contain fractional components.".format(
-                  x.op.name)),
+                  x)),
       ]
     return control_flow_ops.with_dependencies(assertions, x)
 
@@ -161,6 +160,30 @@ def same_dynamic_shape(a, b):
       math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
       all_shapes_equal,
       lambda: constant_op.constant(False))
+
+
+def maybe_get_static_value(x, dtype=None):
+  """Helper which tries to return a static value.
+
+  Given `x`, extract it's value statically, optionally casting to a specific
+  dtype. If this is not possible, None is returned.
+
+  Args:
+    x: `Tensor` for which to extract a value statically.
+    dtype: Optional dtype to cast to.
+
+  Returns:
+    Statically inferred value if possible, otherwise None.
+  """
+  if x is None:
+    return x
+  try:
+    x_ = tensor_util.constant_value(x)
+  except TypeError:
+    x_ = x
+  if x_ is None or dtype is None:
+    return x_
+  return np.array(x_, dtype)
 
 
 def get_logits_and_probs(logits=None,
@@ -434,7 +457,7 @@ def embed_check_integer_casting_closed(
         and not _is_integer_like_by_dtype(target_dtype)):
       raise TypeError("At least one of {}.dtype ({}) and target_dtype ({}) "
                       "must be integer-type.".format(
-                          x.op.name, x.dtype.name, target_dtype.name))
+                          x, x.dtype.name, target_dtype.name))
 
     assertions = []
     if assert_nonnegative:
@@ -683,7 +706,7 @@ def pick_vector(cond,
     cond = ops.convert_to_tensor(cond, name="cond")
     if cond.dtype != dtypes.bool:
       raise TypeError("%s.dtype=%s which is not %s" %
-                      (cond.name, cond.dtype, dtypes.bool))
+                      (cond, cond.dtype, dtypes.bool))
     cond_value_static = tensor_util.constant_value(cond)
     if cond_value_static is not None:
       return true_vector if cond_value_static else false_vector
@@ -692,8 +715,8 @@ def pick_vector(cond,
     if true_vector.dtype != false_vector.dtype:
       raise TypeError(
           "%s.dtype=%s does not match %s.dtype=%s"
-          % (true_vector.name, true_vector.dtype,
-             false_vector.name, false_vector.dtype))
+          % (true_vector, true_vector.dtype,
+             false_vector, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
         array_ops.concat([true_vector, false_vector], 0),

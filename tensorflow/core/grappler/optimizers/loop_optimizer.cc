@@ -16,18 +16,18 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 
 #include <algorithm>
+#include <deque>
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <deque>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -46,74 +46,36 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-std::vector<int> GetStackPushNodesToConvert(
-    const SimpleGraphView& graph_view,
-    const std::unordered_set<string>& nodes_to_preserve, int stack_node_idx) {
-  VLOG(1) << "Stack node: " << graph_view.graph()->node(stack_node_idx).name();
-  const std::unordered_set<string> op_types_to_traverse(
-      {"Stack", "StackV2", "Enter", "RefEnter", "Switch", "RefSwitch",
-       "Identity", "RefIdentity"});
-  std::vector<int> nodes_to_convert;
-  std::set<int> fanout;
-  graph_view.DepthFirstSearch(op_types_to_traverse, stack_node_idx, &fanout);
-  for (int fanout_idx : fanout) {
-    const NodeDef& fanout_node = graph_view.graph()->node(fanout_idx);
-    VLOG(1) << "Fanout " << fanout_idx << " : " << fanout_node.name();
-    if (IsStackPushOp(fanout_node)) {
-      nodes_to_convert.push_back(fanout_idx);
-    } else if (IsStackOp(fanout_node) || IsStackCloseOp(fanout_node) ||
-               op_types_to_traverse.find(fanout_node.op()) !=
-                   op_types_to_traverse.end()) {
-      continue;
-    } else if (!IsStackPopOp(fanout_node) ||
-               (!graph_view.outputs(fanout_idx).empty() ||
-                nodes_to_preserve.find(fanout_node.name()) !=
-                    nodes_to_preserve.end())) {
-      // The node is either a stack pop with consumers or something unexpected
-      // so we leave the graph alone.
-      nodes_to_convert.clear();
-      break;
-    }
-  }
-  return nodes_to_convert;
-}
+class LoopInvariantNodeMotionOptimizer {
+ public:
+  explicit LoopInvariantNodeMotionOptimizer(GraphDef* optimized_graph)
+      : optimized_graph_(optimized_graph) {}
+  virtual ~LoopInvariantNodeMotionOptimizer() = default;
+  Status Optimize();
 
-Status RemoveStackOps(const GrapplerItem& item, GraphDef* optimized_graph) {
-  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
-  const GraphDef& graph = item.graph;
-  *optimized_graph = graph;
-  NodeMap node_map(optimized_graph);
-  SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
-  for (int node_idx = 0; node_idx < graph.node_size(); ++node_idx) {
-    if (IsStackOp(graph.node(node_idx))) {
-      for (int push_node_idx : GetStackPushNodesToConvert(
-               graph_view, nodes_to_preserve, node_idx)) {
-        // We found push nodes without corresponding pops. Convert them to
-        // Identity passing the data through and add a control dependency from
-        // the op supplying the stack handle.
-        NodeDef* push_node = optimized_graph->mutable_node(push_node_idx);
-        VLOG(1) << "Converting " << push_node_idx << " : "
-                << push_node->DebugString();
-        if (push_node->attr().count("swap_memory") != 0) {
-          push_node->mutable_attr()->erase("swap_memory");
-        }
-        push_node->set_op("Identity");
-        push_node->mutable_input()->SwapElements(0, 1);
-        const string ctrl_dep = ConstantFolding::AddControlDependency(
-            push_node->input(1), optimized_graph, &node_map);
-        push_node->set_input(1, ctrl_dep);
-        VLOG(1) << "After converting: " << push_node->DebugString();
-      }
-    }
-  }
-  return Status::OK();
-}
+ private:
+  Status FindInvariantNodes(NodeDef* node);
+  Status RevertInvariantNodes();
+  Status MoveInvariantNodes(const int frame_id);
+  Status HandleInvariantNode(NodeDef* node, const int num_outputs,
+                             const int frame_id);
+  Status HandleConst(NodeDef* node, const int num_outputs, const int frame_id);
+  Status HandleInvariantEnter(NodeDef* node, const int num_outputs);
 
-}  // namespace
+  GraphDef* optimized_graph_;  // Not owned.
+  std::unique_ptr<NodeMap> node_map_;
+  std::map<NodeDef*, int> invariant_nodes_;
+  std::set<int> empty_set_;
+  // TODO(rmlarsen): Use vector instead of map, since frames ids are dense.
+  std::map<int, std::set<int>> frame_children_;
+  std::map<int, int> frame_parent_;
+  std::map<int, const NodeDef*> loop_cond_;
+  std::map<int, std::vector<NodeDef*>> invariant_enters_;
+  int new_enter_id_;
+};
 
-Status LoopOptimizer::LINMHandleInvariantEnter(NodeDef* node,
-                                               const int num_outputs) {
+Status LoopInvariantNodeMotionOptimizer::HandleInvariantEnter(
+    NodeDef* node, const int num_outputs) {
   auto consumers = node_map_->GetOutputs(node->name());
   std::vector<string> enter_control_inputs;
   string enter_input;
@@ -142,9 +104,10 @@ Status LoopOptimizer::LINMHandleInvariantEnter(NodeDef* node,
   return Status::OK();
 }
 
-Status LoopOptimizer::LINMHandleConst(NodeDef* node,
-    const int num_outputs, const int frame_id) {
-  NodeDef* const_node;
+Status LoopInvariantNodeMotionOptimizer::HandleConst(NodeDef* node,
+                                                     const int num_outputs,
+                                                     const int frame_id) {
+  NodeDef* const_node = nullptr;
   if (num_outputs == 0) {
     // all successor nodes are invariant
     // Remove the control inputs from this frame to the const node,
@@ -156,12 +119,17 @@ Status LoopOptimizer::LINMHandleConst(NodeDef* node,
     // some successor nodes are variant
     // Have to keep the const node in the frame,
     // so create a new one outside the frame (in parent frame)
-    const_node = optimized_graph_->add_node();
-    const_node->set_name(AddPrefixToNodeName(node->name(), kLoopOptimizer));
-    const_node->set_op("Const");
-    const_node->set_device(node->device());
-    *const_node->mutable_attr() = node->attr();
-    node_map_->AddNode(const_node->name(), const_node);
+    const string const_node_name =
+        AddPrefixToNodeName(node->name(), kLoopOptimizer);
+    const_node = node_map_->GetNode(const_node_name);
+    if (const_node == nullptr) {
+      const_node = optimized_graph_->add_node();
+      const_node->set_name(const_node_name);
+      const_node->set_op("Const");
+      const_node->set_device(node->device());
+      *const_node->mutable_attr() = node->attr();
+      node_map_->AddNode(const_node->name(), const_node);
+    }
     auto consumers = node_map_->GetOutputs(node->name());
     for (auto* consumer : consumers) {
       if (invariant_nodes_.count(consumer)) {
@@ -185,8 +153,8 @@ Status LoopOptimizer::LINMHandleConst(NodeDef* node,
     int parent_id = parent_it->second;
     auto loop_cond_it = loop_cond_.find(parent_id);
     if (loop_cond_it == loop_cond_.end()) {
-      return errors::InvalidArgument(
-          "Frame ", frame_id, " doesn't have a LoopCond node");
+      return errors::InvalidArgument("Frame ", frame_id,
+                                     " doesn't have a LoopCond node");
     }
     auto& loop_cond_name = loop_cond_it->second->name();
     NodeDef* switch_node = nullptr;
@@ -197,9 +165,8 @@ Status LoopOptimizer::LINMHandleConst(NodeDef* node,
       }
     }
     if (!switch_node) {
-      return errors::InvalidArgument(
-          "LoopCond node of Frame ", frame_id,
-          " doesn't connect to any Switch node");
+      return errors::InvalidArgument("LoopCond node of Frame ", frame_id,
+                                     " doesn't connect to any Switch node");
     }
     string switch_output = StrCat(switch_node->name(), ":1");
     const string ctrl_dep = ConstantFolding::AddControlDependency(
@@ -210,8 +177,8 @@ Status LoopOptimizer::LINMHandleConst(NodeDef* node,
   return Status::OK();
 }
 
-Status LoopOptimizer::LINMHandleInvariantNode(NodeDef* node,
-    const int num_outputs, const int frame_id) {
+Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
+    NodeDef* node, const int num_outputs, const int frame_id) {
   // have to remove control inputs to the invariant node from the same frame
   // when moving this node out of this frame
   for (int i = 0; i < node->input_size(); ++i) {
@@ -228,16 +195,14 @@ Status LoopOptimizer::LINMHandleInvariantNode(NodeDef* node,
   DataTypeVector output_types;
   OpRegistryInterface* op_registry = OpRegistry::Global();
   const OpRegistrationData* op_reg_data = nullptr;
-  TF_RETURN_IF_ERROR(
-      op_registry->LookUp(node->op(), &op_reg_data));
-  TF_RETURN_IF_ERROR(
-      InOutTypesForNode(*node, op_reg_data->op_def,
-                        &input_types, &output_types));
+  TF_RETURN_IF_ERROR(op_registry->LookUp(node->op(), &op_reg_data));
+  TF_RETURN_IF_ERROR(InOutTypesForNode(*node, op_reg_data->op_def, &input_types,
+                                       &output_types));
 
   auto consumers = node_map_->GetOutputs(node->name());
   string fname = invariant_enters_[frame_id][0]->attr().at("frame_name").s();
-  int piterations = invariant_enters_[frame_id][0]
-                    ->attr().at("parallel_iterations").i();
+  int piterations =
+      invariant_enters_[frame_id][0]->attr().at("parallel_iterations").i();
   for (auto* consumer : consumers) {
     if (!invariant_nodes_.count(consumer)) {
       for (int i = 0; i < consumer->input_size(); ++i) {
@@ -281,28 +246,27 @@ Status LoopOptimizer::LINMHandleInvariantNode(NodeDef* node,
   return Status::OK();
 }
 
-Status LoopOptimizer::MoveInvariantNodes(const int frame_id) {
-  for (auto iter = invariant_nodes_.begin();
-       iter != invariant_nodes_.end(); ++iter) {
+Status LoopInvariantNodeMotionOptimizer::MoveInvariantNodes(
+    const int frame_id) {
+  for (auto iter = invariant_nodes_.begin(); iter != invariant_nodes_.end();
+       ++iter) {
     auto* invariant_node = iter->first;
     const int num_outputs = iter->second;
     if (IsEnter(*invariant_node)) {
-      TF_RETURN_IF_ERROR(
-          LINMHandleInvariantEnter(invariant_node, num_outputs));
+      TF_RETURN_IF_ERROR(HandleInvariantEnter(invariant_node, num_outputs));
     } else if (IsConstant(*invariant_node)) {
-      TF_RETURN_IF_ERROR(
-          LINMHandleConst(invariant_node, num_outputs, frame_id));
+      TF_RETURN_IF_ERROR(HandleConst(invariant_node, num_outputs, frame_id));
     } else {
       TF_RETURN_IF_ERROR(
-          LINMHandleInvariantNode(invariant_node, num_outputs, frame_id));
+          HandleInvariantNode(invariant_node, num_outputs, frame_id));
     }
   }
   return Status::OK();
 }
 
-Status LoopOptimizer::RevertInvariantNodes() {
+Status LoopInvariantNodeMotionOptimizer::RevertInvariantNodes() {
   std::deque<const NodeDef*> reverted_nodes;
-  for (auto iter=invariant_nodes_.begin(); iter != invariant_nodes_.end();) {
+  for (auto iter = invariant_nodes_.begin(); iter != invariant_nodes_.end();) {
     bool erased = false;
     const auto* node = iter->first;
     if (!IsConstant(*node) && !IsEnter(*node) && iter->second > 0) {
@@ -331,8 +295,8 @@ Status LoopOptimizer::RevertInvariantNodes() {
       auto* producer = node_map_->GetNode(input);
       auto iter = invariant_nodes_.find(producer);
       if (iter != invariant_nodes_.end()) {
-        if (IsControlInput(input) &&
-            !IsConstant(*producer) && !IsEnter(*producer)) {
+        if (IsControlInput(input) && !IsConstant(*producer) &&
+            !IsEnter(*producer)) {
           reverted_nodes.push_back(producer);
           invariant_nodes_.erase(iter);
         } else {
@@ -357,51 +321,63 @@ Status LoopOptimizer::RevertInvariantNodes() {
   return Status::OK();
 }
 
-Status LoopOptimizer::FindInvariantNodes(NodeDef* node) {
-  auto consumers = node_map_->GetOutputs(node->name());
-  invariant_nodes_.insert(std::make_pair(node, consumers.size()));
-  for (auto* consumer : consumers) {
-    if (invariant_nodes_.count(consumer) ||
-        ModifiesFrameInfo(*consumer)) {
-      continue;
-    }
-    bool is_invariant = true;
-    for (const auto& input : consumer->input()) {
-      if (!IsControlInput(input)) {
-        const string name = NodeName(input);
-        auto* producer = node_map_->GetNode(name);
-        if (!invariant_nodes_.count(producer)) {
-          if (IsConstant(*producer)) {
-            invariant_nodes_.insert(
-                std::make_pair(producer, node_map_->GetOutputs(name).size()));
-          } else {
-            is_invariant = false;
-            break;
+Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(
+    NodeDef* start_node) {
+  std::vector<NodeDef*> stack;
+  stack.reserve(32);
+  stack.push_back(start_node);
+  while (!stack.empty()) {
+    NodeDef* node = stack.back();
+    stack.pop_back();
+    auto consumers = node_map_->GetOutputs(node->name());
+    invariant_nodes_.emplace(node, consumers.size());
+    for (auto* consumer : consumers) {
+      if (invariant_nodes_.count(consumer) || ModifiesFrameInfo(*consumer)) {
+        continue;
+      }
+      bool is_invariant = true;
+      for (const auto& input : consumer->input()) {
+        if (!IsControlInput(input)) {
+          const string name = NodeName(input);
+          auto* producer = node_map_->GetNode(name);
+          if (!invariant_nodes_.count(producer)) {
+            if (IsConstant(*producer)) {
+              invariant_nodes_.insert(
+                  std::make_pair(producer, node_map_->GetOutputs(name).size()));
+            } else {
+              is_invariant = false;
+              break;
+            }
           }
         }
       }
-    }
-    if (is_invariant) {
-      std::set<NodeDef*> producers;
-      for (const auto& input : consumer->input()) {
-        auto* producer = node_map_->GetNode(input);
-        producers.insert(producer);
-      }
-      for (auto* producer : producers) {
-        auto iter = invariant_nodes_.find(producer);
-        if (iter != invariant_nodes_.end()) {
-          --iter->second;
+      if (is_invariant) {
+        std::set<NodeDef*> producers;
+        for (const auto& input : consumer->input()) {
+          auto* producer = node_map_->GetNode(input);
+          producers.insert(producer);
         }
+        for (auto* producer : producers) {
+          auto iter = invariant_nodes_.find(producer);
+          if (iter != invariant_nodes_.end()) {
+            --iter->second;
+          }
+        }
+        stack.push_back(consumer);
       }
-      TF_RETURN_IF_ERROR(FindInvariantNodes(consumer));
     }
   }
   return Status::OK();
 }
 
-Status LoopOptimizer::LoopInvariantNodeMotion() {
+Status LoopInvariantNodeMotionOptimizer::Optimize() {
+  node_map_.reset(new NodeMap(optimized_graph_));
+  FrameMap frame_map;
+  int num_frames;
+  TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
+                                               &frame_map, &num_frames));
   std::deque<int> worklist;
-  for (auto iter = frame_map_.begin(); iter != frame_map_.end(); ++iter) {
+  for (auto iter = frame_map.begin(); iter != frame_map.end(); ++iter) {
     auto* node = iter->first;
     auto& frame_ids = iter->second;
     if (frame_ids.size() >= 3) {
@@ -467,19 +443,219 @@ Status LoopOptimizer::LoopInvariantNodeMotion() {
   return Status::OK();
 }
 
+std::vector<int> GetStackPushNodesToConvert(
+    const SimpleGraphView& graph_view,
+    const std::unordered_set<string>& nodes_to_preserve, int stack_node_idx) {
+  VLOG(1) << "Stack node: " << graph_view.graph()->node(stack_node_idx).name();
+  const std::unordered_set<string> op_types_to_traverse(
+      {"Stack", "StackV2", "Enter", "RefEnter", "Switch", "RefSwitch",
+       "Identity", "RefIdentity"});
+  std::vector<int> nodes_to_convert;
+  std::set<int> fanout;
+  graph_view.DepthFirstSearch(op_types_to_traverse, stack_node_idx, &fanout);
+  for (int fanout_idx : fanout) {
+    const NodeDef& fanout_node = graph_view.graph()->node(fanout_idx);
+    VLOG(1) << "Fanout " << fanout_idx << " : " << fanout_node.name();
+    if (IsStackPushOp(fanout_node)) {
+      nodes_to_convert.push_back(fanout_idx);
+    } else if (IsStackOp(fanout_node) || IsStackCloseOp(fanout_node) ||
+               op_types_to_traverse.find(fanout_node.op()) !=
+                   op_types_to_traverse.end()) {
+      continue;
+    } else if (!IsStackPopOp(fanout_node) ||
+               (!graph_view.outputs(fanout_idx).empty() ||
+                nodes_to_preserve.find(fanout_node.name()) !=
+                    nodes_to_preserve.end())) {
+      // The node is either a stack pop with consumers or something unexpected
+      // so we leave the graph alone.
+      nodes_to_convert.clear();
+      break;
+    }
+  }
+  return nodes_to_convert;
+}
+
+Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
+                      GraphDef* optimized_graph) {
+  NodeMap node_map(optimized_graph);
+  SimpleGraphView graph_view;
+  TF_RETURN_IF_ERROR(graph_view.Initialize(*optimized_graph));
+  for (int node_idx = 0; node_idx < optimized_graph->node_size(); ++node_idx) {
+    if (IsStackOp(optimized_graph->node(node_idx))) {
+      for (int push_node_idx : GetStackPushNodesToConvert(
+               graph_view, nodes_to_preserve, node_idx)) {
+        // We found push nodes without corresponding pops. Convert them to
+        // Identity passing the data through and add a control dependency from
+        // the op supplying the stack handle.
+        NodeDef* push_node = optimized_graph->mutable_node(push_node_idx);
+        VLOG(1) << "Converting " << push_node_idx << " : "
+                << push_node->DebugString();
+        if (push_node->attr().count("swap_memory") != 0) {
+          push_node->mutable_attr()->erase("swap_memory");
+        }
+        push_node->set_op("Identity");
+        push_node->mutable_input()->SwapElements(0, 1);
+        const string ctrl_dep = ConstantFolding::AddControlDependency(
+            push_node->input(1), optimized_graph, &node_map);
+        push_node->set_input(1, ctrl_dep);
+        VLOG(1) << "After converting: " << push_node->DebugString();
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
+                          GraphDef* optimized_graph) {
+  std::unordered_set<const NodeDef*> dead_nodes;
+  std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
+  // TODO(bsteiner): also rewrite switches as identity. For now we just record
+  // them
+  std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
+      identity_switches;
+
+  GraphView view(optimized_graph);
+  for (const NodeDef& node : optimized_graph->node()) {
+    if (!IsSwitch(node)) {
+      continue;
+    }
+    if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
+      continue;
+    }
+    GraphView::InputPort ctrl_port(&node, 1);
+    GraphView::OutputPort ctrl_node = view.GetRegularFanin(ctrl_port);
+    if (!IsConstant(*ctrl_node.node)) {
+      continue;
+    }
+    Tensor selector;
+    CHECK(selector.FromProto(ctrl_node.node->attr().at("value").tensor()));
+    const int dead_fanout = selector.scalar<bool>()() ? 0 : 1;
+    GraphView::OutputPort dead(const_cast<NodeDef*>(&node), dead_fanout);
+    identity_switches.insert(dead);
+
+    SetVector<GraphView::InputPort, GraphView::HashPort> zombie_inputs;
+    for (const GraphView::InputPort& port : view.GetFanout(dead)) {
+      if (dead_nodes.find(port.node) == dead_nodes.end()) {
+        zombie_inputs.PushBack(port);
+      }
+    }
+    // If we encounter a single node that must be preserved in the fanout of the
+    // switch node we need to preserve the entire switch fanout: we therefore
+    // work on a local copy that only gets committed to the master copy once the
+    // whole fanout has been explored.
+    std::unordered_set<const NodeDef*> local_dead_nodes = dead_nodes;
+    std::unordered_map<NodeDef*, std::set<int>> local_dead_merge_inputs =
+        dead_merge_inputs;
+    bool found_node_to_preserve = false;
+    while (!found_node_to_preserve && !zombie_inputs.Empty()) {
+      GraphView::InputPort dead = zombie_inputs.PopBack();
+      if (nodes_to_preserve.find(dead.node->name()) !=
+          nodes_to_preserve.end()) {
+        found_node_to_preserve = true;
+        break;
+      }
+
+      if (local_dead_nodes.find(dead.node) != local_dead_nodes.end()) {
+        continue;
+      }
+
+      if (IsMerge(*dead.node)) {
+        const int fanout = dead.node->attr().at("N").i();
+        if (fanout > 2) {
+          // This never happens in practice, so we'll just skip these to
+          // simplify the code for now.
+          found_node_to_preserve = true;
+          break;
+        }
+        GraphView::OutputPort value_index(dead.node, 1);
+        const std::unordered_set<GraphView::InputPort, GraphView::HashPort>&
+            index_fanout = view.GetFanout(value_index);
+        if (!index_fanout.empty()) {
+          // The 2nd output (that indicates which input is propagated) is
+          // connected. This never happens in practice, so we'll just skip this
+          // case to simplify the code for now.
+          found_node_to_preserve = true;
+          break;
+        }
+
+        bool fully_dead = false;
+        if (dead.port_id < 0) {
+          // If the control dependency never gets triggered the merge will also
+          // never get triggered.
+          local_dead_nodes.insert(dead.node);
+          fully_dead = true;
+        } else {
+          local_dead_merge_inputs[dead.node].insert(dead.port_id);
+          if (local_dead_merge_inputs[dead.node].size() ==
+              dead.node->attr().at("N").i()) {
+            fully_dead = true;
+          }
+          if (fully_dead) {
+            local_dead_nodes.insert(dead.node);
+            for (const GraphView::InputPort& port :
+                 view.GetFanouts(*dead.node, true)) {
+              zombie_inputs.PushBack(port);
+            }
+          }
+        }
+      } else {
+        if (local_dead_nodes.insert(dead.node).second) {
+          for (const GraphView::InputPort& dead_fanout :
+               view.GetFanouts(*dead.node, true)) {
+            zombie_inputs.PushBack(dead_fanout);
+          }
+        }
+      }
+    }
+    if (!found_node_to_preserve) {
+      std::swap(dead_nodes, local_dead_nodes);
+      std::swap(dead_merge_inputs, local_dead_merge_inputs);
+    }
+  }
+
+  int last = optimized_graph->node_size() - 1;
+  for (int i = optimized_graph->node_size() - 1; i >= 0; --i) {
+    NodeDef* node = optimized_graph->mutable_node(i);
+    if (dead_nodes.find(node) != dead_nodes.end()) {
+      optimized_graph->mutable_node()->SwapElements(i, last);
+      last--;
+    }
+  }
+  optimized_graph->mutable_node()->DeleteSubrange(last + 1, dead_nodes.size());
+
+  for (const auto& itr : dead_merge_inputs) {
+    NodeDef* dead_node = itr.first;
+    if (dead_nodes.find(dead_node) != dead_nodes.end()) {
+      // The node has been pruned since all its inputs are dead.
+      continue;
+    }
+    const std::set<int>& dead_inputs = itr.second;
+    for (int index : dead_inputs) {
+      dead_node->mutable_input()->DeleteSubrange(index, 1);
+    }
+    dead_node->set_op("Identity");
+    dead_node->mutable_attr()->erase("N");
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
-
-  TF_RETURN_IF_ERROR(RemoveStackOps(item, optimized_graph));
-
-  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-    optimized_graph_ = optimized_graph;
-    // Set up helper data structures.
-    node_map_.reset(new NodeMap(optimized_graph_));
-    int num_frames;
-    TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
-                                                 &frame_map_, &num_frames));
-    TF_RETURN_IF_ERROR(LoopInvariantNodeMotion());
+  *optimized_graph = item.graph;
+  // Set up helper data structures.
+  if (options_.enable_loop_invariant_node_motion) {
+    LoopInvariantNodeMotionOptimizer linm_optimizer(optimized_graph);
+    TF_RETURN_IF_ERROR(linm_optimizer.Optimize());
+  }
+  if (options_.enable_stack_push_removal) {
+    TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
+  }
+  if (opt_level_ == RewriterConfig::AGGRESSIVE &&
+      options_.enable_dead_branch_removal) {
+    TF_RETURN_IF_ERROR(
+        RemoveDeadBranches(item.NodesToPreserve(), optimized_graph));
   }
 
   return Status::OK();

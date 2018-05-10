@@ -135,6 +135,10 @@ message HloInstructionProto {
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
   repeated int64 gather_window_bounds = 34;
 
+  // Compute Host.
+  string channel_name = 41;
+  int64 cost_estimate_ns = 42;
+
   // The id of this instruction.
   int64 id = 35;
 
@@ -143,6 +147,9 @@ message HloInstructionProto {
   repeated int64 called_computation_ids = 38;
 
   xla.OpSharding sharding = 40;
+
+  // Backend configuration for the instruction. Has backend-specific meaning.
+  string backend_config = 43;
 }
 
 // Serialization of HloComputation.
@@ -291,4 +298,21 @@ message HloProto {
   HloModuleProto hlo_module = 1;
   HloOrderingProto hlo_ordering = 2;
   BufferAssignmentProto buffer_assignment = 3;
+}
+
+// Encapsulates HloProto together with the arguments, result, and
+// execution_platform. This message is used for purposes such as
+// analysis/replay/file-storage.
+message HloSnapshot {
+  // The hlo graph.
+  HloProto hlo = 1;
+
+  // The arguments passed to the graph.
+  repeated LiteralProto arguments = 2;
+
+  // The result of the graph.
+  LiteralProto result = 3;
+
+  // The name of the platform used to run the graph.
+  string execution_platform = 4;
 }

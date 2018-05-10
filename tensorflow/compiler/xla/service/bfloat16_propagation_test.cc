@@ -323,6 +323,37 @@ TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
   EXPECT_TRUE(OutputsBF16(b_f1));
 }
 
+// Tests that changes to BF16 that cannot be propagated outside a fusion are
+// discarded.
+TEST_F(BFloat16PropagationTest, DiscardFusionInternalBF16Changes) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, param));
+
+  auto builder_f = HloComputation::Builder("fusion");
+  HloInstruction* a_f =
+      builder_f.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b_f =
+      builder_f.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  HloInstruction* add_f = builder_f.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, a_f, b_f));
+  HloInstruction* dot_f = builder_f.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {4, 4}), HloOpcode::kDot, add_f, add_f));
+  auto comp_f = module->AddEmbeddedComputation(builder_f.Build());
+  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      dot_f->shape(), HloInstruction::FusionKind::kCustom, {add, add}, comp_f));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  EXPECT_EQ(computation->root_instruction(), fusion);
+}
+
 // Tests that if 1) the root instruction of a fusion is a tuple, 2) the fusion
 // outputs are only used by a dot, and 3) one element of the tuple is used by
 // an add in the fusion computation, then the propagation pass should create a
@@ -426,8 +457,62 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
   EXPECT_TRUE(OutputsBF16(xpose));
 }
 
-// Tests that BF16 is propagated properly through while computations.
-TEST_F(BFloat16PropagationTest, PropagateThroughWhile) {
+// Tests that BF16 is propagated properly through a while computation with
+// non-tuple input/output.
+TEST_F(BFloat16PropagationTest, PropagateThroughSimpleWhile) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+
+  auto builder_cond = HloComputation::Builder("cond");
+  auto cond_param = builder_cond.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "cond_param"));
+  auto cond_dot = builder_cond.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, cond_param, cond_param));
+  auto cond_root = builder_cond.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt,
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_dot, {0, 0}, {1, 1}, {1, 1})),
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_dot, {1, 1}, {2, 2}, {1, 1}))));
+  auto cond = module->AddEmbeddedComputation(builder_cond.Build());
+
+  auto builder_body = HloComputation::Builder("body");
+  auto body_param = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "body_param"));
+  auto body_dot = builder_body.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, body_param, body_param));
+  auto body = module->AddEmbeddedComputation(builder_body.Build());
+
+  auto while_hlo = builder.AddInstruction(
+      HloInstruction::CreateWhile(shape, cond, body, add));
+
+  auto dot = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, while_hlo, while_hlo));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(cond_root->shape(), ShapeUtil::MakeShape(PRED, {})));
+  EXPECT_TRUE(OutputsBF16(add));
+  EXPECT_TRUE(OutputsBF16(body_dot));
+  EXPECT_TRUE(OutputsBF16(body_param));
+  EXPECT_TRUE(OutputsBF16(cond_param));
+  EXPECT_FALSE(OutputsBF16(dot));
+}
+
+// Tests that BF16 is propagated properly through while computations with
+// tuple-shaped input/output.
+TEST_F(BFloat16PropagationTest, PropagateThroughTupleWhile) {
   auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4, 4});

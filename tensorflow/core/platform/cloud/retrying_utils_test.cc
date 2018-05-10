@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include <fstream>
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -31,10 +32,9 @@ TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
 
   const auto& status = RetryingUtils::CallWithRetries(f, 500000L, sleep);
   EXPECT_EQ(errors::Code::ABORTED, status.code());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("All 10 retry attempts "
-                            "failed. The last failure: "
-                            "Unavailable: Failed."))
+  EXPECT_TRUE(str_util::StrContains(
+      status.error_message(),
+      "All 10 retry attempts failed. The last failure: Unavailable: Failed."))
       << status;
 
   EXPECT_EQ(10, requested_delays.size());

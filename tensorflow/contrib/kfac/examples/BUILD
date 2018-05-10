@@ -28,8 +28,28 @@ py_library(
 )
 
 py_binary(
-    name = "convnet_mnist_main",
-    srcs = ["convnet_mnist_main.py"],
+    name = "convnet_mnist_single_main",
+    srcs = ["convnet_mnist_single_main.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":convnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "convnet_mnist_multi_tower_main",
+    srcs = ["convnet_mnist_multi_tower_main.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":convnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "convnet_mnist_distributed_main",
+    srcs = ["convnet_mnist_distributed_main.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":convnet",

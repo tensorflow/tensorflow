@@ -17,6 +17,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("DirectedInterleaveDataset")
+    .Input("selector_input_dataset: variant")
+    .Input("data_input_datasets: N * variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("N: int >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+A substitute for `InterleaveDataset` on a fixed list of `N` datasets.
+
+selector_input_dataset: A dataset of scalar `DT_INT64` elements that determines
+  which of the `N` data inputs should produce the next output element.
+data_input_datasets: `N` datasets with the same type that will be interleaved
+  according to the values of `selector_input_dataset`.
+)doc");
+
 REGISTER_OP("IgnoreErrorsDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")

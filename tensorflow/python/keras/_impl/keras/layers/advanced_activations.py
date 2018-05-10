@@ -25,7 +25,8 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.keras._impl.keras.utils import tf_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -63,7 +64,7 @@ class LeakyReLU(Layer):
     base_config = super(LeakyReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -118,7 +119,7 @@ class PReLU(Layer):
     else:
       self.shared_axes = list(shared_axes)
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def build(self, input_shape):
     param_shape = list(input_shape[1:])
     self.param_broadcast = [False] * len(param_shape)
@@ -146,7 +147,7 @@ class PReLU(Layer):
     if K.backend() == 'theano':
       neg = (
           K.pattern_broadcast(self.alpha, self.param_broadcast) *
-          (inputs - K.abs(inputs)) * 0.5)
+          (inputs - math_ops.abs(inputs)) * 0.5)
     else:
       neg = -self.alpha * K.relu(-inputs)
     return pos + neg
@@ -161,7 +162,7 @@ class PReLU(Layer):
     base_config = super(PReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -200,7 +201,7 @@ class ELU(Layer):
     base_config = super(ELU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -232,14 +233,15 @@ class ThresholdedReLU(Layer):
     self.theta = K.cast_to_floatx(theta)
 
   def call(self, inputs, mask=None):
-    return inputs * K.cast(K.greater(inputs, self.theta), K.floatx())
+    return inputs * math_ops.cast(
+        math_ops.greater(inputs, self.theta), K.floatx())
 
   def get_config(self):
     config = {'theta': float(self.theta)}
     base_config = super(ThresholdedReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
 
@@ -273,6 +275,6 @@ class Softmax(Layer):
     base_config = super(Softmax, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
-  @shape_type_conversion
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape

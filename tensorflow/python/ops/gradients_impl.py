@@ -121,7 +121,8 @@ def _MarkReachedOps(from_ops, reached_ops):
     if not reached_ops[op._id]:
       reached_ops[op._id] = True
       for output in op.outputs:
-        queue.extend(output.consumers())
+        if _IsBackpropagatable(output):
+          queue.extend(output.consumers())
 
 
 def _GatherInputs(to_ops, reached_ops):
@@ -163,16 +164,19 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
     colocate_gradients_with_ops: Python bool.  See docstring of gradients().
 
   Returns:
-    A tuple containing: (1) a list of integers indexed by operation id,
-    indicating the number of backprop inputs to this operation, and (2)
-    a ControlFlowState object which is not None if the ops between from_ops
-    and to_ops contain control flow loops.
+    A tuple containing: (1) the subset of to_ops ids reachable from from_ops
+    by a path of zero or more backpropagatable tensors, (2) a list of integers
+    indexed by operation id, indicating the number of backprop inputs to this
+    operation, and (3) a ControlFlowState object which is not None if the ops
+    between from_ops and to_ops contain control flow loops.
   """
   # Mark reachable ops from from_ops.
   reached_ops = [False] * (graph._last_id + 1)
-  for op in to_ops:
-    reached_ops[op._id] = True
   _MarkReachedOps(from_ops, reached_ops)
+  # reached_ops[X] iff X is reachable from from_ops by a path of zero or more
+  # backpropagatable tensors.
+
+  reachable_to_ops = set(op._id for op in to_ops if reached_ops[op._id])  # pylint: disable=protected-access
 
   # Mark between ops.
   between_ops = [False] * (graph._last_id + 1)
@@ -189,6 +193,8 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
       reached_ops[op._id] = False
       for inp in op.inputs:
         queue.append(inp.op)
+  # between_ops[X] iff X is on a path of zero or more backpropagatable tensors
+  # between from_ops and to_ops
 
   # 'loop_state' is None if there are no while loops.
   loop_state = control_flow_ops.MaybeCreateControlFlowState(
@@ -201,14 +207,17 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
       if between_ops[x.op._id]:
         pending_count[x.op._id] += 1
 
-  return pending_count, loop_state
+  return reachable_to_ops, pending_count, loop_state
 
 
 def _AsList(x):
   return x if isinstance(x, (list, tuple)) else [x]
 
 
-def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
+def _DefaultGradYs(grad_ys,
+                   ys,
+                   colocate_gradients_with_ops,
+                   gradient_uid="__unsupported__"):
   """Fill in default values for grad_ys.
 
   Args:
@@ -216,6 +225,9 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     ys: List of tensors.
     colocate_gradients_with_ops: If True, try colocating gradients with
       the corresponding op.
+    gradient_uid: A unique identifier within the graph indicating
+      which invocation of gradients is being executed. Used to cluster
+      ops for compilation.
 
   Returns:
     A list of gradients to use, without None.
@@ -231,7 +243,7 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
   for i in xrange(len(grad_ys)):
     grad_y = grad_ys[i]
     y = ys[i]
-    with _maybe_colocate_with(y.op, colocate_gradients_with_ops):
+    with _maybe_colocate_with(y.op, gradient_uid, colocate_gradients_with_ops):
       if grad_y is None:
         if y.dtype.is_complex:
           raise TypeError(
@@ -244,21 +256,21 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
         continue
       if y.dtype.is_floating or y.dtype.is_integer:
         if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
-          raise TypeError("Gradient type %s generated for real or "
-                          "integer-valued tensor %s with type %s must be "
-                          "real or integer" %
-                          (dtypes.as_dtype(grad_y.dtype).name, y,
-                           dtypes.as_dtype(y.dtype).name))
+          raise TypeError(
+              "Gradient type %s generated for real or "
+              "integer-valued tensor %s with type %s must be "
+              "real or integer" % (dtypes.as_dtype(grad_y.dtype).name, y,
+                                   dtypes.as_dtype(y.dtype).name))
       elif y.dtype.is_complex:
         if not grad_y.dtype.is_complex:
-          raise TypeError("Gradient type %s generated for complex-valued "
-                          "tensor %s with type %s must be real" %
-                          (dtypes.as_dtype(grad_y.dtype).name, y,
-                           dtypes.as_dtype(y.dtype).name))
+          raise TypeError(
+              "Gradient type %s generated for complex-valued "
+              "tensor %s with type %s must be real" % (dtypes.as_dtype(
+                  grad_y.dtype).name, y, dtypes.as_dtype(y.dtype).name))
       else:
-        raise TypeError("Tensor %s with type %s must be numeric "
-                        "to obtain a default gradient" %
-                        (y, dtypes.as_dtype(y.dtype).name))
+        raise TypeError(
+            "Tensor %s with type %s must be numeric "
+            "to obtain a default gradient" % (y, dtypes.as_dtype(y.dtype).name))
       # Create a grad_y tensor in the name scope of the gradient.
       # Required for TensorArrays to identify which gradient call a
       # grad_y value is coming from.
@@ -285,7 +297,15 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
 def _IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
-                              dtypes.complex64, dtypes.complex128)
+                              dtypes.complex64, dtypes.complex128,
+                              dtypes.resource)
+
+
+def _IsBackpropagatable(tensor):
+  if _IsTrainable(tensor):
+    return True
+  dtype = dtypes.as_dtype(tensor.dtype)
+  return dtype.base_dtype in (dtypes.bfloat16, dtypes.resource, dtypes.variant)
 
 
 def _VerifyGeneratedGradients(grads, op):
@@ -338,10 +358,10 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count):
 
 
 @contextlib.contextmanager
-def _maybe_colocate_with(op, colocate_gradients_with_ops):
+def _maybe_colocate_with(op, gradient_uid, colocate_gradients_with_ops):  # pylint: disable=invalid-name
   """Context to colocate with `op` if `colocate_gradients_with_ops`."""
   if colocate_gradients_with_ops:
-    with ops.colocate_with(op):
+    with ops._colocate_with_for_gradient(op, gradient_uid):  # pylint: disable=protected-access
       yield
   else:
     yield
@@ -396,6 +416,30 @@ def _MaybeCompile(scope, op, func, grad_fn):
   }
   with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
     return grad_fn()
+
+
+def _RaiseNoGradWrtInitialLoopValError(op, from_ops):
+  """Raises an error if we backprop through a loop var."""
+  # Find the nearest 'to_op' reachable from 'op' to provide a more helpful error
+  # message.
+  target_op = None
+  queue = collections.deque([op])
+  visited = set()
+  while queue:
+    curr_op = queue.popleft()
+    if curr_op in visited: continue
+    visited.add(curr_op)
+    if curr_op in from_ops:
+      target_op = curr_op
+      break
+    queue.extend(t.op for t in curr_op.inputs)
+  assert target_op
+  raise ValueError(
+      "Cannot compute gradient inside while loop with respect to op '%s'. "
+      "We do not support taking the gradient wrt or through the initial value "
+      "of a loop variable. Gradients can be computed through loop invariants "
+      "or wrt the input parameters to the loop body."
+      % target_op.name)
 
 
 @tf_export("gradients")
@@ -454,6 +498,9 @@ def gradients(ys,
   backpropagation stops at both `tf.stop_gradient` nodes and nodes in
   `stop_gradients`, whichever is encountered first.
 
+  All integer tensors are considered constant with respect to all `xs`, as if
+  they were included in `stop_gradients`.
+
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
     xs: A `Tensor` or list of tensors to be used for differentiation.
@@ -506,6 +553,9 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
   with ops.name_scope(
       name, "gradients",
       list(ys) + list(xs) + list(stop_gradients) + list(grad_ys)) as grad_scope:
+    # Get a uid for this call to gradients that can be used to help
+    # cluster ops for compilation.
+    gradient_uid = ops.get_default_graph().unique_name("uid")
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
     xs = [
         x.handle if resource_variable_ops.is_resource_variable(x) else x
@@ -513,7 +563,8 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
     ]
     xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
         xs, name="x", as_ref=True)
-    grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)
+    grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops,
+                             gradient_uid)
 
     # The approach we take here is as follows: Create a list of all ops in the
     # subgraph between the ys and xs.  Visit these ops in reverse order of ids
@@ -529,7 +580,7 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     stop_gradient_ops = [t.op for t in stop_gradients]
-    pending_count, loop_state = _PendingCount(
+    reachable_to_ops, pending_count, loop_state = _PendingCount(
         ops.get_default_graph(), to_ops, from_ops, colocate_gradients_with_ops)
 
     # Iterate over the collected ops.
@@ -554,7 +605,7 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
       # another output's gradient.
       # pylint: disable=protected-access
       ready = (pending_count[op._id] == 0)
-      if ready and op._id not in to_ops_set:
+      if ready and op._id not in to_ops_set and op._id in reachable_to_ops:
         to_ops_set.add(op._id)
         queue.append(op)
       # pylint: enable=protected-access
@@ -570,23 +621,28 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
     while queue:
       # generate gradient subgraph for op.
       op = queue.popleft()
-      with _maybe_colocate_with(op, colocate_gradients_with_ops):
+      with _maybe_colocate_with(op, gradient_uid, colocate_gradients_with_ops):
         if loop_state:
           loop_state.EnterGradWhileContext(op, before=True)
-        out_grads = _AggregatedGrads(grads, op, loop_state, aggregation_method)
+        out_grads = _AggregatedGrads(grads, op, gradient_uid, loop_state,
+                                     aggregation_method)
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=True)
 
         grad_fn = None
-        # pylint: disable=protected-access
         func_call = None
+        # pylint: disable=protected-access
         is_func_call = ops.get_default_graph()._is_function(op.type)
+        # pylint: enable=protected-access
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
         if has_out_grads and (op._id not in stop_ops):
           if is_func_call:
             func_call = ops.get_default_graph()._get_function(op.type)
+            # Note that __defun is not set if the graph is
+            # imported. If it's set, we prefer to access the original
+            # defun.
+            func_call = getattr(op, "__defun", func_call)
             grad_fn = func_call.python_grad_func
-            # pylint: enable=protected-access
           else:
             # A grad_fn must be defined, either as a function or as None
             # for ops that do not have gradients.
@@ -598,6 +654,21 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
                   (op.name, op.type))
         if loop_state:
           loop_state.EnterGradWhileContext(op, before=False)
+
+        # NOTE(skyewm): We don't support computing gradients wrt a loop variable
+        # unless it's within the context of a single iteration (i.e. the
+        # gradient is wrt to the loop parameter in the body function, not wrt or
+        # through the initial value). This means if we're in a while loop
+        # context, we should never see a switch node from this context.
+        # pylint: disable=protected-access
+        if (control_flow_util.IsSwitch(op) and
+            op._control_flow_context is not None and
+            op._control_flow_context.IsWhileContext() and
+            op._control_flow_context ==
+            ops.get_default_graph()._get_control_flow_context()):
+          _RaiseNoGradWrtInitialLoopValError(op, from_ops)
+        # pylint: enable=protected-access
+
         if (grad_fn or is_func_call) and has_out_grads:
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
@@ -633,7 +704,10 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
               if gate_gradients and len([x for x in in_grads
                                          if x is not None]) > 1:
                 with ops.device(None):
-                  with ops.colocate_with(None, ignore_existing=True):
+                  with ops._colocate_with_for_gradient(  # pylint: disable=protected-access
+                      None,
+                      gradient_uid,
+                      ignore_existing=True):
                     in_grads = control_flow_ops.tuple(in_grads)
           _LogOpGradients(op, out_grads, in_grads)
         else:
@@ -789,7 +863,7 @@ def _LogOpGradients(op, out_grads, in_grads):
                ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
 
 
-def _MultiDeviceAddN(tensor_list):
+def _MultiDeviceAddN(tensor_list, gradient_uid):
   """Adds tensors from potentially multiple devices."""
   # Basic function structure comes from control_flow_ops.group().
   # Sort tensors according to their devices.
@@ -808,7 +882,10 @@ def _MultiDeviceAddN(tensor_list):
 
   for dev in sorted(six.iterkeys(tensors_on_device), key=DeviceKey):
     tensors = tensors_on_device[dev]
-    with ops.colocate_with(tensors[0].op, ignore_existing=True):
+    with ops._colocate_with_for_gradient(  # pylint: disable=protected-access
+        tensors[0].op,
+        gradient_uid,
+        ignore_existing=True):
       summands.append(math_ops.add_n(tensors))
 
   return math_ops.add_n(summands)
@@ -834,12 +911,19 @@ class AggregationMethod(object):
   EXPERIMENTAL_ACCUMULATE_N = 2
 
 
-def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
+def _AggregatedGrads(grads,
+                     op,
+                     gradient_uid,
+                     loop_state,
+                     aggregation_method=None):
   """Get the aggregated gradients for op.
 
   Args:
     grads: The map of memoized gradients.
     op: The op to get gradients for.
+    gradient_uid: A unique identifier within the graph indicating
+      which invocation of gradients is being executed. Used to cluster
+      ops for compilation.
     loop_state: An object for maintaining the state of the while loops in the
                 graph. It is of type ControlFlowState. None if the graph
                 contains no while loops.
@@ -916,7 +1000,7 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
             out_grads[i] = running_sum
         else:
           used = "add_n"
-          out_grads[i] = _MultiDeviceAddN(out_grad)
+          out_grads[i] = _MultiDeviceAddN(out_grad, gradient_uid)
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:

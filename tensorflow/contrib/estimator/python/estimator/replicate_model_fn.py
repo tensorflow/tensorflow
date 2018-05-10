@@ -47,8 +47,12 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import optimizer as optimizer_lib
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated(
+    '2018-05-31',
+    'Please use `tf.contrib.distribute.MirroredStrategy` instead.')
 def replicate_model_fn(model_fn,
                        loss_reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
                        devices=None):
@@ -255,6 +259,9 @@ class TowerOptimizer(optimizer_lib.Optimizer):
 
   COLLECTION_FOR_GRAPH_STATES = 'replicate_model_fn_graph_states'
 
+  @deprecation.deprecated(
+      '2018-05-31',
+      'Please use `tf.contrib.distribute.MirroredStrategy` instead.')
   def __init__(self, optimizer_or_optimizer_fn):
     """Wrap an existing optimizer for gathering gradients across towers.
 
@@ -456,7 +463,7 @@ def _get_local_devices(device_type):
 
 
 def _split_batch(features, labels, number_of_shards, device):
-  """Split input features and labes into batches."""
+  """Split input features and labels into batches."""
 
   def ensure_divisible_by_shards(sequence):
     batch_size = ops_lib.convert_to_tensor(sequence).get_shape()[0]
@@ -602,7 +609,7 @@ def _local_device_setter(worker_device, ps_devices, ps_strategy):
 
 
 def _scale_tower_loss(tower_spec, loss_reduction, number_of_towers):
-  """Produce an EstimatorSpec with approproriately scaled loss."""
+  """Produce an EstimatorSpec with appropriately scaled loss."""
   if tower_spec.loss is None:
     return tower_spec
 

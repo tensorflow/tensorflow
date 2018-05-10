@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -147,7 +148,7 @@ TEST_F(NonMaxSuppressionOpTest, TestInconsistentBoxAndScoreShapes) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("scores has incompatible shape"))
+      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -160,7 +161,7 @@ TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("iou_threshold must be in [0, 1]"))
+      str_util::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
       << s;
 }
 
@@ -308,7 +309,7 @@ TEST_F(NonMaxSuppressionV2OpTest, TestInconsistentBoxAndScoreShapes) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("scores has incompatible shape"))
+      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -322,7 +323,7 @@ TEST_F(NonMaxSuppressionV2OpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("iou_threshold must be in [0, 1]"))
+      str_util::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
       << s;
 }
 

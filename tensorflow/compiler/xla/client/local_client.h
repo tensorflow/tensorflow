@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -38,18 +39,9 @@ class LocalExecutable {
  public:
   // Run the compiled computation with the given arguments and options and
   // return the result.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> Run(
+  StatusOr<ScopedShapedBuffer> Run(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ExecutableRunOptions run_options);
-
-  // Return the layout (contained in a shape) of the result produced by the
-  // computation.
-  const Shape& result_layout() const {
-    return executable_->module_config()
-        .entry_computation_layout()
-        .result_layout()
-        .shape();
-  }
 
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
@@ -73,7 +65,7 @@ class LocalExecutable {
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteAndDump(
+  StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
@@ -136,7 +128,7 @@ class LocalClient : public Client {
   // ScopedShapedBuffer. If non-null the given memory allocator is used for
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> LiteralToShapedBuffer(
+  StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const Literal& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 
@@ -167,7 +159,7 @@ class LocalClient : public Client {
   StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
   // Returns the platform that the underlying service targets.
-  perftools::gputools::Platform* platform() const;
+  se::Platform* platform() const;
 
   // Returns the number of devices on the system of the service platform
   // type. Not all devices may be supported by the service (see

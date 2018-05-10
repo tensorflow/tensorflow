@@ -151,6 +151,7 @@ tensorflow/core/kernels/decode_bmp_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
 tensorflow/core/kernels/data_format_ops.cc
 tensorflow/core/kernels/spacetodepth_op.cc
+tensorflow/core/kernels/dense_update_functor.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
 tensorflow/core/kernels/decode_wav_op.cc
@@ -301,3 +302,5 @@ tensorflow/core/kernels/warn_about_ints.cc
 tensorflow/core/kernels/segment_reduction_ops.cc
 tensorflow/core/kernels/batch_util.cc
 tensorflow/core/ops/audio_ops.cc
+tensorflow/core/kernels/decode_proto_op.cc
+tensorflow/core/kernels/encode_proto_op.cc
