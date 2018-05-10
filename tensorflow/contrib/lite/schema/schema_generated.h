@@ -300,11 +300,12 @@ enum BuiltinOperator {
   BuiltinOperator_LESS_EQUAL = 63,
   BuiltinOperator_SELECT = 64,
   BuiltinOperator_SLICE = 65,
+  BuiltinOperator_SIN = 66,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SLICE
+  BuiltinOperator_MAX = BuiltinOperator_SIN
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[65] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[66] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -370,7 +371,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[65] {
     BuiltinOperator_GREATER_EQUAL,
     BuiltinOperator_LESS_EQUAL,
     BuiltinOperator_SELECT,
-    BuiltinOperator_SLICE
+    BuiltinOperator_SLICE,
+    BuiltinOperator_SIN
   };
   return values;
 }
@@ -443,6 +445,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "LESS_EQUAL",
     "SELECT",
     "SLICE",
+    "SIN",
     nullptr
   };
   return names;

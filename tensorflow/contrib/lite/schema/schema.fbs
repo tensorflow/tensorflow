@@ -143,6 +143,7 @@ enum BuiltinOperator : byte {
   LESS_EQUAL = 63,
   SELECT = 64,
   SLICE = 65,
+  SIN = 66,
 }
 
 // Options for the builtin operators.

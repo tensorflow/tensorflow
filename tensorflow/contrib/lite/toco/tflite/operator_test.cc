@@ -118,6 +118,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<NegOperator>("NEG", OperatorType::kNeg);
   CheckSimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect);
   CheckSimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice);
+  CheckSimpleOperator<SinOperator>("SIN", OperatorType::kSin);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

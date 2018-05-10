@@ -78,6 +78,7 @@ enum class OperatorType {
   kFloor,
   kGather,
   kResizeBilinear,
+  kSin,
   kSpaceToBatchND,
   kStack,
   kBatchToSpaceND,
@@ -616,6 +617,17 @@ struct LogOperator : Operator {
 // TensorFlow equivalent: Tanh
 struct TanhOperator : Operator {
   TanhOperator() : Operator(OperatorType::kTanh) {}
+};
+
+// Element-wise Sin operator:
+//   x -> Sin(x) = sin(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Sin
+struct SinOperator : Operator {
+  SinOperator() : Operator(OperatorType::kSin) {}
 };
 
 // Element-wise addition operator.

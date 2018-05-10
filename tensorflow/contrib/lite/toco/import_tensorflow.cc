@@ -1248,6 +1248,19 @@ void ConvertLessEqualOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertSinOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Sin");
+  auto* op = new SinOperator;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertGreaterOperator(const NodeDef& node,
                             const TensorFlowImportFlags& tf_import_flags,
                             Model* model) {
@@ -2275,6 +2288,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertDynamicStitchOperator(node, tf_import_flags, model);
   } else if (node.op() == "RandomUniform") {
     ConvertRandomUniform(node, tf_import_flags, model);
+  } else if (node.op() == "Sin") {
+    ConvertSinOperator(node, tf_import_flags, model);
   } else if (node.op() == "Select") {
     ConvertSelectOperator(node, tf_import_flags, model);
   } else {

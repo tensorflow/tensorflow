@@ -1514,6 +1514,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kExp:
+    case OperatorType::kSin:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
