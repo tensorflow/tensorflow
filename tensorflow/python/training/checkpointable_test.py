@@ -34,6 +34,16 @@ class InterfaceTests(test.TestCase):
     root.leaf = duplicate_name_dep
     root._track_checkpointable(duplicate_name_dep, name="leaf", overwrite=True)
 
+  def testNoDependency(self):
+    root = checkpointable.Checkpointable()
+    hasdep = checkpointable.Checkpointable()
+    root.hasdep = hasdep
+    nodep = checkpointable.Checkpointable()
+    root.nodep = checkpointable.NoDependency(nodep)
+    self.assertEqual(1, len(root._checkpoint_dependencies))
+    self.assertIs(root._checkpoint_dependencies[0].ref, root.hasdep)
+    self.assertIs(root.hasdep, hasdep)
+    self.assertIs(root.nodep, nodep)
 
 if __name__ == "__main__":
   test.main()

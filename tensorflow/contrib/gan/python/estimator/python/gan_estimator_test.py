@@ -38,6 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
@@ -194,6 +195,12 @@ class GANEstimatorIntegrationTest(test.TestCase):
       lr = learning_rate_decay.exponential_decay(1.0, gstep, 10, 0.9)
       return training.GradientDescentOptimizer(lr)
 
+    def get_metrics(gan_model):
+      return {
+          'mse_custom_metric': metrics_lib.mean_squared_error(
+              gan_model.real_data, gan_model.generated_data)
+      }
+
     gopt = make_opt if lr_decay else training.GradientDescentOptimizer(1.0)
     dopt = make_opt if lr_decay else training.GradientDescentOptimizer(1.0)
     est = estimator.GANEstimator(
@@ -203,6 +210,7 @@ class GANEstimatorIntegrationTest(test.TestCase):
         discriminator_loss_fn=losses.wasserstein_discriminator_loss,
         generator_optimizer=gopt,
         discriminator_optimizer=dopt,
+        get_eval_metric_ops_fn=get_metrics,
         model_dir=self._model_dir)
 
     # TRAIN
@@ -215,6 +223,7 @@ class GANEstimatorIntegrationTest(test.TestCase):
     self.assertIn('loss', six.iterkeys(scores))
     self.assertEqual(scores['discriminator_loss'] + scores['generator_loss'],
                      scores['loss'])
+    self.assertIn('mse_custom_metric', six.iterkeys(scores))
 
     # PREDICT
     predictions = np.array([x for x in est.predict(predict_input_fn)])

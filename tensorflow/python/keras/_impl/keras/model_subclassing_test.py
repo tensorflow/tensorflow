@@ -23,12 +23,15 @@ import os
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpointable
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
@@ -247,6 +250,26 @@ class ModelSubclassingTest(test.TestCase):
 
       model.fit([x1, x2], [y1, y2], epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_single_io_workflow_with_dataset_iterators(self):
+    num_classes = 2
+    num_samples = 10
+    input_dim = 50
+
+    with self.test_session():
+      model = SimpleTestModel(num_classes=num_classes, use_dp=True, use_bn=True)
+      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+      x = np.ones((num_samples, input_dim))
+      y = np.zeros((num_samples, num_classes))
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+      iterator = dataset.make_one_shot_iterator()
+
+      model.fit(iterator, epochs=2, steps_per_epoch=10, verbose=0)
+      _ = model.evaluate(iterator, steps=10, verbose=0)
 
   def test_multi_io_workflow_with_numpy_arrays_and_custom_placeholders(self):
 
@@ -582,6 +605,22 @@ class ModelSubclassingTest(test.TestCase):
     model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
+
+  def test_no_dependency(self):
+    class Foo(keras.Model):
+
+      def __init__(self):
+        super(Foo, self).__init__()
+        self.isdep = keras.layers.Dense(1)
+        self.notdep = checkpointable.NoDependency(keras.layers.Dense(2))
+        self.notdep_var = checkpointable.NoDependency(
+            resource_variable_ops.ResourceVariable(1., name='notdep_var'))
+
+    m = Foo()
+    self.assertEqual([m.isdep, m.notdep], m.layers)
+    self.assertEqual(1, len(m._checkpoint_dependencies))
+    self.assertIs(m.isdep, m._checkpoint_dependencies[0].ref)
+    self.assertEqual('notdep_var:0', m.notdep_var.name)
 
 
 class CustomCallModel(keras.Model):

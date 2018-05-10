@@ -468,10 +468,15 @@ class Experiment(object):
         on which that evaluation was based.
         At the beginning of evaluation, the passed `eval_results` will be None
         so it's expected that the predicate function handles that gracefully.
-        When `predicate_fn` is not specified, continuous eval will run in an
-        infinite loop (if `train_steps` is None). or exit once global step
-        reaches `train_steps`.
-
+        Continuous eval behavior under different conditions:
+          * When `predicate_fn` is specified:
+            + if `train_steps` is None, run until `predicate_fn` returns False.
+            + if `train_steps` is specified, run until either global step
+              reaches `train_steps` or `predicate_fn` returns False.
+          * When `predicate_fn` is not specified:
+            + if `train_steps` is None, run in an infinite loop.
+            + if `train_steps` is specified, run until global step reaches
+              `train_steps`.
       export: Whether to export from this step. Default is 'True'.
 
     Raises:

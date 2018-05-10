@@ -106,6 +106,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
+  transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);

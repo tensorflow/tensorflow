@@ -1102,7 +1102,7 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
-      {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
+      {dot, reshape}, HloInstruction::FusionKind::kLoop);
 
   auto fusion2 = fusion->Clone();
   const HloInstruction* root = fusion->fused_expression_root();
@@ -1169,7 +1169,7 @@ TEST_F(HloInstructionTest, NestedFusionEquality) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   auto nested_fusion = computation->CreateFusionInstruction(
-      {dot, b_t}, HloInstruction::FusionKind::kTransposeDot);
+      {dot, b_t}, HloInstruction::FusionKind::kLoop);
 
   auto fusion = computation->CreateFusionInstruction(
       {add, nested_fusion}, HloInstruction::FusionKind::kOutput);
@@ -1246,13 +1246,6 @@ TEST_F(HloInstructionTest, Stringification) {
 
   auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
-  HloInstruction* fusion = computation->CreateFusionInstruction(
-      {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
-
-  EXPECT_EQ(
-      fusion->ToString(options),
-      "%dot_fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
-      "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));

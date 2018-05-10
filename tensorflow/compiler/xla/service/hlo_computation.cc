@@ -347,6 +347,11 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   // To avoid special handling of this computation, cast away const of
   // 'this'. 'this' is immediately removed from the post order after
   // construction.
+  //
+  // TODO(b/78350259): This violates const-correctness, since while the original
+  // computation is not returned, we still retrieve non-const computations from
+  // a const one. Consider also avoiding const for HloComputation, or review XLA
+  // for const-correctness of non-HloInstruction* types like this.
   ComputeComputationPostOrder(const_cast<HloComputation*>(this), &visited,
                               &post_order);
 
@@ -723,18 +728,25 @@ Status HloComputation::Accept(
   return this->Accept(&visitor);
 }
 
-std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix,
-                                                      HloModule* module) {
+std::unique_ptr<HloComputation> HloComputation::Clone(
+    const string& suffix, HloModule* module,
+    HloInstruction::CloneMap* clone_map) {
   return CloneWithReplacements(
       /*replacements=*/std::unordered_map<const HloInstruction*,
                                           std::unique_ptr<HloInstruction>>(),
-      module, suffix);
+      module, clone_map, suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements,
-    HloModule* module, const string& suffix) {
+    HloModule* module, HloInstruction::CloneMap* clone_map,
+    const string& suffix) {
+  HloInstruction::CloneMap local_clone_map;
+  if (clone_map == nullptr) {
+    clone_map = &local_clone_map;
+  }
+
   // Look up instr in the replacements map, and return either the replacement,
   // or instr, if the replacement isn't present.
   //
@@ -756,24 +768,19 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     }
   }
 
-  std::unordered_map<HloInstruction*, HloInstruction*> clone_map;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   std::unique_ptr<HloInstruction> new_instr = nullptr;
   for (auto instr : postorder) {
     std::vector<HloInstruction*> new_operands;
     for (auto operand : instr->operands()) {
       auto replaced_operand = replace(operand);
-      // If replaced_operand is null, that means 'replacements' asked us not to
-      // include operand in the new computation.  But we can't do that, because
-      // operand is used by instr.
       CHECK_NE(replaced_operand, nullptr)
-          << "replacements map tried to eliminate a used instruction "
-          << operand->ToString() << ", used by " << instr->ToString();
-      new_operands.push_back(FindOrDie(clone_map, replaced_operand));
+          << "Replacements map specifies to leave out " << operand->ToString()
+          << ", but it is used by " << instr->ToString() << ".";
+      new_operands.push_back(FindOrDie(*clone_map, replaced_operand));
     }
-    new_instr =
-        instr->CloneWithNewOperands(instr->shape(), new_operands, module);
-    InsertOrDie(&clone_map, instr, new_instr.get());
+    new_instr = instr->CloneWithNewOperands(instr->shape(), new_operands,
+                                            module, clone_map);
     instructions.push_back(std::move(new_instr));
   }
   Builder builder(name() + "." + suffix);
@@ -781,27 +788,24 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     builder.AddInstruction(std::move(instr));
   }
   auto result = builder.Build(
-      /*root_instruction=*/FindOrDie(clone_map, replace(root_instruction())));
+      /*root_instruction=*/FindOrDie(*clone_map, replace(root_instruction())));
 
   // Clone control dependencies.
   for (auto instr : postorder) {
-    HloInstruction* new_instr = FindOrDie(clone_map, instr);
+    HloInstruction* new_instr = FindOrDie(*clone_map, instr);
     for (auto successor : instr->control_successors()) {
       auto replaced_successor = replace(successor);
-
-      // successor may not be in clone_map, because it might have been
-      // removed by the replacements map.
-      if (replaced_successor == nullptr) {
-        continue;
-      }
+      CHECK_NE(replaced_successor, nullptr)
+          << "Replacements map specifies to leave out " << successor->ToString()
+          << ", but it is control-depended-on by " << instr->ToString() << ".";
 
       TF_CHECK_OK(new_instr->AddControlDependencyTo(
-          FindOrDie(clone_map, replaced_successor)));
+          FindOrDie(*clone_map, replaced_successor)));
     }
   }
 
   // We cloned the elements of 'replacements', so they're all going to be
-  // destroyed.  HloInstructions need to be detached from their operands before
+  // destroyed. HloInstructions need to be detached from their operands before
   // they're destroyed, otherwise they stick around in the operands' users lists
   // and cause use-after-frees.
   for (auto& kv : replacements) {

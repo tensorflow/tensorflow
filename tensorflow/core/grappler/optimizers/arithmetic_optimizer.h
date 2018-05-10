@@ -65,7 +65,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
     bool remove_negation = true;
-    bool hoist_cwise_unary_chains = true;
+    bool hoist_cwise_unary_chains = false;
     bool convert_sqrt_div_to_rsqrt_mul = false;
     bool remove_idempotent = true;
 

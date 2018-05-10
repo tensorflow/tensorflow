@@ -39,15 +39,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), device_type_(ctx->device_type()) {
-  const NameAttrList* func;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("function", &func));
-  function_ = *func;
-  DataTypeVector constant_types;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Tconstants", &constant_types));
-  num_constant_args_ = constant_types.size();
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args_));
+XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
+                                       const std::vector<int>& constants,
+                                       const std::vector<int>& resources,
+                                       const NameAttrList& function)
+    : OpKernel(ctx),
+      constants_(constants),
+      resources_(resources),
+      device_type_(ctx->device_type()),
+      function_(function) {
   if (device_type_ == DeviceType(DEVICE_CPU)) {
     platform_id_ = se::host::kHostPlatformId;
   } else if (device_type_ == DeviceType(DEVICE_GPU)) {
@@ -57,8 +57,8 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   }
 }
 
-Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
-                                               XlaCompilationCache** cache) {
+Status XlaLocalLaunchBase::BuildCompilationCache(OpKernelContext* ctx,
+                                                 XlaCompilationCache** cache) {
   const XlaDevice::Metadata* metadata;
   Status s = XlaDevice::GetMetadata(ctx, &metadata);
   if (s.ok()) {
@@ -90,8 +90,8 @@ Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
   return Status::OK();
 }
 
-void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
-  VLOG(1) << "XlaLocalLaunchOp::Compute "
+void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
+  VLOG(1) << "XlaLocalLaunchOpBase::Compute "
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
   // We store information about the JIT-compiled XLA computation
   // in the ResourceMgr.
@@ -124,7 +124,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   }
 
   std::map<int, OptionalTensor> variables =
-      SnapshotResourceVariables(ctx, num_resource_args_);
+      SnapshotResourceVariables(ctx, resources_);
 
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
@@ -161,7 +161,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   xla::LocalExecutable* executable;
 
   std::map<int, Tensor> constant_args;
-  for (int i = 0; i < num_constant_args_; ++i) {
+  for (int i : constants_) {
     constant_args.insert({i, ctx->input(i)});
   }
   OP_REQUIRES_OK(ctx, cache->Compile(options, function_, constant_args,
@@ -170,8 +170,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   VLOG(1) << "Executing XLA Computation...";
 
-  XlaComputationLaunchContext launch_context(
-      num_resource_args_, client, xla_allocator, allocate_xla_tensors);
+  XlaComputationLaunchContext launch_context(client, xla_allocator,
+                                             allocate_xla_tensors);
   launch_context.PopulateInputs(ctx, kernel, variables);
 
   // Execute the computation.
@@ -193,6 +193,62 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   launch_context.PopulateOutputs(ctx, kernel, run_result.ConsumeValueOrDie());
   VLOG(1) << "Done";
 }
+
+namespace {
+
+// OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
+// in error case, it returns RET instead of void.
+#define OP_REQUIRES_OK_RETURN(CTX, RET, ...)                \
+  do {                                                      \
+    ::tensorflow::Status _s(__VA_ARGS__);                   \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
+      return RET;                                           \
+    }                                                       \
+  } while (0)
+
+// Helper static functions to construct parameters for
+// XlaLocalLaunchBase constructor from OpKernelConstruction.
+std::vector<int> ConstantsVector(OpKernelConstruction* ctx) {
+  DataTypeVector constant_types;
+  OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
+                        ctx->GetAttr("Tconstants", &constant_types));
+  std::vector<int> constants(constant_types.size());
+  std::iota(constants.begin(), constants.end(), 0);
+  return constants;
+}
+
+std::vector<int> ResourcesVector(OpKernelConstruction* ctx) {
+  DataTypeVector constant_types;
+  OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
+                        ctx->GetAttr("Tconstants", &constant_types));
+
+  DataTypeVector arg_types;
+  OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
+                        ctx->GetAttr("Targs", &arg_types));
+
+  int num_resources;
+  OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
+                        ctx->GetAttr("Nresources", &num_resources));
+
+  std::vector<int> resources(num_resources);
+  std::iota(resources.begin(), resources.end(),
+            constant_types.size() + arg_types.size());
+  return resources;
+}
+
+NameAttrList FunctionAttr(OpKernelConstruction* ctx) {
+  const NameAttrList* func;
+  OP_REQUIRES_OK_RETURN(ctx, NameAttrList(), ctx->GetAttr("function", &func));
+  return *func;
+}
+
+#undef OP_REQUIRES_OK_RETURN
+}  // namespace
+
+XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
+    : XlaLocalLaunchBase(ctx, ConstantsVector(ctx), ResourcesVector(ctx),
+                         FunctionAttr(ctx)) {}
 
 XlaLocalLaunchOp::~XlaLocalLaunchOp() {
   VLOG(1) << "XlaLocalLaunchOp destroyed";

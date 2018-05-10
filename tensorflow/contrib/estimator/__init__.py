@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib.estimator.python.estimator.boosted_trees import *
 from tensorflow.contrib.estimator.python.estimator.dnn import *
 from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
+from tensorflow.contrib.estimator.python.estimator.export import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
 from tensorflow.contrib.estimator.python.estimator.head import *
 from tensorflow.contrib.estimator.python.estimator.linear import *
@@ -56,6 +57,8 @@ _allowed_symbols = [
     'TowerOptimizer',
     'RNNClassifier',
     'RNNEstimator',
+    'export_saved_model_for_mode',
+    'export_all_saved_models',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

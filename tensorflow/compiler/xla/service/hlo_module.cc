@@ -46,6 +46,18 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
       config_(config),
       unique_id_(next_unique_module_id_++) {}
 
+StatusOr<HloInstruction*> HloModule::LaunderConstInstructionFromModule(
+    const HloInstruction* hlo) {
+  if (hlo == nullptr) {
+    return nullptr;
+  }
+
+  TF_RET_CHECK(hlo->GetModule() == this);
+
+  // TODO(b/78350259): Eliminate const laundering.
+  return const_cast<HloInstruction*>(hlo);
+}
+
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
     bool uniquify_names) {

@@ -56,8 +56,10 @@ message ApiDef {
     // use a snake_case convention instead of CamelCase.
     string name = 1;
 
-    // First GraphDef version at which the op is disallowed.
-    int32 deprecation_version = 2;
+    // If this endpoint is deprecated, set deprecation_message to a
+    // message that should be logged when the endpoint is used.
+    // The message should indicate alternative endpoint to use, if any.
+    string deprecation_message = 2;
   }
   repeated Endpoint endpoint = 3;
 
