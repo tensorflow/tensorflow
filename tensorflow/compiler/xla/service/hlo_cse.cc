@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace xla {
@@ -88,6 +89,20 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
   return changed;
 }
 
+// An instruction is considered to be equivalent to another only if they
+// share the exact same set of operands.
+int64 CseHash(const HloInstruction* instruction) {
+  int64 hash = std::hash<int64>()(static_cast<int64>(instruction->opcode()));
+  hash = tensorflow::Hash64Combine(
+      hash, instruction->opcode() == HloOpcode::kGetTupleElement
+                ? instruction->tuple_index()
+                : -1);
+  for (auto operand : instruction->operands()) {
+    hash = tensorflow::Hash64Combine(hash, operand->unique_id());
+  }
+  return hash;
+}
+
 }  // namespace
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
@@ -96,6 +111,12 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
       eq_instructions = std::equal_to<const HloInstruction*>();
   const std::function<bool(const HloComputation*, const HloComputation*)>
       eq_computations = std::equal_to<const HloComputation*>();
+
+  auto cse_equal = [&](const HloInstruction* lhs, const HloInstruction* rhs) {
+    return lhs->Identical(*rhs, eq_instructions, eq_computations,
+                          is_layout_sensitive_);
+  };
+
   for (auto* computation : module->computations()) {
     if (only_fusion_computations_ && !computation->IsFusionComputation()) {
       continue;
@@ -103,13 +124,17 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
 
     changed |= CombineConstants(computation, is_layout_sensitive_);
 
-    std::list<HloInstruction*> post_order =
-        computation->MakeInstructionPostOrder();
-    std::set<HloInstruction*> removed_instructions;
-    for (auto instruction : post_order) {
-      // If the instruction has already been removed by CSE skip over it.
-      if (removed_instructions.count(instruction) > 0 ||
-          instruction->operand_count() == 0) {
+    // HLO instructions are grouped into equivalency classes by using the
+    // cse_equal predicate defined above. This set holds a representative
+    // instruction for each class.
+    tensorflow::gtl::FlatSet<HloInstruction*, decltype(&CseHash),
+                             decltype(cse_equal)>
+        representatives(/*N=*/1024, &CseHash, cse_equal);
+
+    for (auto instruction : computation->MakeInstructionPostOrder()) {
+      // If the instruction has zero operands (constants, parameters, etc.) skip
+      // over it.
+      if (instruction->operand_count() == 0) {
         continue;
       }
 
@@ -118,31 +143,16 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         continue;
       }
 
-      // An instruction is considered to be equivalent to another only if they
-      // share the exact same set of operands. So to find equivalent
-      // instructions, we just search among instructions which share operand(0)
-      // of this instruction.
-      const HloInstruction* operand = instruction->operand(0);
-
-      tensorflow::gtl::InlinedVector<HloInstruction*, 8>
-          equivalent_instructions;
-      for (HloInstruction* user : operand->users()) {
-        if (user != instruction && !user->HasSideEffect() &&
-            user->Identical(*instruction, eq_instructions, eq_computations,
-                            is_layout_sensitive_)) {
-          equivalent_instructions.push_back(user);
-        }
-      }
-
-      // Replace all equivalent instructions with this instruction.
-      for (HloInstruction* equivalent_instruction : equivalent_instructions) {
+      auto it = representatives.find(instruction);
+      if (it != representatives.end()) {
+        HloInstruction* equivalent_instruction = *it;
         TF_RETURN_IF_ERROR(
-            equivalent_instruction->ReplaceAllUsesWith(instruction));
-        TF_RETURN_IF_ERROR(
-            computation->RemoveInstruction(equivalent_instruction));
-        removed_instructions.insert(equivalent_instruction);
+            instruction->ReplaceAllUsesWith(equivalent_instruction));
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         changed = true;
+        continue;
       }
+      representatives.insert(instruction);
     }
   }
   return changed;
