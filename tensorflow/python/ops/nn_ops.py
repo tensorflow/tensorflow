@@ -1601,7 +1601,7 @@ def leaky_relu(features, alpha=0.2, name=None):
     if features.dtype.is_integer:
       features = math_ops.to_float(features)
     alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
-    return math_ops.maximum(alpha * features, features)
+    return math_ops.maximum(alpha * features, features, name=name)
 
 
 def _flatten_outer_dims(logits):
