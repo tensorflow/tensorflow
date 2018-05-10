@@ -103,7 +103,7 @@ def _kwarg_names(func):
 
 
 def _add_op(op):
-  key_op = _key_op(op)
+  key_op = arg_scope_func_key(op)
   _DECORATED_OPS[key_op] = _kwarg_names(op)
 
 
