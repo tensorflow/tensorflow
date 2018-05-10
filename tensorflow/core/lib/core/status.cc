@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/core/status.h"
+
 #include <stdio.h>
+
+#include "tensorflow/core/lib/core/no_destructor.h"
 
 namespace tensorflow {
 
@@ -40,7 +43,7 @@ void Status::SlowCopyFrom(const State* src) {
 }
 
 const string& Status::empty_string() {
-  static string* empty = new string;
+  static NoDestructor<string> empty;
   return *empty;
 }
 

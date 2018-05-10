@@ -2824,6 +2824,7 @@ tf_cc_tests(
         "lib/core/bitmap_test.cc",
         "lib/core/blocking_counter_test.cc",
         "lib/core/coding_test.cc",
+        "lib/core/no_destructor_test.cc",
         "lib/core/notification_test.cc",
         "lib/core/refcount_test.cc",
         "lib/core/status_test.cc",
