@@ -548,7 +548,7 @@ REGISTER_OP("CropAndResize")
     .Input("crop_size: int32")
     .Output("crops: float")
     .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
-    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .Attr("extrapolation_value: float = 0")
     .SetShapeFn([](InferenceContext* c) {
       // Get inputs and validate ranks.
@@ -579,7 +579,7 @@ REGISTER_OP("CropAndResizeGradImage")
     .Input("image_size: int32")
     .Output("output: T")
     .Attr("T: {float, half, double}")
-    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(3, &out));
