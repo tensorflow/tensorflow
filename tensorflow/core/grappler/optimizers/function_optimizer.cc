@@ -144,11 +144,18 @@ struct FunctionSpecialization {
   std::unordered_set<string> control_deps;
 };
 
+class FakeCPUDevice : public Device {
+ public:
+  FakeCPUDevice(Env* env, const DeviceAttributes& attr) : Device(env, attr) {}
+  Status Sync() override { return Status::OK(); }
+};
+
 class FunctionOptimizerContext {
  public:
   explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
                                     const GrapplerItem& item)
-      : function_library_(OpRegistry::Global(), item.graph.library()) {
+      : graph_version_(item.graph.versions().producer()),
+        function_library_(OpRegistry::Global(), item.graph.library()) {
     InitializeTrulyConstNodes(item);
     InitializeInlinedFunctions(opt_level, item);
   }
@@ -159,6 +166,11 @@ class FunctionOptimizerContext {
 
   FunctionLibraryDefinition* mutable_function_library() {
     return &function_library_;
+  }
+
+  FunctionLibraryRuntime* mutable_function_library_runtime() {
+    InitializeFunctionLibraryRuntime();
+    return flr_;
   }
 
   bool IsInlinedFunction(const string& name) const {
@@ -222,12 +234,35 @@ class FunctionOptimizerContext {
     }
   }
 
+  void InitializeFunctionLibraryRuntime() {
+    if (!flr_) {
+      Env* env = Env::Default();
+      DeviceAttributes attr;
+      attr.set_name("/device:CPU:0");
+      attr.set_device_type("CPU");
+      Device* device = new FakeCPUDevice(env, attr);
+      device_mgr_.reset(new DeviceMgr({device}));
+      OptimizerOptions optimizer_opts;
+      optimizer_opts.set_do_function_inlining(true);
+      process_flr_.reset(new ProcessFunctionLibraryRuntime(
+          device_mgr_.get(), env, graph_version_, &function_library_,
+          optimizer_opts));
+      flr_ = process_flr_->GetFLR(device->name());
+    }
+  }
+
+  const int graph_version_;
   FunctionLibraryDefinition function_library_;
+
+  // These fields initialized lazily only if needed.
+  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> process_flr_;
+  FunctionLibraryRuntime* flr_ = nullptr;
+
   // Functions that can be inlined into optimized graph.
   std::unordered_map<string, const FunctionDef*> inlined_functions_;
   // Nodes that are Const and not in feed.
   std::unordered_map<string, const NodeDef*> truly_const_nodes_;
-
   // Specialized functions.
   std::unordered_map<FunctionSpecializationSignature,
                      const FunctionSpecialization,
@@ -641,58 +676,8 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
   return Status::OK();
 }
 
-class FakeCPUDevice : public Device {
- public:
-  FakeCPUDevice(Env* env, const DeviceAttributes& attr) : Device(env, attr) {}
-  Status Sync() override { return Status::OK(); }
-};
-
-class SymbolicGradientEnv {
- public:
-  SymbolicGradientEnv(int graph_version, const FunctionDefLibrary& library)
-      : graph_version_(graph_version), library_(library) {}
-
-  FunctionLibraryDefinition* function_library() {
-    InitializeIfNeeded();
-    return fld_.get();
-  }
-  FunctionLibraryRuntime* function_library_runtime() {
-    InitializeIfNeeded();
-    return flr_;
-  }
-
- private:
-  // This initialization is expensive. Do it lazily to avoid paying for it
-  // unless it's needed.
-  void InitializeIfNeeded() {
-    if (flr_) {
-      return;
-    }
-    Env* env = Env::Default();
-    DeviceAttributes attr;
-    attr.set_name("/device:CPU:0");
-    attr.set_device_type("CPU");
-    FakeCPUDevice* dev = new FakeCPUDevice(env, attr);
-    std::vector<Device*> devices;
-    devices.push_back(dev);
-    dvc_mgr_.reset(new DeviceMgr(devices));
-    fld_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), library_));
-    OptimizerOptions optimizer_opts;
-    optimizer_opts.set_do_function_inlining(true);
-    pflr_.reset(new ProcessFunctionLibraryRuntime(
-        dvc_mgr_.get(), env, graph_version_, fld_.get(), optimizer_opts));
-    flr_ = pflr_->GetFLR(dev->name());
-  }
-
-  const int graph_version_;
-  const FunctionDefLibrary& library_;
-  std::unique_ptr<DeviceMgr> dvc_mgr_;
-  std::unique_ptr<FunctionLibraryDefinition> fld_;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  FunctionLibraryRuntime* flr_ = nullptr;
-};
-
-Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
+Status InlineSymbolicGradient(const NodeDef& node,
+                              FunctionOptimizerContext* ctx,
                               GraphDef* inlined_graph) {
   VLOG(2) << "Inline symbolic gradient: " << SummarizeNodeDef(node);
 
@@ -732,15 +717,15 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
   GraphConstructorOptions graph_ctor_opts;
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
-  Graph graph(env->function_library());
+  Graph graph(ctx->function_library());
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &graph));
 
   // Recursively inline the functions until there is nothing more to inline. We
   // should at least expand one function.
   int counter = 0;
-  while (counter < 50 &&
-         ExpandInlineFunctions(env->function_library_runtime(), &graph)) {
+  while (counter < 50 && ExpandInlineFunctions(
+                             ctx->mutable_function_library_runtime(), &graph)) {
     ++counter;
   }
 
@@ -801,8 +786,6 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   FunctionOptimizerContext ctx(opt_level_, item);
-  SymbolicGradientEnv env(item.graph.versions().producer(),
-                          item.graph.library());
 
   bool inline_gradients = options_.enable_symbolic_gradient_inlining;
   bool inline_func = options_.enable_function_inlining;
@@ -816,7 +799,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
       string f_name = f_attr != nullptr ? f_attr->func().name() : "";
       if (ctx.IsInlinedFunction(f_name)) {
-        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, &env, optimized_graph));
+        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, &ctx, optimized_graph));
         continue;
       }
     }
