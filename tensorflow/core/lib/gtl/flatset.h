@@ -180,6 +180,7 @@ class FlatSet {
   }
 
   std::pair<iterator, bool> insert(const Key& k) { return Insert(k); }
+  std::pair<iterator, bool> insert(Key&& k) { return Insert(std::move(k)); }
   template <typename InputIter>
   void insert(InputIter first, InputIter last) {
     for (; first != last; ++first) {
@@ -276,9 +277,10 @@ class FlatSet {
     }
   };
 
-  std::pair<iterator, bool> Insert(const Key& k) {
+  template <typename K>
+  std::pair<iterator, bool> Insert(K&& k) {
     rep_.MaybeResize();
-    auto r = rep_.FindOrInsert(k);
+    auto r = rep_.FindOrInsert(std::forward<K>(k));
     const bool inserted = !r.found;
     return {iterator(r.b, rep_.limit(), r.index), inserted};
   }

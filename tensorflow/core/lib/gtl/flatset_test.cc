@@ -593,6 +593,12 @@ TEST(FlatSet, UniqueSetIter) {
   EXPECT_EQ(sum, (kCount * (kCount + 1)) / 2);
 }
 
+TEST(FlatSet, InsertUncopyable) {
+  UniqSet set;
+  EXPECT_TRUE(set.insert(MakeUniq(0)).second);
+  EXPECT_EQ(set.size(), 1);
+}
+
 /* This would be a good negative compilation test, if we could do that.
 
 TEST(FlatSet, MutableIterator_ShouldNotCompile) {
