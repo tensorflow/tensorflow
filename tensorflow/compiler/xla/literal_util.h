@@ -581,79 +581,6 @@ class Literal : public LiteralBase {
   // Unhide const method from parent class.
   using LiteralBase::untyped_data;
 
-  // Populates a literal with a sparse layout with the given indices and values.
-  // Each index in the indices array is CHECKed against the dimensions in the
-  // literal's shape.  If sort is true, then the indices and values will be
-  // sorted.  If sort is false, then the indices and values are assumed to
-  // already be in sorted order.  See CreateSparse for an example of how data
-  // are populated.
-  template <typename NativeT>
-  void PopulateSparse(SparseIndexArray indices,
-                      tensorflow::gtl::ArraySlice<NativeT> values,
-                      bool sort = true);
-
-  // Copy values from 'src_literal' rooted at 'src_shape_index' into this
-  // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
-  // at 'dest_shape_index' must be compatible with the subshape of 'src_literal'
-  // rooted at 'src_shape_index', but need not be arrays.
-  Status CopyFrom(const LiteralSlice& src_literal,
-                  const ShapeIndex& dest_shape_index = {},
-                  const ShapeIndex& src_shape_index = {});
-
-  // Similar to CopyFrom, but with move semantincs. The subshape of this literal
-  // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
-  // (layouts and shapes must match), but need not be arrays. The memory
-  // allocated in this literal for the subshape at dest_shape_index is
-  // deallocated, and the respective buffers are replaced with those in
-  // src_literal. Upon return, src_literal is set to a nil shape (empty tuple).
-  Status MoveFrom(Literal&& src_literal,
-                  const ShapeIndex& dest_shape_index = {});
-
-  // Copies the values from src_literal, starting at src_base shape indexes,
-  // to this literal, starting at dest_base, where the copy size in each
-  // dimension is specified by copy_size.
-  // The src_literal and this literal must have the same primitive type,
-  // src_base+copy_size must fit the source literal dimensions, as well as
-  // dest_base+copy_size must fit the destination literal dimensions.
-  // Note: if either src_literal or this literal contains dimensions with zero
-  // element, then copy_size must be 0 in these dimensions while the
-  // corresponding base indices being 0.
-  // This literal and 'src_literal' must be arrays.
-  Status CopySliceFrom(const LiteralSlice& src_literal,
-                       tensorflow::gtl::ArraySlice<int64> src_base,
-                       tensorflow::gtl::ArraySlice<int64> dest_base,
-                       tensorflow::gtl::ArraySlice<int64> copy_size);
-
-  // Copies one element from src_literal[src_index] to (*this)[dest_index].
-  Status CopyElementFrom(const LiteralSlice& src_literal,
-                         tensorflow::gtl::ArraySlice<int64> src_index,
-                         tensorflow::gtl::ArraySlice<int64> dest_index);
-
-  // Sets an element in the literal at the given index. The multi_index is
-  // CHECKed against the dimension sizes.
-  template <typename NativeT>
-  void Set(tensorflow::gtl::ArraySlice<int64> multi_index,
-           const ShapeIndex& shape_index, NativeT value);
-  // Overloads of Set for array literals. CHECKs if the literal is not
-  // array-shaped and dense.
-  template <typename NativeT>
-  void Set(tensorflow::gtl::ArraySlice<int64> multi_index, NativeT value);
-
-  // Appends the given element to the literal.  If the elements are not appended
-  // in sorted order, then SortSparseElements should be called before calling
-  // other methods.  This literal must have a sparse layout.
-  template <typename NativeT>
-  void AppendSparseElement(tensorflow::gtl::ArraySlice<int64> multi_index,
-                           NativeT value, const ShapeIndex& shape_index = {});
-
-  // Sorts the elements in a sparse array.
-  void SortSparseElements(const ShapeIndex& shape_index = {});
-
-  // As Set(), but truncates `value` to the literal element type before storing.
-  // This literal must be an array.
-  Status SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
-                          int64 value);
-
   // Populate this literal with the given values. Examples:
   //
   //   // Populate with floats.
@@ -943,8 +870,6 @@ class Literal : public LiteralBase {
   StatusOr<std::unique_ptr<Literal>> ConvertToShape(
       const Shape& dest_shape, bool round_f32_to_bf16 = false) const;
 
-=======
->>>>>>> 11569894f10243fda5f827510cc30a9e12fc1e3a
   // Creates a scalar literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
   // Creates a scalar literal value one of the given primitive type.
