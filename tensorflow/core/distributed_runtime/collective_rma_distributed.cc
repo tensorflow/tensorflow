@@ -122,7 +122,6 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   // Logic to be executed on the RecvBufferAsync callback.
   auto recv_buf_callback = [this, state, peer_task, to_device, to_alloc_attr,
                             to_device_ctx, to_tensor, done](const Status& s) {
-    std::unique_ptr<State> del_on_exit(state);
     if (s.ok()) {
       // In this generic implementation the bytes come back in the
       // RPC response protobuf rather than via RDMA so we need to copy
@@ -134,6 +133,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         done(errors::Internal("RecvBufResponse returned ", num_bytes,
                               " bytes where to_tensor expected ",
                               to_tensor->TotalBytes()));
+        delete state;
         return;
       }
       if (to_device->tensorflow_gpu_device_info()) {
@@ -144,6 +144,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         Status status = dev_mgr_->LookupDevice("CPU:0", &cpu_dev);
         if (!status.ok()) {
           done(status);
+          delete state;
           return;
         }
         AllocatorAttributes cpu_attr;
@@ -163,6 +164,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
                              // done in another thread.
                              SchedClosure([s, done] { done(s); });
                            });
+        delete state;
         return;
       } else {
         // CPU device
@@ -174,6 +176,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
       dev_resolver_->ClearTask(peer_task);
     }
 
+    delete state;
     done(s);
   };
 
