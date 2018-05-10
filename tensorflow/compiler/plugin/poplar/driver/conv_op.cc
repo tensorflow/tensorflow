@@ -47,15 +47,17 @@ GetConvolutionParameters(const HloInstruction* operands_inst,
   unsigned int n_o = output_dims[dims.output_feature_dimension()];
   unsigned int n_p = kernel_dims[dims.kernel_output_feature_dimension()];
 
-//  if (true) {
-//    n_b = input_dims[dims.input_feature_dimension()];
-//    n_i = input_dims[dims.input_batch_dimension()];
-//  }
+  unsigned int n_g;
 
-  unsigned int n_g = (n_i / n_j) * (n_o / n_p);
-
-  n_i = n_i / n_g;
-  n_o = n_o / n_g;
+  if ((n_i >= n_j) && (n_o >= n_p)) {
+    // Forward and backward passes
+    n_g = (n_i / n_j) * (n_o / n_p);
+    n_i = n_i / n_g;
+    n_o = n_o / n_g;
+  } else {
+    // Weight update
+    n_g = (n_j / n_i) * (n_p / n_o);
+  }
 
   std::vector<std::size_t> n_s;
   std::vector<std::size_t> f_s;
@@ -212,51 +214,88 @@ ShuffleConvolutionOutputToTensorflow(const HloInstruction* inst,
 
 // This function operates on the popconv format weights (GOI...)
 poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
-                                                const poplar::Tensor& t) {
+                                                const poplar::Tensor& t,
+                                                bool flipped) {
   poplar::Tensor out = t;
 
-  // GOI... -> OGI...
-  std::vector<unsigned int> shuffle(out.rank());
-  std::iota(shuffle.begin(), shuffle.end(), 0);
-  shuffle[0] = 1;
-  shuffle[1] = 0;
-  out = out.dimShuffle(shuffle);
+  if (p.getNumConvGroups() == 1) {
+    // Non-grouped case
+    std::vector<std::size_t> shape;
+    for (int64 i = 1; i < out.rank(); i++) {
+      shape.push_back(out.dim(i));
+    }
+    return out.reshape(shape);
+  } else {
+    // GOI... -> OGI...
+    std::vector<unsigned int> shuffle(out.rank());
+    std::iota(shuffle.begin(), shuffle.end(), 0);
+    shuffle[0] = 1;
+    shuffle[1] = 0;
+    out = out.dimShuffle(shuffle);
 
-  // OGI... -> O(GI)...
-  std::vector<std::size_t> shape;
-  shape.push_back(out.dim(0));
-  shape.push_back(out.dim(1)*out.dim(2));
+    // OGI... -> O(GI)...
+    std::vector<std::size_t> shape;
+    shape.push_back(out.dim(0));
+    shape.push_back(out.dim(1)*out.dim(2));
 
-  for (int64 i = 3; i < out.rank(); i++) {
-    shape.push_back(out.dim(i));
+    for (int64 i = 3; i < out.rank(); i++) {
+      shape.push_back(out.dim(i));
+    }
+
+    return out.reshape(shape);
   }
-
-  return out.reshape(shape);
 }
 
 // This function operates on the popconv format weights (GOI...)
 poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
-                                           const poplar::Tensor& t) {
+                                           const poplar::Tensor& t,
+                                           bool flipped) {
   poplar::Tensor out = t;
 
-  // OI... ->O(GI)...
-  std::vector<std::size_t> shape;
-  shape.push_back(out.dim(0));
-  shape.push_back(p.getNumConvGroups());
-  shape.push_back(out.dim(1)/ p.getNumConvGroups());
-  for (int64 i = 2; i < out.rank(); i++) {
-    shape.push_back(out.dim(i));
+  unsigned int out_dim = flipped ? 1 : 0;
+  unsigned int in_dim = 1 - out_dim;
+
+  if (p.getNumConvGroups() == 1) {
+    // Non-grouped case
+    std::vector<std::size_t> shape;
+    shape.push_back(1);
+    for (int64 i = 0; i < out.rank(); i++) {
+      shape.push_back(out.dim(i));
+    }
+    return out.reshape(shape);
+  } else {
+    unsigned int chan_div[2];
+    chan_div[in_dim] = out.dim(in_dim) / p.getNumInputChansPerConvGroup();
+    chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
+
+    // OI... ->(GO)(GI)...
+    std::vector<std::size_t> shape;
+    shape.push_back(chan_div[0]);
+    shape.push_back(out.dim(0) / chan_div[0]);
+    shape.push_back(chan_div[1]);
+    shape.push_back(out.dim(1) / chan_div[1]);
+    for (int64 i = 2; i < out.rank(); i++) {
+      shape.push_back(out.dim(i));
+    }
+    out = out.reshape(shape);
+
+    // (GO)(GI)... -> (GG)OI...
+    std::vector<unsigned int> shuffle(out.rank());
+    std::iota(shuffle.begin(), shuffle.end(), 0);
+    shuffle[1] = 2;
+    shuffle[2] = 1;
+    out = out.dimShuffle(shuffle);
+
+    // (GG)OI... -> GOI...
+    shape.clear();
+    shape.push_back(out.dim(0) * out.dim(1));
+    for (int64 i = 2; i < out.rank(); i++) {
+      shape.push_back(out.dim(i));
+    }
+    out = out.reshape(shape);
+
+    return out;
   }
-  out = out.reshape(shape);
-
-  // O(GI)... -> GOI...
-  std::vector<unsigned int> shuffle(out.rank());
-  std::iota(shuffle.begin(), shuffle.end(), 0);
-  shuffle[0] = 1;
-  shuffle[1] = 0;
-  out = out.dimShuffle(shuffle);
-
-  return out;
 }
 
 StatusOr<poplar::program::Program>
@@ -291,7 +330,7 @@ CreateConv2D(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
                                                                 false));
 
-  kernel = AddGroupsDimensionToWeights(params, kernel);
+  kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
   auto out = popconv::convolution(graph, in, kernel, params, false, prog,
                                   inst->name(), opts, &res.convolution_cache);
@@ -333,7 +372,7 @@ Create2DConvWithReverse(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
                                                                 true));
 
-  kernel = AddGroupsDimensionToWeights(params, kernel);
+  kernel = AddGroupsDimensionToWeights(params, kernel, true);
 
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
                                             true, prog, conv->name(), opts,
@@ -376,7 +415,7 @@ CreateDepthwiseBackpropFilter(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
                                                                 false));
 
-  kernel = AddGroupsDimensionToWeights(params, kernel);
+  kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
                                             false, prog, conv->name(), opts,

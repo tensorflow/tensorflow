@@ -68,10 +68,12 @@ ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
                                       const poplar::Tensor& tensor);
 
 poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
-                                                const poplar::Tensor& t);
+                                                const poplar::Tensor& t,
+                                                bool flipped);
 
 poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
-                                           const poplar::Tensor& t);
+                                           const poplar::Tensor& t,
+                                           bool flipped);
 
 Status
 AddOutputTensor(TensorMap& map,
