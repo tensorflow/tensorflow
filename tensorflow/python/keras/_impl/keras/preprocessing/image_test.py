@@ -246,7 +246,37 @@ class TestImage(test.TestCase):
     self.assertEqual(len(dir_iterator.class_indices), num_classes)
     self.assertEqual(len(dir_iterator.classes), count)
     self.assertEqual(set(dir_iterator.filenames), set(filenames))
-    _ = dir_iterator.next()
+
+    def preprocessing_function(x):
+      """This will fail if not provided by a Numpy array.
+
+      Note: This is made to enforce backward compatibility.
+
+      Args:
+          x: A numpy array.
+
+      Returns:
+          An array of zeros with the same shape as the given array.
+      """
+      self.assertEqual(x.shape, (26, 26, 3))
+      self.assertIs(type(x), np.ndarray)
+      return np.zeros_like(x)
+
+    # Test usage as Sequence
+    generator = keras.preprocessing.image.ImageDataGenerator(
+        preprocessing_function=preprocessing_function)
+    dir_seq = generator.flow_from_directory(
+        str(temp_dir),
+        target_size=(26, 26),
+        color_mode='rgb',
+        batch_size=3,
+        class_mode='categorical')
+    self.assertEqual(len(dir_seq), count // 3 + 1)
+    x1, y1 = dir_seq[1]
+    self.assertEqual(x1.shape, (3, 26, 26, 3))
+    self.assertEqual(y1.shape, (3, num_classes))
+    x1, y1 = dir_seq[5]
+    self.assertTrue((x1 == 0).all())
 
   def directory_iterator_with_validation_split_test_helper(
       self, validation_split):
