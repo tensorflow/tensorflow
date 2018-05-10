@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 
+#if GOOGLE_CUDA
+#include "cuda/include/cuda.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 #if !defined(INTEL_MKL)
