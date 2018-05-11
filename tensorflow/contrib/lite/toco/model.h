@@ -1829,6 +1829,8 @@ class Model {
   }
   const ArrayMap& GetArrayMap() const { return arrays; }
 
+  int64 ArithmeticOpsCount() const { return ops_count; }
+
   // Optional arrays are used for optional tensors,
   // these tensors do not have data, but with reserved names as op inputs.
   std::set<string> optional_arrays;
@@ -1845,6 +1847,8 @@ class Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
+  // Arithmatic operations performed in the model.
+  int64 ops_count = 0;
 
  private:
   // The associative array mapping names to Array's.
