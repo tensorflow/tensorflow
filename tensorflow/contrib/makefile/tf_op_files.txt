@@ -306,3 +306,4 @@ tensorflow/core/kernels/encode_proto_op.cc
 tensorflow/core/ops/lookup_ops.cc
 tensorflow/core/kernels/as_string_op.cc
 tensorflow/core/kernels/string_to_hash_bucket_op.cc
+tensorflow/core/kernels/snapshot_op.cc
