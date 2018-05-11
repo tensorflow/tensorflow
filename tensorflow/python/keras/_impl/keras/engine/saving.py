@@ -62,7 +62,9 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
 
   Arguments:
       model: Keras model instance to be saved.
-      filepath: String, path where to save the model.
+      filepath: One of the following:
+          - String, path where to save the model
+          - `h5py.File` object where to save the model
       overwrite: Whether we should overwrite any existing
           model at the target location, or instead
           ask the user with a manual prompt.
@@ -77,13 +79,20 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
 
   from tensorflow.python.keras._impl.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
 
-  # If file exists and should not be overwritten.
-  if not overwrite and os.path.isfile(filepath):
-    proceed = ask_to_proceed_with_overwrite(filepath)
-    if not proceed:
-      return
+  if not isinstance(filepath, h5py.File):
+    # If file exists and should not be overwritten.
+    if not overwrite and os.path.isfile(filepath):
+      proceed = ask_to_proceed_with_overwrite(filepath)
+      if not proceed:
+        return
 
-  with h5py.File(filepath, mode='w') as f:
+    f = h5py.File(filepath, mode='w')
+    opened_new_file = True
+  else:
+    f = filepath
+    opened_new_file = False
+
+  try:
     f.attrs['keras_version'] = str(keras_version).encode('utf8')
     f.attrs['backend'] = K.backend().encode('utf8')
     f.attrs['model_config'] = json.dumps(
@@ -142,6 +151,9 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
             else:
               param_dset[:] = val
     f.flush()
+  finally:
+    if opened_new_file:
+      f.close()
 
 
 @tf_export('keras.models.load_model')
@@ -149,7 +161,9 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
   """Loads a model saved via `save_model`.
 
   Arguments:
-      filepath: String, path to the saved model.
+      filepath: One of the following:
+          - String, path to the saved model
+          - `h5py.File` object from which to load the model
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
           considered during deserialization.
@@ -199,7 +213,14 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       return custom_objects[obj]
     return obj
 
-  with h5py.File(filepath, mode='r') as f:
+  opened_new_file = not isinstance(filepath, h5py.File)
+  if opened_new_file:
+    f = h5py.File(filepath, mode='r')
+  else:
+    f = filepath
+
+  model = None
+  try:
     # instantiate model
     model_config = f.attrs.get('model_config')
     if model_config is None:
@@ -210,54 +231,54 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
     # set weights
     load_weights_from_hdf5_group(f['model_weights'], model.layers)
 
-    # Early return if compilation is not required.
-    if not compile:
-      return model
+    if compile:
+      # instantiate optimizer
+      training_config = f.attrs.get('training_config')
+      if training_config is None:
+        logging.warning('No training configuration found in save file: '
+                        'the model was *not* compiled. Compile it manually.')
+        return model
+      training_config = json.loads(training_config.decode('utf-8'))
+      optimizer_config = training_config['optimizer_config']
+      optimizer = optimizers.deserialize(
+          optimizer_config, custom_objects=custom_objects)
 
-    # instantiate optimizer
-    training_config = f.attrs.get('training_config')
-    if training_config is None:
-      logging.warning('No training configuration found in save file: '
-                      'the model was *not* compiled. Compile it manually.')
-      return model
-    training_config = json.loads(training_config.decode('utf-8'))
-    optimizer_config = training_config['optimizer_config']
-    optimizer = optimizers.deserialize(
-        optimizer_config, custom_objects=custom_objects)
+      # Recover loss functions and metrics.
+      loss = convert_custom_objects(training_config['loss'])
+      metrics = convert_custom_objects(training_config['metrics'])
+      sample_weight_mode = training_config['sample_weight_mode']
+      loss_weights = training_config['loss_weights']
 
-    # Recover loss functions and metrics.
-    loss = convert_custom_objects(training_config['loss'])
-    metrics = convert_custom_objects(training_config['metrics'])
-    sample_weight_mode = training_config['sample_weight_mode']
-    loss_weights = training_config['loss_weights']
+      # Compile model.
+      model.compile(
+          optimizer=optimizer,
+          loss=loss,
+          metrics=metrics,
+          loss_weights=loss_weights,
+          sample_weight_mode=sample_weight_mode)
 
-    # Compile model.
-    model.compile(
-        optimizer=optimizer,
-        loss=loss,
-        metrics=metrics,
-        loss_weights=loss_weights,
-        sample_weight_mode=sample_weight_mode)
-
-    # Set optimizer weights.
-    if 'optimizer_weights' in f:
-      # Build train function (to get weight updates).
-      model._make_train_function()
-      optimizer_weights_group = f['optimizer_weights']
-      optimizer_weight_names = [
-          n.decode('utf8')
-          for n in optimizer_weights_group.attrs['weight_names']
-      ]
-      optimizer_weight_values = [
-          optimizer_weights_group[n] for n in optimizer_weight_names
-      ]
-      try:
-        model.optimizer.set_weights(optimizer_weight_values)
-      except ValueError:
-        logging.warning('Error in loading the saved optimizer '
-                        'state. As a result, your model is '
-                        'starting with a freshly initialized '
-                        'optimizer.')
+      # Set optimizer weights.
+      if 'optimizer_weights' in f:
+        # Build train function (to get weight updates).
+        model._make_train_function()
+        optimizer_weights_group = f['optimizer_weights']
+        optimizer_weight_names = [
+            n.decode('utf8')
+            for n in optimizer_weights_group.attrs['weight_names']
+        ]
+        optimizer_weight_values = [
+            optimizer_weights_group[n] for n in optimizer_weight_names
+        ]
+        try:
+          model.optimizer.set_weights(optimizer_weight_values)
+        except ValueError:
+          logging.warning('Error in loading the saved optimizer '
+                          'state. As a result, your model is '
+                          'starting with a freshly initialized '
+                          'optimizer.')
+  finally:
+    if opened_new_file:
+      f.close()
   return model
 
 
@@ -636,6 +657,12 @@ def _convert_rnn_weights(layer, weights):
 
 
 def save_weights_to_hdf5_group(f, layers):
+  """Saves the weights of a list of layers to a HDF5 group.
+
+  Arguments:
+      f: HDF5 group.
+      layers: List of layer instances.
+  """
   from tensorflow.python.keras._impl.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
 
   save_attributes_to_hdf5_group(
@@ -710,7 +737,7 @@ def load_weights_from_hdf5_group(f, layers):
   for k, name in enumerate(layer_names):
     g = f[name]
     weight_names = load_attributes_from_hdf5_group(g, 'weight_names')
-    weight_values = [g[weight_name] for weight_name in weight_names]
+    weight_values = [np.asarray(g[weight_name]) for weight_name in weight_names]
     layer = filtered_layers[k]
     symbolic_weights = layer.weights
     weight_values = preprocess_weights_for_loading(
@@ -766,7 +793,7 @@ def load_weights_from_hdf5_group_by_name(f, layers):
   for k, name in enumerate(layer_names):
     g = f[name]
     weight_names = load_attributes_from_hdf5_group(g, 'weight_names')
-    weight_values = [g[weight_name] for weight_name in weight_names]
+    weight_values = [np.asarray(g[weight_name]) for weight_name in weight_names]
 
     for layer in index.get(name, []):
       symbolic_weights = layer.weights

@@ -316,7 +316,7 @@ py_test(
 
 py_test(
     name = "metrics_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/metrics_test.py"],
     srcs_version = "PY2AND3",
     tags = [

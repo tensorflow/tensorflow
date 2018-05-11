@@ -29,6 +29,7 @@ from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.layers.recurrent import _generate_dropout_mask
+from tensorflow.python.keras._impl.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras._impl.keras.layers.recurrent import RNN
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils import generic_utils
@@ -167,6 +168,7 @@ class ConvRNN2D(RNN):
                                     **kwargs)
     self.input_spec = [InputSpec(ndim=5)]
     self.states = None
+    self._num_constants = None
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
@@ -214,7 +216,7 @@ class ConvRNN2D(RNN):
     # Note input_shape will be list of shapes of initial states and
     # constants if these are passed in __call__.
     if self._num_constants is not None:
-      constants_shape = input_shape[-self._num_constants:]
+      constants_shape = input_shape[-self._num_constants:]  # pylint: disable=E1130
     else:
       constants_shape = None
 
@@ -279,8 +281,8 @@ class ConvRNN2D(RNN):
       return [initial_state]
 
   def __call__(self, inputs, initial_state=None, constants=None, **kwargs):
-    inputs, initial_state, constants = self._standardize_args(
-        inputs, initial_state, constants)
+    inputs, initial_state, constants = _standardize_args(
+        inputs, initial_state, constants, self._num_constants)
 
     if initial_state is None and constants is None:
       return super(ConvRNN2D, self).__call__(inputs, **kwargs)
@@ -853,10 +855,10 @@ class ConvLSTM2D(ConvRNN2D):
   Input shape:
     - if data_format='channels_first'
         5D tensor with shape:
-        `(samples,time, channels, rows, cols)`
+        `(samples, time, channels, rows, cols)`
     - if data_format='channels_last'
         5D tensor with shape:
-        `(samples,time, rows, cols, channels)`
+        `(samples, time, rows, cols, channels)`
 
   Output shape:
     - if `return_sequences`

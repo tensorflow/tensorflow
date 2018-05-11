@@ -268,9 +268,6 @@ class TerminateOnNaN(Callback):
   """Callback that terminates training when a NaN loss is encountered.
   """
 
-  def __init__(self):
-    super(TerminateOnNaN, self).__init__()
-
   def on_batch_end(self, batch, logs=None):
     logs = logs or {}
     loss = logs.get('loss')

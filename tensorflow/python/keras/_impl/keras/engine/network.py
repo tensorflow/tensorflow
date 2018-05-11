@@ -839,10 +839,14 @@ class Network(base_layer.Layer):
               output_tensors = nest.flatten(
                   layer.call(computed_tensor, **kwargs))
               if hasattr(layer, 'compute_mask'):
-                output_masks = nest.flatten(
-                    layer.compute_mask(computed_tensor, computed_mask))
+                output_masks = layer.compute_mask(computed_tensor,
+                                                  computed_mask)
+                if output_masks is None:
+                  output_masks = [None for _ in output_tensors]
+                else:
+                  output_masks = nest.flatten(output_masks)
               else:
-                output_masks = [None for _ in range(len(output_tensors))]
+                output_masks = [None for _ in output_tensors]
               computed_tensors = [computed_tensor]
               computed_masks = [computed_mask]
             else:
@@ -855,11 +859,16 @@ class Network(base_layer.Layer):
 
               output_tensors = nest.flatten(
                   layer.call(computed_tensors, **kwargs))
+
               if hasattr(layer, 'compute_mask'):
-                output_masks = nest.flatten(
-                    layer.compute_mask(computed_tensors, computed_masks))
+                output_masks = layer.compute_mask(computed_tensors,
+                                                  computed_masks)
+                if output_masks is None:
+                  output_masks = [None for _ in output_tensors]
+                else:
+                  output_masks = nest.flatten(output_masks)
               else:
-                output_masks = [None for _ in range(len(output_tensors))]
+                output_masks = [None for _ in output_tensors]
 
             if not context.executing_eagerly():
               if layer.activity_regularizer is not None:

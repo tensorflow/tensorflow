@@ -152,6 +152,8 @@ def fit_generator(model,
     # Construct epoch logs.
     epoch_logs = {}
     while epoch < epochs:
+      for m in model.stateful_metric_functions:
+        m.reset_states()
       callbacks.on_epoch_begin(epoch)
       steps_done = 0
       batch_index = 0
@@ -247,8 +249,19 @@ def evaluate_generator(model,
                        steps=None,
                        max_queue_size=10,
                        workers=1,
-                       use_multiprocessing=False):
+                       use_multiprocessing=False,
+                       verbose=0):
   """See docstring for `Model.evaluate_generator`."""
+  stateful_metric_indices = []
+  if hasattr(model, 'metrics'):
+    for m in model.stateful_metric_functions:
+      m.reset_states()
+    stateful_metric_indices = [
+        i for i, name in enumerate(model.metrics_names)
+        if str(name) in model.stateful_metric_names]
+  else:
+    stateful_metric_indices = []
+
   steps_done = 0
   wait_time = 0.01
   all_outs = []
@@ -288,6 +301,9 @@ def evaluate_generator(model,
       else:
         output_generator = generator
 
+    if verbose == 1:
+      progbar = Progbar(target=steps)
+
     while steps_done < steps:
       generator_output = next(output_generator)
       if not hasattr(generator_output, '__len__'):
@@ -318,6 +334,8 @@ def evaluate_generator(model,
 
       steps_done += 1
       batch_sizes.append(batch_size)
+      if verbose == 1:
+        progbar.update(steps_done)
 
   finally:
     if enqueuer is not None:
@@ -328,8 +346,11 @@ def evaluate_generator(model,
   else:
     averages = []
     for i in range(len(outs)):
-      averages.append(
-          np.average([out[i] for out in all_outs], weights=batch_sizes))
+      if i not in stateful_metric_indices:
+        averages.append(
+            np.average([out[i] for out in all_outs], weights=batch_sizes))
+      else:
+        averages.append(float(all_outs[-1][i]))
     return averages
 
 
