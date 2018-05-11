@@ -102,7 +102,7 @@ of the following four steps:
     a sample instantiation of a pre-made Estimator named `LinearClassifier`:
 
         # Instantiate an estimator, passing the feature columns.
-        estimator = tf.estimator.Estimator.LinearClassifier(
+        estimator = tf.estimator.LinearClassifier(
             feature_columns=[population, crime_rate, median_education],
             )
 
