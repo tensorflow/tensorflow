@@ -2526,7 +2526,8 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
 
   graph_properties_.reset(new GraphProperties(optimized_item));
-  const Status status = graph_properties_->InferStatically(false);
+  const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+  const Status status = graph_properties_->InferStatically(assume_valid_feeds);
   const bool can_use_shapes = status.ok();
   if (!can_use_shapes) {
     VLOG(1) << "Shape inference failed." << status.error_message();
