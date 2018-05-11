@@ -1010,6 +1010,7 @@ cc_library(
     ],
     deps = [
         ":buffer_liveness",
+        ":buffer_value_containers",
         ":heap_simulator",
         ":hlo",
         ":hlo_proto",
@@ -1098,11 +1099,12 @@ cc_library(
     srcs = ["heap_simulator.cc"],
     hdrs = ["heap_simulator.h"],
     deps = [
+        ":buffer_value",
+        ":buffer_value_containers",
         ":hlo",
         ":hlo_ordering",
         ":hlo_proto",
         ":liveness_util",
-        ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -1118,7 +1120,7 @@ tf_cc_test(
         ":heap_simulator",
         ":hlo",
         ":hlo_ordering",
-        ":logical_buffer",
+        ":hlo_value",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1780,6 +1782,17 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "buffer_value_containers",
+    hdrs = ["buffer_value_containers.h"],
+    deps = [
+        ":buffer_value",
+        ":logical_buffer",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
