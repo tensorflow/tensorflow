@@ -36,7 +36,8 @@ class ForThunk : public Thunk {
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
-  tensorflow::Status Initialize(const GpuExecutable& executable) override;
+  tensorflow::Status Initialize(const GpuExecutable& executable,
+                                se::StreamExecutor* executor) override;
   tensorflow::Status ExecuteOnStream(
       const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 

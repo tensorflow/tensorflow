@@ -38,7 +38,8 @@ class SequentialThunk : public Thunk {
 
   const std::vector<std::unique_ptr<Thunk>>& thunks() const { return thunks_; }
 
-  tensorflow::Status Initialize(const GpuExecutable& executable) override;
+  tensorflow::Status Initialize(const GpuExecutable& executable,
+                                se::StreamExecutor* executor) override;
   tensorflow::Status ExecuteOnStream(
       const BufferAllocations& buffer_allocations, se::Stream* stream) override;
 

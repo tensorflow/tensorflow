@@ -30,8 +30,9 @@ ForThunk::ForThunk(const int64 loop_limit,
       body_thunk_sequence_(
           MakeUnique<SequentialThunk>(std::move(*body_thunk_sequence), hlo)) {}
 
-tensorflow::Status ForThunk::Initialize(const GpuExecutable& executable) {
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable));
+tensorflow::Status ForThunk::Initialize(const GpuExecutable& executable,
+                                        se::StreamExecutor* executor) {
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
   return tensorflow::Status::OK();
 }
 

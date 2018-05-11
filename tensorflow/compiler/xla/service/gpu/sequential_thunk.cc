@@ -24,10 +24,10 @@ SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>>&& thunks,
                                  const HloInstruction* hlo)
     : Thunk(Kind::kSequential, hlo), thunks_(std::move(thunks)) {}
 
-tensorflow::Status SequentialThunk::Initialize(
-    const GpuExecutable& executable) {
+tensorflow::Status SequentialThunk::Initialize(const GpuExecutable& executable,
+                                               se::StreamExecutor* executor) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(executable));
+    TF_RETURN_IF_ERROR(thunk->Initialize(executable, executor));
   }
   return tensorflow::Status::OK();
 }

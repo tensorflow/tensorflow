@@ -134,9 +134,10 @@ Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* main_stream = run_options->stream();
+  se::StreamExecutor* executor = main_stream->parent();
 
   std::pair<int, int> stream_compute_compatibility;
-  main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+  executor->GetDeviceDescription().cuda_compute_capability(
       &stream_compute_compatibility.first,
       &stream_compute_compatibility.second);
   TF_RET_CHECK(stream_compute_compatibility == compute_capability_)
@@ -155,9 +156,8 @@ Status GpuExecutable::ExecuteThunks(
   sub_streams.reserve(thunk_schedule_->StreamCount() - 1);
   while (sub_streams.size() + 1 < thunk_schedule_->StreamCount()) {
     sub_streams.emplace_back();
-    TF_ASSIGN_OR_RETURN(
-        sub_streams.back(),
-        run_options->BorrowStream(main_stream->parent()->device_ordinal()));
+    TF_ASSIGN_OR_RETURN(sub_streams.back(),
+                        run_options->BorrowStream(executor->device_ordinal()));
   }
 
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
@@ -166,7 +166,7 @@ Status GpuExecutable::ExecuteThunks(
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(*this));
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =
         thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
     se::Stream* stream =

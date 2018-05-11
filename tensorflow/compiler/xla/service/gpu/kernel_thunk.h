@@ -57,7 +57,8 @@ class KernelThunk : public Thunk {
   int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
-  tensorflow::Status Initialize(const GpuExecutable& executable) override;
+  tensorflow::Status Initialize(const GpuExecutable& executable,
+                                se::StreamExecutor* executor) override;
 
   // Executes the kernel for the thunk on "stream", which must be non-null.
   tensorflow::Status ExecuteOnStream(
@@ -83,7 +84,8 @@ class KernelThunk : public Thunk {
   mutable tensorflow::mutex mutex_;
   std::unique_ptr<se::MultiKernelLoaderSpec> loader_spec_ GUARDED_BY(mutex_);
 
-  // Loaded kernels for each `StreamExecutor`
+  // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
+  // values.
   std::unordered_map<se::StreamExecutor*, se::KernelBase> kernel_cache_
       GUARDED_BY(mutex_);
 };
