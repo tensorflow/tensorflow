@@ -162,7 +162,7 @@ void Broadcaster::RunTree() {
         ++pending_count;
       }
       DispatchSend(
-          target_rank, output_,
+          target_rank, (is_source_ ? &ctx_->input(0) : output_),
           [this, target_rank, &mu, &pending_count, &all_done](const Status& s) {
             mutex_lock l(mu);
             status_.Update(s);
