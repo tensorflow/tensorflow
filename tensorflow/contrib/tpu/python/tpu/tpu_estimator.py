@@ -46,7 +46,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -68,6 +67,7 @@ from tensorflow.python.training import evaluation
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -1269,7 +1269,7 @@ class _ModelFnWrapper(object):
 
   def _call_model_fn(self, features, labels, is_export_mode=False):
     """Calls the model_fn with required parameters."""
-    model_fn_args = util.fn_args(self._model_fn)
+    model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
 
     # Makes deep copy with `config` and params` in case user mutates them.
@@ -1361,7 +1361,7 @@ class _OutfeedHostCall(object):
 
       if isinstance(host_call[1], (tuple, list)):
         fullargspec = tf_inspect.getfullargspec(host_call[0])
-        fn_args = util.fn_args(host_call[0])
+        fn_args = function_utils.fn_args(host_call[0])
         # wrapped_hostcall_with_global_step uses varargs, so we allow that.
         if fullargspec.varargs is None and len(host_call[1]) != len(fn_args):
           raise RuntimeError(
@@ -1938,7 +1938,7 @@ class TPUEstimator(estimator_lib.Estimator):
     Raises:
       ValueError: if input_fn takes invalid arguments or does not have `params`.
     """
-    input_fn_args = util.fn_args(input_fn)
+    input_fn_args = function_utils.fn_args(input_fn)
     config = self.config  # a deep copy.
     kwargs = {}
     if 'params' in input_fn_args:

@@ -33,7 +33,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
@@ -72,6 +71,7 @@ from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 
 _TMP_DIR = '/tmp'
 _ANOTHER_TMP_DIR = '/another_tmp'
@@ -332,7 +332,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _, _, _, _ = features, labels, mode, config, params
 
     est = estimator.Estimator(model_fn=model_fn)
-    model_fn_args = util.fn_args(est.model_fn)
+    model_fn_args = function_utils.fn_args(est.model_fn)
     self.assertEqual(
         set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
 
@@ -342,7 +342,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn)
-    model_fn_args = util.fn_args(est.model_fn)
+    model_fn_args = function_utils.fn_args(est.model_fn)
     self.assertEqual(
         set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
 

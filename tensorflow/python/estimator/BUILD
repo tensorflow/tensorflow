@@ -445,16 +445,6 @@ py_library(
     ],
 )
 
-py_test(
-    name = "util_test",
-    srcs = ["util_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":util",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
 py_library(
     name = "estimator",
     srcs = [
@@ -645,7 +635,6 @@ py_library(
         ":metric_keys",
         ":model_fn",
         ":prediction_keys",
-        ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -659,6 +648,7 @@ py_library(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:weights_broadcast_ops",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",

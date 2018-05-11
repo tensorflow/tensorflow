@@ -366,9 +366,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/estimator:dnn",
         "//tensorflow/python/estimator:linear",
-        "//tensorflow/python/estimator:util",
     ],
 )
 

@@ -3250,6 +3250,16 @@ py_test(
 )
 
 py_test(
+    name = "function_utils_test",
+    srcs = ["util/function_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
+py_test(
     name = "tf_contextlib_test",
     size = "small",
     srcs = ["util/tf_contextlib_test.py"],

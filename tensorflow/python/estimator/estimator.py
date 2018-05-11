@@ -36,7 +36,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export as export_helpers
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import errors
@@ -63,6 +62,7 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training import warm_starting_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1052,7 +1052,7 @@ class Estimator(object):
     Raises:
       ValueError: if input_fn takes invalid arguments.
     """
-    input_fn_args = util.fn_args(input_fn)
+    input_fn_args = function_utils.fn_args(input_fn)
     kwargs = {}
     if 'mode' in input_fn_args:
       kwargs['mode'] = mode
@@ -1078,7 +1078,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = util.fn_args(self._model_fn)
+    model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
     if 'labels' in model_fn_args:
       kwargs['labels'] = labels
@@ -1483,7 +1483,7 @@ def _get_replica_device_setter(config):
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = set(util.fn_args(model_fn))
+  args = set(function_utils.fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
   if params is not None and 'params' not in args:

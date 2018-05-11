@@ -24,7 +24,6 @@ import collections
 import six
 
 from tensorflow.python.estimator import model_fn
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export_output
@@ -46,6 +45,7 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training_util
+from tensorflow.python.util import function_utils
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
@@ -461,7 +461,7 @@ def _validate_loss_fn_args(loss_fn):
   Raises:
     ValueError: If the signature is unexpected.
   """
-  loss_fn_args = util.fn_args(loss_fn)
+  loss_fn_args = function_utils.fn_args(loss_fn)
   for required_arg in ['labels', 'logits']:
     if required_arg not in loss_fn_args:
       raise ValueError(
@@ -484,7 +484,7 @@ def _call_loss_fn(loss_fn, labels, logits, features, expected_loss_dim=1):
   Returns:
     Loss Tensor with shape [D0, D1, ... DN, expected_loss_dim].
   """
-  loss_fn_args = util.fn_args(loss_fn)
+  loss_fn_args = function_utils.fn_args(loss_fn)
   kwargs = {}
   if 'features' in loss_fn_args:
     kwargs['features'] = features
