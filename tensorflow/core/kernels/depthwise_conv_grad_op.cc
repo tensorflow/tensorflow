@@ -1076,7 +1076,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
                                 {1}, 0, filter_shape, &filter_backprop));
 
     // If there is nothing to compute, return.
-    if (filter_shape.num_elements() == 0) {
+    if (out_backprop.shape().num_elements() == 0) {
       return;
     }
 
