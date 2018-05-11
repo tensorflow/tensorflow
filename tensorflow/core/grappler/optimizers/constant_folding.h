@@ -126,6 +126,7 @@ class ConstantFolding : public GraphOptimizer {
   std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
   bool graph_modified_;
+  bool graph_contains_assign_or_inplace_op_;
 };
 
 }  // end namespace grappler

@@ -166,6 +166,10 @@ bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
 
+// Returns true if the takes a tensor reference as input, or if looking up its
+// OpDef failed.
+bool MaybeHasRefInput(const NodeDef& node);
+
 bool ModifiesFrameInfo(const NodeDef& node);
 
 // Returns true if the op is known to write to one or more of its inputs.
