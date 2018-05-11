@@ -1863,8 +1863,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
     const llvm_ir::IrArray::Index& dot_result_index) const {
   auto lhs_generator = operand_to_generator.at(hlo->operand(0));
   auto rhs_generator = operand_to_generator.at(hlo->operand(1));
-  int64 contracted_dim_size = hlo->operand(0)->shape().dimensions(
-      hlo->operand(0)->shape().dimensions_size() - 1);
+
+  const DotDimensionNumbers& dim_numbers = hlo->dot_dimension_numbers();
+  int64 lhs_contracting_dim = dim_numbers.lhs_contracting_dimensions(0);
+  int64 rhs_contracting_dim = dim_numbers.rhs_contracting_dimensions(0);
+
+  int64 contracted_dim_size =
+      hlo->operand(0)->shape().dimensions(lhs_contracting_dim);
   int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
   int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
@@ -1895,13 +1900,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   for (int64 i = 0; i < lhs_dims - 1; i++) {
     lhs_index.push_back(dot_result_index[i]);
   }
-  lhs_index.push_back(inner_loop->GetIndVarValue());
+  lhs_index.InsertAt(lhs_contracting_dim, inner_loop->GetIndVarValue());
 
-  for (int64 i = 0; i < rhs_dims - 2; i++) {
+  for (int64 i = 0; i < rhs_dims - 1; i++) {
     rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
   }
-  rhs_index.push_back(inner_loop->GetIndVarValue());
-  rhs_index.push_back(dot_result_index.back());
+  rhs_index.InsertAt(rhs_contracting_dim, inner_loop->GetIndVarValue());
 
   llvm::Value* current_accumulator =
       ir_builder_->CreateLoad(accumulator_alloca);
