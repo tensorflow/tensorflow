@@ -6,6 +6,13 @@ cimport numpy as np
 
 from tensorflow.python.util import compat
 
+def AppendFloat16ArrayToTensorProto(
+    tensor_proto, np.ndarray[np.uint16_t, ndim=1, cast=True] nparray):
+  cdef long i, n
+  n = nparray.size
+  for i in range(n):
+    tensor_proto.half_val.append(nparray[i])
+
 
 def AppendFloat32ArrayToTensorProto(
     tensor_proto, np.ndarray[np.float32_t, ndim=1] nparray):

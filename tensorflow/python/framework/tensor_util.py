@@ -68,7 +68,7 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       # fast_tensor_util.AppendFloat16ArrayToTensorProto,
       # but it seems np.float16_t doesn't exist?
       np.float16:
-          SlowAppendFloat16ArrayToTensorProto,
+          fast_tensor_util.AppendFloat16ArrayToTensorProto,
       np.float32:
           fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64:
