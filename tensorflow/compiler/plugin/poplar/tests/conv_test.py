@@ -58,6 +58,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: np.zeros([1,14,14,64]),
         pb: np.zeros([3,3,64,128]),
@@ -67,7 +69,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([1,14,14,128]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
+
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
@@ -88,6 +90,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         inp: np.zeros([1,84,84,4]),
         wei: np.zeros([8,8,4,16]),
@@ -97,7 +101,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([1, 20, 20, 16]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
+
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
@@ -118,6 +122,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         fil: np.zeros([2,2,3,5]),
         bck: np.zeros([2,8,8,5]),
@@ -126,7 +132,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([2,8,8,3]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
+
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
@@ -149,6 +155,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         inp: np.zeros([2,8,8,3]),
         bck: np.zeros([2,8,8,5]),
@@ -157,7 +165,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([2,2,3,5]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
+
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
@@ -177,6 +185,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: [[[[1,2,3],
                [4,5,6]],
@@ -197,7 +207,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                                      [61, 51, 45, 34, 25, 13]]]])
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
+
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
@@ -218,6 +228,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: [[[[1,2,3],
                [4,5,6]],
@@ -238,7 +250,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                                      [61, 45, 25]]]])
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
+
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
@@ -261,6 +273,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         filt: np.zeros([3,3,3,2]),
         outb: np.zeros([1,8,8,6])
@@ -269,10 +283,11 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([1,8,8,3]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
+
+      print("=====> " + str(cs_list))
 
       ok = ['Copy_arg0.*_to_bwdWeights',
             'Copy_bwdWeights_to_weightsRearranged/OnTileCopy',
@@ -294,6 +309,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pb: np.zeros([1,1,3,2]),
         pc: np.zeros([1,8,8,6])
@@ -302,7 +319,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([1,8,8,3]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 2)
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
@@ -312,69 +328,67 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 
-  # def testDepthwiseConvBackpropFilter(self):
-  #   with tf.device("/device:IPU:0"):
-  #     pa = tf.placeholder(tf.float32, [1,6,6,3], name="a")
-  #     pb = tf.constant([3,3,3,2], dtype=tf.int32) # filter sizes
-  #     pc = tf.placeholder(tf.float32, [1,6,6,6], name="c")
-  #     c = tf.nn.depthwise_conv2d_native_backprop_filter(pa, pb, pc,
-  #                                                       strides=[1,1,1,1],
-  #                                                       padding="SAME")
-  #
-  #   with tf.device('cpu'):
-  #     report = gen_ipu_ops.ipu_event_trace()
-  #
-  #   with tu.ipu_session() as sess:
-  #     fd = {
-  #       pa: np.zeros([1,6,6,3]),
-  #       pc: np.zeros([1,6,6,6])
-  #     }
-  #     result = sess.run(c, fd)
-  #     self.assertAllClose(result, np.zeros([3,3,3,2]))
-  #
-  #     result = sess.run(report)
-  #     self.assertTrue(len(result) == 2)
-  #     s = tu.extract_all_strings_from_event_trace(result)
-  #     cs_list = tu.get_compute_sets_from_report(s)
-  #
-  #     print("========> " + str(cs_list))
-  #
-  #     ok = ['Copy_arg0_to_bwdWeights',
-  #           'Copy_bwdWeights_to_weightsRearranged',
-  #           'convolution.clone/Conv_3x3']
-  #     self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+  def testDepthwiseConvBackpropFilter(self):
+    with tf.device("/device:IPU:0"):
+      pa = tf.placeholder(tf.float32, [1,6,6,3], name="a")
+      pb = tf.constant([3,3,3,2], dtype=tf.int32) # filter sizes
+      pc = tf.placeholder(tf.float32, [1,6,6,6], name="c")
+      c = tf.nn.depthwise_conv2d_native_backprop_filter(pa, pb, pc,
+                                                        strides=[1,1,1,1],
+                                                        padding="SAME")
 
-  # def testDepthwiseConvBackpropFilter1x1(self):
-  #   with tf.device("/device:IPU:0"):
-  #     pa = tf.placeholder(tf.float32, [1,6,6,3], name="a")
-  #     pb = tf.constant([1,1,3,2], dtype=tf.int32) # filter sizes
-  #     pc = tf.placeholder(tf.float32, [1,6,6,6], name="c")
-  #     c = tf.nn.depthwise_conv2d_native_backprop_filter(pa, pb, pc,
-  #                                                       strides=[1,1,1,1],
-  #                                                       padding="SAME")
-  #
-  #   with tf.device('cpu'):
-  #     report = gen_ipu_ops.ipu_event_trace()
-  #
-  #   with tu.ipu_session() as sess:
-  #     fd = {
-  #       pa: np.zeros([1,6,6,3]),
-  #       pc: np.zeros([1,6,6,6])
-  #     }
-  #     result = sess.run(c, fd)
-  #     self.assertAllClose(result, np.zeros([1,1,3,2]))
-  #
-  #     result = sess.run(report)
-  #     self.assertTrue(len(result) == 2)
-  #     s = tu.extract_all_strings_from_event_trace(result)
-  #     cs_list = tu.get_compute_sets_from_report(s)
-  #
-  #     print("========> " + str(cs_list))
-  #
-  #     ok = ['Copy_arg0_to_bwdWeights',
-  #           'Copy_bwdWeights_to_weightsRearranged',
-  #           'convolution.clone/Conv_3x3']
-  #     self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        pa: np.zeros([1,6,6,3]),
+        pc: np.zeros([1,6,6,6])
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, np.zeros([3,3,3,2]))
+
+      # result = sess.run(report)
+      # self.assertTrue(len(result) == 2)
+      # s = tu.extract_all_strings_from_event_trace(result)
+      # cs_list = tu.get_compute_sets_from_report(s)
+      #
+      # ok = ['Copy_arg0_to_bwdWeights',
+      #       'Copy_bwdWeights_to_weightsRearranged',
+      #       'convolution.clone/Conv_3x3']
+      # self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testDepthwiseConvBackpropFilter1x1(self):
+    with tf.device("/device:IPU:0"):
+      pa = tf.placeholder(tf.float32, [1,6,6,3], name="a")
+      pb = tf.constant([1,1,3,2], dtype=tf.int32) # filter sizes
+      pc = tf.placeholder(tf.float32, [1,6,6,6], name="c")
+      c = tf.nn.depthwise_conv2d_native_backprop_filter(pa, pb, pc,
+                                                        strides=[1,1,1,1],
+                                                        padding="SAME")
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        pa: np.zeros([1,6,6,3]),
+        pc: np.zeros([1,6,6,6])
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, np.zeros([1,1,3,2]))
+
+      # result = sess.run(report)
+      # self.assertTrue(len(result) == 2)
+      # s = tu.extract_all_strings_from_event_trace(result)
+      # cs_list = tu.get_compute_sets_from_report(s)
+      #
+      # ok = ['Copy_arg0_to_bwdWeights',
+      #       'Copy_bwdWeights_to_weightsRearranged',
+      #       'convolution.clone/Conv_3x3']
+      # self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 
 if __name__ == "__main__":
