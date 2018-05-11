@@ -371,6 +371,21 @@ class Estimator(object):
     else:
       return []
 
+  def eval_dir(self, name=None):
+    """Shows directory name where evaluation metrics are dumped.
+
+    Args:
+      name: Name of the evaluation if user needs to run multiple evaluations on
+        different data sets, such as on training data vs test data. Metrics for
+        different evaluations are saved in separate folders, and appear
+        separately in tensorboard.
+
+    Returns:
+      A string which is the path of directory contains evaluation metrics.
+    """
+    return os.path.join(self._model_dir, 'eval' if not name else
+                        'eval_' + name)
+
   def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
                name=None):
     """Evaluates the model given evaluation data input_fn.
@@ -1325,10 +1340,6 @@ class Estimator(object):
                      'initialization to evaluate.'.format(self._model_dir))
       checkpoint_path = latest_path
 
-    # Setup output directory.
-    eval_dir = os.path.join(self._model_dir, 'eval' if not name else
-                            'eval_' + name)
-
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
@@ -1372,7 +1383,7 @@ class Estimator(object):
           config=self._session_config)
 
       _write_dict_to_summary(
-          output_dir=eval_dir,
+          output_dir=self.eval_dir(name),
           dictionary=eval_results,
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 

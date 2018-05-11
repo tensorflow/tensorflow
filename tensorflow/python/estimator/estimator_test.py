@@ -1061,6 +1061,15 @@ class EstimatorDatasetIntegrationTest(test.TestCase):
 
 class EstimatorEvaluateTest(test.TestCase):
 
+  def test_eval_dir(self):
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        model_dir='some_path')
+    expected_eval_dir = os.path.join('some_path', 'eval')
+    self.assertEqual(expected_eval_dir, est.eval_dir())
+    expected_eval_dir_name = os.path.join('some_path', 'eval_a_name')
+    self.assertEqual(expected_eval_dir_name, est.eval_dir('a_name'))
+
   def test_input_fn_args(self):
     expected_mode = model_fn_lib.ModeKeys.EVAL
     expected_params = {'batch_size': 10}
@@ -1385,7 +1394,7 @@ class EstimatorEvaluateTest(test.TestCase):
     # Get last evaluation Event written.
     for key in ['foo/0', 'foo/1', 'foo/2']:
       self.assertTrue(
-          check_eventfile_for_keyword(key, os.path.join(est.model_dir, 'eval')),
+          check_eventfile_for_keyword(key, est.eval_dir()),
           '{} should be part of reported summaries.'.format(key))
 
 
