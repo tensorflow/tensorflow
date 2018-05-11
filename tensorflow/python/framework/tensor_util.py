@@ -50,6 +50,13 @@ def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
       [ExtractBitsFromFloat16(x) for x in proto_values])
 
 
+def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  # TODO: Remove the conversion if cython supports np.float16_t
+  fast_tensor_util.AppendFloat16ArrayToTensorProto(
+      tensor_proto,
+      np.asarray(proto_values, dtype=np.float16).view(np.uint16))
+
+
 def ExtractBitsFromBFloat16(x):
   return np.asscalar(
       np.asarray(x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
@@ -65,7 +72,7 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.bfloat16.as_numpy_dtype:
           SlowAppendBFloat16ArrayToTensorProto,
       np.float16:
-          fast_tensor_util.AppendFloat16ArrayToTensorProto,
+          _MediumAppendFloat16ArrayToTensorProto,
       np.float32:
           fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64:
