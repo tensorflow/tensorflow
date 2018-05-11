@@ -1596,7 +1596,7 @@ def leaky_relu(features, alpha=0.2, name=None):
   Returns:
     The activation value.
   """
-  with ops.name_scope(name, "LeakyRelu", [features, alpha]):
+  with ops.name_scope(name, "LeakyRelu", [features, alpha]) as name:
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.to_float(features)
