@@ -435,6 +435,9 @@ REGISTER_OP("DrawBoundingBoxes")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      // boxes: 3-D with shape [batch, num_bounding_boxes, 4]
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
