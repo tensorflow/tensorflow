@@ -293,7 +293,7 @@ STREAM_EXECUTOR_CUBLAS_WRAP(cublasSetMathMode)
 #endif
 
 #if CUDA_VERSION >= 9010
-PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasGemmBatchedEx)
+STREAM_EXECUTOR_CUBLAS_WRAP(cublasGemmBatchedEx)
 #endif
 
 }  // namespace wrap
