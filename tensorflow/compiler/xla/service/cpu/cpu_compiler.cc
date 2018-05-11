@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
@@ -251,6 +252,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
   pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<ConvCanonicalization>(&target_machine_features);
   {
