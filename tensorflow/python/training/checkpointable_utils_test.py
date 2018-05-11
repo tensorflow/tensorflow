@@ -174,6 +174,27 @@ class InterfaceTests(test.TestCase):
         all_variable_names.append(attribute.full_name)
     self.assertIn("dense/kernel", all_variable_names)
 
+  def testNotCheckpointable(self):
+
+    class CallsFunctionalStuff(
+        checkpointable.NotCheckpointable, checkpointable.Checkpointable):
+      pass
+
+    test_dir = self.get_temp_dir()
+    prefix = os.path.join(test_dir, "ckpt")
+    checkpoint = checkpointable_utils.Checkpoint(x=CallsFunctionalStuff())
+    with self.assertRaises(NotImplementedError):
+      checkpoint.save(prefix)
+
+    class CallsFunctionalStuffOtherMRO(
+        checkpointable.Checkpointable, checkpointable.NotCheckpointable):
+      pass
+
+    checkpoint_reversed = checkpointable_utils.Checkpoint(
+        x=CallsFunctionalStuffOtherMRO())
+    with self.assertRaises(NotImplementedError):
+      checkpoint_reversed.save(prefix)
+
 
 class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
 

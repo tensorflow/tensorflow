@@ -205,6 +205,12 @@ def _breadth_first_checkpointable_traversal(root_checkpointable):
   path_to_root = {root_checkpointable: ()}
   while to_visit:
     current_checkpointable = to_visit.popleft()
+    if isinstance(current_checkpointable, checkpointable_lib.NotCheckpointable):
+      raise NotImplementedError(
+          ("The object %s does not support object-based saving. File a feature "
+           "request if this limitation bothers you. In the meantime, you can "
+           "remove the dependency on this object and save everything else.")
+          % (current_checkpointable,))
     current_checkpointable._maybe_initialize_checkpointable()  # pylint: disable=protected-access
     bfs_sorted.append(current_checkpointable)
     for child_checkpointable in (

@@ -737,6 +737,17 @@ class NoDependency(object):
     self.value = value
 
 
+class NotCheckpointable(object):
+  """Marks instances of child classes as unsaveable using an object-based API.
+
+  Useful for marking objects which would otherwise look checkpointable because
+  of inheritance (e.g. through `Layer`) as not checkpointable. Inheriting from
+  `NotCheckpointable` does not prevent an object from being assigned to any
+  attributes, but will throw an error on save/restore.
+  """
+  pass
+
+
 class Checkpointable(CheckpointableBase):
   """Manages dependencies on other objects.
 
