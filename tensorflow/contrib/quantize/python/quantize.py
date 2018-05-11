@@ -233,37 +233,37 @@ def _FindLayersToQuantize(graph):
               weight_identity_pattern, weight_resource_var_pattern,
               folded_weight_pattern
           ])
-      ])
+      ],
+      ordered_inputs=False)
 
   folded_bias_mul_pattern = graph_matcher.OpTypePattern(
-      'Mul', inputs=[graph_matcher.OpTypePattern('*'), layer_pattern])
+      'Mul',
+      inputs=[graph_matcher.OpTypePattern('*'), layer_pattern],
+      ordered_inputs=False)
   post_layer_op_correction_pattern = graph_matcher.OpTypePattern(
-      'Add', inputs=[folded_bias_mul_pattern,
-                     graph_matcher.OpTypePattern('*')])
+      'Add',
+      inputs=[folded_bias_mul_pattern,
+              graph_matcher.OpTypePattern('*')],
+      ordered_inputs=False)
   folded_bias_add_pattern = graph_matcher.OpTypePattern(
       'Add',
       inputs=[
           post_layer_op_correction_pattern,
           graph_matcher.OpTypePattern('*')
-      ])
+      ],
+      ordered_inputs=False)
 
   bias_add_pattern = graph_matcher.OpTypePattern(
-      'Add|BiasAdd', inputs=[layer_pattern, '*'])
+      'Add|BiasAdd', inputs=[layer_pattern, '*'], ordered_inputs=False)
 
   # The bias can come from the bias add or the folded bias add.
-  bypass_pattern_a = graph_matcher.OpTypePattern(
+  bypass_pattern = graph_matcher.OpTypePattern(
       'Add',
       inputs=[
           graph_matcher.OneofPattern(
               [bias_add_pattern, folded_bias_add_pattern]), '*'
-      ])
-  bypass_pattern_b = graph_matcher.OpTypePattern(
-      'Add',
-      inputs=[
-          '*',
-          graph_matcher.OneofPattern(
-              [bias_add_pattern, folded_bias_add_pattern])
-      ])
+      ],
+      ordered_inputs=False)
 
   # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
@@ -273,15 +273,14 @@ def _FindLayersToQuantize(graph):
       '|'.join(_ACTIVATION_TYPES) + '|Identity',
       inputs=[
           graph_matcher.OneofPattern([
-              bias_add_pattern, folded_bias_add_pattern, bypass_pattern_a,
-              bypass_pattern_b
+              bias_add_pattern,
+              folded_bias_add_pattern,
+              bypass_pattern,
           ])
       ])
 
-  post_activation_bypass_pattern_a = graph_matcher.OpTypePattern(
-      'Add', inputs=['*', activation_pattern])
-  post_activation_bypass_pattern_b = graph_matcher.OpTypePattern(
-      'Add', inputs=[activation_pattern, '*'])
+  post_activation_bypass_pattern = graph_matcher.OpTypePattern(
+      'Add', inputs=['*', activation_pattern], ordered_inputs=False)
 
   # The order of the following matching blocks is very important. Since matches
   # aren't guaranteed to be disjoint, we structure matches from largest to
@@ -297,10 +296,7 @@ def _FindLayersToQuantize(graph):
   # to ensure we don't match only the first part of this layer, missing the
   # post activation bypass node.
   post_activation_bypass_layer_matcher = graph_matcher.GraphMatcher(
-      graph_matcher.OneofPattern([
-          post_activation_bypass_pattern_a,
-          post_activation_bypass_pattern_b,
-      ]))
+      post_activation_bypass_pattern)
   for match_result in post_activation_bypass_layer_matcher.match_graph(graph):
     layer_op = match_result.get_op(layer_pattern)
     weight_tensor = match_result.get_tensor(weight_identity_pattern)
@@ -312,14 +308,9 @@ def _FindLayersToQuantize(graph):
     bias_add_op = match_result.get_op(bias_add_pattern)
     if bias_add_op is None:
       bias_add_op = match_result.get_op(folded_bias_add_pattern)
-    bypass_op = match_result.get_op(bypass_pattern_a)
-    if bypass_op is None:
-      bypass_op = match_result.get_op(bypass_pattern_b)
+    bypass_op = match_result.get_op(bypass_pattern)
     post_activation_bypass_op = match_result.get_op(
-        post_activation_bypass_pattern_a)
-    if post_activation_bypass_op is None:
-      post_activation_bypass_op = match_result.get_op(
-          post_activation_bypass_pattern_b)
+        post_activation_bypass_pattern)
     if layer_op not in matched_layer_set:
       matched_layer_set.add(layer_op)
       layer_matches.append(
@@ -340,9 +331,7 @@ def _FindLayersToQuantize(graph):
     bias_add_op = match_result.get_op(bias_add_pattern)
     if bias_add_op is None:
       bias_add_op = match_result.get_op(folded_bias_add_pattern)
-    bypass_op = match_result.get_op(bypass_pattern_a)
-    if bypass_op is None:
-      bypass_op = match_result.get_op(bypass_pattern_b)
+    bypass_op = match_result.get_op(bypass_pattern)
     if layer_op not in matched_layer_set:
       matched_layer_set.add(layer_op)
       layer_matches.append(
