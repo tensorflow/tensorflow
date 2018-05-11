@@ -18,7 +18,7 @@ with the full performance of TensorFlow Sessions on CPU, GPU and
 ```swift
 import TensorFlow
 
-var x = Tensor([[1, 2], [3, 4]])
+var x = Tensor<Float>([[1, 2], [3, 4]])
 
 for i in 1...5 {
   x += x ⊗ x
