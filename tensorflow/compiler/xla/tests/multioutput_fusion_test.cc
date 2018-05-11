@@ -108,7 +108,7 @@ class MultiOutputFusionTest : public HloTestBase {
     expect.PopulateWithValue<float>(size * 1.5f * 3.5f);
     auto actual = ExecuteAndTransfer(
         std::move(hlo_module), {Literal::CreateR0<float>(-9.0f).get(), &arg1});
-    LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
+    EXPECT_TRUE(LiteralTestUtil::Near(expect, *actual, error_spec_));
   }
 
   void RunTest1D(bool manual_fusion, int size) {
@@ -168,7 +168,7 @@ class MultiOutputFusionTest : public HloTestBase {
 
     Literal expect = std::move(*Literal::CreateR1<float>({size * 1.5f * 3.5f}));
     auto actual = ExecuteAndTransfer(std::move(hlo_module), {&input0, &input1});
-    LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
+    EXPECT_TRUE(LiteralTestUtil::Near(expect, *actual, error_spec_));
   }
 };
 

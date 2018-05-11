@@ -101,8 +101,8 @@ TEST_F(GRPCClientTestBase, AxpyTenValues) {
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto result_literal, client_->ExecuteAndTransfer(
                                                    computation, {}, nullptr));
-  LiteralTestUtil::ExpectNear(*expected_literal, *result_literal,
-                              ErrorSpec(0.0001));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected_literal, *result_literal,
+                                    ErrorSpec(0.0001)));
 }
 
 }  // namespace

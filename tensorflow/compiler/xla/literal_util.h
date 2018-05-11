@@ -920,8 +920,65 @@ class Literal : public LiteralBase {
       PrimitiveType primitive_type,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
+  // If the given literal's data type is bfloat16, converts it to a float
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static std::unique_ptr<Literal> ConvertBF16ToF32(
+      const LiteralSlice& bf16_literal);
+
+  // If the given literal's data type is float, converts it to a bfloat16
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static std::unique_ptr<Literal> ConvertF32ToBF16(
+      const LiteralSlice& f32_literal);
+
+  // Creates a literal with a new shape with the given new dimensions using the
+  // data in the given input literal. For reshaping purposes the (flat) data
+  // buffer of the input literal is assumed to have the given minor_to_major
+  // layout order.
+  static std::unique_ptr<Literal> ReshapeSlice(
+      tensorflow::gtl::ArraySlice<int64> new_dimensions,
+      tensorflow::gtl::ArraySlice<int64> minor_to_major,
+      const LiteralSlice& literal);
+
+  // Creates a literal with the supplied shape, and uses the provided value
+  // generator to populate the literal's values.
+  // Returns the new literal object, or an error Status if failed.
+  template <
+      PrimitiveType type,
+      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  static StatusOr<std::unique_ptr<Literal>> CreateRandomLiteral(
+      const Shape& shape,
+      const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator);
+
+  // Creates a literal with the supplied shape, and initializes the literal
+  // values using a normal distribution with given mean and stddev standard
+  // deviation, and using the engine as entropy generator.
+  // Returns the new literal object, or an error Status if failed.
+  template <
+      PrimitiveType type, typename E,
+      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  static StatusOr<std::unique_ptr<Literal>> CreateRandomLiteral(
+      const Shape& shape, E* engine, T mean, T stddev);
+
+  // Creates a literal with the supplied shape, and initializes the literal
+  // values using a normal distribution with given mean and stddev standard
+  // deviation.
+  // Returns the new literal object, or an error Status if failed.
+  template <
+      PrimitiveType type,
+      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  static StatusOr<std::unique_ptr<Literal>> CreateRandomLiteral(
+      const Shape& shape, T mean, T stddev);
+
   //
   // End of factory methods.
+
+  // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
+  // be returned for a 2-dimensional index with dimension 0 index equal to 7,
+  // dimension 1 equal to 8.
+  static string MultiIndexAsString(
+      tensorflow::gtl::ArraySlice<int64> multi_index);
 
  protected:
   // Recursively sets the subshapes and buffers of all subpieces rooted at
@@ -1556,6 +1613,38 @@ std::unique_ptr<Literal> LiteralBase::Replicate(int64 times) const {
     }
   }
   return literal;
+}
+
+template <PrimitiveType type, typename T>
+/* static */ StatusOr<std::unique_ptr<Literal>> Literal::CreateRandomLiteral(
+    const Shape& shape,
+    const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator) {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
+  TF_RET_CHECK(shape.element_type() == type);
+  std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
+  TF_RETURN_IF_ERROR(literal.get()->Populate<NativeT>(
+      [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+        return generator(indexes);
+      }));
+  return std::move(literal);
+}
+
+template <PrimitiveType type, typename E, typename T>
+/* static */ StatusOr<std::unique_ptr<Literal>> Literal::CreateRandomLiteral(
+    const Shape& shape, E* engine, T mean, T stddev) {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
+  std::normal_distribution<NativeT> generator(mean, stddev);
+  return CreateRandomLiteral<type, NativeT>(
+      shape, [&](tensorflow::gtl::ArraySlice<int64> /*indexes*/) {
+        return generator(*engine);
+      });
+}
+
+template <PrimitiveType type, typename T>
+/* static */ StatusOr<std::unique_ptr<Literal>> Literal::CreateRandomLiteral(
+    const Shape& shape, T mean, T stddev) {
+  std::minstd_rand0 engine;
+  return CreateRandomLiteral<type>(shape, &engine, mean, stddev);
 }
 
 }  // namespace xla

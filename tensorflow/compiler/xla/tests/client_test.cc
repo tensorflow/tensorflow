@@ -62,9 +62,9 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, client_->Transfer(*data, &expected_literal->shape()));
 
-      LiteralTestUtil::AssertEqualShapesAndLayouts(expected_literal->shape(),
-                                                   computed->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
+          expected_literal->shape(), computed->shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
     }
   }
 }
@@ -142,7 +142,7 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
       auto result_literal,
       client_->Transfer(*results[0], &expected_result->shape()));
 
-  LiteralTestUtil::ExpectEqual(*expected_result, *result_literal);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected_result, *result_literal));
 }
 
 }  // namespace

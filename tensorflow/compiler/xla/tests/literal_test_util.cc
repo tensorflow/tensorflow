@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -46,117 +47,21 @@ using ::tensorflow::strings::StrCat;
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::EqualShapes(
     const Shape& expected, const Shape& actual) {
-  if (ShapeUtil::IsTuple(expected) != ShapeUtil::IsTuple(actual)) {
-    return ::testing::AssertionFailure()
-           << "tupleness-mismatch! want: " << ShapeUtil::HumanString(expected)
-           << " got: " << ShapeUtil::HumanString(actual);
+  Status result = literal_comparison::EqualShapes(expected, actual);
+  if (result.ok()) {
+    return ::testing::AssertionSuccess();
   }
-  if (ShapeUtil::IsTuple(expected)) {
-    if (ShapeUtil::TupleElementCount(expected) !=
-        ShapeUtil::TupleElementCount(actual)) {
-      return ::testing::AssertionFailure()
-             << "want tuple element count: "
-             << ShapeUtil::TupleElementCount(expected)
-             << " got tuple element count: "
-             << ShapeUtil::TupleElementCount(actual);
-    }
-    for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
-      ::testing::AssertionResult result =
-          EqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i))
-          << "mismatch in tuple index " << i;
-      if (!result) {
-        return result;
-      }
-    }
-  } else {
-    if (ShapeUtil::Rank(expected) != ShapeUtil::Rank(actual)) {
-      return ::testing::AssertionFailure()
-             << "want rank of: " << ShapeUtil::HumanString(expected)
-             << " got rank of: " << ShapeUtil::HumanString(actual);
-    }
-    if (expected.element_type() != actual.element_type()) {
-      return ::testing::AssertionFailure()
-             << PrimitiveType_Name(expected.element_type()) << " vs "
-             << PrimitiveType_Name(actual.element_type());
-    }
-    if (expected.dimensions_size() != actual.dimensions_size()) {
-      return ::testing::AssertionFailure()
-             << "want dimensions_size " << expected.dimensions_size()
-             << " got dimensions_size " << actual.dimensions_size();
-    }
-    for (int i = 0; i < expected.dimensions_size(); ++i) {
-      if (expected.dimensions(i) != actual.dimensions(i)) {
-        return ::testing::AssertionFailure()
-               << "mismatch in dimension #" << i
-               << " expected: " << ShapeUtil::HumanString(expected)
-               << " actual: " << ShapeUtil::HumanString(actual);
-      }
-    }
+  return ::testing::AssertionFailure() << result;
+}
+
+/* static */ ::testing::AssertionResult LiteralTestUtil::EqualShapesAndLayouts(
+    const Shape& expected, const Shape& actual) {
+  if (expected.ShortDebugString() != actual.ShortDebugString()) {
+    return ::testing::AssertionFailure()
+           << "want: " << expected.ShortDebugString()
+           << " got: " << actual.ShortDebugString();
   }
   return ::testing::AssertionSuccess();
-}
-
-/* static */ void LiteralTestUtil::AssertEqualShapes(const Shape& expected,
-                                                     const Shape& actual) {
-  ASSERT_TRUE(EqualShapes(expected, actual));
-}
-
-/* static */ void LiteralTestUtil::AssertEqualShapesAndLayouts(
-    const Shape& expected, const Shape& actual) {
-  ASSERT_EQ(expected.ShortDebugString(), actual.ShortDebugString());
-}
-
-namespace {
-
-// Return a literal with all arrays of type FromNativeT converted to type
-// ToNativeT in the given literal.
-template <typename FromNativeT, typename ToNativeT>
-std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
-  // First construct shape of the result.
-  Shape result_shape(literal.shape());
-  ShapeUtil::ForEachMutableSubshape(
-      &result_shape, [](Shape* subshape, const ShapeIndex&) {
-        if (subshape->element_type() ==
-            primitive_util::NativeToPrimitiveType<FromNativeT>()) {
-          subshape->set_element_type(
-              primitive_util::NativeToPrimitiveType<ToNativeT>());
-        }
-      });
-  auto result = MakeUnique<Literal>(result_shape);
-
-  // Then copy over the data from 'literal' converting FromNativeT values to
-  // ToNativeT values as necessary.
-  ShapeUtil::ForEachSubshape(
-      literal.shape(),
-      [&](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (ShapeUtil::IsArray(subshape)) {
-          if (subshape.element_type() ==
-              primitive_util::NativeToPrimitiveType<FromNativeT>()) {
-            auto src = literal.data<FromNativeT>(shape_index);
-            auto dest = result->data<ToNativeT>(shape_index);
-            for (int64 i = 0; i < src.size(); ++i) {
-              dest[i] = static_cast<ToNativeT>(src[i]);
-            }
-          } else {
-            TF_CHECK_OK(result->CopyFrom(literal,
-                                         /*dest_shape_index=*/shape_index,
-                                         /*src_shape_index=*/shape_index));
-          }
-        }
-      });
-  return result;
-}
-
-}  // namespace
-
-/* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertBF16ToF32(
-    LiteralSlice literal) {
-  return ConvertType<bfloat16, float>(literal);
-}
-
-/* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertF32ToBF16(
-    LiteralSlice literal) {
-  return ConvertType<float, bfloat16>(literal);
 }
 
 namespace {
@@ -168,183 +73,15 @@ string Hostname() {
   return string(hostname);
 }
 
-// Helper function for comparing a floating point type, FloatT, bitwise equal
-// between the left-hand-side and right-hand-side, by bit-casting to UnsignedT
-// -- on miscompare, a nice error message is given in the AssertionFailure.
-template <typename FloatT, typename UnsignedT>
-::testing::AssertionResult CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
-  auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
-  auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
-  auto lhs_double = static_cast<double>(lhs);
-  auto rhs_double = static_cast<double>(rhs);
-  if (ulhs != urhs) {
-    return ::testing::AssertionFailure() << Printf(
-               "floating values are not bitwise-equal; and equality testing "
-               "was requested: %s=%g=%a vs %s=%g=%a",
-               StrCat(tensorflow::strings::Hex(ulhs)).c_str(), lhs_double,
-               lhs_double, StrCat(tensorflow::strings::Hex(urhs)).c_str(),
-               rhs_double, rhs_double);
-  }
-  return ::testing::AssertionSuccess();
-}
-
-// Templated comparator that specializes for float equality comparison with the
-// bitwise helper above (this is the un-specialized fallback, to just use the
-// default gunit implementation).
-template <typename NativeT>
-::testing::AssertionResult CompareEqual(NativeT lhs, NativeT rhs) {
-  if (lhs == rhs) {
-    return ::testing::AssertionSuccess();
-  }
-  ::testing::Message msg;
-  msg << "Expected equality of these values:";
-  msg << "\n  " << lhs;
-  msg << "\n  " << rhs;
-
-  return ::testing::AssertionFailure() << msg;
-}
-
-// Specializations for floating types that do bitwise comparisons when equality
-// comparison is requested.
-template <>
-::testing::AssertionResult CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs) {
-  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
-}
-template <>
-::testing::AssertionResult CompareEqual<Eigen::half>(Eigen::half lhs,
-                                                     Eigen::half rhs) {
-  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs);
-}
-template <>
-::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
-  return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
-}
-template <>
-::testing::AssertionResult CompareEqual<double>(double lhs, double rhs) {
-  return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs);
-}
-template <>
-::testing::AssertionResult CompareEqual<complex64>(complex64 lhs,
-                                                   complex64 rhs) {
-  auto res = CompareEqual<float>(lhs.real(), rhs.real());
-  if (!res) {
-    return res;
-  }
-  return CompareEqual<float>(lhs.imag(), rhs.imag());
-}
-
-// A recursive function which iterates through every index of expected and
-// actual literal and compares their values elementwise. Returns true if all
-// elements are equal.
-template <typename NativeT>
-bool ExpectLiteralsEqual(LiteralSlice expected, LiteralSlice actual,
-                         tensorflow::gtl::MutableArraySlice<int64> multi_index,
-                         int64 dimension) {
-  if (dimension == expected.shape().dimensions_size()) {
-    NativeT expected_value = expected.Get<NativeT>(multi_index);
-    NativeT actual_value = actual.Get<NativeT>(multi_index);
-    ::testing::AssertionResult result =
-        CompareEqual<NativeT>(expected_value, actual_value);
-    return result;  // Defines implicit coersion to bool.
-  }
-
-  bool all_match = true;
-  for (int64 i = 0; i < expected.shape().dimensions(dimension); ++i) {
-    multi_index[dimension] = i;
-    all_match = all_match && ExpectLiteralsEqual<NativeT>(
-                                 expected, actual, multi_index, dimension + 1);
-  }
-  return all_match;
-}
-
 }  // namespace
 
-/* static */ void LiteralTestUtil::ExpectEqual(LiteralSlice expected,
-                                               LiteralSlice actual,
-                                               const string& message) {
-  EXPECT_TRUE(Equal(expected, actual))
-      << "expected:\n"
-      << expected.ToString() << "\n\tvs actual:\n"
-      << actual.ToString()
-      << (message.empty() ? "" : StrCat("\nmessage: ", message));
-}
-
-/* static */ void LiteralTestUtil::ExpectNotEqual(LiteralSlice expected,
-                                                  LiteralSlice actual) {
-  EXPECT_FALSE(Equal(expected, actual));
-}
-
 /* static */ ::testing::AssertionResult LiteralTestUtil::Equal(
-    LiteralSlice expected, LiteralSlice actual) {
-  VLOG(1) << "expected:";
-  XLA_VLOG_LINES(1, expected.ToString());
-  VLOG(1) << "actual:";
-  XLA_VLOG_LINES(1, actual.ToString());
-
-  AssertEqualShapes(expected.shape(), actual.shape());
-  std::vector<int64> multi_index(expected.shape().dimensions_size(), 0);
-  bool match = false;
-  switch (expected.shape().element_type()) {
-    case PRED:
-      match = ExpectLiteralsEqual<bool>(expected, actual, &multi_index, 0);
-      break;
-    case U8:
-      match = ExpectLiteralsEqual<uint8>(expected, actual, &multi_index, 0);
-      break;
-    case S32:
-      match = ExpectLiteralsEqual<int32>(expected, actual, &multi_index, 0);
-      break;
-    case S64:
-      match = ExpectLiteralsEqual<int64>(expected, actual, &multi_index, 0);
-      break;
-    case U32:
-      match = ExpectLiteralsEqual<uint32>(expected, actual, &multi_index, 0);
-      break;
-    case U64:
-      match = ExpectLiteralsEqual<uint64>(expected, actual, &multi_index, 0);
-      break;
-    case BF16:
-      match = ExpectLiteralsEqual<bfloat16>(expected, actual, &multi_index, 0);
-      break;
-    case F16:
-      match = ExpectLiteralsEqual<half>(expected, actual, &multi_index, 0);
-      break;
-    case F32:
-      match = ExpectLiteralsEqual<float>(expected, actual, &multi_index, 0);
-      break;
-    case F64:
-      match = ExpectLiteralsEqual<double>(expected, actual, &multi_index, 0);
-      break;
-    case C64:
-      match = ExpectLiteralsEqual<complex64>(expected, actual, &multi_index, 0);
-      break;
-    case TUPLE: {
-      bool tuple_match = true;
-      for (int i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
-        SCOPED_TRACE(StrCat("Tuple index ", i, " in ",
-                            ShapeUtil::HumanString(expected.shape())));
-
-        // Create LiteralSlices of the expected and actual elements.
-        auto result =
-            Equal(LiteralSlice(expected, {i}), LiteralSlice(actual, {i}));
-        tuple_match = tuple_match ? !!result : false;
-      }
-      match = tuple_match;
-      break;
-    }
-    default:
-      LOG(FATAL)
-          << "Unsupported primitive type in LiteralTestUtil::ExpectEqual: "
-          << PrimitiveType_Name(expected.shape().element_type());
+    const LiteralSlice& expected, const LiteralSlice& actual) {
+  Status result = literal_comparison::Equal(expected, actual);
+  if (result.ok()) {
+    return ::testing::AssertionSuccess();
   }
-  ::testing::AssertionResult result = ::testing::AssertionSuccess();
-  if (!match) {
-    result = ::testing::AssertionFailure()
-             << "expected: " << expected.ToString()
-             << "\nactual:   " << actual.ToString();
-    VLOG(1) << result.message();
-  }
-  return result;
+  return ::testing::AssertionFailure() << result;
 }
 
 namespace {
@@ -368,7 +105,7 @@ int64 RecursiveElementCount(const Shape& shape) {
 // 3 minutes.  The utility of printing a literal with >1000 elements is
 // questionable, especially when writing the Literal proto to disk is orders
 // of magnitude faster.
-string TruncateHugeLiteral(LiteralSlice literal) {
+string TruncateHugeLiteral(const LiteralSlice& literal) {
   return RecursiveElementCount(literal.shape()) < 1000
              ? literal.ToString()
              : "[TRUNCATED, Literal with more than 1000 values]";
@@ -435,8 +172,8 @@ class NearComparator {
   // result. The assertion result is successful if all actual and expected
   // elements are within the given error bound. In case of error, the assertion
   // result contains a detailed error message in case of failure.
-  static ::testing::AssertionResult Compare(LiteralSlice expected,
-                                            LiteralSlice actual,
+  static ::testing::AssertionResult Compare(const LiteralSlice& expected,
+                                            const LiteralSlice& actual,
                                             ErrorSpec error,
                                             bool detailed_message) {
     NearComparator<NativeT> comparator(expected, actual, error,
@@ -464,7 +201,7 @@ class NearComparator {
       return Printf(
           "actual %s, expected %s, index %s, rel error %8.3g, abs error %8.3g",
           FpValueToString(actual).c_str(), FpValueToString(expected).c_str(),
-          LiteralTestUtil::MultiIndexAsString(
+          Literal::MultiIndexAsString(
               IndexUtil::LinearIndexToMultidimensionalIndex(shape,
                                                             linear_index))
               .c_str(),
@@ -472,8 +209,9 @@ class NearComparator {
     }
   };
 
-  explicit NearComparator(LiteralSlice expected, LiteralSlice actual,
-                          ErrorSpec error, bool detailed_message)
+  explicit NearComparator(const LiteralSlice& expected,
+                          const LiteralSlice& actual, ErrorSpec error,
+                          bool detailed_message)
       : expected_(expected),
         actual_(actual),
         error_(error),
@@ -649,7 +387,7 @@ class NearComparator {
   }
 
   // Writes the given literal to a file in the test temporary directory.
-  void WriteLiteralToTempFile(LiteralSlice literal, const string& name) {
+  void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
     int64 now_usec = tensorflow::Env::Default()->NowMicros();
     string filename = tensorflow::io::JoinPath(
         tensorflow::testing::TmpDir(),
@@ -794,8 +532,8 @@ constexpr std::array<float, 5> NearComparator<NativeT>::kErrorBucketBounds;
 // Helper function for comparing two literals for nearness. Handles tuple-shapes
 // via recursion. shape_index is the ShapeIndex of expected (or actual)
 // currently being compared.
-::testing::AssertionResult NearHelper(LiteralSlice expected,
-                                      LiteralSlice actual,
+::testing::AssertionResult NearHelper(const LiteralSlice& expected,
+                                      const LiteralSlice& actual,
                                       const ErrorSpec& error,
                                       bool detailed_message,
                                       const ShapeIndex& shape_index) {
@@ -874,30 +612,14 @@ constexpr std::array<float, 5> NearComparator<NativeT>::kErrorBucketBounds;
 }  // namespace
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::Near(
-    LiteralSlice expected, LiteralSlice actual, const ErrorSpec& error,
-    bool detailed_message) {
+    const LiteralSlice& expected, const LiteralSlice& actual,
+    const ErrorSpec& error, bool detailed_message) {
   return NearHelper(expected, actual, error, detailed_message,
                     /*shape_index=*/{});
 }
 
-/* static */ void LiteralTestUtil::ExpectNear(LiteralSlice expected,
-                                              LiteralSlice actual,
-                                              const ErrorSpec& error,
-                                              const string& message) {
-  ::testing::AssertionResult res =
-      Near(expected, actual, error, /*detailed_message=*/false);
-  if (!res) {
-    res << "Expected: " << TruncateHugeLiteral(expected) << "\n";
-    res << "Actual: " << TruncateHugeLiteral(actual) << "\n";
-    if (!message.empty()) {
-      res << StrCat("\nmessage: ", message);
-    }
-  }
-  EXPECT_TRUE(res);
-}
-
-/*static*/ ::testing::AssertionResult LiteralTestUtil::NearOrEqual(
-    LiteralSlice expected, LiteralSlice actual,
+/* static */ ::testing::AssertionResult LiteralTestUtil::NearOrEqual(
+    const LiteralSlice& expected, const LiteralSlice& actual,
     const tensorflow::gtl::optional<ErrorSpec>& error) {
   if (error.has_value()) {
     VLOG(1) << "Expects near";
@@ -905,88 +627,6 @@ constexpr std::array<float, 5> NearComparator<NativeT>::kErrorBucketBounds;
   }
   VLOG(1) << "Expects equal";
   return Equal(expected, actual);
-}
-
-/*static*/ void LiteralTestUtil::ExpectNearOrEqual(
-    LiteralSlice expected, LiteralSlice actual,
-    const tensorflow::gtl::optional<ErrorSpec>& error) {
-  EXPECT_TRUE(NearOrEqual(expected, actual, error));
-}
-
-/* static */ string LiteralTestUtil::MultiIndexAsString(
-    tensorflow::gtl::ArraySlice<int64> multi_index) {
-  return StrCat("{", tensorflow::str_util::Join(multi_index, ","), "}");
-}
-
-/* static */ std::unique_ptr<Literal> LiteralTestUtil::Reshape(
-    tensorflow::gtl::ArraySlice<int64> new_dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major, LiteralSlice literal) {
-  int64 new_num_elements = 1;
-  for (int64 i = 0; i < new_dimensions.size(); ++i) {
-    new_num_elements *= new_dimensions[i];
-  }
-  CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
-  CHECK_EQ(new_dimensions.size(), minor_to_major.size());
-
-  auto new_literal = MakeUnique<Literal>(
-      ShapeUtil::MakeShape(literal.shape().element_type(), new_dimensions));
-
-  // Create a new shape with the given minor-to-major layout. This shape is used
-  // solely for converting linear address to multi-dimensional addresses when
-  // writing elements to the new literal.
-  Shape shape_with_layout = new_literal->shape();
-  *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
-
-  // Copy data into new literal, element-by-element.
-  for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
-    std::vector<int64> from_multi_index =
-        IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
-    std::vector<int64> to_multi_index =
-        IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
-    switch (literal.shape().element_type()) {
-      case PRED:
-        new_literal->Set<bool>(to_multi_index,
-                               literal.Get<bool>(from_multi_index));
-        break;
-      case U8:
-        new_literal->Set<uint8>(to_multi_index,
-                                literal.Get<uint8>(from_multi_index));
-        break;
-      case U32:
-        new_literal->Set<uint32>(to_multi_index,
-                                 literal.Get<uint32>(from_multi_index));
-        break;
-      case S32:
-        new_literal->Set<int32>(to_multi_index,
-                                literal.Get<int32>(from_multi_index));
-        break;
-      case U64:
-        new_literal->Set<uint64>(to_multi_index,
-                                 literal.Get<uint64>(from_multi_index));
-        break;
-      case S64:
-        new_literal->Set<int64>(to_multi_index,
-                                literal.Get<int64>(from_multi_index));
-        break;
-      case F32:
-        new_literal->Set<float>(to_multi_index,
-                                literal.Get<float>(from_multi_index));
-        break;
-      case F64:
-        new_literal->Set<double>(to_multi_index,
-                                 literal.Get<double>(from_multi_index));
-        break;
-      case C64:
-        new_literal->Set<complex64>(to_multi_index,
-                                    literal.Get<complex64>(from_multi_index));
-        break;
-      default:
-        LOG(FATAL) << "Unhandled primitive element type: "
-                   << PrimitiveType_Name(literal.shape().element_type());
-    }
-  }
-
-  return new_literal;
 }
 
 }  // namespace xla

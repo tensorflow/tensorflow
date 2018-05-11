@@ -62,6 +62,45 @@ void ConvertEndianShort(char* bytes, int64 size) {
   }
 }
 
+// Return a literal with all arrays of type FromNativeT converted to type
+// ToNativeT in the given literal.
+template <typename FromNativeT, typename ToNativeT>
+std::unique_ptr<Literal> ConvertType(LiteralSlice literal) {
+  // First construct shape of the result.
+  Shape result_shape(literal.shape());
+  ShapeUtil::ForEachMutableSubshape(
+      &result_shape, [](Shape* subshape, const ShapeIndex&) {
+        if (subshape->element_type() ==
+            primitive_util::NativeToPrimitiveType<FromNativeT>()) {
+          subshape->set_element_type(
+              primitive_util::NativeToPrimitiveType<ToNativeT>());
+        }
+      });
+  auto result = MakeUnique<Literal>(result_shape);
+
+  // Then copy over the data from 'literal' converting FromNativeT values to
+  // ToNativeT values as necessary.
+  ShapeUtil::ForEachSubshape(
+      literal.shape(),
+      [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        if (ShapeUtil::IsArray(subshape)) {
+          if (subshape.element_type() ==
+              primitive_util::NativeToPrimitiveType<FromNativeT>()) {
+            auto src = literal.data<FromNativeT>(shape_index);
+            auto dest = result->data<ToNativeT>(shape_index);
+            for (int64 i = 0; i < src.size(); ++i) {
+              dest[i] = static_cast<ToNativeT>(src[i]);
+            }
+          } else {
+            TF_CHECK_OK(result->CopyFrom(literal,
+                                         /*dest_shape_index=*/shape_index,
+                                         /*src_shape_index=*/shape_index));
+          }
+        }
+      });
+  return result;
+}
+
 }  // namespace
 
 LiteralBase::~LiteralBase() {}
@@ -193,6 +232,16 @@ SparseIndexArray* Literal::sparse_indices(const ShapeIndex& shape_index) {
     PrimitiveType primitive_type,
     tensorflow::gtl::ArraySlice<int64> dimensions) {
   return CreateFromShape(ShapeUtil::MakeShape(primitive_type, dimensions));
+}
+
+/* static */ std::unique_ptr<Literal> Literal::ConvertBF16ToF32(
+    const LiteralSlice& bf16_literal) {
+  return ConvertType<bfloat16, float>(bf16_literal);
+}
+
+/* static */ std::unique_ptr<Literal> Literal::ConvertF32ToBF16(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, bfloat16>(f32_literal);
 }
 
 template <typename NativeT>
@@ -786,6 +835,78 @@ StatusOr<std::unique_ptr<Literal>> LiteralBase::Reshape(
         ShapeUtil::HumanString(output->shape()).c_str());
   }
   return std::move(output);
+}
+
+/* static */ std::unique_ptr<Literal> Literal::ReshapeSlice(
+    tensorflow::gtl::ArraySlice<int64> new_dimensions,
+    tensorflow::gtl::ArraySlice<int64> minor_to_major,
+    const LiteralSlice& literal) {
+  int64 new_num_elements = 1;
+  for (int64 i = 0; i < new_dimensions.size(); ++i) {
+    new_num_elements *= new_dimensions[i];
+  }
+  CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
+  CHECK_EQ(new_dimensions.size(), minor_to_major.size());
+
+  auto new_literal = MakeUnique<Literal>(
+      ShapeUtil::MakeShape(literal.shape().element_type(), new_dimensions));
+
+  // Create a new shape with the given minor-to-major layout. This shape is used
+  // solely for converting linear address to multi-dimensional addresses when
+  // writing elements to the new literal.
+  Shape shape_with_layout = new_literal->shape();
+  *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+
+  // Copy data into new literal, element-by-element.
+  for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
+    std::vector<int64> from_multi_index =
+        IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
+    std::vector<int64> to_multi_index =
+        IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
+    switch (literal.shape().element_type()) {
+      case PRED:
+        new_literal->Set<bool>(to_multi_index,
+                               literal.Get<bool>(from_multi_index));
+        break;
+      case U8:
+        new_literal->Set<uint8>(to_multi_index,
+                                literal.Get<uint8>(from_multi_index));
+        break;
+      case U32:
+        new_literal->Set<uint32>(to_multi_index,
+                                 literal.Get<uint32>(from_multi_index));
+        break;
+      case S32:
+        new_literal->Set<int32>(to_multi_index,
+                                literal.Get<int32>(from_multi_index));
+        break;
+      case U64:
+        new_literal->Set<uint64>(to_multi_index,
+                                 literal.Get<uint64>(from_multi_index));
+        break;
+      case S64:
+        new_literal->Set<int64>(to_multi_index,
+                                literal.Get<int64>(from_multi_index));
+        break;
+      case F32:
+        new_literal->Set<float>(to_multi_index,
+                                literal.Get<float>(from_multi_index));
+        break;
+      case F64:
+        new_literal->Set<double>(to_multi_index,
+                                 literal.Get<double>(from_multi_index));
+        break;
+      case C64:
+        new_literal->Set<complex64>(to_multi_index,
+                                    literal.Get<complex64>(from_multi_index));
+        break;
+      default:
+        LOG(FATAL) << "Unhandled primitive element type: "
+                   << PrimitiveType_Name(literal.shape().element_type());
+    }
+  }
+
+  return new_literal;
 }
 
 std::unique_ptr<Literal> LiteralBase::Transpose(
@@ -2121,6 +2242,11 @@ StatusOr<std::unique_ptr<Literal>> Literal::CreateFromProto(
         return Status::OK();
       }));
   return std::move(literal);
+}
+
+/* static */ string Literal::MultiIndexAsString(
+    tensorflow::gtl::ArraySlice<int64> multi_index) {
+  return StrCat("{", tensorflow::str_util::Join(multi_index, ","), "}");
 }
 
 const void* LiteralBase::untyped_data(const ShapeIndex& shape_index) const {

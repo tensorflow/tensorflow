@@ -331,6 +331,17 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "literal_comparison",
+    srcs = ["literal_comparison.cc"],
+    hdrs = ["literal_comparison.h"],
+    deps = [
+        ":literal_util",
+        ":util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "metric_table_report",
     srcs = ["metric_table_report.cc"],
     hdrs = ["metric_table_report.h"],
