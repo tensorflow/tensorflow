@@ -36,8 +36,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl.keras.engine import training
 from tensorflow.python.keras._impl.keras.layers import core
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import checkpointable
 from tensorflow.python.training import checkpointable_utils
@@ -610,6 +612,49 @@ class CheckpointingTests(test.TestCase):
             var=first_variable, name="m")))
         beta1_power, _ = optimizer._get_beta_accumulators()
         self.assertAllEqual(3., self.evaluate(beta1_power))
+
+
+class TemplateTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_checkpointable_save_restore(self):
+
+    def _templated():
+      v = variable_scope.get_variable(
+          "v", shape=[1], initializer=init_ops.zeros_initializer(),
+          use_resource=True)
+      v2 = variable_scope.get_variable(
+          "v2", shape=[1], initializer=init_ops.zeros_initializer(),
+          use_resource=True)
+      return v, v + 1., v2
+
+    save_template = template.make_template("s1", _templated)
+    v1_save, _, v2_save = save_template()
+    optimizer = adam.AdamOptimizer(0.0)
+    save_root = checkpointable_utils.Checkpoint(
+        my_template=save_template, optimizer=optimizer)
+    optimizer.minimize(v1_save.read_value)
+    self.evaluate([v.initializer for v in optimizer.variables()])
+    self.evaluate(v1_save.assign([12.]))
+    self.evaluate(v2_save.assign([14.]))
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = save_root.save(checkpoint_prefix)
+
+    load_template = template.make_template("s2", _templated)
+    load_optimizer = adam.AdamOptimizer(0.0)
+    load_root = checkpointable_utils.Checkpoint(
+        my_template=load_template, optimizer=load_optimizer)
+    status = load_root.restore(save_path)
+    var, var_plus_one, var2 = load_template()
+    load_optimizer.minimize(var.read_value)
+    self.assertEqual(2, len(load_template._checkpoint_dependencies))
+    self.assertEqual("v", load_template._checkpoint_dependencies[0].name)
+    self.assertEqual("v2", load_template._checkpoint_dependencies[1].name)
+    status.assert_consumed().run_restore_ops()
+    self.assertAllEqual([12.], self.evaluate(var))
+    self.assertAllEqual([13.], self.evaluate(var_plus_one))
+    self.assertAllEqual([14.], self.evaluate(var2))
 
 
 class CheckpointCompatibilityTests(test.TestCase):

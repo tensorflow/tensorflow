@@ -1250,14 +1250,20 @@ class TemplateTests(test.TestCase):
 
     def _templated():
       v = variable_scope.get_variable(
-          "v", shape=[1], initializer=init_ops.zeros_initializer())
+          "v", shape=[1], initializer=init_ops.zeros_initializer(),
+          use_resource=True)
       v2 = variable_scope.get_variable(
-          "v2", shape=[1], initializer=init_ops.zeros_initializer())
+          "v2", shape=[1], initializer=init_ops.zeros_initializer(),
+          use_resource=True)
       return v, v + 1., v2
 
     save_template = template.make_template("s1", _templated)
-    save_root = checkpointable_utils.Checkpoint(my_template=save_template)
     v1_save, _, v2_save = save_template()
+    optimizer = adam.AdamOptimizer(0.0)
+    save_root = checkpointable_utils.Checkpoint(
+        my_template=save_template, optimizer=optimizer)
+    optimizer.minimize(v1_save.read_value)
+    self.evaluate([v.initializer for v in optimizer.variables()])
     self.evaluate(v1_save.assign([12.]))
     self.evaluate(v2_save.assign([14.]))
     checkpoint_directory = self.get_temp_dir()
@@ -1265,9 +1271,12 @@ class TemplateTests(test.TestCase):
     save_path = save_root.save(checkpoint_prefix)
 
     load_template = template.make_template("s2", _templated)
-    load_root = checkpointable_utils.Checkpoint(my_template=load_template)
+    load_optimizer = adam.AdamOptimizer(0.0)
+    load_root = checkpointable_utils.Checkpoint(
+        my_template=load_template, optimizer=load_optimizer)
     status = load_root.restore(save_path)
     var, var_plus_one, var2 = load_template()
+    load_optimizer.minimize(var.read_value)
     self.assertEqual(2, len(load_template._checkpoint_dependencies))
     self.assertEqual("v", load_template._checkpoint_dependencies[0].name)
     self.assertEqual("v2", load_template._checkpoint_dependencies[1].name)
