@@ -840,7 +840,8 @@ class _VariableStore(object):
       initializing_from_value = False
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
-    elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
+    elif (dtype.is_integer or dtype.is_unsigned or dtype.is_bool
+          or dtype == dtypes.string):
       initializer = init_ops.zeros_initializer()
       initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
