@@ -303,6 +303,7 @@ PLATFORM_OTHER_HDRS = [
     "platform/cpu_info.h",
     "platform/cpu_feature_guard.h",
     "platform/dynamic_annotations.h",
+    "platform/error.h",
     "platform/env.h",
     "platform/file_system.h",
     "platform/file_system_helper.h",
