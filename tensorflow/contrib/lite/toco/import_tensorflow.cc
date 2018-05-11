@@ -454,7 +454,8 @@ void ConvertConvOperator(const NodeDef& node,
 
   const auto& input_name = node.input(0);
   const auto& weights_name = node.input(1);
-  const auto& reordered_weights_name = weights_name + "_reordered";
+  const auto& reordered_weights_name =
+      AvailableArrayName(*model, weights_name + "_reordered");
   // Check if a ReorderAxesOperator was already created for these weights
   // (that happens when multiple layers share the same weights).
   const Operator* existing_reorder =
