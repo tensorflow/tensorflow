@@ -155,7 +155,7 @@ retraining for both floating point and quantized inference.
 
 The following diagram shows the architectural design of TensorFlow Lite:
 
-<img src="/images/tflite-architecture.jpg"
+<img src="https://www.tensorflow.org/images/tflite-architecture.jpg"
      alt="TensorFlow Lite architecture diagram"
      style="max-width:600px;">
 
