@@ -207,32 +207,13 @@ REGISTER_OP("MapAndBatchDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      shape_inference::ShapeHandle unused;
-
-      // Use name (vs. index like c->input(1)) to retrieve the Input shapes,
+      // Use index from the end to retrieve the Input shapes,
       // so that to avoid guessing the length of "other_arguments".
-
       // batch_size, num_parallel_batches, and drop_remainder are 0-D scalars.
-      std::vector<shape_inference::ShapeHandle> batch_size;
-      TF_RETURN_IF_ERROR(c->input("batch_size", &batch_size));
-      if (batch_size.size() != 1) {
-        return errors::InvalidArgument("Requires list(batch_size) == 1");
-      }
-      TF_RETURN_IF_ERROR(c->WithRank(batch_size[0], 0, &unused));
-
-      std::vector<shape_inference::ShapeHandle> num_parallel_batches;
-      TF_RETURN_IF_ERROR(c->input("num_parallel_batches", &num_parallel_batches));
-      if (num_parallel_batches.size() != 1) {
-        return errors::InvalidArgument("Requires list(num_parallel_batches) == 1");
-      }
-      TF_RETURN_IF_ERROR(c->WithRank(num_parallel_batches[0], 0, &unused));
-
-      std::vector<shape_inference::ShapeHandle> drop_remainder;
-      TF_RETURN_IF_ERROR(c->input("drop_remainder", &drop_remainder));
-      if (drop_remainder.size() != 1) {
-        return errors::InvalidArgument("Requires list(drop_remainder) == 1");
-      }
-      TF_RETURN_IF_ERROR(c->WithRank(drop_remainder[0], 0, &unused));
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 0, &unused));
 
       return shape_inference::ScalarShape(c);
     });
@@ -248,7 +229,17 @@ REGISTER_OP("MapAndBatchDatasetV2")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // Use index from the end to retrieve the Input shapes,
+      // so that to avoid guessing the length of "other_arguments".
+      // batch_size, num_parallel_calls, and drop_remainder are 0-D scalars.
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 0, &unused));
+
+      return shape_inference::ScalarShape(c);
+    });
 
 REGISTER_OP("PrefetchDataset")
     .Input("input_dataset: variant")
