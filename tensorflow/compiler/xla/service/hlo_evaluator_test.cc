@@ -2005,6 +2005,31 @@ ENTRY main {
       *Evaluate({operand.get(), gather_indices.get()}));
 }
 
+TEST_P(HloEvaluatorTest, EvaluateGather_NoOutputWindowDims) {
+  const string hlo_text = R"(
+HloModule GatherXd
+
+ENTRY main {
+  operand = s32[3] parameter(0)
+  indices = s32[2,2,1] parameter(1)
+  ROOT gather = s32[2,2] gather(operand, indices),
+      output_window_dims={},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=2,
+      window_bounds={1}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+
+  std::unique_ptr<Literal> operand = Literal::CreateR1<int32>({0, 1, 2});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR3<int32>({{{0}, {1}}, {{2}, {1}}});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR2<int32>({{0, 1}, {2, 1}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise comparison with 2 bfloat16 operands.
 TEST_P(HloEvaluatorTest, DoesCompareBF16) {
