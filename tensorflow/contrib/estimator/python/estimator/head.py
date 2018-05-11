@@ -43,7 +43,6 @@ from tensorflow.python.training import training_util
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
-# TODO(roumposg): Add code examples in public factory methods.
 def multi_class_head(n_classes,
                      weight_column=None,
                      label_vocabulary=None,
@@ -74,6 +73,33 @@ def multi_class_head(n_classes,
   shape `[D0, D1, ... DN, 1]`. `loss_fn` must support integer `labels` with
   shape `[D0, D1, ... DN, 1]`. Namely, the head applies `label_vocabulary` to
   the input labels before passing them to `loss_fn`.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.multi_class_head(n_classes=3)
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.multi_class_head(n_classes=3)
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     n_classes: Number of classes, must be greater than 2 (for 2 classes, use
@@ -141,6 +167,33 @@ def binary_classification_head(
   shape `[D0, D1, ... DN, 1]`. `loss_fn` must support float `labels` with
   shape `[D0, D1, ... DN, 1]`. Namely, the head applies `label_vocabulary` to
   the input labels before passing them to `loss_fn`.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.binary_classification_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.binary_classification_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -214,6 +267,33 @@ def regression_head(weight_column=None,
   https://en.wikipedia.org/wiki/Generalized_linear_model#Link_function
   Namely, for poisson regression, set `inverse_link_fn=tf.exp`.
 
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.regression_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.regression_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
+
   Args:
     weight_column: A string or a `_NumericColumn` created by
       `tf.feature_column.numeric_column` defining feature column representing
@@ -272,6 +352,33 @@ def poisson_regression_head(
 
   This is implemented as a generalized linear model, see
   https://en.wikipedia.org/wiki/Generalized_linear_model.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.poisson_regression_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.poisson_regression_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -339,6 +446,33 @@ def logistic_regression_head(
 
   This is implemented as a generalized linear model, see
   https://en.wikipedia.org/wiki/Generalized_linear_model.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.logistic_regression_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.logistic_regression_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -409,6 +543,33 @@ def multi_label_head(n_classes,
   shape `[D0, D1, ... DN, 1]`. `loss_fn` must support indicator `labels` with
   shape `[D0, D1, ... DN, n_classes]`. Namely, the head applies
   `label_vocabulary` to the input labels before passing them to `loss_fn`.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.multi_label_head(n_classes=3)
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.multi_label_head(n_classes=3)
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     n_classes: Number of classes, must be greater than 1 (for 1 class, use
