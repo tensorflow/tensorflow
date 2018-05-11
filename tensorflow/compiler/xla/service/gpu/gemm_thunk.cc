@@ -221,8 +221,7 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
                      const BufferAllocation::Slice& rhs_buffer,
                      const BufferAllocation::Slice& output_buffer,
                      const Shape& lhs_shape, const Shape& rhs_shape,
-                     const Shape& output_shape, bool transpose_lhs,
-                     bool transpose_rhs, double alpha,
+                     const Shape& output_shape, double alpha,
                      const HloInstruction* hlo_instruction)
     : Thunk(Kind::kGemm, hlo_instruction),
       lhs_buffer_(lhs_buffer),
@@ -231,8 +230,6 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       lhs_shape_(lhs_shape),
       rhs_shape_(rhs_shape),
       output_shape_(output_shape),
-      transpose_lhs_(transpose_lhs),
-      transpose_rhs_(transpose_rhs),
       alpha_(alpha) {}
 
 tensorflow::Status GemmThunk::ExecuteOnStream(
@@ -284,10 +281,13 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
                             shape.dimensions(!is_row_major));
   };
 
-  const MatrixDescriptor lhs_descriptor =
-      make_descriptor(lhs_data, lhs_shape_, transpose_lhs_);
-  const MatrixDescriptor rhs_descriptor =
-      make_descriptor(rhs_data, rhs_shape_, transpose_rhs_);
+  const DotDimensionNumbers& dim_nums =
+      hlo_instruction()->dot_dimension_numbers();
+
+  const MatrixDescriptor lhs_descriptor = make_descriptor(
+      lhs_data, lhs_shape_, dim_nums.lhs_contracting_dimensions(0) == 0);
+  const MatrixDescriptor rhs_descriptor = make_descriptor(
+      rhs_data, rhs_shape_, dim_nums.rhs_contracting_dimensions(0) == 1);
 
   // Dispatches to a regular cublas gemm, a gemm-with-algorithm, or attempts to
   // autotune this gemm to figure out the best algorithm.

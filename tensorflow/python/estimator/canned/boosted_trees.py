@@ -690,7 +690,7 @@ def _create_regression_head(label_dimension, weight_column=None):
     raise ValueError('For now only 1 dimension regression is supported.'
                      'label_dimension given as {}'.format(label_dimension))
   # pylint: disable=protected-access
-  return head_lib._regression_head_with_mean_squared_error_loss(
+  return head_lib._regression_head(
       label_dimension=label_dimension,
       weight_column=weight_column,
       loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)

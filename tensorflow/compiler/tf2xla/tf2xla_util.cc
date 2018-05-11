@@ -232,7 +232,7 @@ Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
     // Push input nodes of the currently visited node to name_queue.
     for (const string& in_edge : map_entry.second->input()) {
       auto id = ParseTensorName(in_edge);
-      const string node_name = id.first.ToString();
+      const string node_name = std::string(id.first);
       if (feed_tensors.find(std::make_pair(node_name, id.second)) ==
           feed_tensors.end()) {
         name_queue.push(node_name);

@@ -400,6 +400,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
               resource_variable_ops.var_is_initialized_op(abc.handle)),
           True)
 
+  def testScatterBool(self):
+    with context.eager_mode():
+      ref = resource_variable_ops.ResourceVariable(
+          [False, True, False], trainable=False)
+      indices = math_ops.range(3)
+      updates = constant_op.constant([True, True, True])
+      state_ops.scatter_update(ref, indices, updates)
+      self.assertAllEqual(ref.read_value(), [True, True, True])
+
   @test_util.run_in_graph_and_eager_modes()
   def testConstraintArg(self):
     constraint = lambda x: x

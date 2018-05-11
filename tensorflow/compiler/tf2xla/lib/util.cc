@@ -230,4 +230,11 @@ xla::StatusOr<xla::XlaOp> TransposeInMinorDims(xla::XlaBuilder* builder,
   return builder->Transpose(x, permutation);
 }
 
+xla::StatusOr<xla::XlaOp> MaybeConjugate(xla::XlaBuilder* builder,
+                                         const xla::XlaOp& x, bool conjugate) {
+  TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
+  auto perform_conj = shape.element_type() == xla::C64 && conjugate;
+  return perform_conj ? builder->Conj(x) : x;
+}
+
 }  // namespace tensorflow

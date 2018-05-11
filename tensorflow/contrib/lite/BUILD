@@ -6,8 +6,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
-exports_files(["LICENSE"])
-
 exports_files(glob([
     "testdata/*.bin",
     "testdata/*.pb",
@@ -91,6 +89,8 @@ cc_library(
     ],
     deps = [":context"],
 )
+
+exports_files(["builtin_ops.h"])
 
 cc_library(
     name = "string",

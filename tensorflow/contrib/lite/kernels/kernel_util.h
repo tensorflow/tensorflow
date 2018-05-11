@@ -32,6 +32,10 @@ inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {
   return &context->tensors[node->outputs->data[index]];
 }
+inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
+                                  int index) {
+  return &context->tensors[node->temporaries->data[index]];
+}
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 

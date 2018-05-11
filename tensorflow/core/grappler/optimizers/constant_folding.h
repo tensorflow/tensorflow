@@ -78,12 +78,15 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
-  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
-  void ReplaceOperationWithSnapshot(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
+  void ReplaceOperationWithIdentity(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithSnapshot(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
   void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
-  Status ReplaceOperationWithConstant(double value, const AttrValue& dtype_attr,
+  Status ReplaceOperationWithConstant(double value,
+                                      const GraphProperties& properties,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
@@ -97,6 +100,11 @@ class ConstantFolding : public GraphOptimizer {
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
+
+  // Applies partial constant folding for Concat which is not commutative.
+  // Returns true if the transformation applied successfully.
+  bool PartialConcatConstFolding(GraphDef* optimized_graph,
+                                 GraphProperties* properties, NodeDef* node);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;

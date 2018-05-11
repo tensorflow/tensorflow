@@ -272,9 +272,9 @@ struct NodeItem {
   // (uint8 is enough for DataType).
   //   EdgeInfo            out_edges[num_out_edges];
   //   AllocatorAttributes output_attr[num_outputs];
+  //   int                 forward_from[num_outputs];
   //   uint8               input_type[num_inputs];
   //   uint8               output_type[num_outputs];
-  //   int                 forward_from[num_outputs];
 
   // Return pointer to variable length section.
   char* var() const {
@@ -289,22 +289,20 @@ struct NodeItem {
     return reinterpret_cast<AllocatorAttributes*>(var() + sizeof(EdgeInfo) *
                                                               num_output_edges);
   }
+  int* forward_from_base() const {
+    return reinterpret_cast<int*>(var() + sizeof(EdgeInfo) * num_output_edges +
+                                  sizeof(AllocatorAttributes) * num_outputs);
+  }
   uint8* input_type_base() const {
-    return reinterpret_cast<uint8*>(var() +
-                                    sizeof(EdgeInfo) * num_output_edges +
-                                    sizeof(AllocatorAttributes) * num_outputs);
+    return reinterpret_cast<uint8*>(
+        var() + sizeof(EdgeInfo) * num_output_edges +
+        sizeof(AllocatorAttributes) * num_outputs + sizeof(int) * num_outputs);
   }
   uint8* output_type_base() const {
     return reinterpret_cast<uint8*>(
         var() + sizeof(EdgeInfo) * num_output_edges +
-        sizeof(AllocatorAttributes) * num_outputs + sizeof(uint8) * num_inputs);
-  }
-
-  int* forward_from_base() const {
-    return reinterpret_cast<int*>(var() + sizeof(EdgeInfo) * num_output_edges +
-                                  sizeof(AllocatorAttributes) * num_outputs +
-                                  sizeof(uint8) * num_inputs +
-                                  sizeof(uint8) * num_outputs);
+        sizeof(AllocatorAttributes) * num_outputs + sizeof(int) * num_outputs +
+        sizeof(uint8) * num_inputs);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(NodeItem);
@@ -481,9 +479,9 @@ size_t GraphView::NodeItemBytes(const Node* n) {
       sizeof(NodeItem)                             // Fixed
       + num_output_edges * sizeof(EdgeInfo)        // output_edges[...]
       + num_outputs * sizeof(AllocatorAttributes)  // output_attr[...]
+      + num_outputs * sizeof(int)                  // forward_from[num_outputs]
       + num_inputs * sizeof(uint8)                 // input_type[num_inputs]
-      + num_outputs * sizeof(uint8)                // output_type[num_outputs]
-      + num_outputs * sizeof(int);                 // forward_from[num_outputs]
+      + num_outputs * sizeof(uint8);               // output_type[num_outputs]
   static constexpr size_t kItemAlignment = sizeof(NodeItem*);
   static_assert(kItemAlignment % alignof(NodeItem) == 0,
                 "NodeItem must be aligned with kItemAlignment");

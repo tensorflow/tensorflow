@@ -170,5 +170,28 @@ TEST(PatternMatcherTest, TupleShape) {
       Match(&tuple_shape, match::Shape().WithSubshape({0, 0}, match::Shape())));
 }
 
+TEST(PatternMatcherTest, FusionKind) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+
+    fused_computation {
+      ROOT fp0 = f32[] parameter(0)
+    }
+
+    ENTRY while.v11 {
+      p0 = f32[] parameter(0)
+      ROOT fusion = f32[] fusion(p0), kind=kLoop, calls=fused_computation
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, tools::Parse(kModuleStr));
+
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(Match(
+      root, match::Op().WithFusionKind(HloInstruction::FusionKind::kLoop)));
+  EXPECT_FALSE(Match(
+      root, match::Op().WithFusionKind(HloInstruction::FusionKind::kInput)));
+  EXPECT_FALSE(Match(root->operand(0), match::Op().WithFusionKind(
+                                           HloInstruction::FusionKind::kLoop)));
+}
+
 }  // namespace
 }  // namespace xla

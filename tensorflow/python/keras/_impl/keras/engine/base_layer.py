@@ -29,6 +29,7 @@ from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
@@ -390,6 +391,8 @@ class Layer(checkpointable.CheckpointableBase):
       raise RuntimeError('Layer.add_loss not supported in Eager mode.')
 
     losses = generic_utils.to_list(losses)
+    losses = [ops.convert_to_tensor(loss, dtype=backend.floatx())
+              if not tensor_util.is_tensor(loss) else loss for loss in losses]
     self._losses += losses
     if inputs is None:
       for loss in losses:
@@ -1655,7 +1658,7 @@ class DeferredTensor(object):
   """Tensor-like object used to build graphs of layers in Eager mode.
 
   When calling a layer on a DeferredTensor, the layer will not perform any
-  computation and will simply perfom shape inference to return new
+  computation and will simply perform shape inference to return new
   DeferredTensors with appropriate shape information. Thus DeferredTensor
   behaves like a graph-mode Tensor when manipulated by layers.
   """

@@ -1762,6 +1762,7 @@ py_library(
         ":logging_ops_gen",
         ":math_ops",
         ":platform",
+        ":resource_variable_ops_gen",
         ":sparse_tensor",
         ":tensor_array_ops",
         ":tf_should_use",
@@ -4134,7 +4135,7 @@ cuda_py_test(
 
 py_test(
     name = "saver_large_variable_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/saver_large_variable_test.py"],
     srcs_version = "PY2AND3",
     tags = [
