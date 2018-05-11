@@ -584,9 +584,9 @@ class MakeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
+    core::ScopedUnref unref(iterator_resource);
     OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
                             dataset->MakeIterator("Iterator")));
-    iterator_resource->Unref();
   }
 };
 
@@ -1051,7 +1051,7 @@ class DeserializeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-
+    core::ScopedUnref unref_iterator(iterator_resource);
     Variant variant = ctx->input(1).scalar<Variant>()();
     auto* wrapper = variant.get<IteratorStateVariant>();
     OP_REQUIRES(ctx, wrapper != nullptr,

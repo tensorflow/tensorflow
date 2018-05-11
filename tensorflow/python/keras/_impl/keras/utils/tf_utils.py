@@ -17,9 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import nest
 
 
 def smart_cond(pred, true_fn=None, false_fn=None, name=None):
@@ -72,3 +75,80 @@ def constant_value(pred):
   if isinstance(pred, variables.Variable):
     return None
   return smart_module.smart_constant_value(pred)
+
+
+def is_tensor_or_tensor_list(v):
+  v = nest.flatten(v)
+  if v and isinstance(v[0], ops.Tensor):
+    return True
+  else:
+    return False
+
+
+def get_reachable_from_inputs(inputs, targets=None):
+  """Returns the set of tensors/ops reachable from `inputs`.
+
+  Stops if all targets have been found (target is optional).
+
+  Only valid in Symbolic mode, not Eager mode.
+
+  Args:
+    inputs: List of tensors.
+    targets: List of tensors.
+
+  Returns:
+    A set of tensors reachable from the inputs (includes the inputs themselves).
+  """
+  reachable = set(inputs)
+  if targets:
+    targets = set(targets)
+  queue = inputs[:]
+
+  while queue:
+    x = queue.pop()
+    if isinstance(x, ops.Operation):
+      outputs = x.outputs[:] or []
+      outputs += x._control_outputs  # pylint: disable=protected-access
+    elif isinstance(x, ops.Tensor):
+      outputs = x.consumers()
+    elif isinstance(x, variables.Variable):
+      outputs = [x.op]
+    else:
+      raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
+
+    for y in outputs:
+      if y not in reachable:
+        reachable.add(y)
+        queue.insert(0, y)
+
+    if targets and targets.issubset(reachable):
+      return reachable
+  return reachable
+
+
+def shape_type_conversion(fn):
+  """Decorator that handles tuple/TensorShape conversion.
+
+  Used in `compute_output_shape` and `build`.
+
+  Arguments:
+    fn: function to wrap.
+
+  Returns:
+    Wrapped function.
+  """
+
+  def wrapper(instance, input_shape):
+    if input_shape is not None:
+      if isinstance(input_shape, list):
+        input_shape = [
+            tuple(tensor_shape.TensorShape(x).as_list()) for x in input_shape]
+      else:
+        input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
+    output_shape = fn(instance, input_shape)
+    if output_shape is not None:
+      if isinstance(output_shape, list):
+        return [tensor_shape.TensorShape(x) for x in output_shape]
+      return tensor_shape.TensorShape(output_shape)
+
+  return wrapper

@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -93,19 +93,19 @@ class LocalClientTestBase : public ::testing::Test {
   // Execute the given computation on the local client. With and without
   // options.
   StatusOr<ScopedShapedBuffer> ExecuteLocally(
-      const Computation& computation,
+      const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
   StatusOr<ScopedShapedBuffer> ExecuteLocally(
-      const Computation& computation,
+      const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);
 
   ScopedShapedBuffer ExecuteLocallyOrDie(
-      const Computation& computation,
+      const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
   ScopedShapedBuffer ExecuteLocallyOrDie(
-      const Computation& computation,
+      const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableBuildOptions& build_options,
       const ExecutableRunOptions& run_options);

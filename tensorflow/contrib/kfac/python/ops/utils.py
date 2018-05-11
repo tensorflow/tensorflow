@@ -235,6 +235,13 @@ posdef_eig_functions = {
 }
 
 
+def cholesky(tensor, damping):
+  """Computes the inverse of tensor + damping * identity."""
+  identity = linalg_ops.eye(tensor.shape.as_list()[0], dtype=tensor.dtype)
+  damping = math_ops.cast(damping, dtype=tensor.dtype)
+  return linalg_ops.cholesky(tensor + damping * identity)
+
+
 class SubGraph(object):
   """Defines a subgraph given by all the dependencies of a given set of outputs.
   """
@@ -553,13 +560,17 @@ def is_data_format_channel_last(data_format):
   return data_format.endswith("C")
 
 
-def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name
+def matmul_sparse_dense(A, B, name=None, transpose_a=False, transpose_b=False):  # pylint: disable=invalid-name
   """Computes matmul(A, B) where A is sparse, B is dense.
 
   Args:
     A: tf.IndexedSlices with dense shape [m, n].
     B: tf.Tensor with shape [n, k].
     name: str. Name of op.
+    transpose_a: Bool. If true we transpose A before multiplying it by B.
+      (Default: False)
+    transpose_b: Bool. If true we transpose B before multiplying it by A.
+      (Default: False)
 
   Returns:
     tf.IndexedSlices resulting from matmul(A, B).
@@ -573,7 +584,8 @@ def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name
       raise ValueError("A must represent a matrix. Found: %s." % A)
     if B.shape.ndims != 2:
       raise ValueError("B must be a matrix.")
-    new_values = math_ops.matmul(A.values, B)
+    new_values = math_ops.matmul(
+        A.values, B, transpose_a=transpose_a, transpose_b=transpose_b)
     return ops.IndexedSlices(
         new_values,
         A.indices,

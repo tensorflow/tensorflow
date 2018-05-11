@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -119,6 +120,7 @@ class _CheckpointPosition(object):
       AssertionError: If another object is already bound to the `Object` proto.
     """
     checkpoint = self.checkpoint
+    checkpoint.all_python_objects.add(checkpointable)
     current_assignment = checkpoint.object_by_proto_id.get(self._proto_id, None)
     if current_assignment is None:
       checkpoint.object_by_proto_id[self._proto_id] = checkpointable
@@ -157,12 +159,12 @@ class _CheckpointPosition(object):
       # consistent (if the dependency DAG is not a tree then there are
       # multiple paths to the same object).
       if current_assignment is not checkpointable:
-        raise AssertionError(
-            ("Unable to load the checkpoint into this object graph. Either "
-             "the Checkpointable object references in the Python program "
-             "have changed in an incompatible way, or the checkpoint was "
-             "generated in an incompatible program.\n\nTwo checkpoint "
-             "references resolved to different objects (%s and %s).")
+        logging.warning(
+            ("Inconsistent references when loading the checkpoint into this "
+             "object graph. Either the Checkpointable object references in the "
+             "Python program have changed in an incompatible way, or the "
+             "checkpoint was generated in an incompatible program.\n\nTwo "
+             "checkpoint references resolved to different objects (%s and %s).")
             % (current_assignment, checkpointable))
       return False  # Not a new assignment
 
@@ -657,6 +659,31 @@ class CheckpointableBase(object):
     return {}
 
 
+class NoDependency(object):
+  """Allows attribute assignment to `Checkpointable` objects with no dependency.
+
+  Example usage:
+  ```python
+  obj = Checkpointable()
+  obj.has_dependency = tf.Variable(0., name="dep")
+  obj.no_dependency = NoDependency(tf.Variable(1., name="nodep"))
+  assert obj.no_dependency.name == "nodep:0"
+  ```
+
+  `obj` in this example has a dependency on the variable "dep", and both
+  attributes contain un-wrapped `Variable` objects.
+
+  `NoDependency` also works with `tf.keras.Model`, but only for checkpoint
+  dependencies: wrapping a `Layer` in `NoDependency` will assign the (unwrapped)
+  `Layer` to the attribute without a checkpoint dependency, but the `Model` will
+  still track the `Layer` (so it will appear in `Model.layers`, and its
+  variables will appear in `Model.variables`).
+  """
+
+  def __init__(self, value):
+    self.value = value
+
+
 class Checkpointable(CheckpointableBase):
   """Manages dependencies on other objects.
 
@@ -689,8 +716,11 @@ class Checkpointable(CheckpointableBase):
     """Support self.foo = checkpointable syntax."""
     # Perform the attribute assignment, and potentially call other __setattr__
     # overrides such as that for tf.keras.Model.
+    no_dependency = isinstance(value, NoDependency)
+    if no_dependency:
+      value = value.value
     super(Checkpointable, self).__setattr__(name, value)
-    if isinstance(value, CheckpointableBase):
+    if not no_dependency and isinstance(value, CheckpointableBase):
       self._track_checkpointable(
           value, name=name,
           # Allow the user to switch the Checkpointable which is tracked by this

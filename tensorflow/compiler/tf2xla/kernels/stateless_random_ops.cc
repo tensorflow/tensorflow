@@ -30,9 +30,8 @@ namespace tensorflow {
 namespace {
 
 // Rotates a 32-bit integer 'v' left by 'distance' bits.
-xla::ComputationDataHandle RotateLeftS32(xla::ComputationBuilder* builder,
-                                         const xla::ComputationDataHandle& v,
-                                         int distance) {
+xla::XlaOp RotateLeftS32(xla::XlaBuilder* builder, const xla::XlaOp& v,
+                         int distance) {
   return builder->Or(
       builder->ShiftLeft(v, builder->ConstantR0<int>(distance)),
       builder->ShiftRightLogical(v, builder->ConstantR0<int>(32 - distance)));
@@ -40,25 +39,24 @@ xla::ComputationDataHandle RotateLeftS32(xla::ComputationBuilder* builder,
 
 // TODO(b/65209188): add a primitive XOR to XLA and call it here, rather than
 // building XOR out of other bitwise operators.
-xla::ComputationDataHandle BitwiseXor(xla::ComputationBuilder* builder,
-                                      const xla::ComputationDataHandle& x,
-                                      const xla::ComputationDataHandle& y) {
+xla::XlaOp BitwiseXor(xla::XlaBuilder* builder, const xla::XlaOp& x,
+                      const xla::XlaOp& y) {
   return builder->Or(builder->And(x, builder->Not(y)),
                      builder->And(builder->Not(x), y));
 }
 
-using ThreeFry2x32State = std::array<xla::ComputationDataHandle, 2>;
+using ThreeFry2x32State = std::array<xla::XlaOp, 2>;
 
 // Implements the ThreeFry counter-based PRNG algorithm.
 // Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
 // http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
-ThreeFry2x32State ThreeFry2x32(xla::ComputationBuilder* builder,
+ThreeFry2x32State ThreeFry2x32(xla::XlaBuilder* builder,
                                ThreeFry2x32State input, ThreeFry2x32State key) {
   // Rotation distances specified by the Threefry2x32 algorithm.
   constexpr std::array<int, 8> rotations = {13, 15, 26, 6, 17, 29, 16, 24};
   ThreeFry2x32State x;
 
-  std::array<xla::ComputationDataHandle, 3> ks;
+  std::array<xla::XlaOp, 3> ks;
   // 0x1BD11BDA is a parity constant specified by the ThreeFry2x32 algorithm.
   ks[2] = builder->ConstantR0<int32>(0x1BD11BDA);
   for (int i = 0; i < 2; ++i) {
@@ -121,10 +119,9 @@ ThreeFry2x32State ThreeFry2x32(xla::ComputationBuilder* builder,
 
 // Returns a tensor of 'shape' random values uniformly distributed in the range
 // [minval, maxval)
-xla::ComputationDataHandle RandomUniform(xla::ComputationBuilder* builder,
-                                         const xla::ComputationDataHandle& seed,
-                                         const TensorShape& shape,
-                                         double minval, double maxval) {
+xla::XlaOp RandomUniform(xla::XlaBuilder* builder, const xla::XlaOp& seed,
+                         const TensorShape& shape, double minval,
+                         double maxval) {
   // Split the seed into two 32-bit scalars to form a key.
   auto seed0 = builder->Reshape(builder->Slice(seed, {0}, {1}, {1}), {});
   auto seed1 = builder->Reshape(builder->Slice(seed, {1}, {2}, {1}), {});
@@ -178,9 +175,8 @@ xla::ComputationDataHandle RandomUniform(xla::ComputationBuilder* builder,
 //     p = sum_{i=1}^n gq[i]*w^i
 //   }
 //   return p*x
-xla::ComputationDataHandle ErfInvF32(xla::ComputationBuilder* b,
-                                     const xla::ComputationDataHandle& x,
-                                     const TensorShape& shape) {
+xla::XlaOp ErfInvF32(xla::XlaBuilder* b, const xla::XlaOp& x,
+                     const TensorShape& shape) {
   constexpr int kDegree = 9;
   constexpr std::array<float, 9> w_less_than_5_constants = {
       2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
@@ -220,7 +216,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     TensorShape shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
@@ -229,7 +225,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
                 errors::InvalidArgument("seed must have shape [2], not ",
                                         seed_shape.DebugString()));
-    xla::ComputationDataHandle seed = ctx->Input(1);
+    xla::XlaOp seed = ctx->Input(1);
     ctx->SetOutput(0, RandomUniform(builder, seed, shape, 0.0, 1.0));
   }
 
@@ -257,9 +253,10 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
                 errors::InvalidArgument("seed must have shape [2], not ",
                                         seed_shape.DebugString()));
-    xla::ComputationDataHandle seed = ctx->Input(1);
-    xla::ComputationBuilder* builder = ctx->builder();
-    auto uniform = RandomUniform(builder, seed, shape, -1.0, 1.0);
+    xla::XlaOp seed = ctx->Input(1);
+    xla::XlaBuilder* builder = ctx->builder();
+    auto uniform =
+        RandomUniform(builder, seed, shape, std::nextafter(-1.0f, 0.0f), 1.0);
     // Convert uniform distribution to normal distribution by computing
     // sqrt(2) * erfinv(x)
     auto normal = builder->Mul(builder->ConstantR0<float>(std::sqrt(2.0)),

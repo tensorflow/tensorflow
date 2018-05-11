@@ -126,5 +126,42 @@ TEST(WhileUtilTest, MakeTwoInstructionsLive) {
                         op::GetTupleElement(op::Parameter(0), 3)));
 }
 
+TEST(WhileUtilTest, GetInvariantGTEsForWhileBody) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  param.b = (s32[], s32[]) parameter(0)
+  gte.0 = s32[] get-tuple-element(param.b), index=0
+  gte.1 = s32[] get-tuple-element(param.b), index=1
+  add = s32[] add(gte.0, gte.1)
+  ROOT tuple = (s32[], s32[]) tuple(gte.0, add)
+}
+
+cond {
+  param.c = (s32[], s32[]) parameter(0)
+  ROOT constant = pred[] constant(true)
+}
+
+ENTRY main {
+  init = (s32[], s32[]) parameter(0)
+  ROOT while = (s32[], s32[]) while(init), condition=cond, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(hlo_string));
+
+  HloComputation* while_body = module->GetComputationWithName("body");
+
+  ASSERT_NE(while_body, nullptr)
+      << "Expected exactly one while_body computation";
+
+  std::vector<HloInstruction*> gte_list =
+      WhileUtil::GetInvariantGTEsForWhileBody(*while_body);
+
+  ASSERT_EQ(gte_list.size(), 1);
+  EXPECT_EQ((*gte_list.begin())->name(), "gte.0");
+}
 }  // namespace
 }  // namespace xla

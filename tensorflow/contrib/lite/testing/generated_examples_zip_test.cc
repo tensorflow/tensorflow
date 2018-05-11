@@ -54,8 +54,10 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/div.*int32)", "68808744"},
     {R"(^\/sub.*int32)", "68808744"},
 
-    // Pad only supports 4D tensors.
+    // Pad and PadV2 only supports 4D tensors.
     {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
+     "70527055"},
+    {R"(^\/padv2.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
      "70527055"},
 
     // L2Norm only supports tensors with 4D or fewer.
@@ -251,23 +253,30 @@ INSTANTIATE_TESTS(conv)
 INSTANTIATE_TESTS(depthwiseconv)
 INSTANTIATE_TESTS(div)
 INSTANTIATE_TESTS(exp)
+INSTANTIATE_TESTS(floor)
 INSTANTIATE_TESTS(fully_connected)
 INSTANTIATE_TESTS(fused_batch_norm)
 INSTANTIATE_TESTS(gather)
 INSTANTIATE_TESTS(global_batch_norm)
+INSTANTIATE_TESTS(greater)
+INSTANTIATE_TESTS(greater_equal)
 INSTANTIATE_TESTS(l2_pool)
 INSTANTIATE_TESTS(l2norm)
+INSTANTIATE_TESTS(less)
+INSTANTIATE_TESTS(less_equal)
 INSTANTIATE_TESTS(local_response_norm)
 INSTANTIATE_TESTS(log_softmax)
-INSTANTIATE_TESTS(maximum)
 INSTANTIATE_TESTS(max_pool)
+INSTANTIATE_TESTS(maximum)
 INSTANTIATE_TESTS(mean)
 INSTANTIATE_TESTS(minimum)
 INSTANTIATE_TESTS(mul)
+INSTANTIATE_TESTS(neg)
 INSTANTIATE_TESTS(pad)
+INSTANTIATE_TESTS(padv2)
+// INSTANTIATE_TESTS(prelu)
 INSTANTIATE_TESTS(relu)
 INSTANTIATE_TESTS(relu1)
-// INSTANTIATE_TESTS(prelu)
 INSTANTIATE_TESTS(relu6)
 INSTANTIATE_TESTS(reshape)
 INSTANTIATE_TESTS(resize_bilinear)
@@ -280,7 +289,7 @@ INSTANTIATE_TESTS(squeeze)
 INSTANTIATE_TESTS(strided_slice)
 INSTANTIATE_TESTS(sub)
 INSTANTIATE_TESTS(transpose)
-INSTANTIATE_TESTS(less)
+INSTANTIATE_TESTS(where)
 
 }  // namespace testing
 }  // namespace tflite

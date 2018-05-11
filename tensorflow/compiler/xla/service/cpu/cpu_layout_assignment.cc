@@ -139,13 +139,9 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       Shape lhs_shape(RowMajorShape(lhs_instruction->shape()));
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, dot, 0));
 
-      // dot is a kDot or a kTransposeDot fusion node.  In the latter case, if
-      // it represents X @ X, it may have just one operand.
-      if (dot->operand_count() > 1) {
-        const HloInstruction* rhs_instruction = dot->operand(1);
-        Shape rhs_shape(RowMajorShape(rhs_instruction->shape()));
-        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, dot, 1));
-      }
+      const HloInstruction* rhs_instruction = dot->operand(1);
+      Shape rhs_shape(RowMajorShape(rhs_instruction->shape()));
+      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, dot, 1));
 
       // Set layouts of the instructions' shapes.
       TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(output_shape, dot));

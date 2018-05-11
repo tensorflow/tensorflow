@@ -16,18 +16,6 @@
 """Operations for working with string Tensors.
 
 See the @{$python/string_ops} guide.
-
-@@regex_replace
-@@string_to_hash_bucket_fast
-@@string_to_hash_bucket_strong
-@@string_to_hash_bucket
-@@reduce_join
-@@string_join
-@@string_split
-@@substr
-@@as_string
-@@encode_base64
-@@decode_base64
 """
 
 from __future__ import absolute_import

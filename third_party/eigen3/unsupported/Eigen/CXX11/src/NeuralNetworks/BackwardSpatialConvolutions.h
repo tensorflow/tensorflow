@@ -280,9 +280,9 @@ SpatialConvolutionBackwardKernel(const Input& input, const OutputBackward& outpu
     eigen_assert(input_dims[0] == pre_contract_dims[0]);
   }
 
-  // We will contract along dimensions (1, 2) in in and (1, 3) in out, if
+  // We will contract along dimensions (1, 2) in and (1, 3) in out, if
   // this is col-major.
-  // For row-major, it's dimensions (0, 1) in in and (0, 2) in out.
+  // For row-major, it's dimensions (0, 1) in and (0, 2) in out.
   array<IndexPair<TensorIndex>, 2> contract_dims;
   if (isColMajor) {
     // col-major: in.contract(output.patches)

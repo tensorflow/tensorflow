@@ -449,7 +449,6 @@ py_binary(
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -1003,6 +1002,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
+        "noasan",  # Times out due to size of test (b/73731462).
         "oss_serial",
     ],
 )

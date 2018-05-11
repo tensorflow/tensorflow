@@ -89,6 +89,10 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   ~ReffedClientGraph() override {
     if (should_deregister_) {
       DeregisterPartitions();
+    } else {
+      for (Part& part : partitions_) {
+        worker_cache_->ReleaseWorker(part.name, part.worker);
+      }
     }
   }
 
@@ -602,7 +606,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
       for (const auto& name_index : feeds) {
-        const auto iter = part.feed_key.find(name_index.first.ToString());
+        const auto iter = part.feed_key.find(std::string(name_index.first));
         if (iter == part.feed_key.end()) {
           // The provided feed must be for a different partition.
           continue;
@@ -946,7 +950,7 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
     // Skip if already fed.
     if (input.second) continue;
     TensorId id(ParseTensorName(input.first));
-    const Node* n = execution_state->get_node_by_name(id.first.ToString());
+    const Node* n = execution_state->get_node_by_name(std::string(id.first));
     if (n == nullptr) {
       return errors::NotFound("Feed ", input.first, ": not found");
     }
@@ -962,7 +966,7 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
   for (size_t i = 0; i < req.num_fetches(); ++i) {
     const string& fetch = req.fetch_name(i);
     const TensorId id(ParseTensorName(fetch));
-    const Node* n = execution_state->get_node_by_name(id.first.ToString());
+    const Node* n = execution_state->get_node_by_name(std::string(id.first));
     if (n == nullptr) {
       return errors::NotFound("Fetch ", fetch, ": not found");
     }
@@ -1174,14 +1178,8 @@ Status MasterSession::Create(GraphDef* graph_def,
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         graph_def, execution_options, &execution_state_));
   }
-  // TODO(b/36574172): Remove these conditions when ClusterSpec
-  // propagation is supported in all servers.
-  if (options.cluster_def != nullptr ||
-      session_opts_.config.isolate_session_state()) {
-    should_delete_worker_sessions_ = true;
-    return CreateWorkerSessions(options);
-  }
-  return Status::OK();
+  should_delete_worker_sessions_ = true;
+  return CreateWorkerSessions(options);
 }
 
 Status MasterSession::CreateWorkerSessions(

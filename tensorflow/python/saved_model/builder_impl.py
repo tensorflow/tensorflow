@@ -132,7 +132,8 @@ class SavedModelBuilder(object):
       if not file_io.file_exists(asset_destination_filepath):
         file_io.copy(asset_source_filepath, asset_destination_filepath)
 
-    tf_logging.info("Assets written to: %s", assets_destination_dir)
+    tf_logging.info("Assets written to: %s",
+                    compat.as_text(assets_destination_dir))
 
   def _maybe_add_legacy_init_op(self, legacy_init_op=None):
     """Add legacy init op to the SavedModel.
@@ -167,6 +168,25 @@ class SavedModelBuilder(object):
       if not isinstance(main_op, ops.Operation):
         raise TypeError("main_op needs to be an Operation: %r" % main_op)
       ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
+
+  def _add_train_op(self, train_op):
+    """Add train op to the SavedModel.
+
+    Note that this functionality is in development, and liable to be
+    moved elsewhere.
+
+    Args:
+      train_op: Op or group of ops that are used for training. These are
+        stored as a collection with key TRAIN_OP_KEY, but not executed.
+
+    Raises:
+      TypeError if Train op is not of type `Operation`.
+    """
+    if train_op is not None:
+      if (not isinstance(train_op, ops.Tensor) and
+          not isinstance(train_op, ops.Operation)):
+        raise TypeError("train_op needs to be a Tensor or Op: %r" % train_op)
+      ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
 
   def _tag_and_add_meta_graph(self, meta_graph_def, tags, signature_def_map):
     """Tags the meta graph def and adds it to the SavedModel.
@@ -238,6 +258,20 @@ class SavedModelBuilder(object):
         for outputs_key in outputs:
           self._validate_tensor_info(outputs[outputs_key])
 
+  def _add_collections(
+      self, assets_collection, legacy_init_op, main_op, train_op):
+    """Add asset and op collections to be saved."""
+    # Save asset files and write them to disk, if any.
+    self._save_and_write_assets(assets_collection)
+
+    if main_op is None:
+      # Add legacy init op to the SavedModel.
+      self._maybe_add_legacy_init_op(legacy_init_op)
+    else:
+      self._add_main_op(main_op)
+
+    self._add_train_op(train_op)
+
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
@@ -285,14 +319,8 @@ class SavedModelBuilder(object):
     # properly populated.
     self._validate_signature_def_map(signature_def_map)
 
-    # Save asset files and write them to disk, if any.
-    self._save_and_write_assets(assets_collection)
-
-    if main_op is None:
-      # Add legacy init op to the SavedModel.
-      self._maybe_add_legacy_init_op(legacy_init_op)
-    else:
-      self._add_main_op(main_op)
+    # Add assets and ops
+    self._add_collections(assets_collection, legacy_init_op, main_op, None)
 
     # Initialize a saver to generate a sharded output for all saveables in the
     # current scope.
@@ -351,6 +379,7 @@ class SavedModelBuilder(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+
     """
     # pylint: enable=line-too-long
     if self._has_saved_variables:
@@ -362,8 +391,8 @@ class SavedModelBuilder(object):
     # properly populated.
     self._validate_signature_def_map(signature_def_map)
 
-    # Save asset files and write them to disk, if any.
-    self._save_and_write_assets(assets_collection)
+    # Add assets and ops
+    self._add_collections(assets_collection, legacy_init_op, main_op, None)
 
     # Create the variables sub-directory, if it does not exist.
     variables_dir = os.path.join(
@@ -375,12 +404,6 @@ class SavedModelBuilder(object):
     variables_path = os.path.join(
         compat.as_text(variables_dir),
         compat.as_text(constants.VARIABLES_FILENAME))
-
-    if main_op is None:
-      # Add legacy init op to the SavedModel.
-      self._maybe_add_legacy_init_op(legacy_init_op)
-    else:
-      self._add_main_op(main_op)
 
     # Initialize a saver to generate a sharded output for all saveables in the
     # current scope.
@@ -441,7 +464,7 @@ class SavedModelBuilder(object):
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(path, self._saved_model.SerializeToString())
-    tf_logging.info("SavedModel written to: %s", path)
+    tf_logging.info("SavedModel written to: %s", compat.as_text(path))
 
     return path
 

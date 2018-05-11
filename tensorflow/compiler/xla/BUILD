@@ -99,6 +99,7 @@ cc_library(
     hdrs = ["service_interface.h"],
     visibility = [":friends"],
     deps = [
+        ":xla_data_proto",
         ":xla_proto",
         "//tensorflow/core:lib",
     ],
@@ -605,8 +606,8 @@ cc_library(
         ":util",
         ":window_util",
         ":xla_data_proto",
-        "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_evaluator",
         "//tensorflow/compiler/xla/service:shape_inference",

@@ -265,7 +265,7 @@ example:
 ```python
 constant = tf.constant([1, 2, 3])
 tensor = constant * constant
-print tensor.eval()
+print(tensor.eval())
 ```
 
 The `eval` method only works when a default `tf.Session` is active (see
@@ -306,8 +306,8 @@ Note that you rarely want to use the following pattern when printing a
 
 ``` python
 t = <<some tensorflow operation>>
-print t  # This will print the symbolic tensor when the graph is being built.
-         # This tensor does not have a value in this context.
+print(t)  # This will print the symbolic tensor when the graph is being built.
+          # This tensor does not have a value in this context.
 ```
 
 This code prints the `tf.Tensor` object (which represents deferred computation)

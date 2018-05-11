@@ -108,8 +108,8 @@ def fit_loop(model,
   do_validation = False
   if val_inputs:
     do_validation = True
-    if verbose and inputs and hasattr(inputs[0], 'shape') and hasattr(
-        val_inputs[0], 'shape'):
+    if (steps_per_epoch is None and verbose and inputs and
+        hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
       print('Train on %d samples, validate on %d samples' %
             (inputs[0].shape[0], val_inputs[0].shape[0]))
   if validation_steps:

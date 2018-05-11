@@ -30,6 +30,7 @@ from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -94,6 +95,21 @@ class BaseLayerTest(test.TestCase):
           initializer=init_ops.zeros_initializer(),
           regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
+
+  def testReusePartitionedVaraiblesAndRegularizers(self):
+    regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
+    partitioner = partitioned_variables.fixed_size_partitioner(3)
+    for reuse in [False, True]:
+      with variable_scope.variable_scope(variable_scope.get_variable_scope(),
+                                         partitioner=partitioner,
+                                         reuse=reuse):
+        layer = base_layers.Layer(name='my_layer')
+        variable = layer.add_variable(
+            'reg_part_var', [4, 4],
+            initializer=init_ops.zeros_initializer(),
+            regularizer=regularizer)
+    self.assertEqual(
+        len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
 
   def testNoEagerActivityRegularizer(self):
     with context.eager_mode():

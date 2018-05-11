@@ -16,29 +16,6 @@
 """Asserts and Boolean Checks.
 
 See the @{$python/check_ops} guide.
-
-@@assert_negative
-@@assert_positive
-@@assert_non_negative
-@@assert_non_positive
-@@assert_equal
-@@assert_none_equal
-@@assert_near
-@@assert_less
-@@assert_less_equal
-@@assert_greater
-@@assert_greater_equal
-@@assert_rank
-@@assert_rank_at_least
-@@assert_rank_in
-@@assert_type
-@@assert_integer
-@@assert_proper_iterable
-@@assert_same_float_dtype
-@@assert_scalar
-@@is_non_decreasing
-@@is_numeric_tensor
-@@is_strictly_increasing
 """
 
 from __future__ import absolute_import
@@ -1192,19 +1169,35 @@ def _assert_same_base_type(items, expected_type=None):
   Raises:
     ValueError: If any types do not match.
   """
-  original_item_str = None
+  original_expected_type = expected_type
+  mismatch = False
   for item in items:
     if item is not None:
       item_type = item.dtype.base_dtype
       if not expected_type:
         expected_type = item_type
-        original_item_str = item.name if hasattr(item, 'name') else str(item)
       elif expected_type != item_type:
-        raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
-            item.name if hasattr(item, 'name') else str(item),
-            item_type, expected_type,
-            (' as %s' % original_item_str) if original_item_str else ''))
-  return expected_type
+        mismatch = True
+        break
+  if mismatch:
+    # Loop back through and build up an informative error message (this is very
+    # slow, so we don't do it unless we found an error above).
+    expected_type = original_expected_type
+    original_item_str = None
+    for item in items:
+      if item is not None:
+        item_type = item.dtype.base_dtype
+        if not expected_type:
+          expected_type = item_type
+          original_item_str = item.name if hasattr(item, 'name') else str(item)
+        elif expected_type != item_type:
+          raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
+              item.name if hasattr(item, 'name') else str(item),
+              item_type, expected_type,
+              (' as %s' % original_item_str) if original_item_str else ''))
+    return expected_type  # Should be unreachable
+  else:
+    return expected_type
 
 
 @tf_export('assert_same_float_dtype')

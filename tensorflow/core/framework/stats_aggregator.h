@@ -47,6 +47,10 @@ class StatsAggregator {
   virtual void AddToHistogram(const string& name,
                               gtl::ArraySlice<double> values) = 0;
 
+  // TODO(shivaniagarawal): consistency in double and float usage.
+  // Add the given `value` as Scalar with the given `name`.
+  virtual void AddScalar(const string& name, float value) = 0;
+
   // Stores a protocol buffer representation of the aggregator state in the
   // given `out_summary`.
   // TODO(mrry): Consider separating this method from the `StatsAggregator`

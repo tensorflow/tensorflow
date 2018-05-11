@@ -20,13 +20,15 @@ option cc_enable_arenas = true;
 option java_outer_classname = "WorkerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/debug.proto";
@@ -412,4 +414,72 @@ message TracingRequest {
 }
 
 message TracingResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Collective Op dynamic group resolution messages.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// Supplies one or more device names as members of the group identified by
+// group_key.  Service will respond when all group_size devices become known.
+// All devices in group must have same type.
+message CompleteGroupRequest {
+  int32 group_key = 1;
+  int32 group_size = 2;
+  string device_type = 3;
+  repeated string device_name = 4;
+}
+
+// Gives the complete membership of the group identified by group_key.
+message CompleteGroupResponse {
+  int32 group_key = 1;
+  int32 group_size = 2;
+  string device_type = 3;
+  int32 num_tasks = 4;  // number of distinct tasks hosting the devices
+  repeated string device_name = 5;
+  repeated string task_name = 6;  // task name prefixes of device_names
+}
+
+// Supplies data about one collective op belonging to the instance identified
+// by instance_key.  Service will respond when all group_size ops have
+// become known.  Most of the data being sent is for correctness checking,
+// to ensure that all ops in the instance share common attributes.
+message CompleteInstanceRequest {
+  string name = 1;
+  int32 type = 2;
+  DataType data_type = 3;
+  TensorShapeProto shape = 4;
+  int32 group_key = 5;
+  int32 group_size = 6;
+  int32 instance_key = 7;
+  string device_type = 8;
+  repeated int32 subdiv_offset = 9;
+  string device = 10;
+  bool is_source = 11;
+}
+
+// Confirms that every op in the instance has consistently declared itself.
+// Also gives the source_rank in case of broadcast.
+message CompleteInstanceResponse {
+  int32 instance_key = 1;
+  int32 source_rank = 2;
+}
+
+// Request for next agreed-upon step_id for the specified graph_keys.
+// This is used to enable multiple graphs containing nodes from
+// a common collective instance to coordinate using the same step_ids.
+message GetStepSequenceRequest {
+  repeated int64 graph_key = 1;
+}
+
+message StepSequence {
+  int64 graph_key = 1;
+  int64 next_step_id = 2;
+}
+
+// Next valid step_ids for one or more graph_keys.
+message GetStepSequenceResponse {
+  repeated StepSequence step_sequence = 1;
 }

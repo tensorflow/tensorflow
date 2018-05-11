@@ -34,9 +34,8 @@ class ComputationLayout {
  public:
   // Constructs a ComputationLayout from a ProgramShape. The layouts of the
   // parameters and results are set to the default layout. Layouts in the
-  // ProgramShape are ignored if ignore_layouts is true.
-  explicit ComputationLayout(const ProgramShape& program_shape,
-                             bool ignore_layouts = true);
+  // ProgramShape are ignored.
+  explicit ComputationLayout(const ProgramShape& program_shape);
 
   // Returns the layout of a particular parameter.
   const ShapeLayout& parameter_layout(int64 param_no) const {

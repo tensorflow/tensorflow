@@ -38,9 +38,14 @@ namespace port {
 
 class Status {
  public:
+  static Status OK() { return Status(true, ""); }
+
+  // Create a failed status with no message.
   Status() {}
 
   Status(bool ok, const string& message) : ok_(ok), message_(message) {}
+
+  void AppendMessage(const string& message) { message_ += message; }
 
   bool ok() const { return ok_; }
 

@@ -44,6 +44,10 @@ struct CodegenOpts {
 
   // If true, generate program shape data for the ProgramShape method.
   bool gen_program_shape = false;
+
+  // If true, emit a serialized HloProfilePrinterData protobuf that can be used
+  // to pretty print HLO profile counters.
+  bool gen_hlo_profile_printer_data = false;
 };
 
 // Describes a generated metadata object file.
@@ -56,6 +60,12 @@ struct MetadataResult {
   // xla::ProgramShape instance for the CompileResult passed to
   // GenerateMetadata.
   string program_shape_access_shim;
+
+  // hlo_profile_printer_data_access_shim is a C++ expression that constructs
+  // the xla::HloProfilePrinterData instance for the CompileResult passed to
+  // GenerateMetadata.  If the xla::HloProfilePrinterData is null then this is a
+  // C++ expression that evaluates to nullptr at runtime.
+  string hlo_profile_printer_data_access_shim;
 
   // The contents of the object (".o") file.
   string object_file_data;

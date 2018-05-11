@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         libcurl3-dev \
         libfreetype6-dev \
+        libhdf5-serial-dev \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
@@ -28,9 +29,12 @@ RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 RUN pip --no-cache-dir install \
+        Pillow \
+        h5py \
         ipykernel \
         jupyter \
         matplotlib \
+        mock \
         numpy \
         scipy \
         sklearn \
@@ -81,7 +85,7 @@ RUN git clone --branch=r1.8 --depth=1 https://github.com/tensorflow/tensorflow.g
 ENV CI_BUILD_PYTHON python
 
 RUN tensorflow/tools/ci_build/builds/configured CPU \
-    bazel build -c opt --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
+    bazel build -c opt --copt=-mavx --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
         # For optimized builds appropriate for the hardware platform of your choosing, uncomment below...
         # For ivy-bridge or sandy-bridge
         # --copt=-march="ivybridge" \

@@ -31,11 +31,23 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
+#include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace optimized_ops {
+
+// Unoptimized reference ops:
+using reference_ops::BroadcastGreater;
+using reference_ops::BroadcastGreaterEqual;
+using reference_ops::BroadcastLess;
+using reference_ops::BroadcastLessEqual;
+using reference_ops::Greater;
+using reference_ops::GreaterEqual;
+using reference_ops::Less;
+using reference_ops::LessEqual;
 
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
@@ -1203,13 +1215,330 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  output_activation_max, output_data, output_dims, gemm_context);
 }
 
+// Internal function doing the actual arithmetic work for
+// ExperimentalShuffledFullyConnected.
+// May be called either directly by it (single-threaded case) or may be used
+// as the 'task' for worker threads to run (multi-threaded case, see
+// ExperimentalShuffledFullyConnectedWorkerTask below).
+inline void ExperimentalShuffledFullyConnectedWorkerImpl(
+    const uint8* shuffled_input_workspace_data,
+    const int8* shuffled_weights_data, int batches, int output_depth,
+    int output_stride, int accum_depth, const int32* bias_data,
+    int32 output_multiplier, int output_shift, int16* output_data) {
+#if defined USE_NEON
+  const int8* shuffled_weights_ptr = shuffled_weights_data;
+  if (batches == 1) {
+    const int right_shift = output_shift > 0 ? output_shift : 0;
+    const int left_shift = output_shift > 0 ? 0 : -output_shift;
+    for (int c = 0; c < output_depth; c += 4) {
+      // Accumulation loop.
+      int32x4_t row_accum0 = vdupq_n_s32(0);
+      int32x4_t row_accum1 = vdupq_n_s32(0);
+      int32x4_t row_accum2 = vdupq_n_s32(0);
+      int32x4_t row_accum3 = vdupq_n_s32(0);
+      for (int d = 0; d < accum_depth; d += 16) {
+        int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
+        int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
+        int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
+        int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
+        shuffled_weights_ptr += 64;
+        int8x16_t input =
+            vreinterpretq_s8_u8(vld1q_u8(shuffled_input_workspace_data + d));
+        int16x8_t local_accum0 =
+            vmull_s8(vget_low_s8(weights0), vget_low_s8(input));
+        int16x8_t local_accum1 =
+            vmull_s8(vget_low_s8(weights1), vget_low_s8(input));
+        int16x8_t local_accum2 =
+            vmull_s8(vget_low_s8(weights2), vget_low_s8(input));
+        int16x8_t local_accum3 =
+            vmull_s8(vget_low_s8(weights3), vget_low_s8(input));
+        local_accum0 =
+            vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input));
+        local_accum1 =
+            vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input));
+        local_accum2 =
+            vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input));
+        local_accum3 =
+            vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input));
+        row_accum0 = vpadalq_s16(row_accum0, local_accum0);
+        row_accum1 = vpadalq_s16(row_accum1, local_accum1);
+        row_accum2 = vpadalq_s16(row_accum2, local_accum2);
+        row_accum3 = vpadalq_s16(row_accum3, local_accum3);
+      }
+      // Horizontally reduce accumulators
+      int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+          pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+      pairwise_reduced_acc_0 =
+          vpadd_s32(vget_low_s32(row_accum0), vget_high_s32(row_accum0));
+      pairwise_reduced_acc_1 =
+          vpadd_s32(vget_low_s32(row_accum1), vget_high_s32(row_accum1));
+      pairwise_reduced_acc_2 =
+          vpadd_s32(vget_low_s32(row_accum2), vget_high_s32(row_accum2));
+      pairwise_reduced_acc_3 =
+          vpadd_s32(vget_low_s32(row_accum3), vget_high_s32(row_accum3));
+      const int32x2_t reduced_lo =
+          vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+      const int32x2_t reduced_hi =
+          vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+      int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+      // Add bias values.
+      int32x4_t bias_vec = vld1q_s32(bias_data + c);
+      reduced = vaddq_s32(reduced, bias_vec);
+      reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+      // Multiply by the fixed-point multiplier.
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+      // Rounding-shift-right.
+      using gemmlowp::RoundingDivideByPOT;
+      reduced = RoundingDivideByPOT(reduced, right_shift);
+      // Narrow values down to 16 bit signed.
+      const int16x4_t res16 = vqmovn_s32(reduced);
+      vst1_s16(output_data + c, res16);
+    }
+  } else if (batches == 4) {
+    const int right_shift = output_shift > 0 ? output_shift : 0;
+    const int left_shift = output_shift > 0 ? 0 : -output_shift;
+    for (int c = 0; c < output_depth; c += 4) {
+      const int8* shuffled_input_ptr =
+          reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+      // Accumulation loop.
+      int32x4_t row_accum00 = vdupq_n_s32(0);
+      int32x4_t row_accum10 = vdupq_n_s32(0);
+      int32x4_t row_accum20 = vdupq_n_s32(0);
+      int32x4_t row_accum30 = vdupq_n_s32(0);
+      int32x4_t row_accum01 = vdupq_n_s32(0);
+      int32x4_t row_accum11 = vdupq_n_s32(0);
+      int32x4_t row_accum21 = vdupq_n_s32(0);
+      int32x4_t row_accum31 = vdupq_n_s32(0);
+      int32x4_t row_accum02 = vdupq_n_s32(0);
+      int32x4_t row_accum12 = vdupq_n_s32(0);
+      int32x4_t row_accum22 = vdupq_n_s32(0);
+      int32x4_t row_accum32 = vdupq_n_s32(0);
+      int32x4_t row_accum03 = vdupq_n_s32(0);
+      int32x4_t row_accum13 = vdupq_n_s32(0);
+      int32x4_t row_accum23 = vdupq_n_s32(0);
+      int32x4_t row_accum33 = vdupq_n_s32(0);
+      for (int d = 0; d < accum_depth; d += 16) {
+        int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
+        int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
+        int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
+        int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
+        shuffled_weights_ptr += 64;
+        int8x16_t input0 = vld1q_s8(shuffled_input_ptr + 0);
+        int8x16_t input1 = vld1q_s8(shuffled_input_ptr + 16);
+        int8x16_t input2 = vld1q_s8(shuffled_input_ptr + 32);
+        int8x16_t input3 = vld1q_s8(shuffled_input_ptr + 48);
+        shuffled_input_ptr += 64;
+        int16x8_t local_accum0, local_accum1, local_accum2, local_accum3;
+#define TFLITE_SHUFFLED_FC_ACCUM(B)                                           \
+  local_accum0 = vmull_s8(vget_low_s8(weights0), vget_low_s8(input##B));      \
+  local_accum1 = vmull_s8(vget_low_s8(weights1), vget_low_s8(input##B));      \
+  local_accum2 = vmull_s8(vget_low_s8(weights2), vget_low_s8(input##B));      \
+  local_accum3 = vmull_s8(vget_low_s8(weights3), vget_low_s8(input##B));      \
+  local_accum0 =                                                              \
+      vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input##B)); \
+  local_accum1 =                                                              \
+      vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input##B)); \
+  local_accum2 =                                                              \
+      vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input##B)); \
+  local_accum3 =                                                              \
+      vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input##B)); \
+  row_accum0##B = vpadalq_s16(row_accum0##B, local_accum0);                   \
+  row_accum1##B = vpadalq_s16(row_accum1##B, local_accum1);                   \
+  row_accum2##B = vpadalq_s16(row_accum2##B, local_accum2);                   \
+  row_accum3##B = vpadalq_s16(row_accum3##B, local_accum3);
+
+        TFLITE_SHUFFLED_FC_ACCUM(0)
+        TFLITE_SHUFFLED_FC_ACCUM(1)
+        TFLITE_SHUFFLED_FC_ACCUM(2)
+        TFLITE_SHUFFLED_FC_ACCUM(3)
+
+#undef TFLITE_SHUFFLED_FC_ACCUM
+      }
+      // Horizontally reduce accumulators
+
+#define TFLITE_SHUFFLED_FC_STORE(B)                                           \
+  {                                                                           \
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,                 \
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;                       \
+    pairwise_reduced_acc_0 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum0##B), vget_high_s32(row_accum0##B)); \
+    pairwise_reduced_acc_1 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum1##B), vget_high_s32(row_accum1##B)); \
+    pairwise_reduced_acc_2 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum2##B), vget_high_s32(row_accum2##B)); \
+    pairwise_reduced_acc_3 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum3##B), vget_high_s32(row_accum3##B)); \
+    const int32x2_t reduced_lo =                                              \
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);            \
+    const int32x2_t reduced_hi =                                              \
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);            \
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);                 \
+    int32x4_t bias_vec = vld1q_s32(bias_data + c);                            \
+    reduced = vaddq_s32(reduced, bias_vec);                                   \
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));                    \
+    reduced = vqrdmulhq_n_s32(reduced, output_multiplier);                    \
+    using gemmlowp::RoundingDivideByPOT;                                      \
+    reduced = RoundingDivideByPOT(reduced, right_shift);                      \
+    const int16x4_t res16 = vqmovn_s32(reduced);                              \
+    vst1_s16(output_data + c + B * output_stride, res16);                     \
+  }
+
+      TFLITE_SHUFFLED_FC_STORE(0);
+      TFLITE_SHUFFLED_FC_STORE(1);
+      TFLITE_SHUFFLED_FC_STORE(2);
+      TFLITE_SHUFFLED_FC_STORE(3);
+
+#undef TFLITE_SHUFFLED_FC_STORE
+    }
+  } else {
+    TFLITE_DCHECK(false);
+    return;
+  }
+#else
+  if (batches == 1) {
+    int16* output_ptr = output_data;
+    // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+    // so that just reinterpreting them as int8 values is equivalent to
+    // subtracting 128 from them, thus implementing for free the subtraction of
+    // the zero_point value 128.
+    const int8* shuffled_weights_ptr =
+        reinterpret_cast<const int8*>(shuffled_weights_data);
+    // Likewise, we preshuffled and pre-xored the input data above.
+    const int8* shuffled_input_data =
+        reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+    for (int c = 0; c < output_depth; c += 4) {
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32 accum[4] = {0};
+      // Accumulation loop.
+      for (int d = 0; d < accum_depth; d += 16) {
+        for (int i = 0; i < 4; i++) {
+          for (int j = 0; j < 16; j++) {
+            int8 input_val = shuffled_input_data[d + j];
+            int8 weights_val = *shuffled_weights_ptr++;
+            accum[i] += weights_val * input_val;
+          }
+        }
+      }
+      for (int i = 0; i < 4; i++) {
+        // Add bias value
+        int acc = accum[i] + bias_data[c + i];
+        // Down-scale the final int32 accumulator to the scale used by our
+        // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+        // multiplier and shift here have been pre-computed offline
+        // (e.g. by toco).
+        acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                            -output_shift);
+        // Saturate, cast to int16, and store to output array.
+        acc = std::max(acc, -32768);
+        acc = std::min(acc, 32767);
+        output_ptr[c + i] = acc;
+      }
+    }
+  } else if (batches == 4) {
+    int16* output_ptr = output_data;
+    // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+    // so that just reinterpreting them as int8 values is equivalent to
+    // subtracting 128 from them, thus implementing for free the subtraction of
+    // the zero_point value 128.
+    const int8* shuffled_weights_ptr =
+        reinterpret_cast<const int8*>(shuffled_weights_data);
+    // Likewise, we preshuffled and pre-xored the input data above.
+    const int8* shuffled_input_data =
+        reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+    for (int c = 0; c < output_depth; c += 4) {
+      const int8* shuffled_input_ptr = shuffled_input_data;
+      // Accumulation loop.
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32 accum[4][4];
+      for (int i = 0; i < 4; i++) {
+        for (int b = 0; b < 4; b++) {
+          accum[i][b] = 0;
+        }
+      }
+      for (int d = 0; d < accum_depth; d += 16) {
+        for (int i = 0; i < 4; i++) {
+          for (int b = 0; b < 4; b++) {
+            for (int j = 0; j < 16; j++) {
+              int8 input_val = shuffled_input_ptr[16 * b + j];
+              int8 weights_val = shuffled_weights_ptr[16 * i + j];
+              accum[i][b] += weights_val * input_val;
+            }
+          }
+        }
+        shuffled_input_ptr += 64;
+        shuffled_weights_ptr += 64;
+      }
+      for (int i = 0; i < 4; i++) {
+        for (int b = 0; b < 4; b++) {
+          // Add bias value
+          int acc = accum[i][b] + bias_data[c + i];
+          // Down-scale the final int32 accumulator to the scale used by our
+          // (16-bit, typically 3 integer bits) fixed-point format. The
+          // quantized multiplier and shift here have been pre-computed offline
+          // (e.g. by toco).
+          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                              -output_shift);
+          // Saturate, cast to int16, and store to output array.
+          acc = std::max(acc, -32768);
+          acc = std::min(acc, 32767);
+          output_ptr[b * output_stride + c + i] = acc;
+        }
+      }
+    }
+  } else {
+    TFLITE_DCHECK(false);
+    return;
+  }
+#endif
+}
+
+// Wraps ExperimentalShuffledFullyConnectedWorkerImpl into a Task class
+// to allow using gemmlowp's threadpool.
+struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
+  ExperimentalShuffledFullyConnectedWorkerTask(
+      const uint8* input_data, const int8* shuffled_weights_data, int batches,
+      int output_depth, int output_stride, int accum_depth,
+      const int32* bias_data, int32 output_multiplier, int output_shift,
+      int16* output_data)
+      : input_data_(input_data),
+        shuffled_weights_data_(shuffled_weights_data),
+        batches_(batches),
+        output_depth_(output_depth),
+        output_stride_(output_stride),
+        accum_depth_(accum_depth),
+        bias_data_(bias_data),
+        output_multiplier_(output_multiplier),
+        output_shift_(output_shift),
+        output_data_(output_data) {}
+
+  void Run() override {
+    ExperimentalShuffledFullyConnectedWorkerImpl(
+        input_data_, shuffled_weights_data_, batches_, output_depth_,
+        output_stride_, accum_depth_, bias_data_, output_multiplier_,
+        output_shift_, output_data_);
+  }
+
+  const uint8* input_data_;
+  const int8* shuffled_weights_data_;
+  int batches_;
+  int output_depth_;
+  int output_stride_;
+  int accum_depth_;
+  const int32* bias_data_;
+  int32 output_multiplier_;
+  int output_shift_;
+  int16* output_data_;
+};
+
 inline void ExperimentalShuffledFullyConnected(
     const uint8* input_data, const Dims<4>& input_dims,
     const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
     const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
     int output_shift, int32 output_activation_min, int32 output_activation_max,
     int16* output_data, const Dims<4>& output_dims,
-    gemmlowp::GemmContext* gemm_context) {
+    uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label(
       "ExperimentalShuffledFullyConnected/8bit");
   (void)gemm_context;  // only used in optimized code.
@@ -1226,117 +1555,100 @@ inline void ExperimentalShuffledFullyConnected(
   const int accum_depth = ArraySize(weights_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
-  // The experimental shuffling is an optimization for matrix*vector product.
-  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
-  // batches>1.
-  TFLITE_DCHECK_EQ(batches, 1);
+  TFLITE_DCHECK((accum_depth % 16) == 0);
+  TFLITE_DCHECK((output_depth % 4) == 0);
   // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
   // so that just reinterpreting them as int8 values is equivalent to
   // subtracting 128 from them, thus implementing for free the subtraction of
   // the zero_point value 128.
-  const int8* shuffled_weights_ptr =
+  const int8* int8_shuffled_weights_data =
       reinterpret_cast<const int8*>(shuffled_weights_data);
-#if defined USE_NEON
-  // We'll only need to xor signbit to the input activation values, as
-  // that xor-ing is pre-built into the shuffled weights values.
-  const uint8x16_t signbit = vdupq_n_u8(0x80);
-  const int right_shift = output_shift > 0 ? output_shift : 0;
-  const int left_shift = output_shift > 0 ? 0 : -output_shift;
-  for (int c = 0; c < output_depth; c += 4) {
-    // Accumulation loop.
-    int32x4_t row_accum0 = vdupq_n_s32(0);
-    int32x4_t row_accum1 = vdupq_n_s32(0);
-    int32x4_t row_accum2 = vdupq_n_s32(0);
-    int32x4_t row_accum3 = vdupq_n_s32(0);
-    for (int d = 0; d < accum_depth; d += 16) {
-      int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
-      int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
-      int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
-      int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
-      shuffled_weights_ptr += 64;
-      int8x16_t input =
-          vreinterpretq_s8_u8(veorq_u8(signbit, vld1q_u8(input_data + d)));
-      int16x8_t local_accum0 =
-          vmull_s8(vget_low_s8(weights0), vget_low_s8(input));
-      int16x8_t local_accum1 =
-          vmull_s8(vget_low_s8(weights1), vget_low_s8(input));
-      int16x8_t local_accum2 =
-          vmull_s8(vget_low_s8(weights2), vget_low_s8(input));
-      int16x8_t local_accum3 =
-          vmull_s8(vget_low_s8(weights3), vget_low_s8(input));
-      local_accum0 =
-          vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input));
-      local_accum1 =
-          vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input));
-      local_accum2 =
-          vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input));
-      local_accum3 =
-          vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input));
-      row_accum0 = vpadalq_s16(row_accum0, local_accum0);
-      row_accum1 = vpadalq_s16(row_accum1, local_accum1);
-      row_accum2 = vpadalq_s16(row_accum2, local_accum2);
-      row_accum3 = vpadalq_s16(row_accum3, local_accum3);
+
+  // Shuffling and xoring of input activations into the workspace buffer
+  if (batches == 1) {
+#ifdef USE_NEON
+    const uint8x16_t signbit = vdupq_n_u8(0x80);
+    for (int i = 0; i < accum_depth; i += 16) {
+      uint8x16_t val = vld1q_u8(input_data + i);
+      val = veorq_u8(val, signbit);
+      vst1q_u8(shuffled_input_workspace_data + i, val);
     }
-    // Horizontally reduce accumulators
-    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
-        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
-    pairwise_reduced_acc_0 =
-        vpadd_s32(vget_low_s32(row_accum0), vget_high_s32(row_accum0));
-    pairwise_reduced_acc_1 =
-        vpadd_s32(vget_low_s32(row_accum1), vget_high_s32(row_accum1));
-    pairwise_reduced_acc_2 =
-        vpadd_s32(vget_low_s32(row_accum2), vget_high_s32(row_accum2));
-    pairwise_reduced_acc_3 =
-        vpadd_s32(vget_low_s32(row_accum3), vget_high_s32(row_accum3));
-    const int32x2_t reduced_lo =
-        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
-    const int32x2_t reduced_hi =
-        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
-    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
-    // Add bias values.
-    int32x4_t bias_vec = vld1q_s32(bias_data + c);
-    reduced = vaddq_s32(reduced, bias_vec);
-    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
-    // Multiply by the fixed-point multiplier.
-    reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
-    // Rounding-shift-right.
-    using gemmlowp::RoundingDivideByPOT;
-    reduced = RoundingDivideByPOT(reduced, right_shift);
-    // Narrow values down to 16 bit signed.
-    const int16x4_t res16 = vqmovn_s32(reduced);
-    vst1_s16(output_data + c, res16);
-  }
 #else
-  for (int c = 0; c < output_depth; c += 4) {
-    // Internal accumulation.
-    // Initialize accumulator with the bias-value.
-    int32 accum[4] = {0};
-    // Accumulation loop.
-    for (int d = 0; d < accum_depth; d += 16) {
-      for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < accum_depth; i++) {
+      shuffled_input_workspace_data[i] = input_data[i] ^ 0x80;
+    }
+#endif
+  } else if (batches == 4) {
+    uint8* shuffled_input_workspace_ptr = shuffled_input_workspace_data;
+    int c = 0;
+#ifdef USE_NEON
+    const uint8x16_t signbit = vdupq_n_u8(0x80);
+    for (c = 0; c < accum_depth; c += 16) {
+      const uint8* src_data_ptr = input_data + c;
+      uint8x16_t val0 = vld1q_u8(src_data_ptr + 0 * accum_depth);
+      uint8x16_t val1 = vld1q_u8(src_data_ptr + 1 * accum_depth);
+      uint8x16_t val2 = vld1q_u8(src_data_ptr + 2 * accum_depth);
+      uint8x16_t val3 = vld1q_u8(src_data_ptr + 3 * accum_depth);
+      val0 = veorq_u8(val0, signbit);
+      val1 = veorq_u8(val1, signbit);
+      val2 = veorq_u8(val2, signbit);
+      val3 = veorq_u8(val3, signbit);
+      vst1q_u8(shuffled_input_workspace_ptr + 0, val0);
+      vst1q_u8(shuffled_input_workspace_ptr + 16, val1);
+      vst1q_u8(shuffled_input_workspace_ptr + 32, val2);
+      vst1q_u8(shuffled_input_workspace_ptr + 48, val3);
+      shuffled_input_workspace_ptr += 64;
+    }
+#else
+    for (c = 0; c < accum_depth; c += 16) {
+      for (int b = 0; b < 4; b++) {
+        const uint8* src_data_ptr = input_data + b * accum_depth + c;
         for (int j = 0; j < 16; j++) {
-          int8 input_val = input_data[d + j] - 128;
-          int8 weights_val = *shuffled_weights_ptr++;
-          accum[i] += weights_val * input_val;
+          uint8 src_val = *src_data_ptr++;
+          // Flip the sign bit, so that the kernel will only need to
+          // reinterpret these uint8 values as int8, getting for free the
+          // subtraction of the zero_point value 128.
+          uint8 dst_val = src_val ^ 0x80;
+          *shuffled_input_workspace_ptr++ = dst_val;
         }
       }
     }
-    for (int i = 0; i < 4; i++) {
-      // Add bias value
-      int acc = accum[i] + bias_data[c + i];
-      // Down-scale the final int32 accumulator to the scale used by our
-      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
-      // multiplier and shift here have been pre-computed offline
-      // (e.g. by toco).
-      acc =
-          MultiplyByQuantizedMultiplier(acc, output_multiplier, -output_shift);
-      // Saturate, cast to int16, and store to output array.
-      acc = std::max(acc, output_activation_min);
-      acc = std::min(acc, output_activation_max);
-      output_data[c + i] = acc;
-    }
-  }
 #endif
+  } else {
+    TFLITE_DCHECK(false);
+    return;
+  }
+
+  static constexpr int kKernelRows = 4;
+  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+      gemm_context->max_num_threads(), output_depth, batches, accum_depth);
+  if (thread_count == 1) {
+    // Single-thread case: do the computation on the current thread, don't
+    // use a threadpool
+    ExperimentalShuffledFullyConnectedWorkerImpl(
+        shuffled_input_workspace_data, int8_shuffled_weights_data, batches,
+        output_depth, output_depth, accum_depth, bias_data, output_multiplier,
+        output_shift, output_data);
+    return;
+  }
+
+  // Multi-threaded case: use the gemmlowp context's threadpool.
+  TFLITE_DCHECK_GT(thread_count, 1);
+  std::vector<gemmlowp::Task*> tasks(thread_count);
+  const int kRowsPerWorker =
+      gemmlowp::RoundUp<kKernelRows>(output_depth / thread_count);
+  int row_start = 0;
+  for (int i = 0; i < thread_count; i++) {
+    int row_end = std::min(output_depth, row_start + kRowsPerWorker);
+    tasks[i] = new ExperimentalShuffledFullyConnectedWorkerTask(
+        shuffled_input_workspace_data,
+        int8_shuffled_weights_data + row_start * accum_depth, batches,
+        row_end - row_start, output_depth, accum_depth, bias_data + row_start,
+        output_multiplier, output_shift, output_data + row_start);
+    row_start = row_end;
+  }
+  TFLITE_DCHECK_EQ(row_start, output_depth);
+  gemm_context->workers_pool()->Execute(tasks);
 }
 
 template <typename T>
@@ -2292,7 +2604,7 @@ inline void Add(int left_shift, const uint8* input1_data,
   }
 #endif  // NEON
 
-  for (; i < size; i++) {
+  for (; i < size; ++i) {
     const int32 input1_val = input1_offset + input1_data[i];
     const int32 input2_val = input2_offset + input2_data[i];
     const int32 shifted_input1_val = input1_val * (1 << left_shift);
@@ -2449,7 +2761,7 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                          int32 output_activation_min,
                          int32 output_activation_max, uint8* output_data,
                          const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd/8bit");
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddGeneric/8bit");
 
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
@@ -2498,6 +2810,60 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
   }
 }
 
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/8bit");
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise add of
+  // sections of the arrays.
+  uint8* output_data_ptr = output_data;
+  const uint8* input1_data_ptr = input1_data;
+  const uint8* input2_data_reset = input2_data;
+  for (int i4 = 0; i4 < y4; ++i4) {
+    const uint8* input2_data_ptr;
+    for (int i3 = 0; i3 < y3; ++i3) {
+      input2_data_ptr = input2_data_reset;
+      for (int i2 = 0; i2 < y2; ++i2) {
+        for (int i1 = 0; i1 < y1; ++i1) {
+          for (int i0 = 0; i0 < y0; ++i0) {
+            const int32 input1_val = input1_offset + input1_data_ptr[i0];
+            const int32 input2_val = input2_offset + input2_data_ptr[i0];
+            const int32 shifted_input1_val = input1_val * (1 << left_shift);
+            const int32 shifted_input2_val = input2_val * (1 << left_shift);
+            const int32 scaled_input1_val =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    shifted_input1_val, input1_multiplier, input1_shift);
+            const int32 scaled_input2_val =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    shifted_input2_val, input2_multiplier, input2_shift);
+            const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+            const int32 raw_output =
+                MultiplyByQuantizedMultiplierSmallerThanOne(
+                    raw_sum, output_multiplier, output_shift) +
+                output_offset;
+            const int32 clamped_output =
+                std::min(output_activation_max,
+                         std::max(output_activation_min, raw_output));
+            output_data_ptr[i0] = static_cast<uint8>(clamped_output);
+          }
+          input2_data_ptr += y0;
+          output_data_ptr += y0;
+        }
+        input1_data_ptr += y0;
+      }
+    }
+    input2_data_reset = input2_data_ptr;
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                          const Dims<4>& input1_dims, int32 input1_offset,
@@ -2524,6 +2890,33 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                input2_offset, input2_multiplier, input2_shift, output_offset,
                output_multiplier, output_shift, output_activation_min,
                output_activation_max, output_data, output_dims);
+}
+
+template <FusedActivationFunctionType Ac>
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  BroadcastAddFivefold(y0, y1, y2, y3, y4, left_shift, input1_data, input1_dims,
+                       input1_offset, input1_multiplier, input1_shift,
+                       input2_data, input2_dims, input2_offset,
+                       input2_multiplier, input2_shift, output_offset,
+                       output_multiplier, output_shift, output_activation_min,
+                       output_activation_max, output_data, output_dims);
 }
 
 inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
@@ -3054,7 +3447,7 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
                           const int32 output_zeropoint,
                           const float output_scale) {
   // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization paramaters for all the inputs to the concat
+  // that have the quantization parameters for all the inputs to the concat
   // operator.
   gemmlowp::ScopedProfilingLabel label("Concatenation");
   TFLITE_DCHECK_GT(inputs_count, 1);
@@ -4074,7 +4467,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
+  gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -5469,11 +5862,30 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+void TypedMemset(void* ptr, T value, size_t num) {
+  // Optimization for common cases where memset() will suffice.
+  if (value == 0 || std::is_same<T, uint8_t>::value) {
+    memset(ptr, value, num * sizeof(T));
+  } else {
+    // Default implementation for cases where memset() will not preserve the
+    // bytes, e.g., typically when sizeof(T) > sizeof(uint8_t).
+    char* pos = static_cast<char*>(ptr);
+    for (size_t i = 0; i < num; ++i) {
+      memcpy(pos, &value, sizeof(T));
+      pos = pos + sizeof(T);
+    }
+  }
+}
+
+template <typename T>
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
   gemmlowp::ScopedProfilingLabel label("Pad");
+  TFLITE_DCHECK_EQ(left_paddings.size(), 4);
+  TFLITE_DCHECK_EQ(right_paddings.size(), 4);
+
   const int output_batch = ArraySize(output_dims, 3);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
@@ -5492,27 +5904,28 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   const int input_depth = ArraySize(input_dims, 0);
 
   if (left_b_padding != 0) {
-    memset(output_data, pad_value,
-           left_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data, pad_value,
+        left_b_padding * output_height * output_width * output_depth);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), pad_value,
-             left_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(output_data + Offset(output_dims, 0, 0, 0, out_b),
+                     pad_value, left_h_padding * output_width * output_depth);
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), pad_value,
-               left_w_padding * output_depth * sizeof(T));
+        TypedMemset<T>(output_data + Offset(output_dims, 0, 0, out_h, out_b),
+                       pad_value, left_w_padding * output_depth);
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
-          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b),
-                 pad_value, left_d_padding * sizeof(T));
+          TypedMemset<T>(
+              output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+              pad_value, left_d_padding);
         }
 
         T* out = output_data +
@@ -5523,33 +5936,44 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
         memcpy(out, in, input_depth * sizeof(T));
 
         if (right_d_padding != 0) {
-          memset(
+          TypedMemset<T>(
               output_data + Offset(output_dims, output_depth - right_d_padding,
                                    out_w, out_h, out_b),
-              pad_value, right_d_padding * sizeof(T));
+              pad_value, right_d_padding);
         }
       }
       if (right_w_padding != 0) {
-        memset(
+        TypedMemset<T>(
             output_data + Offset(output_dims, 0, output_width - right_w_padding,
                                  out_h, out_b),
-            pad_value, right_w_padding * output_depth * sizeof(T));
+            pad_value, right_w_padding * output_depth);
       }
     }
     if (right_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0,
-                                  output_height - right_h_padding, out_b),
-             pad_value,
-             right_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(
+          output_data +
+              Offset(output_dims, 0, 0, output_height - right_h_padding, out_b),
+          pad_value, right_h_padding * output_width * output_depth);
     }
   }
   if (right_b_padding != 0) {
-    memset(output_data +
-               Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
-           0,
-           right_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data +
+            Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
+        pad_value,
+        right_b_padding * output_height * output_width * output_depth);
   }
+}
+
+// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T>
+inline void Pad(const T* input_data, const Dims<4>& input_dims,
+                const std::vector<int>& left_paddings,
+                const std::vector<int>& right_paddings, T* output_data,
+                const Dims<4>& output_dims, const int32_t pad_value) {
+  const T converted_pad_value = static_cast<T>(pad_value);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, converted_pad_value);
 }
 
 template <typename T>
@@ -5561,90 +5985,7 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
       output_dims, 0);
 }
 
-// UNOPTIMIZED COPY of StridedSlice from reference_ops.h (see comments there).
-
-// Use until std::clamp() is available from C++17.
-inline int Clamp(const int v, const int lo, const int hi) {
-  TFLITE_DCHECK(!(hi < lo));
-  if (hi < v) return hi;
-  if (v < lo) return lo;
-  return v;
-}
-
-inline int StartForAxis(int begin_mask, const std::vector<int>& start_indices,
-                        const std::vector<int>& strides,
-                        const Dims<4>& input_shape, int axis) {
-  // Begin with the specified index
-  int start = start_indices[axis];
-
-  // begin_mask override
-  if (begin_mask & 1 << axis) {
-    if (strides[axis] > 0) {
-      // Forward iteration - use the first element. These values will get
-      // clamped below (Note: We could have set them to 0 and axis_size-1, but
-      // use lowest() and max() to maintain symmetry with StopForAxis())
-      start = std::numeric_limits<int>::lowest();
-    } else {
-      // Backward iteration - use the last element.
-      start = std::numeric_limits<int>::max();
-    }
-  }
-
-  // Handle negative indices
-  int axis_size = input_shape.sizes[axis];
-  if (start < 0) {
-    start += axis_size;
-  }
-
-  // Clamping
-  start = Clamp(start, 0, axis_size - 1);
-
-  return start;
-}
-
-inline int StopForAxis(int end_mask, const std::vector<int>& stop_indices,
-                       const std::vector<int>& strides,
-                       const Dims<4>& input_shape, int axis) {
-  // Begin with the specified index
-  int stop = stop_indices[axis];
-
-  // end_mask override
-  if (end_mask & (1 << axis)) {
-    if (strides[axis] > 0) {
-      // Forward iteration - use the last element. These values will get
-      // clamped below
-      stop = std::numeric_limits<int>::max();
-    } else {
-      // Backward iteration - use the first element.
-      stop = std::numeric_limits<int>::lowest();
-    }
-  }
-
-  // Handle negative indices
-  int axis_size = input_shape.sizes[axis];
-  if (stop < 0) {
-    stop += axis_size;
-  }
-
-  // Clamping
-  // Because the end index points one past the last element, we need slightly
-  // different clamping ranges depending on the direction.
-  if (strides[axis] > 0) {
-    // Forward iteration
-    stop = Clamp(stop, 0, axis_size);
-  } else {
-    // Backward iteration
-    stop = Clamp(stop, -1, axis_size - 1);
-  }
-
-  return stop;
-}
-
-inline bool LoopCondition(int index, int stop, int stride) {
-  // True when we have reached the end of an axis and should loop.
-  return stride > 0 ? index >= stop : index <= stop;
-}
-
+// UNOPTIMIZED COPY of StridedSlice from reference_ops.h.
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
@@ -5655,31 +5996,35 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK_EQ(start_indices.size(), 4);
   TFLITE_DCHECK_EQ(stop_indices.size(), 4);
   TFLITE_DCHECK_EQ(strides.size(), 4);
-  const int start_b =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 3);
-  const int stop_b =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 3);
-  const int start_h =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 2);
-  const int stop_h =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 2);
-  const int start_w =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 1);
-  const int stop_w =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 1);
-  const int start_d =
-      StartForAxis(begin_mask, start_indices, strides, input_dims, 0);
-  const int stop_d =
-      StopForAxis(end_mask, stop_indices, strides, input_dims, 0);
+  const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 3);
+  const int stop_b = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 3);
+  const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 2);
+  const int stop_h = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 2);
+  const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 1);
+  const int stop_w = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 1);
+  const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 0);
+  const int stop_d = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 0);
 
   T* out_ptr = output_data;
-  for (int in_b = start_b; !LoopCondition(in_b, stop_b, strides[3]);
+  for (int in_b = start_b;
+       !strided_slice::LoopCondition(in_b, stop_b, strides[3]);
        in_b += strides[3]) {
-    for (int in_h = start_h; !LoopCondition(in_h, stop_h, strides[2]);
+    for (int in_h = start_h;
+         !strided_slice::LoopCondition(in_h, stop_h, strides[2]);
          in_h += strides[2]) {
-      for (int in_w = start_w; !LoopCondition(in_w, stop_w, strides[1]);
+      for (int in_w = start_w;
+           !strided_slice::LoopCondition(in_w, stop_w, strides[1]);
            in_w += strides[1]) {
-        for (int in_d = start_d; !LoopCondition(in_d, stop_d, strides[0]);
+        for (int in_d = start_d;
+             !strided_slice::LoopCondition(in_d, stop_d, strides[0]);
              in_d += strides[0]) {
           *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
         }
@@ -5970,6 +6315,59 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
         }
       }
     }
+  }
+}
+
+// UNOPTIMIZED COPY of Select from reference_ops.h.
+template <typename D, typename T>
+inline void Select(const D* input_condition_data,
+                   const Dims<4>& input_condition_dims, const T* input_x_data,
+                   const Dims<4>& input_x_dims, const T* input_y_data,
+                   const Dims<4>& input_y_dims, T* output_data,
+                   const Dims<4>& output_dims) {
+  const int64_t batches =
+      MatchingArraySize(input_condition_dims, 3, input_x_dims, 3, input_y_dims,
+                        3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_condition_dims, 2, input_x_dims, 2, input_y_dims,
+                        2, output_dims, 2);
+  const int64_t width = MatchingArraySize(input_condition_dims, 1, input_x_dims,
+                                          1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth = MatchingArraySize(input_condition_dims, 0, input_x_dims,
+                                          0, input_y_dims, 0, output_dims, 0);
+
+  const int64_t num_elements = batches * height * width * depth;
+  for (int64_t i = 0; i < num_elements; ++i) {
+    output_data[i] =
+        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
+  }
+}
+
+// UNOPTIMIZED COPY of RankOneSelect from reference_ops.h.
+template <typename D, typename T>
+inline void RankOneSelect(const D* input_condition_data,
+                          const Dims<4>& input_condition_dims,
+                          const T* input_x_data, const Dims<4>& input_x_dims,
+                          const T* input_y_data, const Dims<4>& input_y_dims,
+                          T* output_data, const Dims<4>& output_dims) {
+  const int64_t rank = ArraySize(input_condition_dims, 0);
+
+  const int64_t batches =
+      MatchingArraySize(input_x_dims, 3, input_y_dims, 3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_x_dims, 2, input_y_dims, 2, output_dims, 2);
+  const int64_t width =
+      MatchingArraySize(input_x_dims, 1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth =
+      MatchingArraySize(input_x_dims, 0, input_y_dims, 0, output_dims, 0);
+
+  TFLITE_DCHECK_EQ(rank, batches);
+
+  int64_t offset = 0;
+  int64_t size = depth * height * width;
+  for (int64_t i = 0; i < rank; i++) {
+    const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
+    memcpy(output_data + offset, input_data + offset, size * sizeof(T));
   }
 }
 

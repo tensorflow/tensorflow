@@ -12,18 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Some common SessionRunHook classes.
-
-@@LoggingTensorHook
-@@StopAtStepHook
-@@CheckpointSaverHook
-@@StepCounterHook
-@@NanLossDuringTrainingError
-@@NanTensorHook
-@@SummarySaverHook
-@@GlobalStepWaiterHook
-@@ProfilerHook
-"""
+"""Some common SessionRunHook classes."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -391,8 +380,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
                saver=None,
                checkpoint_basename="model.ckpt",
                scaffold=None,
-               listeners=None,
-               steps_per_run=1):
+               listeners=None):
     """Initializes a `CheckpointSaverHook`.
 
     Args:
@@ -405,9 +393,6 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       listeners: List of `CheckpointSaverListener` subclass instances.
         Used for callbacks that run immediately before or after this hook saves
         the checkpoint.
-      steps_per_run: `int`, number of steps that occur between each invocation
-        of the hook. Primarily used for TPU workloads which run multiple steps
-        in a while loop in a single Session.run.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
@@ -423,6 +408,9 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._timer = SecondOrStepTimer(every_secs=save_secs,
                                     every_steps=save_steps)
     self._listeners = listeners or []
+    self._steps_per_run = 1
+
+  def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run
 
   def begin(self):
@@ -434,23 +422,27 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     for l in self._listeners:
       l.begin()
 
-  def before_run(self, run_context):  # pylint: disable=unused-argument
-    if self._timer.last_triggered_step() is None:
-      # We do write graph and saver_def at the first call of before_run.
-      # We cannot do this in begin, since we let other hooks to change graph and
-      # add variables in begin. Graph is finalized after all begin calls.
-      training_util.write_graph(
-          ops.get_default_graph().as_graph_def(add_shapes=True),
-          self._checkpoint_dir,
-          "graph.pbtxt")
-      saver_def = self._get_saver().saver_def if self._get_saver() else None
-      graph = ops.get_default_graph()
-      meta_graph_def = meta_graph.create_meta_graph_def(
-          graph_def=graph.as_graph_def(add_shapes=True),
-          saver_def=saver_def)
-      self._summary_writer.add_graph(graph)
-      self._summary_writer.add_meta_graph(meta_graph_def)
+  def after_create_session(self, session, coord):
+    global_step = session.run(self._global_step_tensor)
+    # We do write graph and saver_def at the first call of before_run.
+    # We cannot do this in begin, since we let other hooks to change graph and
+    # add variables in begin. Graph is finalized after all begin calls.
+    training_util.write_graph(
+        ops.get_default_graph().as_graph_def(add_shapes=True),
+        self._checkpoint_dir,
+        "graph.pbtxt")
+    saver_def = self._get_saver().saver_def if self._get_saver() else None
+    graph = ops.get_default_graph()
+    meta_graph_def = meta_graph.create_meta_graph_def(
+        graph_def=graph.as_graph_def(add_shapes=True),
+        saver_def=saver_def)
+    self._summary_writer.add_graph(graph)
+    self._summary_writer.add_meta_graph(meta_graph_def)
+    # The checkpoint saved here is the state at step "global_step".
+    self._save(session, global_step)
+    self._timer.update_last_triggered_step(global_step)
 
+  def before_run(self, run_context):  # pylint: disable=unused-argument
     return SessionRunArgs(self._global_step_tensor)
 
   def after_run(self, run_context, run_values):
@@ -529,6 +521,10 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     self._output_dir = output_dir
     self._last_global_step = None
     self._global_step_check_count = 0
+    self._steps_per_run = 1
+
+  def _set_steps_per_run(self, steps_per_run):
+    self._steps_per_run = steps_per_run
 
   def begin(self):
     if self._summary_writer is None and self._output_dir:
@@ -554,7 +550,8 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     _ = run_context
 
     stale_global_step = run_values.results
-    if self._timer.should_trigger_for_step(stale_global_step+1):
+    if self._timer.should_trigger_for_step(
+        stale_global_step + self._steps_per_run):
       # get the real value after train op.
       global_step = run_context.session.run(self._global_step_tensor)
       if self._timer.should_trigger_for_step(global_step):
