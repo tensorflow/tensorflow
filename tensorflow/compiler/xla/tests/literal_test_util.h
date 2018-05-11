@@ -58,12 +58,12 @@ class LiteralTestUtil {
   // Asserts that the given shapes have the same rank, dimension sizes, and
   // primitive types.
   static ::testing::AssertionResult EqualShapes(
-      const Shape& expected, const Shape& actual) MUST_USE_RESULT;
+      const Shape& expected, const Shape& actual) TF_MUST_USE_RESULT;
 
   // Asserts that the provided shapes are equal as defined in AssertEqualShapes
   // and that they have the same layout.
   static ::testing::AssertionResult EqualShapesAndLayouts(
-      const Shape& expected, const Shape& actual) MUST_USE_RESULT;
+      const Shape& expected, const Shape& actual) TF_MUST_USE_RESULT;
 
   static ::testing::AssertionResult Equal(const LiteralSlice& expected,
                                           const LiteralSlice& actual)
