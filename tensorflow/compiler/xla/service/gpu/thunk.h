@@ -75,9 +75,9 @@ class Thunk {
   // This may be called multiple times.  Its main purpose is to give us a chance
   // to do initialization outside of ExecuteOnStream() so that the
   // time spent initializing doesn't count towards our execution profile.
-  virtual tensorflow::Status Initialize(const GpuExecutable& /*executable*/,
-                                        se::StreamExecutor* /*executor*/) {
-    return tensorflow::Status::OK();
+  virtual Status Initialize(const GpuExecutable& /*executable*/,
+                            se::StreamExecutor* /*executor*/) {
+    return Status::OK();
   }
 
   // Users of Thunk should call ShouldHaltAllActivityBeforeRunning(stream)
@@ -97,8 +97,8 @@ class Thunk {
   // lifetime. Stream argument must be non-null.
   //
   // Precondition: Initialize(stream->parent()) has been called.
-  virtual tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) = 0;
+  virtual Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                 se::Stream* stream) = 0;
 
  private:
   Kind kind_;

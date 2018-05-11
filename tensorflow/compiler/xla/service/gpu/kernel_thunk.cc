@@ -35,8 +35,8 @@ KernelThunk::KernelThunk(
       kernel_name_(kernel_name),
       unroll_factor_(unroll_factor) {}
 
-tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable,
-                                           se::StreamExecutor* executor) {
+Status KernelThunk::Initialize(const GpuExecutable& executable,
+                               se::StreamExecutor* executor) {
   tensorflow::mutex_lock lock(mutex_);
   if (!loader_spec_) {
     loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
@@ -66,7 +66,7 @@ tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable,
     }
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
@@ -74,8 +74,8 @@ void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
   launch_dimensions_ = launch_dims;
 }
 
-tensorflow::Status KernelThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                    se::Stream* stream) {
   // Load the kernel.
   se::StreamExecutor* executor = stream->parent();
   LaunchDimensions launch_dimensions;
@@ -106,7 +106,7 @@ tensorflow::Status KernelThunk::ExecuteOnStream(
           *kernel_args)) {
     return InternalError("Unable to launch kernel %s", kernel_name_.c_str());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

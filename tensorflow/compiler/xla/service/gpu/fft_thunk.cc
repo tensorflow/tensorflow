@@ -106,8 +106,8 @@ FftThunk::FftThunk(FftType fft_type,
       input_shape_(input_shape),
       output_shape_(output_shape) {}
 
-tensorflow::Status FftThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                 se::Stream* stream) {
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type_);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape_);
   VLOG(3) << "Output shape: "
@@ -207,7 +207,7 @@ tensorflow::Status FftThunk::ExecuteOnStream(
       LOG(FATAL) << "unsupported fft type";
   }
   if (launch_ok) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
   return InternalError("Unable to launch fft for thunk %p with type %s", this,
                        FftTypeToString(fft_type_).c_str());

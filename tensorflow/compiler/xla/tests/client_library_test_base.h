@@ -188,11 +188,11 @@ class ClientLibraryTestBase : public ::testing::Test {
       const Shape* shape_with_layout = nullptr);
 
   // ComputeAndCompare variant which returns an error status.
-  tensorflow::Status ComputeAndCompareLiteralWithStatus(
+  Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_layout = nullptr);
-  tensorflow::Status ComputeAndCompareLiteralWithStatus(
+  Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
       const Shape* shape_with_layout = nullptr);
@@ -378,12 +378,12 @@ class ClientLibraryTestBase : public ::testing::Test {
   ExecutionOptions execution_options_;
 
  private:
-  tensorflow::Status ComputeAndCompareLiteralWithAllOutputLayouts(
+  Status ComputeAndCompareLiteralWithAllOutputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output);
-  tensorflow::Status ComputeAndCompareLiteralWithAllInputLayouts(
+  Status ComputeAndCompareLiteralWithAllInputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const std::function<void(const Literal& actual,

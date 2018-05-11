@@ -232,8 +232,8 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       output_shape_(output_shape),
       alpha_(alpha) {}
 
-tensorflow::Status GemmThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                  se::Stream* stream) {
   VLOG(2) << "Executing a GemmThunk";
 
   se::DeviceMemoryBase lhs_data =
@@ -350,7 +350,7 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
   if (!launch_ok) {
     return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

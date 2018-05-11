@@ -542,7 +542,7 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot,
       hlo_module_config_(hlo_module_config),
       target_machine_features_(target_machine_features) {}
 
-/* static */ tensorflow::Status DotOpEmitter::EmitDotOperation(
+/* static */ Status DotOpEmitter::EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array,
@@ -691,7 +691,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   return true;
 }
 
-tensorflow::Status DotOpEmitter::Emit() {
+Status DotOpEmitter::Emit() {
   // The dot operation performs a sum of products over dimension 0 of the left
   // hand side operand and dimension 1 of the right hand side operand.
   //
@@ -869,10 +869,10 @@ tensorflow::Status DotOpEmitter::Emit() {
   // loop.
   ir_builder_->SetInsertPoint(loop_nest.GetOuterLoopExitBasicBlock());
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status DotOpEmitter::EmitScalarDot() {
+Status DotOpEmitter::EmitScalarDot() {
   // A scalar dot is just a scalar multiply.
   llvm::Value* result;
   llvm::Value* lhs_value =
@@ -897,10 +897,10 @@ tensorflow::Status DotOpEmitter::EmitScalarDot() {
     result = ir_builder_->CreateFMul(lhs_value, rhs_value);
   }
   target_array_.EmitWriteArrayElement(/*index=*/{}, result, ir_builder_);
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
+Status DotOpEmitter::EmitCallToRuntime() {
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
@@ -1002,7 +1002,7 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
        ir_builder_->getInt64(mat_mult_dims.k),
        ir_builder_->getInt32(transpose_lhs),
        ir_builder_->getInt32(transpose_rhs)});
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {

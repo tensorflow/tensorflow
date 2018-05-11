@@ -101,7 +101,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
   return result;
 }
 
-tensorflow::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
+Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
@@ -130,7 +130,7 @@ tensorflow::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   for (auto& shaped_buffer : it->second) {
     shaped_buffer.reset();
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
@@ -242,7 +242,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   } else {
     allocation.ref_count--;
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace xla

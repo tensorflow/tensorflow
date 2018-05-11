@@ -99,9 +99,9 @@ cc_library(
     hdrs = ["service_interface.h"],
     visibility = [":friends"],
     deps = [
+        ":status",
         ":xla_data_proto",
         ":xla_proto",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -245,6 +245,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protobuf_util",
+        ":status",
         ":status_macros",
         ":statusor",
         ":types",

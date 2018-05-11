@@ -57,12 +57,12 @@ class KernelThunk : public Thunk {
   int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
-  tensorflow::Status Initialize(const GpuExecutable& executable,
-                                se::StreamExecutor* executor) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
 
   // Executes the kernel for the thunk on "stream", which must be non-null.
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream) override;
 
  private:
   // Buffers passed to the kernel as arguments.

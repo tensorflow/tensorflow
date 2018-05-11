@@ -60,8 +60,7 @@ class DeviceMemoryAllocator {
   }
 
   // Must be a nop for null pointers.
-  virtual tensorflow::Status Deallocate(int device_ordinal,
-                                        se::DeviceMemoryBase mem) = 0;
+  virtual Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
   const se::Platform* platform() const { return platform_; }
@@ -89,8 +88,7 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceMemoryAllocator::Allocate;
 
-  tensorflow::Status Deallocate(int device_ordinal,
-                                se::DeviceMemoryBase mem) override;
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   bool AllowsAsynchronousDeallocation() const override;
 

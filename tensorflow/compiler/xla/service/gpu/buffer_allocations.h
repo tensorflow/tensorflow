@@ -78,8 +78,7 @@ class BufferAllocations {
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
-  tensorflow::Status TearDown(
-      const std::set<se::DeviceMemoryBase>& live_addresses);
+  Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses);
 
  private:
   BufferAllocations(BufferAllocation::Index buffer_count, int device_ordinal,

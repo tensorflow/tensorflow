@@ -116,7 +116,7 @@ BufferAllocations::~BufferAllocations() {
   }
 }
 
-tensorflow::Status BufferAllocations::TearDown(
+Status BufferAllocations::TearDown(
     const std::set<se::DeviceMemoryBase>& live_addresses) {
   // Deallocate temporary buffers, taking care to try to deallocate all of them
   // even if one of the deallocations fails.
