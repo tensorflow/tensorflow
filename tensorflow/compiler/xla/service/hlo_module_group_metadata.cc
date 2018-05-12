@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -108,6 +109,31 @@ Status HloModuleGroupMetadata::Build() {
   for (HloModule* module : modules_) {
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
       TF_RETURN_IF_ERROR(computation->Accept(visitor));
+    }
+  }
+  TF_RETURN_IF_ERROR(VerifyCompanionSets());
+  return Status::OK();
+}
+
+Status HloModuleGroupMetadata::VerifyCompanionSets() const {
+  // TODO(dlibenzi): Migrate this to use the device instead of module ID, once
+  // the kDomain CL goes in.
+  for (const auto& companions : companion_sets_) {
+    // A companion set must be composed at most of an instruction per
+    // device/module.
+    std::unordered_set<int64> devices;
+    for (HloInstruction* instruction : *companions) {
+      int64 device = GetModuleId(instruction->parent()->parent());
+      if (!devices.insert(device).second) {
+        std::stringstream ss;
+        ss << "Companion set:" << std::endl;
+        for (HloInstruction* hlo : *companions) {
+          ss << "  " << hlo->name() << " ("
+             << GetModuleId(hlo->parent()->parent()) << ")" << std::endl;
+        }
+        ss << "has multiple instructions on the same device";
+        return FailedPrecondition("%s", ss.str().c_str());
+      }
     }
   }
   return Status::OK();

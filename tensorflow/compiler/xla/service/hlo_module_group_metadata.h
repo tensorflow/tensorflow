@@ -207,6 +207,11 @@ class HloModuleGroupMetadata {
   // within the graph.
   Status CheckCommunicatingInstruction(HloInstruction* instruction) const;
 
+  // Performs a consistency check on the companion sets built for the input
+  // modules. Check that a companion set does not include instructions from the
+  // same module/device.
+  Status VerifyCompanionSets() const;
+
   // Retrieves a pointer to the stored TrackedInstruction associated with a
   // tracked computation, or nullptr in case such computation is not tracked.
   const TrackedInstruction* GetTrackedInstruction(
