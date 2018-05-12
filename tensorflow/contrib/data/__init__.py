@@ -72,6 +72,7 @@ from tensorflow.contrib.data.python.ops.grouping import group_by_window
 from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
 from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datasets
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
+from tensorflow.contrib.data.python.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
 from tensorflow.contrib.data.python.ops.readers import make_batched_features_dataset
