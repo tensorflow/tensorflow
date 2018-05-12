@@ -39,8 +39,9 @@ const int kMaxDim = 4;
 
 template <typename T>
 TfLiteStatus CalculateOutputShapeVector(
-    TfLiteContext* context, TfLiteTensor* input, TfLiteTensor* begin,
-    TfLiteTensor* size, std::vector<int64_t>* output_shape_vector) {
+    TfLiteContext* context, const TfLiteTensor* input,
+    const TfLiteTensor* begin, const TfLiteTensor* size,
+    std::vector<int64_t>* output_shape_vector) {
   for (int idx = 0; idx < NumDimensions(input); ++idx) {
     T size_value = GetTensorData<T>(size)[idx];
     if (size_value < 0) {
@@ -62,8 +63,8 @@ TfLiteStatus CalculateOutputShapeVector(
 }
 
 template <typename T>
-void GetBeginAndSizeVectors(int dimensions, TfLiteTensor* begin,
-                            TfLiteTensor* size, std::vector<int>* begins,
+void GetBeginAndSizeVectors(int dimensions, const TfLiteTensor* begin,
+                            const TfLiteTensor* size, std::vector<int>* begins,
                             std::vector<int>* sizes) {
   for (int idx = dimensions - 1; idx >= 0; --idx) {
     begins->push_back(GetTensorData<T>(begin)[idx]);
@@ -71,9 +72,10 @@ void GetBeginAndSizeVectors(int dimensions, TfLiteTensor* begin,
   }
 }
 
-TfLiteStatus ResizeOutputShape(TfLiteContext* context, TfLiteTensor* input,
-                               TfLiteTensor* begin, TfLiteTensor* size,
-                               TfLiteTensor* output) {
+TfLiteStatus ResizeOutputShape(TfLiteContext* context,
+                               const TfLiteTensor* input,
+                               const TfLiteTensor* begin,
+                               const TfLiteTensor* size, TfLiteTensor* output) {
   std::vector<int64_t> output_shape_vector;
 
   if (begin->type == kTfLiteInt32) {
@@ -98,9 +100,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
-  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
+  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Ensure validity of input tensor and its dimension.
@@ -124,9 +126,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
-  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* begin = GetInput(context, node, kBeginTensor);
+  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (IsDynamicTensor(output)) {

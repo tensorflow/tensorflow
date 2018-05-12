@@ -40,9 +40,9 @@ struct BatchToSpaceNDContext {
     crops = GetInput(context, node, 2);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
-  TfLiteTensor* block_shape;
-  TfLiteTensor* crops;
+  const TfLiteTensor* input;
+  const TfLiteTensor* block_shape;
+  const TfLiteTensor* crops;
   TfLiteTensor* output;
 };
 

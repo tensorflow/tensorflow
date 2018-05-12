@@ -40,8 +40,8 @@ struct MeanContext {
     output = GetOutput(context, node, 0);
   }
   TfLiteMeanParams* params;
-  TfLiteTensor* input;
-  TfLiteTensor* axis;
+  const TfLiteTensor* input;
+  const TfLiteTensor* axis;
   TfLiteTensor* output;
 };
 

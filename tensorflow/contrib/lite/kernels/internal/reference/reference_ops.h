@@ -3270,11 +3270,11 @@ inline void Exp(const T* input_data, const size_t num_elements,
 }
 
 template <typename T, typename U>
-inline bool Mean(T* input_data, const int* input_dims, const int input_num_dims,
-                 T* output_data, const int* output_dims,
-                 const int output_num_dims, const int* axis,
-                 const int num_axis_dimensions, bool keep_dims, int* temp_index,
-                 int* resolved_axis, U* temp_sum) {
+inline bool Mean(const T* input_data, const int* input_dims,
+                 const int input_num_dims, T* output_data,
+                 const int* output_dims, const int output_num_dims,
+                 const int* axis, const int num_axis_dimensions, bool keep_dims,
+                 int* temp_index, int* resolved_axis, U* temp_sum) {
   // resets output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {

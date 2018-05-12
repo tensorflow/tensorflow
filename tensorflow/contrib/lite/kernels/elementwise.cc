@@ -26,7 +26,7 @@ namespace elementwise {
 TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   // Quantized float is not supported yet.
@@ -36,13 +36,13 @@ TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
       size_t elements = NumElements(input);
-      float* in = GetTensorData<float>(input);
-      float* in_end = in + elements;
+      const float* in = GetTensorData<float>(input);
+      const float* in_end = in + elements;
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = std::sin(*in);
       return kTfLiteOk;

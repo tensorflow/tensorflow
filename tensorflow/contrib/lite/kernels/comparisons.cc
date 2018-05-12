@@ -32,8 +32,8 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Don't support string and bool.
@@ -68,8 +68,8 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
             GetTensorData<bool>(output), GetTensorDims(output));
 
 TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.
@@ -92,8 +92,8 @@ TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.
@@ -116,8 +116,8 @@ TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.
@@ -140,8 +140,8 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.

@@ -54,11 +54,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 4);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 2);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* input_weights = GetInput(context, node, kWeightsTensor);
-  TfLiteTensor* recurrent_weights =
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input_weights = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* recurrent_weights =
       GetInput(context, node, kRecurrentWeightsTensor);
-  TfLiteTensor* bias = GetInput(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetInput(context, node, kBiasTensor);
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
@@ -260,11 +260,11 @@ TfLiteStatus EvalQuantized(const TfLiteTensor* input,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSequenceRNNParams*>(node->builtin_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* input_weights = GetInput(context, node, kWeightsTensor);
-  TfLiteTensor* recurrent_weights =
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input_weights = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* recurrent_weights =
       GetInput(context, node, kRecurrentWeightsTensor);
-  TfLiteTensor* bias = GetInput(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetInput(context, node, kBiasTensor);
   TfLiteTensor* hidden_state = GetOutput(context, node, kHiddenStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
