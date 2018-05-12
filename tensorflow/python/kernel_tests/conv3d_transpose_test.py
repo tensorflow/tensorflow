@@ -144,8 +144,9 @@ class Conv3DTransposeTest(test.TestCase):
         f_value = constant_op.constant(
             1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
         output = nn_ops.conv3d_transpose(
-            x_value, f_value, constant_op.constant(y_shape, dtype=dtype), strides=strides, padding="SAME")
-        value = output.eval()
+            x_value, f_value, constant_op.constant(y_shape, dtype=dtype),
+            strides=strides, padding="SAME")
+        output.eval()
 
   def testConv3DTransposeValid(self):
     with self.test_session():
