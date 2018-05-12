@@ -365,25 +365,38 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 string HloComputation::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
   for (int i = 0; i < options.indent_amount(); i++) {
-    s << "    ";
+    s << "  ";
   }
-  if (options.print_percent()) {
-    s << "%";
-  }
-  s << name();
-  if (options.print_program_shape()) {
-    s << " " << ShapeUtil::HumanString(ComputeProgramShape());
-  }
-  s << " {\n";
-  for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    for (int i = 0; i < options.indent_amount(); i++) {
-      s << "    ";
+
+  if (!options.is_in_nested_computation()) {
+    if (options.print_percent()) {
+      s << "%";
     }
-    s << "  " << (instruction == root_instruction_ ? "ROOT " : "")
-      << instruction->ToString(options) << "\n";
+    s << name() << " ";
   }
+
+  if (options.print_program_shape()) {
+    s << ShapeUtil::HumanString(ComputeProgramShape()) << " ";
+  }
+  s << "{\n";
+  {
+    // Print the instructions in this computation.
+    HloPrintOptions new_options = options;
+    new_options.set_indent_amount(options.indent_amount() + 1)
+        .set_is_in_nested_computation(true);
+    CanonicalNameMap name_map;
+    for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
+      for (int i = 0; i < new_options.indent_amount(); i++) {
+        s << "  ";
+      }
+      s << (instruction == root_instruction_ ? "ROOT " : "")
+        << instruction->ToStringWithCanonicalNameMap(new_options, &name_map)
+        << "\n";
+    }
+  }
+
   for (int i = 0; i < options.indent_amount(); i++) {
-    s << "    ";
+    s << "  ";
   }
   s << "}";
   return s.str();

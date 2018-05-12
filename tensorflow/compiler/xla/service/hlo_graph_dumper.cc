@@ -1104,7 +1104,8 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   // Get the instruction's extra attributes excluding the names of its
   // subcomputations, since those are drawn explicitly in the graph.
   for (const auto& line : instr->ExtraAttributesToString(
-           HloPrintOptions().set_print_subcomputation_references(false))) {
+           HloPrintOptions().set_print_subcomputation_mode(
+               HloPrintOptions::PrintSubcomputationMode::kOff))) {
     lines.push_back(HtmlLikeStringSanitize(line));
   }
 
