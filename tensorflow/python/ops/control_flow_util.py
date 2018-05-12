@@ -53,6 +53,11 @@ def IsSwitch(op):
   return op.type == "Switch" or op.type == "RefSwitch"
 
 
+def IsMerge(op):
+  """Return true if `op` is a Merge."""
+  return op.type == "Merge" or op.type == "RefMerge"
+
+
 def IsLoopEnter(op):
   """Returns true if `op` is an Enter."""
   return op.type == "Enter" or op.type == "RefEnter"
@@ -84,11 +89,36 @@ def IsCondSwitch(op):
   return is_cond_switch
 
 
+def IsCondMerge(op):
+  """Return true if `op` is the Merge for a conditional."""
+  if not IsMerge(op):
+    return False
+  if not op.inputs:
+    return False
+  # Merge nodes are not part of the cond control flow context that they
+  # represent, so consider the inputs to the merge of to determine if it is
+  # cond merge or not: A merge is a cond merge iff all its inputs are in
+  # cond contexts.
+  is_cond_merge = True
+  for i in op.inputs:
+    ctxt = GetOutputContext(i.op)
+    is_cond_merge = is_cond_merge and ctxt is not None and ctxt.IsCondContext()
+  return is_cond_merge
+
+
 def IsLoopSwitch(op):
   """Return true if `op` is the Switch for a while loop."""
   if IsSwitch(op):
     ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
     return ctxt is not None and ctxt.IsWhileContext() and not IsCondSwitch(op)
+  return False
+
+
+def IsLoopMerge(op):
+  """Return true if `op` is the Merge for a while loop."""
+  if IsMerge(op):
+    ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+    return ctxt is not None and ctxt.IsWhileContext() and not IsCondMerge(op)
   return False
 
 

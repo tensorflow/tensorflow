@@ -144,6 +144,37 @@ class ControlFlowUtilTest(test.TestCase):
             control_flow_util.IsLoopSwitch(n),
             msg="Mismatch for {}".format(n.name))
 
+  def testIsCondMerge(self):
+    g = self.build_test_graph()
+    cond_merges = [
+        "OuterCond/cond/OuterWhile/while/NestedCond/cond/Merge",
+        "OuterCond/cond/Merge"
+    ]
+    for n in g.get_operations():
+      if n.name in cond_merges:
+        self.assertTrue(control_flow_util.IsMerge(n))
+        self.assertTrue(control_flow_util.IsCondMerge(n))
+        self.assertFalse(control_flow_util.IsLoopMerge(n))
+      else:
+        self.assertFalse(control_flow_util.IsCondMerge(n))
+        self.assertTrue(not control_flow_util.IsMerge(n) or
+                        control_flow_util.IsLoopMerge(n))
+
+  def testIsLoopMerge(self):
+    g = self.build_test_graph()
+    loop_merges = [
+        "OuterCond/cond/OuterWhile/while/Merge",
+    ]
+    for n in g.get_operations():
+      if n.name in loop_merges:
+        self.assertTrue(control_flow_util.IsMerge(n))
+        self.assertFalse(control_flow_util.IsCondMerge(n))
+        self.assertTrue(control_flow_util.IsLoopMerge(n))
+      else:
+        self.assertFalse(control_flow_util.IsLoopMerge(n))
+        self.assertTrue(not control_flow_util.IsMerge(n) or
+                        control_flow_util.IsCondMerge(n))
+
 
 if __name__ == "__main__":
   test.main()
