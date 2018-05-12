@@ -75,7 +75,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
         "//third_party/eigen3",
-        "@local_config_cuda//cuda:cudnn_header",
     ],
     alwayslink = 1,
 )
@@ -95,7 +94,6 @@ tf_custom_op_library(
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
         "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
-        "@local_config_cuda//cuda:cudnn_header",
     ],
 )
 

@@ -128,15 +128,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_header",
-    includes = [
-        ".",
-        "cuda/include",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "cufft",
     srcs = ["cuda/lib/%{cufft_lib}"],
     data = ["cuda/lib/%{cufft_lib}"],
