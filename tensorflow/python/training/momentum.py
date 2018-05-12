@@ -43,8 +43,7 @@ class MomentumOptimizer(optimizer.Optimizer):
   when that part of the variable was used in the forward pass.
   """
 
-  def __init__(self, learning_rate, momentum,
-               use_locking=False, name="Momentum", use_nesterov=False):
+  def __init__(self, learning_rate, momentum, use_locking=False, name="Momentum", use_nesterov=False):
     """Construct a new Momentum optimizer.
 
     Args:
@@ -80,8 +79,8 @@ class MomentumOptimizer(optimizer.Optimizer):
     learning_rate = self._learning_rate
     if callable(learning_rate):
       learning_rate = learning_rate()
-    self._learning_rate_tensor = ops.convert_to_tensor(learning_rate,
-                                                       name="learning_rate")
+    self._learning_rate_tensor = ops.convert_to_tensor(learning_rate,name="learning_rate")
+    
     momentum = self._momentum
     if callable(momentum):
       momentum = momentum()
