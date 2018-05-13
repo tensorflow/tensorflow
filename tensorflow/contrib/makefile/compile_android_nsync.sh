@@ -33,7 +33,7 @@ nsync_builds_dir=tensorflow/contrib/makefile/downloads/nsync/builds
 nsync_platform_dir="$nsync_builds_dir/android_distribution"
 
 makefile='
-CC='"$toolchain_path"'/bin/clang++
+CC='"$toolchain_path"'/bin/aarch64-linux-android-g++
 PLATFORM_CPPFLAGS=--sysroot \
 '"$toolchain_path"'/sysroot \
 -DNSYNC_USE_CPP11_TIMEPOINT -DNSYNC_ATOMIC_CPP11 \
