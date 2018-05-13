@@ -6,7 +6,7 @@ toolchain_path=""
 usage() {
   echo "Usage: $(basename "$0") [t:h:c]"
   echo "-t Absolute path to a toolchain"
-  echo "-h Target host. Default value is aarch64-linux-android"
+  echo "-h Target host"
   echo "-c Clean before building protobuf for target"
   echo "\"NDK_ROOT\" should be defined as an environment variable."
   exit 1
