@@ -18,29 +18,25 @@
 # tensorflow/contrib/makefile/compile_android_protobuf.sh \
 # ${HOME}/toolchains/clang-21-stl-gnu
 
-# Pass ANDROID_API_VERSION as an environment variable to support
-# a different version of API.
-android_api_version="${ANDROID_API_VERSION:-21}"
-# Pass cc prefix to set the prefix for cc (e.g. ccache)
-cc_prefix="${CC_PREFIX}"
+target_host=aarch64-linux-android
+toolchain_path=""
 
 usage() {
-  echo "Usage: $(basename "$0") [-a:c]"
-  echo "-a [Architecture] Architecture of target android [default=armeabi-v7a] \
-(supported architecture list: \
-arm64-v8a armeabi armeabi-v7a armeabi-v7a-hard mips mips64 x86 x86_64)"
+  echo "Usage: $(basename "$0") [t:h:c]"
+  echo "-t Absolute path to a toolchainx"
+  echo "-h Target host. Default value is aarch64-linux-android"
   echo "-c Clean before building protobuf for target"
   echo "\"NDK_ROOT\" should be defined as an environment variable."
   exit 1
 }
 
 SCRIPT_DIR=$(dirname $0)
-ARCHITECTURE=armeabi-v7a
 
 # debug options
-while getopts "a:c" opt_name; do
+while getopts "h:t:c" opt_name; do
   case "$opt_name" in
-    a) ARCHITECTURE=$OPTARG;;
+    t) toolchain_path="${OPTARG}";;
+    h) target_host="${OPTARG}";;
     c) clean=true;;
     *) usage;;
   esac
@@ -49,6 +45,12 @@ shift $((OPTIND - 1))
 
 source "${SCRIPT_DIR}/build_helper.subr"
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
+
+if [[ -z "${toolchain_path}" ]]
+then
+  echo "You need to specify toolchain path. Use -t"
+  exit 1
+fi
 
 if [[ -z "${NDK_ROOT}" ]]
 then
@@ -73,8 +75,9 @@ fi
 
 GENDIR="$(pwd)/gen/protobuf_android"
 HOST_GENDIR="$(pwd)/gen/protobuf-host"
+DIST_DIR="${GENDIR}/distribution"
 mkdir -p "${GENDIR}"
-mkdir -p "${GENDIR}/${ARCHITECTURE}"
+mkdir -p "${DIST_DIR}"
 
 if [[ ! -f "./downloads/protobuf/autogen.sh" ]]; then
     echo "You need to download dependencies before running this script." 1>&2
@@ -93,58 +96,9 @@ else
   echo "protoc found. Skip building host tools."
 fi
 
-
-echo $OSTYPE | grep -q "darwin" && os_type="darwin" || os_type="linux"
-if [[ ${ARCHITECTURE} == "arm64-v8a" ]]; then
-    toolchain="aarch64-linux-android-4.9"
-    sysroot_arch="arm64"
-    bin_prefix="aarch64-linux-android"
-elif [[ ${ARCHITECTURE} == "armeabi" ]]; then
-    toolchain="arm-linux-androideabi-4.9"
-    sysroot_arch="arm"
-    bin_prefix="arm-linux-androideabi"
-elif [[ ${ARCHITECTURE} == "armeabi-v7a" ]]; then
-    toolchain="arm-linux-androideabi-4.9"
-    sysroot_arch="arm"
-    bin_prefix="arm-linux-androideabi"
-    march_option="-march=armv7-a"
-elif [[ ${ARCHITECTURE} == "armeabi-v7a-hard" ]]; then
-    toolchain="arm-linux-androideabi-4.9"
-    sysroot_arch="arm"
-    bin_prefix="arm-linux-androideabi"
-    march_option="-march=armv7-a"
-elif [[ ${ARCHITECTURE} == "mips" ]]; then
-    toolchain="mipsel-linux-android-4.9"
-    sysroot_arch="mips"
-    bin_prefix="mipsel-linux-android"
-elif [[ ${ARCHITECTURE} == "mips64" ]]; then
-    toolchain="mips64el-linux-android-4.9"
-    sysroot_arch="mips64"
-    bin_prefix="mips64el-linux-android"
-elif [[ ${ARCHITECTURE} == "x86" ]]; then
-    toolchain="x86-4.9"
-    sysroot_arch="x86"
-    bin_prefix="i686-linux-android"
-elif [[ ${ARCHITECTURE} == "x86_64" ]]; then
-    toolchain="x86_64-4.9"
-    sysroot_arch="x86_64"
-    bin_prefix="x86_64-linux-android"
-else
-    echo "architecture ${ARCHITECTURE} is not supported." 1>&2
-    usage
-    exit 1
-fi
-
-echo "Android api version = ${android_api_version} cc_prefix = ${cc_prefix}"
-
-export PATH=\
-"${NDK_ROOT}/toolchains/${toolchain}/prebuilt/${os_type}-x86_64/bin:$PATH"
-export SYSROOT=\
-"${NDK_ROOT}/platforms/android-${android_api_version}/arch-${sysroot_arch}"
-export CC="${cc_prefix} ${bin_prefix}-gcc --sysroot ${SYSROOT}"
-export CXX="${cc_prefix} ${bin_prefix}-g++ --sysroot ${SYSROOT}"
-export CXXSTL=\
-"${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ARCHITECTURE}"
+export SYSROOT=\"${toolchain_path}/sysroot"
+export CC="${toolchain_path}/bin/clang --sysroot ${SYSROOT}"
+export CXX="${toolchain_path}/bin/clang++ --sysroot ${SYSROOT}"
 
 ./autogen.sh
 if [ $? -ne 0 ]
@@ -153,19 +107,14 @@ then
   exit 1
 fi
 
-./configure --prefix="${GENDIR}/${ARCHITECTURE}" \
---host="${bin_prefix}" \
+./configure --prefix="${DIST_DIR}" \
+--host="${target_host}" \
 --with-sysroot="${SYSROOT}" \
 --disable-shared \
 --enable-cross-compile \
 --with-protoc="${PROTOC_PATH}" \
 CFLAGS="${march_option}" \
-CXXFLAGS="-frtti -fexceptions ${march_option} \
--I${NDK_ROOT}/sources/android/support/include \
--I${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/include \
--I${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ARCHITECTURE}/include" \
-LDFLAGS="-L${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ARCHITECTURE}" \
-LIBS="-llog -lz -lgnustl_static"
+LIBS="-llog -lz -lc++_static"
 
 if [ $? -ne 0 ]
 then
