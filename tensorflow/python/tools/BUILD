@@ -207,6 +207,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:layers",
         "//third_party/py/numpy",
     ],
 )

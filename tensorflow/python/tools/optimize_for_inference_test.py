@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 from tensorflow.python.tools import optimize_for_inference_lib
+from tensorflow.python.layers import core
 
 
 class OptimizeForInferenceTest(test.TestCase):
@@ -103,8 +104,10 @@ class OptimizeForInferenceTest(test.TestCase):
     b_identity_node = self.create_node_def(
         "Identity", b_identity_name, [b_constant_name, "^" + b_check_name])
     graph_def.node.extend([b_identity_node])
+
     add_node = self.create_node_def("Add", add_name,
                                     [a_identity_name, b_identity_name])
+
     self.set_attr_dtype(add_node, "T", dtypes.float32)
     graph_def.node.extend([add_node])
     unused_output_add_node = self.create_node_def("Add", unused_output_add_name,
@@ -126,7 +129,51 @@ class OptimizeForInferenceTest(test.TestCase):
 
     output = optimize_for_inference_lib.optimize_for_inference(
         graph_def, [], [add_name], dtypes.float32.as_datatype_enum)
+     
     self.assertProtoEquals(expected_output, output)
+
+
+  def testRemoveDropouts(self):
+
+    optimized_graph_def = None
+
+    with self.session() as sess:
+
+      is_training = array_ops.placeholder(dtypes.bool, shape=())
+      input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+
+      # using softmax layers as separators between dropouts
+      n = nn_ops.softmax(input_node)
+      n = nn_ops.dropout(n, keep_prob=0.07)
+      n = nn_ops.softmax(n)
+      n = core.dropout(n, training=True)
+      n = nn_ops.softmax(n)
+      n = core.dropout(n, training=is_training)
+      output_node = nn_ops.softmax(n)
+
+      dropout_graph_def = sess.graph_def   
+      optimized_graph_def = optimize_for_inference_lib.remove_dropout_nodes(
+          dropout_graph_def)
+
+      for node in optimized_graph_def.node:
+        self.assertTrue(not node.name.lower().startswith("dropout"))
+
+    # recreate the same graph topology but without dropouts
+    with self.session() as sess:  
+      
+      is_training = array_ops.placeholder(dtypes.bool, shape=())
+      input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+      n = nn_ops.softmax(input_node)
+      n = nn_ops.softmax(n)
+      n = nn_ops.softmax(n)
+      output_node = nn_ops.softmax(n)         
+
+      no_dropout_graph_def = sess.graph_def
+
+    # ensure the graph with removed dropouts is equal to graph without added dropouts
+
+    self.assertEqual(optimized_graph_def.node, no_dropout_graph_def.node)
+          
 
   @test_util.run_deprecated_v1
   def testFoldBatchNorms(self):
@@ -161,7 +208,6 @@ class OptimizeForInferenceTest(test.TestCase):
       original_result = sess.run(["output:0"])
     optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
         original_graph_def)
-
     with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")

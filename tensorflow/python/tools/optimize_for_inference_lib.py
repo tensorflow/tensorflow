@@ -106,6 +106,7 @@ def optimize_for_inference(input_graph_def, input_node_names, output_node_names,
   """
   ensure_graph_is_valid(input_graph_def)
   optimized_graph_def = input_graph_def
+  optimized_graph_def = remove_dropout_nodes(optimized_graph_def)
   optimized_graph_def = strip_unused_lib.strip_unused(
       optimized_graph_def, input_node_names, output_node_names,
       placeholder_type_enum)
@@ -483,3 +484,197 @@ def fuse_resize_and_conv(input_graph_def, output_node_names):
 
   result_graph_def.node.extend(new_ops)
   return result_graph_def
+
+
+def remove_dropout_nodes(input_graph_def):
+  """Removes dropout nodes from graph.
+
+  Dropouts are used for neural network regularization during training,
+  they are not useful for inference. This function removes all basic dropout
+  layers from the graph. Resulting graph has structure like the dropout were
+  never present in the graph, but keeps all other layers untouched and
+  properly connected.
+ 
+  Args:
+    input_graph_def: A GraphDef containing a model.
+
+  Returns:
+    Modified graph without dropout layers.
+
+  Raises:
+    ValueError: If the graph is badly formed with duplicate node names.
+  """
+
+  result_graph_def = remove_conditional_dropout_nodes(input_graph_def)
+  result_graph_def = remove_simple_dropout_nodes(result_graph_def)
+  return result_graph_def
+
+
+def remove_simple_dropout_nodes(input_graph_def):
+  """Removes non-conditional dropouts from graph.
+
+  Dropouts are used for neural network regularization during training,
+  they are not useful for inference. This function removes dropout layers which
+  are not conditional - created with "training" parameter set to True 
+  or not present.
+  It reconnects dropout-surrounding layers directly, and removes disconnected 
+  dropout nodes.
+
+  Args:
+    input_graph_def: A GraphDef containing a model.
+
+  Returns:
+    Modified graph with non-conditional dropouts removed, and surrounding nodes 
+    connected directly.
+
+  Raises:
+    ValueError: If the graph is badly formed with duplicate node names.
+  """
+
+  input_node_map = {}
+  for node in input_graph_def.node:
+    if node.name not in input_node_map.keys():
+      input_node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected for ", node.name)
+
+  rewired_graph_def = graph_pb2.GraphDef()
+
+  dropout_prefix_set = set()
+
+  for node in input_graph_def.node:
+
+    for index, input_name in enumerate(node.input):
+      input_name = node_name_from_input(input_name)
+      if input_name.endswith(
+          'dropout/mul') and input_name.lower().startswith('dropout'):
+        dropout_mul_name = input_name
+        dropout_mul_node = node_from_map(input_node_map, dropout_mul_name)
+
+        dropout_div_name = None
+        for n in dropout_mul_node.input:
+          if n.endswith('div'):
+            dropout_div_name = n
+
+        if not dropout_div_name:
+          tf_logging.warning("Could not find div node")
+          continue
+
+        dropout_div_node = node_from_map(input_node_map, dropout_div_name)
+
+        pre_dropout_node_name = None
+        for n in dropout_div_node.input:
+          if not n.endswith("dropout/keep_prob"):
+            pre_dropout_node_name = n
+
+        if not pre_dropout_node_name:
+          tf_logging.warning("Could not find pre-dropout node")
+          continue
+
+        node.input[index] = pre_dropout_node_name
+        dropout_prefix_set.add(input_name.split('/')[0])
+
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    rewired_graph_def.node.extend([new_node])
+
+  result_graph_def = graph_pb2.GraphDef()
+
+  for node in rewired_graph_def.node:
+    if node_to_skip(node.name, dropout_prefix_set):
+      continue
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    result_graph_def.node.extend([new_node])
+
+  return result_graph_def
+
+
+def remove_conditional_dropout_nodes(input_graph_def):
+  """Removes conditional dropout nodes from graph.
+
+  Dropout nodes are used for neural network regularization during training,
+  they are not useful for inference. This function removes dropout layers which
+  are created with "training" parameter as placeholder.
+  It reconnects dropout-surrounding layers directly, and removes disconnected
+  dropout nodes.
+
+  Args:
+    input_graph_def: A GraphDef containing a model.
+
+  Returns:
+    Modified graph with conditional Dropouts removed, and surrounding nodes 
+    connected directly.
+
+  Raises:
+    ValueError: If the graph is badly formed with duplicate node names.
+  """
+
+  input_node_map = {}
+  for node in input_graph_def.node:
+    if node.name not in input_node_map.keys():
+      input_node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected for ", node.name)
+
+  rewired_graph_def = graph_pb2.GraphDef()
+
+  dropout_prefix_set = set()
+
+  for node in input_graph_def.node:
+    for index, input_name in enumerate(node.input):
+      input_name = node_name_from_input(input_name)
+      if input_name.endswith("cond/Merge") and input_name.lower().startswith(
+          'dropout'):
+        dropout_merge_name = input_name
+        dropout_merge_node = node_from_map(input_node_map, dropout_merge_name)
+        identity_name = None
+
+        for n in dropout_merge_node.input:
+          if n.endswith('Identity'):
+            identity_name = n
+
+        if not identity_name.endswith:
+          tf_logging.warning("Could not find Identity node")
+          continue
+
+        identity_node = node_from_map(input_node_map, identity_name)
+        switch_node_name = None
+        for n in identity_node.input:
+          if n.endswith('Switch'):
+            switch_node_name = n
+            break
+
+        if not switch_node_name:
+          tf_logging.warning("Could not find Switch node")
+          continue
+
+        switch_node = node_from_map(input_node_map, switch_node_name)
+
+        # switch node should have two inputs, one of it is layer previous to dropout
+        for n in switch_node.input:
+          if not n.lower().startswith('dropout'):
+            node.input[index] = n
+            dropout_prefix_set.add(input_name.split('/')[0])
+            break
+
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    rewired_graph_def.node.extend([new_node])
+
+  result_graph_def = graph_pb2.GraphDef()
+
+  for node in rewired_graph_def.node:
+    if node_to_skip(node.name, dropout_prefix_set):
+      continue
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    result_graph_def.node.extend([new_node])
+
+  return result_graph_def
+
+
+def node_to_skip(node_name, prefixes):
+  if node_name_from_input(node_name).split('/')[0] in prefixes:
+    return True
+  return False
