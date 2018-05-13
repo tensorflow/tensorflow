@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-target_host=aarch64-linux-android
+target_host=""
 toolchain_path=""
 
 usage() {
@@ -32,6 +32,12 @@ if [[ -z "${toolchain_path}" ]]
 then
   echo "You need to specify toolchain path. Use -t"
   exit 1
+fi
+
+if [[ -z "${target_host}" ]]
+then
+echo "You need to specify target host. Use -h"
+exit 1
 fi
 
 if [[ -z "${NDK_ROOT}" ]]
@@ -79,8 +85,8 @@ else
 fi
 
 export SYSROOT="${toolchain_path}/sysroot"
-export CC="${toolchain_path}/bin/clang --sysroot ${SYSROOT}"
-export CXX="${toolchain_path}/bin/clang++ --sysroot ${SYSROOT}"
+export CC="${toolchain_path}/bin/aarch64-linux-android-gcc --sysroot ${SYSROOT}"
+export CXX="${toolchain_path}/bin/aarch64-linux-android-g++ --sysroot ${SYSROOT}"
 
 ./autogen.sh
 if [ $? -ne 0 ]
