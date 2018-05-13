@@ -13,7 +13,10 @@ def AppendFloat16ArrayToTensorProto(
     # Because np.float16_t dosen't exist in cython, we use uint16_t here.
     # TODO: Use np.float16_t when cython supports it.
     tensor_proto, np.ndarray[np.uint16_t, ndim=1] nparray):
-  tensor_proto.half_val.extend(nparray)
+  cdef long i, n
+  n = nparray.size
+  for i in range(n):
+    tensor_proto.half_val.append(nparray[i])
 
 
 def AppendFloat32ArrayToTensorProto(
