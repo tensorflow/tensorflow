@@ -151,9 +151,9 @@ PoplibsReductionOperation(const HloInstruction* inst) {
     case HloOpcode::kMinimum:
       return popops::Operation::MIN;
     case HloOpcode::kAnd:
-      return popops::Operation::AND;
+      return popops::Operation::LOGICAL_AND;
     case HloOpcode::kOr:
-      return popops::Operation::OR;
+      return popops::Operation::LOGICAL_OR;
     default:
       // Cannot reach here
       return popops::Operation::ADD;
