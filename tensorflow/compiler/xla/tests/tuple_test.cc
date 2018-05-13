@@ -515,7 +515,7 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 class TupleHloTest : public HloTestBase {};
 
 // Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
+XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   const char* testcase = R"(
     HloModule m
 
