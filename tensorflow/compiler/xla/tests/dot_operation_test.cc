@@ -61,7 +61,7 @@ using TypesF16F32F64CF64 = ::testing::Types<Eigen::half, float>;
 #endif
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
-TEST_F(DotOperationTest, DotOfInputTupleElem) {
+XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
   XlaBuilder builder(TestName());
 
   XlaOp param;
