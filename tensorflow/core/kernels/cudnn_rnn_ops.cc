@@ -352,7 +352,7 @@ struct ToTFDataType<uint8> : std::integral_constant<DataType, DT_UINT8> {};
 template <typename T>
 class CudnnRnnAllocatorInTemp : public ScratchAllocator {
  public:
-  ~CudnnRnnAllocatorInTemp() = default;
+  ~CudnnRnnAllocatorInTemp() override = default;
 
   explicit CudnnRnnAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}

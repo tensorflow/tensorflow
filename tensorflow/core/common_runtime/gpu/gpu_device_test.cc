@@ -29,7 +29,7 @@ const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
 class GPUDeviceTest : public ::testing::Test {
  public:
-  void TearDown() { ProcessState::singleton()->TestOnlyReset(); }
+  void TearDown() override { ProcessState::singleton()->TestOnlyReset(); }
 
  protected:
   static SessionOptions MakeSessionOptions(

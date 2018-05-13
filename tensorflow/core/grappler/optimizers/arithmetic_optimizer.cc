@@ -281,7 +281,7 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
                                     const ArithmeticOptimizerContext ctx_ext)
       : GraphOptimizerStage("ArithmeticOptimizer", name, ctx),
         ctx_ext_(ctx_ext) {}
-  virtual ~ArithmeticOptimizerStage() = default;
+  ~ArithmeticOptimizerStage() override = default;
 
  protected:
   // Simplification graph rewrite can create additional nodes that are inputs
