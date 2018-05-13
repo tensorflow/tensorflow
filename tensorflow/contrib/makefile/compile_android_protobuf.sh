@@ -96,7 +96,7 @@ else
   echo "protoc found. Skip building host tools."
 fi
 
-export SYSROOT=\"${toolchain_path}/sysroot"
+export SYSROOT="${toolchain_path}/sysroot"
 export CC="${toolchain_path}/bin/clang --sysroot ${SYSROOT}"
 export CXX="${toolchain_path}/bin/clang++ --sysroot ${SYSROOT}"
 
