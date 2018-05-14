@@ -76,12 +76,13 @@ _ZERO_LOSS = 0.
 _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
+_CTX_KEY = 'context'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
 
-_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
+_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
 
 # TODO(b/65703635): Flip the value and remove all dead code. Currently, this is
