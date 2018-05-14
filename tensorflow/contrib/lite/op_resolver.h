@@ -68,8 +68,6 @@ struct OperatorKeyHasher {
 //   InterpreterBuilder(model, resolver)(&interpreter);
 class MutableOpResolver : public OpResolver {
  public:
-  ~MutableOpResolver() override;
-
   TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
                              int version) const override;
   TfLiteRegistration* FindOp(const char* op, int version) const override;
@@ -82,10 +80,10 @@ class MutableOpResolver : public OpResolver {
   typedef std::pair<tflite::BuiltinOperator, int> BuiltinOperatorKey;
   typedef std::pair<std::string, int> CustomOperatorKey;
 
-  std::unordered_map<BuiltinOperatorKey, TfLiteRegistration*,
+  std::unordered_map<BuiltinOperatorKey, TfLiteRegistration,
                      op_resolver_hasher::OperatorKeyHasher<BuiltinOperatorKey> >
       builtins_;
-  std::unordered_map<CustomOperatorKey, TfLiteRegistration*,
+  std::unordered_map<CustomOperatorKey, TfLiteRegistration,
                      op_resolver_hasher::OperatorKeyHasher<CustomOperatorKey> >
       custom_ops_;
 };

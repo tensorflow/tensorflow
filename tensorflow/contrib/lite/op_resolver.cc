@@ -18,46 +18,35 @@ limitations under the License.
 
 namespace tflite {
 
-MutableOpResolver::~MutableOpResolver() {
-  for (auto it : builtins_) {
-    free(it.second);
-  }
-  for (auto it : custom_ops_) {
-    free(it.second);
-  }
-}
-
 TfLiteRegistration* MutableOpResolver::FindOp(tflite::BuiltinOperator op,
                                               int version) const {
   auto it = builtins_.find(std::make_pair(op, version));
-  return it != builtins_.end() ? it->second : nullptr;
+  const TfLiteRegistration* registration =
+      it != builtins_.end() ? &it->second : nullptr;
+  // TODO(ycling): Change the FindOp interface to return const pointer and
+  // remove the const_cast.
+  return const_cast<TfLiteRegistration*>(registration);
 }
 
 TfLiteRegistration* MutableOpResolver::FindOp(const char* op,
                                               int version) const {
   auto it = custom_ops_.find(std::make_pair(op, version));
-  return it != custom_ops_.end() ? it->second : nullptr;
+  const TfLiteRegistration* registration =
+      it != custom_ops_.end() ? &it->second : nullptr;
+  // TODO(ycling): Change the FindOp interface to return const pointer and
+  // remove the const_cast.
+  return const_cast<TfLiteRegistration*>(registration);
 }
 
 void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
                                    TfLiteRegistration* registration,
                                    int min_version, int max_version) {
   for (int version = min_version; version <= max_version; ++version) {
-    TfLiteRegistration* new_registration =
-        reinterpret_cast<TfLiteRegistration*>(
-            malloc(sizeof(TfLiteRegistration)));
-    memcpy(new_registration, registration, sizeof(TfLiteRegistration));
-    new_registration->builtin_code = op;
-    new_registration->version = version;
-
+    TfLiteRegistration new_registration = *registration;
+    new_registration.builtin_code = op;
+    new_registration.version = version;
     auto op_key = std::make_pair(op, version);
-    auto it = builtins_.find(op_key);
-    if (it == builtins_.end()) {
-      builtins_.insert(std::make_pair(op_key, new_registration));
-    } else {
-      free(it->second);
-      it->second = new_registration;
-    }
+    builtins_[op_key] = new_registration;
   }
 }
 
@@ -65,21 +54,11 @@ void MutableOpResolver::AddCustom(const char* name,
                                   TfLiteRegistration* registration,
                                   int min_version, int max_version) {
   for (int version = min_version; version <= max_version; ++version) {
-    TfLiteRegistration* new_registration =
-        reinterpret_cast<TfLiteRegistration*>(
-            malloc(sizeof(TfLiteRegistration)));
-    memcpy(new_registration, registration, sizeof(TfLiteRegistration));
-    new_registration->builtin_code = BuiltinOperator_CUSTOM;
-    new_registration->version = version;
-
+    TfLiteRegistration new_registration = *registration;
+    new_registration.builtin_code = BuiltinOperator_CUSTOM;
+    new_registration.version = version;
     auto op_key = std::make_pair(name, version);
-    auto it = custom_ops_.find(op_key);
-    if (it == custom_ops_.end()) {
-      custom_ops_.insert(std::make_pair(op_key, new_registration));
-    } else {
-      free(it->second);
-      it->second = new_registration;
-    }
+    custom_ops_[op_key] = new_registration;
   }
 }
 
