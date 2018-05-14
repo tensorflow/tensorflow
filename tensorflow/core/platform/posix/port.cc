@@ -75,11 +75,8 @@ int NumSchedulableCPUs() {
 }
 
 int NumHyperthreadsPerCore() {
-  const int kDefaultHyperthreads = 2;
-#if defined(__linux__) && !defined(__ANDROID__)
-  return kDefaultHyperthreads;
-#endif
-  return kDefaultHyperthreads;  
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
 void* AlignedMalloc(size_t size, int minimum_alignment) {

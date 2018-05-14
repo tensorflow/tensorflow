@@ -110,6 +110,9 @@ int CPUModelNum();
 // Returns nominal core processor cycles per second of each processor.
 double NominalCPUFrequency();
 
+// Returns num of hyperthreads per physical core
+int CPUIDNumSMT();
+
 }  // namespace port
 }  // namespace tensorflow
 
