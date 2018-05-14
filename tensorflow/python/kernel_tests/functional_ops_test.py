@@ -392,6 +392,86 @@ class FunctionalOpsTest(test.TestCase):
         self.assertAllEqual(results, self.evaluate(r))
 
   @test_util.run_in_graph_and_eager_modes()
+  def testScanR_Simple(self):
+    with self.test_session():
+      elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
+      v = constant_op.constant(2.0, name="v")
+
+      # pylint: disable=unnecessary-lambda
+      r = functional_ops.scanr(lambda a, x: math_ops.multiply(a, x), elems)
+      self.assertAllEqual([720., 720., 360., 120., 30., 6.], self.evaluate(r))
+
+      r = functional_ops.scanr(
+          lambda a, x: math_ops.multiply(a, x), elems, initializer=v)
+      self.assertAllEqual([1440., 1440., 720., 240., 60., 12.],
+                          self.evaluate(r))
+      # pylint: enable=unnecessary-lambda
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testScanR_SingleInputMultiOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = (np.array(1.0), np.array(-1.0))
+      r = functional_ops.scanr(lambda a, x: (a[0] * x, -a[1] * x), elems,
+                               initializer)
+      r_value = self.evaluate(r)
+
+      self.assertAllEqual([720., 720., 360., 120., 30., 6.], r_value[0])
+      self.assertAllEqual([-720., 720., -360., 120., -30., 6.], r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testScanR_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      # Multiply a * 1 each time
+      r = functional_ops.scanr(lambda a, x: a * (x[0] + x[1]),
+                               (elems + 1, -elems), initializer)
+      self.assertAllEqual([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testScanR_MultiInputSameTypeOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      r = functional_ops.scanr(lambda a, x: (a[0] + x[0], a[1] + x[1]),
+                               (elems, -elems))
+      r_value = self.evaluate(r)
+      # Use [::-1] to flip the elems
+      self.assertAllEqual(np.cumsum(elems[::-1])[::-1], r_value[0])
+      self.assertAllEqual(np.cumsum(-elems[::-1])[::-1], r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testScanR_MultiOutputMismatchedInitializer(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      # Multiply a * 1 each time
+      with self.assertRaisesRegexp(
+          ValueError, "two structures don't have the same nested structure"):
+        functional_ops.scanr(lambda a, x: (a, -a), elems, initializer)
+
+  def testScanR_Scoped(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope("root") as varscope:
+        elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
+
+        r = functional_ops.scanr(simple_scoped_fn, elems)
+        # Check that we have the one variable we asked for here.
+        self.assertEqual(len(variables.trainable_variables()), 1)
+        self.assertEqual(variables.trainable_variables()[0].name,
+                         "root/body/two:0")
+        sess.run([variables.global_variables_initializer()])
+        results = np.array([450, 224, 110, 52, 22, 6])
+        self.assertAllEqual(results, self.evaluate(r))
+
+        # Now let's reuse our single variable.
+        varscope.reuse_variables()
+        r = functional_ops.scanr(simple_scoped_fn, elems, initializer=2)
+        self.assertEqual(len(variables.trainable_variables()), 1)
+        results = np.array([770, 384, 190, 92, 42, 16])
+        self.assertAllEqual(results, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes()
   def testScanFoldl_Nested(self):
     with self.test_session():
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0], name="data")

@@ -681,6 +681,200 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     return output_pack(results_flat)
 
 
+def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
+          swap_memory=False, infer_shape=True, name=None):
+  """scanr on the list of tensors unpacked from `elems` on dimension 0.
+
+  The simplest version of `scanr` repeatedly applies the callable `fn` to a
+  sequence of elements from last to first. The elements are made of the tensors
+  unpacked from `elems` on dimension 0. The callable fn takes two tensors as
+  arguments. The first argument is the accumulated value computed from the
+  preceding invocation of fn. If `initializer` is None, `elems` must contain
+  at least one element, and its last element is used as the initializer.
+
+  Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
+  of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
+
+  This method also allows multi-arity `elems` and accumulator.  If `elems`
+  is a (possibly nested) list or tuple of tensors, then each of these tensors
+  must have a matching first (unpack) dimension.  The second argument of
+  `fn` must match the structure of `elems`.
+
+  If no `initializer` is provided, the output structure and dtypes of `fn`
+  are assumed to be the same as its input; and in this case, the first
+  argument of `fn` must match the structure of `elems`.
+
+  If an `initializer` is provided, then the output of `fn` must have the same
+  structure as `initializer`; and the first argument of `fn` must match
+  this structure.
+
+  For example, if `elems` is `(t1, [t2, t3])` and `initializer` is
+  `[i1, i2]` then an appropriate signature for `fn` in `python2` is:
+  `fn = lambda (acc_p1, acc_p2), (t1, [t2, t3]):` and `fn` must return a list,
+  `[acc_n1, acc_n2]`.  An alternative correct signature for `fn`, and the
+   one that works in `python3`, is:
+  `fn = lambda a, t:`, where `a` and `t` correspond to the input tuples.
+
+  Args:
+    fn: The callable to be performed.  It accepts two arguments.  The first
+      will have the same structure as `initializer` if one is provided,
+      otherwise it will have the same structure as `elems`.  The second
+      will have the same (possibly nested) structure as `elems`.  Its output
+      must have the same structure as `initializer` if one is provided,
+      otherwise it must have the same structure as `elems`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which
+      will be unpacked along their first dimension.  The nested sequence
+      of the resulting slices will be the first argument to `fn`.
+    initializer: (optional) A tensor or (possibly nested) sequence of tensors,
+      initial value for the accumulator, and the expected output type of `fn`.
+    parallel_iterations: (optional) The number of iterations allowed to run
+      in parallel.
+    back_prop: (optional) True enables support for back propagation.
+    swap_memory: (optional) True enables GPU-CPU memory swapping.
+    infer_shape: (optional) False disables tests for consistent output shapes.
+    name: (optional) Name prefix for the returned tensors.
+
+  Returns:
+    A tensor or (possibly nested) sequence of tensors.  Each tensor packs the
+    results of applying `fn` to tensors unpacked from `elems` along the first
+    dimension, and the previous accumulator value(s), from first to last.
+
+  Raises:
+    TypeError: if `fn` is not callable or the structure of the output of
+      `fn` and `initializer` do not match.
+    ValueError: if the lengths of the output of `fn` and `initializer`
+      do not match.
+
+  Examples:
+    ```python
+    elems = np.array([1, 2, 3, 4, 5, 6])
+    sum = tf.scanr(lambda a, x: a + x, elems)
+    # sum == [21, 20, 18, 15, 11, 6]
+    ```
+
+    ```python
+    elems = np.array([1, 2, 3, 4, 5, 6])
+    initializer = np.array(0)
+    sum_one = tf.scanr(
+        lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
+    # sum_one == [6, 5, 4, 3, 2, 1]
+    ```
+  """
+  if not callable(fn):
+    raise TypeError("fn must be callable.")
+
+  def input_pack(x):
+    return nest.pack_sequence_as(elems, x)
+
+  if initializer is None:
+    output_pack = input_pack
+  else:
+    def output_pack(x):
+      return nest.pack_sequence_as(initializer, x)
+
+  elems_flat = nest.flatten(elems)
+
+  in_graph_mode = not context.executing_eagerly()
+  with ops.name_scope(name, "scanr", elems_flat):
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager.
+    if in_graph_mode:
+      # Any get_variable calls in fn will cache the first call locally
+      # and not issue repeated network I/O requests for each iteration.
+      varscope = vs.get_variable_scope()
+      varscope_caching_device_was_none = False
+      if varscope.caching_device is None:
+        # TODO(ebrevdo): Change to using colocate_with here and in other
+        # methods.
+        varscope.set_caching_device(lambda op: op.device)
+        varscope_caching_device_was_none = True
+
+    # Convert elems to tensor array.
+    elems_flat = [
+        ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
+
+    # Convert elems to tensor array. n may be known statically.
+    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+
+    # TensorArrays are always flat.
+    elems_ta = [
+        tensor_array_ops.TensorArray(dtype=elem.dtype, size=n,
+                                     dynamic_size=False,
+                                     infer_shape=True)
+        for elem in elems_flat]
+    # Unpack elements.
+    elems_ta = [
+        elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
+
+    if initializer is None:
+      i = n - 1
+      a_flat = [elem.read(i) for elem in elems_ta]
+    else:
+      i = n
+      initializer_flat = nest.flatten(initializer)
+      a_flat = [ops.convert_to_tensor(init) for init in initializer_flat]
+
+    # Create a tensor array to store the intermediate values.
+    accs_ta = [
+        tensor_array_ops.TensorArray(
+            dtype=init.dtype, size=n,
+            element_shape=init.shape if infer_shape else None,
+            dynamic_size=False,
+            infer_shape=infer_shape)
+        for init in a_flat]
+
+    if initializer is None:
+      accs_ta = [acc_ta.write(i, a) for (acc_ta, a) in zip(accs_ta, a_flat)]
+
+    def compute(i, a_flat, tas):
+      """The loop body of scan.
+
+      Args:
+        i: the loop counter.
+        a_flat: the accumulator value(s), flattened.
+        tas: the output accumulator TensorArray(s), flattened.
+
+      Returns:
+        [i - 1, a_flat, tas]: the updated counter + new accumulator values +
+          updated TensorArrays.
+
+      Raises:
+        TypeError: if initializer and fn() output structure do not match.
+        ValueType: if initializer and fn() output lengths do not match.
+      """
+      i -= 1
+      packed_elems = input_pack([elem_ta.read(i) for elem_ta in elems_ta])
+      packed_a = output_pack(a_flat)
+      a_out = fn(packed_a, packed_elems)
+      nest.assert_same_structure(
+          elems if initializer is None else initializer, a_out)
+      flat_a_out = nest.flatten(a_out)
+      tas = [ta.write(i, value) for (ta, value) in zip(tas, flat_a_out)]
+      return (i, flat_a_out, tas)
+
+    _, _, r_a = control_flow_ops.while_loop(
+        lambda i, _1, _2: i > 0, compute, (i, a_flat, accs_ta),
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop, swap_memory=swap_memory,
+        maximum_iterations=n)
+
+    results_flat = [r.stack() for r in r_a]
+
+    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+    for elem in elems_flat[1:]:
+      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+    for r in results_flat:
+      r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
+          r.get_shape()[1:]))
+
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager.
+    if in_graph_mode and varscope_caching_device_was_none:
+      varscope.set_caching_device(None)
+
+    return output_pack(results_flat)
+
+
 # pylint: disable=invalid-name
 def If(cond, inputs, then_branch, else_branch, name=None):
   r"""output = Cond(inputs) ? then_branch(inputs) : else_branch(inputs).
