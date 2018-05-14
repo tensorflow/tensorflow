@@ -18,12 +18,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/stream_executor.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
-
+#include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
 namespace tensorrt {

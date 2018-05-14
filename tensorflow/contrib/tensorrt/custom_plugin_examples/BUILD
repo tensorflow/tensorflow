@@ -6,18 +6,18 @@
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+licenses(["notice"])  # Apache 2.0
+
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",
     "tf_custom_op_library",
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
@@ -46,6 +46,7 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/contrib/tensorrt:trt_plugins",
+        "//tensorflow/core:framework_lite",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
@@ -55,6 +56,7 @@ tf_kernel_library(
     name = "inc_op_plugin_kernel",
     srcs = ["inc_op_plugin.cc"],
     hdrs = [
+        "inc_op_kernel.h",
         "inc_op_plugin.h",
     ],
     gpu_srcs = [
@@ -63,6 +65,7 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/contrib/tensorrt:trt_plugins",
+        "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
@@ -95,7 +98,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "plugin_test",
     size = "small",
     srcs = ["plugin_test.py"],
@@ -109,6 +112,7 @@ tf_py_test(
     ],
     tags = [
         "manual",
+        "noguitar",
         "notap",
     ],
 )

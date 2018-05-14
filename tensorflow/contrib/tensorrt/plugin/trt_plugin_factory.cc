@@ -33,7 +33,7 @@ PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layer_name,
     return nullptr;
   }
 
-  std::lock_guard<std::mutex> lock(instance_m_);
+  tensorflow::mutex_lock lock(instance_m_);
   auto plugin_ptr =
       plugin_registry_[encoded_op_name].first(serial_data, serial_length);
   owned_plugins_.emplace_back(plugin_ptr);
@@ -44,7 +44,7 @@ PluginTensorRT* PluginFactoryTensorRT::createPlugin(const char* layer_name,
 PluginTensorRT* PluginFactoryTensorRT::CreatePlugin(const string& op_name) {
   if (!IsPlugin(op_name)) return nullptr;
 
-  std::lock_guard<std::mutex> lock(instance_m_);
+  tensorflow::mutex_lock lock(instance_m_);
   auto plugin_ptr = plugin_registry_[op_name].second();
   owned_plugins_.emplace_back(plugin_ptr);
 
@@ -56,7 +56,7 @@ bool PluginFactoryTensorRT::RegisterPlugin(
     PluginConstructFunc construct_func) {
   if (IsPlugin(op_name)) return false;
 
-  std::lock_guard<std::mutex> lock(instance_m_);
+  tensorflow::mutex_lock lock(instance_m_);
   auto ret = plugin_registry_.emplace(
       op_name, std::make_pair(deserialize_func, construct_func));
 
@@ -64,7 +64,7 @@ bool PluginFactoryTensorRT::RegisterPlugin(
 }
 
 void PluginFactoryTensorRT::DestroyPlugins() {
-  std::lock_guard<std::mutex> lock(instance_m_);
+  tensorflow::mutex_lock lock(instance_m_);
   for (auto& owned_plugin_ptr : owned_plugins_) {
     owned_plugin_ptr.release();
   }

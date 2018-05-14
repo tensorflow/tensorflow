@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_INC_OP
-#define TENSORFLOW_CONTRIB_TENSORRT_INC_OP
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_KERNEL_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_KERNEL_H_
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -32,4 +32,4 @@ void IncrementKernel(const float* d_input, float inc, float* d_output,
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_INC_OP
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_KERNEL_H_

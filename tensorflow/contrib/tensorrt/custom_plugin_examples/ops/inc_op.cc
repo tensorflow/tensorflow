@@ -30,7 +30,7 @@ REGISTER_OP("IncPluginTRT")
       return Status::OK();
     });
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
 #endif  // GOOGLE_TENSORRT
