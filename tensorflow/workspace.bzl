@@ -317,7 +317,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "backports.weakref-1.0rc1/src",
       build_file = clean_dep("//third_party:backports_weakref.BUILD"),
   )
-  
+
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0
@@ -332,11 +332,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "protobuf_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
-          "https://github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
+          "https://mirror.bazel.build/github.com/google/protobuf/archive/25625b956a2f0d432582009c16553a9fd21c3cea.tar.gz",
+          "https://github.com/google/protobuf/archive/25625b956a2f0d432582009c16553a9fd21c3cea.tar.gz",
       ],
-      sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
-      strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      sha256 = "90f8f29184330b27aa20387c42fffe3a6fa87b3445874b8736ed82afc080e134",
+      strip_prefix = "protobuf-25625b956a2f0d432582009c16553a9fd21c3cea",
   )
 
   # We need to import the protobuf library under the names com_google_protobuf
@@ -345,21 +345,21 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_google_protobuf",
       urls = [
-          "https://mirror.bazel.build/github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
-          "https://github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
+          "https://mirror.bazel.build/github.com/google/protobuf/archive/25625b956a2f0d432582009c16553a9fd21c3cea.tar.gz",
+          "https://github.com/google/protobuf/archive/25625b956a2f0d432582009c16553a9fd21c3cea.tar.gz",
       ],
-      sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
-      strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      sha256 = "90f8f29184330b27aa20387c42fffe3a6fa87b3445874b8736ed82afc080e134",
+      strip_prefix = "protobuf-25625b956a2f0d432582009c16553a9fd21c3cea",
   )
 
   tf_http_archive(
       name = "com_google_protobuf_cc",
       urls = [
-          "https://mirror.bazel.build/github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
-          "https://github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
+          "https://mirror.bazel.build/github.com/google/protobuf/archive/25625b956a2f0d432582009c16553a9fd21c3cea.tar.gz",
+          "https://github.com/google/protobuf/archive/25625b956a2f0d432582009c16553a9fd21c3cea.tar.gz",
       ],
-      sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
-      strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      sha256 = "90f8f29184330b27aa20387c42fffe3a6fa87b3445874b8736ed82afc080e134",
+      strip_prefix = "protobuf-25625b956a2f0d432582009c16553a9fd21c3cea",
   )
 
   tf_http_archive(
