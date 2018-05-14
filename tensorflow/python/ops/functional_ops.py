@@ -383,7 +383,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "map", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
-    # supported in Eager.
+    # supported in Eager
     if in_graph_mode:
       # Any get_variable calls in fn will cache the first call locally
       # and not issue repeated network I/O requests for each iteration.
@@ -412,13 +412,13 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         )
     n = static_shape[0].value or array_ops.shape(elems_flat[0])[0]
 
-    # TensorArrays are always flat.
+    # TensorArrays are always flat
     elems_ta = [
         tensor_array_ops.TensorArray(dtype=elem.dtype, size=n,
                                      dynamic_size=False,
                                      infer_shape=True)
         for elem in elems_flat]
-    # Unpack elements.
+    # Unpack elements
     elems_ta = [
         elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
 
@@ -466,7 +466,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
           r.get_shape()[1:]))
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
-    # supported in Eager.
+    # supported in Eager
     if in_graph_mode and varscope_caching_device_was_none:
       varscope.set_caching_device(None)
 
@@ -749,7 +749,7 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     ```python
     elems = np.array([1, 2, 3, 4, 5, 6])
     sum = tf.scanr(lambda a, x: a + x, elems)
-    # sum == [720, 720, 360, 120, 30, 6]
+    # sum == [21, 20, 18, 15, 11, 6]
     ```
 
     ```python
@@ -777,7 +777,7 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "scanr", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
-    # supported in Eager
+    # supported in Eager.
     if in_graph_mode:
       # Any get_variable calls in fn will cache the first call locally
       # and not issue repeated network I/O requests for each iteration.
@@ -796,13 +796,13 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     # Convert elems to tensor array. n may be known statically.
     n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
 
-    # TensorArrays are always flat
+    # TensorArrays are always flat.
     elems_ta = [
         tensor_array_ops.TensorArray(dtype=elem.dtype, size=n,
                                      dynamic_size=False,
                                      infer_shape=True)
         for elem in elems_flat]
-    # Unpack elements
+    # Unpack elements.
     elems_ta = [
         elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
 
@@ -836,11 +836,11 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
       Returns:
         [i - 1, a_flat, tas]: the updated counter + new accumulator values +
-          updated TensorArrays
+          updated TensorArrays.
 
       Raises:
-        TypeError: if initializer and fn() output structure do not match
-        ValueType: if initializer and fn() output lengths do not match
+        TypeError: if initializer and fn() output structure do not match.
+        ValueType: if initializer and fn() output lengths do not match.
       """
       i -= 1
       packed_elems = input_pack([elem_ta.read(i) for elem_ta in elems_ta])
@@ -868,7 +868,7 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           r.get_shape()[1:]))
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
-    # supported in Eager
+    # supported in Eager.
     if in_graph_mode and varscope_caching_device_was_none:
       varscope.set_caching_device(None)
 
