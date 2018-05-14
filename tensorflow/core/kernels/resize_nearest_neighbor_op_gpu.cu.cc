@@ -114,8 +114,13 @@ struct ResizeNearestNeighbor<GPUDevice, T, align_corners> {
     GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
     GPU_LAUNCH_KERNEL(ResizeNearestNeighborNHWC<T, align_corners>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        output_size, input.data(), in_height, in_width, channels,
-        out_height, out_width, height_scale, width_scale, output.data());
+        output_size, input.data(),
+        static_cast<int>(in_height),
+        static_cast<int>(in_width),
+        channels,
+        static_cast<int>(out_height),
+        static_cast<int>(out_width),
+        height_scale, width_scale, output.data());
     return d.ok();
   }
 };
@@ -158,8 +163,13 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, align_corners> {
     GPU_LAUNCH_KERNEL(ResizeNearestNeighborBackwardNHWC<T, align_corners>,
         dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
         d.stream(),
-        input_config.virtual_thread_count, input.data(), in_height, in_width,
-        channels, out_height, out_width, height_scale, width_scale,
+        input_config.virtual_thread_count, input.data(),
+        static_cast<int>(in_height),
+        static_cast<int>(in_width),
+        channels,
+        static_cast<int>(out_height),
+        static_cast<int>(out_width),
+        height_scale, width_scale,
         output.data());
     return d.ok();
   }

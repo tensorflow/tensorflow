@@ -28,7 +28,7 @@ REGISTER_COMPLEX(CPU, double, complex128);
 
 // TODO: Enable GPU support for angle op after resolving
 // build failures on GPU (See #10643 for context).
-#if 0 && GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 REGISTER_COMPLEX(GPU, float, complex64);
 REGISTER_COMPLEX(GPU, double, complex128);
 #endif

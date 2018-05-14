@@ -150,7 +150,10 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
     GPU_LAUNCH_KERNEL(concat_fixed_kernel<T, IntType>,
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         gpu_device.stream(),
-        input_ptrs, split_size, output->dimension(0), output->dimension(1),
+        input_ptrs,
+        split_size,
+        static_cast<int>(output->dimension(0)),
+        static_cast<int>(output->dimension(1)),
         output->data());
   } else {
     IntType smem_max = gpu_device.sharedMemPerBlock();

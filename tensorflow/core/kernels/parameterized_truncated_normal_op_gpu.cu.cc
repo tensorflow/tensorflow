@@ -208,7 +208,8 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
         means.data(), means.dimension(0) == 1, stddevs.data(),
         stddevs.dimension(0) == 1, minvals.data(),
         minvals.dimension(0) == 1, maxvals.data(),
-        maxvals.dimension(0) == 1, kMaxIterations);
+        maxvals.dimension(0) == 1,
+        static_cast<int64>(kMaxIterations));
   };
 };
 
