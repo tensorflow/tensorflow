@@ -23,6 +23,7 @@ removing existing functionality.
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Counter
+@@CheckpointInputPipelineHook
 @@SqlDataset
 
 @@assert_element_shape
