@@ -44,6 +44,10 @@ class _TPUContext(object):
   information commonly required by TPU computation, such as TPU device names,
   TPU hosts, shard batch size, etc.
 
+  if eval_on_tpu is False, then execution of eval on TPU is disabled.
+  if eval_on_tpu is True, but use_tpu is False, a warning is issued,
+  and TPU execution is disabled for all modes.
+
   N.B. As `mode` is not immutable state in Estimator, but essential to
   distinguish between TPU training and evaluation, a common usage for
   _TPUContext with `mode` is as follows:
@@ -55,12 +59,17 @@ class _TPUContext(object):
   """
 
   def __init__(self, config, train_batch_size, eval_batch_size,
-               predict_batch_size, use_tpu):
+               predict_batch_size, use_tpu, eval_on_tpu=True):
     self._config = config
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
     self._predict_batch_size = predict_batch_size
     self._use_tpu = use_tpu
+    logging.info('_TPUContext: eval_on_tpu %s', eval_on_tpu)
+    if not use_tpu and eval_on_tpu:
+      logging.warning('eval_on_tpu ignored because use_tpu is False.')
+
+    self._eval_on_tpu = eval_on_tpu
     self._model_parallelism_enabled = (
         use_tpu and config.tpu_config.computation_shape)
     self._mode = None
@@ -246,6 +255,10 @@ class _TPUContext(object):
     if not self._use_tpu:
       return True
 
+    if mode == model_fn_lib.ModeKeys.EVAL and not self._eval_on_tpu:
+      logging.info('_is_running_on_cpu: eval_on_tpu disabled')
+      return True
+
     if mode != model_fn_lib.ModeKeys.PREDICT:
       return False
 
@@ -345,6 +358,7 @@ class _TPUContext(object):
   @property
   def tpu_host_placement_function(self):
     """Returns the TPU host place function."""
+
     master = self.master_job
 
     def _placement_function(_sentinal=None, core_id=None, host_id=None):  # pylint: disable=invalid-name
@@ -503,7 +517,7 @@ class _OneCoreTPUContext(_TPUContext):
 
 
 def _get_tpu_context(config, train_batch_size, eval_batch_size,
-                     predict_batch_size, use_tpu):
+                     predict_batch_size, use_tpu, eval_on_tpu):
   """Returns an instance of `_TPUContext`."""
 
   if (config.tpu_config.num_shards == 1 and
@@ -515,4 +529,4 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 
   return _TPUContext(config, train_batch_size, eval_batch_size,
-                     predict_batch_size, use_tpu)
+                     predict_batch_size, use_tpu, eval_on_tpu)

@@ -1613,7 +1613,9 @@ class TPUEstimator(estimator_lib.Estimator):
   ==========
 
   `model_fn` should return `TPUEstimatorSpec`, which expects the `eval_metrics`
-  for TPU evaluation.
+  for TPU evaluation. However, if eval_on_tpu is False, `model_fn` must return
+  `EstimatorSpec` and the evaluation will execute on CPU or GPU; in this case
+  the following discussion on TPU evaluation does not apply.
 
   `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`, where
   `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. (See
@@ -1761,6 +1763,7 @@ class TPUEstimator(estimator_lib.Estimator):
                eval_batch_size=None,
                predict_batch_size=None,
                batch_axis=None,
+               eval_on_tpu=True,
                warm_start_from=None):
     """Constructs an `TPUEstimator` instance.
 
@@ -1779,7 +1782,8 @@ class TPUEstimator(estimator_lib.Estimator):
         basic python types. There are reserved keys for `TPUEstimator`,
         including 'batch_size'.
       use_tpu: A bool indicating whether TPU support is enabled. Currently,
-        - TPU training and evaluation respect this bit.
+        - TPU training and evaluation respect this bit, but eval_on_tpu can
+          override execution of eval. See below.
         - Predict still happens on CPU.
       train_batch_size: An int representing the global training batch size.
         TPUEstimator transforms this global batch size to a per-shard batch
@@ -1800,6 +1804,8 @@ class TPUEstimator(estimator_lib.Estimator):
         and per_host_input_for_training is True, batches will be sharded based
         on the major dimension. If tpu_config.per_host_input_for_training is
         False or `PER_HOST_V2`, batch_axis is ignored.
+      eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
+        model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
                        warm-start from, or a `tf.estimator.WarmStartSettings`
                        object to fully configure warm-starting.  If the string
@@ -1868,7 +1874,8 @@ class TPUEstimator(estimator_lib.Estimator):
     self._ctx = tpu_context._get_tpu_context(
         self._config, train_batch_size,
         eval_batch_size, predict_batch_size,
-        use_tpu)
+        use_tpu,
+        eval_on_tpu)
 
     self._is_input_fn_invoked = None
 
