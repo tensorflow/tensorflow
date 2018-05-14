@@ -532,63 +532,46 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   return Status::OK();
 }
 
-// Copy input/output argument type to the type_list. Return error if argument
-// type is not explicitly defined, and not specified in function attributes.
-Status CopyArgType(const NodeDef& func_node,
-                   const std::unordered_map<string, AttrValue>& func_attr,
-                   const string& arg_kind, const OpDef::ArgDef& arg,
-                   AttrValue::ListValue* type_list) {
-  if (arg.type() != DT_INVALID) {
-    type_list->add_type(arg.type());
-  } else {
-    auto it = func_attr.find(arg.type_attr());
-    if (it == func_attr.end() || it->second.type() == DT_INVALID) {
-      return errors::InvalidArgument(
-          "Invalid ", arg_kind, " argument ", arg.name(), " for function ",
-          func_node.op(), " instantiated by ", func_node.name());
-    }
-    type_list->add_type(it->second.type());
-  }
-  return Status::OK();
-}
-
-// Add an IdentityN op to hook the function inputs to: this ensures that
+// Create an IdentityN node to hook the function inputs to: this ensures that
 // they're all evaluated before the evaluation of the function body starts.
-Status HookInlinedFunctionInputs(
-    const NodeDef& func_node, const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr, NodeDef* inputs) {
-  inputs->set_name(strings::StrCat(func_node.name(), "/", "inlined_inputs"));
-  inputs->set_op("IdentityN");
-  inputs->set_device(func_node.device());
-  *inputs->mutable_input() = func_node.input();
+NodeDef InlinedFunctionInputsNode(const NodeDef& func_node,
+                                  const GrapplerFunctionItem& item) {
+  NodeDef inputs;
+  inputs.set_name(strings::StrCat(func_node.name(), "/", "inlined_inputs"));
+  inputs.set_op("IdentityN");
+  inputs.set_device(func_node.device());
+  *inputs.mutable_input() = func_node.input();
   AttrValue::ListValue* type_list =
-      (*inputs->mutable_attr())["T"].mutable_list();
-  for (const OpDef::ArgDef& arg : func.signature().input_arg()) {
-    TF_RETURN_IF_ERROR(
-        CopyArgType(func_node, func_attr, "input", arg, type_list));
+      (*inputs.mutable_attr())["T"].mutable_list();
+
+  for (const InputArgExpansion& input_arg : item.inputs()) {
+    for (int i = 0; i < input_arg.placeholders.size(); ++i) {
+      type_list->add_type(input_arg.data_type);
+    }
   }
-  return Status::OK();
+
+  return inputs;
 }
 
-// Add an IdentityN op to hook the function outputs to: this ensures that the
-// function body is fully evaluated before its fanout gets scheduled.
-Status HookInlinedFunctionOutputs(
-    const NodeDef& func_node, const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr,
-    const gtl::ArraySlice<string> fetch, NodeDef* outputs) {
-  outputs->set_name(func_node.name());
-  outputs->set_op("IdentityN");
-  outputs->set_device(func_node.device());
+// Create an IdentityN node to hook the function outputs to: this ensures that
+// the function body is fully evaluated before its fanout gets scheduled.
+NodeDef InlinedFunctionOutputsNode(const NodeDef& func_node,
+                                   const GrapplerFunctionItem& item) {
+  NodeDef outputs;
+  outputs.set_name(func_node.name());
+  outputs.set_op("IdentityN");
+  outputs.set_device(func_node.device());
   AttrValue::ListValue* type_list =
-      (*outputs->mutable_attr())["T"].mutable_list();
-  for (int i = 0; i < func.signature().output_arg_size(); ++i) {
-    const OpDef::ArgDef& arg = func.signature().output_arg(i);
-    TF_RETURN_IF_ERROR(
-        CopyArgType(func_node, func_attr, "output", arg, type_list));
-    // Use the fetch names since they take into account the output mapping.
-    outputs->add_input(strings::StrCat(func_node.name(), "/", fetch[i]));
+      (*outputs.mutable_attr())["T"].mutable_list();
+
+  for (const OutputArgExpansion& output_arg : item.outputs()) {
+    for (const string& output_tensor : output_arg.output_tensors) {
+      type_list->add_type(output_arg.data_type);
+      outputs.add_input(strings::StrCat(func_node.name(), "/", output_tensor));
+    }
   }
-  return Status::OK();
+
+  return outputs;
 }
 
 Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
@@ -609,27 +592,27 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
                                    ". Error: ", item_status.error_message());
   }
 
-  std::unordered_map<string, int> input_nodes;
-  for (int i = 0; i < func.signature().input_arg_size(); ++i) {
-    const OpDef::ArgDef& arg = func.signature().input_arg(i);
-    input_nodes[arg.name()] = i;
+  // Mapping from input placeholder name to function input position.
+  int idx = 0;
+  std::unordered_map<string, int> input_placeholders_idx;
+  for (const InputArgExpansion& input_arg : item.inputs()) {
+    for (const string& placeholder : input_arg.placeholders) {
+      input_placeholders_idx[placeholder] = idx++;
+    }
   }
 
-  // Hook inlined function inputs to IdentityN node
+  // Hook inlined function inputs to IdentityN node.
   NodeDef* func_inputs = optimized_graph->add_node();
-  TF_RETURN_IF_ERROR(
-      HookInlinedFunctionInputs(func_node, func, func_attr, func_inputs));
+  *func_inputs = InlinedFunctionInputsNode(func_node, item);
 
   for (NodeDef& func_body_node : *item.mutable_function_body().mutable_node()) {
-    if (input_nodes.find(func_body_node.name()) != input_nodes.end()) {
+    if (item.IsInputPlaceholder(func_body_node.name())) {
+      // Turn input placeholders into identity nodes.
       CHECK_EQ(0, func_body_node.input_size());
-      // Turn input placeholders into identity nodes
-      if (IsPlaceholder(func_body_node)) {
-        func_body_node.set_op("Identity");
-      }
-      int input_id = input_nodes[func_body_node.name()];
+      func_body_node.set_op("Identity");
+      int input_idx = input_placeholders_idx[func_body_node.name()];
       func_body_node.add_input(
-          strings::StrCat(func_inputs->name(), ":", input_id));
+          strings::StrCat(func_inputs->name(), ":", input_idx));
     } else {
       // Update the input names if any.
       for (string& input : *func_body_node.mutable_input()) {
@@ -643,18 +626,18 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       }
     }
 
-    // Add the node name as a prefix to avoid collisions after inlining
+    // Add the node name as a prefix to avoid collisions after inlining.
     func_body_node.set_name(
         strings::StrCat(func_node.name(), "/", func_body_node.name()));
 
-    // Make sure the node is placed
+    // Make sure the node is placed.
     func_body_node.set_device(func_node.device());
 
-    // Check if a body node is itself a function
+    // Check if a body node is itself a function.
     const FunctionDef* func_body_node_func =
         ctx.FindInlinedFunction(func_body_node.op());
     if (func_body_node_func != nullptr) {
-      // Recursively inline function calls
+      // Recursively inline function calls.
       TF_RETURN_IF_ERROR(InlineFunction(func_body_node, *func_body_node_func,
                                         ctx, optimized_graph));
     } else {
@@ -662,16 +645,14 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       for (const auto& attr : func.attr()) {
         func_body_node.mutable_attr()->insert(attr);
       }
-      // Move the node to the main graph
+      // Move the node to the main graph.
       optimized_graph->add_node()->Swap(&func_body_node);
     }
   }
 
-  // Hook inlined function outputs to IdentityN node
+  // Hook inlined function outputs to IdentityN node.
   NodeDef* func_outputs = optimized_graph->add_node();
-  std::vector<string> fetch = OutputTensors(item);
-  TF_RETURN_IF_ERROR(HookInlinedFunctionOutputs(func_node, func, func_attr,
-                                                fetch, func_outputs));
+  *func_outputs = InlinedFunctionOutputsNode(func_node, item);
 
   return Status::OK();
 }
