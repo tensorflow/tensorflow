@@ -57,6 +57,7 @@ GetConvolutionParameters(const HloInstruction* operands_inst,
   } else {
     // Weight update
     n_g = (n_j / n_i) * (n_p / n_o);
+    n_b = n_b / n_g;
   }
 
   std::vector<std::size_t> n_s;
@@ -411,6 +412,12 @@ CreateDepthwiseBackpropFilter(poplar::Graph &graph,
   poplar::program::Sequence prog;
 
   TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(conv, in));
+
+  // Move 'G' parts of the I to B (because B is the reducing dimension)
+  unsigned n_g = params.getNumConvGroups();
+  in = in.reshapePartial(0, 1, {n_g, in.dim(0) / n_g});
+  in = in.dimShufflePartial({0}, {1});
+  in = in.reshapePartial(1, 3, {in.dim(1) * in.dim(2)});
 
   TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
                                                                 false));

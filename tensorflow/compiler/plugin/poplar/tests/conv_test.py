@@ -287,8 +287,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      print("=====> " + str(cs_list))
-
       ok = ['Copy_arg0.*_to_bwdWeights',
             'Copy_bwdWeights_to_weightsRearranged/OnTileCopy',
             'convolution.*clone/Conv_3x3']
@@ -348,15 +346,14 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       result = sess.run(c, fd)
       self.assertAllClose(result, np.zeros([3,3,3,2]))
 
-      # result = sess.run(report)
-      # self.assertTrue(len(result) == 2)
-      # s = tu.extract_all_strings_from_event_trace(result)
-      # cs_list = tu.get_compute_sets_from_report(s)
-      #
-      # ok = ['Copy_arg0_to_bwdWeights',
-      #       'Copy_bwdWeights_to_weightsRearranged',
-      #       'convolution.clone/Conv_3x3']
-      # self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_{<const>,arg0.*,arg1.*}_to',
+            'convolution.*.clone/Conv_6x6']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testDepthwiseConvBackpropFilter1x1(self):
     with tf.device("/device:IPU:0"):
@@ -380,15 +377,14 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       result = sess.run(c, fd)
       self.assertAllClose(result, np.zeros([1,1,3,2]))
 
-      # result = sess.run(report)
-      # self.assertTrue(len(result) == 2)
-      # s = tu.extract_all_strings_from_event_trace(result)
-      # cs_list = tu.get_compute_sets_from_report(s)
-      #
-      # ok = ['Copy_arg0_to_bwdWeights',
-      #       'Copy_bwdWeights_to_weightsRearranged',
-      #       'convolution.clone/Conv_3x3']
-      # self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_{arg0.*,arg1.*}_to',
+            'convolution.*.clone/Conv_6x6']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 
 if __name__ == "__main__":
