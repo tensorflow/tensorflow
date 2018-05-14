@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_INC_OP_PLUGIN
-#define TENSORFLOW_CONTRIB_TENSORRT_INC_OP_PLUGIN
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_PLUGIN_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_PLUGIN_H_
 
 #include <cassert>
 #include <cstring>
@@ -99,4 +99,4 @@ class IncOpPlugin : public PluginTensorRT {
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_INC_OP_PLUGIN
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_PLUGIN_H_

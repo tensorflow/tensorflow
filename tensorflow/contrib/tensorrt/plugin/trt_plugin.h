@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN
-#define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_H_
 
 #include <iostream>
 #include <unordered_map>
@@ -55,9 +55,9 @@ class PluginTensorRT : public nvinfer1::IPlugin {
   virtual bool StoreAttribute(const string& key, const void* ptr,
                               const size_t size);
 
-  virtual size_t getSerializationSize() override;
+  size_t getSerializationSize() override;
 
-  virtual void serialize(void* buffer) override;
+  void serialize(void* buffer) override;
 
  protected:
   std::unordered_map<string, std::vector<char> > attr_map_;
@@ -71,4 +71,4 @@ class PluginTensorRT : public nvinfer1::IPlugin {
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_H_

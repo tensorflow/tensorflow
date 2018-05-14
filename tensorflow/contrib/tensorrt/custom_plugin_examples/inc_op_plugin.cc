@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_plugin.h"
+
+#include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #if GOOGLE_CUDA

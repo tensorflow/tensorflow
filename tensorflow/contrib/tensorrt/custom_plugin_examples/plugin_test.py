@@ -27,65 +27,69 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.platform import test
 
 
-def get_plugin_graph_def():
-  """Create a simple graph and return its graph_def."""
-  g = ops.Graph()
-  with g.as_default():
-    a = array_ops.placeholder(
-        dtype=dtypes.float32, shape=(None, 24, 24, 2), name="input")
-    relu = nn.relu(a, "relu")
-    v = nn_ops.max_pool(
-        relu, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
+class TrtPluginTest(test_util.TensorFlowTestCase):
 
-    # insert custom_op in the graph
-    v = custom_plugin_examples.inc_op(v, inc=[16.5], name="plugin_test")
+  def _get_plugin_graph_def(self):
+    """Create a simple graph and return its graph_def."""
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.placeholder(
+          dtype=dtypes.float32, shape=(None, 24, 24, 2), name="input")
+      relu = nn.relu(a, "relu")
+      v = nn_ops.max_pool(
+          relu, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
 
-    v = v * 2.0
-    v = nn.relu(v)
-    v = nn.relu(v)
-    array_ops.squeeze(v, name="output")
-  return g.as_graph_def()
+      # insert custom_op in the graph
+      v = custom_plugin_examples.inc_op(v, inc=[16.5], name="plugin_test")
+
+      v *= 2.0
+      v = nn.relu(v)
+      v = nn.relu(v)
+      array_ops.squeeze(v, name="output")
+    return g.as_graph_def()
+
+  def _run_graph(self, gdef, dumm_inp):
+    """Run given graphdef once."""
+    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+    ops.reset_default_graph()
+    g = ops.Graph()
+    with g.as_default():
+      inp, out = importer.import_graph_def(
+          graph_def=gdef, return_elements=["input", "output"])
+      inp = inp.outputs[0]
+      out = out.outputs[0]
+
+    with session.Session(
+        config=config_pb2.ConfigProto(gpu_options=gpu_options),
+        graph=g) as sess:
+      val = sess.run(out, {inp: dumm_inp})
+    return val
+
+  def testIncOpPlugin(self):
+    inp_dims = (5, 24, 24, 2)
+    dummy_input = numpy.ones(inp_dims).astype(numpy.float32)
+    orig_graph = self._get_plugin_graph_def()  # graph with plugin node
+
+    # trigger conversion.
+    # plugin nodes have been registered during import, converter will be able to
+    # create corresponding plugin layer during conversion.
+    trt_graph = tensorrt.create_inference_graph(
+        input_graph_def=orig_graph,
+        outputs=["output"],
+        max_batch_size=inp_dims[0],
+        max_workspace_size_bytes=1 << 25,
+        precision_mode="FP32",
+        minimum_segment_size=2)
+    o2 = self._run_graph(trt_graph, dummy_input)
+    self.assertEqual(35, o2.reshape([-1])[0])
 
 
-def run_graph(gdef, dumm_inp):
-  """Run given graphdef once."""
-  gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
-  ops.reset_default_graph()
-  g = ops.Graph()
-  with g.as_default():
-    inp, out = importer.import_graph_def(
-        graph_def=gdef, return_elements=["input", "output"])
-    inp = inp.outputs[0]
-    out = out.outputs[0]
-
-  with session.Session(
-      config=config_pb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
-    val = sess.run(out, {inp: dumm_inp})
-  return val
-
-
-if "__main__" in __name__:
-  inp_dims = (5, 24, 24, 2)
-  dummy_input = numpy.ones(inp_dims).astype(numpy.float32)
-  orig_graph = get_plugin_graph_def()  # graph with plugin node
-
-  # trigger conversion.
-  # plugin nodes have been registered during import, converter will be able to
-  # create corresponding plugin layer during conversion.
-  trt_graph = tensorrt.create_inference_graph(
-      input_graph_def=orig_graph,
-      outputs=["output"],
-      max_batch_size=inp_dims[0],
-      max_workspace_size_bytes=1 << 25,
-      precision_mode="FP32",
-      minimum_segment_size=2)
-  o2 = run_graph(trt_graph, dummy_input)
-  if o2.reshape([-1])[0] == 35:
-    print("pass")
-  else:
-    raise RuntimeError("contrib/tensorrt/custom_plugin_examples wrong result")
+if __name__ == "__main__":
+  test.main()

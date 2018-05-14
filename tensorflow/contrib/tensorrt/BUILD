@@ -302,6 +302,7 @@ tf_cuda_library(
         "plugin/trt_plugin_utils.h",
     ],
     deps = [
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core:platform_base",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
@@ -318,6 +319,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":trt_plugins",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + if_tensorrt([

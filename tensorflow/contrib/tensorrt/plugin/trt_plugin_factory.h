@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_FACTORY
-#define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_FACTORY
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_FACTORY_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_FACTORY_H_
 
 #include <memory>
-#include <mutex>
 #include <unordered_map>
 
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -69,13 +69,12 @@ class PluginFactoryTensorRT : public nvinfer1::IPluginFactory {
   // TODO(jie): Owned plugin should be associated with different sessions;
   //            should really hand ownership of plugins to resource management;
   std::vector<std::unique_ptr<PluginTensorRT>> owned_plugins_;
-  std::mutex instance_m_;
+  tensorflow::mutex instance_m_;
 };
 
 class TrtPluginRegistrar {
  public:
-  TrtPluginRegistrar(const string& name,
-                     PluginDeserializeFunc deserialize_func,
+  TrtPluginRegistrar(const string& name, PluginDeserializeFunc deserialize_func,
                      PluginConstructFunc construct_func) {
     auto factory = PluginFactoryTensorRT::GetInstance();
     QCHECK(factory->RegisterPlugin(name, deserialize_func, construct_func))
@@ -83,17 +82,16 @@ class TrtPluginRegistrar {
   }
 };
 
-#define REGISTER_TRT_PLUGIN(name, deserialize_func, construct_func) \
-    REGISTER_TRT_PLUGIN_UNIQ_HELPER(                                \
-        __COUNTER__, name, deserialize_func, construct_func)
-#define REGISTER_TRT_PLUGIN_UNIQ_HELPER(         \
-    ctr, name, deserialize_func, construct_func) \
-    REGISTER_TRT_PLUGIN_UNIQ(ctr, name, deserialize_func, construct_func)
+#define REGISTER_TRT_PLUGIN(name, deserialize_func, construct_func)    \
+  REGISTER_TRT_PLUGIN_UNIQ_HELPER(__COUNTER__, name, deserialize_func, \
+                                  construct_func)
+#define REGISTER_TRT_PLUGIN_UNIQ_HELPER(ctr, name, deserialize_func, \
+                                        construct_func)              \
+  REGISTER_TRT_PLUGIN_UNIQ(ctr, name, deserialize_func, construct_func)
 #define REGISTER_TRT_PLUGIN_UNIQ(ctr, name, deserialize_func, construct_func) \
-    static ::tensorflow::tensorrt::TrtPluginRegistrar                         \
-        trt_plugin_registrar##ctr TF_ATTRIBUTE_UNUSED =                       \
-            ::tensorflow::tensorrt::TrtPluginRegistrar(                       \
-                name, deserialize_func, construct_func)
+  static ::tensorflow::tensorrt::TrtPluginRegistrar trt_plugin_registrar##ctr \
+      TF_ATTRIBUTE_UNUSED = ::tensorflow::tensorrt::TrtPluginRegistrar(       \
+          name, deserialize_func, construct_func)
 
 }  // namespace tensorrt
 }  // namespace tensorflow
@@ -101,4 +99,4 @@ class TrtPluginRegistrar {
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_FACTORY
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_FACTORY_H_

@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
+
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -37,16 +38,17 @@ class StubPlugin : public PluginTensorRT {
   StubPlugin(const void* serialized_data, size_t length)
       : PluginTensorRT(serialized_data, length) {}
 
-  const string& GetPluginName() override { return plugin_name_; }
+  const string& GetPluginName() const override { return plugin_name_; }
 
-  virtual bool Finalize() { return true; }
+  bool Finalize() override { return true; }
 
-  virtual bool SetAttribute(const string& key, const void* ptr,
-                            const size_t size) {
+  bool SetAttribute(const string& key, const void* ptr,
+                    const size_t size) override {
     return true;
   }
 
-  virtual bool GetAttribute(const string& key, const void* ptr, size_t& size) {
+  bool GetAttribute(const string& key, const void** ptr,
+                    size_t* size) const override {
     return true;
   }
 
@@ -89,8 +91,7 @@ class TrtPluginFactoryTest : public ::testing::Test {
       return true;
     }
     return PluginFactoryTensorRT::GetInstance()->RegisterPlugin(
-        StubPlugin::kPluginName, CreateStubPluginDeserialize,
-        CreateStubPlugin);
+        StubPlugin::kPluginName, CreateStubPluginDeserialize, CreateStubPlugin);
   }
 };
 

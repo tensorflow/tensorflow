@@ -60,7 +60,8 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     infer->setGpuAllocator(allocator_.get());
 #endif
     trt_engine_ptr_.reset(infer->deserializeCudaEngine(
-        serialized_engine_.c_str(), serialized_engine_.size(), PluginFactoryTensorRT::GetInstance()));
+        serialized_engine_.c_str(), serialized_engine_.size(),
+        PluginFactoryTensorRT::GetInstance()));
     trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
     // Runtime is safe to delete after engine creation
     infer->destroy();

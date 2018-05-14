@@ -1223,8 +1223,8 @@ tensorflow::Status ConvertPlugin(Converter& ctx,
     }
   }
 
-  nvinfer1::IPluginLayer* layer =
-      ctx.network()->addPlugin(&all_inputs[0], int(inputs.size()), *plugin);
+  nvinfer1::IPluginLayer* layer = ctx.network()->addPlugin(
+      &all_inputs[0], static_cast<int>(inputs.size()), *plugin);
 
   for (int i = 0; i < layer->getNbOutputs(); i++) {
     nvinfer1::ITensor* output_tensor = layer->getOutput(i);
