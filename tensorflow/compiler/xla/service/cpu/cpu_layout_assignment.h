@@ -27,7 +27,8 @@ namespace cpu {
 // layout constraints for operands and results of library calls.
 class CpuLayoutAssignment : public LayoutAssignment {
  public:
-  explicit CpuLayoutAssignment(ComputationLayout* entry_computation_layout)
+  explicit CpuLayoutAssignment(
+      const ComputationLayout& entry_computation_layout)
       : LayoutAssignment(entry_computation_layout) {}
   ~CpuLayoutAssignment() override {}
 

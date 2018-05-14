@@ -93,8 +93,6 @@ IrEmitter::IrEmitter(
       computation_to_profile_idx_(std::move(computation_to_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
-      parallel_cpu_backend_(
-          options::CpuParallelBackendRequested(hlo_module_config_)),
       is_top_level_computation_(false),
       target_machine_features_(target_machine),
       external_constant_pool_(external_constant_pool) {
@@ -162,10 +160,8 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  VLOG(2) << "HandleConstant: " << constant->ToString();
-  const Literal& literal = constant->literal();
-  llvm::GlobalVariable* global_for_const;
+llvm::GlobalVariable* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
+  llvm::GlobalVariable* result;
 
   // We avoid creating large constants in the LLVM IR since LLVM is not
   // efficient for large constant arrays.  We still emit "small enough" constant
@@ -176,27 +172,42 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
       ByteSizeOf(literal.shape()) >= kMaxInternalConstantSizeInBytes) {
     string global_name = tensorflow::strings::StrCat(
         "constant_global_", external_global_constant_counter_++);
-    global_for_const = new llvm::GlobalVariable(
+    result = new llvm::GlobalVariable(
         /*Module=*/*module_,
         /*Type=*/IrShapeType(literal.shape()),
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/nullptr,
         /*Name=*/AsStringRef(global_name));
-    global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    result->setAlignment(MinimumAlignmentForShape(literal.shape()));
     external_constant_pool_->Insert(global_name, literal,
                                     MinimumAlignmentForShape(literal.shape()));
   } else {
     llvm::Constant* initializer =
         llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-    global_for_const = new llvm::GlobalVariable(
+    result = new llvm::GlobalVariable(
         /*Module=*/*module_,
         /*Type=*/initializer->getType(),
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
         /*Initializer=*/initializer,
         /*Name=*/"");
-    global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    result->setAlignment(MinimumAlignmentForShape(literal.shape()));
+  }
+  return result;
+}
+
+Status IrEmitter::HandleConstant(HloInstruction* constant) {
+  VLOG(2) << "HandleConstant: " << constant->ToString();
+  const Literal& literal = constant->literal();
+  llvm::GlobalVariable* global_for_const;
+
+  auto it = emitted_literals_.find(&literal);
+  if (it != emitted_literals_.end()) {
+    global_for_const = it->second;
+  } else {
+    global_for_const = EmitGlobalForLiteral(literal);
+    emitted_literals_[&literal] = global_for_const;
   }
   emitted_value_[constant] = global_for_const;
   VLOG(2) << "  emitted value: " << llvm_ir::DumpToString(*global_for_const);
@@ -816,13 +827,6 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
         "Dot with multiple contracting dimensions not implemented.");
   }
 
-  if (dnums.lhs_contracting_dimensions(0) !=
-          std::min(lhs->shape().dimensions_size() - 1, 1) ||
-      dnums.rhs_contracting_dimensions(0) != 0) {
-    return Unimplemented(
-        "Dot with non-standard contracting dimensions not implemented.");
-  }
-
   llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
   llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
 
@@ -839,8 +843,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   // Dot operation is complicated so we delegate to a helper class.
   return DotOpEmitter::EmitDotOperation(
-      *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-      lhs_array, rhs_array, /*addend_array=*/nullptr,
+      *dot, target_array, lhs_array, rhs_array, /*addend_array=*/nullptr,
       GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_,
       target_machine_features_);
 }
@@ -856,6 +859,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   const ConvolutionDimensionNumbers& dnums =
       convolution->convolution_dimension_numbers();
 
+  // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
+  // different data layouts.
   if (PotentiallyImplementedAsEigenConvolution(*convolution)) {
     const Shape& lhs_shape = lhs->shape();
     const Shape& rhs_shape = rhs->shape();
@@ -944,16 +949,26 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
            int64_type,    int64_type,  int64_type,  int64_type,  int64_type,
            int64_type,    int64_type,  int64_type,  int64_type},
           /*isVarArg=*/false);
-      bool multi_threaded_eigen =
+      bool multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
+      bool use_mkl_dnn =
+          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
+
+      // TODO(b/78639006) Singlethread MKL conv2d is not implemented due to the
+      // potential race condition by setting the omp_num_threads.
       const char* fn_name =
           primitive_type == F16
-              ? (multi_threaded_eigen
+              ? (multi_threaded
                      ? runtime::kEigenConvF16SymbolName
                      : runtime::kEigenSingleThreadedConvF16SymbolName)
-              : (multi_threaded_eigen
-                     ? runtime::kEigenConvF32SymbolName
+              : (multi_threaded
+                     ? (use_mkl_dnn ? runtime::kMKLConvF32SymbolName
+                                    : runtime::kEigenConvF32SymbolName)
                      : runtime::kEigenSingleThreadedConvF32SymbolName);
+      if (!multi_threaded && use_mkl_dnn) {
+        LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
+                        "conv2d function.";
+      }
       llvm::Function* conv_func = llvm::cast<llvm::Function>(
           module_->getOrInsertFunction(fn_name, conv_type));
       conv_func->setCallingConv(llvm::CallingConv::C);
@@ -2063,44 +2078,7 @@ static const HloInstruction* StripTranspose(const HloInstruction& hlo) {
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   auto* root = fusion->fused_expression_root();
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kTransposeDot) {
-    DCHECK(root->opcode() == HloOpcode::kDot);
-    const HloInstruction* lhs_parameter = StripTranspose(*root->operand(0));
-    const HloInstruction* rhs_parameter = StripTranspose(*root->operand(1));
-    DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
-           rhs_parameter->opcode() == HloOpcode::kParameter);
-    const HloInstruction* lhs =
-        fusion->operand(lhs_parameter->parameter_number());
-    const HloInstruction* rhs =
-        fusion->operand(rhs_parameter->parameter_number());
-
-    TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
-        /*instruction=*/*root, /*operands=*/{lhs, rhs},
-        /*supported_types=*/{F16, F32}));
-
-    llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
-    llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
-
-    Shape target_shape = fusion->shape();
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
-    llvm_ir::IrArray target_array = GetIrArrayFor(fusion);
-    VLOG(2) << "HandleFusion kTransposeDot: ";
-    VLOG(2) << "  lhs operand: "
-            << llvm_ir::DumpToString(*lhs_array.GetBasePointer());
-    VLOG(2) << "  rhs operand: "
-            << llvm_ir::DumpToString(*rhs_array.GetBasePointer());
-    VLOG(2) << "  target: "
-            << llvm_ir::DumpToString(*target_array.GetBasePointer());
-
-    // Dot operation is complicated so we delegate to a helper class.
-    TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *root, root->operand(0)->IsRank2Transpose(),
-        root->operand(1)->IsRank2Transpose(), target_array, lhs_array,
-        rhs_array, /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(),
-        &ir_builder_, hlo_module_config_, target_machine_features_));
-    return Status::OK();
-  } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion,
-                                                            assignment_)) {
+  if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
@@ -2143,9 +2121,9 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-        lhs_array, rhs_array, &addend_array, GetExecutableRunOptionsArgument(),
-        &ir_builder_, hlo_module_config_, target_machine_features_));
+        *dot, target_array, lhs_array, rhs_array, &addend_array,
+        GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_,
+        target_machine_features_));
     return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
@@ -2163,8 +2141,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
-  if (!computation->root_instruction()->outer_dimension_partitions().empty() &&
-      !parallel_cpu_backend_) {
+  if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
     // ParallelTaskAssignment assigned partitions, emit call to
     // ParallelForkJoin.
     std::vector<llvm::Value*> call_args = GetArrayFunctionCallArguments(
@@ -2541,30 +2518,18 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   // nothing to do since the result was already written directly into the output
   // buffer.
   VLOG(2) << "FinishVisit root: " << root->ToString();
-  llvm::Value* root_value = GetEmittedValueFor(root);
-  VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
+  if (root->opcode() == HloOpcode::kOutfeed) {
+    VLOG(2) << "  outfeed with value: "
+            << llvm_ir::DumpToString(*GetEmittedValueFor(root->operand(0)));
+  } else {
+    VLOG(2) << "  value: " << llvm_ir::DumpToString(*GetEmittedValueFor(root));
+  }
 
   auto record_complete_computation = [&](llvm::Value* prof_counter) {
     if (prof_counter) {
       profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
     }
   };
-
-  // For the parallel cpu backend, we record the total for each embedded
-  // computation callee with its caller kCall HLO.
-  if (parallel_cpu_backend_ && is_top_level_computation_) {
-    auto* computation = root->parent();
-    auto* entry_computation = computation->parent()->entry_computation();
-    if (computation != entry_computation) {
-      for (HloInstruction* instruction : entry_computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCall &&
-            instruction->to_apply()->root_instruction() == root) {
-          record_complete_computation(GetProfileCounterFor(*instruction));
-          return Status::OK();
-        }
-      }
-    }
-  }
 
   // For the entry computation this increment is cumulative of embedded
   // computations since it includes cycles spent in computations invoked by

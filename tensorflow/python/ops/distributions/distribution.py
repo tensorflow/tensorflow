@@ -434,13 +434,17 @@ class Distribution(_BaseDistribution):
     for i, t in enumerate(graph_parents):
       if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    if not name or name[-1] != "/":  # `name` is not a name scope
+      non_unique_name = name or type(self).__name__
+      with ops.name_scope(non_unique_name) as name:
+        pass
     self._dtype = dtype
     self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     self._parameters = parameters or {}
     self._graph_parents = graph_parents
-    self._name = name or type(self).__name__
+    self._name = name
 
   @classmethod
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):

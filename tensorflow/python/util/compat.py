@@ -17,10 +17,6 @@
 ## Conversion routines
 In addition to the functions below, `as_str` converts an object to a `str`.
 
-@@as_bytes
-@@as_text
-@@as_str_any
-@@path_to_str
 
 ## Types
 The compatibility module also provides the following types:
@@ -40,12 +36,9 @@ import numbers as _numbers
 import numpy as _np
 import six as _six
 
-from tensorflow.python.util.all_util import remove_undocumented
-from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('compat.as_bytes', 'compat.as_str')
 def as_bytes(bytes_or_text, encoding='utf-8'):
   """Converts either bytes or unicode to `bytes`, using utf-8 encoding for text.
 
@@ -68,7 +61,6 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
                     (bytes_or_text,))
 
 
-@tf_export('compat.as_text')
 def as_text(bytes_or_text, encoding='utf-8'):
   """Returns the given argument as a unicode string.
 
@@ -93,8 +85,12 @@ def as_text(bytes_or_text, encoding='utf-8'):
 # Convert an object to a `str` in both Python 2 and 3.
 if _six.PY2:
   as_str = as_bytes
+  tf_export('compat.as_bytes', 'compat.as_str')(as_bytes)
+  tf_export('compat.as_text')(as_text)
 else:
   as_str = as_text
+  tf_export('compat.as_bytes')(as_bytes)
+  tf_export('compat.as_text', 'compat.as_str')(as_text)
 
 
 @tf_export('compat.as_str_any')
@@ -141,13 +137,3 @@ tf_export('compat.complex_types').export_constant(__name__, 'complex_types')
 bytes_or_text_types = (bytes, _six.text_type)
 tf_export('compat.bytes_or_text_types').export_constant(__name__,
                                                         'bytes_or_text_types')
-
-_allowed_symbols = [
-    'as_str',
-    'bytes_or_text_types',
-    'complex_types',
-    'integral_types',
-    'real_types',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

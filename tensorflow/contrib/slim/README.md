@@ -290,9 +290,9 @@ slim.stack(x, slim.conv2d, [(32, [3, 3]), (32, [1, 1]), (64, [3, 3]), (64, [1, 1
 
 In addition to the types of scope mechanisms in TensorFlow
 ([name_scope](https://www.tensorflow.org/api_docs/python/tf/name_scope),
-[variable_scope](https://www.tensorflow.org/api_docs/python/tf/variable_scope),
+[variable_scope](https://www.tensorflow.org/api_docs/python/tf/variable_scope)),
 TF-Slim adds a new scoping mechanism called
-[arg_scope](https://www.tensorflow.org/api_docs/python/tf/contrib/framework/arg_scope),
+[arg_scope](https://www.tensorflow.org/api_docs/python/tf/contrib/framework/arg_scope).
 This new scope allows a user to specify one or more operations and a set of
 arguments which will be passed to each of the operations defined in the
 `arg_scope`. This functionality is best illustrated by example. Consider the
@@ -761,8 +761,8 @@ parts:
 3. Finalization: (optionally) perform any final operation to compute metric
 values. For example, computing means, mins, maxes, etc.
 
-For example, to compute `mean_absolute_error`, two variables, a `count` and
-`total` variable are *initialized* to zero. During *aggregation*, we observed
+For example, to compute `mean_absolute_error`, two variables (`count` and
+`total`) are *initialized* to zero. During *aggregation*, we observed
 some set of predictions and labels, compute their absolute differences and add
 the total to `total`. Each time we observe another value,
 `count` is incremented. Finally, during *finalization*, `total` is divided
@@ -909,3 +909,8 @@ slim.evaluation.evaluation_loop(
 
 ## Authors
 Sergio Guadarrama and Nathan Silberman
+
+## Citation
+"TensorFlow-Slim: a lightweight library for defining, training and evaluating complex models in TensorFlow"
+S. Guadarrama, N. Silberman
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/slim 2016

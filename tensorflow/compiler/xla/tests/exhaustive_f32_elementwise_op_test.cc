@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -35,7 +36,7 @@ class ExhaustiveF32ElementwiseOpTest
     int64 input_size = end - begin;
     LOG(INFO) << "Checking range [" << begin << ", " << end << ")";
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
 
     std::unique_ptr<Literal> input_literal =
         Literal::CreateFromDimensions(F32, {input_size});
@@ -78,9 +79,7 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, LogF32) {
 #endif
 
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Log(input);
-      },
+      [](XlaBuilder* builder, const XlaOp& input) { builder->Log(input); },
       std::log, known_incorrect_range);
 }
 
@@ -96,17 +95,13 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ExpF32) {
 #endif
 
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Exp(input);
-      },
+      [](XlaBuilder* builder, const XlaOp& input) { builder->Exp(input); },
       std::exp, known_incorrect_range);
 }
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, TanhF32) {
   ExhaustivelyTestF32Op(
-      [](ComputationBuilder* builder, const ComputationDataHandle& input) {
-        builder->Tanh(input);
-      },
+      [](XlaBuilder* builder, const XlaOp& input) { builder->Tanh(input); },
       std::tanh, /*known_incorrect_range=*/{0, 0});
 }
 

@@ -193,6 +193,34 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
+StatusOr<std::unique_ptr<Literal>> Client::ComputeConstant(
+    const XlaComputation& computation, const Layout* output_layout) const {
+  ComputeConstantGraphRequest request;
+  *request.mutable_computation() = computation.proto();
+  if (output_layout != nullptr) {
+    *request.mutable_output_layout() = *output_layout;
+  }
+
+  ComputeConstantResponse response;
+
+  VLOG(2) << "making compute-constant-graph request";
+  Status s = stub_->ComputeConstantGraph(&request, &response);
+  VLOG(2) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  VLOG(3) << "ComputeConstant: {" << response.DebugString() << "}";
+
+  if (!response.has_literal()) {
+    return InternalError(
+        "no computed literal in the provided response in ComputeConstantGraph "
+        "request");
+  }
+  return Literal::CreateFromProto(response.literal());
+}
+
 StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
   LoadComputationSnapshotRequest request;
   *request.mutable_module() = module;
@@ -205,6 +233,11 @@ StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
 
   VLOG(1) << "load snapshot response: " << response.ShortDebugString();
   return Computation(stub_, response.computation());
+}
+
+StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
+  TF_RET_CHECK(module.has_hlo() && module.hlo().has_hlo_module());
+  return XlaComputation(module.hlo().hlo_module());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
@@ -324,8 +357,38 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
     tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
-  return Unimplemented(
-      "ExecuteParallel is not yet implemented for XlaComputation.");
+  ExecuteGraphParallelRequest request;
+
+  for (const XlaComputationInstance& computation : computations) {
+    ExecuteGraphRequest single_request;
+    *single_request.mutable_computation() = computation.computation.proto();
+    for (GlobalData* argument : computation.arguments) {
+      *single_request.add_arguments() = argument->handle();
+    }
+    *single_request.mutable_execution_options() = computation.execution_options;
+    *request.add_requests() = single_request;
+  }
+
+  ExecuteParallelResponse response;
+  VLOG(1) << "making execute-graph-parallel request: "
+          << request.ShortDebugString();
+  tensorflow::Status s = stub_->ExecuteGraphParallel(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  std::vector<std::unique_ptr<GlobalData>> outputs;
+  for (size_t i = 0; i < computations.size(); ++i) {
+    outputs.push_back(
+        MakeUnique<GlobalData>(stub_, response.responses(i).output()));
+    if (computations[i].execution_profile != nullptr) {
+      *computations[i].execution_profile = response.responses(i).profile();
+    }
+  }
+
+  return std::move(outputs);
 }
 
 StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(

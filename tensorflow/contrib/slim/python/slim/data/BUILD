@@ -61,6 +61,7 @@ py_test(
     name = "dataset_data_provider_test",
     srcs = ["dataset_data_provider_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":dataset",
         ":dataset_data_provider",

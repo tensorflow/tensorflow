@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -306,11 +307,8 @@ def cosine_distance(
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `axis`, `labels`, `predictions` or `weights` is `None`.
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
-  if axis is None and dim is None:
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
     raise ValueError("You must specify 'axis'.")
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -696,7 +694,7 @@ def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
+  """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits_v2.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
   then the loss is simply scaled by the given value. If `weights` is a
@@ -707,11 +705,16 @@ def softmax_cross_entropy(
       new_onehot_labels = onehot_labels * (1 - label_smoothing)
                           + label_smoothing / num_classes
 
+  Note that `onehot_labels` and `logits` must have the same shape,
+  e.g. `[batch_size, num_classes]`. The shape of `weights` must be
+  broadcastable to loss, whose shape is decided by the shape of `logits`.
+  In case the shape of `logits` is `[batch_size, num_classes]`, loss is
+  a `Tensor` of shape `[batch_size]`.
+
   Args:
-    onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
-    logits: `[batch_size, num_classes]` logits outputs of the network .
-    weights: Optional `Tensor` whose rank is either 0, or rank 1 and is
-      broadcastable to the loss which is a `Tensor` of shape `[batch_size]`.
+    onehot_labels: One-hot-encoded labels.
+    logits: Logits outputs of the network.
+    weights: Optional `Tensor` that is broadcastable to loss.
     label_smoothing: If greater than 0 then smooth the labels.
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.

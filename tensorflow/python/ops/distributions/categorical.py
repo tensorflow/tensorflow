@@ -183,7 +183,7 @@ class Categorical(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]):
+    with ops.name_scope(name, values=[logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -311,7 +311,7 @@ class Categorical(distribution.Distribution):
         nn_ops.log_softmax(self.logits) * self.probs, axis=-1)
 
   def _mode(self):
-    ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
+    ret = math_ops.argmax(self.logits, axis=self._batch_rank)
     ret = math_ops.cast(ret, self.dtype)
     ret.set_shape(self.batch_shape)
     return ret

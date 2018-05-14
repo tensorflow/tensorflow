@@ -280,7 +280,7 @@ tool:
 ```
 bazel run tensorflow/examples/wav_to_spectrogram:wav_to_spectrogram -- \
 --input_wav=/tmp/speech_dataset/happy/ab00c4b2_nohash_0.wav \
---output_png=/tmp/spectrogram.png
+--output_image=/tmp/spectrogram.png
 ```
 
 If you open up `/tmp/spectrogram.png` you should see something like this:

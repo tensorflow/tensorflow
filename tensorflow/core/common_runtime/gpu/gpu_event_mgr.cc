@@ -18,11 +18,9 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 
-EventMgr::EventMgr(gpu::StreamExecutor* se, const GPUOptions& gpu_options)
+EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
       deferred_bytes_threshold_(gpu_options.deferred_deletion_bytes()
                                     ? gpu_options.deferred_deletion_bytes()
@@ -94,7 +92,7 @@ void EventMgr::StopPollingLoop() {
   }
 }
 
-void EventMgr::ThenDeleteTensors(perftools::gputools::Stream* stream,
+void EventMgr::ThenDeleteTensors(se::Stream* stream,
                                  const TensorReferenceVector& tensors) {
   mutex_lock l(mu_);
   // TODO(jeff): We currently keep one accumulated_tensors_ object.
@@ -152,16 +150,16 @@ void EventMgr::PollLoop() {
   polling_stopped_->Notify();
 }
 
-void EventMgr::QueueInUse(gpu::Stream* stream, InUse iu) {
+void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
   VLOG(2) << "QueueInUse  free_events_ " << free_events_.size()
           << " used_events_ " << used_events_.size();
   // Events are created on demand, and repeatedly reused.  There is no
   // limit placed here on the number of allocated Events.
   if (free_events_.empty()) {
-    free_events_.push_back(new gpu::Event(exec_));
+    free_events_.push_back(new se::Event(exec_));
     free_events_.back()->Init();
   }
-  gpu::Event* e = free_events_.back();
+  se::Event* e = free_events_.back();
   free_events_.pop_back();
   stream->ThenRecordEvent(e);
   iu.event = e;
@@ -199,18 +197,18 @@ void EventMgr::PollEvents(bool is_dedicated_poller,
   // the first non-complete record that is still pending.
   for (auto& iu : used_events_) {
     if (iu.event == nullptr) continue;
-    gpu::Event::Status s = iu.event->PollForStatus();
+    se::Event::Status s = iu.event->PollForStatus();
     switch (s) {
-      case gpu::Event::Status::kUnknown:
-      case gpu::Event::Status::kError:
+      case se::Event::Status::kUnknown:
+      case se::Event::Status::kError:
         // We don't expect to see these.  Someday maybe propagate
         // a Status error, but for now fail hard.
         LOG(FATAL) << "Unexpected Event status: " << static_cast<int>(s);
         break;
-      case gpu::Event::Status::kPending:
+      case se::Event::Status::kPending:
         if (!is_dedicated_poller) return;  // quit processing queue
         break;
-      case gpu::Event::Status::kComplete:
+      case se::Event::Status::kComplete:
         // Make a copy of the InUse record so we can free it after releasing
         // the lock
         to_free->push_back(iu);

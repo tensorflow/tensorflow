@@ -473,6 +473,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x, x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, x, x, y, y])
+    self.assertEqual(x._control_outputs, [z])
 
   def testAddControlInputC(self):
     # The C API dedups redundant control edges, pure Python does not
@@ -487,6 +488,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, y])
+    self.assertEqual(x._control_outputs, [z])
 
   def testRemoveAllControlInputs(self):
     a = constant_op.constant(1)
@@ -2302,6 +2304,13 @@ class InitScopeTest(test_util.TensorFlowTestCase):
         with ops.name_scope("inner"), ops.init_scope():
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
+
+  def testEagerGraphContextsExecuteEagerly(self):
+    with context.eager_mode():
+      with ops.Graph().as_default():
+        with context.graph_mode():
+          with ops.init_scope():
+            self.assertTrue(context.executing_eagerly())
 
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():

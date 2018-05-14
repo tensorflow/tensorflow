@@ -33,6 +33,7 @@ enum TensorType : byte {
   UINT8 = 3,
   INT64 = 4,
   STRING = 5,
+  BOOL = 6,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -64,7 +65,7 @@ table Tensor {
   quantization:QuantizationParameters;  // Optional.
 }
 
-// A list of builtin operators. Builtin operators a slighlty faster than custom
+// A list of builtin operators. Builtin operators are slightly faster than custom
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
@@ -77,7 +78,7 @@ enum BuiltinOperator : byte {
   // DEPTH_TO_SPACE = 5,
   DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
-  // FLOOR = 8,
+  FLOOR = 8,
   FULLY_CONNECTED = 9,
   HASHTABLE_LOOKUP = 10,
   L2_NORMALIZATION = 11,
@@ -132,6 +133,15 @@ enum BuiltinOperator : byte {
   CAST = 53,
   PRELU = 54,
   MAXIMUM = 55,
+  ARG_MAX = 56,
+  MINIMUM = 57,
+  LESS = 58,
+  NEG = 59,
+  PADV2 = 60,
+  GREATER = 61,
+  GREATER_EQUAL = 62,
+  LESS_EQUAL = 63,
+  SELECT = 64,
 }
 
 // Options for the builtin operators.
@@ -174,7 +184,15 @@ union BuiltinOptions {
   LogSoftmaxOptions,
   CastOptions,
   DequantizeOptions,
-  MaximumOptions,
+  MaximumMinimumOptions,
+  ArgMaxOptions,
+  LessOptions,
+  NegOptions,
+  PadV2Options,
+  GreaterOptions,
+  GreaterEqualOptions,
+  LessEqualOptions,
+  SelectOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -193,6 +211,8 @@ table Conv2DOptions {
   stride_w:int;
   stride_h:int;
   fused_activation_function:ActivationFunctionType;
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table Pool2DOptions {
@@ -306,6 +326,9 @@ table CallOptions {
 table PadOptions {
 }
 
+table PadV2Options {
+}
+
 table ReshapeOptions {
   new_shape:[int];
 }
@@ -381,12 +404,36 @@ table LogSoftmaxOptions {
 }
 
 table CastOptions {
+  in_data_type: TensorType;
+  out_data_type: TensorType;
 }
 
 table DequantizeOptions {
 }
 
-table MaximumOptions {
+table MaximumMinimumOptions {
+}
+
+table ArgMaxOptions {
+  output_type : TensorType;
+}
+
+table GreaterOptions {
+}
+
+table GreaterEqualOptions {
+}
+
+table LessOptions {
+}
+
+table LessEqualOptions {
+}
+
+table NegOptions {
+}
+
+table SelectOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
@@ -418,21 +465,25 @@ table Operator {
   custom_options_format:CustomOptionsFormat;
 }
 
-// The root type, defining a model.
+// The root type, defining a subgraph, which typically represents an entire
+// model.
 table SubGraph {
-  // A list of all tensors used in this model.
+  // A list of all tensors used in this subgraph.
   tensors:[Tensor];
 
-  // Indices of the input tensors.
+  // Indices of the tensors that are inputs into this subgraph. Note this is
+  // the list of non-static tensors that feed into the subgraph for inference.
   inputs:[int];
 
-  // Indices of the output tensors.
+  // Indices of the tensors that are outputs out of this subgraph. Note this is
+  // the list of output tensors that are considered the product of the
+  // subgraph's inference.
   outputs:[int];
 
   // All operators, in execution order.
   operators:[Operator];
 
-  // Name of subgraph (used for debugging).
+  // Name of this subgraph (used for debugging).
   name:string;
 }
 
@@ -458,9 +509,14 @@ table Model {
   // A description of the model.
   description:string;
 
-  // Buffers of the model
+  // Buffers of the model.
+  // Note the 0th entry of this array must be an empty buffer (sentinel).
+  // This is a convention so that tensors without a buffer can provide 0 as
+  // their buffer.
   buffers:[Buffer];
 
+  // Metadata about the model.  Indirects into the existings buffers list.
+  metadata_buffer:[int];
 }
 
 root_type Model;

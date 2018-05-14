@@ -196,13 +196,26 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
 void PreprocessSoftmaxScaling(double beta, double input_scale,
                               int input_integer_bits,
                               int32_t* quantized_multiplier, int* left_shift);
-
+// Like PreprocessSoftmaxScaling, but inverse scaling factors also calculated.
+void PreprocessLogSoftmaxScaling(double beta, double input_scale,
+                                 int input_integer_bits,
+                                 int32_t* quantized_multiplier, int* left_shift,
+                                 int32_t* reverse_scaling_divisor,
+                                 int* reverse_scaling_right_shift);
 // Calculate the largest input that will result in a within-bounds intermediate
 // result within MultiplyByQuantizedMultiplierGreaterThanOne.  In other words,
 // it must not overflow before we reduce the value by multiplication by the
 // input multiplier.  The negative radius is used as the minimum difference in
 // Softmax.
 int CalculateInputRadius(int input_integer_bits, int input_left_shift);
+
+// Nudges a min/max quantization range to ensure zero is zero.
+// Gymnastics with nudged zero point is to ensure that real zero maps to
+// an integer, which is required for e.g. zero-padding in convolutional layers.
+// Outputs nudged_min, nudged_max, nudged_scale.
+void NudgeQuantizationRange(const float min, const float max,
+                            const int quant_min, const int quant_max,
+                            float* nudged_min, float* nudged_max, float* scale);
 
 }  // namespace tflite
 

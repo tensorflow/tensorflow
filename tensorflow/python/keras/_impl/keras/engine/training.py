@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import weakref
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend as K
@@ -31,10 +35,10 @@ from tensorflow.python.keras._impl.keras.engine import training_arrays
 from tensorflow.python.keras._impl.keras.engine import training_eager
 from tensorflow.python.keras._impl.keras.engine import training_generator
 from tensorflow.python.keras._impl.keras.engine import training_utils
+from tensorflow.python.keras._impl.keras.engine.base_layer import DeferredTensor
 from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
-from tensorflow.python.layers.base import _DeferredTensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
@@ -103,6 +107,11 @@ class Model(Network):
   model = MyModel()
   ```
   """
+
+  def __init__(self, *args, **kwargs):
+    super(Model, self).__init__(*args, **kwargs)
+    # Create a cache for iterator get_next op.
+    self._iterator_get_next = weakref.WeakKeyDictionary()
 
   def compile(self,
               optimizer,
@@ -276,6 +285,8 @@ class Model(Network):
           self.metrics_names.append(self.output_names[i] + '_loss')
       self.nested_metrics = training_utils.collect_metrics(metrics,
                                                            self.output_names)
+      with K.name_scope('metrics'):
+        training_utils.populate_metric_names(self)
       self._feed_sample_weight_modes = []
       for i in range(len(self.outputs)):
         self._feed_sample_weight_modes.append(None)
@@ -462,7 +473,6 @@ class Model(Network):
         output_weighted_metrics = nested_weighted_metrics[i]
 
         def handle_metrics(metrics, weights=None):
-          metric_name_prefix = 'weighted_' if weights is not None else ''
 
           for metric in metrics:
             if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
@@ -489,39 +499,19 @@ class Model(Network):
                   metric_fn = metrics_module.categorical_accuracy
                 elif metric in ('crossentropy', 'ce'):
                   metric_fn = metrics_module.categorical_crossentropy
-              if metric in ('accuracy', 'acc'):
-                suffix = 'acc'
-              elif metric in ('crossentropy', 'ce'):
-                suffix = 'ce'
               weighted_metric_fn = training_utils.weighted_masked_objective(
                   metric_fn)
-              metric_name = metric_name_prefix + suffix
             else:
               metric_fn = metrics_module.get(metric)
               weighted_metric_fn = training_utils.weighted_masked_objective(
                   metric_fn)
-              # Get metric name as string
-              if hasattr(metric_fn, 'name'):
-                metric_name = metric_fn.name
-              else:
-                metric_name = metric_fn.__name__
-              metric_name = metric_name_prefix + metric_name
-
+            metric_name = training_utils.get_base_metric_name(
+                metric, weighted=weights is not None)
             with K.name_scope(metric_name):
               metric_result = weighted_metric_fn(
                   y_true, y_pred, weights=weights, mask=masks[i])
 
-            # Append to self.metrics_names, self.metric_tensors,
-            # self.stateful_metric_names
-            if len(self.output_names) > 1:
-              metric_name = '%s_%s' % (self.output_names[i], metric_name)
-            # Dedupe name
-            j = 1
-            base_metric_name = metric_name
-            while metric_name in self.metrics_names:
-              metric_name = '%s_%d' % (base_metric_name, j)
-              j += 1
-            self.metrics_names.append(metric_name)
+            training_utils.add_metric_name(self, metric_name, i)
             self.metrics_tensors.append(metric_result)
 
             # Keep track of state updates created by
@@ -601,6 +591,7 @@ class Model(Network):
             updates=updates,
             name='train_function',
             **self._function_kwargs)
+    self._post_build_cleanup()
 
   def _make_test_function(self):
     if not hasattr(self, 'test_function'):
@@ -618,6 +609,7 @@ class Model(Network):
           updates=self.state_updates + self.metrics_updates,
           name='test_function',
           **self._function_kwargs)
+    self._post_build_cleanup()
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -636,13 +628,25 @@ class Model(Network):
           updates=self.state_updates,
           name='predict_function',
           **kwargs)
+    self._post_build_cleanup()
+
+  def _get_iterator_get_next_tensors(self, iterator):
+    get_next_op = self._iterator_get_next.get(iterator, None)
+    if get_next_op is None:
+      get_next_op = iterator.get_next()
+      self._iterator_get_next[iterator] = get_next_op
+    return get_next_op
 
   def _standardize_user_data(self,
                              x,
                              y=None,
                              sample_weight=None,
                              class_weight=None,
-                             batch_size=None):
+                             batch_size=None,
+                             check_steps=False,
+                             steps_name='steps',
+                             steps=None,
+                             validation_split=0):
     """Runs validation checks on input and target data passed by the user.
 
     Also standardizes the data to lists of arrays, in order.
@@ -653,12 +657,20 @@ class Model(Network):
     This is a purely internal method, subject to refactoring at any time.
 
     Args:
-      x: An array or list of arrays, to be used as input data. If the model
-       has known, named inputs, this could also be a dict mapping input names
-       to the corresponding array.
-      y: An array or list of arrays, to be used as target data. If the model
-       has known, named outputs, this could also be a dict mapping output names
-       to the corresponding array.
+      x: Input data. It could be:
+        - A Numpy array (or array-like), or a list of arrays
+          (in case the model has multiple inputs).
+        - A TensorFlow tensor, or a list of tensors
+          (in case the model has multiple inputs).
+        - A dict mapping input names to the corresponding array/tensors,
+          if the model has named inputs.
+        - A `tf.data` dataset iterator.
+      y: Target data. Like the input data `x`,
+        it could be either Numpy array(s) or TensorFlow tensor(s).
+        It should be consistent with `x` (you cannot have Numpy inputs and
+        tensor targets, or inversely). If `x` is a dataset iterator,
+        `y` should not be specified
+        (since targets will be obtained from the iterator).
       sample_weight: An optional sample-weight array passed by the user to
         weight the importance of each sample in `x`.
       class_weight: An optional class-weight array by the user to
@@ -666,6 +678,16 @@ class Model(Network):
         to, as conveyed by `y`.
       batch_size: Integer batch size. If provided, it is used to run additional
         validation checks on stateful models.
+      check_steps: boolean, True if we want to check for validity of `steps` and
+        False, otherwise. For example, when we are standardizing one batch of
+        data for train_on_batch/predict_on_batch/test_on_batch APIs, `steps`
+        value is not required and we should not check for its validity in these
+        cases.
+      steps_name: The public API's parameter name for `steps`.
+      steps: Integer or `None`. Total number of steps (batches of samples) to
+        execute.
+      validation_split: Float between 0 and 1.
+        Fraction of the training data to be used as validation data.
 
     Returns:
       A tuple of 3 lists: input arrays, target arrays, sample-weight arrays.
@@ -677,8 +699,54 @@ class Model(Network):
       ValueError: In case of invalid user-provided data.
       RuntimeError: If the model was never compiled.
     """
+    if isinstance(x, dataset_ops.Dataset):
+      raise ValueError('You passed a `Dataset` instance to your model (%s), '
+                       'which is not supported. Instead, pass an `Iterator`, '
+                       'which you can obtain e.g. via '
+                       '`dataset.make_one_shot_iterator()` (the exact method '
+                       'to use will depend on your specific dataset).' % x)
+
+    # Validates `steps` argument based on x's type.
+    if check_steps:
+      training_utils.check_steps_argument(x, steps, steps_name)
+
+    is_x_eager_iterator = isinstance(x, iterator_ops.EagerIterator)
+    is_x_iterator = isinstance(x, iterator_ops.Iterator)
+
+    # Validate user inputs when data is given as a dataset iterator.
+    if is_x_iterator or is_x_eager_iterator:
+      training_utils.validate_iterator_input(x, y, sample_weight,
+                                             validation_split)
+
+    # For eager iterators, when we have to process multiple batches of samples,
+    # we will standardize the data when we actually loop over iterator and get
+    # the batches. For now, we just return the iterator as is.
+    if is_x_eager_iterator and steps is not None:
+      return x, y, sample_weight
+
+    # If input data is a dataset iterator in graph mode or if it is an eager
+    # iterator and only one batch of samples is required, we fetch the data
+    # tensors from the iterator and then standardize them.
+    if is_x_iterator or is_x_eager_iterator:
+      try:
+        if is_x_iterator:
+          next_element = self._get_iterator_get_next_tensors(x)
+        else:
+          next_element = x.get_next()
+      except errors.OutOfRangeError:
+        raise RuntimeError('Your dataset iterator ran out of data; '
+                           'Make sure that your dataset can generate '
+                           'required number of samples.')
+
+      if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
+        raise ValueError('Please provide data as a list or tuple of 2 elements '
+                         ' - input and target pair. Received %s' % next_element)
+      x, y = next_element
+
     # First, we build/compile the model on the fly if necessary.
     all_inputs = []
+    is_build_called = False
+    is_compile_called = False
     if not self.built:
       # We need to use `x` to set the model inputs.
       # We type-check that `x` and `y` are either single arrays
@@ -701,6 +769,7 @@ class Model(Network):
       # If values, then in symbolic-mode placeholders will be created
       # to match the value shapes.
       if not self.inputs:
+        is_build_called = True
         self._set_inputs(x)
 
     if y is not None:
@@ -717,6 +786,7 @@ class Model(Network):
             raise ValueError('Please provide as model targets either a single '
                              'array or a list of arrays. '
                              'You passed: y=' + str(y))
+          all_inputs += list(y)
         elif isinstance(y, dict):
           raise ValueError('Please do not pass a dictionary as model targets.')
         else:
@@ -724,14 +794,10 @@ class Model(Network):
             raise ValueError('Please provide as model targets either a single '
                              'array or a list of arrays. '
                              'You passed: y=' + str(y))
+          all_inputs.append(y)
 
         # Typecheck that all inputs are *either* value *or* symbolic.
         # TODO(fchollet): this check could be removed in Eager mode?
-        if y is not None:
-          if isinstance(y, (list, tuple)):
-            all_inputs += list(y)
-          else:
-            all_inputs.append(y)
         if any(tensor_util.is_tensor(v) for v in all_inputs):
           if not all(tensor_util.is_tensor(v) for v in all_inputs):
             raise ValueError('Do not pass inputs that mix Numpy arrays and '
@@ -745,17 +811,22 @@ class Model(Network):
           if not isinstance(y, (list, tuple)):
             y = [y]
           target_tensors = [v for v in y if tensor_util.is_tensor(v)]
+        is_compile_called = True
         self.compile(optimizer=self.optimizer,
                      loss=self.loss,
                      metrics=self.metrics,
                      loss_weights=self.loss_weights,
                      target_tensors=target_tensors)
 
-    # If `x` and `y` were all symbolic, then no model should not be fed any
-    # inputs and targets.
+    # In graph mode, if we had just set inputs and targets as symbolic tensors
+    # by invoking build and compile on the model respectively, we do not have to
+    # feed anything to the model. Model already has input and target data as
+    # part of the graph.
     # Note: in this case, `any` and `all` are equivalent since we disallow
     # mixed symbolic/value inputs.
-    if any(tensor_util.is_tensor(v) for v in all_inputs):
+    if (not context.executing_eagerly() and is_build_called and
+        is_compile_called and
+        any(tensor_util.is_tensor(v) for v in all_inputs)):
       return [], [], []
 
     # What follows is input validation and standardization to list format,
@@ -885,20 +956,16 @@ class Model(Network):
       if isinstance(inputs, list):
         assert len(inputs) == 1
         inputs = inputs[0]
-      self.build(input_shape=(None,) + inputs.shape[1:])
+
+      if tensor_util.is_tensor(inputs):
+        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+      else:
+        input_shape = (None,) + inputs.shape[1:]
+      self.build(input_shape=input_shape)
     elif context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:
       self._symbolic_set_inputs(inputs, training=training)
-
-  def _set_scope(self, scope=None):
-    """Modify the Layer scope creation logic to create ResourceVariables."""
-    super(Model, self)._set_scope(scope=scope)
-    # Subclassed Models create ResourceVariables by default. This makes it
-    # easier to use Models in an eager/graph agnostic way (since eager execution
-    # always uses ResourceVariables).
-    if not self._is_graph_network:
-      self._scope.set_use_resource(True)
 
   def _eager_set_inputs(self, inputs):
     """Set model's input and output specs based on the input data received.
@@ -921,23 +988,29 @@ class Model(Network):
     # On-the-fly setting of model inputs/outputs as DeferredTensors,
     # to keep track of number of inputs and outputs and their ndim.
     if isinstance(inputs, (list, tuple)):
-      dummy_output_values = self.call(
-          [ops.convert_to_tensor(v, dtype=K.floatx()) for v in inputs])
+      if tensor_util.is_tensor(inputs[0]):
+        dummy_output_values = self.call(inputs)
+      else:
+        dummy_output_values = self.call(
+            [ops.convert_to_tensor(v, dtype=K.floatx()) for v in inputs])
       dummy_input_values = list(inputs)
     else:
-      dummy_output_values = self.call(
-          ops.convert_to_tensor(inputs, dtype=K.floatx()))
+      if tensor_util.is_tensor(inputs):
+        dummy_output_values = self.call(inputs)
+      else:
+        dummy_output_values = self.call(
+            ops.convert_to_tensor(inputs, dtype=K.floatx()))
       dummy_input_values = [inputs]
     if isinstance(dummy_output_values, (list, tuple)):
       dummy_output_values = list(dummy_output_values)
     else:
       dummy_output_values = [dummy_output_values]
     self.outputs = [
-        _DeferredTensor(shape=(None for _ in v.shape),
-                        dtype=v.dtype) for v in dummy_output_values]
+        DeferredTensor(shape=(None for _ in v.shape),
+                       dtype=v.dtype) for v in dummy_output_values]
     self.inputs = [
-        _DeferredTensor(shape=(None for _ in v.shape),
-                        dtype=v.dtype) for v in dummy_input_values]
+        DeferredTensor(shape=(None for _ in v.shape),
+                       dtype=v.dtype) for v in dummy_input_values]
     self.input_names = [
         'input_%d' % (i + 1) for i in range(len(dummy_input_values))]
     self.output_names = [
@@ -1044,22 +1117,26 @@ class Model(Network):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
     Arguments:
-        x: Numpy array of training data (if the model has a single input),
-            or list of Numpy arrays (if the model has multiple inputs).
-            If input layers in the model are named, you can also pass a
-            dictionary mapping input names to Numpy arrays.
-            `x` can be `None` (default) if feeding from
-            TensorFlow data tensors.
-        y: Numpy array of target (label) data
-            (if the model has a single output),
-            or list of Numpy arrays (if the model has multiple outputs).
-            If output layers in the model are named, you can also pass a
-            dictionary mapping output names to Numpy arrays.
-            `y` can be `None` (default) if feeding from
-            TensorFlow data tensors.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         batch_size: Integer or `None`.
             Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
+            Do not specify the `batch_size` if your data is in the
+            form of symbolic tensors or dataset iterators (since they generate
+            batches).
         epochs: Integer. Number of epochs to train the model.
             An epoch is an iteration over the entire `x` and `y`
             data provided.
@@ -1080,12 +1157,16 @@ class Model(Network):
             the loss and any model metrics
             on this data at the end of each epoch.
             The validation data is selected from the last samples
-            in the `x` and `y` data provided, before shuffling.
-        validation_data: tuple `(x_val, y_val)` or tuple
-            `(x_val, y_val, val_sample_weights)` on which to evaluate
+            in the `x` and `y` data provided, before shuffling. This argument is
+            not supported when `x` is a dataset iterator.
+        validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
             The model will not be trained on this data.
             `validation_data` will override `validation_split`.
+            `validation_data` could be:
+              - tuple `(x_val, y_val)` of Numpy arrays or tensors
+              - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
+              - dataset iterator
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -1107,7 +1188,8 @@ class Model(Network):
             `(samples, sequence_length)`,
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
-            `sample_weight_mode="temporal"` in `compile()`.
+            `sample_weight_mode="temporal"` in `compile()`. This argument is not
+            supported when `x` is a dataset iterator.
         initial_epoch: Integer.
             Epoch at which to start training
             (useful for resuming a previous training run).
@@ -1148,39 +1230,51 @@ class Model(Network):
       epochs = kwargs.pop('nb_epoch')
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
-    if x is None and y is None and steps_per_epoch is None:
-      raise ValueError('If fitting from data tensors, '
-                       'you should specify the `steps_per_epoch` '
-                       'argument.')
 
-    # Validate user data.
+    # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
         x,
         y,
         sample_weight=sample_weight,
         class_weight=class_weight,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        check_steps=True,
+        steps_name='steps_per_epoch',
+        steps=steps_per_epoch,
+        validation_split=validation_split)
+
     # Prepare validation data.
     if validation_data:
-      if len(validation_data) == 2:
+      if (isinstance(validation_data, iterator_ops.Iterator) or
+          isinstance(validation_data, iterator_ops.EagerIterator)):
+        val_x = validation_data
+        val_y = None
+        val_sample_weight = None
+      elif len(validation_data) == 2:
         val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
         val_sample_weight = None
       elif len(validation_data) == 3:
         val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
       else:
         raise ValueError(
-            'When passing validation_data, '
-            'it must contain 2 (x_val, y_val) '
-            'or 3 (x_val, y_val, val_sample_weights) '
-            'items, however it contains %d items' % len(validation_data))
+            'When passing a `validation_data` argument, '
+            'it must contain either 2 items (x_val, y_val), '
+            'or 3 items (x_val, y_val, val_sample_weights), '
+            'or alternatively it could be a dataset iterator. However we '
+            'received `validation_data=%s`' % validation_data)
 
+      # Validate and standardize validation data.
       val_x, val_y, val_sample_weights = self._standardize_user_data(
           val_x,
           val_y,
           sample_weight=val_sample_weight,
-          batch_size=batch_size)
+          batch_size=batch_size,
+          steps=validation_steps)
 
     elif validation_split and 0. < validation_split < 1.:
+      if training_utils.has_symbolic_tensors(x):
+        raise ValueError('If your data is in the form of symbolic tensors, '
+                         'you cannot use `validation_split`.')
       if hasattr(x[0], 'shape'):
         split_at = int(x[0].shape[0] * (1. - validation_split))
       else:
@@ -1204,6 +1298,7 @@ class Model(Network):
           inputs=x,
           targets=y,
           sample_weights=sample_weights,
+          class_weight=class_weight,
           batch_size=batch_size,
           epochs=epochs,
           verbose=verbose,
@@ -1243,22 +1338,26 @@ class Model(Network):
     Computation is done in batches.
 
     Arguments:
-        x: Numpy array of test data (if the model has a single input),
-            or list of Numpy arrays (if the model has multiple inputs).
-            If input layers in the model are named, you can also pass a
-            dictionary mapping input names to Numpy arrays.
-            `x` can be `None` (default) if feeding from
-            TensorFlow data tensors.
-        y: Numpy array of target (label) data
-            (if the model has a single output),
-            or list of Numpy arrays (if the model has multiple outputs).
-            If output layers in the model are named, you can also pass a
-            dictionary mapping output names to Numpy arrays.
-            `y` can be `None` (default) if feeding from
-            TensorFlow data tensors.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         batch_size: Integer or `None`.
-            Number of samples per evaluation step.
+            Number of samples per gradient update.
             If unspecified, `batch_size` will default to 32.
+            Do not specify the `batch_size` is your data is in the
+            form of symbolic tensors or dataset iterators (since they generate
+            batches).
         verbose: 0 or 1. Verbosity mode.
             0 = silent, 1 = progress bar.
         sample_weight: Optional Numpy array of weights for
@@ -1271,7 +1370,8 @@ class Model(Network):
             `(samples, sequence_length)`,
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
-            `sample_weight_mode="temporal"` in `compile()`.
+            `sample_weight_mode="temporal"` in `compile()`. This argument is not
+            supported when `x` is a dataset iterator.
         steps: Integer or `None`.
             Total number of steps (batches of samples)
             before declaring the evaluation round finished.
@@ -1289,17 +1389,16 @@ class Model(Network):
     # Backwards compatibility.
     if batch_size is None and steps is None:
       batch_size = 32
-    if x is None and y is None and steps is None:
-      raise ValueError('If evaluating from data tensors, '
-                       'you should specify the `steps` '
-                       'argument.')
 
-    # Validate user data.
+    # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
         x,
         y,
         sample_weight=sample_weight,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        check_steps=True,
+        steps_name='steps',
+        steps=steps)
 
     if context.executing_eagerly():
       return training_eager.test_loop(
@@ -1316,9 +1415,18 @@ class Model(Network):
     Computation is done in batches.
 
     Arguments:
-        x: The input data, as a Numpy array
-            (or list of Numpy arrays if the model has multiple outputs).
-        batch_size: Integer. If unspecified, it will default to 32.
+         x: Input samples. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A `tf.data` dataset iterator.
+        batch_size: Integer or `None`.
+            Number of samples per gradient update.
+            If unspecified, `batch_size` will default to 32.
+            Do not specify the `batch_size` is your data is in the
+            form of symbolic tensors or dataset iterators (since they generate
+            batches).
         verbose: Verbosity mode, 0 or 1.
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
@@ -1336,11 +1444,10 @@ class Model(Network):
     # Backwards compatibility.
     if batch_size is None and steps is None:
       batch_size = 32
-    if x is None and steps is None:
-      raise ValueError('If predicting from data tensors, '
-                       'you should specify the `steps` '
-                       'argument.')
-    x, _, _ = self._standardize_user_data(x)
+
+    # Validate and standardize user data.
+    x, _, _ = self._standardize_user_data(
+        x, check_steps=True, steps_name='steps', steps=steps)
 
     if context.executing_eagerly():
       return training_eager.predict_loop(
@@ -1349,27 +1456,33 @@ class Model(Network):
       return training_arrays.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
 
-  def train_on_batch(self, x, y, sample_weight=None, class_weight=None):
+  def train_on_batch(self, x, y=None, sample_weight=None, class_weight=None):
     """Runs a single gradient update on a single batch of data.
 
     Arguments:
-        x: Numpy array of training data,
-            or list of Numpy arrays if the model has multiple inputs.
-            If all inputs in the model are named,
-            you can also pass a dictionary
-            mapping input names to Numpy arrays.
-        y: Numpy array of target data,
-            or list of Numpy arrays if the model has multiple outputs.
-            If all outputs in the model are named,
-            you can also pass a dictionary
-            mapping output names to Numpy arrays.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
             weights to apply to the model's loss for each sample.
             In the case of temporal data, you can pass a 2D array
             with shape (samples, sequence_length),
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
-            sample_weight_mode="temporal" in compile().
+            sample_weight_mode="temporal" in compile(). This argument is not
+            supported when `x` is a dataset iterator.
+
         class_weight: Optional dictionary mapping
             class indices (integers) to
             a weight (float) to apply to the model's loss for the samples
@@ -1387,11 +1500,9 @@ class Model(Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
+    # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
-        x,
-        y,
-        sample_weight=sample_weight,
-        class_weight=class_weight)
+        x, y, sample_weight=sample_weight, class_weight=class_weight)
 
     if context.executing_eagerly():
       outputs = training_eager.train_on_batch(
@@ -1409,27 +1520,32 @@ class Model(Network):
       return outputs[0]
     return outputs
 
-  def test_on_batch(self, x, y, sample_weight=None):
+  def test_on_batch(self, x, y=None, sample_weight=None):
     """Test the model on a single batch of samples.
 
     Arguments:
-        x: Numpy array of test data,
-            or list of Numpy arrays if the model has multiple inputs.
-            If all inputs in the model are named,
-            you can also pass a dictionary
-            mapping input names to Numpy arrays.
-        y: Numpy array of target data,
-            or list of Numpy arrays if the model has multiple outputs.
-            If all outputs in the model are named,
-            you can also pass a dictionary
-            mapping output names to Numpy arrays.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset iterator.
+        y: Target data. Like the input data `x`,
+          it could be either Numpy array(s) or TensorFlow tensor(s).
+          It should be consistent with `x` (you cannot have Numpy inputs and
+          tensor targets, or inversely). If `x` is a dataset iterator,
+          `y` should not be specified
+          (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
             weights to apply to the model's loss for each sample.
             In the case of temporal data, you can pass a 2D array
             with shape (samples, sequence_length),
             to apply a different weight to every timestep of every sample.
             In this case you should make sure to specify
-            sample_weight_mode="temporal" in compile().
+            sample_weight_mode="temporal" in compile(). This argument is not
+            supported when `x` is a dataset iterator.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1440,6 +1556,7 @@ class Model(Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
+    # Validate and standardize user data.
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight)
 
@@ -1462,23 +1579,34 @@ class Model(Network):
     """Returns predictions for a single batch of samples.
 
     Arguments:
-        x: Input samples, as a Numpy array.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A `tf.data` dataset iterator.
 
     Returns:
         Numpy array(s) of predictions.
 
+    Raises:
+        ValueError: In case of mismatch between given number of inputs and
+          expectations of the model.
     """
-    x, _, _ = self._standardize_user_data(x)
-
+    # Validate and standardize user data.
+    inputs, _, _ = self._standardize_user_data(x)
     if context.executing_eagerly():
-      inputs = [ops.convert_to_tensor(val, dtype=K.floatx()) for val in x]
+      if not isinstance(inputs, iterator_ops.EagerIterator):
+        inputs = [
+            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs
+        ]
       return self(inputs)  # pylint: disable=not-callable
 
     if not context.executing_eagerly():
       if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
-        ins = x + [0]
+        ins = inputs + [0]
       else:
-        ins = x
+        ins = inputs
 
       self._make_predict_function()
       outputs = self.predict_function(ins)
@@ -1590,8 +1718,7 @@ class Model(Network):
                             steps_per_epoch=10000, epochs=10)
     ```
     Raises:
-        ValueError: In case the generator yields
-            data in an invalid format.
+        ValueError: In case the generator yields data in an invalid format.
     """
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
@@ -1656,8 +1783,7 @@ class Model(Network):
         ValueError: in case of invalid arguments.
 
     Raises:
-        ValueError: In case the generator yields
-            data in an invalid format.
+        ValueError: In case the generator yields data in an invalid format.
     """
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(
@@ -1710,8 +1836,7 @@ class Model(Network):
         Numpy array(s) of predictions.
 
     Raises:
-        ValueError: In case the generator yields
-            data in an invalid format.
+        ValueError: In case the generator yields data in an invalid format.
     """
     if not self.built and not self._is_graph_network:
       raise NotImplementedError(

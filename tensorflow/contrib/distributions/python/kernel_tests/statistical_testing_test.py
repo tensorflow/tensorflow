@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import statistical_testing as st
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
@@ -129,13 +129,13 @@ class StatisticalTestingTest(test.TestCase):
 
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is not 0.4.
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaisesOpError("Mean confidence interval too high"):
         sess.run(st.assert_true_mean_equal_by_dkwm(
             samples, 0., 1., 0.4, false_fail_rate=1e-6))
 
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is not 0.6.
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaisesOpError("Mean confidence interval too low"):
         sess.run(st.assert_true_mean_equal_by_dkwm(
             samples, 0., 1., 0.6, false_fail_rate=1e-6))
 
@@ -172,7 +172,7 @@ class StatisticalTestingTest(test.TestCase):
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is different from the mean of beta(2, 1).
       beta_high_samples = rng.beta(2, 1, size=num_samples).astype(np.float32)
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaisesOpError("samples1 has a smaller mean"):
         sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
             samples1, 0., 1.,
             beta_high_samples, 0., 1.,
@@ -190,7 +190,7 @@ class StatisticalTestingTest(test.TestCase):
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is different from the mean of beta(1, 2).
       beta_low_samples = rng.beta(1, 2, size=num_samples).astype(np.float32)
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaisesOpError("samples2 has a smaller mean"):
         sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
             samples1, 0., 1.,
             beta_low_samples, 0., 1.,
@@ -198,22 +198,45 @@ class StatisticalTestingTest(test.TestCase):
 
   def test_dkwm_argument_validity_checking(self):
     rng = np.random.RandomState(seed=0)
-    samples = rng.uniform(size=5000).astype(np.float32)
+    samples = rng.uniform(
+        low=[0., 1.], high=[1., 2.], size=(2500, 1, 2)).astype(np.float32)
 
     # Test that the test library complains if the given samples fall
     # outside the purported bounds.
     with self.test_session() as sess:
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaisesOpError("maximum value exceeds expectations"):
         sess.run(st.true_mean_confidence_interval_by_dkwm(
-            samples, 0., 0.5, error_rate=0.5))
-      with self.assertRaises(errors.InvalidArgumentError):
+            samples, [[0., 1.]], [[0.5, 1.5]], error_rate=0.5))
+      with self.assertRaisesOpError("minimum value falls below expectations"):
         sess.run(st.true_mean_confidence_interval_by_dkwm(
-            samples, 0.5, 1., error_rate=0.5))
+            samples, [[0.5, 1.5]], [[1., 2.]], error_rate=0.5))
 
       # But doesn't complain if they don't.
       op = st.true_mean_confidence_interval_by_dkwm(
-          samples, 0., 1., error_rate=0.5)
+          samples, [[0., 1.]], [[1., 2.]], error_rate=0.5)
       _ = sess.run(op)
+
+  def test_do_maximum_mean(self):
+    n = 117
+    envelope = 0.02  # > 2 / n, but < 3 / n
+    rng = np.random.RandomState(seed=8)
+    samples = rng.uniform(size=n).astype(np.float32)
+
+    # Compute the answer in TF using the code under test
+    with self.test_session() as sess:
+      envelope_t = ops.convert_to_tensor(envelope)
+      max_mean = st._do_maximum_mean(samples, envelope_t, 1)
+      max_mean = sess.run(max_mean)
+
+    # Compute the correct answer for this case in numpy.  In this
+    # example, `n` and `envelope` are such that `samples[2]` is the
+    # element that should be taken partially, regardless of the
+    # content of the `samples` array (see algorithm description in
+    # `../ops/statistical_testing.py`).
+    samples = sorted(samples)
+    weight = 1. / n - (envelope - 2. / n)
+    answer = samples[2] * weight + sum(samples[3:]) / n + envelope * 1.
+    self.assertAllClose(max_mean, answer, rtol=1e-9)
 
 
 if __name__ == '__main__':

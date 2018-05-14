@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import os.path
 import re
+import sys
 import time
 import uuid
 
@@ -30,8 +31,10 @@ import six
 
 from google.protobuf import text_format
 
+from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -51,6 +54,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpointable
+from tensorflow.python.training import saveable_object
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
@@ -88,84 +92,8 @@ class BaseSaverBuilder(object):
   Can be extended to create different Ops.
   """
 
-  class SaveSpec(object):
-    """Class used to describe tensor slices that need to be saved."""
-
-    def __init__(self, tensor, slice_spec, name, dtype=None):
-      """Creates a `SaveSpec` object.
-
-      Args:
-        tensor: the tensor to save or callable that produces a tensor to save.
-        slice_spec: the slice to be saved. See `Variable.SaveSliceInfo`.
-        name: the name to save the tensor under.
-        dtype: The data type of the Tensor. Required if `tensor` is callable.
-          Used for error checking in the restore op.
-      """
-      self._tensor = tensor
-      self.slice_spec = slice_spec
-      self.name = name
-      if callable(self._tensor):
-        if dtype is None:
-          raise AssertionError(
-              "When passing a callable `tensor` to a SaveSpec, an explicit "
-              "dtype must be provided.")
-        self.dtype = dtype
-      else:
-        self.dtype = tensor.dtype
-
-    @property
-    def tensor(self):
-      return self._tensor() if callable(self._tensor) else self._tensor
-
-  class SaveableObject(object):
-    """Base class for saving and restoring saveable objects."""
-
-    def __init__(self, op, specs, name):
-      """Creates a `SaveableObject` object.
-
-      Args:
-        op: the "producer" object that this class wraps; it produces a list of
-          tensors to save.  E.g., a "Variable" object saving its backing tensor.
-        specs: a list of SaveSpec, each element of which describes one tensor to
-          save under this object. All Tensors must be on the same device.
-        name: the name to save the object under.
-      """
-      self.op = op
-      self.specs = specs
-      self.name = name
-      self._device = None
-
-    @property
-    def device(self):
-      """The device for SaveSpec Tensors."""
-      # Note that SaveSpec.tensor runs Tensor-gathering ops when executing
-      # eagerly, making this call potentially very expensive.
-      #
-      # TODO(allenl): Consider another way to gather device information. Lower
-      # priority since this property isn't part of the normal save()/restore()
-      # workflow, but does come up when some alternative builders are passed to
-      # the Saver.
-      if self._device is None:
-        self._device = self.specs[0].tensor.device
-      return self._device
-
-    def restore(self, restored_tensors, restored_shapes):
-      """Restores this object from 'restored_tensors'.
-
-      Args:
-        restored_tensors: the tensors that were loaded from a checkpoint
-        restored_shapes: the shapes this object should conform to after
-          restore, or None.
-
-      Returns:
-        An operation that restores the state of the object.
-
-      Raises:
-        ValueError: If the object cannot be restored using the provided
-          parameters.
-      """
-      # pylint: disable=unused-argument
-      raise ValueError("Calling an abstract method.")
+  SaveSpec = saveable_object.SaveSpec
+  SaveableObject = saveable_object.SaveableObject
 
   class VariableSaveable(SaveableObject):
     """SaveableObject implementation that handles Variables."""
@@ -1340,6 +1268,9 @@ class Saver(object):
       self._check_saver_def()
       self._write_version = self.saver_def.version
     self._save_relative_paths = save_relative_paths
+    # For compatibility with object-based checkpoints, we may build a second
+    # Saver to read the renamed keys.
+    self._object_restore_saver = None
 
   def build(self):
     if context.executing_eagerly():
@@ -1794,12 +1725,64 @@ class Saver(object):
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
-    logging.info("Restoring parameters from %s", save_path)
-    if context.executing_eagerly():
-      self._build_eager(save_path, build_save=False, build_restore=True)
-    else:
-      sess.run(self.saver_def.restore_op_name,
-               {self.saver_def.filename_tensor_name: save_path})
+    logging.info("Restoring parameters from %s", compat.as_text(save_path))
+    try:
+      if context.executing_eagerly():
+        self._build_eager(save_path, build_save=False, build_restore=True)
+      else:
+        sess.run(self.saver_def.restore_op_name,
+                 {self.saver_def.filename_tensor_name: save_path})
+    except errors.NotFoundError:
+      exception_type, exception_value, exception_traceback = sys.exc_info()
+      # The checkpoint would not be loaded successfully as is. Try to parse it
+      # as an object-based checkpoint.
+      try:
+        reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+        object_graph_string = reader.get_tensor(
+            checkpointable.OBJECT_GRAPH_PROTO_KEY)
+      except errors.NotFoundError:
+        # This is not an object-based checkpoint, or the checkpoint doesn't
+        # exist. Re-raise the original exception.
+        six.reraise(exception_type, exception_value, exception_traceback)
+      del exception_traceback  # avoid reference cycles
+
+      # This is an object-based checkpoint. We'll print a warning and then do
+      # the restore.
+      logging.warning(
+          "Restoring an object-based checkpoint using a name-based saver. This "
+          "may be somewhat fragile, and will re-build the Saver. Instead, "
+          "consider loading object-based checkpoints using "
+          "tf.train.Checkpoint().")
+      self._restore_from_object_based_checkpoint(
+          sess=sess, save_path=save_path,
+          object_graph_string=object_graph_string)
+
+  def _restore_from_object_based_checkpoint(self, sess, save_path,
+                                            object_graph_string):
+    """A compatibility mode for reading object-based checkpoints."""
+    object_graph_proto = (
+        checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+    object_graph_proto.ParseFromString(object_graph_string)
+    names_to_keys = {}
+    for node in object_graph_proto.nodes:
+      for attribute in node.attributes:
+        names_to_keys[attribute.full_name] = attribute.checkpoint_key
+    saveables = self._builder._ValidateAndSliceInputs(self._var_list)  # pylint: disable=protected-access
+    for saveable in saveables:
+      for spec in saveable.specs:
+        if spec.name not in names_to_keys:
+          raise errors.NotFoundError(
+              None, None,
+              message=("Attempting to load an object-based checkpoint using "
+                       "variable names, but could not find %s in the "
+                       "checkpoint.") % spec.name)
+        spec.name = names_to_keys[spec.name]
+    if self._object_restore_saver is None:
+      # Cache the Saver so multiple restore() calls don't pollute the graph when
+      # graph building. This assumes keys are consistent (i.e. this is the same
+      # type of object-based checkpoint we saw previously).
+      self._object_restore_saver = Saver(saveables)
+    self._object_restore_saver.restore(sess=sess, save_path=save_path)
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):

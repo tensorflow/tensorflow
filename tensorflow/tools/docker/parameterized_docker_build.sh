@@ -284,7 +284,7 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     if sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
         sed -i -e 's/python-dev/python3-dev/g' "${DOCKERFILE}" && \
         sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
-        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
+        sed -i -e 's^# RUN ln -s -f /usr/bin/python3 /usr/bin/python#^RUN ln -s -f /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
     then
       echo "Modified Dockerfile for python version "\
 "${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
@@ -306,7 +306,7 @@ else
         sed -i -e 's^/tmp/pip^/tmp/pip3^g' "${DOCKERFILE}" && \
         sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
         sed -i -e 's/ENV CI_BUILD_PYTHON python/ENV CI_BUILD_PYTHON python3/g' "${DOCKERFILE}" && \
-        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
+        sed -i -e 's^# RUN ln -s -f /usr/bin/python3 /usr/bin/python#^RUN ln -s -f /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
     then
       echo "Modified Dockerfile further for python version ${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
     else

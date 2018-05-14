@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -45,7 +45,7 @@ class RetvalOp : public XlaOpKernel {
       // compilation.
       OP_REQUIRES_OK(ctx, frame->SetRetval(index_, input));
     } else {
-      xla::ComputationDataHandle input = ctx->Input(0);
+      xla::XlaOp input = ctx->Input(0);
       const TensorShape input_shape = ctx->InputShape(0);
 
       auto is_constant = ctx->builder()->IsConstant(input);

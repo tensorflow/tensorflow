@@ -24,6 +24,7 @@ cc_library(
     name = "all_ops",
     deps = [
         ":cross_replica_ops_op_lib",
+        ":heartbeat_ops_op_lib",
         ":host_compute_ops_op_lib",
         ":infeed_ops_op_lib",
         ":outfeed_ops_op_lib",
@@ -46,7 +47,7 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
-        "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -56,6 +57,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -70,6 +72,7 @@ py_library(
 tf_gen_op_libs(
     op_lib_names = [
         "cross_replica_ops",
+        "heartbeat_ops",
         "host_compute_ops",
         "infeed_ops",
         "outfeed_ops",
@@ -88,6 +91,7 @@ tf_custom_op_library(
     name = "python/ops/_tpu_ops.so",
     srcs = [
         "ops/cross_replica_ops.cc",
+        "ops/heartbeat_ops.cc",
         "ops/host_compute_ops.cc",
         "ops/infeed_ops.cc",
         "ops/outfeed_ops.cc",
@@ -105,6 +109,7 @@ tf_gen_op_wrapper_py(
     name = "tpu_ops",
     deps = [
         ":cross_replica_ops_op_lib",
+        ":heartbeat_ops_op_lib",
         ":host_compute_ops_op_lib",
         ":infeed_ops_op_lib",
         ":outfeed_ops_op_lib",
@@ -159,7 +164,10 @@ py_library(
     name = "tpu_lib",
     srcs = [
         "python/tpu/__init__.py",
+        "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
+        "python/tpu/keras_support.py",
+        "python/tpu/session_support.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
         "python/tpu/tpu_feed.py",
@@ -173,6 +181,7 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
+        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -196,7 +205,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:function",
         "//tensorflow/python:functional_ops",
@@ -214,6 +224,7 @@ tf_py_test(
         ":datasets",
     ],
     grpc_enabled = True,
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -227,12 +238,24 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["python/tpu/tpu_sharding_test.py"],
+    additional_deps = [
+        ":tpu",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+    ],
+)
+
+tf_py_test(
+    name = "bfloat16_test",
+    size = "small",
+    srcs = ["python/tpu/bfloat16_test.py"],
     additional_deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",

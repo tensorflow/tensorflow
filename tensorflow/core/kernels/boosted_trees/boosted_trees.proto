@@ -100,6 +100,10 @@ message GrowingMetadata {
   // Number of layers that we have attempted to build. After pruning, these
   // layers might have been removed.
   int64 num_layers_attempted = 2;
+  // The start (inclusive) and end (exclusive) ids of the nodes in the latest
+  // layer of the latest tree.
+  int32 last_layer_node_start = 3;
+  int32 last_layer_node_end = 4;
 }
 
 // TreeEnsemble describes an ensemble of decision trees.

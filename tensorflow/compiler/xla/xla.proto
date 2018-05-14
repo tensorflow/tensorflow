@@ -189,6 +189,12 @@ message DebugOptions {
   // directory.
   string xla_dump_per_pass_hlo_proto_to = 96;
 
+  // Generate calls to MKL-DNN in the CPU backend.
+  bool xla_cpu_use_mkl_dnn = 97;
+
+  // Maximum kernel unroll factor for the GPU backend.
+  int32 xla_gpu_max_kernel_unroll_factor = 98;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
@@ -412,6 +418,11 @@ message ComputeConstantRequest {
   ComputationDataHandle operand = 2;
   Layout output_layout = 3;
   repeated LiteralProto parameters = 4;
+}
+
+message ComputeConstantGraphRequest {
+  HloModuleProto computation = 1;
+  Layout output_layout = 2;
 }
 
 message ComputeConstantResponse {

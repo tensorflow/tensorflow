@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
 

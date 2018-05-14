@@ -94,7 +94,7 @@ static int ExtractGpuWithStreamAll(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = capture.ToString();
+    string ordered_capture = std::string(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -123,7 +123,7 @@ static int ExtractGpuWithoutStream(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = capture.ToString();
+    string ordered_capture = std::string(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -170,7 +170,7 @@ void StepStatsCollector::BuildCostModel(
 
   for (auto& itr : per_device_stats) {
     const StringPiece device_name = itr.first;
-    const int gpu_id = ExtractGpuWithoutStream(device_name.ToString());
+    const int gpu_id = ExtractGpuWithoutStream(std::string(device_name));
     if (gpu_id >= 0) {
       // Reference the gpu hardware stats in addition to the regular stats
       // for this gpu device if they're available.

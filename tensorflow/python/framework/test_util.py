@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import contextlib
 import gc
+import itertools
 import math
 import random
 import re
@@ -464,6 +465,30 @@ def with_c_api(cls):
   return cls
 
 
+def with_c_shapes(cls):
+  """Adds methods that call original methods but with C API shapes enabled.
+
+  Note this enables C shapes in new methods after running the test class's
+  setup method.
+
+  Args:
+    cls: class to decorate
+
+  Returns:
+    cls with new test methods added
+  """
+  # If C shapes are already enabled, don't do anything. Some tests break if the
+  # same test is run twice, so this allows us to turn on the C shapes by default
+  # without breaking these tests.
+  if ops._USE_C_SHAPES:
+    return cls
+
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name + "WithCShapes", enable_c_shapes(value))
+  return cls
+
+
 def assert_no_new_pyobjects_executing_eagerly(f):
   """Decorator for asserting that no new Python objects persist after a test.
 
@@ -615,45 +640,68 @@ def assert_no_garbage_created(f):
 
 
 def run_in_graph_and_eager_modes(__unused__=None,
-                                 graph=None,
                                  config=None,
-                                 use_gpu=False,
-                                 force_gpu=False,
+                                 use_gpu=True,
                                  reset_test=True,
                                  assert_no_eager_garbage=False):
-  """Runs the test in both graph and eager modes.
+  """Execute the decorated test with and without enabling eager execution.
+
+  This function returns a decorator intended to be applied to test methods in
+  a @{tf.test.TestCase} class. Doing so will cause the contents of the test
+  method to be executed twice - once normally, and once with eager execution
+  enabled. This allows unittests to confirm the equivalence between eager
+  and graph execution (see @{tf.enable_eager_execution}).
+
+  For example, consider the following unittest:
+
+  ```python
+  class MyTests(tf.test.TestCase):
+
+    @run_in_graph_and_eager_modes()
+    def test_foo(self):
+      x = tf.constant([1, 2])
+      y = tf.constant([3, 4])
+      z = tf.add(x, y)
+      self.assertAllEqual([4, 6], self.evaluate(z))
+
+  if __name__ == "__main__":
+    tf.test.main()
+  ```
+
+  This test validates that `tf.add()` has the same behavior when computed with
+  eager execution enabled as it does when constructing a TensorFlow graph and
+  executing the `z` tensor in a session.
+
 
   Args:
-    __unused__: Prevents sliently skipping tests.
-    graph: Optional graph to use during the returned session.
+    __unused__: Prevents silently skipping tests.
     config: An optional config_pb2.ConfigProto to use to configure the
-      session.
-    use_gpu: If True, attempt to run as many ops as possible on GPU.
-    force_gpu: If True, pin all ops to `/device:GPU:0`.
-    reset_test: If True, tearDown and SetUp the test case again.
+      session when executing graphs.
+    use_gpu: If True, attempt to run as many operations as possible on GPU.
+    reset_test: If True, tearDown and SetUp the test case between the two
+      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
-      the test in eager mode. This will fail if there are reference cycles
-      (e.g. a = []; a.append(a)). Off by default because some tests may create
-      garbage for legitimate reasons (e.g. they define a class which inherits
-      from `object`), and because DEBUG_SAVEALL is sticky in some Python
-      interpreters (meaning that tests which rely on objects being collected
-      elsewhere in the unit test file will not work). Additionally, checks that
-      nothing still has a reference to Tensors that the test allocated.
+      the test with eager execution enabled. This will fail if there are
+      reference cycles (e.g. a = []; a.append(a)). Off by default because some
+      tests may create garbage for legitimate reasons (e.g. they define a class
+      which inherits from `object`), and because DEBUG_SAVEALL is sticky in some
+      Python interpreters (meaning that tests which rely on objects being
+      collected elsewhere in the unit test file will not work). Additionally,
+      checks that nothing still has a reference to Tensors that the test
+      allocated.
   Returns:
-    Returns a decorator that will run the decorated test function
-        using both a graph and using eager execution.
+    Returns a decorator that will run the decorated test method twice:
+    once by constructing and executing a graph in a session and once with
+    eager execution enabled.
   """
 
   assert not __unused__, "Add () after run_in_graph_and_eager_modes."
 
   def decorator(f):
-    """Test method decorator."""
-
     def decorated(self, **kwargs):
-      """Decorated the test method."""
       with context.graph_mode():
-        with self.test_session(graph, config, use_gpu, force_gpu):
+        with self.test_session(use_gpu=use_gpu):
           f(self, **kwargs)
 
       if reset_test:
@@ -663,27 +711,20 @@ def run_in_graph_and_eager_modes(__unused__=None,
         self._tempdir = None
         self.setUp()
 
-      def run_eager_mode(self, **kwargs):
-        if force_gpu:
-          gpu_name = gpu_device_name()
-          if not gpu_name:
-            gpu_name = "/device:GPU:0"
-          with context.device(gpu_name):
-            f(self)
-        elif use_gpu:
-          # TODO(xpan): Support softplacement and gpu by default when available.
-          f(self, **kwargs)
-        else:
-          with context.device("/device:CPU:0"):
+      def run_eagerly(self, **kwargs):
+        if not use_gpu:
+          with ops.device("/cpu:0"):
             f(self, **kwargs)
+        else:
+          f(self, **kwargs)
 
       if assert_no_eager_garbage:
-        run_eager_mode = assert_no_new_tensors(
-            assert_no_garbage_created(run_eager_mode))
+        run_eagerly = assert_no_new_tensors(
+            assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
         with ops.Graph().as_default():
-          run_eager_mode(self, **kwargs)
+          run_eagerly(self, **kwargs)
 
     return decorated
 
@@ -974,6 +1015,8 @@ class TensorFlowTestCase(googletest.TestCase):
       config.graph_options.optimizer_options.opt_level = -1
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     if graph is None:
@@ -1170,8 +1213,14 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
+    # If a is a tensor then convert it to ndarray
+    if isinstance(a, ops.Tensor):
+      if isinstance(a, ops._EagerTensorBase):
+        return a.numpy()
+      else:
+        a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
-      a = np.array(a)
+      return np.array(a)
     return a
 
   def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
@@ -1244,8 +1293,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # Try to directly compare a, b as ndarrays; if not work, then traverse
       # through the sequence, which is more expensive.
       try:
-        a_as_ndarray = np.array(a)
-        b_as_ndarray = np.array(b)
+        a_as_ndarray = self._GetNdArray(a)
+        b_as_ndarray = self._GetNdArray(b)
         self._assertArrayLikeAllClose(
             a_as_ndarray,
             b_as_ndarray,
@@ -1280,16 +1329,18 @@ class TensorFlowTestCase(googletest.TestCase):
         raise
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
-    """Asserts that two structures of numpy arrays, have near values.
+    """Asserts that two structures of numpy arrays or Tensors, have near values.
 
     `a` and `b` can be arbitrarily nested structures. A layer of a nested
     structure can be a `dict`, `namedtuple`, `tuple` or `list`.
 
     Args:
       a: The expected numpy `ndarray`, or anything that can be converted into a
-          numpy `ndarray`, or any arbitrarily nested of structure of these.
+         numpy `ndarray` (including Tensor), or any arbitrarily nested of
+         structure of these.
       b: The actual numpy `ndarray`, or anything that can be converted into a
-          numpy `ndarray`, or any arbitrarily nested of structure of these.
+         numpy `ndarray` (including Tensor), or any arbitrarily nested of
+         structure of these.
       rtol: relative tolerance.
       atol: absolute tolerance.
       msg: Optional message to report on failure.
@@ -1349,8 +1400,26 @@ class TensorFlowTestCase(googletest.TestCase):
 
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
+  def assertNotAllClose(self, a, b, **kwargs):
+    """Assert that two numpy arrays, or or Tensors, do not have near values.
+
+    Args:
+      a: the first value to compare.
+      b: the second value to compare.
+      **kwargs: additional keyword arguments to be passed to the underlying
+        `assertAllClose` call.
+
+    Raises:
+      AssertionError: If `a` and `b` are unexpectedly close at all elements.
+    """
+    try:
+      self.assertAllClose(a, b, **kwargs)
+    except AssertionError:
+      return
+    raise AssertionError("The two values are close at all elements")
+
   def assertAllEqual(self, a, b, msg=None):
-    """Asserts that two numpy arrays have the same values.
+    """Asserts that two numpy arrays or Tensors have the same values.
 
     Args:
       a: the expected numpy ndarray or anything can be converted to one.
@@ -1364,7 +1433,9 @@ class TensorFlowTestCase(googletest.TestCase):
                      " %s" % (a.shape, b.shape, msg))
     same = (a == b)
 
-    if a.dtype == np.float32 or a.dtype == np.float64:
+    if (a.dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     if not np.all(same):
       # Prints more details than np.testing.assert_array_equal.
@@ -1379,6 +1450,174 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
       np.testing.assert_array_equal(a, b, err_msg=msg)
+
+  def assertAllGreater(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertGreater(np.min(a), comparison_target)
+
+  def assertAllLess(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertLess(np.max(a), comparison_target)
+
+  def assertAllGreaterEqual(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertGreaterEqual(np.min(a), comparison_target)
+
+  def assertAllLessEqual(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertLessEqual(np.max(a), comparison_target)
+
+  def _format_subscripts(self, subscripts, value, limit=10, indent=2):
+    """Generate a summary of ndarray subscripts as a list of str.
+
+    If limit == N, this method will print up to the first N subscripts on
+    separate
+    lines. A line of ellipses (...) will be appended at the end if the number of
+    subscripts exceeds N.
+
+    Args:
+      subscripts: The tensor (np.ndarray) subscripts, of the same format as
+        np.where()'s return value, i.e., a tuple of arrays with each array
+        corresponding to a dimension. E.g., (array([1, 1]), array([0, 1])).
+      value: (np.ndarray) value of the tensor.
+      limit: (int) The maximum number of indices to print.
+      indent: (int) Number of characters to indent at the beginning of each
+        line.
+
+    Returns:
+      (list of str) the multi-line representation of the subscripts and values,
+        potentially with omission at the end.
+    """
+    lines = []
+    subscripts = np.transpose(subscripts)
+    prefix = " " * indent
+    for subscript in itertools.islice(subscripts, limit):
+      lines.append(prefix + str(subscript) + " : " +
+                   str(value[tuple(subscript)]))
+    if len(subscripts) > limit:
+      lines.append(prefix + "...")
+    return lines
+
+  def assertAllInRange(self,
+                       target,
+                       lower_bound,
+                       upper_bound,
+                       open_lower_bound=False,
+                       open_upper_bound=False):
+    """Assert that elements in a Tensor are all in a given range.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      lower_bound: lower bound of the range
+      upper_bound: upper bound of the range
+      open_lower_bound: (`bool`) whether the lower bound is open (i.e., > rather
+        than the default >=)
+      open_upper_bound: (`bool`) whether the upper bound is open (i.e., < rather
+        than the default <=)
+
+    Raises:
+      AssertionError:
+        if the value tensor does not have an ordered numeric type (float* or
+          int*), or
+        if there are nan values, or
+        if any of the elements do not fall in the specified range.
+    """
+    target = self._GetNdArray(target)
+    if not (np.issubdtype(target.dtype, np.float) or
+            np.issubdtype(target.dtype, np.integer)):
+      raise AssertionError(
+          "The value of %s does not have an ordered numeric type, instead it "
+          "has type: %s" % (target, target.dtype))
+
+    nan_subscripts = np.where(np.isnan(target))
+    if np.size(nan_subscripts):
+      raise AssertionError(
+          "%d of the %d element(s) are NaN. "
+          "Subscripts(s) and value(s) of the NaN element(s):\n" %
+          (len(nan_subscripts[0]), np.size(target)) +
+          "\n".join(self._format_subscripts(nan_subscripts, target)))
+
+    range_str = (("(" if open_lower_bound else "[") + str(lower_bound) + ", " +
+                 str(upper_bound) + (")" if open_upper_bound else "]"))
+
+    violations = (
+        np.less_equal(target, lower_bound)
+        if open_lower_bound else np.less(target, lower_bound))
+    violations = np.logical_or(
+        violations,
+        np.greater_equal(target, upper_bound)
+        if open_upper_bound else np.greater(target, upper_bound))
+    violation_subscripts = np.where(violations)
+    if np.size(violation_subscripts):
+      raise AssertionError(
+          "%d of the %d element(s) are outside the range %s. " %
+          (len(violation_subscripts[0]), np.size(target), range_str) +
+          "Subscript(s) and value(s) of the offending elements:\n" +
+          "\n".join(self._format_subscripts(violation_subscripts, target)))
+
+  def assertAllInSet(self, target, expected_set):
+    """Assert that elements of a Tensor are all in a given closed set.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      expected_set: (`list`, `tuple` or `set`) The closed set that the elements
+        of the value of `target` are expected to fall into.
+
+    Raises:
+      AssertionError:
+        if any of the elements do not fall into `expected_set`.
+    """
+    target = self._GetNdArray(target)
+
+    # Elements in target that are not in expected_set.
+    diff = np.setdiff1d(target.flatten(), list(expected_set))
+    if np.size(diff):
+      raise AssertionError("%d unique element(s) are not in the set %s: %s" %
+                           (np.size(diff), expected_set, diff))
+
+  def assertDTypeEqual(self, target, expected_dtype):
+    """Assert ndarray data type is equal to expected.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      expected_dtype: Expected data type.
+    """
+    target = self._GetNdArray(target)
+    if not isinstance(target, list):
+      arrays = [target]
+    for arr in arrays:
+      self.assertEqual(arr.dtype, expected_dtype)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager

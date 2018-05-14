@@ -1284,6 +1284,32 @@ class ZeroInitializerOpTest(test.TestCase):
                 [10, 20], dtype=dtype), use_init)
 
 
+class ZeroVarInitializerOpTest(test.TestCase):
+
+  def _testZeroVarInitializer(self, shape, initializer, use_init):
+    var = resource_variable_ops.ResourceVariable(initializer)
+    var_zero = variables_lib2.zero_initializer(var)
+
+    with self.test_session() as sess:
+      with self.assertRaisesOpError('Error while reading resource variable'):
+        var.eval()
+      if use_init:
+        sess.run(var.initializer)
+        with self.assertRaisesOpError('input is already initialized'):
+          var_zero.eval()
+        self.assertAllClose(np.ones(shape), var.eval())
+      else:
+        var_zero.eval()
+        self.assertAllClose(np.zeros(shape), var.eval())
+
+  def testZeroVarInitializer(self):
+    for dtype in (dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64):
+      for use_init in (False, True):
+        self._testZeroVarInitializer([10, 20],
+                                     array_ops.ones([10, 20], dtype=dtype),
+                                     use_init)
+
+
 class FilterVariablesTest(test.TestCase):
 
   def setUp(self):

@@ -58,6 +58,12 @@ class HashTableOpTest(test.TestCase):
       result = output.eval()
       self.assertAllEqual([0, 1, -1], result)
 
+      exported_keys_tensor, exported_values_tensor = table.export()
+
+      self.assertItemsEqual([b"brain", b"salad", b"surgery"],
+                            exported_keys_tensor.eval())
+      self.assertItemsEqual([0, 1, 2], exported_values_tensor.eval())
+
   def testHashTableFindHighRank(self):
     with self.test_session():
       default_val = -1

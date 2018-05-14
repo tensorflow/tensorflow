@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -96,7 +97,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
                     << SummarizeOpDef(new_op_def);
     } else {
-      EXPECT_TRUE(StringPiece(status.error_message()).contains(error))
+      EXPECT_TRUE(str_util::StrContains(status.error_message(), error))
           << status << " does not contain " << error;
     }
   }
@@ -118,7 +119,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeNodeDef(*node_def());
     } else {
       EXPECT_TRUE(
-          StringPiece(status.error_message()).contains(validation_error))
+          str_util::StrContains(status.error_message(), validation_error))
           << status << " does not contain " << validation_error;
     }
 
@@ -179,7 +180,7 @@ class OpCompatibilityTest : public OpsTestBase {
                     << SummarizeOpDef(*new_op_def);
     } else {
       EXPECT_TRUE(
-          StringPiece(status.error_message()).contains(compatibility_error))
+          str_util::StrContains(status.error_message(), compatibility_error))
           << status << " does not contain " << compatibility_error;
     }
   }

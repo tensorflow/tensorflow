@@ -24,7 +24,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+
+
+# Key where the object graph proto is saved in a TensorBundle
+OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
+
 
 # A key indicating a variable's value in an object's checkpointed Tensors
 # (Checkpointable._gather_saveables_for_checkpoint). If this is the only key and
@@ -94,12 +100,13 @@ class _CheckpointPosition(object):
 
   def restore(self, checkpointable):
     """Restore this value into `checkpointable`."""
-    if self.bind_object(checkpointable):
-      # This object's correspondence with a checkpointed object is new, so
-      # process deferred restorations for it and its dependencies.
-      restore_ops = checkpointable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
-      if restore_ops:
-        self._checkpoint.restore_ops.extend(restore_ops)
+    with ops.init_scope():
+      if self.bind_object(checkpointable):
+        # This object's correspondence with a checkpointed object is new, so
+        # process deferred restorations for it and its dependencies.
+        restore_ops = checkpointable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
+        if restore_ops:
+          self._checkpoint.restore_ops.extend(restore_ops)
 
   def bind_object(self, checkpointable):
     """Set a checkpoint<->object correspondence and process slot variables.
@@ -113,6 +120,7 @@ class _CheckpointPosition(object):
       AssertionError: If another object is already bound to the `Object` proto.
     """
     checkpoint = self.checkpoint
+    checkpoint.all_python_objects.add(checkpointable)
     current_assignment = checkpoint.object_by_proto_id.get(self._proto_id, None)
     if current_assignment is None:
       checkpoint.object_by_proto_id[self._proto_id] = checkpointable
@@ -151,12 +159,12 @@ class _CheckpointPosition(object):
       # consistent (if the dependency DAG is not a tree then there are
       # multiple paths to the same object).
       if current_assignment is not checkpointable:
-        raise AssertionError(
-            ("Unable to load the checkpoint into this object graph. Either "
-             "the Checkpointable object references in the Python program "
-             "have changed in an incompatible way, or the checkpoint was "
-             "generated in an incompatible program.\n\nTwo checkpoint "
-             "references resolved to different objects (%s and %s).")
+        logging.warning(
+            ("Inconsistent references when loading the checkpoint into this "
+             "object graph. Either the Checkpointable object references in the "
+             "Python program have changed in an incompatible way, or the "
+             "checkpoint was generated in an incompatible program.\n\nTwo "
+             "checkpoint references resolved to different objects (%s and %s).")
             % (current_assignment, checkpointable))
       return False  # Not a new assignment
 
@@ -409,28 +417,29 @@ class CheckpointableBase(object):
            "Checkpointable._add_variable called to create another with "
            "that name. Variable names must be unique within a Checkpointable "
            "object.") % (name,))
-    if context.executing_eagerly():
-      # If this is a variable with a single Tensor stored in the checkpoint, we
-      # can set that value as an initializer rather than initializing and then
-      # assigning (when executing eagerly). This call returns None if there is
-      # nothing to restore.
-      checkpoint_initializer = self._preload_simple_restoration(
-          name=name, shape=shape)
-    else:
-      checkpoint_initializer = None
-    if (checkpoint_initializer is not None
-        and not (
-            isinstance(initializer, CheckpointInitialValue)
-            and initializer.restore_uid > checkpoint_initializer.restore_uid)):
-      # If multiple Checkpointable objects are "creating" the same variable via
-      # the magic of custom getters, the one with the highest restore UID (the
-      # one called last) has to make the final initializer. If another custom
-      # getter interrupts this process by overwriting the initializer, then
-      # we'll catch that when we call _track_checkpointable. So this is "best
-      # effort" to set the initializer with the highest restore UID.
-      initializer = checkpoint_initializer
-      shape = None
-
+    with ops.init_scope():
+      if context.executing_eagerly():
+        # If this is a variable with a single Tensor stored in the checkpoint,
+        # we can set that value as an initializer rather than initializing and
+        # then assigning (when executing eagerly). This call returns None if
+        # there is nothing to restore.
+        checkpoint_initializer = self._preload_simple_restoration(
+            name=name, shape=shape)
+      else:
+        checkpoint_initializer = None
+      if (checkpoint_initializer is not None
+          and not (
+              isinstance(initializer, CheckpointInitialValue)
+              and (initializer.restore_uid
+                   > checkpoint_initializer.restore_uid))):
+        # If multiple Checkpointable objects are "creating" the same variable
+        # via the magic of custom getters, the one with the highest restore UID
+        # (the one called last) has to make the final initializer. If another
+        # custom getter interrupts this process by overwriting the initializer,
+        # then we'll catch that when we call _track_checkpointable. So this is
+        # "best effort" to set the initializer with the highest restore UID.
+        initializer = checkpoint_initializer
+        shape = None
     new_variable = getter(
         name=name, shape=shape, dtype=dtype, initializer=initializer,
         **kwargs_for_getter)
@@ -650,6 +659,31 @@ class CheckpointableBase(object):
     return {}
 
 
+class NoDependency(object):
+  """Allows attribute assignment to `Checkpointable` objects with no dependency.
+
+  Example usage:
+  ```python
+  obj = Checkpointable()
+  obj.has_dependency = tf.Variable(0., name="dep")
+  obj.no_dependency = NoDependency(tf.Variable(1., name="nodep"))
+  assert obj.no_dependency.name == "nodep:0"
+  ```
+
+  `obj` in this example has a dependency on the variable "dep", and both
+  attributes contain un-wrapped `Variable` objects.
+
+  `NoDependency` also works with `tf.keras.Model`, but only for checkpoint
+  dependencies: wrapping a `Layer` in `NoDependency` will assign the (unwrapped)
+  `Layer` to the attribute without a checkpoint dependency, but the `Model` will
+  still track the `Layer` (so it will appear in `Model.layers`, and its
+  variables will appear in `Model.variables`).
+  """
+
+  def __init__(self, value):
+    self.value = value
+
+
 class Checkpointable(CheckpointableBase):
   """Manages dependencies on other objects.
 
@@ -682,8 +716,11 @@ class Checkpointable(CheckpointableBase):
     """Support self.foo = checkpointable syntax."""
     # Perform the attribute assignment, and potentially call other __setattr__
     # overrides such as that for tf.keras.Model.
+    no_dependency = isinstance(value, NoDependency)
+    if no_dependency:
+      value = value.value
     super(Checkpointable, self).__setattr__(name, value)
-    if isinstance(value, CheckpointableBase):
+    if not no_dependency and isinstance(value, CheckpointableBase):
       self._track_checkpointable(
           value, name=name,
           # Allow the user to switch the Checkpointable which is tracked by this

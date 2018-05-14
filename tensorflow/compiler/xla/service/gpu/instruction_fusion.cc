@@ -48,6 +48,19 @@ bool IsFusile(const HloInstruction& hlo) {
 
 }  // namespace
 
+/*static*/ bool GpuInstructionFusion::IsExpensive(
+    const HloInstruction& instruction) {
+  switch (instruction.opcode()) {
+    // We say that floating-point division is cheap on the GPU.
+    case HloOpcode::kDivide:
+      return !ShapeUtil::ElementIsFloating(instruction.shape()) &&
+             InstructionFusion::IsExpensive(instruction);
+
+    default:
+      return InstructionFusion::IsExpensive(instruction);
+  }
+}
+
 bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);

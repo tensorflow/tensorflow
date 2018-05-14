@@ -550,6 +550,15 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
   return control_inputs;
 }
 
+std::vector<TF_Operation*> TF_OperationGetControlOutputs_wrapper(
+    TF_Operation* oper) {
+  std::vector<TF_Operation*> control_outputs(
+      TF_OperationNumControlOutputs(oper));
+  TF_OperationGetControlOutputs(oper, control_outputs.data(),
+                                control_outputs.size());
+  return control_outputs;
+}
+
 std::vector<const char*> TF_OperationOutputConsumers_wrapper(
     TF_Output oper_out) {
   int num_consumers = TF_OperationOutputNumConsumers(oper_out);
@@ -618,15 +627,6 @@ void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
     return;
   }
   TF_GraphSetTensorShape(graph, output, dims.data(), dims.size(), status);
-}
-
-std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
-                                                    TF_Output output,
-                                                    int num_dims,
-                                                    TF_Status* status) {
-  std::vector<int64_t> dims(num_dims);
-  TF_GraphGetTensorShape(graph, output, dims.data(), num_dims, status);
-  return dims;
 }
 
 std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(

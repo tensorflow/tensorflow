@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -32,14 +33,15 @@ GTEST_API_ int main(int argc, char** argv) {
   // tests.
   for (int i = 1; i < argc; i++) {
     tensorflow::StringPiece arg(argv[i]);
-    if (arg == "--benchmarks" || arg.starts_with("--benchmarks=")) {
+    if (arg == "--benchmarks" ||
+        tensorflow::str_util::StartsWith(arg, "--benchmarks=")) {
       const char* pattern = nullptr;
-      if (arg.starts_with("--benchmarks=")) {
+      if (tensorflow::str_util::StartsWith(arg, "--benchmarks=")) {
         pattern = argv[i] + strlen("--benchmarks=");
       } else {
         // Handle flag of the form '--benchmarks foo' (no '=').
         if (i + 1 >= argc ||
-            tensorflow::StringPiece(argv[i + 1]).starts_with("--")) {
+            tensorflow::str_util::StartsWith(argv[i + 1], "--")) {
           LOG(ERROR) << "--benchmarks flag requires an argument.";
           return 2;
         }

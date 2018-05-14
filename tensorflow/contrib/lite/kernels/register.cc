@@ -60,6 +60,7 @@ TfLiteRegistration* Register_LSTM();
 TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_PAD();
+TfLiteRegistration* Register_PADV2();
 TfLiteRegistration* Register_RESHAPE();
 TfLiteRegistration* Register_RESIZE_BILINEAR();
 TfLiteRegistration* Register_SKIP_GRAM();
@@ -77,6 +78,15 @@ TfLiteRegistration* Register_CAST();
 TfLiteRegistration* Register_DEQUANTIZE();
 TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_MAXIMUM();
+TfLiteRegistration* Register_MINIMUM();
+TfLiteRegistration* Register_ARG_MAX();
+TfLiteRegistration* Register_GREATER();
+TfLiteRegistration* Register_GREATER_EQUAL();
+TfLiteRegistration* Register_LESS();
+TfLiteRegistration* Register_LESS_EQUAL();
+TfLiteRegistration* Register_FLOOR();
+TfLiteRegistration* Register_NEG();
+TfLiteRegistration* Register_SELECT();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -116,6 +126,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM());
   AddBuiltin(BuiltinOperator_PAD, Register_PAD());
+  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
@@ -135,6 +146,15 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE());
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
+  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
+  AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
+  AddBuiltin(BuiltinOperator_GREATER, Register_GREATER());
+  AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
+  AddBuiltin(BuiltinOperator_LESS, Register_LESS());
+  AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL());
+  AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
+  AddBuiltin(BuiltinOperator_NEG, Register_NEG());
+  AddBuiltin(BuiltinOperator_SELECT, Register_SELECT());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

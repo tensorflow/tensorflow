@@ -28,6 +28,7 @@ from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -50,18 +51,15 @@ from tensorflow.python.util import compat
 
 class IteratorTest(test.TestCase):
 
-  def testAttemptingGradientsRaiseExceptions(self):
-    component = constant_op.constant([1])
-    side = constant_op.constant(0)
+  def testNoGradients(self):
+    component = constant_op.constant([1.])
+    side = constant_op.constant(0.)
     add = lambda x: x + side
     dataset = dataset_ops.Dataset.from_tensor_slices(component).map(add)
     value = dataset.make_one_shot_iterator().get_next()
-    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
-      gradients_impl.gradients(value, component)
-    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
-      gradients_impl.gradients(value, side)
-    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
-      gradients_impl.gradients(value, [component, side])
+    self.assertIsNone(gradients_impl.gradients(value, component)[0])
+    self.assertIsNone(gradients_impl.gradients(value, side)[0])
+    self.assertIsNone(gradients_impl.gradients(value, [component, side])[0])
 
   def testCapturingStateInOneShotRaisesException(self):
     var = variables.Variable(37.0, name="myvar")
@@ -716,6 +714,14 @@ class IteratorTest(test.TestCase):
     for warning in w:
       self.assertTrue(
           iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE in str(warning.message))
+
+  def testEagerIteratorAsync(self):
+    with context.eager_mode(), context.execution_mode(context.ASYNC):
+      val = 0
+      dataset = dataset_ops.Dataset.range(10)
+      for foo in dataset:
+        self.assertEqual(val, foo.numpy())
+        val += 1
 
 
 if __name__ == "__main__":

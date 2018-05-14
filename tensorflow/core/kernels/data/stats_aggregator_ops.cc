@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/data/stats_aggregator.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 
 #include <memory>
 
@@ -38,6 +38,11 @@ class StatsAggregatorImpl : public StatsAggregator {
     }
   }
 
+  void AddScalar(const string& name, float value) override {
+    mutex_lock l(mu_);
+    scalars_[name] = value;
+  }
+
   void EncodeToProto(Summary* out_summary) override {
     mutex_lock l(mu_);
     for (const auto& pair : histograms_) {
@@ -49,11 +54,17 @@ class StatsAggregatorImpl : public StatsAggregator {
       histogram.EncodeToProto(value->mutable_histo(),
                               false /* doesn't preserve zero buckets */);
     }
+    for (const auto& pair : scalars_) {
+      Summary::Value* value = out_summary->add_value();
+      value->set_tag(pair.first);
+      value->set_simple_value(pair.second);
+    }
   }
 
  private:
   mutex mu_;
   std::unordered_map<string, histogram::Histogram> histograms_ GUARDED_BY(mu_);
+  std::unordered_map<string, float> scalars_ GUARDED_BY(mu_);
   TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorImpl);
 };
 

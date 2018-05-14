@@ -339,11 +339,11 @@ Status BuildComputation(
     const std::vector<int>& arg_cores,
     const std::vector<XlaExpression>& retvals,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
-    bool return_updated_values_for_all_resources,
-    xla::ComputationBuilder* builder, xla::Computation* computation,
-    int* num_computation_outputs, int* num_nonconst_outputs,
+    bool return_updated_values_for_all_resources, xla::XlaBuilder* builder,
+    xla::XlaComputation* computation, int* num_computation_outputs,
+    int* num_nonconst_outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
-  std::vector<xla::ComputationDataHandle> elems;
+  std::vector<xla::XlaOp> elems;
   elems.reserve(retvals.size());
   for (const XlaExpression& retval : retvals) {
     if (!retval.has_constant_value()) {
@@ -376,14 +376,12 @@ Status BuildComputation(
     const XlaCompiler::Argument& arg = args[resource->arg_num()];
     const int core = arg_cores[resource->arg_num()];
     DCHECK_LT(resource->arg_num(), arg_cores.size());
-    bool modified =
-        resource->value().handle() != resource->initial_value().handle();
+    bool modified = resource->value() != resource->initial_value();
     // TensorArray gradients were modified if their values changed or there are
     // any newly created gradients.
     for (const auto& grad : resource->tensor_array_gradients()) {
       modified = modified ||
-                 grad.second->value().handle() !=
-                     grad.second->initial_value().handle() ||
+                 grad.second->value() != grad.second->initial_value() ||
                  arg.tensor_array_gradients.count(grad.first) == 0;
     }
     if (return_updated_values_for_all_resources || modified) {
@@ -398,11 +396,11 @@ Status BuildComputation(
       }
 
       // Request that the value be returned on a specific core.
-      xla::ScopedShardingAssignment assign_sharding(
+      xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
 
-      xla::ComputationDataHandle handle;
+      xla::XlaOp handle;
       TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));
 
       // Since we can't change the sharding metadata of <value> as this point,
@@ -421,7 +419,7 @@ Status BuildComputation(
   builder->Tuple(elems);
   builder->ClearOpMetadata();
 
-  xla::StatusOr<xla::Computation> computation_status = builder->Build();
+  xla::StatusOr<xla::XlaComputation> computation_status = builder->Build();
   if (!computation_status.ok()) {
     return computation_status.status();
   }
@@ -435,7 +433,7 @@ Status BuildComputation(
 // `args` are the arguments to the computation.
 Status XlaCompiler::BuildArguments(
     const Graph& graph, const std::vector<XlaCompiler::Argument>& args,
-    bool use_tuple_arg, xla::ComputationBuilder* builder, XlaContext* context,
+    bool use_tuple_arg, xla::XlaBuilder* builder, XlaContext* context,
     std::vector<int>* arg_cores, std::vector<XlaExpression>* arg_expressions,
     std::vector<int>* input_mapping, std::vector<xla::Shape>* input_shapes,
     bool is_entry_computation) {
@@ -461,8 +459,7 @@ Status XlaCompiler::BuildArguments(
         // alias.
         XlaResource* resource;
         TF_RETURN_IF_ERROR(context->CreateResource(
-            arg.resource_kind, i, arg.name, arg.type, arg.shape,
-            xla::ComputationDataHandle(),
+            arg.resource_kind, i, arg.name, arg.type, arg.shape, xla::XlaOp(),
             /*tensor_array_size=*/arg.tensor_array_size,
             /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
         arg_expression.set_resource(resource);
@@ -531,9 +528,9 @@ Status XlaCompiler::BuildArguments(
   builder->SetOpMetadata(arg_metadata);
 
   // Build parameter handles for non-constant arguments.
-  std::vector<xla::ComputationDataHandle> arg_handles(input_mapping->size());
+  std::vector<xla::XlaOp> arg_handles(input_mapping->size());
   if (use_tuple_arg) {
-    xla::ComputationDataHandle tuple;
+    xla::XlaOp tuple;
     if (is_entry_computation) {
       xla::OpSharding tuple_sharding;
       tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
@@ -544,15 +541,15 @@ Status XlaCompiler::BuildArguments(
             core == -1 ? xla::sharding_builder::AssignDevice(root_device)
                        : xla::sharding_builder::AssignDevice(core);
       }
-      xla::ScopedShardingAssignment assign_tuple_sharding(builder,
-                                                          tuple_sharding);
+      xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
+                                                             tuple_sharding);
       tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
     } else {
       tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
     }
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
-      xla::ScopedShardingAssignment assign_sharding(
+      xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = builder->GetTupleElement(tuple, i);
@@ -560,7 +557,7 @@ Status XlaCompiler::BuildArguments(
   } else {
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
-      xla::ScopedShardingAssignment assign_sharding(
+      xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] =
@@ -647,7 +644,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  std::unique_ptr<Graph> graph,
                                  const std::vector<XlaCompiler::Argument>& args,
                                  CompilationResult* result) {
-  VLOG(1) << "Executing graph symbolically to populate ComputationBuilder.";
+  VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
@@ -663,7 +660,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   TF_RETURN_IF_ERROR(
       FunctionalizeControlFlow(graph.get(), local_flib_def_.get()));
 
-  xla::ComputationBuilder builder(client(), name);
+  xla::XlaBuilder builder(name);
   XlaContext* context =
       new XlaContext(this, &builder, options_.allow_cpu_custom_calls,
                      options.resolve_compile_time_constants,
@@ -683,7 +680,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   int num_nonconst_outputs;
   int num_computation_outputs;
-  result->computation = std::make_shared<xla::Computation>();
+  result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(BuildComputation(
       args, arg_cores, context->retvals(), context->resources(),
       options.return_updated_values_for_all_resources, &builder,
@@ -810,6 +807,31 @@ Status XlaCompiler::SetHostToDeviceMetadata(
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
   SetTransfer(key, types, shapes, &transfer);
+  return Status::OK();
+}
+
+Status XlaCompiler::GetHostComputeControlDependency(
+    const string& host_compute_name, xla::XlaOp* handle) {
+  const auto iter = host_compute_control_output_.find(host_compute_name);
+  if (iter == host_compute_control_output_.end()) {
+    return errors::InvalidArgument(
+        "No registered control handle for host compute Op '", host_compute_name,
+        "'");
+  } else {
+    *handle = iter->second;
+  }
+  return Status::OK();
+}
+
+Status XlaCompiler::SetHostComputeControlDependency(
+    const string& host_compute_name, const xla::XlaOp& handle) {
+  if (host_compute_control_output_.find(host_compute_name) !=
+      host_compute_control_output_.end()) {
+    return errors::InvalidArgument(
+        "Duplicate control handles registered for for host compute Op ",
+        host_compute_name);
+  }
+  host_compute_control_output_[host_compute_name] = handle;
   return Status::OK();
 }
 

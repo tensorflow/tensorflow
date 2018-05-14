@@ -100,6 +100,8 @@ Status Main(const MainFlags& flags) {
   if (flags.cpp_class.empty()) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }
+  codegen_opts.gen_hlo_profile_printer_data =
+      xla::legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
   TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
                                    &codegen_opts.namespaces));
 

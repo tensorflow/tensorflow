@@ -20,8 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
 
@@ -75,7 +78,7 @@ class TestSequential(test.TestCase):
       model.pop()
 
   @tf_test_util.run_in_graph_and_eager_modes()
-  def test_sequential_deferred_build(self):
+  def test_sequential_deferred_build_with_np_arrays(self):
     num_hidden = 5
     input_dim = 3
     batch_size = 5
@@ -93,6 +96,40 @@ class TestSequential(test.TestCase):
     x = np.random.random((batch_size, input_dim))
     y = np.random.random((batch_size, num_classes))
     model.fit(x, y, epochs=1)
+    self.assertTrue(model.built)
+    self.assertEqual(model.inputs[0].get_shape().as_list(), [None, input_dim])
+    self.assertEqual(model.outputs[0].get_shape().as_list(),
+                     [None, num_classes])
+    self.assertEqual(len(model.weights), 2 * 2)
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_sequential_deferred_build_with_dataset_iterators(self):
+    if not context.executing_eagerly():
+      # TODO(psv/fchollet): Add support for this use case in graph mode.
+      return
+    num_hidden = 5
+    input_dim = 3
+    num_classes = 2
+    num_samples = 50
+    steps_per_epoch = 10
+
+    model = keras.models.Sequential()
+    # We don't specify the input shape.
+    model.add(keras.layers.Dense(num_hidden))
+    model.add(keras.layers.Dense(num_classes))
+    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    self.assertEqual(len(model.layers), 2)
+    self.assertEqual(len(model.weights), 0)
+    self.assertFalse(model.built)
+
+    x = array_ops.ones((num_samples, input_dim))
+    y = array_ops.zeros((num_samples, num_classes))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+    iterator = dataset.make_one_shot_iterator()
+
+    model.fit(iterator, epochs=1, steps_per_epoch=steps_per_epoch)
     self.assertTrue(model.built)
     self.assertEqual(model.inputs[0].get_shape().as_list(), [None, input_dim])
     self.assertEqual(model.outputs[0].get_shape().as_list(),
@@ -151,6 +188,7 @@ class TestSequential(test.TestCase):
     with self.test_session():
       model = keras.models.Sequential()
       model.add(keras.layers.BatchNormalization(input_shape=(4,)))
+      assert model.updates
 
       model.trainable = False
       assert not model.updates

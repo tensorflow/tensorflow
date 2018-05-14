@@ -54,6 +54,15 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
     VLOG(1) << "Failed to create XLA_GPU device: " << status;
     return Status::OK();
   }
+
+  // TODO(b/78468222): Uncomment after fixing this bug
+  // status = device->CreateAndSetGpuDeviceInfo();
+  // if (!status.ok()) {
+  //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
+  //                          " device");
+  //  return status;
+  // }
+
   devices->push_back(device.release());
   return Status::OK();
 }
@@ -62,8 +71,9 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 6> kAllXlaGpuTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 8> kAllXlaGpuTypes = {
+    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL,
+     DT_BFLOAT16}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaLocalLaunchOp, kAllXlaGpuTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_GPU, kAllXlaGpuTypes);

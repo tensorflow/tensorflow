@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -826,7 +827,7 @@ TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1045,7 +1046,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1108,7 +1109,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1179,7 +1180,7 @@ TEST_P(HloEvaluatorTest,
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1204,6 +1205,80 @@ TEST_P(HloEvaluatorTest,
 
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }
+
+class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {};
+
+// Tests that Reduce doesn't lose precision when adding many numbers (because
+// it accumulates its result in a double).
+TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
+  HloComputation::Builder b(TestName());
+
+  constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24
+  std::vector<float> v(kNumElements, 1.0f);
+  HloInstruction* arg_instruction = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>(v)));
+  HloInstruction* init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
+
+  HloInstruction* reduce_instruction = b.AddInstruction(
+      HloInstruction::CreateReduce(scalar_shape, arg_instruction, init_value,
+                                   /*dimensions_to_reduce=*/{0}, add_func));
+  module().AddEntryComputation(b.Build());
+
+  HloEvaluator hlo_eval;
+  std::unique_ptr<Literal> result =
+      hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+  LiteralTestUtil::ExpectR0Equal<float>(kNumElements, *result);
+}
+
+// Reducing many numbers should be fast because it doesn't create
+// intermediate Literals; the microbenchmark should finish in < 1 msec.
+void BM_ReducePrecisely(int num_iters) {
+  tensorflow::testing::StopTiming();
+  HloComputation::Builder b("BM_ReducePrecisely");
+  HloModuleConfig config;
+  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  HloModule module("BM_ReducePrecisely", VersionedComputationHandle(), config);
+
+  constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24
+  std::vector<float> v(kNumElements, 1.0f);
+  HloInstruction* arg_instruction = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>(v)));
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+
+  HloInstruction* reduce_instruction = b.AddInstruction(
+      HloInstruction::CreateReduce(scalar_shape, arg_instruction, init_value,
+                                   /*dimensions_to_reduce=*/{0}, add_func));
+  module.AddEntryComputation(b.Build());
+
+  HloEvaluator hlo_eval;
+  tensorflow::testing::StartTiming();
+  hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+  tensorflow::testing::StopTiming();
+}
+
+BENCHMARK(BM_ReducePrecisely);
 
 TEST_P(HloEvaluatorTest, ReduceAdd) {
   HloComputation::Builder b(TestName());
@@ -1928,6 +2003,22 @@ ENTRY main {
   LiteralTestUtil::ExpectEqual(
       *Literal::CreateR2<int32>({{}, {}}),
       *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise comparison with 2 bfloat16 operands.
+TEST_P(HloEvaluatorTest, DoesCompareBF16) {
+  // lhs >= rhs
+  auto lhs = Literal::CreateR2<bfloat16>(
+      {{bfloat16(0.25), bfloat16(0.35), bfloat16(0.125)},
+       {bfloat16(-0.25), bfloat16(-0.35), bfloat16(-0.125)}});
+  auto rhs = Literal::CreateR2<bfloat16>(
+      {{bfloat16(0.5), bfloat16(0.125), bfloat16(0.125)},
+       {bfloat16(0.25), bfloat16(-0.375), bfloat16(-0.127)}});
+  auto expected =
+      Literal::CreateR2<bool>({{false, true, true}, {false, true, true}});
+  TestBinaryOp(HloOpcode::kGe, std::move(expected), std::move(lhs),
+               std::move(rhs));
 }
 
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,

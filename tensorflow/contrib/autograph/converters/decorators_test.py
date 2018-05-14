@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 # The Python parser only briefly captures decorators into the AST.
 # The interpreter desugars them on load, and the decorated function loses any
-# trace of the decorator (which is notmally what you would expect, since
+# trace of the decorator (which is normally what you would expect, since
 # they are meant to be transparent).
 # However, decorators are still visible when you analyze the function
 # from inside a decorator, before it was applied - as is the case

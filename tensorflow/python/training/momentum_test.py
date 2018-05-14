@@ -237,7 +237,17 @@ class MomentumOptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+      # This test invokes the ResourceSparseApplyMomentum operation, which
+      # did not have a registered GPU kernel as of April 2018. With graph
+      # execution, the placement algorithm notices this and automatically
+      # places the variable in CPU (host) memory. With eager execution,
+      # the variable would be placed in GPU memory if available, which
+      # would then conflict with the future invocation of the
+      # ResourceSparseApplyMomentum operation.
+      # To work around this discrepancy, for now we force the variable
+      # to be placed on CPU.
+      with ops.device("/cpu:0"):
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
 
       # pylint: disable=cell-var-from-loop
       def loss():
@@ -256,7 +266,17 @@ class MomentumOptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testMinimizeWith2DIndiciesForEmbeddingLookup(self):
-    var0 = resource_variable_ops.ResourceVariable(array_ops.ones([2, 2]))
+    # This test invokes the ResourceSparseApplyMomentum operation, which
+    # did not have a registered GPU kernel as of April 2018. With graph
+    # execution, the placement algorithm notices this and automatically
+    # places the variable in CPU (host) memory. With eager execution,
+    # the variable would be placed in GPU memory if available, which
+    # would then conflict with the future invocation of the
+    # ResourceSparseApplyMomentum operation.
+    # To work around this discrepancy, for now we force the variable
+    # to be placed on CPU.
+    with ops.device("/cpu:0"):
+      var0 = resource_variable_ops.ResourceVariable(array_ops.ones([2, 2]))
 
     def loss():
       return math_ops.reduce_sum(embedding_ops.embedding_lookup(var0, [[1]]))

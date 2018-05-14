@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -143,19 +144,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
     FunctionLibraryRuntime::Options opts;
-    status = Run(flr, handle, opts, args, rets, add_runner);
-    if (!status.ok()) return status;
-
-    // Release the handle and try running again. It should not succeed.
-    status = flr->ReleaseHandle(handle);
-    if (!status.ok()) return status;
-
-    Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
-
-    return status;
+    return Run(flr, handle, opts, args, std::move(rets), add_runner);
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
