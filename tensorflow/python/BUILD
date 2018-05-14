@@ -3969,7 +3969,6 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
-    tags = ["noguitar"],
 )
 
 py_test(
