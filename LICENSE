@@ -1,6 +1,7 @@
 Copyright 2018 The TensorFlow Authors.  All rights reserved.
 
                                  Apache License
+                       (amended to restrict Military Use)
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
 
@@ -64,6 +65,13 @@ Copyright 2018 The TensorFlow Authors.  All rights reserved.
       "Contributor" shall mean Licensor and any individual or Legal Entity
       on behalf of whom a Contribution has been received by Licensor and
       subsequently incorporated within the Work.
+
+      “Military Use” means any use by, in cooperation with, on behalf of,
+      or paid for by: the U.S. Department of Defense; U.S. Armed Forces
+      (including the Army, Navy, Marines, Air Force, and Coast Guard);
+      U.S. Department of Energy; U.S. Department of Homeland Security;
+      U.S. intelligence agencies (including reconnaissance agencies);
+      or foreign counterparts of these organizations.
 
    2. Grant of Copyright License. Subject to the terms and conditions of
       this License, each Contributor hereby grants to You a perpetual,
@@ -174,6 +182,10 @@ Copyright 2018 The TensorFlow Authors.  All rights reserved.
       defend, and hold each Contributor harmless for any liability
       incurred by, or claims asserted against, such Contributor by reason
       of your accepting any such warranty or additional liability.
+
+  10. Restrictions. The Grant of Copyright License and Grant of Patent
+      License above does not apply to and no license is granted for any
+      Military Use.
 
    END OF TERMS AND CONDITIONS
 
