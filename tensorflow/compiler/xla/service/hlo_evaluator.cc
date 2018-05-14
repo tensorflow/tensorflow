@@ -52,7 +52,6 @@ namespace xla {
 namespace {
 
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::FlatSet;
 
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,

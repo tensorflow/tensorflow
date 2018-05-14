@@ -577,7 +577,7 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
                               LoggingResponse* response, StatusCallback done) {
   auto env = this->env();
   if (env) {
-    auto session_mgr = (SessionMgr*)env->session_mgr;
+    auto session_mgr = env->session_mgr;
     if (session_mgr) {
       session_mgr->SetLogging(request->rpc_logging());
       for (const auto& step_id : request->fetch_step_id()) {

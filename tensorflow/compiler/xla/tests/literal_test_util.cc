@@ -43,7 +43,6 @@ namespace xla {
 using ::tensorflow::strings::Appendf;
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::EqualShapes(
     const Shape& expected, const Shape& actual) {

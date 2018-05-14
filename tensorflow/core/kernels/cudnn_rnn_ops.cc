@@ -1411,7 +1411,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       CudnnRnnAllocatorInTemp<T> reserve_space_allocator(context);
       CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
       status = DoForward<T>(
-          context, *rnn_desc.get(), model_types(), model_shapes, input, input_h,
+          context, *rnn_desc, model_types(), model_shapes, input, input_h,
           input_c, params, is_training(), output, output_h, output_c,
           &reserve_space_allocator, &workspace_allocator, &fwd_profile_result);
       if (!status.ok()) {
@@ -1422,12 +1422,11 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
         // Get reserve space from the forward pass.
         Tensor reserve_space = reserve_space_allocator.get_allocated_tensor(0);
         status = DoBackward<T>(
-            context, *rnn_desc.get(), model_types(), model_shapes, input,
-            input_h, input_c, params, output, output_h, output_c,
-            &output_backprop, &output_h_backprop, &output_c_backprop,
-            &reserve_space, &input_backprop, &input_h_backprop,
-            &input_c_backprop, &params_backprop, &workspace_allocator,
-            &bak_profile_result);
+            context, *rnn_desc, model_types(), model_shapes, input, input_h,
+            input_c, params, output, output_h, output_c, &output_backprop,
+            &output_h_backprop, &output_c_backprop, &reserve_space,
+            &input_backprop, &input_h_backprop, &input_c_backprop,
+            &params_backprop, &workspace_allocator, &bak_profile_result);
         if (!status.ok()) {
           continue;
         }
