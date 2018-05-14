@@ -104,8 +104,9 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
         reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
     stream_ = cuda_stream;
     allocator_ = alloc;
-    const int cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id).value();
-    device_prop_ = &Eigen::m_deviceProperties[cuda_gpu_id];
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
+    device_prop_ = &Eigen::m_deviceProperties[cuda_gpu_id.value()];
   }
 
   const cudaStream_t& stream() const override { return *stream_; }
@@ -317,7 +318,9 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->stream = streams_[0]->compute;
   gpu_device_info_->default_context = device_contexts_[0];
   gpu_device_info_->event_mgr = em_.get();
-  gpu_device_info_->gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id_).value();
+  CudaGpuId cuda_gpu_id;
+  TF_RETURN_IF_ERROR(GpuIdManager::TfToCudaGpuId(tf_gpu_id_, &cuda_gpu_id));
+  gpu_device_info_->gpu_id = cuda_gpu_id.value();
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
@@ -965,7 +968,8 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
     while (next_tf_gpu_id < memory_limit_bytes.size()) {
       TfGpuId tf_gpu_id(next_tf_gpu_id);
       ++next_tf_gpu_id;
-      GpuIdManager::InsertTfCudaGpuIdPair(tf_gpu_id, cuda_gpu_id);
+      TF_RETURN_IF_ERROR(
+          GpuIdManager::InsertTfCudaGpuIdPair(tf_gpu_id, cuda_gpu_id));
     }
   }
   const int num_tf_gpus = next_tf_gpu_id;
@@ -1016,7 +1020,8 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_gpu_id.value());
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
-  CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+  CudaGpuId cuda_gpu_id;
+  TF_RETURN_IF_ERROR(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
   int numa_node = dev_locality.numa_node();
 
   se::StreamExecutor* se =
@@ -1101,7 +1106,8 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     all_tf_gpu_ids.push_back(TfGpuId(i));
   }
   for (TfGpuId tf_gpu_id : all_tf_gpu_ids) {
-    CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+    CudaGpuId cuda_gpu_id;
+    TF_RETURN_IF_ERROR(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
     // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
     // virtualized in some environments, we can't just use the GPU id.
     // NUMA locales are indexed from 0, buses are indexed from 1.
@@ -1129,7 +1135,9 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     LocalLinks* links = dev_locality.mutable_links();
     for (const InterconnectMap& imap : interconnects) {
       for (TfGpuId tf_gpu_dst : all_tf_gpu_ids) {
-        CudaGpuId cuda_gpu_dst = GpuIdManager::TfToCudaGpuId(tf_gpu_dst);
+        CudaGpuId cuda_gpu_dst;
+        TF_RETURN_IF_ERROR(
+            GpuIdManager::TfToCudaGpuId(tf_gpu_dst, &cuda_gpu_dst));
         if (imap.directed_links.find({cuda_gpu_id, cuda_gpu_dst}) !=
             imap.directed_links.end()) {
           InterconnectLink* ilink = links->add_link();
@@ -1144,7 +1152,9 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     // add high strength links to the others.
     for (TfGpuId tf_gpu_dst : all_tf_gpu_ids) {
       if (tf_gpu_id == tf_gpu_dst) continue;
-      CudaGpuId cuda_gpu_dst = GpuIdManager::TfToCudaGpuId(tf_gpu_dst);
+      CudaGpuId cuda_gpu_dst;
+      TF_RETURN_IF_ERROR(
+          GpuIdManager::TfToCudaGpuId(tf_gpu_dst, &cuda_gpu_dst));
       if (cuda_gpu_id == cuda_gpu_dst) {
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(tf_gpu_dst.value());
