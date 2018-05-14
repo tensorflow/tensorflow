@@ -55,7 +55,7 @@ TEST(MKLThreadPoolDeviceTest, TestOmpPreSets) {
   ASSERT_STREQ(getenv("KMP_BLOCKTIME"), "1001");
   ASSERT_STREQ(getenv("KMP_AFFINITY"), "verbose");
 }
-#endif
+#endif // _OPENMP
 
 }  // namespace tensorflow
 

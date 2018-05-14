@@ -362,7 +362,7 @@ int CPUIDNumSMT() {
       return 1 << (eax & 0x1f); // 2 ^ SMT_Mask_Width
     }
   }
-#endif
+#endif // PLATFORM_IS_X86
   return 0;
 }
 
