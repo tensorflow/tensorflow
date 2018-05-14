@@ -485,8 +485,7 @@ class Layer(checkpointable.CheckpointableBase):
     """
     if dtype is None:
       dtype = self.dtype or backend.floatx()
-    else:
-      dtype = dtypes.as_dtype(dtype)
+    dtype = dtypes.as_dtype(dtype)
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -514,7 +513,7 @@ class Layer(checkpointable.CheckpointableBase):
         # Manage errors in Layer rather than Checkpointable.
         overwrite=True,
         initializer=initializer,
-        dtype=dtypes.as_dtype(dtype),
+        dtype=dtype,
         constraint=constraint,
         trainable=trainable and self.trainable,
         partitioner=partitioner,
