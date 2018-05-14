@@ -763,26 +763,19 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  input_is_sequence = nest.is_sequence(elems)
-  input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]
   def input_pack(x):
-    return nest.pack_sequence_as(elems, x) if input_is_sequence else x[0]
+    return nest.pack_sequence_as(elems, x)
 
   if initializer is None:
-    output_is_sequence = input_is_sequence
-    output_flatten = input_flatten
     output_pack = input_pack
   else:
-    output_is_sequence = nest.is_sequence(initializer)
-    output_flatten = lambda x: nest.flatten(x) if output_is_sequence else [x]
     def output_pack(x):
-      return (nest.pack_sequence_as(initializer, x)
-              if output_is_sequence else x[0])
+      return nest.pack_sequence_as(initializer, x)
 
-  elems_flat = input_flatten(elems)
+  elems_flat = nest.flatten(elems)
 
   in_graph_mode = not context.executing_eagerly()
-  with ops.name_scope(name, "scan", elems_flat):
+  with ops.name_scope(name, "scanr", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
     if in_graph_mode:
@@ -818,7 +811,7 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       a_flat = [elem.read(i) for elem in elems_ta]
     else:
       i = n
-      initializer_flat = output_flatten(initializer)
+      initializer_flat = nest.flatten(initializer)
       a_flat = [ops.convert_to_tensor(init) for init in initializer_flat]
 
     # Create a tensor array to store the intermediate values.
@@ -855,7 +848,7 @@ def scanr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       a_out = fn(packed_a, packed_elems)
       nest.assert_same_structure(
           elems if initializer is None else initializer, a_out)
-      flat_a_out = output_flatten(a_out)
+      flat_a_out = nest.flatten(a_out)
       tas = [ta.write(i, value) for (ta, value) in zip(tas, flat_a_out)]
       return (i, flat_a_out, tas)
 
