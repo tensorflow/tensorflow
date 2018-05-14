@@ -1520,6 +1520,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "framework/cost_graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/cost_graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "framework/tensor_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/tensor.proto",
