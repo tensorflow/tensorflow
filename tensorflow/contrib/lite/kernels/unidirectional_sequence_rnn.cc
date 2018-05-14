@@ -73,6 +73,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ASSERT_EQ(input_weights->dims->data[0], bias->dims->data[0]);
   TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[0], bias->dims->data[0]);
   TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[1], bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, input_weights->type, recurrent_weights->type);
 
   TfLiteTensor* hidden_state = GetOutput(context, node, kHiddenStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -274,7 +276,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        hidden_state, output);
     case kTfLiteUInt8: {
       // TODO(mirkov): implement eval with quantized inputs as well.
-      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
       TfLiteTensor* input_quantized = GetTemporary(context, node, 0);
       TfLiteTensor* hidden_state_quantized = GetTemporary(context, node, 1);
       return EvalQuantized(input, input_weights, recurrent_weights, bias,
