@@ -89,18 +89,26 @@ struct TensorData {
 class SingleOpResolver : public OpResolver {
  public:
   SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
-      : op_(op), registration_(registration) {}
-  TfLiteRegistration* FindOp(BuiltinOperator op) const override {
+      : op_(op), registration_(*registration) {
+    registration_.builtin_code = static_cast<int32_t>(op);
+    registration_.version = 1;
+  }
+  TfLiteRegistration* FindOp(BuiltinOperator op, int version) const override {
     if (op == op_) {
-      return registration_;
+      // The current interface requires to return a mutable pointer, but the
+      // caller never changes the structure.
+      // TODO(ycling): Consider refactoring and return constant pointers.
+      return const_cast<TfLiteRegistration*>(&registration_);
     }
     return nullptr;
   }
-  TfLiteRegistration* FindOp(const char* op) const override { return nullptr; }
+  TfLiteRegistration* FindOp(const char* op, int version) const override {
+    return nullptr;
+  }
 
  private:
   const BuiltinOperator op_;
-  TfLiteRegistration* registration_;
+  TfLiteRegistration registration_;
 };
 
 class SingleOpModel {

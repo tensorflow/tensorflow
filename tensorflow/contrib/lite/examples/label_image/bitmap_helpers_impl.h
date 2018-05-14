@@ -63,7 +63,7 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
 
   ops::builtin::BuiltinOpResolver resolver;
   TfLiteRegistration* resize_op =
-      resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR);
+      resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR, 1);
   auto* params = reinterpret_cast<TfLiteResizeBilinearParams*>(
       malloc(sizeof(TfLiteResizeBilinearParams)));
   params->align_corners = false;

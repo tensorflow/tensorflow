@@ -447,6 +447,10 @@ table SliceOptions {
 table OperatorCode {
   builtin_code:BuiltinOperator;
   custom_code:string;
+
+  // The version of the operator. The version need to be bumped whenever new
+  // parameters are introduced into an op.
+  version:int = 1;
 }
 
 enum CustomOptionsFormat : byte {

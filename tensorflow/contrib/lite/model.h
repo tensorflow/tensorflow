@@ -37,6 +37,7 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -129,18 +130,6 @@ class FlatBufferModel {
   ErrorReporter* error_reporter_;
   // The allocator used for holding memory of the model.
   Allocation* allocation_ = nullptr;
-};
-
-// Abstract interface that returns TfLiteRegistrations given op codes or custom
-// op names. This is the mechanism that ops being referenced in the flatbuffer
-// model are mapped to executable function pointers (TfLiteRegistrations).
-class OpResolver {
- public:
-  // Finds the op registration for a builtin operator by enum code.
-  virtual TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const = 0;
-  // Finds the op registration of a custom operator by op name.
-  virtual TfLiteRegistration* FindOp(const char* op) const = 0;
-  virtual ~OpResolver() {}
 };
 
 // Build an interpreter capable of interpreting `model`.

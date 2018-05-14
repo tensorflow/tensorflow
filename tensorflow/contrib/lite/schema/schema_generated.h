@@ -4448,8 +4448,10 @@ struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
   std::string custom_code;
+  int32_t version;
   OperatorCodeT()
-      : builtin_code(BuiltinOperator_ADD) {
+      : builtin_code(BuiltinOperator_ADD),
+        version(1) {
   }
 };
 
@@ -4457,7 +4459,8 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef OperatorCodeT NativeTableType;
   enum {
     VT_BUILTIN_CODE = 4,
-    VT_CUSTOM_CODE = 6
+    VT_CUSTOM_CODE = 6,
+    VT_VERSION = 8
   };
   BuiltinOperator builtin_code() const {
     return static_cast<BuiltinOperator>(GetField<int8_t>(VT_BUILTIN_CODE, 0));
@@ -4465,11 +4468,15 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *custom_code() const {
     return GetPointer<const flatbuffers::String *>(VT_CUSTOM_CODE);
   }
+  int32_t version() const {
+    return GetField<int32_t>(VT_VERSION, 1);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_BUILTIN_CODE) &&
            VerifyOffset(verifier, VT_CUSTOM_CODE) &&
            verifier.Verify(custom_code()) &&
+           VerifyField<int32_t>(verifier, VT_VERSION) &&
            verifier.EndTable();
   }
   OperatorCodeT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4486,6 +4493,9 @@ struct OperatorCodeBuilder {
   void add_custom_code(flatbuffers::Offset<flatbuffers::String> custom_code) {
     fbb_.AddOffset(OperatorCode::VT_CUSTOM_CODE, custom_code);
   }
+  void add_version(int32_t version) {
+    fbb_.AddElement<int32_t>(OperatorCode::VT_VERSION, version, 1);
+  }
   explicit OperatorCodeBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4501,8 +4511,10 @@ struct OperatorCodeBuilder {
 inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(
     flatbuffers::FlatBufferBuilder &_fbb,
     BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    flatbuffers::Offset<flatbuffers::String> custom_code = 0) {
+    flatbuffers::Offset<flatbuffers::String> custom_code = 0,
+    int32_t version = 1) {
   OperatorCodeBuilder builder_(_fbb);
+  builder_.add_version(version);
   builder_.add_custom_code(custom_code);
   builder_.add_builtin_code(builtin_code);
   return builder_.Finish();
@@ -4511,11 +4523,13 @@ inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(
 inline flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    const char *custom_code = nullptr) {
+    const char *custom_code = nullptr,
+    int32_t version = 1) {
   return tflite::CreateOperatorCode(
       _fbb,
       builtin_code,
-      custom_code ? _fbb.CreateString(custom_code) : 0);
+      custom_code ? _fbb.CreateString(custom_code) : 0,
+      version);
 }
 
 flatbuffers::Offset<OperatorCode> CreateOperatorCode(flatbuffers::FlatBufferBuilder &_fbb, const OperatorCodeT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -6721,6 +6735,7 @@ inline void OperatorCode::UnPackTo(OperatorCodeT *_o, const flatbuffers::resolve
   (void)_resolver;
   { auto _e = builtin_code(); _o->builtin_code = _e; };
   { auto _e = custom_code(); if (_e) _o->custom_code = _e->str(); };
+  { auto _e = version(); _o->version = _e; };
 }
 
 inline flatbuffers::Offset<OperatorCode> OperatorCode::Pack(flatbuffers::FlatBufferBuilder &_fbb, const OperatorCodeT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -6733,10 +6748,12 @@ inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(flatbuffers::FlatBuf
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const OperatorCodeT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _builtin_code = _o->builtin_code;
   auto _custom_code = _o->custom_code.empty() ? 0 : _fbb.CreateString(_o->custom_code);
+  auto _version = _o->version;
   return tflite::CreateOperatorCode(
       _fbb,
       _builtin_code,
-      _custom_code);
+      _custom_code,
+      _version);
 }
 
 inline OperatorT *Operator::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
