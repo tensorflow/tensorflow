@@ -27,6 +27,8 @@ limitations under the License.
 namespace tensorflow {
 namespace java {
 
+constexpr const char kDefaultEndpointPackage[] = "core";
+
 class EndpointSpec {
  public:
   // A specification for an operation endpoint
