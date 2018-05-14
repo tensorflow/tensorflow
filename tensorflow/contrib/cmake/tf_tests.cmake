@@ -212,13 +212,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
     # Disable following manual tag in BUILD.
     "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/layers/convolutional_test.py"
-    # Avoid large sharded tests, as they take a long time without sharding in cmake and time out.
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg/linear_operator_low_rank_update_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg/linear_operator_kronecker_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg/linear_operator_circulant_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg/linear_operator_block_diag_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg/linear_operator_composition_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/conv_ops_test.py"
+
   )
   if (WIN32)
     set(tf_test_src_py_exclude
