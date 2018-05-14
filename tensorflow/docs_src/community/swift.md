@@ -8,7 +8,7 @@ Welcome to the Swift for TensorFlow development community!
 
 Swift for TensorFlow is a new way to develop machine learning models. It
 gives you the power of
-[TensorFlow](programmers_guide/eager) directly
+[TensorFlow](https://www.tensorflow.org) directly
 integrated into the [Swift programming language](https://swift.org/about).
 With Swift, you can write the following imperative code, and Swift
 automatically turns it into **a single TensorFlow Graph** and runs it
@@ -28,8 +28,8 @@ print(x)
 ```
 
 Swift combines the flexibility of
-[Eager Execution](programmers_guide/eager) with the
-high performance of [Graphs and Sessions](programmers_guide/graphs).
+[Eager Execution](https://www.tensorflow.org/programmers_guide/eager) with the
+high performance of [Graphs and Sessions](https://www.tensorflow.org/programmers_guide/graphs).
 Behind the scenes, Swift analyzes your Tensor code and automatically builds
 graphs for you. Swift also catches type errors and shape mismatches before
 running your code, and has [Automatic Differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation)
