@@ -1545,26 +1545,6 @@ def _assert_range(labels, n_classes, message=None):
       return array_ops.identity(labels)
 
 
-# TODO(b/69000400): Delete this method.
-def _weights(features, weight_column):
-  """Fetches weights from features."""
-  with ops.name_scope(None, 'weights', values=features.values()):
-    if weight_column is None:
-      return 1.
-    if isinstance(weight_column, six.string_types):
-      weight_column = feature_column_lib.numeric_column(
-          key=weight_column, shape=(1,))
-    if not isinstance(weight_column, feature_column_lib._NumericColumn):  # pylint: disable=protected-access
-      raise TypeError('Weight column must be either a string or _NumericColumn.'
-                      ' Given type: {}.'.format(type(weight_column)))
-    weights = weight_column._get_dense_tensor(  # pylint: disable=protected-access
-        feature_column_lib._LazyBuilder(features))  # pylint: disable=protected-access
-    if not (weights.dtype.is_floating or weights.dtype.is_integer):
-      raise ValueError('Weight column should be castable to float. '
-                       'Given dtype: {}'.format(weights.dtype))
-    return math_ops.to_float(weights, name='weights')
-
-
 def _binary_logistic_or_multi_class_head(
     n_classes, weight_column, label_vocabulary, loss_reduction):
   """Creates either binary or multi-class head.
