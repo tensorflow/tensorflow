@@ -176,7 +176,7 @@ class InterpreterBuilder {
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
 
-  std::vector<TfLiteRegistration*> flatbuffer_op_index_to_registration_;
+  std::vector<const TfLiteRegistration*> flatbuffer_op_index_to_registration_;
   std::vector<BuiltinOperator> flatbuffer_op_index_to_registration_types_;
   const Allocation* allocation_ = nullptr;
 };

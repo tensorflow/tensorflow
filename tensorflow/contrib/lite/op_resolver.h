@@ -27,10 +27,11 @@ namespace tflite {
 class OpResolver {
  public:
   // Finds the op registration for a builtin operator by enum code.
-  virtual TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                                     int version) const = 0;
+  virtual const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                           int version) const = 0;
   // Finds the op registration of a custom operator by op name.
-  virtual TfLiteRegistration* FindOp(const char* op, int version) const = 0;
+  virtual const TfLiteRegistration* FindOp(const char* op,
+                                           int version) const = 0;
   virtual ~OpResolver() {}
 };
 
@@ -68,9 +69,9 @@ struct OperatorKeyHasher {
 //   InterpreterBuilder(model, resolver)(&interpreter);
 class MutableOpResolver : public OpResolver {
  public:
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                             int version) const override;
-  TfLiteRegistration* FindOp(const char* op, int version) const override;
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override;
+  const TfLiteRegistration* FindOp(const char* op, int version) const override;
   void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration,
                   int min_version = 1, int max_version = 1);
   void AddCustom(const char* name, TfLiteRegistration* registration,

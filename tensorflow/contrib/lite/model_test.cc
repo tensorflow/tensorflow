@@ -55,12 +55,12 @@ class TrivialResolver : public OpResolver {
   explicit TrivialResolver(TfLiteRegistration* constant_return = nullptr)
       : constant_return_(constant_return) {}
   // Find the op registration of a custom operator by op name.
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                             int version) const override {
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override {
     return constant_return_;
   }
   // Find the op registration of a custom operator by op name.
-  TfLiteRegistration* FindOp(const char* op, int version) const override {
+  const TfLiteRegistration* FindOp(const char* op, int version) const override {
     return constant_return_;
   }
 

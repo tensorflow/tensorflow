@@ -40,7 +40,7 @@ TEST(MutableOpResolverTest, FinOp) {
   MutableOpResolver resolver;
   resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
 
-  TfLiteRegistration* found_registration =
+  const TfLiteRegistration* found_registration =
       resolver.FindOp(BuiltinOperator_ADD, 1);
   ASSERT_NE(found_registration, nullptr);
   EXPECT_TRUE(found_registration->invoke == DummyInvoke);
@@ -52,7 +52,7 @@ TEST(MutableOpResolverTest, FindMissingOp) {
   MutableOpResolver resolver;
   resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
 
-  TfLiteRegistration* found_registration =
+  const TfLiteRegistration* found_registration =
       resolver.FindOp(BuiltinOperator_CONV_2D, 1);
   EXPECT_EQ(found_registration, nullptr);
 }
@@ -62,7 +62,7 @@ TEST(MutableOpResolverTest, RegisterOpWithMultipleVersions) {
   // The kernel supports version 2 and 3
   resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration(), 2, 3);
 
-  TfLiteRegistration* found_registration;
+  const TfLiteRegistration* found_registration;
 
   found_registration = resolver.FindOp(BuiltinOperator_ADD, 2);
   ASSERT_NE(found_registration, nullptr);
@@ -80,7 +80,7 @@ TEST(MutableOpResolverTest, FindOpWithUnsupportedVersions) {
   // The kernel supports version 2 and 3
   resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration(), 2, 3);
 
-  TfLiteRegistration* found_registration;
+  const TfLiteRegistration* found_registration;
 
   found_registration = resolver.FindOp(BuiltinOperator_ADD, 1);
   EXPECT_EQ(found_registration, nullptr);
@@ -93,7 +93,7 @@ TEST(MutableOpResolverTest, FindCustomOp) {
   MutableOpResolver resolver;
   resolver.AddCustom("AWESOME", GetDummyRegistration());
 
-  TfLiteRegistration* found_registration = resolver.FindOp("AWESOME", 1);
+  const TfLiteRegistration* found_registration = resolver.FindOp("AWESOME", 1);
   ASSERT_NE(found_registration, nullptr);
   EXPECT_EQ(found_registration->builtin_code, BuiltinOperator_CUSTOM);
   EXPECT_TRUE(found_registration->invoke == DummyInvoke);
@@ -106,7 +106,8 @@ TEST(MutableOpResolverTest, FindMissingCustomOp) {
   MutableOpResolver resolver;
   resolver.AddCustom("AWESOME", GetDummyRegistration());
 
-  TfLiteRegistration* found_registration = resolver.FindOp("EXCELLENT", 1);
+  const TfLiteRegistration* found_registration =
+      resolver.FindOp("EXCELLENT", 1);
   EXPECT_EQ(found_registration, nullptr);
 }
 
@@ -114,7 +115,7 @@ TEST(MutableOpResolverTest, FindCustomOpWithUnsupportedVersion) {
   MutableOpResolver resolver;
   resolver.AddCustom("AWESOME", GetDummyRegistration());
 
-  TfLiteRegistration* found_registration = resolver.FindOp("AWESOME", 2);
+  const TfLiteRegistration* found_registration = resolver.FindOp("AWESOME", 2);
   EXPECT_EQ(found_registration, nullptr);
 }
 

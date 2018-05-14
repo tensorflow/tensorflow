@@ -184,7 +184,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
   for (const OperatorCode* opcode : *opcodes) {
-    TfLiteRegistration* registration = nullptr;
+    const TfLiteRegistration* registration = nullptr;
     auto builtin_code = opcode->builtin_code();
     int version = opcode->version();
 
@@ -712,7 +712,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       continue;
     }
 
-    TfLiteRegistration* registration =
+    const TfLiteRegistration* registration =
         flatbuffer_op_index_to_registration_[op->opcode_index()];
     if (registration == nullptr) {
       error_reporter_->Report("Skipping op for opcode_index %d\n", index);

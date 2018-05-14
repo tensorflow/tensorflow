@@ -18,24 +18,16 @@ limitations under the License.
 
 namespace tflite {
 
-TfLiteRegistration* MutableOpResolver::FindOp(tflite::BuiltinOperator op,
-                                              int version) const {
+const TfLiteRegistration* MutableOpResolver::FindOp(tflite::BuiltinOperator op,
+                                                    int version) const {
   auto it = builtins_.find(std::make_pair(op, version));
-  const TfLiteRegistration* registration =
-      it != builtins_.end() ? &it->second : nullptr;
-  // TODO(ycling): Change the FindOp interface to return const pointer and
-  // remove the const_cast.
-  return const_cast<TfLiteRegistration*>(registration);
+  return it != builtins_.end() ? &it->second : nullptr;
 }
 
-TfLiteRegistration* MutableOpResolver::FindOp(const char* op,
-                                              int version) const {
+const TfLiteRegistration* MutableOpResolver::FindOp(const char* op,
+                                                    int version) const {
   auto it = custom_ops_.find(std::make_pair(op, version));
-  const TfLiteRegistration* registration =
-      it != custom_ops_.end() ? &it->second : nullptr;
-  // TODO(ycling): Change the FindOp interface to return const pointer and
-  // remove the const_cast.
-  return const_cast<TfLiteRegistration*>(registration);
+  return it != custom_ops_.end() ? &it->second : nullptr;
 }
 
 void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
