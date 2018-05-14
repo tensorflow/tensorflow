@@ -435,7 +435,7 @@ REGISTER_OP("DrawBoundingBoxes")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
-      // The rank of the images should be 4.
+      // The rank of images should be 4.
       ShapeHandle images;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &images));
       // Channel depth should be either 1 (GRY), 3 (RGB), or 4 (RGBA).
@@ -447,7 +447,7 @@ REGISTER_OP("DrawBoundingBoxes")
         }
       }
 
-      // The rank of the boxes should be 3-D: [batch, num_bounding_boxes, 4].
+      // The rank of boxes is 3: [batch, num_bounding_boxes, 4].
       ShapeHandle boxes;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &boxes));
       // The last value of boxes shape is 4.
