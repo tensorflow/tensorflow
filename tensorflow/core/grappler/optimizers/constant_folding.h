@@ -113,6 +113,14 @@ class ConstantFolding : public GraphOptimizer {
   bool PartialAssocOpConstFolding(GraphDef* optimized_graph,
                                   GraphProperties* properties, NodeDef* node);
 
+  // Applies partial constant propagation through IdentityN operator.
+  // Returns true if the transformation applied successfully.
+  bool PartialConstPropThroughIdentityN(NodeDef* node);
+
+  // Pushes down constants on '+' and '*' operators if applicable. Returns true
+  // the transformation applied successfully.
+  bool ConstantPushDown(NodeDef* node);
+
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
