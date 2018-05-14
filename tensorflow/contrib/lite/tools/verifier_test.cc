@@ -31,7 +31,6 @@ namespace tflite {
 
 using flatbuffers::FlatBufferBuilder;
 using flatbuffers::Offset;
-using flatbuffers::Vector;
 
 // Build single subgraph model.
 class TfLiteFlatbufferModelBuilder {

@@ -987,7 +987,7 @@ void FixOperatorOrdering(Model* model) {
     for (auto i : remaining) {
       bool can_insert = true;
       auto& op = old_operators[i];
-      CHECK(op.get());
+      CHECK(op);
       for (const auto& input : op->inputs) {
         if (!IsConstantParameterArray(*model, input) &&
             !arrays_behind_us.count(input)) {
