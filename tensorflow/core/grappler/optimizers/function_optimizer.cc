@@ -98,7 +98,7 @@ struct FunctionSpecializationSignature {
     for (const auto& lhs : body_parameters) {
       auto it = other.body_parameters.find(lhs.first);
       if (it == other.body_parameters.end()) return false;
-      if (!AreAttrValuesEqual(lhs.second, (*it).second)) return false;
+      if (!FastAreAttrValuesEqual(lhs.second, (*it).second)) return false;
     }
 
     return true;
@@ -123,7 +123,7 @@ struct FunctionSpecializationSignature {
                                        s.body_parameters.end());
       for (const auto& pair : body) {
         h = Hash64Combine(Hash64(pair.first), h);
-        h = Hash64Combine(AttrValueHash(pair.second), h);
+        h = Hash64Combine(FastAttrValueHash(pair.second), h);
       }
 
       std::map<int, string> inputs(s.const_inputs.begin(),
