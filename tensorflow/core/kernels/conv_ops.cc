@@ -708,6 +708,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
@@ -752,6 +753,28 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       algorithm_config.set_algorithm_no_scratch(
           best_result_no_scratch.algorithm());
     }
+#elif TENSORFLOW_USE_ROCM
+    ProfileResult profile_result;
+    // MIOpen has its own Find and autotuner so use it here, passing
+    // default AlgorithmConfig to force a search
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+    bool miopen_find_status =
+      stream
+          ->ThenConvolveWithAlgorithm(
+              input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+              output_desc, &output_ptr, &scratch_allocator,
+              AlgorithmConfig(), &profile_result)
+          .ok();
+
+    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid() &&
+                         !profile_result.algorithm().is_default(),
+                errors::NotFound("Failed to find conv algorithm!"));
+
+    algorithm_config.set_algorithm(profile_result.algorithm());
+    algorithm_config.set_algorithm_scratch_size(profile_result.scratch_size());
+    // TODO - Add support for no-scratch algorithm
+    algorithm_config.set_algorithm_no_scratch(AlgorithmDesc());
+#endif
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 

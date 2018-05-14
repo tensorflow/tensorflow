@@ -910,6 +910,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
@@ -954,6 +955,26 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       algorithm_config.set_algorithm_no_scratch(
           best_result_no_scratch.algorithm());
     }
+#elif TENSORFLOW_USE_ROCM
+    LOG(INFO) << "running auto-tune for Backward-Filter";
+    ProfileResult profile_result;
+    DnnScratchAllocator scratch_allocator(
+        ConvolveBackwardFilterScratchSize, ctx);
+    bool miopen_find_status =
+        stream
+            ->ThenConvolveBackwardFilterWithAlgorithm(
+                input_desc, input_ptr, output_desc, out_backprop_ptr,
+                conv_desc, filter_desc, &filter_backprop_ptr,
+                &scratch_allocator, AlgorithmConfig(),
+                &profile_result)
+            .ok();
+    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid() &&
+                             !profile_result.algorithm().is_default(),
+                errors::NotFound("Failed to find backward filter algorithm!"));
+    algorithm_config.set_algorithm(profile_result.algorithm());
+    algorithm_config.set_algorithm_scratch_size(profile_result.scratch_size());
+    algorithm_config.set_algorithm_no_scratch(profile_result.algorithm());
+#endif
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
   }
