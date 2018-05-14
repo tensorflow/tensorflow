@@ -15,7 +15,7 @@ limitations under the License.
 
 // TODO: Enable GPU support for angle op after resolving
 // build failures on GPU (See #10643 for context).
-#if 0 && GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if 0 && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
 
