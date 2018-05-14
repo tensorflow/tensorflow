@@ -3007,7 +3007,7 @@ tf_cc_test_mkl(
     size = "small",
     srcs = [
         "common_runtime/mkl_cpu_allocator_test.cc",
-        "common_runtime/mkl_threadpool_device_test.cc"
+        "common_runtime/mkl_threadpool_device_test.cc",
     ],
     linkstatic = 1,
     deps = [

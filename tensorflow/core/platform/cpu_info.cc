@@ -355,14 +355,14 @@ int CPUIDNumSMT() {
   GETCPUID(eax, ebx, ecx, edx, 0, 0);
   if (eax >= 11) {
     // 1) Leaf 11 available? CPUID.(EAX=11, ECX=0):EBX != 0
-    // 2) SMT_Mask_Width = CPUID.(EAX=11, ECX=0):EAX[4:0] if CPUID.(EAX=11, ECX=0):ECX[15:8] is 1
+    // 2) SMT_Mask_Width = CPUID.(EAX=11, ECX=0):EAX[4:0] if CPUID.(EAX=11,
+    // ECX=0):ECX[15:8] is 1
     GETCPUID(eax, ebx, ecx, edx, 11, 0);
-    if (ebx != 0 &&
-         ((ecx & 0xff00) >> 8) == 1) {
-      return 1 << (eax & 0x1f); // 2 ^ SMT_Mask_Width
+    if (ebx != 0 && ((ecx & 0xff00) >> 8) == 1) {
+      return 1 << (eax & 0x1f);  // 2 ^ SMT_Mask_Width
     }
   }
-#endif // PLATFORM_IS_X86
+#endif  // PLATFORM_IS_X86
   return 0;
 }
 

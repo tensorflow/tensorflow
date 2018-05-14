@@ -62,7 +62,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
     setenv("OMP_PROC_BIND", "true", 1);
   }
 
-  const char *user_omp_threads = getenv("OMP_NUM_THREADS");
+  const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   if (user_omp_threads == nullptr) {
     // OMP_NUM_THREADS controls MKL's intra-op parallelization
     // Default to available physical cores
@@ -73,10 +73,10 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
     uint64 user_val = 0;
     if (strings::safe_strtou64(user_omp_threads, &user_val)) {
       omp_set_num_threads(user_val);
-    } 
+    }
   }
-#endif // _OPENMP
-#endif // INTEL_MKL
+#endif  // _OPENMP
+#endif  // INTEL_MKL
 }
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
