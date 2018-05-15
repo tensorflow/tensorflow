@@ -497,6 +497,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "strings"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "summary"
     mtype: "<type \'module\'>"
   }
