@@ -332,10 +332,16 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "error_spec",
+    hdrs = ["error_spec.h"],
+)
+
+cc_library(
     name = "literal_comparison",
     srcs = ["literal_comparison.cc"],
     hdrs = ["literal_comparison.h"],
     deps = [
+        ":error_spec",
         ":literal_util",
         ":util",
         "//tensorflow/core:lib",

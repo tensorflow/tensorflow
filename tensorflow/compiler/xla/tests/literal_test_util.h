@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -37,20 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-
-// Structure describing permissible absolute and relative error bounds.
-struct ErrorSpec {
-  explicit ErrorSpec(float aabs, float arel = 0, bool relaxed_nans = false)
-      : abs(aabs), rel(arel), relaxed_nans(relaxed_nans) {}
-
-  float abs;  // Absolute error bound.
-  float rel;  // Relative error bound.
-
-  // If relaxed_nans is true then any result is valid if we are expecting NaNs.
-  // In effect, this allows the tested operation to produce incorrect results
-  // for inputs outside its mathematical domain.
-  bool relaxed_nans;
-};
 
 // Utility class for making expectations/assertions related to XLA literals.
 class LiteralTestUtil {
@@ -99,24 +86,13 @@ class LiteralTestUtil {
   static void ExpectR4EqualArray4D(const Array4D<NativeT>& expected,
                                    const LiteralSlice& actual);
 
-  // Asserts that the expected and actual literals are within the given error
-  // bound for all elements. Also, asserts that the rank, dimensions sizes, and
-  // bounds are equivalent.
+  // Decorates literal_comparison::Near() with an AssertionResult return type.
   //
-  // Tuples are matched recursively.  When comparing tensors of
-  // non-floating-point type, checks for exact equality, ignoring the ErrorSpec.
-  //
-  // If the shape of the literals is neither a complex/floating-point tensor nor
-  // a tuple which contains a complex/floating-point tensor, Near() is
-  // equivalent to Equal().  We don't raise an error in this case, because we
-  // want to allow callers to call Near() even if they have no preconceptions
-  // about the shapes being compared.
-  //
-  // If detailed_message is true, then the error message in the assertion result
-  // will contain a more detailed breakdown of mismatches.
+  // See comment on literal_comparison::Near().
   static ::testing::AssertionResult Near(
       const LiteralSlice& expected, const LiteralSlice& actual,
-      const ErrorSpec& error, bool detailed_message = false) TF_MUST_USE_RESULT;
+      const ErrorSpec& error_spec,
+      bool detailed_message = false) TF_MUST_USE_RESULT;
 
   // Asserts the given literal are within the given error bound of the given
   // expected values. Only supported for floating point values.
