@@ -69,6 +69,8 @@ LookupUnaryFn(const HloInstruction* inst) {
       return popops::expr::UnaryOpType::TANH;
     case HloOpcode::kIsFinite:
       return popops::expr::UnaryOpType::IS_FINITE;
+    case HloOpcode::kClz:
+      return popops::expr::UnaryOpType::COUNT_LEADING_ZEROS;
     default:
       break;
   }

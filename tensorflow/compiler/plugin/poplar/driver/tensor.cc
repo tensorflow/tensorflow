@@ -47,21 +47,17 @@ PoplarDataType(const xla::Shape& shape) {
     case PRED:
       return poplar::BOOL;
     case S8:
+    case U8:
       return poplar::CHAR;
     case S16:
+    case U16:
       return poplar::SHORT;
     case S32:
+    case U32:
       return poplar::INT;
     case S64:
-      return poplar::INT;
-    case U8:
-      return poplar::UNSIGNED_CHAR;
-    case U16:
-      return poplar::UNSIGNED_SHORT;
-    case U32:
-      return poplar::UNSIGNED_INT;
     case U64:
-      return poplar::UNSIGNED_INT;
+      return poplar::INT;
     case F16:
       return poplar::HALF;
     case F32:
