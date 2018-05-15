@@ -59,6 +59,14 @@ def extract_all_types_from_event_trace(events):
     result += [evt.type]
   return result
 
+def extract_all_io_events(events):
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    if evt.type in [1,2]:
+      result += [(evt.type, evt.data_str)]
+  return result
+
 def ipu_compile_summary(name, op_list, collections=None):
 
   with ops.device("cpu"):

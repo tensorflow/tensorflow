@@ -35,6 +35,8 @@ using ComputationMap = std::map<const HloComputation*, SubComputationVisitor>;
 struct CompilerResources {
   ComputationMap computation_map;
 
+  uint64 num_resource_variables;
+
   TensorAllocationMap tensor_allocation_map;
 
   InplaceInstructions inplace_instructions;

@@ -287,6 +287,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode());
+  resources.num_resource_variables = module->config().resource_update_count();
 
   HloComputation* entry = module->entry_computation();
 

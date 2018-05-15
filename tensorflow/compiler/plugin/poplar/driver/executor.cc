@@ -596,16 +596,18 @@ PoplarExecutor::ExecuteEngine(
       engine->run(0);
 
       try {
-        if (profile_execution_ && executable.DumpReport()) {
+        if (profile_execution_) {
 
           poplar::OptionFlags opts;
           opts.set("doLayerWiseBreakdown", "true");
 
           std::stringstream stream;
-          auto rep = engine->getExecutionReport(opts);
-          rep.printSummary(stream);
+          if (executable.DumpReport()) {
+            auto rep = engine->getExecutionReport(opts);
+            rep.printSummary(stream);
 
-          engine->reportIntervals(stream);
+            engine->reportIntervals(stream);
+          }
 
           AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE, "", stream.str(),
                          0);
