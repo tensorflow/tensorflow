@@ -453,9 +453,7 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
-        ":abi",
         ":lib_platform",
-        ":stacktrace",
     ],
 )
 
@@ -802,8 +800,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
-        "//third_party/eigen3",
-        "@farmhash_archive//:farmhash",
     ],
     alwayslink = 1,
 )
@@ -2819,8 +2815,6 @@ cc_library(
         # we now need at least "str_util".
         ":lib",
         ":lib_platform",
-        ":stacktrace_handler",
-        ":test_lite",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,

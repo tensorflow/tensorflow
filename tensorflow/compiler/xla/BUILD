@@ -304,7 +304,6 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
-        ":shape_tree",
         ":shape_util",
         ":sparse_index_array",
         ":status_macros",
