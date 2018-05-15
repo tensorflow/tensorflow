@@ -8,8 +8,31 @@ py_library(
     name = "checkpoint",
     srcs_version = "PY2AND3",
     deps = [
+        ":containers",
         ":split_dependency",
         ":visualize",
+    ],
+)
+
+py_library(
+    name = "containers",
+    srcs = ["containers.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/python:checkpointable"],
+)
+
+py_test(
+    name = "containers_test",
+    srcs = ["containers_test.py"],
+    deps = [
+        ":containers",
+        "//tensorflow/python:checkpointable",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
+        "@six_archive//:six",
     ],
 )
 

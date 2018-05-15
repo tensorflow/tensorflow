@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -46,6 +47,9 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
       break;
     case ComputationKind::kConditionalFalse:
       repr += ":CONDITIONAL_FALSE";
+      break;
+    case ComputationKind::kCallFunction:
+      repr += ":CALL";
       break;
   }
   return repr;
@@ -105,6 +109,31 @@ Status HloModuleGroupMetadata::Build() {
   for (HloModule* module : modules_) {
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
       TF_RETURN_IF_ERROR(computation->Accept(visitor));
+    }
+  }
+  TF_RETURN_IF_ERROR(VerifyCompanionSets());
+  return Status::OK();
+}
+
+Status HloModuleGroupMetadata::VerifyCompanionSets() const {
+  // TODO(dlibenzi): Migrate this to use the device instead of module ID, once
+  // the kDomain CL goes in.
+  for (const auto& companions : companion_sets_) {
+    // A companion set must be composed at most of an instruction per
+    // device/module.
+    std::unordered_set<int64> devices;
+    for (HloInstruction* instruction : *companions) {
+      int64 device = GetModuleId(instruction->parent()->parent());
+      if (!devices.insert(device).second) {
+        std::stringstream ss;
+        ss << "Companion set:" << std::endl;
+        for (HloInstruction* hlo : *companions) {
+          ss << "  " << hlo->name() << " ("
+             << GetModuleId(hlo->parent()->parent()) << ")" << std::endl;
+        }
+        ss << "has multiple instructions on the same device";
+        return FailedPrecondition("%s", ss.str().c_str());
+      }
     }
   }
   return Status::OK();
@@ -206,6 +235,9 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           TrackedInstruction(hlo, ComputationKind::kConditionalTrue);
       tracked_instructions_[hlo->false_computation()] =
           TrackedInstruction(hlo, ComputationKind::kConditionalFalse);
+    } else if (hlo->opcode() == HloOpcode::kCall) {
+      tracked_instructions_[hlo->to_apply()] =
+          TrackedInstruction(hlo, ComputationKind::kCallFunction);
     }
     if (!IsChannelInstruction(hlo)) {
       return Status::OK();
@@ -258,7 +290,8 @@ Status HloModuleGroupMetadata::RecordInstructions() {
 Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
                                             HloInstruction* instruction2) {
   TF_RET_CHECK(instruction1->opcode() == HloOpcode::kWhile ||
-               instruction1->opcode() == HloOpcode::kConditional);
+               instruction1->opcode() == HloOpcode::kConditional ||
+               instruction1->opcode() == HloOpcode::kCall);
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
 
@@ -336,21 +369,11 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
     }
   }
 
-  // Check if channel instructions are used only in allowed computations.
-  const auto allowed = [this](HloInstruction* hlo) {
-    HloComputation* computation = hlo->parent();
-    const HloModule* module = computation->parent();
-    if (module->entry_computation() == computation ||
-        tracked_instructions_.count(computation) > 0) {
-      return true;
-    }
-    return false;
-  };
   for (const Channel& channel : channels_) {
-    if (!allowed(channel.send) || !allowed(channel.send_done) ||
-        !allowed(channel.recv) || !allowed(channel.recv_done)) {
-      return FailedPrecondition("channel is used in disallowed computation");
-    }
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.send));
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.send_done));
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.recv));
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.recv_done));
   }
   // Check if the nest levels match for each channel.
   for (const Channel& channel : channels_) {
@@ -366,6 +389,17 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
     }
   }
   return Status::OK();
+}
+
+Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
+    HloInstruction* instruction) const {
+  HloComputation* computation = instruction->parent();
+  const HloModule* module = computation->parent();
+  if (module->entry_computation() == computation ||
+      tracked_instructions_.count(computation) > 0) {
+    return Status::OK();
+  }
+  return FailedPrecondition("channel is used in disallowed computation");
 }
 
 }  // namespace xla

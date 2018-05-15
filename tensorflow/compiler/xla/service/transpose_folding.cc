@@ -215,7 +215,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
             std::make_pair(instruction, operand_indices));
       }
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   };
 
   for (auto* comp : module->MakeNonfusionComputations()) {

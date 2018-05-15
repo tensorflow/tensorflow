@@ -1,3 +1,5 @@
+
+
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,7 +64,35 @@ StatusOr<int64> MinimumMemoryForSequence(
 namespace {
 
 // Class implementing a list scheduler of HLO instructions which produces a
-// sequence which minimizes memory usage.
+// sequence which minimizes memory usage by preferring to schedule the node that
+// frees bigger buffer and defines smaller outputs.
+//
+// Note that list scheduler is a greedy algorithm which cannot guarantee a
+// global optimal solution. As a counterexample, considering the following
+// graph:
+//
+//      +--> B ===> C -------+
+// A -> |                    |
+//      |                    v
+//      +--> D ---> F=======>G
+//      |           ^
+//      |           |
+//      +--> E -----+
+//
+//  --> : Buffer with size 1
+//  ==> : Buffer with size 2
+//
+// The list scheduler will always try to defer scheduling B in a greedy way
+// since its output buffer is bigger than input. The sequence it creates will
+// be:
+//   A D E F B C G
+// , which has a maximum memory usage of 5 (at one point, B and F will be alive
+// together).
+//
+// An optimal to shedule the previous graph will be:
+//   A B C D E F G
+// , which has a maximum memory usage of 4.
+//
 class ListScheduler {
  public:
   // Construct and return a memory-minimizing sequence of HLO instructions
@@ -366,10 +396,10 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
 
 }  // namespace
 
-StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
+StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerImpl(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function, bool reverse_heuristics) {
   // This ordering is based on DFS post-order, with a heuristic to decide which
   // operand to visit first.  The heuristic is based on 'extra_users', which is
   // simply users-1 for each instruction.  By subtracting 1, we're saying that
@@ -409,19 +439,20 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     return Status::OK();
   });
   TF_RETURN_IF_ERROR(computation.AcceptWithOperandOrder(
-      &visitor, [&extra_users, &total_sizes](const HloInstruction* a,
-                                             const HloInstruction* b) {
-        if (extra_users[a] != extra_users[b]) {
-          return extra_users[a] > extra_users[b];
-        }
-        if (total_sizes[a] != total_sizes[b]) {
-          return total_sizes[a] > total_sizes[b];
-        }
-        return a->name() < b->name();
+      &visitor, [&extra_users, &total_sizes, reverse_heuristics](
+                    const HloInstruction* a, const HloInstruction* b) {
+        auto lhs = std::tuple<int64, int64, string>(extra_users[a],
+                                                    total_sizes[a], b->name());
+        auto rhs = std::tuple<int64, int64, string>(extra_users[b],
+                                                    total_sizes[b], a->name());
+
+        // Reverse heuristics. This helps some cases as a different starting
+        // point of gradient descent, see b/78906799 for more context.
+        return reverse_heuristics ? rhs > lhs : lhs > rhs;
       }));
   CHECK_EQ(sequence.size(), computation.instruction_count());
   return sequence;
-}
+}  // namespace xla
 
 StatusOr<std::vector<const HloInstruction*>> ListMemoryScheduler(
     const HloComputation& computation,
@@ -437,6 +468,22 @@ StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
   const auto& post_order = computation.MakeInstructionPostOrder();
   return std::vector<const HloInstruction*>{post_order.begin(),
                                             post_order.end()};
+}
+
+StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  return DFSMemorySchedulerImpl(computation, points_to_analysis, size_function,
+                                /*reverse_heuristics=*/false);
+}
+
+StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerReverse(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  return DFSMemorySchedulerImpl(computation, points_to_analysis, size_function,
+                                /*reverse_heuristics=*/true);
 }
 
 StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
@@ -478,19 +525,34 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
-  if (post_order_memory < std::min(list_memory, dfs_memory)) {
-    VLOG(2) << "Chose min-memory post_order sequence: "
-            << HumanReadableNumBytes(post_order_memory);
-    return post_order_sequence;
+  TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> reverse_dfs,
+                      DFSMemorySchedulerReverse(computation, points_to_analysis,
+                                                size_function));
+  TF_ASSIGN_OR_RETURN(
+      const int64 reverse_dfs_memory,
+      MinimumMemoryForComputation(computation, reverse_dfs, points_to_analysis,
+                                  size_function));
+  VLOG(2) << "Min-memory reverse_dfs sequence: "
+          << HumanReadableNumBytes(reverse_dfs_memory);
+  auto min_memory = std::min(
+      {dfs_memory, post_order_memory, reverse_dfs_memory, list_memory});
 
-  } else if (list_memory <= dfs_memory) {
+  if (min_memory == list_memory) {
     VLOG(2) << "Chose min-memory list sequence: "
             << HumanReadableNumBytes(list_memory);
     return list_sequence;
-  } else {
+  } else if (min_memory == dfs_memory) {
     VLOG(2) << "Chose min-memory dfs sequence: "
             << HumanReadableNumBytes(dfs_memory);
     return dfs_sequence;
+  } else if (min_memory == reverse_dfs_memory) {
+    VLOG(2) << "Chose min-memory reverse_dfs memory: "
+            << HumanReadableNumBytes(reverse_dfs_memory);
+    return reverse_dfs;
+  } else {
+    VLOG(2) << "Chose min-memory post_order sequence: "
+            << HumanReadableNumBytes(post_order_memory);
+    return post_order_sequence;
   }
 }
 

@@ -57,8 +57,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
@@ -80,7 +80,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteMulParams* params, const OpData* data,
-               TfLiteTensor* input1, TfLiteTensor* input2,
+               const TfLiteTensor* input1, const TfLiteTensor* input2,
                TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
@@ -109,7 +109,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteMulParams* params, const OpData* data,
-                   TfLiteTensor* input1, TfLiteTensor* input2,
+                   const TfLiteTensor* input1, const TfLiteTensor* input2,
                    TfLiteTensor* output) {
   auto input1_offset = -input1->params.zero_point;
   auto input2_offset = -input2->params.zero_point;
@@ -149,8 +149,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteMulParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {

@@ -93,6 +93,11 @@ class TestWorkerInterface : public WorkerInterface {
     done(errors::Unimplemented("RunGraphAsync"));
   }
 
+  void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                    RecvBufResponse* response, StatusCallback done) override {
+    done(errors::Unimplemented("RecvBufAsync"));
+  }
+
   void CompleteGroupAsync(CallOptions* opts,
                           const CompleteGroupRequest* request,
                           CompleteGroupResponse* response,

@@ -73,20 +73,29 @@ llvm::StringRef GetHostCpuName() {
 }
 }  // namespace
 
+/*static*/ std::unique_ptr<llvm::TargetMachine>
+SimpleOrcJIT::InferTargetMachineForJIT(
+    const llvm::TargetOptions& target_options,
+    llvm::CodeGenOpt::Level opt_level) {
+  std::unique_ptr<llvm::TargetMachine> target_machine(
+      llvm::EngineBuilder()
+          .setTargetOptions(target_options)
+          .setOptLevel(opt_level)
+          .selectTarget(
+              /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
+              /*MCPU=*/GetHostCpuName(),
+              /*MAttrs=*/DetectMachineAttributes()));
+  CHECK(target_machine != nullptr);
+  return target_machine;
+}
+
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
                            bool optimize_for_size, bool enable_fast_math,
                            bool disable_expensive_passes,
                            LLVMCompiler::ModuleHook pre_optimization_hook,
                            LLVMCompiler::ModuleHook post_optimization_hook)
-    : target_machine_(
-          CHECK_NOTNULL(llvm::EngineBuilder()
-                            .setTargetOptions(target_options)
-                            .setOptLevel(opt_level)
-                            .selectTarget(
-                                /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-                                /*MCPU=*/GetHostCpuName(),
-                                /*MAttrs=*/DetectMachineAttributes()))),
+    : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(

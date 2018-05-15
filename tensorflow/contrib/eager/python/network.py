@@ -23,7 +23,6 @@ import os
 import weakref
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.keras._impl.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.layers import base
@@ -33,6 +32,7 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import function_utils
 
 # pylint: disable=protected-access
 # Explanation for protected-access disable: Network has lots of same-class and
@@ -545,10 +545,10 @@ class Sequential(Network):
 
   def add(self, layer_func):
     if isinstance(layer_func, base.Layer):
-      args = estimator_util.fn_args(layer_func.call)
+      args = function_utils.fn_args(layer_func.call)
       self.track_layer(layer_func)
     elif callable(layer_func):
-      args = estimator_util.fn_args(layer_func)
+      args = function_utils.fn_args(layer_func)
     else:
       raise TypeError(
           "Sequential.add() takes only tf.layers.Layer objects or callables; "

@@ -926,6 +926,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(
       new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
+  ops.emplace_back(
+      new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
+  ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
 
   return ops;
 }

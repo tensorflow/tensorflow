@@ -285,6 +285,10 @@ class Model(Network):
           self.metrics_names.append(self.output_names[i] + '_loss')
       self.nested_metrics = training_utils.collect_metrics(metrics,
                                                            self.output_names)
+      # TODO(fchollet): support stateful metrics in eager execution.
+      self.stateful_metric_functions = []
+      self.stateful_metric_names = []
+
       with K.name_scope('metrics'):
         training_utils.populate_metric_names(self)
       self._feed_sample_weight_modes = []
@@ -461,6 +465,7 @@ class Model(Network):
                                                              self.output_names)
     self.metrics_updates = []
     self.stateful_metric_names = []
+    self.stateful_metric_functions = []
     with K.name_scope('metrics'):
       for i in range(len(self.outputs)):
         if i in skip_target_indices:
@@ -516,8 +521,9 @@ class Model(Network):
 
             # Keep track of state updates created by
             # stateful metrics (i.e. metrics layers).
-            if isinstance(metric_fn, Layer):
+            if isinstance(metric_fn, Layer) and metric_fn.stateful:
               self.stateful_metric_names.append(metric_name)
+              self.stateful_metric_functions.append(metric_fn)
               self.metrics_updates += metric_fn.updates
 
         handle_metrics(output_metrics)
@@ -1745,7 +1751,8 @@ class Model(Network):
                          steps=None,
                          max_queue_size=10,
                          workers=1,
-                         use_multiprocessing=False):
+                         use_multiprocessing=False,
+                         verbose=0):
     """Evaluates the model on a data generator.
 
     The generator should return the same kind of data
@@ -1772,6 +1779,7 @@ class Model(Network):
             Note that because this implementation relies on multiprocessing,
             you should not pass non-picklable arguments to the generator
             as they can't be passed easily to children processes.
+        verbose: Verbosity mode, 0 or 1.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1796,7 +1804,8 @@ class Model(Network):
         steps=steps,
         max_queue_size=max_queue_size,
         workers=workers,
-        use_multiprocessing=use_multiprocessing)
+        use_multiprocessing=use_multiprocessing,
+        verbose=verbose)
 
   def predict_generator(self,
                         generator,

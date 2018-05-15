@@ -1017,6 +1017,62 @@ class SoftplusTest(test.TestCase):
       self.assertAllEqual(
           np.ones_like(grads).astype(np.bool), np.isfinite(grads))
 
+class ArgumentsTest(test.TestCase):
+
+  def testNoArguments(self):
+    def foo():
+      return du.parent_frame_arguments()
+
+    self.assertEqual({}, foo())
+
+  def testPositionalArguments(self):
+    def foo(a, b, c, d):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "d": 4}, foo(1, 2, 3, 4))
+
+    # Tests that it does not matter where this function is called, and
+    # no other local variables are returned back.
+    def bar(a, b, c):
+      unused_x = a * b
+      unused_y = c * 3
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, bar(1, 2, 3))
+
+  def testOverloadedArgumentValues(self):
+    def foo(a, b, c):  # pylint: disable=unused-argument
+      a = 42
+      b = 31
+      c = 42
+      return du.parent_frame_arguments()
+    self.assertEqual({"a": 42, "b": 31, "c": 42}, foo(1, 2, 3))
+
+  def testKeywordArguments(self):
+    def foo(**kwargs):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "d": 4}, foo(a=1, b=2, c=3, d=4))
+
+  def testPositionalKeywordArgs(self):
+    def foo(a, b, c, **kwargs):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, foo(a=1, b=2, c=3))
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "unicorn": None},
+                     foo(a=1, b=2, c=3, unicorn=None))
+
+  def testNoVarargs(self):
+    def foo(a, b, c, *varargs, **kwargs):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, foo(a=1, b=2, c=3))
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, foo(1, 2, 3, *[1, 2, 3]))
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "unicorn": None},
+                     foo(1, 2, 3, unicorn=None))
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "unicorn": None},
+                     foo(1, 2, 3, *[1, 2, 3], unicorn=None))
+
 
 if __name__ == "__main__":
   test.main()

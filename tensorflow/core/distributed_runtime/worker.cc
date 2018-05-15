@@ -337,6 +337,15 @@ void Worker::TracingAsync(const TracingRequest* request,
   done(errors::Unimplemented("Tracing"));
 }
 
+void Worker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                          RecvBufResponse* response, StatusCallback done) {
+  // The base Worker class does not implement RecvBufAsync because
+  // it is not currently used for worker-to-worker communication. Use a
+  // transport-specific implementation (such as `GrpcWorker::RecvBufAsync()`)
+  // instead.
+  done(errors::Unimplemented("Worker::RecvBufAsync()"));
+}
+
 void Worker::CompleteGroupAsync(CallOptions* opts,
                                 const CompleteGroupRequest* request,
                                 CompleteGroupResponse* response,

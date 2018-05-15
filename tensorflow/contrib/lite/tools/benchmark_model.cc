@@ -354,7 +354,7 @@ int Main(int argc, char** argv) {
   string output_layer_string;  // e.g.: output
   int num_runs = 50;
   string run_delay = "-1.0";
-  int num_threads = -1;
+  int num_threads = 1;
   string benchmark_name = "";
   string output_prefix = "";
   int warmup_runs = 1;

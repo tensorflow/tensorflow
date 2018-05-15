@@ -33,10 +33,10 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input_condition =
+  const TfLiteTensor* input_condition =
       GetInput(context, node, kInputTensorCondition);
-  TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
-  TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
+  const TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
+  const TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Input must be bool.
@@ -62,10 +62,10 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input_condition =
+  const TfLiteTensor* input_condition =
       GetInput(context, node, kInputTensorCondition);
-  TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
-  TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
+  const TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
+  const TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   bool is_rank_one = !HaveSameShapes(input_condition, input_x);

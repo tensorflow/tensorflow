@@ -189,6 +189,7 @@ Status ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
       output_array->GetMutableBuffer<ArrayDataType::kFloat>().data;
   output_float_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                            0.f);
+  CHECK_GE(output_float_data.size(), input_flat_size);
   if (input_tensor.float_val_size() == 1) {
     for (int i = 0; i < input_flat_size; i++) {
       output_float_data[i] = input_tensor.float_val(0);
@@ -221,6 +222,7 @@ Status ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
   if (input_tensor.int_val_size()) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
@@ -249,6 +251,7 @@ Status ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt32>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
   if (input_tensor.int_val_size()) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
@@ -277,6 +280,7 @@ Status ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
   if (input_tensor.int64_val_size()) {
     for (int i = 0; i < input_tensor.int64_val_size(); i++) {
       output_int_data[i] = input_tensor.int64_val(i);
@@ -306,6 +310,7 @@ Status ImportBoolArray(const TensorProto& input_tensor, Array* output_array) {
       output_array->GetMutableBuffer<ArrayDataType::kBool>().data;
   output_bool_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                           false);
+  CHECK_GE(output_bool_data.size(), input_flat_size);
   if (input_tensor.bool_val_size()) {
     for (int i = 0; i < input_tensor.bool_val_size(); i++) {
       output_bool_data[i] = input_tensor.bool_val(i);
@@ -340,13 +345,16 @@ Status ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
                             output_array->mutable_shape());
   if (!status.ok()) return status;
 
+  if (input_flat_size != input_tensor.string_val_size()) {
+    return Status(false,
+                  "Input_content string_val doesn't have the right dimensions "
+                  "for this string tensor");
+  }
+
   auto& output_string_data =
       output_array->GetMutableBuffer<ArrayDataType::kString>().data;
   output_string_data.resize(RequiredBufferSizeForShape(output_array->shape()));
-  if (input_flat_size != input_tensor.string_val_size()) {
-    LOG(FATAL) << "Input_content string_val doesn't have the right "
-                  "dimensions for this string tensor.";
-  }
+  CHECK_GE(output_string_data.size(), input_flat_size);
   for (int i = 0; i < input_flat_size; ++i) {
     output_string_data[i] = input_tensor.string_val(i);
   }
@@ -1232,6 +1240,19 @@ void ConvertLessEqualOperator(const NodeDef& node,
                               Model* model) {
   CHECK_EQ(node.op(), "LessEqual");
   auto* op = new TensorFlowLessEqualOperator;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertSinOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Sin");
+  auto* op = new SinOperator;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
@@ -2267,6 +2288,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertDynamicStitchOperator(node, tf_import_flags, model);
   } else if (node.op() == "RandomUniform") {
     ConvertRandomUniform(node, tf_import_flags, model);
+  } else if (node.op() == "Sin") {
+    ConvertSinOperator(node, tf_import_flags, model);
   } else if (node.op() == "Select") {
     ConvertSelectOperator(node, tf_import_flags, model);
   } else {

@@ -128,9 +128,8 @@ string GetLibdeviceDir(const string& config_cuda_data_dir) {
 }
 
 // Runs optimization passes on the given HLO module.
-tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
-                                     se::StreamExecutor* stream_exec,
-                                     DeviceMemoryAllocator* device_allocator) {
+Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
+                         DeviceMemoryAllocator* device_allocator) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
@@ -283,12 +282,12 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output

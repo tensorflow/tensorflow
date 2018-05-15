@@ -182,6 +182,10 @@ class NumericColumnTest(test.TestCase):
     self.assertEqual(dtypes.float32, a.dtype)
     self.assertIsNone(a.normalizer_fn)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.numeric_column(key=('aaa',))
+
   def test_shape_saved_as_tuple(self):
     a = fc.numeric_column('aaa', shape=[1, 2], default_value=[[3, 2.]])
     self.assertEqual((1, 2), a.shape)
@@ -644,6 +648,10 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertEqual('aaa', a.key)
     self.assertEqual(10, a.hash_bucket_size)
     self.assertEqual(dtypes.string, a.dtype)
+
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_hash_bucket(('key',), 10)
 
   def test_bucket_size_should_be_given(self):
     with self.assertRaisesRegexp(ValueError, 'hash_bucket_size must be set.'):
@@ -3327,6 +3335,11 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column._parse_example_spec)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_vocabulary_file(
+          key=('aaa',), vocabulary_file='path_to_file', vocabulary_size=3)
+
   def test_all_constructor_args(self):
     column = fc.categorical_column_with_vocabulary_file(
         key='aaa', vocabulary_file='path_to_file', vocabulary_size=3,
@@ -3752,6 +3765,11 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column._parse_example_spec)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_vocabulary_list(
+          key=('aaa',), vocabulary_list=('omar', 'stringer', 'marlo'))
+
   def test_defaults_int(self):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa', vocabulary_list=(12, 24, 36))
@@ -4142,6 +4160,10 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, column._parse_example_spec)
+
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_identity(key=('aaa',), num_buckets=3)
 
   def test_deep_copy(self):
     original = fc.categorical_column_with_identity(key='aaa', num_buckets=3)

@@ -70,11 +70,11 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
       this, MakeUnique<HostExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf(
             "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str())};
+            config.ordinal, init_status.ToString().c_str()));
   }
 
   return std::move(executor);

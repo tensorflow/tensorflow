@@ -104,7 +104,9 @@ class DefaultCostModel : public ParallelCostModel {
 
 ParallelTaskAssignment::ParallelTaskAssignment(
     const int64 max_parallelism,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size, HloModule* module) {
+    const HloCostAnalysis::ShapeSizeFunction& shape_size, HloModule* module,
+    const TargetMachineFeatures* target_machine_features)
+    : target_machine_features_(*target_machine_features) {
   VLOG(1) << "ParallelTaskAssignment max_parallelism: " << max_parallelism;
   // Run cost analysis on 'module'.
   auto cost_analysis = MakeUnique<HloCostAnalysis>(shape_size);
@@ -139,8 +141,10 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
       opcode == HloOpcode::kFft || opcode == HloOpcode::kInfeed ||
       opcode == HloOpcode::kOutfeed || opcode == HloOpcode::kRng ||
       (opcode == HloOpcode::kConvolution &&
-       PotentiallyImplementedAsEigenConvolution(*instruction)) ||
-      PotentiallyImplementedAsEigenDot(*instruction) ||
+       PotentiallyImplementedAsEigenConvolution(*instruction,
+                                                target_machine_features_)) ||
+      PotentiallyImplementedAsEigenDot(*instruction,
+                                       target_machine_features_) ||
       (opcode == HloOpcode::kFusion &&
        instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
       ShapeUtil::IsTuple(instruction->shape())) {
@@ -231,7 +235,8 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
 void ParallelTaskAssigner::ComputeTargetParallelTasks(
     HloModule* module, HloToParallelTasks* hlo_to_parallel_tasks) {
   ParallelTaskAssignment parallel_task_assignment(max_parallelism_,
-                                                  shape_size_function_, module);
+                                                  shape_size_function_, module,
+                                                  &target_machine_features_);
 
   // Compute parallel task counts for all instructions in 'module'.
   for (auto* computation : module->computations()) {

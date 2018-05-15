@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
+
+#include <algorithm>
+
 #include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 
 namespace tflite {
@@ -33,6 +37,76 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       recurrent_weights_ptr, num_units, num_units, hidden_state_ptr_batch,
       batch_size, output_ptr_batch, /*result_stride=*/1);
+  // Output = activation(Output) and update hidden_state
+  tensor_utils::ApplyActivationToVector(
+      output_ptr_batch, num_units * batch_size, activation, output_ptr_batch);
+  tensor_utils::VectorBatchVectorAssign(output_ptr_batch, num_units, batch_size,
+                                        hidden_state_ptr_batch);
+}
+
+void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
+                  float input_weights_scale,
+                  const int8_t* recurrent_weights_ptr,
+                  float recurrent_weights_scale, const float* bias_ptr,
+                  int input_size, int num_units, int batch_size,
+                  TfLiteFusedActivation activation,
+                  int8_t* quantized_input_ptr_batch,
+                  int8_t* quantized_hidden_state_ptr_batch,
+                  float* hidden_state_ptr_batch, float* output_ptr_batch) {
+  // Output = bias
+  tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
+                                        output_ptr_batch);
+
+  // TODO(mirkov): change std::minmax_element with a vectorized call.
+  auto minmax_element = std::minmax_element(
+      input_ptr_batch, input_ptr_batch + batch_size * input_size);
+
+  // Save quantization and matmul computation for all zero input.
+  if (!(*minmax_element.first == 0.0 && *minmax_element.second == 0.0)) {
+    // Quantize input from float to uint8 + quantization params (scaling
+    // factor).
+    float unused_min, unused_max;
+    float* scaling_factors = new float[batch_size];
+    for (int b = 0; b < batch_size; ++b) {
+      const int offset = b * input_size;
+      tensor_utils::SymmetricQuantizeFloats(
+          input_ptr_batch + offset, input_size,
+          quantized_input_ptr_batch + offset, &unused_min, &unused_max,
+          &scaling_factors[b]);
+      scaling_factors[b] *= input_weights_scale;
+    }
+
+    // Output += input * input_weights
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        input_weights_ptr, num_units, input_size, quantized_input_ptr_batch,
+        scaling_factors, batch_size, output_ptr_batch, /*result_stride=*/1);
+    delete[] scaling_factors;
+  }
+
+  minmax_element = std::minmax_element(
+      hidden_state_ptr_batch, hidden_state_ptr_batch + batch_size * num_units);
+  // Save quantization and matmul computation for all zero input.
+  if (!(*minmax_element.first == 0.0 && *minmax_element.second == 0.0)) {
+    // Quantize hidden_state
+    float unused_min, unused_max;
+    float* scaling_factors = new float[batch_size];
+    for (int b = 0; b < batch_size; ++b) {
+      const int offset = b * num_units;
+      tensor_utils::SymmetricQuantizeFloats(
+          hidden_state_ptr_batch + offset, num_units,
+          quantized_hidden_state_ptr_batch + offset, &unused_min, &unused_max,
+          &scaling_factors[b]);
+      scaling_factors[b] *= recurrent_weights_scale;
+    }
+
+    // Output += recurrent_weights * hidden_state
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        recurrent_weights_ptr, num_units, num_units,
+        quantized_hidden_state_ptr_batch, scaling_factors, batch_size,
+        output_ptr_batch, /*result_stride=*/1);
+    delete[] scaling_factors;
+  }
+
   // Output = activation(Output) and update hidden_state
   tensor_utils::ApplyActivationToVector(
       output_ptr_batch, num_units * batch_size, activation, output_ptr_batch);

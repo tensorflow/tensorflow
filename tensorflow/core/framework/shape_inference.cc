@@ -616,8 +616,9 @@ Status InferenceContext::Subshape(ShapeHandle s, int64 start, int64 end,
   int64 end_in = end;
 
   const int32 rank = Rank(s);
-  if (start == 0 && ((RankKnown(s) && end >= rank) ||
-                     end == std::numeric_limits<int64>::max())) {
+  if (start == 0 && stride == 1 &&
+      ((RankKnown(s) && end >= rank) ||
+       end == std::numeric_limits<int64>::max())) {
     *out = s;
     return Status::OK();
   }
@@ -663,7 +664,6 @@ Status InferenceContext::Subshape(ShapeHandle s, int64 start, int64 end,
   }
 
   std::vector<DimensionHandle> dims;
-  dims.reserve((end - start) / stride);
   for (int i = start; stride > 0 ? i < end : i > end; i += stride) {
     dims.push_back(Dim(s, i));
   }

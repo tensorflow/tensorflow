@@ -86,6 +86,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSlice);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
@@ -372,6 +373,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     LOG(INFO) << "Estimated count of arithmetic ops: " << 1e-9 * ops_count
               << " billion (note that a multiply-add is counted as 2 ops).";
   }
+  model->ops_count = ops_count;
 }
 
 void Export(const TocoFlags& toco_flags, const Model& model,
