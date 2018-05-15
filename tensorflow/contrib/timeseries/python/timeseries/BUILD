@@ -110,6 +110,7 @@ py_test(
         "no_pip_gpu",  # b/63391119
         "nomsan",  # Takes too long to run.
         "notsan",  # b/67865658
+        "optonly",  # Takes too long to run without optimization.
     ],
     deps = [
         ":ar_model",

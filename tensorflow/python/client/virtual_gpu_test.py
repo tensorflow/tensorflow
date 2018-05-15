@@ -236,7 +236,7 @@ class VirtualGpuTest(test_util.TensorFlowTestCase):
     with self.test_session(config=self._util.config) as sess:
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
-      for _ in range(10):
+      for _ in range(5):
         if not self._util.TestRandomGraph(sess):
           return
 

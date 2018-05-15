@@ -35,26 +35,38 @@ KernelThunk::KernelThunk(
       kernel_name_(kernel_name),
       unroll_factor_(unroll_factor) {}
 
-tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
+Status KernelThunk::Initialize(const GpuExecutable& executable,
+                               se::StreamExecutor* executor) {
   tensorflow::mutex_lock lock(mutex_);
-  if (loader_spec_) {
-    // Already initialized by another thread.
-    return tensorflow::Status::OK();
+  if (!loader_spec_) {
+    loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
+    tensorflow::StringPiece ptx = executable.ptx();
+    // Convert tensorflow::StringPiece to se::port::StringPiece because
+    // StreamExecutor uses the latter.
+    loader_spec_->AddCudaPtxInMemory(
+        se::port::StringPiece(ptx.data(), ptx.size()), kernel_name_);
+
+    if (!executable.cubin().empty()) {
+      loader_spec_->AddCudaCubinInMemory(
+          reinterpret_cast<const char*>(executable.cubin().data()),
+          kernel_name_);
+    }
   }
 
-  loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
-  tensorflow::StringPiece ptx = executable.ptx();
-  // Convert tensorflow::StringPiece to se::port::StringPiece because
-  // StreamExecutor uses the latter.
-  loader_spec_->AddCudaPtxInMemory(
-      se::port::StringPiece(ptx.data(), ptx.size()), kernel_name_);
-
-  if (!executable.cubin().empty()) {
-    loader_spec_->AddCudaCubinInMemory(
-        reinterpret_cast<const char*>(executable.cubin().data()), kernel_name_);
+  // Load the kernel into the device if necessary.
+  //
+  // We could alternatively do this within ExecuteOnStream, but doing it here
+  // lets the time spent loading the kernel not count towards our execution
+  // profiles.
+  auto it = kernel_cache_.find(executor);
+  if (kernel_cache_.end() == it) {
+    it = kernel_cache_.emplace(executor, se::KernelBase(executor)).first;
+    if (!executor->GetKernel(*loader_spec_, &it->second)) {
+      return InternalError("Unable to load kernel %s", kernel_name_.c_str());
+    }
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
@@ -62,21 +74,18 @@ void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
   launch_dimensions_ = launch_dims;
 }
 
-tensorflow::Status KernelThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                    se::Stream* stream) {
   // Load the kernel.
   se::StreamExecutor* executor = stream->parent();
   LaunchDimensions launch_dimensions;
   const se::KernelBase* kernel = nullptr;
+
   {
     tensorflow::mutex_lock lock(mutex_);
     auto it = kernel_cache_.find(executor);
-    if (kernel_cache_.end() == it) {
-      it = kernel_cache_.emplace(executor, se::KernelBase(executor)).first;
-      if (!executor->GetKernel(*loader_spec_, &it->second)) {
-        return InternalError("Unable to load kernel %s", kernel_name_.c_str());
-      }
-    }
+    CHECK(it != kernel_cache_.end())
+        << "Initialize() not called for StreamExecutor " << executor;
     launch_dimensions = launch_dimensions_;
     kernel = &it->second;
   }
@@ -97,7 +106,7 @@ tensorflow::Status KernelThunk::ExecuteOnStream(
           *kernel_args)) {
     return InternalError("Unable to launch kernel %s", kernel_name_.c_str());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

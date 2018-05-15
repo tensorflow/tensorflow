@@ -36,9 +36,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export as export_helpers
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
@@ -62,6 +62,7 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training import warm_starting_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -370,6 +371,21 @@ class Estimator(object):
     else:
       return []
 
+  def eval_dir(self, name=None):
+    """Shows directory name where evaluation metrics are dumped.
+
+    Args:
+      name: Name of the evaluation if user needs to run multiple evaluations on
+        different data sets, such as on training data vs test data. Metrics for
+        different evaluations are saved in separate folders, and appear
+        separately in tensorboard.
+
+    Returns:
+      A string which is the path of directory contains evaluation metrics.
+    """
+    return os.path.join(self._model_dir, 'eval' if not name else
+                        'eval_' + name)
+
   def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
                name=None):
     """Evaluates the model given evaluation data input_fn.
@@ -616,68 +632,6 @@ class Estimator(object):
         strip_default_attrs=strip_default_attrs,
         mode=model_fn_lib.ModeKeys.PREDICT)
 
-  def _export_all_saved_models(
-      self, export_dir_base, input_receiver_fn_map,
-      assets_extra=None,
-      as_text=False,
-      checkpoint_path=None,
-      strip_default_attrs=False):
-    # pylint: disable=line-too-long
-    """Exports requested train/eval/predict graphs as separate SavedModels.
-
-    This is a wrapper around export_saved_model_for_mode that accepts
-    multiple modes simultaneously and creates directories for each under
-    export_dir_base. See `Estimator.export_saved_model_for_mode` for
-    further details as to how the export works for each mode.
-
-    See tf.contrib.estimator.export_all_saved_models for the currently
-    exposed version of this function.
-
-    Args:
-      export_dir_base: A string containing a directory in which to create
-        timestamped subdirectories containing exported SavedModels.
-      input_receiver_fn_map: dict of tf.estimator.ModeKeys to input_receiver_fn
-        mappings, where the input_receiver_fn is a function that takes no
-        argument and returns the appropriate subclass of `InputReceiver`.
-      assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel, or `None` if no extra assets are needed.
-      as_text: whether to write the SavedModel proto in text format.
-      checkpoint_path: The checkpoint path to export.  If `None` (the default),
-        the most recent checkpoint found within the model directory is chosen.
-      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-
-    Returns:
-      A dict of tf.estimator.ModeKeys value to string path for each exported
-      directory.
-
-    Raises:
-      ValueError: if any input_receiver_fn is None, no export_outputs
-        are provided, or no checkpoint can be found.
-    """
-    # pylint: enable=line-too-long
-    # TODO(b/65561022): Consider allowing multiple input_receiver_fns per mode.
-    exported = {}
-    for mode, input_receiver_fn in input_receiver_fn_map.items():
-      export_mode_dir = os.path.join(
-          compat.as_bytes(export_dir_base),
-          compat.as_bytes(mode))
-      gfile.MakeDirs(export_mode_dir)
-
-      exported_path = self._export_saved_model_for_mode(
-          export_mode_dir,
-          input_receiver_fn,
-          assets_extra=assets_extra,
-          as_text=as_text,
-          checkpoint_path=checkpoint_path,
-          strip_default_attrs=strip_default_attrs,
-          mode=mode)
-
-      exported[mode] = exported_path
-
-    return exported
-
   def _export_saved_model_for_mode(
       self, export_dir_base, input_receiver_fn,
       assets_extra=None,
@@ -688,19 +642,73 @@ class Estimator(object):
     # pylint: disable=line-too-long
     """Exports a single train/eval/predict graph as a SavedModel.
 
-    For a detailed guide, see
-    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
+    This method is a wrapper for _export_all_saved_models, and wraps a raw
+    input_receiver_fn in a dictionary to pass in to that function.
+    See _export_all_saved_models for full docs.
 
     See tf.contrib.estimator.export_saved_model_for_mode for the currently
     exposed version of this function.
 
-    This method takes an input_receiver_fn and mode. For the mode passed in,
+    Args:
+      export_dir_base: A string containing a directory in which to create
+        timestamped subdirectories containing exported SavedModels.
+      input_receiver_fn: a function that takes no argument and
+        returns the appropriate subclass of `InputReceiver`.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported SavedModel, or `None` if no extra assets are needed.
+      as_text: whether to write the SavedModel proto in text format.
+      checkpoint_path: The checkpoint path to export.  If `None` (the default),
+        the most recent checkpoint found within the model directory is chosen.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      mode: tf.estimator.ModeKeys value indicating with mode will be exported.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if input_receiver_fn is None, no export_outputs
+        are provided, or no checkpoint can be found.
+    """
+    # pylint: enable=line-too-long
+    if not input_receiver_fn:
+      raise ValueError('An input_receiver_fn must be defined.')
+
+    input_receiver_fn_map = {mode: input_receiver_fn}
+
+    return self._export_all_saved_models(
+        export_dir_base,
+        input_receiver_fn_map,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        checkpoint_path=checkpoint_path,
+        strip_default_attrs=strip_default_attrs)
+
+  def _export_all_saved_models(
+      self, export_dir_base, input_receiver_fn_map,
+      assets_extra=None,
+      as_text=False,
+      checkpoint_path=None,
+      strip_default_attrs=False):
+    # pylint: disable=line-too-long
+    """Exports a SavedModel containing MetaGraphDefs for each requested mode.
+
+    See tf.contrib.estimator.export_all_saved_models for the currently
+    exposed version of this function.
+
+    For each mode passed in via the input_receiver_fn_map,
     this method builds a new graph by calling the input_receiver_fn to obtain
     feature and label `Tensor`s. Next, this method calls the `Estimator`'s
     model_fn in the passed mode to generate the model graph based on
     those features and labels, and restores the given checkpoint
     (or, lacking that, the most recent checkpoint) into the graph.
-    Finally, it creates a timestamped export directory below the
+    Only one of the modes is used for saving variables to the SavedModel
+    (order of preference: TRAIN, EVAL, then PREDICT), such that up to three
+    MetaGraphDefs are saved with a single set of variables in a single
+    SavedModel directory.
+
+    For the variables and MetaGraphDefs, a timestamped export directory below
     export_dir_base, and writes a `SavedModel` into it containing
     the `MetaGraphDef` for the given mode and its associated signatures.
 
@@ -727,8 +735,9 @@ class Estimator(object):
     Args:
       export_dir_base: A string containing a directory in which to create
         timestamped subdirectories containing exported SavedModels.
-      input_receiver_fn: a function that takes no argument and
-        returns the appropriate subclass of `InputReceiver`.
+      input_receiver_fn_map: dict of tf.estimator.ModeKeys to input_receiver_fn
+        mappings, where the input_receiver_fn is a function that takes no
+        argument and returns the appropriate subclass of `InputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
         within the exported SavedModel, or `None` if no extra assets are needed.
       as_text: whether to write the SavedModel proto in text format.
@@ -737,20 +746,18 @@ class Estimator(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-      mode: tf.estimator.ModeKeys value indicating with mode will be exported.
 
     Returns:
-      The string path to the exported directory.
+      A dict of tf.estimator.ModeKeys value to string path for each exported
+      directory.
 
     Raises:
-      ValueError: if input_receiver_fn is None, no export_outputs
+      ValueError: if any input_receiver_fn is None, no export_outputs
         are provided, or no checkpoint can be found.
     """
     # pylint: enable=line-too-long
+    # TODO(b/65561022): Consider allowing multiple input_receiver_fns per mode.
     with context.graph_mode():
-      if not input_receiver_fn:
-        raise ValueError('An input_receiver_fn must be defined.')
-
       if not checkpoint_path:
         # Locate the latest checkpoint
         checkpoint_path = saver.latest_checkpoint(self._model_dir)
@@ -762,9 +769,34 @@ class Estimator(object):
 
       builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
 
-      self._add_meta_graph_and_variables_for_mode(
-          builder, input_receiver_fn, checkpoint_path,
-          strip_default_attrs, mode)
+      save_variables = True
+      # Note that the order in which we run here matters, as the first
+      # mode we pass through will be used to save the variables. We run TRAIN
+      # first, as that is also the mode used for checkpoints, and therefore
+      # we are not likely to have vars in PREDICT that are not in the checkpoint
+      # created by TRAIN.
+      if input_receiver_fn_map.get(model_fn_lib.ModeKeys.TRAIN):
+        self._add_meta_graph_for_mode(
+            builder, input_receiver_fn_map, checkpoint_path,
+            strip_default_attrs, save_variables,
+            mode=model_fn_lib.ModeKeys.TRAIN)
+        save_variables = False
+      if input_receiver_fn_map.get(model_fn_lib.ModeKeys.EVAL):
+        self._add_meta_graph_for_mode(
+            builder, input_receiver_fn_map, checkpoint_path,
+            strip_default_attrs, save_variables,
+            mode=model_fn_lib.ModeKeys.EVAL)
+        save_variables = False
+      if input_receiver_fn_map.get(model_fn_lib.ModeKeys.PREDICT):
+        self._add_meta_graph_for_mode(
+            builder, input_receiver_fn_map, checkpoint_path,
+            strip_default_attrs, save_variables,
+            mode=model_fn_lib.ModeKeys.PREDICT)
+        save_variables = False
+
+      if save_variables:
+        raise ValueError('No valid modes for exporting found. Got {}.'.format(
+            input_receiver_fn_map.keys()))
 
       builder.save(as_text)
 
@@ -782,24 +814,31 @@ class Estimator(object):
       gfile.Rename(temp_export_dir, export_dir)
       return export_dir
 
-  def _add_meta_graph_and_variables_for_mode(
-      self, builder, input_receiver_fn, checkpoint_path, strip_default_attrs,
+  def _add_meta_graph_for_mode(
+      self, builder, input_receiver_fn_map, checkpoint_path,
+      strip_default_attrs, save_variables=True,
       mode=model_fn_lib.ModeKeys.PREDICT):
     # pylint: disable=line-too-long
     """Loads variables and adds them along with a MetaGraphDef for saving.
 
     Args:
       builder: instance of SavedModelBuilder that will be used for saving.
-      input_receiver_fn: a function that takes no argument and
-        returns the appropriate subclass of `InputReceiver`.
+      input_receiver_fn_map: dict of tf.estimator.ModeKeys to input_receiver_fn
+        mappings, where the input_receiver_fn is a function that takes no
+        argument and returns the appropriate subclass of `InputReceiver`.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      save_variables: bool, whether variables should be saved. If False, just
+        the MetaGraphDef will be saved. Note that save_variables should only be
+        True for the first call to this function, and the SavedModelBuilder will
+        raise an error if that is not the case.
       mode: tf.estimator.ModeKeys value indicating which mode will be exported.
     """
     # pylint: enable=line-too-long
+    input_receiver_fn = input_receiver_fn_map[mode]
     with ops.Graph().as_default() as g:
       self._create_and_assert_global_step(g)
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -832,21 +871,36 @@ class Estimator(object):
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
             sharded=True)
-        saver_for_restore.restore(session, checkpoint_path)
+
+        try:
+          saver_for_restore.restore(session, checkpoint_path)
+        except errors.NotFoundError as e:
+          msg = ('Could not load all requested variables from the checkpoint. '
+                 'Please make sure your model_fn does not expect variables '
+                 'that were not saved in the checkpoint.\n\n'
+                 'Encountered error with mode `{}` while restoring checkpoint '
+                 'from: `{}`. Full Traceback:\n\n{}').format(
+                     mode, checkpoint_path, e)
+          raise ValueError(msg)
 
         # We add the train op explicitly for now, so that we don't have to
         # change the Builder public interface. Note that this is a no-op
         # for prediction, where train_op is None.
         builder._add_train_op(estimator_spec.train_op)  # pylint: disable=protected-access
 
-        builder.add_meta_graph_and_variables(
-            session,
+        meta_graph_kwargs = dict(
             tags=export_tags,
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
             strip_default_attrs=strip_default_attrs,
             legacy_init_op=local_init_op)
+
+        if save_variables:
+          builder.add_meta_graph_and_variables(
+              session, **meta_graph_kwargs)
+        else:
+          builder.add_meta_graph(**meta_graph_kwargs)
 
   def _get_export_outputs_for_spec(self, estimator_spec):
     """Given an EstimatorSpec, determine what our export outputs should be.
@@ -998,7 +1052,7 @@ class Estimator(object):
     Raises:
       ValueError: if input_fn takes invalid arguments.
     """
-    input_fn_args = util.fn_args(input_fn)
+    input_fn_args = function_utils.fn_args(input_fn)
     kwargs = {}
     if 'mode' in input_fn_args:
       kwargs['mode'] = mode
@@ -1024,7 +1078,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = util.fn_args(self._model_fn)
+    model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
     if 'labels' in model_fn_args:
       kwargs['labels'] = labels
@@ -1286,10 +1340,6 @@ class Estimator(object):
                      'initialization to evaluate.'.format(self._model_dir))
       checkpoint_path = latest_path
 
-    # Setup output directory.
-    eval_dir = os.path.join(self._model_dir, 'eval' if not name else
-                            'eval_' + name)
-
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
@@ -1333,7 +1383,7 @@ class Estimator(object):
           config=self._session_config)
 
       _write_dict_to_summary(
-          output_dir=eval_dir,
+          output_dir=self.eval_dir(name),
           dictionary=eval_results,
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
@@ -1433,7 +1483,7 @@ def _get_replica_device_setter(config):
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = set(util.fn_args(model_fn))
+  args = set(function_utils.fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
   if params is not None and 'params' not in args:

@@ -32,7 +32,6 @@ from six import iteritems
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -41,6 +40,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -422,7 +422,7 @@ class _VariableStore(object):
           "use_resource": use_resource,
       }
       # `fn_args` can handle functions, `functools.partial`, `lambda`.
-      if "constraint" in estimator_util.fn_args(custom_getter):
+      if "constraint" in function_utils.fn_args(custom_getter):
         custom_getter_kwargs["constraint"] = constraint
       return custom_getter(**custom_getter_kwargs)
     else:
@@ -840,7 +840,8 @@ class _VariableStore(object):
       initializing_from_value = False
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
-    elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
+    elif (dtype.is_integer or dtype.is_unsigned or dtype.is_bool
+          or dtype == dtypes.string):
       initializer = init_ops.zeros_initializer()
       initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?

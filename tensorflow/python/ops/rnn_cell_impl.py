@@ -1005,6 +1005,8 @@ class DropoutWrapper(RNNCell):
 
     # Set cell, variational_recurrent, seed before running the code below
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._variational_recurrent = variational_recurrent
     self._seed = seed
 
@@ -1152,6 +1154,8 @@ class ResidualWrapper(RNNCell):
         and outputs.
     """
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._residual_fn = residual_fn
 
   @property
@@ -1207,6 +1211,8 @@ class DeviceWrapper(RNNCell):
       device: A device string or function, for passing to `tf.device`.
     """
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._device = device
 
   @property
@@ -1322,7 +1328,7 @@ class MultiRNNCell(RNNCell):
     return cur_inp, new_states
 
 
-class _SlimRNNCell(RNNCell):
+class _SlimRNNCell(RNNCell, checkpointable.NotCheckpointable):
   """A simple wrapper for slim.rnn_cells."""
 
   def __init__(self, cell_fn):

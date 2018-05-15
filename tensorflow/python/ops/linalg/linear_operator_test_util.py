@@ -178,7 +178,9 @@ class LinearOperatorDerivedClassTest(test.TestCase):
       SkipTest Exception, if test_name is in self._tests_to_skip.
     """
     if test_name in self._tests_to_skip:
-      self.skipTest("%s skipped because it was added to self._tests_to_skip.")
+      self.skipTest(
+          "{} skipped because it was added to self._tests_to_skip.".format(
+              test_name))
 
   def test_to_dense(self):
     self._skip_if_tests_to_skip_contains("to_dense")

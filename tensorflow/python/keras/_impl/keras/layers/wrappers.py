@@ -25,6 +25,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras._impl.keras.utils import generic_utils
 from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -284,6 +285,7 @@ class Bidirectional(Wrapper):
     self.return_state = layer.return_state
     self.supports_masking = True
     self._trainable = True
+    self._num_constants = None
     super(Bidirectional, self).__init__(layer, **kwargs)
     self.input_spec = layer.input_spec
 
@@ -326,37 +328,51 @@ class Bidirectional(Wrapper):
       return [output_shape] + state_shape + copy.copy(state_shape)
     return output_shape
 
-  def __call__(self, inputs, initial_state=None, **kwargs):
+  def __call__(self, inputs, initial_state=None, constants=None, **kwargs):
+    """`Bidirectional.__call__` implements the same API as the wrapped `RNN`."""
+    inputs, initial_state, constants = _standardize_args(
+        inputs, initial_state, constants, self._num_constants)
+
     if isinstance(inputs, list):
       if len(inputs) > 1:
         initial_state = inputs[1:]
       inputs = inputs[0]
 
-    if initial_state is None:
+    if initial_state is None and constants is None:
       return super(Bidirectional, self).__call__(inputs, **kwargs)
 
-    # Standardize `initial_state` into list
-    if isinstance(initial_state, tuple):
-      initial_state = list(initial_state)
-    elif not isinstance(initial_state, list):
-      initial_state = [initial_state]
+    # Applies the same workaround as in `RNN.__call__`
+    additional_inputs = []
+    additional_specs = []
+    if initial_state is not None:
+      # Check if `initial_state` can be splitted into half
+      num_states = len(initial_state)
+      if num_states % 2 > 0:
+        raise ValueError(
+            'When passing `initial_state` to a Bidirectional RNN, '
+            'the state should be a list containing the states of '
+            'the underlying RNNs. '
+            'Found: ' + str(initial_state))
 
-    # Check if `initial_state` can be splitted into half
-    num_states = len(initial_state)
-    if num_states % 2 > 0:
-      raise ValueError(
-          'When passing `initial_state` to a Bidirectional RNN, the state '
-          'should be a list containing the states of the underlying RNNs. '
-          'Found: ' + str(initial_state))
+      kwargs['initial_state'] = initial_state
+      additional_inputs += initial_state
+      state_specs = [InputSpec(shape=K.int_shape(state))
+                     for state in initial_state]
+      self.forward_layer.state_spec = state_specs[:num_states // 2]
+      self.backward_layer.state_spec = state_specs[num_states // 2:]
+      additional_specs += state_specs
+    if constants is not None:
+      kwargs['constants'] = constants
+      additional_inputs += constants
+      constants_spec = [InputSpec(shape=K.int_shape(constant))
+                        for constant in constants]
+      self.forward_layer.constants_spec = constants_spec
+      self.backward_layer.constants_spec = constants_spec
+      additional_specs += constants_spec
 
-    # Applies the same workaround as in `RNN.__call__`, without handling
-    # constants
-    kwargs['initial_state'] = initial_state
-    additional_inputs = initial_state
-    additional_specs = [InputSpec(shape=K.int_shape(state))
-                        for state in initial_state]
-    self.forward_layer.state_spec = additional_specs[:num_states // 2]
-    self.backward_layer.state_spec = additional_specs[num_states // 2:]
+      self._num_constants = len(constants)
+      self.forward_layer._num_constants = self._num_constants
+      self.backward_layer._num_constants = self._num_constants
 
     is_keras_tensor = K.is_keras_tensor(additional_inputs[0])
     for tensor in additional_inputs:
@@ -381,12 +397,19 @@ class Bidirectional(Wrapper):
     else:
       return super(Bidirectional, self).__call__(inputs, **kwargs)
 
-  def call(self, inputs, training=None, mask=None, initial_state=None):
+  def call(self, inputs,
+           training=None,
+           mask=None,
+           initial_state=None,
+           constants=None):
+    """`Bidirectional.call` implements the same API as the wrapped `RNN`."""
     kwargs = {}
     if generic_utils.has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
     if generic_utils.has_arg(self.layer.call, 'mask'):
       kwargs['mask'] = mask
+    if generic_utils.has_arg(self.layer.call, 'constants'):
+      kwargs['constants'] = constants
 
     if initial_state is not None and generic_utils.has_arg(
         self.layer.call, 'initial_state'):
@@ -444,13 +467,23 @@ class Bidirectional(Wrapper):
     self.built = True
 
   def compute_mask(self, inputs, mask):
+    if isinstance(mask, list):
+      mask = mask[0]
     if self.return_sequences:
       if not self.merge_mode:
-        return [mask, mask]
+        output_mask = [mask, mask]
       else:
-        return mask
+        output_mask = mask
     else:
-      return None
+      output_mask = [None, None] if not self.merge_mode else None
+
+    if self.return_state:
+      states = self.forward_layer.states
+      state_mask = [None for _ in states]
+      if isinstance(output_mask, list):
+        return output_mask + state_mask * 2
+      return [output_mask] + state_mask * 2
+    return output_mask
 
   @property
   def trainable_weights(self):
@@ -488,5 +521,15 @@ class Bidirectional(Wrapper):
 
   def get_config(self):
     config = {'merge_mode': self.merge_mode}
+    if self._num_constants is not None:
+      config['num_constants'] = self._num_constants
     base_config = super(Bidirectional, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    num_constants = config.pop('num_constants', None)
+    layer = super(Bidirectional, cls).from_config(config,
+                                                  custom_objects=custom_objects)
+    layer._num_constants = num_constants
+    return layer

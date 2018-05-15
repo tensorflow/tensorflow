@@ -63,10 +63,6 @@ std::map<string, string> kBrokenTests = {
     // L2Norm only supports tensors with 4D or fewer.
     {R"(^\/l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
-    // BatchToSpaceND doesn't support cropping. This catches test cases with
-    // non-const tensors as crops.
-    {R"(^\/batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\])", "70594634"},
-
     // SpaceToBatchND only supports 4D tensors.
     {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
@@ -204,7 +200,7 @@ std::vector<string> UnarchiveZipAndFindTestNames(const string& zip_file_name) {
 
 class OpsTest : public ::testing::TestWithParam<string> {};
 
-TEST_P(OpsTest, RunStuff) {
+TEST_P(OpsTest, RunZipTests) {
   string test_path = GetParam();
   string tflite_test_case = test_path + "_tests.txt";
   string tflite_dir = test_path.substr(0, test_path.find_last_of("/"));
@@ -227,7 +223,9 @@ TEST_P(OpsTest, RunStuff) {
     EXPECT_TRUE(result) << test_driver.GetErrorMessage();
   } else {
     if (FLAGS_ignore_known_bugs) {
-      EXPECT_FALSE(result);
+      EXPECT_FALSE(result) << "Test was expected to fail but is now passing; "
+                              "you can mark http://b/"
+                           << bug_number << " as fixed! Yay!";
     } else {
       EXPECT_TRUE(result) << test_driver.GetErrorMessage()
                           << ": Possibly due to http://b/" << bug_number;
@@ -235,12 +233,29 @@ TEST_P(OpsTest, RunStuff) {
   }
 }
 
+struct ZipPathParamName {
+  template <class ParamType>
+  string operator()(const ::testing::TestParamInfo<ParamType>& info) const {
+    string param_name = info.param;
+    size_t last_slash = param_name.find_last_of("\\/");
+    if (last_slash != string::npos) {
+      param_name = param_name.substr(last_slash);
+    }
+    for (size_t index = 0; index < param_name.size(); ++index) {
+      if (!isalnum(param_name[index]) && param_name[index] != '_')
+        param_name[index] = '_';
+    }
+    return param_name;
+  }
+};
+
 // Instantiate a test. This assumes `zip_base`.zip is a declared data file
 // of this test.
-#define INSTANTIATE_TESTS(zip_base) \
-  INSTANTIATE_TEST_CASE_P(          \
-      zip_base, OpsTest,            \
-      ::testing::ValuesIn(UnarchiveZipAndFindTestNames(#zip_base ".zip")));
+#define INSTANTIATE_TESTS(zip_base)                                        \
+  INSTANTIATE_TEST_CASE_P(                                                 \
+      zip_base, OpsTest,                                                   \
+      ::testing::ValuesIn(UnarchiveZipAndFindTestNames(#zip_base ".zip")), \
+      ZipPathParamName());
 
 INSTANTIATE_TESTS(add)
 INSTANTIATE_TESTS(arg_max)
@@ -281,6 +296,8 @@ INSTANTIATE_TESTS(relu6)
 INSTANTIATE_TESTS(reshape)
 INSTANTIATE_TESTS(resize_bilinear)
 INSTANTIATE_TESTS(sigmoid)
+INSTANTIATE_TESTS(sin)
+INSTANTIATE_TESTS(slice)
 INSTANTIATE_TESTS(softmax)
 INSTANTIATE_TESTS(space_to_batch_nd)
 INSTANTIATE_TESTS(space_to_depth)

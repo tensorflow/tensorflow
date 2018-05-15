@@ -947,6 +947,7 @@ class TestGeneratorMethods(test.TestCase):
                                  steps=5,
                                  max_queue_size=10,
                                  workers=2,
+                                 verbose=1,
                                  use_multiprocessing=True)
         model.evaluate_generator(custom_generator(),
                                  steps=5,

@@ -47,8 +47,8 @@ class GemmThunk : public Thunk {
   GemmThunk& operator=(const GemmThunk&) = delete;
 
   // Does the gemm operation for the thunk on "stream", which must be non-null.
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream) override;
 
   // Returns true if we'll perform autotuning if run on the given stream.  If
   // so, we want the GPU to be quiescent during autotuning, so as not to

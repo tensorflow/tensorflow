@@ -110,7 +110,7 @@ tf_module {
   }
   member_method {
     name: "non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'0.0\', \'None\'], "
   }
   member_method {
     name: "pad_to_bounding_box"

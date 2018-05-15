@@ -337,6 +337,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LogSoftmax)
     HANDLE_OPERATORTYPENAME_CASE(Div)
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
+    HANDLE_OPERATORTYPENAME_CASE(Sin)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAssert)
     HANDLE_OPERATORTYPENAME_CASE(ExpandDims)
@@ -986,7 +987,7 @@ void FixOperatorOrdering(Model* model) {
     for (auto i : remaining) {
       bool can_insert = true;
       auto& op = old_operators[i];
-      CHECK(op.get());
+      CHECK(op);
       for (const auto& input : op->inputs) {
         if (!IsConstantParameterArray(*model, input) &&
             !arrays_behind_us.count(input)) {
@@ -2073,15 +2074,21 @@ bool ReshapeIsEquivalentToTranspose(const Model& model,
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
+    if (array.data_type == ArrayDataType::kBool) {
+      // Boolean values are never quantized.
+      continue;
+    }
+
     // If the final data type is int16, the data type may be float, for example
     // after dequantization.
     if (array.final_data_type != ArrayDataType::kNone &&
         array.final_data_type != ArrayDataType::kInt16) {
-      CHECK(array.final_data_type == array.data_type)
+      CHECK(array.data_type == array.final_data_type)
           << "Array \"" << array_entry.first
-          << "\" has mis-matching actual and final data types ("
-          << ArrayDataTypeName(array.data_type) << ","
-          << ArrayDataTypeName(array.final_data_type) << ").";
+          << "\" has mis-matching actual and final data types (data_type="
+          << ArrayDataTypeName(array.data_type)
+          << ", final_data_type=" << ArrayDataTypeName(array.final_data_type)
+          << ").";
     }
   }
 }

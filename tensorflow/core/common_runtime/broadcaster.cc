@@ -134,7 +134,7 @@ void Broadcaster::TreeSendTo(const CollectiveParams& cp,
 // Execute a tree broadcast, i.e. each non-source device receives from
 // one other and sends to up-to two others.
 void Broadcaster::RunTree() {
-  mutex mu;
+  mutex mu;               // also guards status_ while callbacks are pending
   int pending_count = 0;  // GUARDED_BY(mu)
   condition_variable all_done;
   std::vector<int> send_to_ranks;
@@ -162,15 +162,13 @@ void Broadcaster::RunTree() {
         ++pending_count;
       }
       DispatchSend(
-          target_rank, output_,
+          target_rank, (is_source_ ? &ctx_->input(0) : output_),
           [this, target_rank, &mu, &pending_count, &all_done](const Status& s) {
+            mutex_lock l(mu);
             status_.Update(s);
-            {
-              mutex_lock l(mu);
-              --pending_count;
-              if (pending_count == 0) {
-                all_done.notify_all();
-              }
+            --pending_count;
+            if (pending_count == 0) {
+              all_done.notify_all();
             }
           });
     }
@@ -191,13 +189,11 @@ void Broadcaster::RunTree() {
           op_dev_ctx, op_dev_ctx, device_, device_, ctx_->input_alloc_attr(0),
           ctx_->output_alloc_attr(0), input, output_,
           [this, &mu, &pending_count, &all_done](const Status& s) {
+            mutex_lock l(mu);
             status_.Update(s);
-            {
-              mutex_lock l(mu);
-              --pending_count;
-              if (0 == pending_count) {
-                all_done.notify_all();
-              }
+            --pending_count;
+            if (0 == pending_count) {
+              all_done.notify_all();
             }
           });
     }

@@ -52,12 +52,11 @@ namespace xla {
 namespace {
 
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::FlatSet;
 
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
-                                           const Literal& lhs_literal,
-                                           const Literal& rhs_literal) {
+                                           LiteralSlice lhs_literal,
+                                           LiteralSlice rhs_literal) {
   std::function<bool(OperandT, OperandT)> compare_op;
   switch (opcode) {
     case HloOpcode::kEq:
@@ -106,8 +105,8 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
 
 template <>
 StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
-    const Shape& shape, HloOpcode opcode, const Literal& lhs_literal,
-    const Literal& rhs_literal) {
+    const Shape& shape, HloOpcode opcode, LiteralSlice lhs_literal,
+    LiteralSlice rhs_literal) {
   std::function<bool(complex64, complex64)> compare_op;
   switch (opcode) {
     case HloOpcode::kEq:

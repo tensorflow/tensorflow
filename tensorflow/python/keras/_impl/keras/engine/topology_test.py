@@ -883,6 +883,33 @@ class TopologyConstructionTest(test.TestCase):
       preds = model.predict(x)
       self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
 
+  def test_multi_output_model_with_none_masking(self):
+
+    with self.test_session():
+      def func(x):
+        return [x * 0.2, x * 0.3]
+
+      def output_shape(input_shape):
+        return [input_shape, input_shape]
+
+      i = keras.layers.Input(shape=(3, 2, 1))
+      o = keras.layers.Lambda(function=func, output_shape=output_shape)(i)
+
+      self.assertEqual(keras.backend.int_shape(o[0]), (None, 3, 2, 1))
+      self.assertEqual(keras.backend.int_shape(o[1]), (None, 3, 2, 1))
+
+      o = keras.layers.add(o)
+      model = keras.Model(i, o)
+
+      i2 = keras.layers.Input(shape=(3, 2, 1))
+      o2 = model(i2)
+      model2 = keras.Model(i2, o2)
+
+      x = np.random.random((4, 3, 2, 1))
+      out = model2.predict(x)
+      assert out.shape == (4, 3, 2, 1)
+      self.assertAllClose(out, x * 0.2 + x * 0.3, atol=1e-4)
+
 
 class DeferredModeTest(test.TestCase):
 
