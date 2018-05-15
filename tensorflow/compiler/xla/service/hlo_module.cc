@@ -266,24 +266,44 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())
       << ", actual: " << ShapeUtil::HumanStringWithLayout(result_shape);
 
-  auto module = MakeUnique<HloModule>(proto.name(), entry_computation_handle,
-                                      module_config);
-
   tensorflow::gtl::FlatMap<int64, HloComputation*> computation_map;
+  tensorflow::gtl::FlatMap<HloComputation*, int64> to_proto_id;
+  std::vector<std::unique_ptr<HloComputation>> computations;
+  HloComputation* entry = nullptr;
   for (const HloComputationProto& computation_proto : proto.computations()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> computation,
-                        HloComputation::CreateFromProto(
-                            module.get(), computation_proto, computation_map));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloComputation> computation,
+        HloComputation::CreateFromProto(computation_proto, computation_map));
     CHECK_NE(computation.get(), nullptr);
     int64 computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
     TF_RET_CHECK(!ContainsKey(computation_map, computation_id));
+    computation_map[computation_id] = computation.get();
+    to_proto_id[computation.get()] = computation_id;
+    if (computation_id == proto.entry_computation_id()) {
+      entry = computation.get();
+    }
+    computations.push_back(std::move(computation));
+  }
+  TF_RET_CHECK(entry != nullptr);
+
+  auto module = MakeUnique<HloModule>(proto.name(), entry_computation_handle,
+                                      module_config);
+
+  // Sort the computations in the proto id's order.
+  std::sort(computations.begin(), computations.end(),
+            [&](const std::unique_ptr<HloComputation>& a,
+                const std::unique_ptr<HloComputation>& b) {
+              return to_proto_id[a.get()] < to_proto_id[b.get()];
+            });
+
+  // Add sorted computations to the module.
+  for (auto& computation : computations) {
+    bool is_entry = computation.get() == entry;
     // Don't uniquify names because we want names to be stable across
     // serialization and deserialization.
-    computation_map[computation_id] = module->AddComputationInternal(
-        std::move(computation),
-        /*is_entry=*/proto.entry_computation_id() == computation_id,
-        /*uniquify_names=*/false);
+    module->AddComputationInternal(std::move(computation), is_entry,
+                                   /*uniquify_names=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
 

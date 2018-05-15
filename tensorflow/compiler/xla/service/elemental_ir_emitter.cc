@@ -418,8 +418,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     }
     case HloOpcode::kExp:
       return EmitExp(op->shape().element_type(), operand_value);
+    case HloOpcode::kExpm1:
+      return EmitExpm1(op->shape().element_type(), operand_value);
     case HloOpcode::kLog:
       return EmitLog(op->shape().element_type(), operand_value);
+    case HloOpcode::kLog1p:
+      return EmitLog1p(op->shape().element_type(), operand_value);
     case HloOpcode::kCos:
       return EmitCos(op->shape().element_type(), operand_value);
     case HloOpcode::kSin:
@@ -493,6 +497,22 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       return EmitComposeComplex(
           op, ir_builder_->CreateFMul(one_half, log_sum_sq), angle);
     }
+    case HloOpcode::kLog1p: {
+      // log1p(a+bi) = .5*log((a+1)^2+b^2) + i*atan2(b, a + 1)
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
+      llvm::Type* llvm_ty = a->getType();
+      auto one = llvm::ConstantFP::get(llvm_ty, 1.0);
+      auto a_plus_one = ir_builder_->CreateFAdd(a, one);
+      auto sum_sq = ir_builder_->CreateFAdd(
+          ir_builder_->CreateFMul(a_plus_one, a_plus_one),
+          ir_builder_->CreateFMul(b, b));
+      TF_ASSIGN_OR_RETURN(auto log_sum_sq, EmitLog(component_type, sum_sq));
+      TF_ASSIGN_OR_RETURN(auto angle, EmitAtan2(component_type, b, a_plus_one));
+      auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
+      return EmitComposeComplex(
+          op, ir_builder_->CreateFMul(one_half, log_sum_sq), angle);
+    }
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       TF_RET_CHECK(primitive_util::IsComplexType(from_type));
@@ -522,6 +542,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
           auto sin_b, EmitSin(component_type, EmitExtractImag(operand_value)));
       return EmitComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
                                 ir_builder_->CreateFMul(exp_a, sin_b));
+    }
+    case HloOpcode::kExpm1: {
+      // e^(a+bi)-1 = (e^a*cos(b)-1)+e^a*sin(b)i
+      TF_ASSIGN_OR_RETURN(
+          auto exp_a, EmitExp(component_type, EmitExtractReal(operand_value)));
+      TF_ASSIGN_OR_RETURN(
+          auto cos_b, EmitCos(component_type, EmitExtractImag(operand_value)));
+      TF_ASSIGN_OR_RETURN(
+          auto sin_b, EmitSin(component_type, EmitExtractImag(operand_value)));
+      auto one = llvm::ConstantFP::get(exp_a->getType(), 1.0);
+      auto real_result =
+          ir_builder_->CreateFSub(ir_builder_->CreateFMul(exp_a, cos_b), one);
+      auto imag_result = ir_builder_->CreateFMul(exp_a, sin_b);
+      return EmitComposeComplex(op, real_result, imag_result);
     }
     case HloOpcode::kCos: {
       // cos(z) = .5(e^(iz) + e^(-iz))
@@ -975,6 +1009,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(PrimitiveType prim_type,
                                       {value->getType()}, ir_builder_);
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
+                                                     llvm::Value* value) const {
+  auto x = value;
+  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto negative_half = llvm::ConstantFP::get(type, -0.5);
+  // When x is large, the naive evaluation of ln(x + 1) is more
+  // accurate than the Taylor series.
+  TF_ASSIGN_OR_RETURN(auto for_large_x,
+                      EmitLog(prim_type, ir_builder_->CreateFAdd(x, one)));
+  // The Taylor series for ln(x+1) is x - x^2/2 - x^3/3 + ….
+  auto for_small_x = ir_builder_->CreateFMul(
+      ir_builder_->CreateFAdd(ir_builder_->CreateFMul(negative_half, x), one),
+      x);
+  const auto kAntilogarithmIsSmallThreshold = 1e-4;
+  auto abs_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value},
+                                            {type}, ir_builder_);
+  auto x_is_small = ir_builder_->CreateFCmpOLT(
+      abs_x, llvm::ConstantFP::get(type, kAntilogarithmIsSmallThreshold));
+  return ir_builder_->CreateSelect(x_is_small, for_small_x, for_large_x);
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitSin(PrimitiveType prim_type,
                                                    llvm::Value* value) const {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {value},
@@ -991,6 +1047,29 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(PrimitiveType prim_type,
                                                    llvm::Value* value) const {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
                                       {value->getType()}, ir_builder_);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
+                                                     llvm::Value* value) const {
+  auto x = value;
+  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto half = llvm::ConstantFP::get(type, 0.5);
+  // When the exponent is large, the naive evaluation of e^(x) - 1 is more
+  // accurate than the Taylor series.
+  TF_ASSIGN_OR_RETURN(auto exp_x, EmitExp(prim_type, value));
+  auto for_large_x = ir_builder_->CreateFSub(exp_x, one);
+  // The Taylor series for exp(x) is 1 + x + x^2/2 + x^3/6 + ….
+  // We want exp(x)-1 which is x + x^2/2 + x^3/6 + ….
+  auto x_squared = ir_builder_->CreateFAdd(x, x);
+  auto x_squared_over_two = ir_builder_->CreateFMul(x_squared, half);
+  auto for_small_x = ir_builder_->CreateFAdd(x, x_squared_over_two);
+  const auto kExponentIsSmallThreshold = 1e-5;
+  auto abs_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value},
+                                            {type}, ir_builder_);
+  auto x_is_small = ir_builder_->CreateFCmpOLT(
+      abs_x, llvm::ConstantFP::get(type, kExponentIsSmallThreshold));
+  return ir_builder_->CreateSelect(x_is_small, for_small_x, for_large_x);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
@@ -1784,8 +1863,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
     const llvm_ir::IrArray::Index& dot_result_index) const {
   auto lhs_generator = operand_to_generator.at(hlo->operand(0));
   auto rhs_generator = operand_to_generator.at(hlo->operand(1));
-  int64 contracted_dim_size = hlo->operand(0)->shape().dimensions(
-      hlo->operand(0)->shape().dimensions_size() - 1);
+
+  const DotDimensionNumbers& dim_numbers = hlo->dot_dimension_numbers();
+  int64 lhs_contracting_dim = dim_numbers.lhs_contracting_dimensions(0);
+  int64 rhs_contracting_dim = dim_numbers.rhs_contracting_dimensions(0);
+
+  int64 contracted_dim_size =
+      hlo->operand(0)->shape().dimensions(lhs_contracting_dim);
   int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
   int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
@@ -1816,13 +1900,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   for (int64 i = 0; i < lhs_dims - 1; i++) {
     lhs_index.push_back(dot_result_index[i]);
   }
-  lhs_index.push_back(inner_loop->GetIndVarValue());
+  lhs_index.InsertAt(lhs_contracting_dim, inner_loop->GetIndVarValue());
 
-  for (int64 i = 0; i < rhs_dims - 2; i++) {
+  for (int64 i = 0; i < rhs_dims - 1; i++) {
     rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
   }
-  rhs_index.push_back(inner_loop->GetIndVarValue());
-  rhs_index.push_back(dot_result_index.back());
+  rhs_index.InsertAt(rhs_contracting_dim, inner_loop->GetIndVarValue());
 
   llvm::Value* current_accumulator =
       ir_builder_->CreateLoad(accumulator_alloca);
@@ -1877,10 +1960,12 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kReal:

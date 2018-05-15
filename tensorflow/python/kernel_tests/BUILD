@@ -1234,6 +1234,7 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "noasan",  # times out
+        "optonly",  # times out
     ],
 )
 
@@ -2374,6 +2375,9 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+    ],
+    tags = [
+        "optonly",  # flaky timeouts unless optimized
     ],
 )
 

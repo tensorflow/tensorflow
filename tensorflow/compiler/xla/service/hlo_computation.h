@@ -157,14 +157,12 @@ class HloComputation {
 
   // Creates a computation from the given proto. Arguments:
   //
-  //   module: the module which will contain the computation. The newly created
-  //     computation is *not* added to the module, however.
   //   proto: the proto to convert from.
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
-      HloModule* module, const HloComputationProto& proto,
+      const HloComputationProto& proto,
       const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
   // Gets the instructions in this computation.

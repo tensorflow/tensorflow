@@ -14,30 +14,4 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
-
-namespace tflite {
-
-TfLiteRegistration* MutableOpResolver::FindOp(
-    tflite::BuiltinOperator op) const {
-  auto it = builtins_.find(op);
-  return it != builtins_.end() ? it->second : nullptr;
-}
-
-TfLiteRegistration* MutableOpResolver::FindOp(const char* op) const {
-  auto it = custom_ops_.find(op);
-  return it != custom_ops_.end() ? it->second : nullptr;
-}
-
-void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
-                                   TfLiteRegistration* registration) {
-  registration->builtin_code = op;
-  builtins_.insert(std::make_pair(op, registration));
-}
-
-void MutableOpResolver::AddCustom(const char* name,
-                                  TfLiteRegistration* registration) {
-  registration->builtin_code = BuiltinOperator_CUSTOM;
-  custom_ops_.insert(std::make_pair(std::string(name), registration));
-}
-
-}  // namespace tflite
+// TODO(ycling): Remove this file after removing other dependencies.

@@ -151,7 +151,7 @@ Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
 
 Status FusedIrEmitter::FinishVisit(HloInstruction* root) {
   fused_root_ = root;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 FusedIrEmitter::Generator FusedIrEmitter::GetRootGenerator() const {

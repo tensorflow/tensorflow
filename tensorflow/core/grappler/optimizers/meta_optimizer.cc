@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
@@ -78,6 +78,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("pruning", new ModelPruner());
   MK_OPT("function", new FunctionOptimizer(cfg_.function_optimization()));
   MK_OPT("constfold", new ConstantFolding(cpu_device_));
+  MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("layout", new LayoutOptimizer());
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
@@ -106,6 +107,9 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
     optimizers->emplace_back(
         new ConstantFolding(cfg_.constant_folding(), cpu_device_));
+  }
+  if (cfg_.shape_optimization() == RewriterConfig::ON) {
+    optimizers->emplace_back(new ShapeOptimizer());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->emplace_back(
@@ -344,6 +348,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.function_optimization() != RewriterConfig::OFF ||
          cfg.constant_folding() != RewriterConfig::OFF ||
+         cfg.shape_optimization() == RewriterConfig::ON ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.loop_optimization() != RewriterConfig::OFF ||
          cfg.dependency_optimization() != RewriterConfig::OFF ||

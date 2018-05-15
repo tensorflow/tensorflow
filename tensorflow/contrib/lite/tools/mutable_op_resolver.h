@@ -15,41 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_MUTABLE_OP_RESOLVER_H_
 #define TENSORFLOW_CONTRIB_LITE_TOOLS_MUTABLE_OP_RESOLVER_H_
 
-#include <map>
-#include "tensorflow/contrib/lite/context.h"
-#include "tensorflow/contrib/lite/model.h"
-
-// Needed to resolve unordered_set hash on older compilers.
-namespace std {
-template <>
-struct hash<tflite::BuiltinOperator> {
-  size_t operator()(const tflite::BuiltinOperator& op) const {
-    return std::hash<int>()(op);
-  }
-};
-}  // namespace std
-
-namespace tflite {
-
-// An OpResolver that is mutable, also used as the op in gen_op_registration.
-// A typical usage:
-//   MutableOpResolver resolver;
-//   resolver.AddBuiltin(BuiltinOperator_ADD, Register_ADD());
-//   resolver.AddCustom("CustomOp", Register_CUSTOM_OP());
-//   InterpreterBuilder(model, resolver)(&interpreter);
-class MutableOpResolver : public OpResolver {
- public:
-  MutableOpResolver() {}
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override;
-  TfLiteRegistration* FindOp(const char* op) const override;
-  void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration);
-  void AddCustom(const char* name, TfLiteRegistration* registration);
-
- private:
-  std::map<int, TfLiteRegistration*> builtins_;
-  std::map<std::string, TfLiteRegistration*> custom_ops_;
-};
-
-}  // namespace tflite
+#include "tensorflow/contrib/lite/op_resolver.h"
+// MutableOpResolverr is moved into `lite/op_resolver.h`.`
+// TODO(ycling): Remove this file after removing other dependencies.
 
 #endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_MUTABLE_OP_RESOLVER_H_

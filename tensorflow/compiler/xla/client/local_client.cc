@@ -48,7 +48,7 @@ LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
       << "Must have a valid device ordinal that the executable was built for.";
 }
 
-tensorflow::Status LocalExecutable::ValidateExecutionOptions(
+Status LocalExecutable::ValidateExecutionOptions(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutableRunOptions& run_options, const Backend& backend) {
   const ComputationLayout& host_computation_layout =
@@ -207,7 +207,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
   return std::move(result);
 }
 
-tensorflow::Status LocalExecutable::RecordArguments(
+Status LocalExecutable::RecordArguments(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     SessionModule* session_module) {
   session_module->clear_arguments();
@@ -219,8 +219,8 @@ tensorflow::Status LocalExecutable::RecordArguments(
   return Status::OK();
 }
 
-tensorflow::Status LocalExecutable::RecordResult(
-    const ShapedBuffer* result, SessionModule* session_module) {
+Status LocalExecutable::RecordResult(const ShapedBuffer* result,
+                                     SessionModule* session_module) {
   session_module->clear_result();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                       LiteralFromShapedBuffer(*result));

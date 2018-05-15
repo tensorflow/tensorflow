@@ -1456,33 +1456,6 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                output_data, output_dims);
 }
 
-inline void Div(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
-  const int batches =
-      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
-  const int height =
-      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
-  const int width =
-      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
-  const int depth =
-      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[Offset(input1_dims, c, x, y, b)] /
-                      input2_data[Offset(input2_dims, c, x, y, b)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
-  }
-}
-
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
@@ -1521,6 +1494,18 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
         }
       }
     }
+  }
+}
+
+inline void Div(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] / input2_data[i], output_activation_min,
+        output_activation_max);
   }
 }
 
@@ -3256,10 +3241,10 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
       size[3] == -1 ? input_dims.sizes[3] - start_b : start_b + size[3];
   const int start_h = begin[2];
   const int stop_h =
-      size[2] == -1 ? input_dims.sizes[2] - start_b : start_b + size[2];
+      size[2] == -1 ? input_dims.sizes[2] - start_h : start_h + size[2];
   const int start_w = begin[1];
   const int stop_w =
-      size[1] == -1 ? input_dims.sizes[1] - start_b : start_b + size[1];
+      size[1] == -1 ? input_dims.sizes[1] - start_w : start_w + size[1];
   const int start_d = begin[0];
   const int stop_d =
       size[0] == -1 ? input_dims.sizes[0] - start_d : start_d + size[0];
@@ -3285,11 +3270,11 @@ inline void Exp(const T* input_data, const size_t num_elements,
 }
 
 template <typename T, typename U>
-inline bool Mean(T* input_data, const int* input_dims, const int input_num_dims,
-                 T* output_data, const int* output_dims,
-                 const int output_num_dims, const int* axis,
-                 const int num_axis_dimensions, bool keep_dims, int* temp_index,
-                 int* resolved_axis, U* temp_sum) {
+inline bool Mean(const T* input_data, const int* input_dims,
+                 const int input_num_dims, T* output_data,
+                 const int* output_dims, const int output_num_dims,
+                 const int* axis, const int num_axis_dimensions, bool keep_dims,
+                 int* temp_index, int* resolved_axis, U* temp_sum) {
   // resets output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -3621,7 +3606,7 @@ inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-template <typename T, ComparisonFn<T> F>
+template <typename T, ComparisonFn<int32> F>
 inline void Comparison(int left_shift, const T* input1_data,
                        const Dims<4>& input1_dims, int32 input1_offset,
                        int32 input1_multiplier, int input1_shift,
@@ -3672,7 +3657,7 @@ inline void BroadcastComparison(const T* input1_data,
   }
 }
 
-template <typename T, ComparisonFn<T> F>
+template <typename T, ComparisonFn<int32> F>
 inline void BroadcastComparison(int left_shift, const T* input1_data,
                                 const Dims<4>& input1_dims, int32 input1_offset,
                                 int32 input1_multiplier, int input1_shift,
@@ -3724,11 +3709,11 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
     gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
-    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
-                                     input1_offset, input1_multiplier,        \
-                                     input1_shift, input2_data, input2_dims,  \
-                                     input2_offset, input2_multiplier,        \
-                                     input2_shift, output_data, output_dims); \
+    Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,             \
+                            input1_offset, input1_multiplier, input1_shift,   \
+                            input2_data, input2_dims, input2_offset,          \
+                            input2_multiplier, input2_shift, output_data,     \
+                            output_dims);                                     \
   }                                                                           \
   template <typename T>                                                       \
   inline void Broadcast##name(                                                \

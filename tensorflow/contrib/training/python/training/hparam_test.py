@@ -118,6 +118,21 @@ class HParamsTest(test.TestCase):
     self.assertEqual('2.3"', hparams2.c_c)
     self.assertEqual('/a=b/c/d', hparams2.d)
 
+  def testWithPeriodInVariableName(self):
+    hparams = hparam.HParams()
+    hparams.add_hparam(name='a.b', value=0.0)
+    hparams.parse('a.b=1.0')
+    self.assertEqual(1.0, getattr(hparams, 'a.b'))
+    hparams.add_hparam(name='c.d', value=0.0)
+    with self.assertRaisesRegexp(ValueError, 'Could not parse'):
+      hparams.parse('c.d=abc')
+    hparams.add_hparam(name='e.f', value='')
+    hparams.parse('e.f=abc')
+    self.assertEqual('abc', getattr(hparams, 'e.f'))
+    hparams.add_hparam(name='d..', value=0.0)
+    hparams.parse('d..=10.0')
+    self.assertEqual(10.0, getattr(hparams, 'd..'))
+
   def testSetFromMap(self):
     hparams = hparam.HParams(a=1, b=2.0, c='tanh')
     hparams.override_from_dict({'a': -2, 'c': 'identity'})

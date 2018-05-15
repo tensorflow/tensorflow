@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
@@ -104,7 +105,7 @@ class BatchReshape(distribution_lib.Distribution):
       ValueError: if `batch_shape` size is not the same as a
         `distribution.batch_shape` size.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     name = name or "BatchReshape" + distribution.name
     self._distribution = distribution
     with ops.name_scope(name, values=[batch_shape]) as name:

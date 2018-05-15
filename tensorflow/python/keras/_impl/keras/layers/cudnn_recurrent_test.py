@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -31,43 +29,6 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class CuDNNTest(test.TestCase, parameterized.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes()
-  def test_cudnn_rnn_timing(self):
-    if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
-        input_size = 10
-        timesteps = 6
-        units = 2
-        num_samples = 32
-
-        for rnn_type in ['lstm', 'gru']:
-          times = []
-          for use_cudnn in [True, False]:
-            start_time = time.time()
-            inputs = keras.layers.Input(shape=(None, input_size))
-            if use_cudnn:
-              if rnn_type == 'lstm':
-                layer = keras.layers.CuDNNLSTM(units)
-              else:
-                layer = keras.layers.CuDNNGRU(units)
-            else:
-              if rnn_type == 'lstm':
-                layer = keras.layers.LSTM(units)
-              else:
-                layer = keras.layers.GRU(units)
-            outputs = layer(inputs)
-
-            optimizer = RMSPropOptimizer(learning_rate=0.001)
-            model = keras.models.Model(inputs, outputs)
-            model.compile(optimizer, 'mse')
-
-            x = np.random.random((num_samples, timesteps, input_size))
-            y = np.random.random((num_samples, units))
-            model.fit(x, y, epochs=4, batch_size=32)
-
-            times.append(time.time() - start_time)
-          self.assertGreater(times[1], times[0])
 
   @test_util.run_in_graph_and_eager_modes()
   def test_cudnn_rnn_basics(self):

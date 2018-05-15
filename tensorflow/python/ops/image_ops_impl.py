@@ -1772,6 +1772,7 @@ def non_max_suppression(boxes,
                         scores,
                         max_output_size,
                         iou_threshold=0.5,
+                        score_threshold=0.0,
                         name=None):
   """Greedily selects a subset of bounding boxes in descending order of score.
 
@@ -1800,6 +1801,8 @@ def non_max_suppression(boxes,
       of boxes to be selected by non max suppression.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
     name: A name for the operation (optional).
 
   Returns:
@@ -1808,8 +1811,10 @@ def non_max_suppression(boxes,
   """
   with ops.name_scope(name, 'non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
-    return gen_image_ops.non_max_suppression_v2(boxes, scores, max_output_size,
-                                                iou_threshold)
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    return gen_image_ops.non_max_suppression_v3(boxes, scores, max_output_size,
+                                                iou_threshold, score_threshold)
 
 
 _rgb_to_yiq_kernel = [[0.299, 0.59590059,

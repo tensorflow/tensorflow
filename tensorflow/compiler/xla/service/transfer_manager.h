@@ -81,7 +81,7 @@ class TransferManager {
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
   virtual Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                         const Literal& literal) = 0;
+                                         const LiteralSlice& literal) = 0;
 
   // Transfers the given literal from the Outfeed interface of the device,
   // using the given executor.

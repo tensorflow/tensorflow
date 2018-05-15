@@ -60,19 +60,22 @@ XlaAllocator::XlaAllocator(const se::Platform* platform, Allocator* wrapped)
 
 XlaAllocator::~XlaAllocator() {}
 
-xla::StatusOr<se::DeviceMemoryBase> XlaAllocator::Allocate(
+xla::StatusOr<xla::OwningDeviceMemory> XlaAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
-  void* data = wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size);
+  AllocationAttributes attrs;
+  attrs.no_retry_on_failure = !retry_on_failure;
+  void* data =
+      wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size, attrs);
   if (data == nullptr) {
     return errors::ResourceExhausted("Out of memory while trying to allocate ",
                                      size, " bytes.");
-  } else {
-    return se::DeviceMemoryBase(data, size);
   }
+  return xla::OwningDeviceMemory(se::DeviceMemoryBase(data, size),
+                                 device_ordinal, this);
 }
 
-Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase* mem) {
-  wrapped_->DeallocateRaw(mem->opaque());
+Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
+  wrapped_->DeallocateRaw(mem.opaque());
   return Status::OK();
 }
 
@@ -238,7 +241,7 @@ void XlaComputationLaunchContext::PopulateOutputs(
       } else {
         Tensor output_tensor = XlaTensorBuffer::MakeTensor(
             ctx->expected_output_dtype(i), shape, buffer, allocator);
-        output.set_buffer(se::DeviceMemoryBase(nullptr, 0), {output_num});
+        output.set_buffer(xla::OwningDeviceMemory(), {output_num});
         ctx->set_output(i, output_tensor);
       }
       ++output_num;
@@ -288,7 +291,7 @@ void XlaComputationLaunchContext::PopulateOutputs(
     } else {
       Tensor output_tensor = XlaTensorBuffer::MakeTensor(
           write.type, write.shape, buffer, allocator);
-      output.set_buffer(se::DeviceMemoryBase(nullptr, 0), {output_num});
+      output.set_buffer(xla::OwningDeviceMemory(), {output_num});
       *variable->tensor() = output_tensor;
     }
     ++output_num;

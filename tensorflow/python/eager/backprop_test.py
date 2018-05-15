@@ -96,6 +96,18 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(grads_and_vars[0][0], 1.0)
     self.assertAllEqual(id(grads_and_vars[0][1]), id(x))
 
+  def testWhereGradient(self):
+    # Note: where is special because only some of its arguments are of
+    # differentiable dtypes.
+
+    def f(x):
+      return array_ops.where(x < 10, x, x * x)
+
+    g = backprop.gradients_function(f)
+
+    self.assertAllEqual(g(5.)[0], 1.0)
+    self.assertAllEqual(g(50.)[0], 100.0)
+
   def testTwoTargets(self):
     with backprop.GradientTape() as t:
       x = constant_op.constant(3.0)

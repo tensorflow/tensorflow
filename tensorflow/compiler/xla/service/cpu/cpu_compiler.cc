@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
@@ -231,7 +232,10 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
+Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
+                                 llvm::TargetMachine* target_machine) {
+  LLVMTargetMachineFeatures target_machine_features(target_machine);
+
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>();
@@ -248,8 +252,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
   pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
-  pipeline.AddPass<ConvCanonicalization>();
+  pipeline.AddPass<ConvCanonicalization>(&target_machine_features);
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -279,9 +284,10 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     pass.AddPass<ConditionalSimplifier>();
   }
   pipeline.AddPass<TransposeFolding>(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return PotentiallyImplementedAsEigenDot(dot)
+      [&target_machine_features](
+          const HloInstruction& dot,
+          const TransposeFolding::OperandIndices& candidate_operands) {
+        return PotentiallyImplementedAsEigenDot(dot, target_machine_features)
                    ? candidate_operands
                    : TransposeFolding::OperandIndices{};
       },
@@ -296,7 +302,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->device_entry_computation_layout());
+      module->device_entry_computation_layout(), &target_machine_features);
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -316,8 +322,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     // and thread synchronization dependencies which would likely increase
     // binary size (and most AOT applications are single-threaded).
     // TODO(b/29630486) Support multi-threaded AOT.
-    pipeline.AddPass<ParallelTaskAssigner>(max_parallelism,
-                                           ShapeSizeBytesFunction());
+    pipeline.AddPass<ParallelTaskAssigner>(
+        max_parallelism, ShapeSizeBytesFunction(), &target_machine_features);
   }
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -470,7 +476,13 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   VLOG(2) << "Before optimization:";
   XLA_VLOG_LINES(2, module->ToString());
 
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
+  std::unique_ptr<llvm::TargetMachine> jit_target_machine =
+      SimpleOrcJIT::InferTargetMachineForJIT(
+          CompilerTargetOptions(module->config()),
+          CodeGenOptLevel(module->config()));
+
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
+                                  jit_target_machine.get()));
 
   VLOG(2) << "After optimization:";
   XLA_VLOG_LINES(2, module->ToString());
@@ -561,10 +573,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // GetEmbeddedComputations guarantees that a called computation occurs
   // before a caller computation.
 
+  LLVMTargetMachineFeatures target_machine_features(jit->target_machine());
   IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
-                       jit->target_machine(), jit->external_constant_pool());
+                       &target_machine_features, jit->external_constant_pool());
 
   for (auto embedded_computation :
        entry_computation->MakeEmbeddedComputationsList()) {
@@ -706,7 +719,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     VLOG(2) << "Before optimization:";
     XLA_VLOG_LINES(2, module->ToString());
 
-    TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true));
+    TF_RETURN_IF_ERROR(
+        RunHloPasses(module, /*is_aot_compile=*/true, target_machine.get()));
 
     VLOG(2) << "After optimization:";
     XLA_VLOG_LINES(2, module->ToString());
@@ -746,10 +760,11 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
           &hlo_profile_index_map, &hlo_profile_printer_data));
     }
 
+    LLVMTargetMachineFeatures target_machine_features(target_machine.get());
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
-                         target_machine.get(),
+                         &target_machine_features,
                          /*external_constant_pool=*/nullptr);
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :

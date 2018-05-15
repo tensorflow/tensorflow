@@ -54,7 +54,6 @@ tensorflow/python/keras/datasets/fashion_mnist
 tensorflow/python/keras/datasets/imdb
 tensorflow/python/keras/datasets/mnist
 tensorflow/python/keras/datasets/reuters
-tensorflow/python/keras/estimator
 tensorflow/python/keras/initializers
 tensorflow/python/keras/layers
 tensorflow/python/keras/losses
@@ -333,6 +332,8 @@ tensorflow/contrib/metrics
 tensorflow/contrib/metrics/python
 tensorflow/contrib/metrics/python/metrics
 tensorflow/contrib/metrics/python/ops
+tensorflow/contrib/mixed_precision
+tensorflow/contrib/mixed_precision/python
 tensorflow/contrib/mpi_collectives/python
 tensorflow/contrib/mpi_collectives/python/ops
 tensorflow/contrib/model_pruning

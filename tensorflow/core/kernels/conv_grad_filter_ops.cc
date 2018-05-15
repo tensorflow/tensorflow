@@ -404,10 +404,9 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     // image ('work_unit_size').
 
     // TODO(andydavis)
-    // *) Get L3 cache size from device at runtime (30MB is from ivybridge).
     // *) Consider reducing 'target_working_set_size' if L3 is shared by
     //    other concurrently running tensorflow ops.
-    const size_t target_working_set_size = (30LL << 20) / sizeof(T);
+    const size_t target_working_set_size = Eigen::l3CacheSize() / sizeof(T);
 
     const size_t size_A = output_image_size * filter_total_size;
 

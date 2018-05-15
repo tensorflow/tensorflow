@@ -336,7 +336,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
 
   ExecuteParallelResponse response;
   VLOG(1) << "making execute-parallel request: " << request.ShortDebugString();
-  tensorflow::Status s = stub_->ExecuteParallel(&request, &response);
+  Status s = stub_->ExecuteParallel(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -372,7 +372,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   ExecuteParallelResponse response;
   VLOG(1) << "making execute-graph-parallel request: "
           << request.ShortDebugString();
-  tensorflow::Status s = stub_->ExecuteGraphParallel(&request, &response);
+  Status s = stub_->ExecuteGraphParallel(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -401,7 +401,7 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 
   GetDeviceHandlesResponse response;
   VLOG(1) << "making get device request: " << request.ShortDebugString();
-  tensorflow::Status s = stub_->GetDeviceHandles(&request, &response);
+  Status s = stub_->GetDeviceHandles(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {

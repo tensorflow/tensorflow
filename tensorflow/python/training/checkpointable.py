@@ -18,14 +18,21 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
+import json
+import weakref
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saveable_object
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 
 
 # Key where the object graph proto is saved in a TensorBundle
@@ -37,6 +44,7 @@ OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
 # the object has no dependencies, then its value may be restored on object
 # creation (avoiding double assignment when executing eagerly).
 VARIABLE_VALUE_KEY = "VARIABLE_VALUE"
+OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
 
 CheckpointableReference = collections.namedtuple(
     "CheckpointableReference",
@@ -83,6 +91,35 @@ class CheckpointInitialValue(ops.Tensor):
   @property
   def checkpoint_position(self):
     return self._checkpoint_position
+
+
+class PythonStringStateSaveable(saveable_object.SaveableObject):
+  """Saves Python state in a checkpoint."""
+
+  def __init__(self, name, state_callback):
+    """Configure saving.
+
+    Args:
+      name: The checkpoint key to write to.
+      state_callback: A function taking no arguments which returns a
+        string. This function is run every time a checkpoint is written.
+    """
+    if context.executing_eagerly():
+      self._save_string = (
+          lambda: constant_op.constant(state_callback(), dtype=dtypes.string))
+    else:
+      self._save_string = constant_op.constant("", dtype=dtypes.string)
+      self.feed_dict_additions = (
+          lambda: {self._save_string: state_callback()})
+    spec = saveable_object.SaveSpec(
+        self._save_string, "", name, dtype=dtypes.string)
+    super(PythonStringStateSaveable, self).__init__(
+        self._save_string, [spec], name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    # TODO(allenl): Add a Python hook for state coming out of a checkpoint
+    # (currently PythonStringStateSaveable is write-only).
+    return control_flow_ops.no_op()
 
 
 class _CheckpointPosition(object):
@@ -604,7 +641,6 @@ class CheckpointableBase(object):
     # restoration on to our dependencies.
     if checkpoint.restore_uid > self._update_uid:
       restore_ops = checkpoint_position.restore_ops()
-      # TODO(allenl): Get a list of feeds for saving Python state
       self._update_uid = checkpoint.restore_uid
     else:
       restore_ops = ()
@@ -656,7 +692,24 @@ class CheckpointableBase(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    return {}
+    if not hasattr(self, "get_config"):
+      return {}
+    try:
+      self.get_config()
+    except NotImplementedError:
+      return {}
+    weak_self = weakref.ref(self)
+    def _state_callback():
+      dereferenced_self = weak_self()
+      if dereferenced_self:
+        return json.dumps(self,
+                          default=serialization.get_json_type,
+                          sort_keys=True).encode("utf8")
+      else:
+        return ""
+    return {OBJECT_CONFIG_JSON_KEY: functools.partial(
+        PythonStringStateSaveable,
+        state_callback=_state_callback)}
 
 
 class NoDependency(object):
@@ -682,6 +735,17 @@ class NoDependency(object):
 
   def __init__(self, value):
     self.value = value
+
+
+class NotCheckpointable(object):
+  """Marks instances of child classes as unsaveable using an object-based API.
+
+  Useful for marking objects which would otherwise look checkpointable because
+  of inheritance (e.g. through `Layer`) as not checkpointable. Inheriting from
+  `NotCheckpointable` does not prevent an object from being assigned to any
+  attributes, but will throw an error on save/restore.
+  """
+  pass
 
 
 class Checkpointable(CheckpointableBase):

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
-#define TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
 #include <string>
 #include <utility>
@@ -55,6 +55,10 @@ class GcsStatsInterface {
   /// retrieved.
   virtual void RecordBlockRetrieved(const string& file, size_t offset,
                                     size_t bytes_transferred) = 0;
+
+  // RecordStatObjectRequest is called once a statting object request over GCS
+  // is about to be made.
+  virtual void RecordStatObjectRequest() = 0;
 
   /// HttpStats is called to optionally provide a RequestStats listener
   /// to be annotated on every HTTP request made to the GCS API.
@@ -264,4 +268,4 @@ class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
