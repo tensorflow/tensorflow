@@ -742,6 +742,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "regex_full_match_op_test",
+    size = "small",
+    srcs = ["regex_full_match_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
     name = "save_restore_ops_test",
     size = "small",
     srcs = ["save_restore_ops_test.py"],
