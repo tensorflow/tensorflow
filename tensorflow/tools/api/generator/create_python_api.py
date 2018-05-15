@@ -23,6 +23,11 @@ import collections
 import os
 import sys
 
+# Populate `sys.modules` which will be traversed to find TensorFlow modules.
+# Make sure your module gets imported in tensorflow/python/__init__.py for it
+# to be seen by this script.
+import tensorflow.python  # pylint: disable=unused-import
+
 from tensorflow.python.util import tf_decorator
 
 

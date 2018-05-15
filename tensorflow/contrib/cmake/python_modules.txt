@@ -54,7 +54,6 @@ tensorflow/python/keras/datasets/fashion_mnist
 tensorflow/python/keras/datasets/imdb
 tensorflow/python/keras/datasets/mnist
 tensorflow/python/keras/datasets/reuters
-tensorflow/python/keras/estimator
 tensorflow/python/keras/initializers
 tensorflow/python/keras/layers
 tensorflow/python/keras/losses
