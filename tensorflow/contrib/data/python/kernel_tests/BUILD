@@ -121,6 +121,19 @@ py_library(
 )
 
 py_test(
+    name = "csv_dataset_op_test",
+    size = "small",
+    srcs = ["csv_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:readers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "filter_dataset_op_test",
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
