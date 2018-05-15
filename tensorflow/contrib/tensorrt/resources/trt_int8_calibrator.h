@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
+namespace core {
+class RefCounted;
+}
 namespace tensorrt {
 // This class provides a 1 element queue to match TFs push model to
 // TRTs pull model for calibration. When TRT implements a means for
@@ -39,14 +42,17 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   TRTInt8Calibrator(
       const std::unordered_map<string, std::pair<void*, size_t>>& dev_buffers,
       int batch_size, string engine_name);
+  TRTInt8Calibrator(const string& calibration_data);
   int getBatchSize() const override;
   bool getBatch(void* bindings[], const char* names[],
                 int num_bindings) override;
   bool setBatch(const std::unordered_map<string, void*>& data,
-                const cudaStream_t stream);
+                const cudaStream_t stream,
+                tensorflow::core::RefCounted* helper);
   void setDone();
   const void* readCalibrationCache(std::size_t& length) override;
   void writeCalibrationCache(const void* ptr, std::size_t length) override;
+  const string& getCalibrationTableAsString(){return calibration_table;}
   ~TRTInt8Calibrator();
 
  private:
@@ -62,6 +68,7 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool calib_running_;
   bool batch_is_set_;
   string engine_name_;
+  string calibration_table;
 };
 
 }  // namespace tensorrt

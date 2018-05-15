@@ -30,7 +30,13 @@ namespace shape_inference {
 tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
   tensorflow::tensorrt::Logger logger;
   string serialized_engine;
-  TF_RETURN_IF_ERROR(context->GetAttr("serialized_engine", &serialized_engine));
+  if(true){
+    for(int i=0;i<context->num_outputs();++i){
+      context->set_output(i,context->UnknownShape());
+    }
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(context->GetAttr("serialized_segment", &serialized_engine));
   nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
   nvinfer1::ICudaEngine* trt_engine = infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr);
@@ -61,7 +67,7 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
 
   // Arrange output here
   std::vector<string> output_nodes;
-  TF_RETURN_IF_ERROR(context->GetAttr("output_nodes", &output_nodes));
+  //TF_RETURN_IF_ERROR(context->GetAttr("output_nodes", &output_nodes));
   for (size_t i = 0; i < output_nodes.size(); i++) {
     int binding_index = trt_engine->getBindingIndex(output_nodes[i].c_str());
     ShapeHandle output_shape;
