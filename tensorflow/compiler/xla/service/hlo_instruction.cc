@@ -3133,7 +3133,7 @@ bool HloInstruction::IsElementwise() const {
 
 bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
   CHECK(IsElementwise());
-  return !ShapeUtil::Equal(shape(), operand(operand_idx)->shape());
+  return !ShapeUtil::SameDimensions(shape(), operand(operand_idx)->shape());
 }
 
 namespace {
