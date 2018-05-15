@@ -500,7 +500,12 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
     uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
       unsigned short high = static_cast<unsigned short>(arg >> 16);
       Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(high));
+#if defined(TENSORFLOW_USE_ROCM_HIP_FP16)
+      // Implementation of Eigen::half is different when using HIP FP16 on the GPU 
+      return (static_cast<uint32>(__half_as_ushort(acc.x)) << 16) | (arg & 0xffff);
+#else
       return (static_cast<uint32>(acc.x) << 16) | (arg & 0xffff);
+#endif
     });
     return half_impl::raw_uint16_to_half(static_cast<uint16>(result >> 16));
   } else {
@@ -509,7 +514,12 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
     uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
       unsigned short low = static_cast<unsigned short>(arg & 0xffff);
       Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(low));
+#if defined(TENSORFLOW_USE_ROCM_HIP_FP16)
+      // Implementation of Eigen::half is different when using HIP FP16 on the GPU 
+      return (arg & 0xffff0000) | static_cast<uint32>(__half_as_ushort(acc.x));
+#else
       return (arg & 0xffff0000) | static_cast<uint32>(acc.x);
+#endif
     });
     return half_impl::raw_uint16_to_half(static_cast<uint16>(result & 0xffff));
   }

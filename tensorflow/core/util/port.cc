@@ -29,11 +29,22 @@ bool IsGoogleCudaEnabled() {
 #endif
 }
 
-bool CudaSupportsHalfMatMulAndConv() {
+bool IsBuiltWithROCm() {
+#if TENSORFLOW_USE_ROCM
+  return true;
+#else
+  return false;
+#endif
+}
+
+  
+bool GpuSupportsHalfMatMulAndConv() {
 #if GOOGLE_CUDA
   // NOTE: We check compile-time and not runtime, since the check for
   // whether we include the fp16 kernels or not is compile-time.
   return CUDA_VERSION >= 7050;
+#elif TENSORFLOW_USE_ROCM
+  return true;
 #else
   return false;
 #endif

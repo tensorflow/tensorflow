@@ -63,4 +63,17 @@ limitations under the License.
 #define PLATFORM_IS_X86
 #endif
 
+// Some of the Tensorflow code reaches into the implmentation of Eigen::half
+// The implementation of Eigen::half is platform dependent in ROCm,
+// i.e. it is different for CPU vs GPU
+// Therefore the Tensorflow code that reaches into the Eigen::half implemenation
+// needs to be different based on the platform we are compiling it for.
+// Creating a TENSORFLOW_USE_ROCM_HIP_FP16 macro for that purpose
+#if defined(TENSORFLOW_USE_ROCM)
+  #if defined(__HIPCC__) && defined(__HIP_DEVICE_COMPILE__)
+    #define TENSORFLOW_USE_ROCM_HIP_FP16
+  #endif
+#endif
+
+
 #endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_
