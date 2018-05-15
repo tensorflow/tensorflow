@@ -4488,9 +4488,8 @@ void initialize_cudnn() {
             cuda::CUDAExecutor* cuda_executor =
                 dynamic_cast<cuda::CUDAExecutor*>(parent);
             if (cuda_executor == nullptr) {
-              LOG(ERROR)
-                  << "Attempting to initialize an instance of the cuBLAS "
-                  << "support library with a non-CUDA StreamExecutor";
+              LOG(ERROR) << "Attempting to initialize an instance of the cuDNN "
+                         << "support library with a non-CUDA StreamExecutor";
               return nullptr;
             }
 

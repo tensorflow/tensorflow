@@ -66,9 +66,6 @@ namespace dnn {
 class BatchDescriptor;
 class FilterDescriptor;
 class ConvolutionDescriptor;
-class BatchDescriptor;
-class FilterDescriptor;
-class ConvolutionDescriptor;
 class ProfileResult;
 class AlgorithmDesc;
 }  // namespace dnn

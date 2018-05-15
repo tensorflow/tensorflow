@@ -1051,10 +1051,8 @@ class DnnSupport {
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  //  algorithm: specifies which algorithm should be used for the
-  //    operation. If algorithm.is_default(), the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpretted by the
-  //    underlying implementation.
+  //  algorithm_config: specifies which algorithm should be used for the
+  //    operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1153,17 +1151,13 @@ class DnnSupport {
   //    convolution input.
   //  filter_descriptor: dimensions of the convolution filter.
   //  convolution_descriptor: stride of the convolution filter.
-  //  input. This can be DeviceMemory pointing to NULL only when activation_mode
-  //  is kNone.
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  //  algorithm: an integer to specify which algorithm should be used for the
-  //    operation. kDefaultAlgorithm means the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpreted by the
-  //    underlying implementation.
+  //  algorithm_config: specifies which algorithm should be used for the
+  //    operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1220,6 +1214,7 @@ class DnnSupport {
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
+  // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
