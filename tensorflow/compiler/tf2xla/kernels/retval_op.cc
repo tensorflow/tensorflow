@@ -55,24 +55,18 @@ class RetvalOp : public XlaOpKernel {
       }
 
       XlaContext& tc = XlaContext::Get(ctx);
-      if (tc.resolve_compile_time_constants() &&
-          (input_shape.num_elements() == 0 || is_constant.ValueOrDie())) {
+      if (input_shape.num_elements() == 0 || is_constant.ValueOrDie()) {
         xla::Literal literal;
         OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
         OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
       } else {
-        TensorShape shape = ctx->InputShape(0);
-        TensorShape representation_shape =
-            tc.is_entry_computation()
-                ? tc.RepresentationShape(shape, ctx->input_type(0))
-                : shape;
         // The core from which a return value is returned depends on the core
-        // assignment of the input to the retval. Since we can't change the core
-        // assignment of <input> as this point, we must always introduce a
-        // reshape here, even if the shape does not change.
-        xla::XlaOp reshape =
-            ctx->builder()->Reshape(input, representation_shape.dim_sizes());
-        tc.AddRetval(index_, dtype_, shape, reshape);
+        // assignment of the input to the retval .Since we can't change the core
+        // assignment of <input> as this point, create a tuple/get-tuple-element
+        // combination so that the core will be set on them.
+        auto tuple_elem =
+            ctx->builder()->GetTupleElement(ctx->builder()->Tuple({input}), 0);
+        tc.AddRetval(index_, dtype_, tuple_elem);
       }
     }
   }

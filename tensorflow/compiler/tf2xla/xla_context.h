@@ -42,13 +42,11 @@ class XlaContext : public ResourceBase {
   static XlaContext& Get(const OpKernelContext* ctx);
   static XlaContext& Get(const XlaOpKernelContext* ctx);
 
-  // Creates a new XlaContext. See the documentation on the class data fields
-  // for descriptions of the arguments.
+  // Creates a new XlaContext.
   XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
              bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
-             bool is_entry_computation,
              const std::function<TensorShape(const TensorShape&, DataType)>*
-                 shape_representation_fn);
+                 variable_representation_shape_fn);
 
   // Virtual method defined by ResourceBase.
   string DebugString() override;
@@ -60,26 +58,14 @@ class XlaContext : public ResourceBase {
 
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
 
-  bool resolve_compile_time_constants() const {
-    return resolve_compile_time_constants_;
-  }
-  bool is_entry_computation() const { return is_entry_computation_; }
-
   const std::vector<XlaExpression>& args() const { return args_; }
   void set_args(std::vector<XlaExpression> args);
 
-  struct Retval {
-    DataType type;
-    TensorShape shape;
-    // An XlaExpression representing the Retval's value.
-    XlaExpression expression;
-  };
-  const std::vector<Retval>& retvals() { return retvals_; }
+  const std::vector<XlaExpression>& retvals() { return retvals_; }
 
   // This is called by the Retval Op to associate a computed value
   // with a specific return value of the subgraph.
-  void AddRetval(int retval_index, DataType type, const TensorShape& shape,
-                 const xla::XlaOp& handle);
+  void AddRetval(int retval_index, DataType type, const xla::XlaOp& handle);
 
   // As for Retval, but for return values that are compile-time constants.
   Status AddConstRetval(int retval_index, DataType dtype,
@@ -100,9 +86,9 @@ class XlaContext : public ResourceBase {
   }
 
   // Returns the XLA shape to be used to represent a variable of TF `shape`
-  // and `type`, or of an argument or return value of a top-level computation.
-  TensorShape RepresentationShape(const TensorShape& shape,
-                                  DataType type) const;
+  // and `type`.
+  TensorShape VariableRepresentationShape(const TensorShape& shape,
+                                          DataType type) const;
 
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
@@ -145,19 +131,15 @@ class XlaContext : public ResourceBase {
   std::vector<XlaExpression> args_;
 
   // Return values of the Tensorflow graph, indexed by _Retval index.
-  std::vector<Retval> retvals_;
+  std::vector<XlaExpression> retvals_;
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
 
-  // Is this a top-level computation, or an inner computation (e.g., a while
-  // body)?
-  const bool is_entry_computation_;
-
   // A function that describes how variable shapes should be represented
   // in XLA. Variable values will be reshaped to this shape. Must be non-null.
   const std::function<TensorShape(const TensorShape&, DataType)>*
-      shape_representation_fn_;
+      variable_representation_shape_fn_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::XlaComputation>;

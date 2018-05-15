@@ -47,14 +47,13 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
 
 void XlaDeviceAllocator::GetStats(AllocatorStats* stats) { stats->Clear(); }
 
-XlaTransferManager::XlaTransferManager(
-    se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn)
+XlaTransferManager::XlaTransferManager(se::Stream* stream,
+                                       xla::LocalClient* client,
+                                       bool transfer_as_literal)
     : stream_(stream),
       client_(client),
       transfer_manager_(client->backend().transfer_manager()),
-      transfer_as_literal_(transfer_as_literal),
-      shape_representation_fn_(std::move(shape_representation_fn)) {}
+      transfer_as_literal_(transfer_as_literal) {}
 
 Status XlaTransferManager::TransferLiteralToDevice(
     const Tensor& host_tensor, Tensor* device_tensor) const {
@@ -77,15 +76,7 @@ Status XlaTransferManager::TransferLiteralFromDevice(
                       transfer_manager_->TransferLiteralFromDevice(
                           stream_->parent(), shaped_buffer));
   VLOG(1) << "Transfer from device as literal: " << literal->ToString();
-  Tensor tensor;
-  TF_RETURN_IF_ERROR(
-      LiteralToHostTensor(*literal, host_tensor->dtype(), &tensor));
-  // Reshape the tensor back to its declared shape.
-  if (!host_tensor->CopyFrom(tensor, device_tensor.shape())) {
-    return errors::Internal(
-        "Tensor::CopyFrom failed when copying from XLA device to CPU");
-  }
-  return Status::OK();
+  return LiteralToHostTensor(*literal, host_tensor->dtype(), host_tensor);
 }
 
 void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
@@ -105,17 +96,9 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 
     XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
     CHECK(xla_tensor);
-
-    TensorShape shape;
-    if (shape_representation_fn_) {
-      shape = shape_representation_fn_(device_tensor->shape(),
-                                       device_tensor->dtype());
-    } else {
-      shape = device_tensor->shape();
-    }
     if (!xla_tensor->has_shaped_buffer()) {
       Status s = xla_tensor->AllocateShapedBuffer(
-          device_tensor->dtype(), shape, client_,
+          device_tensor->dtype(), device_tensor->shape(), client_,
           stream_->parent()->device_ordinal());
       if (!s.ok()) {
         done(s);
@@ -123,18 +106,12 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
       }
     }
 
+    se::DeviceMemoryBase dev_dst_ptr =
+        XlaTensor::DeviceMemoryFromTensor(*device_tensor);
     Status status;
     if (transfer_as_literal_) {
-      Tensor reshaped_cpu_tensor;
-      if (!reshaped_cpu_tensor.CopyFrom(*cpu_tensor, shape)) {
-        done(errors::Internal(
-            "Tensor::CopyFrom failed when copying from CPU to XLA device"));
-        return;
-      }
-      status = TransferLiteralToDevice(reshaped_cpu_tensor, device_tensor);
+      status = TransferLiteralToDevice(*cpu_tensor, device_tensor);
     } else {
-      se::DeviceMemoryBase dev_dst_ptr =
-          XlaTensor::DeviceMemoryFromTensor(*device_tensor);
       stream_->ThenMemcpy(&dev_dst_ptr, src_ptr, total_bytes);
       // TODO(hpucha): Make this asynchronous.
       Status block_status = stream_->BlockHostUntilDone();
@@ -194,11 +171,9 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   done(Status::OK());
 }
 
-XlaDeviceContext::XlaDeviceContext(
-    se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn)
-    : manager_(stream, client, transfer_as_literal,
-               std::move(shape_representation_fn)) {}
+XlaDeviceContext::XlaDeviceContext(se::Stream* stream, xla::LocalClient* client,
+                                   bool transfer_as_literal)
+    : manager_(stream, client, transfer_as_literal) {}
 
 void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                              Device* device,
