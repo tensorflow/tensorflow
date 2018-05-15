@@ -1436,13 +1436,13 @@ def tf_py_wrap_cc(name,
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          "%s.lds"%vscriptname,
+          "$(location %s.lds)"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          "%s.lds"%vscriptname,
+          "$(location %s.lds)"%vscriptname,
       ]
   })
   extra_deps += select({
