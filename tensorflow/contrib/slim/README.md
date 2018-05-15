@@ -909,3 +909,8 @@ slim.evaluation.evaluation_loop(
 
 ## Authors
 Sergio Guadarrama and Nathan Silberman
+
+## Citation
+"TensorFlow-Slim: a lightweight library for defining, training and evaluating complex models in TensorFlow"
+S. Guadarrama, N. Silberman
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/slim 2016

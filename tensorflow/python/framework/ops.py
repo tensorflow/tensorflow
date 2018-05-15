@@ -1057,13 +1057,19 @@ def internal_convert_to_tensor(value,
 
   """
   if ctx is None: ctx = context.context()
-  if ctx.executing_eagerly():
-    # Fast path for EagerTensors that don't need any conversion.
-    if isinstance(value, EagerTensor):
+  if isinstance(value, EagerTensor):
+    if ctx.executing_eagerly():
+      # Fast path for EagerTensors that don't need any conversion.
       # Note that we don't check that value's dtype matches the dtype
       # argument.  We expect that the C runtime will do that checking
       # when we execute the kernel.
       return value
+    else:
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError("Attempting to capture an EagerTensor without "
+                           "building a function.")
+      return graph.capture(value, name=name)
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1251,7 +1257,10 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, _TensorLike):
+  if isinstance(value, EagerTensor) and not context.executing_eagerly():
+    return internal_convert_to_tensor(
+        value, dtype=dtype, name=name, as_ref=as_ref)
+  elif isinstance(value, _TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
@@ -3446,8 +3455,9 @@ class Graph(object):
     # the name will still appear in _names_in_use even though the name hasn't
     # been used. This is ok, just leave _names_in_use as-is in this case.
     # TODO(skyewm): make the C API guarantee no name conflicts.
-    if ret.name not in self._names_in_use:
-      self._names_in_use[ret.name] = 1
+    name_key = ret.name.lower()
+    if name_key not in self._names_in_use:
+      self._names_in_use[name_key] = 1
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
@@ -4163,20 +4173,27 @@ class Graph(object):
     """
     if self._name_stack:
       name = self._name_stack + "/" + name
-    i = self._names_in_use.get(name, 0)
-    # Increment the number for "name".
+
+    # For the sake of checking for names in use, we treat names as case
+    # insensitive (e.g. foo = Foo).
+    name_key = name.lower()
+    i = self._names_in_use.get(name_key, 0)
+    # Increment the number for "name_key".
     if mark_as_used:
-      self._names_in_use[name] = i + 1
+      self._names_in_use[name_key] = i + 1
     if i > 0:
-      base_name = name
-      # Make sure the composed name is not already used.
-      while name in self._names_in_use:
-        name = "%s_%d" % (base_name, i)
+      base_name_key = name_key
+      # Make sure the composed name key is not already used.
+      while name_key in self._names_in_use:
+        name_key = "%s_%d" % (base_name_key, i)
         i += 1
-      # Mark the composed name as used in case someone wants
+      # Mark the composed name_key as used in case someone wants
       # to call unique_name("name_1").
       if mark_as_used:
-        self._names_in_use[name] = 1
+        self._names_in_use[name_key] = 1
+
+      # Return the new name with the original capitalization of the given name.
+      name = "%s_%d" % (name, i-1)
     return name
 
   def get_name_scope(self):

@@ -2206,65 +2206,37 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
         lhs->shape(),               // The shape of LHS.
         rhs->shape(),               // The shape of RHS.
         inst->shape(),              // The shape of the output.
-        false,                      // Do not transpose LHS.
-        false,                      // Do not transpose RHS.
         1.0,                        // alpha.
         inst);
   }
 
   if (inst->opcode() == HloOpcode::kFusion) {
-    if (inst->fusion_kind() == HloInstruction::FusionKind::kOutput) {
-      const HloInstruction* mul = inst->fused_expression_root();
-      const HloInstruction* dot = mul->operand(0);
-      const HloInstruction* alpha = mul->operand(1);
-      if (dot->opcode() != HloOpcode::kDot) {
-        std::swap(dot, alpha);
-      }
-      DCHECK(dot->opcode() == HloOpcode::kDot);
-      const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
-      const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
-      DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
-             rhs_parameter->opcode() == HloOpcode::kParameter);
-      const HloInstruction* lhs =
-          inst->operand(lhs_parameter->parameter_number());
-      const HloInstruction* rhs =
-          inst->operand(rhs_parameter->parameter_number());
-
-      return MakeUnique<GemmThunk>(
-          GetAllocationSlice(*lhs),             // The buffer assigned to LHS.
-          GetAllocationSlice(*rhs),             // The buffer assigned to RHS.
-          GetAllocationSlice(*mul),             // The output buffer.
-          lhs->shape(),                         // The shape of LHS.
-          rhs->shape(),                         // The shape of RHS.
-          inst->shape(),                        // The shape of the output.
-          dot->operand(0)->IsRank2Transpose(),  // Transpose LHS.
-          dot->operand(1)->IsRank2Transpose(),  // Transpose RHS.
-          alpha->literal().Get<double>({0}),    // alpha.
-          inst);
-    } else {
-      const HloInstruction* dot = inst->fused_expression_root();
-      DCHECK(dot->opcode() == HloOpcode::kDot);
-      const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
-      const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
-      DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
-             rhs_parameter->opcode() == HloOpcode::kParameter);
-      const HloInstruction* lhs =
-          inst->operand(lhs_parameter->parameter_number());
-      const HloInstruction* rhs =
-          inst->operand(rhs_parameter->parameter_number());
-
-      return MakeUnique<GemmThunk>(
-          GetAllocationSlice(*lhs),             // The buffer assigned to LHS.
-          GetAllocationSlice(*rhs),             // The buffer assigned to RHS.
-          GetAllocationSlice(*inst),            // The output buffer.
-          lhs->shape(),                         // The shape of LHS.
-          rhs->shape(),                         // The shape of RHS.
-          inst->shape(),                        // The shape of the output.
-          dot->operand(0)->IsRank2Transpose(),  // Transpose LHS.
-          dot->operand(1)->IsRank2Transpose(),  // Transpose RHS.
-          1.0,                                  // Alpha.
-          inst);
+    CHECK_EQ(inst->fusion_kind(), HloInstruction::FusionKind::kOutput);
+    const HloInstruction* mul = inst->fused_expression_root();
+    const HloInstruction* dot = mul->operand(0);
+    const HloInstruction* alpha = mul->operand(1);
+    if (dot->opcode() != HloOpcode::kDot) {
+      std::swap(dot, alpha);
     }
+    DCHECK(dot->opcode() == HloOpcode::kDot);
+    const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
+    const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
+    DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
+           rhs_parameter->opcode() == HloOpcode::kParameter);
+    const HloInstruction* lhs =
+        inst->operand(lhs_parameter->parameter_number());
+    const HloInstruction* rhs =
+        inst->operand(rhs_parameter->parameter_number());
+
+    return MakeUnique<GemmThunk>(
+        GetAllocationSlice(*lhs),           // The buffer assigned to LHS.
+        GetAllocationSlice(*rhs),           // The buffer assigned to RHS.
+        GetAllocationSlice(*mul),           // The output buffer.
+        lhs->shape(),                       // The shape of LHS.
+        rhs->shape(),                       // The shape of RHS.
+        inst->shape(),                      // The shape of the output.
+        alpha->literal().Get<double>({0}),  // alpha.
+        inst);
   }
 
   LOG(FATAL) << "Cannot build a GemmThunk for " << inst->ToString();

@@ -35,15 +35,13 @@ namespace gpu {
 class GemmThunk : public Thunk {
  public:
   // Constructs a thunk that computes "output = (lhs <dot> rhs) * alpha" using
-  // BLAS gemm. transpose_lhs and transpose_rhs indicate whether gemm should
-  // transpose the lhs and rhs operand. hlo_instruction is as in Thunk. alpha is
-  // a constant.
+  // BLAS gemm.  hlo_instruction is as in Thunk. alpha is a constant.
   GemmThunk(const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
             const BufferAllocation::Slice& output_buffer,
             const Shape& lhs_shape, const Shape& rhs_shape,
-            const Shape& output_shape, bool transpose_lhs, bool transpose_rhs,
-            double alpha, const HloInstruction* hlo_instruction);
+            const Shape& output_shape, double alpha,
+            const HloInstruction* hlo_instruction);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
@@ -69,8 +67,6 @@ class GemmThunk : public Thunk {
   const Shape rhs_shape_;
   const Shape output_shape_;
 
-  const bool transpose_lhs_;
-  const bool transpose_rhs_;
   const double alpha_;
 
   // Maps device names (StreamExecutor::DeviceDescription::name()) to autotune

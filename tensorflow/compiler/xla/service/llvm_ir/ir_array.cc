@@ -333,18 +333,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   }
   CHECK_EQ(index.size(), ShapeUtil::Rank(*shape_));
 
-  std::vector<llvm::Value*> actual_index;
-  bool is_implicit_broadcast = false;
-  // We perform broadcasting when the operand shape has dimension(s) of size
-  // 1. In this case we fix the index value for that dimension to zero. This
-  // effectively broadcasts along this dimension.
-  for (int64 i = 0; i < index.size(); ++i) {
-    auto dim = shape_->dimensions(i);
-    actual_index.push_back(dim == 1 ? ir_builder->getInt64(0) : index[i]);
-    is_implicit_broadcast |= dim == 1;
-  }
-
-  if (!is_implicit_broadcast && index.LinearValidOnShape(*shape_)) {
+  if (index.LinearValidOnShape(*shape_)) {
     llvm::Module* module =
         ir_builder->GetInsertBlock()->getParent()->getParent();
     return ir_builder->CreateInBoundsGEP(
@@ -352,6 +341,15 @@ llvm::Value* IrArray::EmitArrayElementAddress(
             base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), module)
                            ->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
+  }
+
+  std::vector<llvm::Value*> actual_index;
+  for (int64 i = 0; i < index.size(); ++i) {
+    // When dimension i is of size 1, LLVM optimization is able to replace
+    // index[i] with 0. However, setting index[i] to 0 here still allows LLVM to
+    // produce better code in some cases.
+    auto dim = shape_->dimensions(i);
+    actual_index.push_back(dim == 1 ? ir_builder->getInt64(0) : index[i]);
   }
 
   // "base_ptr_" has the type of "<ir_type_for_its_shape>*"

@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import nest
@@ -52,6 +53,13 @@ class ModeKeys(object):
 
 LOSS_METRIC_KEY = 'loss'
 AVERAGE_LOSS_METRIC_KEY = 'average_loss'
+
+# Mapping of the modes to appropriate tag_constants that are used for saving.
+EXPORT_TAG_MAP = {
+    ModeKeys.PREDICT: [tag_constants.SERVING],
+    ModeKeys.TRAIN: [tag_constants.TRAINING],
+    ModeKeys.EVAL: [tag_constants.EVAL],
+}
 
 
 @tf_export('estimator.EstimatorSpec')
@@ -324,6 +332,57 @@ class EstimatorSpec(
         raise ValueError('mode of EstimatorSpec cannot be changed.')
     new_fields = map(kwds.pop, self._fields, list(self))
     return EstimatorSpec(*new_fields)
+
+
+class _TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
+    'mode',
+    'predictions',
+    'loss',
+    'train_op',
+    'eval_metrics',
+    'export_outputs',
+    'scaffold_fn',
+    'host_call'])):
+  """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
+
+  This is a simplified implementation of `tf.contrib.tpu.EstimatorSpec`. See
+  tensorflow/contrib/tpu/python/tpu/tpu_estimator.py for more detailed
+  documentation.
+  """
+
+  def __new__(cls,
+              mode,
+              predictions=None,
+              loss=None,
+              train_op=None,
+              eval_metrics=None,
+              export_outputs=None,
+              scaffold_fn=None,
+              host_call=None):
+    """Creates a `_TPUEstimatorSpec` instance."""
+    return super(_TPUEstimatorSpec, cls).__new__(cls,
+                                                 mode=mode,
+                                                 predictions=predictions,
+                                                 loss=loss,
+                                                 train_op=train_op,
+                                                 eval_metrics=eval_metrics,
+                                                 export_outputs=export_outputs,
+                                                 scaffold_fn=scaffold_fn,
+                                                 host_call=host_call)
+
+  def as_estimator_spec(self):
+    """Creates an equivalent `EstimatorSpec` used by CPU train/eval."""
+    if not self.eval_metrics:
+      eval_metric_ops = None
+    else:
+      metric_fn, tensors = self.eval_metrics
+      eval_metric_ops = metric_fn(**tensors)
+    return EstimatorSpec(mode=self.mode,
+                         predictions=self.predictions,
+                         loss=self.loss,
+                         train_op=self.train_op,
+                         eval_metric_ops=eval_metric_ops,
+                         export_outputs=self.export_outputs)
 
 
 def _check_is_tensor_or_operation(x, name):

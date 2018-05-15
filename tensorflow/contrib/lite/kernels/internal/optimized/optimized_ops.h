@@ -31,12 +31,23 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace optimized_ops {
+
+// Unoptimized reference ops:
+using reference_ops::BroadcastGreater;
+using reference_ops::BroadcastGreaterEqual;
+using reference_ops::BroadcastLess;
+using reference_ops::BroadcastLessEqual;
+using reference_ops::Greater;
+using reference_ops::GreaterEqual;
+using reference_ops::Less;
+using reference_ops::LessEqual;
 
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
@@ -5851,10 +5862,26 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+void TypedMemset(void* ptr, T value, size_t num) {
+  // Optimization for common cases where memset() will suffice.
+  if (value == 0 || std::is_same<T, uint8_t>::value) {
+    memset(ptr, value, num * sizeof(T));
+  } else {
+    // Default implementation for cases where memset() will not preserve the
+    // bytes, e.g., typically when sizeof(T) > sizeof(uint8_t).
+    char* pos = static_cast<char*>(ptr);
+    for (size_t i = 0; i < num; ++i) {
+      memcpy(pos, &value, sizeof(T));
+      pos = pos + sizeof(T);
+    }
+  }
+}
+
+template <typename T>
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
   gemmlowp::ScopedProfilingLabel label("Pad");
   TFLITE_DCHECK_EQ(left_paddings.size(), 4);
   TFLITE_DCHECK_EQ(right_paddings.size(), 4);
@@ -5877,27 +5904,28 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   const int input_depth = ArraySize(input_dims, 0);
 
   if (left_b_padding != 0) {
-    memset(output_data, pad_value,
-           left_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data, pad_value,
+        left_b_padding * output_height * output_width * output_depth);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), pad_value,
-             left_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(output_data + Offset(output_dims, 0, 0, 0, out_b),
+                     pad_value, left_h_padding * output_width * output_depth);
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), pad_value,
-               left_w_padding * output_depth * sizeof(T));
+        TypedMemset<T>(output_data + Offset(output_dims, 0, 0, out_h, out_b),
+                       pad_value, left_w_padding * output_depth);
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
-          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b),
-                 pad_value, left_d_padding * sizeof(T));
+          TypedMemset<T>(
+              output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+              pad_value, left_d_padding);
         }
 
         T* out = output_data +
@@ -5908,33 +5936,44 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
         memcpy(out, in, input_depth * sizeof(T));
 
         if (right_d_padding != 0) {
-          memset(
+          TypedMemset<T>(
               output_data + Offset(output_dims, output_depth - right_d_padding,
                                    out_w, out_h, out_b),
-              pad_value, right_d_padding * sizeof(T));
+              pad_value, right_d_padding);
         }
       }
       if (right_w_padding != 0) {
-        memset(
+        TypedMemset<T>(
             output_data + Offset(output_dims, 0, output_width - right_w_padding,
                                  out_h, out_b),
-            pad_value, right_w_padding * output_depth * sizeof(T));
+            pad_value, right_w_padding * output_depth);
       }
     }
     if (right_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0,
-                                  output_height - right_h_padding, out_b),
-             pad_value,
-             right_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(
+          output_data +
+              Offset(output_dims, 0, 0, output_height - right_h_padding, out_b),
+          pad_value, right_h_padding * output_width * output_depth);
     }
   }
   if (right_b_padding != 0) {
-    memset(output_data +
-               Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
-           0,
-           right_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data +
+            Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
+        pad_value,
+        right_b_padding * output_height * output_width * output_depth);
   }
+}
+
+// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T>
+inline void Pad(const T* input_data, const Dims<4>& input_dims,
+                const std::vector<int>& left_paddings,
+                const std::vector<int>& right_paddings, T* output_data,
+                const Dims<4>& output_dims, const int32_t pad_value) {
+  const T converted_pad_value = static_cast<T>(pad_value);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, converted_pad_value);
 }
 
 template <typename T>
@@ -6276,6 +6315,59 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
         }
       }
     }
+  }
+}
+
+// UNOPTIMIZED COPY of Select from reference_ops.h.
+template <typename D, typename T>
+inline void Select(const D* input_condition_data,
+                   const Dims<4>& input_condition_dims, const T* input_x_data,
+                   const Dims<4>& input_x_dims, const T* input_y_data,
+                   const Dims<4>& input_y_dims, T* output_data,
+                   const Dims<4>& output_dims) {
+  const int64_t batches =
+      MatchingArraySize(input_condition_dims, 3, input_x_dims, 3, input_y_dims,
+                        3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_condition_dims, 2, input_x_dims, 2, input_y_dims,
+                        2, output_dims, 2);
+  const int64_t width = MatchingArraySize(input_condition_dims, 1, input_x_dims,
+                                          1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth = MatchingArraySize(input_condition_dims, 0, input_x_dims,
+                                          0, input_y_dims, 0, output_dims, 0);
+
+  const int64_t num_elements = batches * height * width * depth;
+  for (int64_t i = 0; i < num_elements; ++i) {
+    output_data[i] =
+        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
+  }
+}
+
+// UNOPTIMIZED COPY of RankOneSelect from reference_ops.h.
+template <typename D, typename T>
+inline void RankOneSelect(const D* input_condition_data,
+                          const Dims<4>& input_condition_dims,
+                          const T* input_x_data, const Dims<4>& input_x_dims,
+                          const T* input_y_data, const Dims<4>& input_y_dims,
+                          T* output_data, const Dims<4>& output_dims) {
+  const int64_t rank = ArraySize(input_condition_dims, 0);
+
+  const int64_t batches =
+      MatchingArraySize(input_x_dims, 3, input_y_dims, 3, output_dims, 3);
+  const int64_t height =
+      MatchingArraySize(input_x_dims, 2, input_y_dims, 2, output_dims, 2);
+  const int64_t width =
+      MatchingArraySize(input_x_dims, 1, input_y_dims, 1, output_dims, 1);
+  const int64_t depth =
+      MatchingArraySize(input_x_dims, 0, input_y_dims, 0, output_dims, 0);
+
+  TFLITE_DCHECK_EQ(rank, batches);
+
+  int64_t offset = 0;
+  int64_t size = depth * height * width;
+  for (int64_t i = 0; i < rank; i++) {
+    const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
+    memcpy(output_data + offset, input_data + offset, size * sizeof(T));
   }
 }
 

@@ -175,17 +175,7 @@ class _SIGNAL(object):
   STOP = -2
 
 
-class TPUEstimatorSpec(
-    collections.namedtuple('TPUEstimatorSpec', [
-        'mode',
-        'predictions',
-        'loss',
-        'train_op',
-        'eval_metrics',
-        'export_outputs',
-        'scaffold_fn',
-        'host_call'
-    ])):
+class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
   """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
 
   See `EstimatorSpec` for `mode`, 'predictions, 'loss', 'train_op', and
@@ -1156,7 +1146,7 @@ class _ModelFnWrapper(object):
           self._call_model_fn(features, labels))
       loss, train_op = estimator_spec.loss, estimator_spec.train_op
 
-      if isinstance(estimator_spec, TPUEstimatorSpec):
+      if isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
         captured_scaffold_fn.capture(estimator_spec.scaffold_fn)
       else:
         captured_scaffold_fn.capture(None)
@@ -1165,8 +1155,8 @@ class _ModelFnWrapper(object):
       # outfeed.
       with ops.control_dependencies([train_op]):
         host_call_outfeed_ops = []
-        if (isinstance(estimator_spec, TPUEstimatorSpec) and
-            estimator_spec.host_call is not None):
+        if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
+            and estimator_spec.host_call is not None):
           host_call.record({'host_call': estimator_spec.host_call})
           host_call_outfeed_ops = host_call.create_enqueue_op()
         with ops.control_dependencies(host_call_outfeed_ops):
@@ -1209,7 +1199,7 @@ class _ModelFnWrapper(object):
       features, labels = inputs.features_and_labels()
 
       tpu_estimator_spec = self._call_model_fn(features, labels)
-      if not isinstance(tpu_estimator_spec, TPUEstimatorSpec):
+      if not isinstance(tpu_estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
         raise RuntimeError(
             'estimator_spec used by TPU evaluation must have type'
             '`TPUEstimatorSpec`. Got {}'.format(type(tpu_estimator_spec)))
@@ -1254,7 +1244,7 @@ class _ModelFnWrapper(object):
 
       tpu_estimator_spec = self._call_model_fn(
           features, labels, is_export_mode=False)
-      if not isinstance(tpu_estimator_spec, TPUEstimatorSpec):
+      if not isinstance(tpu_estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
         raise RuntimeError(
             'estimator_spec used by TPU prediction must have type'
             '`TPUEstimatorSpec`. Got {}'.format(type(tpu_estimator_spec)))
@@ -1316,7 +1306,7 @@ class _ModelFnWrapper(object):
 
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (self._ctx.is_running_on_cpu(is_export_mode) and
-        isinstance(estimator_spec, TPUEstimatorSpec)):
+        isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
       # The estimator_spec will be passed to `Estimator` directly, which expects
       # type `EstimatorSpec`.
       return estimator_spec.as_estimator_spec()
@@ -1325,7 +1315,7 @@ class _ModelFnWrapper(object):
 
   def _verify_estimator_spec(self, estimator_spec):
     """Validates the estimator_spec."""
-    if isinstance(estimator_spec, TPUEstimatorSpec):
+    if isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
       return estimator_spec
 
     err_msg = '{} returned by EstimatorSpec is not supported in TPUEstimator.'
