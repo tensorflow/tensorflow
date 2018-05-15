@@ -13,27 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
-
-#include "tensorflow/core/platform/types.h"
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_KERNEL_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_KERNEL_H_
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-// Logger for GIE info/warning/errors
-class Logger : public nvinfer1::ILogger {
- public:
-  Logger(string name = "DefaultLogger") : name_(name) {}
-  void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
-
- private:
-  string name_;
-};
+void IncrementKernel(const float* d_input, float inc, float* d_output,
+                     int count, cudaStream_t stream);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
@@ -41,4 +32,4 @@ class Logger : public nvinfer1::ILogger {
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_CUSTOM_PLUGIN_EXAMPLES_INC_OP_KERNEL_H_
