@@ -19,6 +19,7 @@ limitations under the License.
 #include <chrono>
 #include <unordered_map>
 
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA
@@ -41,9 +42,18 @@ TRTInt8Calibrator::TRTInt8Calibrator(
       batch_is_set_(false),
       engine_name_(engine_name) {}
 
+TRTInt8Calibrator::TRTInt8Calibrator(const string& calib_data)
+    : batch_size_(0),
+      done_(false),
+      calib_running_(false),
+      batch_is_set_(false),
+      calibration_table(calib_data) {}
+
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
-                                 const cudaStream_t stream) {
+                                 const cudaStream_t stream,
+                                 tensorflow::core::RefCounted* rc) {
   tensorflow::mutex_lock lock(cond_mtx_);
+  tensorflow::core::ScopedUnref SC(rc);
   while ((calib_running_ || batch_is_set_) &&
          !done_) {  // wait while calibration is running
     cond_.wait(lock);
@@ -86,7 +96,6 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
   cond_.notify_all();
   while ((!batch_is_set_ && !done_)) {  // wait until new batch arrives
     cond_.wait(lock);
-
   }
   if (done_) {
     return false;
@@ -107,7 +116,9 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
 }
 
 const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
-  return nullptr;
+  if (calibration_table.empty()) return nullptr;
+  length = calibration_table.size();
+  return calibration_table.data();
 }
 
 void TRTInt8Calibrator::setDone() {
@@ -117,7 +128,10 @@ void TRTInt8Calibrator::setDone() {
 }
 
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
-                                              std::size_t length) {}
+                                              std::size_t length) {
+  calibration_table = string((const char*)ptr, length);
+  VLOG(1) << "Got calibration data for "<<engine_name_<<" @"<<ptr<<" length="<<length;
+}
 TRTInt8Calibrator::~TRTInt8Calibrator() {
   VLOG(1) << "Destroying calibrator for " << engine_name_;
 }

@@ -21,6 +21,8 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -30,20 +32,24 @@ limitations under the License.
 #if GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
-// TODO(sami): Convert this to async kernel!
-class TRTCalibOp : public OpKernel {
+class TRTCalibrationResource;
+class TRTCalibOp : public AsyncOpKernel {
  public:
   explicit TRTCalibOp(OpKernelConstruction* context);
 
-  void Compute(OpKernelContext* context) override;
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override;
+  tensorflow::Status AllocateCalibrationResources(
+      OpKernelContext*, tensorflow::tensorrt::TRTCalibrationResource** cr);
 
  private:
   string resource_name_;
-  std::vector<string> segment_nodes_;
-  std::vector<string> input_names_;
+  tensorflow::GraphDef segment_graph_;
+  tensorflow::int64 workspace_size_;
   std::vector<tensorflow::TensorShape> shapes_;
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
   std::vector<tensorflow::PersistentTensor> dev_tensors_;
+  tensorflow::FunctionLibraryRuntime::Options fopts_;
+  tensorflow::FunctionLibraryRuntime::Handle native_func_;
 };
 }  // namespace tensorrt
 }  // namespace tensorflow
