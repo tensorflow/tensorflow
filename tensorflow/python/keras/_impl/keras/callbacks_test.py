@@ -30,6 +30,7 @@ import numpy as np
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.writer import writer_cache
 
 try:
@@ -354,7 +355,7 @@ class KerasCallbacksTest(test.TestCase):
           keras.callbacks.ReduceLROnPlateau(
               monitor='val_loss',
               factor=0.1,
-              epsilon=10,
+              min_delta=10,
               patience=1,
               cooldown=5)
       ]
@@ -370,6 +371,63 @@ class KerasCallbacksTest(test.TestCase):
           float(keras.backend.get_value(model.optimizer.lr)),
           0.01,
           atol=1e-4)
+
+      model = make_model()
+      cbks = [
+          keras.callbacks.ReduceLROnPlateau(
+              monitor='val_loss',
+              factor=0.1,
+              min_delta=0,
+              patience=1,
+              cooldown=5)
+      ]
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=5,
+          verbose=2)
+      self.assertAllClose(
+          float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
+
+  def test_ReduceLROnPlateau_patience(self):
+
+    class DummyOptimizer(object):
+
+      def __init__(self):
+        self.lr = keras.backend.variable(1.0)
+
+    class DummyModel(object):
+
+      def __init__(self):
+        self.optimizer = DummyOptimizer()
+
+    reduce_on_plateau = keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss', patience=2)
+    reduce_on_plateau.model = DummyModel()
+
+    losses = [0.0860, 0.1096, 0.1040]
+    lrs = []
+
+    for epoch in range(len(losses)):
+      reduce_on_plateau.on_epoch_end(epoch, logs={'val_loss': losses[epoch]})
+      lrs.append(keras.backend.get_value(reduce_on_plateau.model.optimizer.lr))
+
+    # The learning rates should be 1.0 except the last one
+    for lr in lrs[:-1]:
+      self.assertEqual(lr, 1.0)
+    self.assertLess(lrs[-1], 1.0)
+
+  def test_ReduceLROnPlateau_backwards_compatibility(self):
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      reduce_on_plateau = keras.callbacks.ReduceLROnPlateau(epsilon=1e-13)
+      self.assertRegexpMatches(
+          str(mock_log.call_args), '`epsilon` argument is deprecated')
+    self.assertFalse(hasattr(reduce_on_plateau, 'epsilon'))
+    self.assertTrue(hasattr(reduce_on_plateau, 'min_delta'))
+    self.assertEqual(reduce_on_plateau.min_delta, 1e-13)
 
   def test_CSVLogger(self):
     with self.test_session():
@@ -507,33 +565,39 @@ class KerasCallbacksTest(test.TestCase):
       assert 'nan' in values[-1], 'The last epoch was not logged.'
 
   def test_TerminateOnNaN(self):
-    np.random.seed(1337)
-    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-        train_samples=TRAIN_SAMPLES,
-        test_samples=TEST_SAMPLES,
-        input_shape=(INPUT_DIM,),
-        num_classes=NUM_CLASSES)
+    with self.test_session():
+      np.random.seed(1337)
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=TRAIN_SAMPLES,
+          test_samples=TEST_SAMPLES,
+          input_shape=(INPUT_DIM,),
+          num_classes=NUM_CLASSES)
 
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
-    cbks = [keras.callbacks.TerminateOnNaN()]
-    model = keras.models.Sequential()
-    initializer = keras.initializers.Constant(value=1e5)
-    for _ in range(5):
-      model.add(keras.layers.Dense(2,
-                                   input_dim=INPUT_DIM,
-                                   activation='relu',
-                                   kernel_initializer=initializer))
-    model.add(keras.layers.Dense(NUM_CLASSES))
-    model.compile(loss='mean_squared_error',
-                  optimizer='rmsprop')
+      y_test = keras.utils.to_categorical(y_test)
+      y_train = keras.utils.to_categorical(y_train)
+      cbks = [keras.callbacks.TerminateOnNaN()]
+      model = keras.models.Sequential()
+      initializer = keras.initializers.Constant(value=1e5)
+      for _ in range(5):
+        model.add(
+            keras.layers.Dense(
+                2,
+                input_dim=INPUT_DIM,
+                activation='relu',
+                kernel_initializer=initializer))
+      model.add(keras.layers.Dense(NUM_CLASSES))
+      model.compile(loss='mean_squared_error', optimizer='rmsprop')
 
-    history = model.fit(x_train, y_train, batch_size=BATCH_SIZE,
-                        validation_data=(x_test, y_test),
-                        callbacks=cbks, epochs=20)
-    loss = history.history['loss']
-    assert len(loss) == 1
-    assert loss[0] == np.inf
+      history = model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=20)
+      loss = history.history['loss']
+      assert len(loss) == 1
+      assert loss[0] == np.inf
 
   def test_TensorBoard(self):
     np.random.seed(1337)
@@ -874,6 +938,37 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       assert os.path.exists(temp_dir)
+
+  def test_RemoteMonitorWithJsonPayload(self):
+    if h5py is None:
+      self.skipTest('`requests` required to run this test')
+    with self.test_session():
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=TRAIN_SAMPLES,
+          test_samples=TEST_SAMPLES,
+          input_shape=(INPUT_DIM,),
+          num_classes=NUM_CLASSES)
+      y_test = keras.utils.np_utils.to_categorical(y_test)
+      y_train = keras.utils.np_utils.to_categorical(y_train)
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Dense(
+              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
+      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='rmsprop',
+          metrics=['accuracy'])
+      cbks = [keras.callbacks.RemoteMonitor(send_as_json=True)]
+
+      with test.mock.patch.object(requests, 'post'):
+        model.fit(
+            x_train,
+            y_train,
+            batch_size=BATCH_SIZE,
+            validation_data=(x_test, y_test),
+            callbacks=cbks,
+            epochs=1)
 
 
 if __name__ == '__main__':

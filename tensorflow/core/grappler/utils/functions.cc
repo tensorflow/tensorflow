@@ -380,16 +380,6 @@ GrapplerFunctionItem& GrapplerFunctionItem::SwapFunctionBody(GraphDef&& other) {
   return *this;
 }
 
-std::vector<string> OutputTensors(const GrapplerFunctionItem& item) {
-  std::vector<string> output_tensors;
-  for (const OutputArgExpansion& output : item.outputs()) {
-    for (const string& tensor : output.output_tensors) {
-      output_tensors.push_back(tensor);
-    }
-  }
-  return output_tensors;
-}
-
 bool HasParametrizedType(const FunctionDef& func) {
   const auto is_type_parametrized = [](const OpDef::ArgDef& arg) {
     return !arg.type_attr().empty() || !arg.number_attr().empty() ||

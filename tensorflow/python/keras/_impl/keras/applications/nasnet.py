@@ -96,10 +96,9 @@ def NASNet(input_shape=None,
   at `~/.keras/keras.json`.
 
   Arguments:
-      input_shape: Optional shape tuple, only to be specified
-          if `include_top` is False (otherwise the input shape
-          has to be `(331, 331, 3)` for NASNetLarge or
-          `(224, 224, 3)` for NASNetMobile
+      input_shape: Optional shape tuple, the input shape
+          is by default `(331, 331, 3)` for NASNetLarge and
+          `(224, 224, 3)` for NASNetMobile.
           It should have exactly 3 inputs channels,
           and width and height should be no smaller than 32.
           E.g. `(224, 224, 3)` would be one valid value.
@@ -169,6 +168,14 @@ def NASNet(input_shape=None,
     raise ValueError('If using `weights` as ImageNet with `include_top` '
                      'as true, `classes` should be 1000')
 
+  if (isinstance(input_shape, tuple) and None in input_shape and
+      weights == 'imagenet'):
+    raise ValueError('When specifying the input shape of a NASNet'
+                     ' and loading `ImageNet` weights, '
+                     'the input_shape argument must be static '
+                     '(no None entries). Got: `input_shape=' +
+                     str(input_shape) + '`.')
+
   if default_size is None:
     default_size = 331
 
@@ -178,7 +185,7 @@ def NASNet(input_shape=None,
       default_size=default_size,
       min_size=32,
       data_format=K.image_data_format(),
-      require_flatten=include_top or weights,
+      require_flatten=False,
       weights=weights)
 
   if K.image_data_format() != 'channels_last':

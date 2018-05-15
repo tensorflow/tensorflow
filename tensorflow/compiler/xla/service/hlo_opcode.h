@@ -74,6 +74,7 @@ namespace xla {
   V(kDynamicUpdateSlice, "dynamic-update-slice")             \
   V(kEq, "equal-to", kHloOpcodeIsComparison)                 \
   V(kExp, "exponential")                                     \
+  V(kExpm1, "exponential-minus-one")                         \
   V(kFft, "fft")                                             \
   V(kFloor, "floor")                                         \
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                 \
@@ -87,6 +88,7 @@ namespace xla {
   V(kIsFinite, "is-finite")                                  \
   V(kLe, "less-than-or-equal-to", kHloOpcodeIsComparison)    \
   V(kLog, "log")                                             \
+  V(kLog1p, "log-plus-one")                                  \
   V(kAnd, "and")                                             \
   V(kNot, "not")                                             \
   V(kOr, "or")                                               \

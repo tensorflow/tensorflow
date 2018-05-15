@@ -134,7 +134,6 @@ following common ops are not supported at the moment:
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
 *   [tf.gather](https://www.tensorflow.org/api_docs/python/tf/gather)
 *   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
-*   [tf.slice](https://www.tensorflow.org/api_docs/python/tf/slice)
 *   [tf.tanh](https://www.tensorflow.org/api_docs/python/tf/tanh)
 
 ## TensorFlow Lite Operations
@@ -523,6 +522,19 @@ Options {
 }
 ```
 
+**SLICE**
+
+```
+Inputs {
+  0: tensor
+  1: 1D tensor
+  2: 1D tensor
+}
+Outputs {
+  0: slice of the input tensor of the given size from the given begin index.
+}
+```
+
 **SOFTMAX**
 
 ```
@@ -608,7 +620,7 @@ Outputs {
   0: slice of the input tensor of the given size
 }
 Options {
-  begin_mask: mask for begin indicies
+  begin_mask: mask for begin indices
   end_mask: mask for end indices
   shrink_axis_mask: mask that indicates which dimensions to remove
 }
@@ -623,7 +635,7 @@ Inputs {
 }
 Outputs {
   0: k largest element along each last dimensional slice
-  1: indicies of values within the last dimension of the input ensor
+  1: indices of values within the last dimension of the input ensor
 }
 ```
 

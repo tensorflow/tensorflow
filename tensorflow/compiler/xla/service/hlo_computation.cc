@@ -365,25 +365,38 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 string HloComputation::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
   for (int i = 0; i < options.indent_amount(); i++) {
-    s << "    ";
+    s << "  ";
   }
-  if (options.print_percent()) {
-    s << "%";
-  }
-  s << name();
-  if (options.print_program_shape()) {
-    s << " " << ShapeUtil::HumanString(ComputeProgramShape());
-  }
-  s << " {\n";
-  for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    for (int i = 0; i < options.indent_amount(); i++) {
-      s << "    ";
+
+  if (!options.is_in_nested_computation()) {
+    if (options.print_percent()) {
+      s << "%";
     }
-    s << "  " << (instruction == root_instruction_ ? "ROOT " : "")
-      << instruction->ToString(options) << "\n";
+    s << name() << " ";
   }
+
+  if (options.print_program_shape()) {
+    s << ShapeUtil::HumanString(ComputeProgramShape()) << " ";
+  }
+  s << "{\n";
+  {
+    // Print the instructions in this computation.
+    HloPrintOptions new_options = options;
+    new_options.set_indent_amount(options.indent_amount() + 1)
+        .set_is_in_nested_computation(true);
+    CanonicalNameMap name_map;
+    for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
+      for (int i = 0; i < new_options.indent_amount(); i++) {
+        s << "  ";
+      }
+      s << (instruction == root_instruction_ ? "ROOT " : "")
+        << instruction->ToStringWithCanonicalNameMap(new_options, &name_map)
+        << "\n";
+    }
+  }
+
   for (int i = 0; i < options.indent_amount(); i++) {
-    s << "    ";
+    s << "  ";
   }
   s << "}";
   return s.str();
@@ -407,27 +420,37 @@ HloComputationProto HloComputation::ToProto() const {
 
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
-    HloModule* module, const HloComputationProto& proto,
+    const HloComputationProto& proto,
     const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map) {
-  std::vector<std::unique_ptr<HloInstruction>> instructions;
   tensorflow::gtl::FlatMap<int64, HloInstruction*> instruction_map;
+  tensorflow::gtl::FlatMap<HloInstruction*, int64> to_proto_id;
+  std::vector<std::unique_ptr<HloInstruction>> instructions;
   int64 parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloInstruction> instruction,
-        HloInstruction::CreateFromProto(module, instruction_proto,
-                                        instruction_map, computation_map));
+        HloInstruction::CreateFromProto(instruction_proto, instruction_map,
+                                        computation_map));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }
     TF_RET_CHECK(!ContainsKey(instruction_map, instruction_proto.id()));
     instruction_map[instruction_proto.id()] = instruction.get();
+    to_proto_id[instruction.get()] = instruction_proto.id();
     instructions.push_back(std::move(instruction));
   }
 
   TF_RET_CHECK(proto.root_id() != -1);
   TF_RET_CHECK(ContainsKey(instruction_map, proto.root_id()));
   HloInstruction* root = instruction_map.at(proto.root_id());
+
+  // Sort the instructions in the proto id's order.
+  std::sort(instructions.begin(), instructions.end(),
+            [&](const std::unique_ptr<HloInstruction>& a,
+                const std::unique_ptr<HloInstruction>& b) {
+              return to_proto_id[a.get()] < to_proto_id[b.get()];
+            });
+
   return WrapUnique(new HloComputation(proto.name(), parameter_count,
                                        &instructions, root,
                                        /*fusion_instruction=*/nullptr));

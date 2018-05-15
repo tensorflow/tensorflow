@@ -59,7 +59,7 @@ class LocalExecutable {
 
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
-  tensorflow::Status ValidateExecutionOptions(
+  Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
@@ -71,13 +71,13 @@ class LocalExecutable {
 
   // Records the arguments used to invoke the computation in a SessionModule
   // proto.
-  tensorflow::Status RecordArguments(
+  Status RecordArguments(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       SessionModule* session_module);
 
   // Records the result of the computation in a SessionModule proto.
-  tensorflow::Status RecordResult(const ShapedBuffer* result,
-                                  SessionModule* session_module);
+  Status RecordResult(const ShapedBuffer* result,
+                      SessionModule* session_module);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(

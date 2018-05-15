@@ -68,6 +68,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops_util.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/ops/coder_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/csv_dataset_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/directed_interleave_dataset_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/ignore_errors_dataset_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/prefetching_kernels.cc"

@@ -179,7 +179,7 @@ class MultivariateNormalTriL(
     Raises:
       ValueError: if neither `loc` nor `scale_tril` are specified.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
     if loc is None and scale_tril is None:

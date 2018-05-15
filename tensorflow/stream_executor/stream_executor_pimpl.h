@@ -177,6 +177,9 @@ class StreamExecutor {
   //
   // Resets the internal contents of mem to be null-representative, but this
   // null-out effect should not be relied upon in client code.
+  //
+  // TODO(jlebar): Change this to accept a DeviceMemoryBase by value, see
+  // discussion in cl/195744342.
   void Deallocate(DeviceMemoryBase *mem);
 
   // Retrieves a mapping of active opaque device memory pointer to a string

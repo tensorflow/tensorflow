@@ -172,6 +172,9 @@ struct NegOptionsT;
 struct SelectOptions;
 struct SelectOptionsT;
 
+struct SliceOptions;
+struct SliceOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -296,11 +299,13 @@ enum BuiltinOperator {
   BuiltinOperator_GREATER_EQUAL = 62,
   BuiltinOperator_LESS_EQUAL = 63,
   BuiltinOperator_SELECT = 64,
+  BuiltinOperator_SLICE = 65,
+  BuiltinOperator_SIN = 66,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SELECT
+  BuiltinOperator_MAX = BuiltinOperator_SIN
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[64] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[66] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -365,7 +370,9 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[64] {
     BuiltinOperator_GREATER,
     BuiltinOperator_GREATER_EQUAL,
     BuiltinOperator_LESS_EQUAL,
-    BuiltinOperator_SELECT
+    BuiltinOperator_SELECT,
+    BuiltinOperator_SLICE,
+    BuiltinOperator_SIN
   };
   return values;
 }
@@ -437,6 +444,8 @@ inline const char **EnumNamesBuiltinOperator() {
     "GREATER_EQUAL",
     "LESS_EQUAL",
     "SELECT",
+    "SLICE",
+    "SIN",
     nullptr
   };
   return names;
@@ -496,11 +505,12 @@ enum BuiltinOptions {
   BuiltinOptions_GreaterEqualOptions = 45,
   BuiltinOptions_LessEqualOptions = 46,
   BuiltinOptions_SelectOptions = 47,
+  BuiltinOptions_SliceOptions = 48,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SelectOptions
+  BuiltinOptions_MAX = BuiltinOptions_SliceOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[48] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[49] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -549,7 +559,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[48] {
     BuiltinOptions_GreaterOptions,
     BuiltinOptions_GreaterEqualOptions,
     BuiltinOptions_LessEqualOptions,
-    BuiltinOptions_SelectOptions
+    BuiltinOptions_SelectOptions,
+    BuiltinOptions_SliceOptions
   };
   return values;
 }
@@ -604,6 +615,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "GreaterEqualOptions",
     "LessEqualOptions",
     "SelectOptions",
+    "SliceOptions",
     nullptr
   };
   return names;
@@ -804,6 +816,10 @@ template<> struct BuiltinOptionsTraits<LessEqualOptions> {
 
 template<> struct BuiltinOptionsTraits<SelectOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_SelectOptions;
+};
+
+template<> struct BuiltinOptionsTraits<SliceOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SliceOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1212,6 +1228,14 @@ struct BuiltinOptionsUnion {
   const SelectOptionsT *AsSelectOptions() const {
     return type == BuiltinOptions_SelectOptions ?
       reinterpret_cast<const SelectOptionsT *>(value) : nullptr;
+  }
+  SliceOptionsT *AsSliceOptions() {
+    return type == BuiltinOptions_SliceOptions ?
+      reinterpret_cast<SliceOptionsT *>(value) : nullptr;
+  }
+  const SliceOptionsT *AsSliceOptions() const {
+    return type == BuiltinOptions_SliceOptions ?
+      reinterpret_cast<const SliceOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4380,12 +4404,54 @@ inline flatbuffers::Offset<SelectOptions> CreateSelectOptions(
 
 flatbuffers::Offset<SelectOptions> CreateSelectOptions(flatbuffers::FlatBufferBuilder &_fbb, const SelectOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SliceOptionsT : public flatbuffers::NativeTable {
+  typedef SliceOptions TableType;
+  SliceOptionsT() {
+  }
+};
+
+struct SliceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SliceOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  SliceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SliceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SliceOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SliceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SliceOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit SliceOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SliceOptionsBuilder &operator=(const SliceOptionsBuilder &);
+  flatbuffers::Offset<SliceOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SliceOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SliceOptions> CreateSliceOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  SliceOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SliceOptions> CreateSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const SliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
   std::string custom_code;
+  int32_t version;
   OperatorCodeT()
-      : builtin_code(BuiltinOperator_ADD) {
+      : builtin_code(BuiltinOperator_ADD),
+        version(1) {
   }
 };
 
@@ -4393,7 +4459,8 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef OperatorCodeT NativeTableType;
   enum {
     VT_BUILTIN_CODE = 4,
-    VT_CUSTOM_CODE = 6
+    VT_CUSTOM_CODE = 6,
+    VT_VERSION = 8
   };
   BuiltinOperator builtin_code() const {
     return static_cast<BuiltinOperator>(GetField<int8_t>(VT_BUILTIN_CODE, 0));
@@ -4401,11 +4468,15 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *custom_code() const {
     return GetPointer<const flatbuffers::String *>(VT_CUSTOM_CODE);
   }
+  int32_t version() const {
+    return GetField<int32_t>(VT_VERSION, 1);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_BUILTIN_CODE) &&
            VerifyOffset(verifier, VT_CUSTOM_CODE) &&
            verifier.Verify(custom_code()) &&
+           VerifyField<int32_t>(verifier, VT_VERSION) &&
            verifier.EndTable();
   }
   OperatorCodeT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4422,6 +4493,9 @@ struct OperatorCodeBuilder {
   void add_custom_code(flatbuffers::Offset<flatbuffers::String> custom_code) {
     fbb_.AddOffset(OperatorCode::VT_CUSTOM_CODE, custom_code);
   }
+  void add_version(int32_t version) {
+    fbb_.AddElement<int32_t>(OperatorCode::VT_VERSION, version, 1);
+  }
   explicit OperatorCodeBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -4437,8 +4511,10 @@ struct OperatorCodeBuilder {
 inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(
     flatbuffers::FlatBufferBuilder &_fbb,
     BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    flatbuffers::Offset<flatbuffers::String> custom_code = 0) {
+    flatbuffers::Offset<flatbuffers::String> custom_code = 0,
+    int32_t version = 1) {
   OperatorCodeBuilder builder_(_fbb);
+  builder_.add_version(version);
   builder_.add_custom_code(custom_code);
   builder_.add_builtin_code(builtin_code);
   return builder_.Finish();
@@ -4447,11 +4523,13 @@ inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(
 inline flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    const char *custom_code = nullptr) {
+    const char *custom_code = nullptr,
+    int32_t version = 1) {
   return tflite::CreateOperatorCode(
       _fbb,
       builtin_code,
-      custom_code ? _fbb.CreateString(custom_code) : 0);
+      custom_code ? _fbb.CreateString(custom_code) : 0,
+      version);
 }
 
 flatbuffers::Offset<OperatorCode> CreateOperatorCode(flatbuffers::FlatBufferBuilder &_fbb, const OperatorCodeT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4637,6 +4715,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const SelectOptions *builtin_options_as_SelectOptions() const {
     return builtin_options_type() == BuiltinOptions_SelectOptions ? static_cast<const SelectOptions *>(builtin_options()) : nullptr;
+  }
+  const SliceOptions *builtin_options_as_SliceOptions() const {
+    return builtin_options_type() == BuiltinOptions_SliceOptions ? static_cast<const SliceOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -4850,6 +4931,10 @@ template<> inline const LessEqualOptions *Operator::builtin_options_as<LessEqual
 
 template<> inline const SelectOptions *Operator::builtin_options_as<SelectOptions>() const {
   return builtin_options_as_SelectOptions();
+}
+
+template<> inline const SliceOptions *Operator::builtin_options_as<SliceOptions>() const {
+  return builtin_options_as_SliceOptions();
 }
 
 struct OperatorBuilder {
@@ -6616,6 +6701,29 @@ inline flatbuffers::Offset<SelectOptions> CreateSelectOptions(flatbuffers::FlatB
       _fbb);
 }
 
+inline SliceOptionsT *SliceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SliceOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SliceOptions::UnPackTo(SliceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<SliceOptions> SliceOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SliceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSliceOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SliceOptions> CreateSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const SliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SliceOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateSliceOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -6627,6 +6735,7 @@ inline void OperatorCode::UnPackTo(OperatorCodeT *_o, const flatbuffers::resolve
   (void)_resolver;
   { auto _e = builtin_code(); _o->builtin_code = _e; };
   { auto _e = custom_code(); if (_e) _o->custom_code = _e->str(); };
+  { auto _e = version(); _o->version = _e; };
 }
 
 inline flatbuffers::Offset<OperatorCode> OperatorCode::Pack(flatbuffers::FlatBufferBuilder &_fbb, const OperatorCodeT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -6639,10 +6748,12 @@ inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(flatbuffers::FlatBuf
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const OperatorCodeT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _builtin_code = _o->builtin_code;
   auto _custom_code = _o->custom_code.empty() ? 0 : _fbb.CreateString(_o->custom_code);
+  auto _version = _o->version;
   return tflite::CreateOperatorCode(
       _fbb,
       _builtin_code,
-      _custom_code);
+      _custom_code,
+      _version);
 }
 
 inline OperatorT *Operator::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -6987,6 +7098,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const SelectOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SliceOptions: {
+      auto ptr = reinterpret_cast<const SliceOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -7193,6 +7308,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const SelectOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SliceOptions: {
+      auto ptr = reinterpret_cast<const SliceOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -7387,6 +7506,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const SelectOptionsT *>(value);
       return CreateSelectOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_SliceOptions: {
+      auto ptr = reinterpret_cast<const SliceOptionsT *>(value);
+      return CreateSliceOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -7579,6 +7702,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_SelectOptions: {
       value = new SelectOptionsT(*reinterpret_cast<SelectOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SliceOptions: {
+      value = new SliceOptionsT(*reinterpret_cast<SliceOptionsT *>(u.value));
       break;
     }
     default:
@@ -7820,6 +7947,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SelectOptions: {
       auto ptr = reinterpret_cast<SelectOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SliceOptions: {
+      auto ptr = reinterpret_cast<SliceOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -58,7 +58,7 @@ def load_op_library(library_filename):
   op_list_str = py_tf.TF_GetOpList(lib_handle)
   op_list = op_def_pb2.OpList()
   op_list.ParseFromString(compat.as_bytes(op_list_str))
-  wrappers = py_tf.GetEagerPythonWrappers(op_list_str)
+  wrappers = py_tf.GetPythonWrappers(op_list_str)
 
   # Delete the library handle to release any memory held in C
   # that are no longer needed.

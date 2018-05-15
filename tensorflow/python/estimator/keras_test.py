@@ -25,6 +25,7 @@ import tempfile
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import ops
@@ -192,7 +193,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           metrics=['mse', keras.metrics.categorical_accuracy])
 
       with self.test_session():
-        est_keras = keras.estimator.model_to_estimator(
+        est_keras = keras_lib.model_to_estimator(
             keras_model=keras_model, config=self._config)
         before_eval_results = est_keras.evaluate(
             input_fn=eval_input_fn, steps=1)
@@ -214,7 +215,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           metrics=['mse', keras.metrics.categorical_accuracy])
 
       with self.test_session():
-        est_keras = keras.estimator.model_to_estimator(
+        est_keras = keras_lib.model_to_estimator(
             keras_model=keras_model,
             # Also use dict config argument to get test coverage for that line.
             config={
@@ -240,7 +241,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         metrics=['mse', keras.metrics.categorical_accuracy])
 
     with self.test_session():
-      est_keras = keras.estimator.model_to_estimator(
+      est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
       before_eval_results = est_keras.evaluate(
@@ -264,7 +265,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
                                  np.random.random((10, _NUM_CLASS)))
       original_preds = keras_model.predict(np.ones((10,) + _INPUT_SIZE))
 
-      est_keras = keras.estimator.model_to_estimator(
+      est_keras = keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
       before_eval_results = est_keras.evaluate(
@@ -300,7 +301,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_eval = keras_model.evaluate(x_test, y_test, batch_size=32)
 
     with self.test_session():
-      keras_est = keras.estimator.model_to_estimator(
+      keras_est = keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       est_eval = keras_est.evaluate(input_fn=eval_input_fn)
 
@@ -336,7 +337,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_pred = [np.argmax(y) for y in keras_model.predict(x_test)]
 
     with self.test_session():
-      keras_est = keras.estimator.model_to_estimator(
+      keras_est = keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       est_pred = [
           np.argmax(y[keras_model.output_names[0]])
@@ -383,7 +384,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
 
     with self.test_session():
       model = multi_inputs_multi_outputs_model()
-      est_keras = keras.estimator.model_to_estimator(
+      est_keras = keras_lib.model_to_estimator(
           keras_model=model, config=self._config)
       before_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
       est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
@@ -409,7 +410,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras.models.save_model(keras_model, fname)
 
     with self.test_session():
-      keras_est = keras.estimator.model_to_estimator(
+      keras_est = keras_lib.model_to_estimator(
           keras_model_path=fname, config=self._config)
       est_pred = [
           np.argmax(y[keras_model.output_names[0]])
@@ -419,24 +420,24 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
 
   def test_keras_model_init_error(self):
     with self.assertRaisesRegexp(ValueError, 'Either'):
-      keras.estimator.model_to_estimator()
+      keras_lib.model_to_estimator()
 
     with self.test_session():
       keras_model = simple_sequential_model()
       with self.assertRaisesRegexp(ValueError, 'not both'):
-        keras.estimator.model_to_estimator(
+        keras_lib.model_to_estimator(
             keras_model=keras_model,
             keras_model_path=tempfile.mkdtemp(dir=self._base_dir))
 
     with self.test_session():
       keras_model = simple_sequential_model()
       with self.assertRaisesRegexp(ValueError, 'compiled'):
-        keras.estimator.model_to_estimator(keras_model=keras_model)
+        keras_lib.model_to_estimator(keras_model=keras_model)
 
     with self.test_session():
       keras_model = simple_sequential_model()
       with self.assertRaisesRegexp(ValueError, 'not a local path'):
-        keras.estimator.model_to_estimator(
+        keras_lib.model_to_estimator(
             keras_model_path='gs://bucket/object')
 
   def test_invalid_ionames_error(self):
@@ -460,7 +461,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     model.compile(
         loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
     with self.test_session():
-      est_keras = keras.estimator.model_to_estimator(
+      est_keras = keras_lib.model_to_estimator(
           keras_model=model, config=self._config)
 
     with self.test_session():
@@ -479,12 +480,12 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     }
     with self.assertRaisesRegexp(ValueError, 'relu6'):
       with self.test_session():
-        keras.estimator.model_to_estimator(
+        keras_lib.model_to_estimator(
             keras_model=keras_mobile,
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
     with self.test_session():
-      keras.estimator.model_to_estimator(
+      keras_lib.model_to_estimator(
           keras_model=keras_mobile,
           model_dir=tempfile.mkdtemp(dir=self._base_dir),
           custom_objects=custom_objects)
@@ -509,7 +510,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     })
     with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
       with self.test_session():
-        keras.estimator.model_to_estimator(
+        keras_lib.model_to_estimator(
             keras_model=keras_model,
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
@@ -524,7 +525,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
       sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
       self._config._session_config = sess_config
-      keras.estimator.model_to_estimator(
+      keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
       self.assertEqual(
           keras.backend.get_session()
@@ -548,7 +549,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           loss='categorical_crossentropy',
           optimizer=SGD(lr=0.0001, momentum=0.9),
           metrics=['mse', keras.metrics.categorical_accuracy])
-      keras.estimator.model_to_estimator(
+      keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
 
 

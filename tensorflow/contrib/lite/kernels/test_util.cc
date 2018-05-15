@@ -101,7 +101,7 @@ void SingleOpModel::BuildInterpreter(
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  InterpreterBuilder(model, *resolver_)(&interpreter_);
+  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_) == kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
 

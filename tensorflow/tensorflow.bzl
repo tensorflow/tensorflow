@@ -959,15 +959,6 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
-  if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
-    enable_text_relocation_linkopt = select({
-          clean_dep("//tensorflow:darwin"): [],
-          clean_dep("//tensorflow:windows"): [],
-          "//conditions:default": ['-Wl,-z,notext'],})
-    if 'linkopts' in kwargs:
-      kwargs['linkopts'] += enable_text_relocation_linkopt
-    else:
-      kwargs['linkopts'] = enable_text_relocation_linkopt
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
@@ -1445,13 +1436,13 @@ def tf_py_wrap_cc(name,
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          "%s.lds"%vscriptname,
+          "$(location %s.lds)"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          "%s.lds"%vscriptname,
+          "$(location %s.lds)"%vscriptname,
       ]
   })
   extra_deps += select({

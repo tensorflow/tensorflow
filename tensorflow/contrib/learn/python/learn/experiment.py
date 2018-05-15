@@ -38,19 +38,19 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.python.estimator import estimator as core_estimator
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 
 __all__ = ["Experiment"]
 
 
 def _get_standardized_predicate_fn(predicate_fn):
-  pred_fn_args = estimator_util.fn_args(predicate_fn)
+  pred_fn_args = function_utils.fn_args(predicate_fn)
   if "checkpoint_path" not in pred_fn_args:
     # pylint: disable=unused-argument
     def _pred_fn_wrapper(eval_results, checkpoint_path):

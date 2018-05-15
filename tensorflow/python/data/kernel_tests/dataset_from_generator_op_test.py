@@ -357,6 +357,65 @@ class DatasetConstructorTest(test.TestCase):
       # iterator terminates (and the generator iterator is deleted).
       self.assertTrue(event.is_set())
 
+  def testFromGeneratorWithArgs(self):
+
+    def flat_map_fn(elem):
+
+      def generator_with_arg(n):
+        for _ in range(n):
+          yield np.array(n, dtype=np.int64)
+
+      return dataset_ops.Dataset.from_generator(
+          generator_with_arg, output_types=dtypes.int64, output_shapes=(),
+          args=(elem,))
+
+    iterator = (dataset_ops.Dataset
+                .range(5)
+                .flat_map(flat_map_fn)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      expected = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+      for x in expected:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testFromGeneratorWithTwoArgs(self):
+
+    def flat_map_fn(elem, message):
+
+      def generator_with_arg(n, msg):
+        for i in range(n):
+          yield i, msg
+
+      return dataset_ops.Dataset.from_generator(
+          generator_with_arg, output_types=(dtypes.int64, dtypes.string),
+          output_shapes=((), ()), args=(elem, message))
+
+    iterator = (
+        dataset_ops.Dataset.zip(
+            (dataset_ops.Dataset.range(5),
+             dataset_ops.Dataset.from_tensors("Hi!").repeat(None)))
+        .flat_map(flat_map_fn)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      expected = [(0, b"Hi!"),
+                  (0, b"Hi!"), (1, b"Hi!"),
+                  (0, b"Hi!"), (1, b"Hi!"), (2, b"Hi!"),
+                  (0, b"Hi!"), (1, b"Hi!"), (2, b"Hi!"), (3, b"Hi!")]
+      for x in expected:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testGeneratorDatasetFinalizeFunctionCalled(self):
     # NOTE(mrry): This test tests the internal `_GeneratorDataset`,
     # which affords more control over what the finalize function can do than

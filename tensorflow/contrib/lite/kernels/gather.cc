@@ -35,8 +35,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* positions = GetInput(context, node, kInputPositions);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   // Only INT32 positions are supported.
   TF_LITE_ENSURE_EQ(context, positions->type, kTfLiteInt32);
@@ -81,8 +81,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* positions = GetInput(context, node, kInputPositions);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const int input_rank = NumDimensions(input);
 #define TF_LITE_GATHER(data_type, index_type)                            \

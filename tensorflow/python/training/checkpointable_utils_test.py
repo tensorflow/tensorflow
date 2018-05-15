@@ -17,10 +17,12 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import json
 import os
 
 import six
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -120,7 +122,8 @@ class InterfaceTests(test.TestCase):
       # The .name attribute may be globally influenced, but the checkpoint name
       # won't be (tested below).
       self.assertEqual("duplicate_1:0", duplicate.name)
-    named_variables, _ = checkpointable_utils._serialize_object_graph(obj)
+    named_variables, _, _ = checkpointable_utils._serialize_object_graph(
+        obj, saveables_cache=None)
     expected_checkpoint_names = (
         "a_variable/.ATTRIBUTES/VARIABLE_VALUE",
         "bare_initializer/.ATTRIBUTES/VARIABLE_VALUE",
@@ -129,7 +132,7 @@ class InterfaceTests(test.TestCase):
         "ones_initializer/.ATTRIBUTES/VARIABLE_VALUE",
     )
     six.assertCountEqual(
-        self, expected_checkpoint_names, named_variables.keys())
+        self, expected_checkpoint_names, [v.name for v in named_variables])
 
   def testInitNotCalled(self):
 
@@ -170,6 +173,27 @@ class InterfaceTests(test.TestCase):
       for attribute in obj.attributes:
         all_variable_names.append(attribute.full_name)
     self.assertIn("dense/kernel", all_variable_names)
+
+  def testNotCheckpointable(self):
+
+    class CallsFunctionalStuff(
+        checkpointable.NotCheckpointable, checkpointable.Checkpointable):
+      pass
+
+    test_dir = self.get_temp_dir()
+    prefix = os.path.join(test_dir, "ckpt")
+    checkpoint = checkpointable_utils.Checkpoint(x=CallsFunctionalStuff())
+    with self.assertRaises(NotImplementedError):
+      checkpoint.save(prefix)
+
+    class CallsFunctionalStuffOtherMRO(
+        checkpointable.Checkpointable, checkpointable.NotCheckpointable):
+      pass
+
+    checkpoint_reversed = checkpointable_utils.Checkpoint(
+        x=CallsFunctionalStuffOtherMRO())
+    with self.assertRaises(NotImplementedError):
+      checkpoint_reversed.save(prefix)
 
 
 class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
@@ -245,8 +269,9 @@ class CheckpointingTests(test.TestCase):
       self.evaluate(checkpointable_utils.gather_initializers(
           root_checkpointable))
       self.evaluate(train_op)
-    named_variables, serialized_graph = (
-        checkpointable_utils._serialize_object_graph(root_checkpointable))
+    named_variables, serialized_graph, _ = (
+        checkpointable_utils._serialize_object_graph(
+            root_checkpointable, saveables_cache=None))
     expected_checkpoint_names = (
         # Created in the root node, so no prefix.
         "optimizer_step",
@@ -269,24 +294,29 @@ class CheckpointingTests(test.TestCase):
     suffix = "/.ATTRIBUTES/VARIABLE_VALUE"
     expected_checkpoint_names = [
         name + suffix for name in expected_checkpoint_names]
+    # The Dense layers also save get_config() JSON
+    expected_checkpoint_names.extend(
+        ["model/_second/.ATTRIBUTES/OBJECT_CONFIG_JSON",
+         "model/_named_dense/.ATTRIBUTES/OBJECT_CONFIG_JSON"])
+    named_variables = {v.name: v for v in named_variables}
     six.assertCountEqual(self, expected_checkpoint_names,
                          named_variables.keys())
     # Check that we've mapped to the right variable objects (not exhaustive)
     self.assertEqual(
-        "global_step:0",
-        named_variables["optimizer_step" + suffix].name)
+        "global_step",
+        named_variables["optimizer_step" + suffix].full_name)
     self.assertEqual(
-        "my_model/dense_1/kernel:0",
-        named_variables["model/_second/kernel" + suffix].name)
+        "my_model/dense_1/kernel",
+        named_variables["model/_second/kernel" + suffix].full_name)
     self.assertEqual(
-        "my_model/dense/kernel:0",
-        named_variables["model/_named_dense/kernel" + suffix].name)
+        "my_model/dense/kernel",
+        named_variables["model/_named_dense/kernel" + suffix].full_name)
     self.assertEqual(
-        "beta1_power:0",
-        named_variables["optimizer/beta1_power" + suffix].name)
+        "beta1_power",
+        named_variables["optimizer/beta1_power" + suffix].full_name)
     self.assertEqual(
-        "beta2_power:0",
-        named_variables["optimizer/beta2_power" + suffix].name)
+        "beta2_power",
+        named_variables["optimizer/beta2_power" + suffix].full_name)
     # Spot check the generated protocol buffers.
     self.assertEqual("optimizer",
                      serialized_graph.nodes[0].children[1].local_name)
@@ -311,7 +341,7 @@ class CheckpointingTests(test.TestCase):
     self.assertEqual(
         "my_model/dense/kernel/Adam:0",
         optimizer.get_slot(
-            var=named_variables["model/_named_dense/kernel" + suffix],
+            var=model._named_dense.kernel,
             name="m").name)
     self.assertEqual(
         "model/_named_dense/kernel" + suffix,
@@ -563,11 +593,11 @@ class CheckpointingTests(test.TestCase):
     root = checkpointable.Checkpointable()
     checkpointable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
-    named_variables, _ = checkpointable_utils._serialize_object_graph(root)
-    checkpoint_name, = named_variables.keys()
-    with ops.name_scope("root/" + checkpoint_name):
+    (named_variable,), _, _ = checkpointable_utils._serialize_object_graph(
+        root, saveables_cache=None)
+    with ops.name_scope("root/" + named_variable.name):
       pass  # Make sure we can use this as an op name if we prefix it.
-    return checkpoint_name
+    return named_variable.name
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableNameEscaping(self):
@@ -585,9 +615,9 @@ class CheckpointingTests(test.TestCase):
     leaf = checkpointable.Checkpointable()
     root.leaf = leaf
     checkpointable_utils.add_variable(leaf, name="v", shape=[])
-    named_variables, _ = checkpointable_utils._serialize_object_graph(root)
-    variable_name, = named_variables.keys()
-    self.assertEqual(r"leaf/v/.ATTRIBUTES/VARIABLE_VALUE", variable_name)
+    (named_variable,), _, _ = checkpointable_utils._serialize_object_graph(
+        root, saveables_cache=None)
+    self.assertEqual(r"leaf/v/.ATTRIBUTES/VARIABLE_VALUE", named_variable.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testLocalNameValidation(self):
@@ -596,9 +626,10 @@ class CheckpointingTests(test.TestCase):
     # Dots are escaped, which avoids conflicts with reserved names.
     root._track_checkpointable(leaf, name=".ATTRIBUTES")
     checkpointable_utils.add_variable(checkpointable=leaf, name="a", shape=[])
-    named_variables, _ = checkpointable_utils._serialize_object_graph(root)
-    name, = named_variables.keys()
-    self.assertEqual(name, "..ATTRIBUTES/a/.ATTRIBUTES/VARIABLE_VALUE")
+    (named_variable,), _, _ = checkpointable_utils._serialize_object_graph(
+        root, saveables_cache=None)
+    self.assertEqual("..ATTRIBUTES/a/.ATTRIBUTES/VARIABLE_VALUE",
+                     named_variable.name)
 
   def testAnonymousVarsInInit(self):
 
@@ -1219,14 +1250,20 @@ class TemplateTests(test.TestCase):
 
     def _templated():
       v = variable_scope.get_variable(
-          "v", shape=[1], initializer=init_ops.zeros_initializer())
+          "v", shape=[1], initializer=init_ops.zeros_initializer(),
+          use_resource=True)
       v2 = variable_scope.get_variable(
-          "v2", shape=[1], initializer=init_ops.zeros_initializer())
+          "v2", shape=[1], initializer=init_ops.zeros_initializer(),
+          use_resource=True)
       return v, v + 1., v2
 
     save_template = template.make_template("s1", _templated)
-    save_root = checkpointable_utils.Checkpoint(my_template=save_template)
     v1_save, _, v2_save = save_template()
+    optimizer = adam.AdamOptimizer(0.0)
+    save_root = checkpointable_utils.Checkpoint(
+        my_template=save_template, optimizer=optimizer)
+    optimizer.minimize(v1_save.read_value)
+    self.evaluate([v.initializer for v in optimizer.variables()])
     self.evaluate(v1_save.assign([12.]))
     self.evaluate(v2_save.assign([14.]))
     checkpoint_directory = self.get_temp_dir()
@@ -1234,9 +1271,12 @@ class TemplateTests(test.TestCase):
     save_path = save_root.save(checkpoint_prefix)
 
     load_template = template.make_template("s2", _templated)
-    load_root = checkpointable_utils.Checkpoint(my_template=load_template)
+    load_optimizer = adam.AdamOptimizer(0.0)
+    load_root = checkpointable_utils.Checkpoint(
+        my_template=load_template, optimizer=load_optimizer)
     status = load_root.restore(save_path)
     var, var_plus_one, var2 = load_template()
+    load_optimizer.minimize(var.read_value)
     self.assertEqual(2, len(load_template._checkpoint_dependencies))
     self.assertEqual("v", load_template._checkpoint_dependencies[0].name)
     self.assertEqual("v2", load_template._checkpoint_dependencies[1].name)
@@ -1394,6 +1434,49 @@ class CheckpointCompatibilityTests(test.TestCase):
         self._set_sentinels(root)
         root.restore(save_path).assert_consumed().run_restore_ops()
         self._check_sentinels(root)
+
+
+class PythonMetadataTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSaveLoad(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    dense = core.Dense(1)
+    checkpoint = checkpointable_utils.Checkpoint(dense=dense)
+    dense(constant_op.constant([[1.]]))
+    checkpoint.restore(None).initialize_or_restore()
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    def _get_dense_node_from_object_graph(object_graph_proto):
+      root_node = object_graph_proto.nodes[0]
+      for child in root_node.children:
+        if child.local_name == "dense":
+          break
+      else:
+        raise AssertionError(
+            "Expected a 'dense' dependency of root, didn't find one.")
+      dense_node = object_graph_proto.nodes[child.node_id]  # pylint: disable=undefined-loop-variable
+      self.assertEqual(1, len(dense_node.attributes))
+      reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+      layer_json = reader.get_tensor(dense_node.attributes[0].checkpoint_key)
+      return json.loads(layer_json.decode("utf-8"))
+
+    layer_data = _get_dense_node_from_object_graph(
+        checkpointable_utils.object_metadata(save_path))
+    self.assertEqual("Dense", layer_data["class_name"])
+    self.assertEqual(1, layer_data["config"]["units"])
+
+    # Check that no new ops are added to the graph the second time we save.
+    ops.get_default_graph().finalize()
+
+    dense.units = 42
+    save_path = checkpoint.save(checkpoint_prefix)
+    layer_data = _get_dense_node_from_object_graph(
+        checkpointable_utils.object_metadata(save_path))
+    self.assertEqual("Dense", layer_data["class_name"])
+    self.assertEqual(42, layer_data["config"]["units"])
+
 
 if __name__ == "__main__":
   test.main()
