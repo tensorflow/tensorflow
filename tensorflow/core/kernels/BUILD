@@ -3299,7 +3299,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
-    ] + if_cuda(["@cub_archive//:cub"]),
+    ] + if_cuda([
+        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cudnn",
+    ]),
 )
 
 tf_kernel_library(
@@ -3310,12 +3313,15 @@ tf_kernel_library(
     prefix = "depthwise_conv_grad_op",
     deps = [
         ":bounds_check",
+        ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cudnn",
+    ]),
 )
 
 cc_library(
@@ -4243,6 +4249,7 @@ cc_library(
         ":as_string_op",
         ":base64_ops",
         ":reduce_join_op",
+        ":regex_full_match_op",
         ":regex_replace_op",
         ":string_join_op",
         ":string_split_op",
@@ -4277,6 +4284,12 @@ tf_kernel_library(
     name = "string_join_op",
     prefix = "string_join_op",
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "regex_full_match_op",
+    prefix = "regex_full_match_op",
+    deps = STRING_DEPS + ["@com_googlesource_code_re2//:re2"],
 )
 
 tf_kernel_library(

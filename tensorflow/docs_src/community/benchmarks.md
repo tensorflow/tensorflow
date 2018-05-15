@@ -1,14 +1,14 @@
 # Defining and Running Benchmarks
 
-This guide contains instructions for defining and running a TensorFlow benchmark. These benchmarks store output in [TestResults](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/test_log.proto) format. If these benchmarks are added to TensorFlow github repo, then we will run them daily with our continuous build and display a graph on our dashboard: https://benchmarks-dot-tensorflow-testing.appspot.com/.
+This guide contains instructions for defining and running a TensorFlow benchmark. These benchmarks store output in [TestResults](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/test_log.proto) format. If these benchmarks are added to the TensorFlow github repo, we will run them daily with our continuous build and display a graph on our dashboard: https://benchmarks-dot-tensorflow-testing.appspot.com/.
 
 [TOC]
 
 
 ## Defining a Benchmark
 
-Defining a TensorFlow benchmark requires extending from `tf.test.Benchmark`
-class and calling `self.report_benchmark` method. For example, take a look at the sample benchmark code below:
+Defining a TensorFlow benchmark requires extending the `tf.test.Benchmark`
+class and calling the `self.report_benchmark` method. Below, you'll find an example of benchmark code:
 
 ```python
 import time
@@ -54,20 +54,20 @@ Key points to note in the example above:
 
 ## Running with Python
 
-Use the `--benchmarks` flag to run the benchmark with python. A [BenchmarkEntries](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/util/test_log.proto) proto will be printed.
+Use the `--benchmarks` flag to run the benchmark with Python. A [BenchmarkEntries](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/util/test_log.proto) proto will be printed.
 
 ```
 python sample_benchmark.py --benchmarks=SampleBenchmark
 ```
 
-Setting the flag as `--benchmarks=.` or `--benchmarks=all` would work as well.
+Setting the flag as `--benchmarks=.` or `--benchmarks=all` works as well.
 
-(Please ensure that Tensorflow is installed to successfully import the package in the line `import tensorflow as tf`. For installation instructions, see [Installing TensorFlow](https://www.tensorflow.org/install/). This step is not necessary when running with bazel.)
+(Please ensure that Tensorflow is installed to successfully import the package in the line `import tensorflow as tf`. For installation instructions, see [Installing TensorFlow](https://www.tensorflow.org/install/). This step is not necessary when running with Bazel.)
 
 
 ## Adding a `bazel` Target
 
-We have a special target called `tf_py_logged_benchmark` for benchmarks defined under TensorFlow github repo. `tf_py_logged_benchmark` should wrap around a regular `py_test` target. Running a `tf_py_logged_benchmark` would print a [TestResults](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/test_log.proto) proto. Defining a `tf_py_logged_benchmark` also lets us run it with TensorFlow continuous build.
+We have a special target called `tf_py_logged_benchmark` for benchmarks defined under the TensorFlow github repo. `tf_py_logged_benchmark` should wrap around a regular `py_test` target. Running a `tf_py_logged_benchmark` would print a [TestResults](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/test_log.proto) proto. Defining a `tf_py_logged_benchmark` also lets us run it with TensorFlow continuous build.
 
 First, define a regular `py_test` target. See example below:
 
@@ -82,7 +82,7 @@ py_test(
 )
 ```
 
-You can run benchmarks in a `py_test` target by passing `--benchmarks` flag. The benchmark should just print out a [BenchmarkEntries](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/util/test_log.proto) proto.
+You can run benchmarks in a `py_test` target by passing the `--benchmarks` flag. The benchmark should just print out a [BenchmarkEntries](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/util/test_log.proto) proto.
 
 ```shell
 bazel test :sample_benchmark --test_arg=--benchmarks=all
@@ -90,7 +90,7 @@ bazel test :sample_benchmark --test_arg=--benchmarks=all
 
 
 Now, add the `tf_py_logged_benchmark` target (if available). This target would
-pass in `--benchmarks=all` to the wrapped `py_test` target and provide a way to store output for our TensorFlow continuous build. `tf_py_logged_benchmark` target should be available in TensorFlow repository.
+pass in `--benchmarks=all` to the wrapped `py_test` target and provide a way to store output for our TensorFlow continuous build. The target `tf_py_logged_benchmark` should be available in TensorFlow repository.
 
 ```build
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")

@@ -673,9 +673,6 @@ class KroneckerProductFB(FisherBlock):
   output factors.
   """
 
-  def __init__(self, layer_collection):
-    super(KroneckerProductFB, self).__init__(layer_collection)
-
   def _setup_damping(self, damping, normalization=None):
     """Makes functions that compute the damping values for both factors."""
     def compute_damping():
@@ -1309,6 +1306,8 @@ class InputOutputMultiTowerMultiUse(InputOutputMultiTower):
       else:
         raise ValueError("Global config variable TOWER_STRATEGY must be one of "
                          "'concat' or 'separate'.")
+    else:
+      inputs = tuple(inputs)
 
     # Now we perform the analogous processing for grads_list
     if isinstance(grads_list[0][0], (list, tuple)):
@@ -1351,6 +1350,8 @@ class InputOutputMultiTowerMultiUse(InputOutputMultiTower):
       else:
         raise ValueError("Global config variable TOWER_STRATEGY must be one of "
                          "'concat' or 'separate'.")
+    else:
+      grads_list = tuple(tuple(grads) for grads in grads_list)
 
     if self._num_uses is None:
       raise ValueError("You must supply a value for the num_uses argument if "

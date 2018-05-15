@@ -80,6 +80,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         dict((d, i) for i, d in enumerate(devices)))
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
+    # TODO(yuefengz): consider setting the default device.
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -321,7 +322,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""
-    assert isinstance(destination, six.string_types)
     if isinstance(val, values.TowerLocalVariable):
       val = self.reduce(val.reduce_method, val, destinations=destination)
       with ops.device(destination):

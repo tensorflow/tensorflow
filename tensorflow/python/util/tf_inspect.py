@@ -116,7 +116,7 @@ def getcallargs(func, *positional, **named):
   it. If no attached decorators modify argspec, the final unwrapped target's
   argspec will be used.
   """
-  argspec = getargspec(func)
+  argspec = getfullargspec(func)
   call_args = named.copy()
   this = getattr(func, 'im_self', None) or getattr(func, '__self__', None)
   if ismethod(func) and this:

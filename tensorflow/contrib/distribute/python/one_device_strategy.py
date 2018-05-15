@@ -36,9 +36,11 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   # doing something that won't work with other DistributionStrategy
   # implementations?
 
-  def __init__(self, device):
+  def __init__(self, device, prefetch_on_device=None):
     super(OneDeviceStrategy, self).__init__()
     self._device = device
+    self._prefetch_on_device = prefetch_on_device
+    self._default_device = device
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # No need to distinguish tower-local variables when not mirroring,
@@ -61,7 +63,9 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       return next_creator(*args, **kwargs)
 
   def distribute_dataset(self, dataset_fn):
-    return self._call_dataset_fn(dataset_fn)
+    return values.PerDeviceDataset(
+        self._call_dataset_fn(dataset_fn), [self._device],
+        self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
     return tensor

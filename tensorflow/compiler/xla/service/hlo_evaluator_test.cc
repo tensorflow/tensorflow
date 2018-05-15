@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -827,7 +827,7 @@ TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1046,7 +1046,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1109,7 +1109,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -1180,7 +1180,7 @@ TEST_P(HloEvaluatorTest,
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers(2);
+      XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
@@ -2003,6 +2003,22 @@ ENTRY main {
   LiteralTestUtil::ExpectEqual(
       *Literal::CreateR2<int32>({{}, {}}),
       *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise comparison with 2 bfloat16 operands.
+TEST_P(HloEvaluatorTest, DoesCompareBF16) {
+  // lhs >= rhs
+  auto lhs = Literal::CreateR2<bfloat16>(
+      {{bfloat16(0.25), bfloat16(0.35), bfloat16(0.125)},
+       {bfloat16(-0.25), bfloat16(-0.35), bfloat16(-0.125)}});
+  auto rhs = Literal::CreateR2<bfloat16>(
+      {{bfloat16(0.5), bfloat16(0.125), bfloat16(0.125)},
+       {bfloat16(0.25), bfloat16(-0.375), bfloat16(-0.127)}});
+  auto expected =
+      Literal::CreateR2<bool>({{false, true, true}, {false, true, true}});
+  TestBinaryOp(HloOpcode::kGe, std::move(expected), std::move(lhs),
+               std::move(rhs));
 }
 
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,

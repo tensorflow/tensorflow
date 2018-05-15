@@ -93,11 +93,13 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
 }
 
 /* static */
-std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
+std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
   HloModuleConfig config;
-  config.set_debug_options(GetDebugOptionsForTest());
-  return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
-                               config);
+  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  config.set_debug_options(debug_options);
+
+  return MakeUnique<HloModule>(name, VersionedComputationHandle(), config);
 }
 
 /*static*/ DebugOptions HloTestBase::GetDebugOptionsForTest() {

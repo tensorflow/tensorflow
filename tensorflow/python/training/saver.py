@@ -1725,7 +1725,7 @@ class Saver(object):
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
-    logging.info("Restoring parameters from %s", save_path)
+    logging.info("Restoring parameters from %s", compat.as_text(save_path))
     try:
       if context.executing_eagerly():
         self._build_eager(save_path, build_save=False, build_restore=True)

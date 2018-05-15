@@ -48,20 +48,14 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
 void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // When TraceMe profiling is off (which is the default), the
-  // following TraceMe constructor is simply a conditional test of
-  // false value. Measurements show that its overhead is negligible.
-  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string(),
-                                  op_kernel->IsExpensive());
-  if (port::Tracing::IsActive()) {
-    // TODO(pbar) We really need a useful identifier of the graph node.
-    const uint64 id = Hash64(op_kernel->name());
-    port::Tracing::ScopedActivity region(port::Tracing::EventCategory::kCompute,
-                                         id);
-    op_kernel->Compute(context);
-  } else {
-    op_kernel->Compute(context);
-  }
+  // When Xprof/ThreadScape profiling is off (which is the default), the
+  // following code is simple enough that its overhead is negligible.
+  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
+                                   op_kernel->IsExpensive());
+  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
+                               op_kernel->name());
+
+  op_kernel->Compute(context);
 }
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {

@@ -572,7 +572,8 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module("ReferenceUtil");
+  HloModuleConfig config;
+  HloModule module("ReferenceUtil", config);
   auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;

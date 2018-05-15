@@ -5,6 +5,7 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 tflite_deps_intel = [
     "@arm_neon_2_x86_sse",
@@ -157,6 +158,7 @@ cc_library(
         ":quantization_util",
         ":strided_slice_logic",
         ":types",
+        ":reference_base",
         ":round",
         "//third_party/eigen3",
         "@gemmlowp",
@@ -303,6 +305,7 @@ cc_library(
     ],
     hdrs = [
         "common.h",
+        "compatibility.h",
         "optimized/cpu_check.h",
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
@@ -385,6 +388,9 @@ cc_library(
         ":armv7a": [
             ":neon_tensor_utils",
         ],
+        ":haswell": [
+            ":neon_tensor_utils",
+        ],
         ":ios_armv7": [
             ":neon_tensor_utils",
         ],
@@ -423,6 +429,7 @@ cc_test(
         "//conditions:default": [],
     }),
     linkstatic = 1,
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":tensor_utils",
         "//tensorflow/contrib/lite:builtin_op_data",
@@ -457,3 +464,5 @@ cc_test(
 )
 
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
+
+tflite_portable_test_suite()

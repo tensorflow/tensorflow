@@ -78,6 +78,25 @@ bool RemoveTrivialBinaryOperator::Run(Model* model, std::size_t op_index) {
   CHECK(is_input_constant[index_of_constant_input]);
   CHECK(!is_input_constant[index_of_variable_input]);
 
+  // If this was a broadcasting op we can't remove it as we need the broadcast.
+  // It's possible we could replace it with a cheaper op, though.
+  const auto& input_array_0 = model->GetArray(binary_op->inputs[0]);
+  const auto& input_array_1 = model->GetArray(binary_op->inputs[1]);
+  if (!input_array_0.has_shape() || !input_array_1.has_shape()) {
+    // Both input shapes must be known.
+    return false;
+  }
+  if (input_array_0.shape().dimensions_count() ==
+          input_array_1.shape().dimensions_count() &&
+      input_array_0.shape() != input_array_1.shape()) {
+    AddMessageF(
+        "Preserving %s even though it's trivial as we need to broadcast "
+        "(lhs %s, rhs %s)",
+        LogName(*binary_op), ShapeToString(input_array_0.shape()),
+        ShapeToString(input_array_1.shape()));
+    return false;
+  }
+
   // Now check if the constant operand makes this binary
   // operator trivial.
   const auto& constant_input_array =

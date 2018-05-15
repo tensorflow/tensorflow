@@ -300,6 +300,10 @@ tf_xla_py_test(
     name = "extract_image_patches_op_test",
     size = "small",
     srcs = ["extract_image_patches_op_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -323,7 +327,11 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -818,13 +826,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
-    ],
-    # TODO(b/62961789): Test fails with SIGABRT
-    tags = [
-        "manual",
-        "notap",
+        "//tensorflow/python:variables",
     ],
 )
 

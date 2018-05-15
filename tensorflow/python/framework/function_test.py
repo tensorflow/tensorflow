@@ -136,7 +136,8 @@ class FunctionTest(test.TestCase):
   def testTooManyOutputNames(self):
 
     @function.Defun(
-        dtypes.float32, func_name="MyIdentity",
+        dtypes.float32,
+        func_name="MyIdentity",
         out_names=["my_result1", "my_result2"])
     def MyIdentityFunc(a):
       return a
@@ -239,10 +240,11 @@ class FunctionTest(test.TestCase):
 
     inp = np.array([-1, 1, 2, -2], dtype=np.float32)
     feed = {x: inp}
-    cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L1,
-            do_function_inlining=True)))
+    cfg = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L1,
+                do_function_inlining=True)))
     with session.Session(graph=g, config=cfg) as sess:
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
@@ -334,18 +336,20 @@ class FunctionTest(test.TestCase):
       y = Foo(x)
       dx, = gradients_impl.gradients(y, [x])
 
-    cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L0,
-            do_common_subexpression_elimination=True,
-            do_function_inlining=True,
-            do_constant_folding=True)))
+    cfg = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L0,
+                do_common_subexpression_elimination=True,
+                do_function_inlining=True,
+                do_constant_folding=True)))
 
     with self.test_session(graph=g, config=cfg):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
 
   def _testZNoDepOnY(self, use_const_grad_ys):
+
     @function.Defun(dtypes.float32, dtypes.float32)
     def Foo(x, y):  # pylint: disable=unused-argument
       return x * 2
@@ -775,9 +779,9 @@ class FunctionTest(test.TestCase):
 
       @function.Defun()
       def Foo():
-        return control_flow_ops.while_loop(lambda i: i < 10,
-                                           lambda i: i + x,
+        return control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + x,
                                            [0])
+
       y = Foo()
 
     with self.test_session(graph=g) as sess:
@@ -790,9 +794,8 @@ class FunctionTest(test.TestCase):
 
       @function.Defun(dtypes.bool)
       def Foo(pred):
-        return control_flow_ops.cond(pred,
-                                     lambda: x,
-                                     lambda: x + 1)
+        return control_flow_ops.cond(pred, lambda: x, lambda: x + 1)
+
       y = Foo(True)
       z = Foo(False)
 
@@ -945,6 +948,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(len(f.signature.input_arg), 3)
 
   def testGradientWithIntegerFunctionArgument(self):
+
     @function.Defun(dtypes.int32, dtypes.float32)
     def Foo(t, x):
       return x[t]
@@ -959,8 +963,7 @@ class FunctionTest(test.TestCase):
     x = np.zeros((2,)).astype(np.float32)
     with session.Session(graph=g) as sess:
       self.assertAllClose(
-          np.array([1.0, 0.0]).astype(np.float32),
-          sess.run(dinp, {inp: x}))
+          np.array([1.0, 0.0]).astype(np.float32), sess.run(dinp, {inp: x}))
 
   def testFunctionMarkedStateful(self):
 
@@ -1072,6 +1075,60 @@ class FunctionTest(test.TestCase):
     with self.test_session(use_gpu=False) as sess:
       sess.run(var.initializer)
       _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
+
+  def testSameFunctionDifferentGrads(self):
+
+    def PartOne(x):
+
+      # Default grad is dx = dy * 2
+      @function.Defun(dtypes.float32)
+      def Foo(x):
+        return x * 2
+
+      return Foo(x)
+
+    def PartTwo(x):
+
+      @function.Defun(dtypes.float32, dtypes.float32)
+      def Bar(x, dy):
+        return x + dy  # crazy backprop
+
+      @function.Defun(dtypes.float32, grad_func=Bar)
+      def Foo(x):
+        return x * 2
+
+      return Foo(x)
+
+    def PartThree(x):
+
+      def Bar(op, dy):
+        return op.inputs[0] * dy / 2  # crazy backprop
+
+      @function.Defun(dtypes.float32, python_grad_func=Bar)
+      def Foo(x):
+        return x * 2
+
+      return Foo(x)
+
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(100.)
+      x0 = x
+      y0 = PartOne(x0)
+      dx0, = gradients_impl.gradients(ys=[y0], xs=[x0])
+      x1 = x
+      y1 = PartTwo(x1)
+      dx1, = gradients_impl.gradients(ys=[y1], xs=[x1])
+      x2 = x
+      y2 = PartThree(x2)
+      dx2, = gradients_impl.gradients(ys=[y2], xs=[x2])
+
+    with self.test_session(graph=g) as sess:
+      v0, v1, v2 = sess.run([dx0, dx1, dx2])
+
+    self.assertAllEqual(v0, 2.)
+    self.assertAllEqual(v1, 101.)
+    self.assertAllEqual(v2, 50.)
 
 
 @test_util.with_c_shapes
@@ -1271,9 +1328,10 @@ class FunctionsFromProtos(test.TestCase):
     @function.Defun(dtypes.int32, experimental_tag="tag_value")
     def FunctionWithAttr(i):
       return array_ops.identity(i)
+
     self.assertTrue("experimental_tag" in FunctionWithAttr.definition.attr)
-    self.assertEqual(
-        FunctionWithAttr.definition.attr["experimental_tag"].s, b"tag_value")
+    self.assertEqual(FunctionWithAttr.definition.attr["experimental_tag"].s,
+                     b"tag_value")
 
 
 @test_util.with_c_shapes
@@ -1401,7 +1459,8 @@ class UnrollLSTMTest(test.TestCase):
       return Loop(cell, weights, inp)
 
     cell = function.Defun(dtypes.float32, dtypes.float32, dtypes.float32,
-                          dtypes.float32)(cell)
+                          dtypes.float32)(
+                              cell)
     if mode == "cell":
       # Just represent the LSTM as a function.
       return Loop(cell, weights, inp)
@@ -1500,12 +1559,13 @@ class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
     dtype = dtypes.float32
-    cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L0,
-            do_common_subexpression_elimination=True,
-            do_function_inlining=True,
-            do_constant_folding=True)))
+    cfg = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L0,
+                do_common_subexpression_elimination=True,
+                do_function_inlining=True,
+                do_constant_folding=True)))
     cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
     for noinline in [False, True]:
 

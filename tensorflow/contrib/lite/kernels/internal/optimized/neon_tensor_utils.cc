@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
+#include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/tensor_utils_impl.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 
@@ -27,6 +28,22 @@ limitations under the License.
 
 namespace tflite {
 namespace tensor_utils {
+namespace {
+
+// Allocates, at least, size bytes of uninitialized storage whose alignment is
+// specified by alignment. The size parameter must be an integral multiple of
+// alignment.
+// Caller is responsible by freeing the allocated memory by calling free on
+// the passed freeing_buffer pointer.
+void* aligned_alloc(size_t alignment, size_t size, void** freeing_buffer) {
+  *freeing_buffer = malloc(size + alignment);
+  const size_t offset = ((uintptr_t)*freeing_buffer) % alignment;  // NOLINT
+  return offset == 0
+             ? *freeing_buffer
+             : ((char*)*freeing_buffer + (alignment - offset));  // NOLINT
+}
+
+}  // namespace
 
 void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                              int m_cols, const float* vector,
@@ -112,6 +129,114 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
     }
   }
   delete[] vector_cache_float32x4;
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  const int kWeightsPerUint32 = 4;
+  const int kWeightsPerNeonLane = 16;
+  // If the number of rows is not divisible by kWeightsPerUint32, we set a
+  // flag and allocate an aligned memory block. The flag is used to use the
+  // aligned memory block later in the kernel loop.
+  bool unaligned = false;
+  int8* aligned_row = nullptr;
+  void* aligned_row_free = nullptr;
+  if ((m_cols & (kWeightsPerUint32 - 1)) != 0) {
+    unaligned = true;
+    aligned_row = (int8*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+                                       &aligned_row_free);
+  }
+  void* aligned_vec_free = nullptr;
+  int8* aligned_vec = (int8*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+                                           &aligned_vec_free);
+
+  // If m_cols is not at least kWeightsPerNeonLane, we cannot use the main
+  // vectorized loop, and we need to process sequentially. postamble_start shows
+  // the start index where this should happen.
+  const int postamble_start = m_cols - (m_cols & (kWeightsPerNeonLane - 1));
+
+  int batch, row, col;
+  for (batch = 0; batch < n_batch; ++batch) {
+    const float batch_scaling_factor_inv = 1.0 / scaling_factors[batch];
+    // Copy the vector data to an aligned vector.
+    memcpy(aligned_vec, vectors + batch * m_cols, sizeof(int8) * m_cols);
+    // Compute dot-product for every column.
+    for (row = 0; row < m_rows; ++row, result += result_stride) {
+      // Get the address of the first element of the row.
+      int8* row_ptr = (int8*)matrix + row * m_cols;  // NOLINT
+      if (unaligned) {
+        memcpy(aligned_row, row_ptr, sizeof(int8) * m_cols);
+        row_ptr = aligned_row;
+      }
+
+      // Initialize the dot product sum for the row to 0.
+      int32x4_t dotprod = vmovq_n_s32(0);
+
+      // Prefetch the row to cache.
+      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
+                         3 /* temporal locality */);
+
+      // For every block of 16 8-bit elements.
+      col = 0;
+      for (; col < postamble_start; col += kWeightsPerNeonLane) {
+        // Load 16 8-bit values from the row and vector, each, to operate on.
+        // Here the assumption is that each buffer is 4-byte aligned.
+        TFLITE_CHECK_EQ((uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1),
+                        0);
+        const int8x16_t s1_8x16 = vld1q_s8((const int8_t*)(aligned_vec + col));
+        const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + col));
+        // Multiply the low bits (i.e. the lower 8 8bit numbers in the
+        // registers).
+        int16x8_t prod_16x8 =
+            vmull_s8(vget_low_s8(s1_8x16), vget_low_s8(s2_8x16));
+        // Multiply the high bits (i.e. the lower 8 8bit numbers in the
+        // registers), and accumulate with the result of the low bits product.
+        // The assumption here is that overflow will not happen as we quantize
+        // our values to be in the range [-127, 127]. As such the sum of the 2
+        // products is always strictly smaller than 15-bits (32767 in absolute
+        // value).
+        prod_16x8 =
+            vmlal_s8(prod_16x8, vget_high_s8(s1_8x16), vget_high_s8(s2_8x16));
+
+        dotprod = vpadalq_s16(dotprod, prod_16x8);
+      }  // for col
+
+      int32 postable_sum = 0;
+      // Postamble loop.
+      // TODO(raziel): if (ABSL_PREDICT_FALSE(postamble_start < m_rows))
+      if (postamble_start < m_cols) {
+        col = postamble_start;
+        if ((m_cols - postamble_start) >= (kWeightsPerNeonLane >> 1)) {
+          // Load 8 8-bit values from the row and column each to operate on.
+          // Here the assumption is that each buffer is 4-bytes aligned.
+          TFLITE_CHECK_EQ((uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1),
+                          0);
+          const int8x8_t s1_8x8 = vld1_s8((const int8_t*)(aligned_vec + col));
+          const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
+          const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
+          dotprod = vpadalq_s16(dotprod, prod_16x8);
+          col += (kWeightsPerNeonLane >> 1);
+        }
+        for (; col < m_cols; ++col) {
+          postable_sum += row_ptr[col] * aligned_vec[col];
+        }  // for col
+      }
+      // Add the 4 intermediate sum values to get the final dot-prod value for
+      // this row.
+      int64x2_t pairwiseAdded = vpaddlq_s32(dotprod);
+      int32 neon_sum =
+          vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
+
+      *result += ((neon_sum + postable_sum) * batch_scaling_factor_inv);
+    }  // for row
+  }    // for batch
+
+  if (unaligned) {
+    free(aligned_row_free);
+  }
+  free(aligned_vec_free);
 }
 
 void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,

@@ -93,6 +93,20 @@ TEST(ProfilingTest, ProfilesAreCollected) {
 #endif
 }
 
+TEST(ProfilingTest, NullProfiler) {
+  Profiler* profiler = nullptr;
+  { SCOPED_OPERATOR_PROFILE(profiler, 1); }
+}
+
+TEST(ProfilingTest, ScopedProfile) {
+  Profiler profiler;
+  profiler.StartProfiling();
+  { SCOPED_OPERATOR_PROFILE(&profiler, 1); }
+  profiler.StopProfiling();
+  auto profile_events = profiler.GetProfileEvents();
+  EXPECT_EQ(1, profile_events.size());
+}
+
 }  // namespace
 }  // namespace profiling
 }  // namespace tflite

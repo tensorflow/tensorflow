@@ -894,6 +894,40 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       self.assertEqual(6., math_ops.reduce_sum(dx).numpy())
       self.assertEqual(8., math_ops.reduce_sum(dw).numpy())
 
+  def testCustomGradientErrorsWithNonResourceVariables(self):
+
+    def F(x, use_resource=False):
+      with variable_scope.variable_scope("f", use_resource=use_resource):
+        out = core_layers.dense(x, 4, use_bias=False)
+
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        del out_grad
+        self.assertEqual(1, len(variables))
+        return (array_ops.ones((3, 2)), [array_ops.ones((2, 4))])
+
+      return out, Grad
+
+    @custom_gradient.custom_gradient
+    def FResource(x):
+      return F(x, use_resource=True)
+
+    @custom_gradient.custom_gradient
+    def FNonResource(x):
+      return F(x, use_resource=False)
+
+    x = array_ops.ones((3, 2)) + 2.
+
+    # Wrapping scope has use_resource=True but inner scope sets to False. Fails.
+    with variable_scope.variable_scope("vs1", use_resource=True):
+      with self.assertRaisesWithPredicateMatch(TypeError,
+                                               "must be `ResourceVariable`s"):
+        FNonResource(x)
+
+    # Wrapping scope has use_resource=False but inner scope sets to True.
+    # Passes.
+    with variable_scope.variable_scope("vs2", use_resource=False):
+      FResource(x)
+
   def testWithNumpyInputs(self):
     with context.eager_mode():
 
@@ -909,6 +943,21 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       x = np.ones((3, 2), dtype=np.float32)
       # Smoke test to ensure numpy inputs are accepted
       F(x)
+
+  def testRVGradientsDynamicCond(self):
+    with self.test_session():
+      alpha = resource_variable_ops.ResourceVariable(
+          np.random.random((1,)),
+          dtype="float32")
+
+      conditional = array_ops.placeholder_with_default(True, shape=())
+      output = control_flow_ops.cond(
+          conditional, lambda: alpha * 2, lambda: alpha * 3)
+
+      g, = gradients_impl.gradients(output, alpha)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(g.eval(), [2.0])
+      self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
 
 if __name__ == "__main__":

@@ -101,6 +101,7 @@ genrule(
         "api/profiler/__init__.py",
         "api/python_io/__init__.py",
         "api/resource_loader/__init__.py",
+        "api/strings/__init__.py",
         "api/saved_model/__init__.py",
         "api/saved_model/builder/__init__.py",
         "api/saved_model/constants/__init__.py",
