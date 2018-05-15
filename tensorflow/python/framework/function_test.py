@@ -1723,5 +1723,53 @@ class VariableHoistingTest(test.TestCase):
     self._testSimpleModel(False, use_resource=True)
 
 
+class DevicePlacementTest(test.TestCase):
+
+  def testNoDeviceGraph(self):
+    with ops.Graph().as_default():
+
+      @function.Defun(*[dtypes.float32] * 2)
+      def Matmul(a, b):
+        return math_ops.matmul(a, b)
+
+      Matmul(1., 2.)
+
+      gdef = ops.get_default_graph().as_graph_def()
+      self.assertAllEqual(len(gdef.library.function), 1)
+      fdef = gdef.library.function[0]
+
+      for node in fdef.node_def:
+        self.assertAllEqual(node.device, "")
+
+  def testNestedDevices(self):
+    with ops.Graph().as_default(), ops.device("CPU:0"):
+
+      @function.Defun(*[dtypes.float32] * 2)
+      def Matmul(a, b):
+        return math_ops.matmul(a, b)
+
+      with ops.device("CPU:1"):
+
+        @function.Defun(*[dtypes.float32] * 2)
+        def Divide(a, b):
+          return math_ops.divide(a, b)
+
+        Divide(Matmul(1., 2.), 3.)
+
+      gdef = ops.get_default_graph().as_graph_def()
+      matmul_fdef = [
+          f for f in gdef.library.function if "Matmul" in f.signature.name
+      ]
+      divide_fdef = [
+          f for f in gdef.library.function if "Divide" in f.signature.name
+      ]
+      self.assertAllEqual(len(matmul_fdef), 1)
+      self.assertAllEqual(len(divide_fdef), 1)
+      for node in matmul_fdef[0].node_def:
+        self.assertAllEqual(node.device, "/device:CPU:0")
+      for node in divide_fdef[0].node_def:
+        self.assertAllEqual(node.device, "/device:CPU:1")
+
+
 if __name__ == "__main__":
   test.main()
