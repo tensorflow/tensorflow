@@ -168,6 +168,76 @@ class NormalizationLayersTest(test.TestCase):
       new_model.compile('sgd', 'mse')
       new_model.train_on_batch(x, x)
 
+  def test_that_trainable_disables_updates(self):
+    with self.test_session():
+      val_a = np.random.random((10, 4))
+      val_out = np.random.random((10, 4))
+
+      a = keras.layers.Input(shape=(4,))
+      layer = keras.layers.BatchNormalization(input_shape=(4,))
+      b = layer(a)
+      model = keras.models.Model(a, b)
+
+      model.trainable = False
+      assert not model.updates
+
+      model.compile('sgd', 'mse')
+      assert not model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
+
+      model.trainable = True
+      model.compile('sgd', 'mse')
+      assert model.updates
+
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      assert np.abs(np.sum(x1 - x2)) > 1e-5
+
+      layer.trainable = False
+      model.compile('sgd', 'mse')
+      assert not model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
+
+  def test_batchnorm_trainable(self):
+    """Tests that batchnorm layer is trainable when learning phase is enabled.
+
+    Computes mean and std for current inputs then
+    applies batch normalization using them.
+    """
+    with self.test_session():
+      bn_mean = 0.5
+      bn_std = 10.
+      val_a = np.expand_dims(np.arange(10.), axis=1)
+
+      def get_model(bn_mean, bn_std):
+        inp = keras.layers.Input(shape=(1,))
+        x = keras.layers.BatchNormalization()(inp)
+        model1 = keras.models.Model(inp, x)
+        model1.set_weights([
+            np.array([1.]),
+            np.array([0.]),
+            np.array([bn_mean]),
+            np.array([bn_std**2])
+        ])
+        return model1
+
+      # Simulates training-mode with trainable layer.
+      # Should use mini-batch statistics.
+      keras.backend.set_learning_phase(1)
+      model = get_model(bn_mean, bn_std)
+      model.compile(loss='mse', optimizer='rmsprop')
+      out = model.predict(val_a)
+      self.assertAllClose(
+          (val_a - np.mean(val_a)) / np.std(val_a), out, atol=1e-3)
+
 
 if __name__ == '__main__':
   test.main()
