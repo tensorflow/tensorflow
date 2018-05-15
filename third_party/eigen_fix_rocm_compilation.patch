@@ -1,6 +1,6 @@
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen-work-upstream/Eigen/Core
---- eigen-eigen-6913f0cf7d06/Eigen/Core	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/Eigen/Core	2018-05-14 17:07:36.644810371 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen_archive/Eigen/Core
+--- eigen-eigen-6913f0cf7d06/Eigen/Core	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/Eigen/Core	2018-05-15 09:18:49.393164350 -0400
 @@ -31,8 +31,8 @@
  #define EIGEN_CUDACC_VER 0
  #endif
@@ -51,9 +51,52 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen-work-upstream/Eigen/Core
    #define EIGEN_EXCEPTIONS
  #endif
  
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h eigen-work-upstream/Eigen/src/Core/MathFunctions.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/MathFunctions.h	2018-04-25 19:56:25.000000000 +0000
+@@ -267,6 +277,23 @@
+   #include <cuda_fp16.h>
+ #endif
+ 
++#if defined(__HIPCC__) && defined(__HIP_DEVICE_COMPILE__)
++  // The declaration of EIGEN_HAS_HIP_FP16 is conditional on 
++  // 1. The presence of the HIP compiler (do we need to add a version check?)
++  // AND
++  // 2. The "device pass" within the HIPCC compiler
++  #define EIGEN_HAS_HIP_FP16
++#endif
++
++#if defined EIGEN_HAS_HIP_FP16
++  #include <hip/hip_fp16.h>
++  // CUDA fp16 header has a typedef for "half2"
++  // Eigen code has multiple references to the "half2" type.
++  // HIP fp16 header does not have a corresponding typedef for "half2"
++  // So adding one here as a work-around for now
++  typedef __half2 half2;
++#endif
++
+ #if (defined _OPENMP) && (!defined EIGEN_DONT_PARALLELIZE)
+   #define EIGEN_HAS_OPENMP
+ #endif
+@@ -430,9 +457,15 @@
+ #endif
+ 
+ // Half float support
+-#include "src/Core/arch/CUDA/Half.h"
+-#include "src/Core/arch/CUDA/PacketMathHalf.h"
+-#include "src/Core/arch/CUDA/TypeCasting.h"
++#if defined EIGEN_USE_HIP
++  #include "src/Core/arch/HIP/hcc/Half.h"
++  #include "src/Core/arch/HIP/hcc/PacketMathHalf.h"
++  #include "src/Core/arch/HIP/hcc/TypeCasting.h"
++#else
++  #include "src/Core/arch/CUDA/Half.h"
++  #include "src/Core/arch/CUDA/PacketMathHalf.h"
++  #include "src/Core/arch/CUDA/TypeCasting.h"
++#endif
+ 
+ #if defined EIGEN_VECTORIZE_CUDA
+   #include "src/Core/arch/CUDA/PacketMath.h"
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h eigen_archive/Eigen/src/Core/MathFunctions.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/Eigen/src/Core/MathFunctions.h	2018-05-14 21:02:25.604205810 -0400
 @@ -10,6 +10,10 @@
  #ifndef EIGEN_MATHFUNCTIONS_H
  #define EIGEN_MATHFUNCTIONS_H
@@ -296,10 +339,10 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h eigen-work-up
  template <>
  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
  float fmod(const float& a, const float& b) {
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/Half.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/Half.h	2018-04-25 19:56:25.000000000 +0000
-@@ -0,0 +1,619 @@
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/Half.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/Half.h	2018-05-15 09:21:41.265168078 -0400
+@@ -0,0 +1,712 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
 +//
@@ -348,28 +391,30 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +  #include "hip/hip_runtime.h"
 +#endif
 +
-+#if defined(__HIP_DEVICE_COMPILE__) 
-+  #if defined(__NVCC__) && (__CUDA_ARCH__ >= 530)
-+    #define __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  #elif defined(__HCC__)
-+    #define __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  #endif
-+#endif
-+
 +namespace Eigen {
 +
 +struct half;
 +
 +namespace half_impl {
++
 +#if !defined(EIGEN_HAS_HIP_FP16)
 +
-+// Make our own __hip_half definition that is similar to HIP's.
++// This is the implementation of "__hip_half" for the "CPU" side (ie the compiler is not HIP)
 +struct __hip_half {
-+  EIGEN_DEVICE_FUNC __hip_half() {}
++  EIGEN_DEVICE_FUNC __hip_half() : x(0) {}
 +  explicit EIGEN_DEVICE_FUNC __hip_half(unsigned short raw) : x(raw) {}
 +  unsigned short x;
 +};
 +
++#else
++
++// This is the implementation of "__hip_half" for the "GPU" side (ie the compiler is HIP)
++struct __hip_half {
++  EIGEN_DEVICE_FUNC __hip_half() : x(0) {}
++  explicit EIGEN_DEVICE_FUNC __hip_half(const __half& h) : x(h) {}
++  __half x;
++};
++ 
 +#endif
 +
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC __hip_half raw_uint16_to_half(unsigned short x);
@@ -380,32 +425,49 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +  EIGEN_DEVICE_FUNC half_base() {}
 +  EIGEN_DEVICE_FUNC half_base(const half_base& h) : __hip_half(h) {}
 +  EIGEN_DEVICE_FUNC half_base(const __hip_half& h) : __hip_half(h) {}
++
++#if defined(EIGEN_HAS_HIP_FP16)
++  // Constructor to implicilty convert the raw "__half" to half_base
++  // This is only defined for the GPU side, because "__half" does not exist on the CPU side
++  EIGEN_DEVICE_FUNC half_base(const __half& h) : __hip_half(h) {}
++#endif
 +};
 +
 +} // namespace half_impl
 +
 +// Class definition.
 +struct half : public half_impl::half_base {
-+  #if !defined(EIGEN_HAS_HIP_FP16)
-+    typedef half_impl::__hip_half __hip_half;
-+  #endif
++
++  typedef half_impl::__hip_half __hip_half;
 +
 +  EIGEN_DEVICE_FUNC half() {}
 +
 +  EIGEN_DEVICE_FUNC half(const __hip_half& h) : half_impl::half_base(h) {}
 +  EIGEN_DEVICE_FUNC half(const half& h) : half_impl::half_base(h) {}
 +
++#if defined(EIGEN_HAS_HIP_FP16)
++  // Constructor to implicilty convert the raw "__half" to Eigen::half
++  // This is only defined for the GPU side, because "__half" does not exist on the CPU side
++  EIGEN_DEVICE_FUNC half(const __half& h) : half_impl::half_base(h) {}
++#endif
++  
 +  explicit EIGEN_DEVICE_FUNC half(bool b)
 +      : half_impl::half_base(half_impl::raw_uint16_to_half(b ? 0x3c00 : 0)) {}
++
 +  template<class T>
 +  explicit EIGEN_DEVICE_FUNC half(const T& val)
 +      : half_impl::half_base(half_impl::float_to_half_rtne(static_cast<float>(val))) {}
++
 +  explicit EIGEN_DEVICE_FUNC half(float f)
 +      : half_impl::half_base(half_impl::float_to_half_rtne(f)) {}
 +
 +  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(bool) const {
++#if defined(EIGEN_HAS_HIP_FP16)
++    return (__half_as_ushort(x) & 0x7fff) != 0;
++#else
 +    // +0.0 and -0.0 become false, everything else becomes true.
 +    return (x & 0x7fff) != 0;
++#endif    
 +  }
 +  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(signed char) const {
 +    return static_cast<signed char>(half_impl::half_to_float(*this));
@@ -435,7 +497,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +    return static_cast<long long>(half_impl::half_to_float(*this));
 +  }
 +  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(unsigned long long) const {
-+    return static_cast<unsigned long long>(half_to_float(*this));
++    return static_cast<unsigned long long>(half_impl::half_to_float(*this));
 +  }
 +  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(float) const {
 +    return half_impl::half_to_float(*this);
@@ -452,69 +514,68 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +
 +namespace half_impl {
 +
-+#if defined(EIGEN_HAS_HIP_FP16) && defined(__HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__)
++#if defined(EIGEN_HAS_HIP_FP16)
 +
 +// Intrinsics for native fp16 support. Note that on current hardware,
 +// these are no faster than fp32 arithmetic (you need to use the half2
 +// versions to get the ALU speed increased), but you do save the
 +// conversion steps back and forth.
 +
-+__device__ half operator + (const half& a, const half& b) {
-+  return __hip_hadd(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half operator + (const half& a, const half& b) {
++  return __hadd(a.x, b.x);
 +}
-+__device__ half operator * (const half& a, const half& b) {
-+  return __hip_hmul(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half operator * (const half& a, const half& b) {
++  return __hmul(a.x, b.x);
 +}
-+__device__ half operator - (const half& a, const half& b) {
-+  return __hip_hsub(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half operator - (const half& a, const half& b) {
++  return __hsub(a.x, b.x);
 +}
-+__device__ half operator / (const half& a, const half& b) {
-+  float num = __hip_half2float(a);
-+  float denom = __hip_half2float(b);
-+  return __hip_float2half(num / denom);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half operator / (const half& a, const half& b) {
++  float num = __half2float(a.x);
++  float denom = __half2float(b.x);
++  return __float2half(num / denom);
 +}
-+__device__ half operator - (const half& a) {
-+  return __hip_hneg(a);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half operator - (const half& a) {
++  return __hneg(a.x);
 +}
-+__device__ half& operator += (half& a, const half& b) {
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half& operator += (half& a, const half& b) {
 +  a = a + b;
 +  return a;
 +}
-+__device__ half& operator *= (half& a, const half& b) {
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half& operator *= (half& a, const half& b) {
 +  a = a * b;
 +  return a;
 +}
-+__device__ half& operator -= (half& a, const half& b) {
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half& operator -= (half& a, const half& b) {
 +  a = a - b;
 +  return a;
 +}
-+__device__ half& operator /= (half& a, const half& b) {
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half& operator /= (half& a, const half& b) {
 +  a = a / b;
 +  return a;
 +}
-+__device__ bool operator == (const half& a, const half& b) {
-+  return __hip_heq(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator == (const half& a, const half& b) {
++  return __heq(a.x, b.x);
 +}
-+__device__ bool operator != (const half& a, const half& b) {
-+  return __hip_hne(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator != (const half& a, const half& b) {
++  return __hne(a.x, b.x);
 +}
-+__device__ bool operator < (const half& a, const half& b) {
-+  return __hip_hlt(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator < (const half& a, const half& b) {
++  return __hlt(a.x, b.x);
 +}
-+__device__ bool operator <= (const half& a, const half& b) {
-+  return __hip_hle(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator <= (const half& a, const half& b) {
++  return __hle(a.x, b.x);
 +}
-+__device__ bool operator > (const half& a, const half& b) {
-+  return __hip_hgt(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator > (const half& a, const half& b) {
++  return __hgt(a.x, b.x);
 +}
-+__device__ bool operator >= (const half& a, const half& b) {
-+  return __hip_hge(a, b);
++EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator >= (const half& a, const half& b) {
++  return __hge(a.x, b.x);
 +}
 +
 +#else  // Emulate support for half floats
 +
-+// Definitions for CPUs and older HIP, mostly working through conversion
-+// to/from fp32.
++// Definitions for CPUs mostly working through conversion to/from fp32.
 +
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half operator + (const half& a, const half& b) {
 +  return half(float(a) + float(b));
@@ -576,14 +637,22 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +  return half(static_cast<float>(a) / static_cast<float>(b));
 +}
 +
-+// Conversion routines, including fallbacks for the host or older HIP.
-+// Note that newer Intel CPUs (Haswell or newer) have vectorized versions of
-+// these in hardware. If we need more performance on older/other CPUs, they are
-+// also possible to vectorize directly.
++// Conversion routines
 +
++// Note that the input value for the "raw_uint16_to_half" routine represents the 
++// "raw" half value and not an actual "unsigned short" value.
++// So for example
++//     an input value of "0x3c00" will result in a output value of 1.0
++//     an input value of "0x7c00" will result in a output value of "infinity"
++//     and so on
++// 
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC __hip_half raw_uint16_to_half(unsigned short x) {
 +  __hip_half h;
++#if defined(EIGEN_HAS_HIP_FP16)
++  h.x = __ushort_as_half(x); 
++#else  
 +  h.x = x;
++#endif  
 +  return h;
 +}
 +
@@ -593,10 +662,11 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +};
 +
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC __hip_half float_to_half_rtne(float ff) {
-+#if defined(EIGEN_HAS_HIP_FP16) && \
-+    defined(__HIP_DEVICE_COMPILE__) && \
-+    defined(__HIP_ARCH_HAS_WARP_SHUFFLE__)
-+  return __hip_float2half(ff);
++
++#if defined(EIGEN_HAS_HIP_FP16)
++  __hip_half h;
++  h.x = __float2half(ff);
++  return h;
 +
 +#elif defined(EIGEN_HAS_FP16_C)
 +  __hip_half h;
@@ -650,10 +720,8 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +}
 +
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC float half_to_float(__hip_half h) {
-+#if defined(EIGEN_HAS_HIP_FP16) && \
-+    defined(__HIP_DEVICE_COMPILE__)  && \
-+    defined(__HIP_ARCH_HAS_WARP_SHUFFLE__)
-+  return __hip_half2float(h);
++#if defined(EIGEN_HAS_HIP_FP16)
++  return __half2float(h.x);
 +
 +#elif defined(EIGEN_HAS_FP16_C)
 +  return _cvtsh_ss(h.x);
@@ -683,11 +751,15 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +// --- standard functions ---
 +
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool (isinf)(const half& a) {
++#if defined(EIGEN_HAS_HIP_FP16)
++  return __hisinf(a.x);
++#else
 +  return (a.x & 0x7fff) == 0x7c00;
++#endif
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool (isnan)(const half& a) {
-+#if defined(EIGEN_HAS_HIP_FP16) && defined(__HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__)
-+  return __hip_hisnan(a);
++#if defined(EIGEN_HAS_HIP_FP16)
++  return __hisnan(a.x);
 +#else
 +  return (a.x & 0x7fff) > 0x7c00;
 +#endif
@@ -698,24 +770,28 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half abs(const half& a) {
 +  half result;
++#if defined(EIGEN_HAS_HIP_FP16)
++  // There does not seem to be a native implementation for "abs" in HIP (i.e. no "__habs")
++  // so do it the hard way here
++  result.x = __ushort_as_half(__half_as_ushort(a.x) & 0x7FFF);
++#else  
 +  result.x = a.x & 0x7FFF;
++#endif  
 +  return result;
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half exp(const half& a) {
++#if defined(EIGEN_HAS_HIP_FP16)
++  return half(hexp(a.x));
++#else
 +  return half(::expf(float(a)));
++#endif  
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half expm1(const half& a) {
 +  return half(numext::expm1(float(a)));
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half log(const half& a) {
-+#if defined(EIGEN_HAS_HIP_FP16) && defined(__HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__)
-+  #if defined(__NVCC__) && defined(__CUDACC_VER__) && (__CUDACC_VER__ >= 80000)
-+    return Eigen::half(::hlog(a));
-+  #elif defined(__HCC__)
-+    return Eigen::half(::hlog(a));
-+  #else
-+    return Eigen::half(float(a));
-+  #endif
++#if defined(EIGEN_HAS_HIP_FP16)
++    return half(hlog(a.x));
 +#else
 +  return half(::logf(float(a)));
 +#endif
@@ -727,7 +803,11 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +  return half(::log10f(float(a)));
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half sqrt(const half& a) {
++#if defined(EIGEN_HAS_HIP_FP16)
++  return half(hsqrt(a.x));
++#else
 +  return half(::sqrtf(float(a)));
++#endif
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half pow(const half& a, const half& b) {
 +  return half(::powf(float(a), float(b)));
@@ -745,15 +825,23 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +  return half(::tanhf(float(a)));
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half floor(const half& a) {
++#if defined(EIGEN_HAS_HIP_FP16)
++  return half(hfloor(a.x));
++#else
 +  return half(::floorf(float(a)));
++#endif
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half ceil(const half& a) {
++#if defined(EIGEN_HAS_HIP_FP16)
++  return half(hceil(a.x));
++#else
 +  return half(::ceilf(float(a)));
++#endif
 +}
 +
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half (min)(const half& a, const half& b) {
-+#if defined(EIGEN_HAS_HIP_FP16) && defined(__HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__)
-+  return __hip_hlt(b, a) ? b : a;
++#if defined(EIGEN_HAS_HIP_FP16)
++  return __hlt(b.x, a.x) ? b : a;
 +#else
 +  const float f1 = static_cast<float>(a);
 +  const float f2 = static_cast<float>(b);
@@ -761,8 +849,8 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +#endif
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half (max)(const half& a, const half& b) {
-+#if defined(EIGEN_HAS_HIP_FP16) && defined(__HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__)
-+  return __hip_hlt(a, b) ? b : a;
++#if defined(EIGEN_HAS_HIP_FP16)
++  return __hlt(a.x, b.x) ? b : a;
 +#else
 +  const float f1 = static_cast<float>(a);
 +  const float f2 = static_cast<float>(b);
@@ -799,24 +887,74 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +
 +} // end namespace internal
 +
++} // end namespace Eigen
++
++namespace std {
++template<>
++struct numeric_limits<Eigen::half> {
++  static const bool is_specialized = true;
++  static const bool is_signed = true;
++  static const bool is_integer = false;
++  static const bool is_exact = false;
++  static const bool has_infinity = true;
++  static const bool has_quiet_NaN = true;
++  static const bool has_signaling_NaN = true;
++  static const float_denorm_style has_denorm = denorm_present;
++  static const bool has_denorm_loss = false;
++  static const std::float_round_style round_style = std::round_to_nearest;
++  static const bool is_iec559 = false;
++  static const bool is_bounded = false;
++  static const bool is_modulo = false;
++  static const int digits = 11;
++  static const int digits10 = 3;      // according to http://half.sourceforge.net/structstd_1_1numeric__limits_3_01half__float_1_1half_01_4.html
++  static const int max_digits10 = 5;  // according to http://half.sourceforge.net/structstd_1_1numeric__limits_3_01half__float_1_1half_01_4.html
++  static const int radix = 2;
++  static const int min_exponent = -13;
++  static const int min_exponent10 = -4;
++  static const int max_exponent = 16;
++  static const int max_exponent10 = 4;
++  static const bool traps = true;
++  static const bool tinyness_before = false;
++
++  static Eigen::half (min)() { return Eigen::half_impl::raw_uint16_to_half(0x400); }
++  static Eigen::half lowest() { return Eigen::half_impl::raw_uint16_to_half(0xfbff); }
++  static Eigen::half (max)() { return Eigen::half_impl::raw_uint16_to_half(0x7bff); }
++  static Eigen::half epsilon() { return Eigen::half_impl::raw_uint16_to_half(0x0800); }
++  static Eigen::half round_error() { return Eigen::half(0.5); }
++  static Eigen::half infinity() { return Eigen::half_impl::raw_uint16_to_half(0x7c00); }
++  static Eigen::half quiet_NaN() { return Eigen::half_impl::raw_uint16_to_half(0x7e00); }
++  static Eigen::half signaling_NaN() { return Eigen::half_impl::raw_uint16_to_half(0x7e00); }
++  static Eigen::half denorm_min() { return Eigen::half_impl::raw_uint16_to_half(0x1); }
++};
++}
++
++namespace Eigen {
++  
 +template<> struct NumTraits<Eigen::half>
 +    : GenericNumTraits<Eigen::half>
 +{
++  enum {
++    IsSigned = true,
++    IsInteger = false,
++    IsComplex = false,
++    RequireInitialization = false
++  };
++
 +  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE Eigen::half epsilon() {
-+    return half_impl::raw_uint16_to_half(0x0800);
++    return half_impl::raw_uint16_to_half(0x0800); 
 +  }
 +  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE Eigen::half dummy_precision() { return Eigen::half(1e-2f); }
 +  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE Eigen::half highest() {
-+    return half_impl::raw_uint16_to_half(0x7bff);
++    return half_impl::raw_uint16_to_half(0x7bff); 
 +  }
 +  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE Eigen::half lowest() {
-+    return half_impl::raw_uint16_to_half(0xfbff);
++    return half_impl::raw_uint16_to_half(0xfbff); 
 +  }
 +  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE Eigen::half infinity() {
-+    return half_impl::raw_uint16_to_half(0x7c00);
++    return half_impl::raw_uint16_to_half(0x7c00); 
 +  }
 +  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE Eigen::half quiet_NaN() {
-+    return half_impl::raw_uint16_to_half(0x7c01);
++    return half_impl::raw_uint16_to_half(0x7c01); 
 +  }
 +};
 +
@@ -825,21 +963,19 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +// C-like standard mathematical functions and trancendentals.
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Eigen::half fabsh(const Eigen::half& a) {
 +  Eigen::half result;
++#if defined(EIGEN_HAS_HIP_FP16)
++  result.x = __half_as_ushort(a.x) & 0x7FFF;
++#else
 +  result.x = a.x & 0x7FFF;
++#endif
 +  return result;
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Eigen::half exph(const Eigen::half& a) {
 +  return Eigen::half(::expf(float(a)));
 +}
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Eigen::half logh(const Eigen::half& a) {
-+#if defined(__HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__)
-+  #if defined(__NVCC__) && defined __CUDACC_VER__ && __CUDACC_VER__ >= 80000
-+    return Eigen::half(::hlog(a));
-+  #elif defined(__HCC__)
-+    return Eigen::half(::logf(float(a)));
-+  #else
-+    return Eigen::half(::logf(float(a)));
-+  #endif
++#if defined(EIGEN_HAS_HIP_FP16)
++    return Eigen::half(hlog(a.x));
 +#else
 +  return Eigen::half(::logf(float(a)));
 +#endif
@@ -872,7 +1008,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +
 +
 +// Add the missing shfl_xor intrinsic
-+#if defined(__HIP_DEVICE_COMPILE__) && defined(__HIP_ARCH_HAS_WARP_SHUFFLE__)
++#if defined(EIGEN_HAS_HIP_FP16) && defined(__HIP_ARCH_HAS_WARP_SHUFFLE__)
 +__device__ EIGEN_STRONG_INLINE Eigen::half __shfl_xor(Eigen::half var, int laneMask, int width=warpSize) {
 +  //TODO: Fix it
 +  //return static_cast<Eigen::half>(__shfl_xor(static_cast<float>(var), laneMask, width));
@@ -881,7 +1017,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +#endif
 +
 +// ldg() has an overload for __half, but we also need one for Eigen::half.
-+#if defined(__HIP_DEVICE_COMPILE__) && \
++#if defined(EIGEN_HAS_HIP_FP16) && \
 +    defined(__HIP_ARCH_HAS_WARP_FUNNEL_SHIFT__) && defined(__HIP_ARCH_HAS_DYNAMIC_PARALLEL__)
 +EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Eigen::half __ldg(const Eigen::half* ptr) {
 +  //TODO: Fix it
@@ -892,7 +1028,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +#endif
 +
 +
-+#if defined(__HIP_DEVICE_COMPILE__)
++#if defined(EIGEN_USE_HIP_FP16)
 +namespace Eigen {
 +namespace numext {
 +
@@ -919,9 +1055,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-wor
 +#endif
 +
 +#endif // EIGEN_HALF_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	2018-05-14 21:02:25.608205811 -0400
 @@ -0,0 +1,91 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -1014,9 +1150,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h 
 +} // end namespace Eigen
 +
 +#endif // EIGEN_MATH_FUNCTIONS_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMath.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMath.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	2018-05-14 21:02:25.608205811 -0400
 @@ -0,0 +1,305 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -1323,10 +1459,10 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h eig
 +
 +
 +#endif // EIGEN_PACKET_MATH_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	2018-04-25 19:56:25.000000000 +0000
-@@ -0,0 +1,743 @@
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	2018-05-15 09:28:35.137177057 -0400
+@@ -0,0 +1,628 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
 +//
@@ -1339,21 +1475,12 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +#ifndef EIGEN_PACKET_MATH_HALF_HIP_H
 +#define EIGEN_PACKET_MATH_HALF_HIP_H
 +
-+#if defined(__HIP_DEVICE_COMPILE__) 
-+  #if defined(__NVCC__) && (__CUDA_ARCH__ >= 530)
-+    #define __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  #elif defined(__HCC__)
-+    #define __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  #endif
-+#endif
 +
 +namespace Eigen {
 +namespace internal {
 +
 +// Most of the following operations require arch >= 3.0
-+#if defined(EIGEN_HAS_HIP_FP16) && \
-+    defined(__HIP_DEVICE_COMPILE__) && \
-+    defined(__HIP_ARCH_HAS_WARP_SHUFFLE__)
++#if defined(EIGEN_HAS_HIP_FP16)
 +
 +template<> struct is_arithmetic<half2> { enum { value = true }; };
 +
@@ -1380,7 +1507,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +template<> struct unpacket_traits<half2> { typedef Eigen::half type; enum {size=2, alignment=Aligned16}; typedef half2 half; };
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pset1<half2>(const Eigen::half& from) {
-+  return __hip_half2half2(from);
++  return half2half2(from.x);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pload<half2>(const Eigen::half* from) {
@@ -1388,11 +1515,11 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 ploadu<half2>(const Eigen::half* from) {
-+  return __hip_halves2half2(from[0], from[1]);
++  return __halves2half2(from[0].x, from[1].x);
 +}
 +
 +template<> EIGEN_STRONG_INLINE half2 ploaddup<half2>(const Eigen::half*  from) {
-+  return __hip_halves2half2(from[0], from[0]);
++  return __halves2half2(from[0].x, from[0].x);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void pstore<Eigen::half>(Eigen::half* to, const half2& from) {
@@ -1400,223 +1527,129 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void pstoreu<Eigen::half>(Eigen::half* to, const half2& from) {
-+  to[0] = __hip_low2half(from);
-+  to[1] = __hip_high2half(from);
++  to[0].x = __low2half(from);
++  to[1].x = __high2half(from);
 +}
 +
 +template<>
 + EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE half2 ploadt_ro<half2, Aligned>(const Eigen::half* from) {
-+#if defined(__HIP_DEVICE_COMPILE__) && \
-+    defined(__HIP_ARCH_HAS_WARP_FUNNEL_SHIFT__) && defined(__HIP_ARCH_HAS_DYNAMIC_PARALLEL__)
-+   return __hip_ldg((const half2*)from);
-+#else
-+  return __hip_halves2half2(*(from+0), *(from+1));
-+#endif
++  // todo : is there a __ldg(half) we can leverage here?
++  return __halves2half2((*(from+0)).x, (*(from+1)).x);
 +}
 +
 +template<>
 +EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE half2 ploadt_ro<half2, Unaligned>(const Eigen::half* from) {
-+#if defined(__HIP_DEVICE_COMPILE__) && \
-+    defined(__HIP_ARCH_HAS_WARP_FUNNEL_SHIFT__) && defined(__HIP_ARCH_HAS_DYNAMIC_PARALLEL__)
-+   return __hip_halves2half2(__hip_ldg(from+0), __hip_ldg(from+1));
-+#else
-+  return __hip_halves2half2(*(from+0), *(from+1));
-+#endif
++  // todo : is there a __ldg(half) we can leverage here?
++  return __halves2half2((*(from+0)).x, (*(from+1)).x);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pgather<Eigen::half, half2>(const Eigen::half* from, Index stride) {
-+  return __hip_halves2half2(from[0*stride], from[1*stride]);
++  return __halves2half2(from[0*stride].x, from[1*stride].x);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void pscatter<Eigen::half, half2>(Eigen::half* to, const half2& from, Index stride) {
-+  to[stride*0] = __hip_low2half(from);
-+  to[stride*1] = __hip_high2half(from);
++  to[stride*0].x = __low2half(from);
++  to[stride*1].x = __high2half(from);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::half pfirst<half2>(const half2& a) {
-+  return __hip_low2half(a);
++  return __low2half(a); 
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pabs<half2>(const half2& a) {
-+  half2 result;
-+  result.x = a.x & 0x7FFF7FFF;
-+  return result;
++  __half x = __ushort_as_half(__half_as_ushort(__low2half(a)) & 0x7FFF);
++  __half y = __ushort_as_half(__half_as_ushort(__high2half(a)) & 0x7FFF);
++  return __halves2half2(x, y);
 +}
 +
 +
 +EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void
 +ptranspose(PacketBlock<half2,2>& kernel) {
-+  __hip_half a1 = __hip_low2half(kernel.packet[0]);
-+  __hip_half a2 = __hip_high2half(kernel.packet[0]);
-+  __hip_half b1 = __hip_low2half(kernel.packet[1]);
-+  __hip_half b2 = __hip_high2half(kernel.packet[1]);
-+  kernel.packet[0] = __hip_halves2half2(a1, b1);
-+  kernel.packet[1] = __hip_halves2half2(a2, b2);
++  __half a1 = __low2half(kernel.packet[0]);
++  __half a2 = __high2half(kernel.packet[0]);
++  __half b1 = __low2half(kernel.packet[1]);
++  __half b2 = __high2half(kernel.packet[1]);
++  kernel.packet[0] = __halves2half2(a1, b1);
++  kernel.packet[1] = __halves2half2(a2, b2);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 plset<half2>(const Eigen::half& a) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  return __hip_halves2half2(a, __hip_hadd(a, __hip_float2half(1.0f)));
-+#else
-+  float f = __half2float(a) + 1.0f;
-+  return __hip_halves2half2(a, __hip_float2half(f));
-+#endif
++  return __halves2half2(a.x, __hadd(a.x, __float2half(1.0f)));
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 padd<half2>(const half2& a, const half2& b) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  return __hip_hadd2(a, b);
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float b1 = __hip_low2float(b);
-+  float b2 = __hip_high2float(b);
-+  float r1 = a1 + b1;
-+  float r2 = a2 + b2;
-+  return __hip_floats2half2_rn(r1, r2);
-+#endif
++  return __hadd2(a, b);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 psub<half2>(const half2& a, const half2& b) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  return __hip_hsub2(a, b);
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float b1 = __hip_low2float(b);
-+  float b2 = __hip_high2float(b);
-+  float r1 = a1 - b1;
-+  float r2 = a2 - b2;
-+  return __hip_floats2half2_rn(r1, r2);
-+#endif
++  return __hsub2(a, b);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pnegate(const half2& a) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  return __hip_hneg2(a);
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  return __hip_floats2half2_rn(-a1, -a2);
-+#endif
++  return __hneg2(a);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pconj(const half2& a) { return a; }
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pmul<half2>(const half2& a, const half2& b) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  return __hip_hmul2(a, b);
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float b1 = __hip_low2float(b);
-+  float b2 = __hip_high2float(b);
-+  float r1 = a1 * b1;
-+  float r2 = a2 * b2;
-+  return __hip_floats2half2_rn(r1, r2);
-+#endif
++  return __hmul2(a, b);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pmadd<half2>(const half2& a, const half2& b, const half2& c) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+   return __hip_hfma2(a, b, c);
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float b1 = __hip_low2float(b);
-+  float b2 = __hip_high2float(b);
-+  float c1 = __hip_low2float(c);
-+  float c2 = __hip_high2float(c);
-+  float r1 = a1 * b1 + c1;
-+  float r2 = a2 * b2 + c2;
-+  return __hip_floats2half2_rn(r1, r2);
-+#endif
++   return __hfma2(a, b, c);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pdiv<half2>(const half2& a, const half2& b) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float b1 = __hip_low2float(b);
-+  float b2 = __hip_high2float(b);
-+  float r1 = a1 / b1;
-+  float r2 = a2 / b2;
-+  return __hip_floats2half2_rn(r1, r2);
++  return h2div(a, b);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pmin<half2>(const half2& a, const half2& b) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float b1 = __hip_low2float(b);
-+  float b2 = __hip_high2float(b);
-+  __hip_half r1 = a1 < b1 ? __hip_low2half(a) : __hip_low2half(b);
-+  __hip_half r2 = a2 < b2 ? __hip_high2half(a) : __hip_high2half(b);
-+  return __hip_halves2half2(r1, r2);
++  float a1 = __low2float(a);
++  float a2 = __high2float(a);
++  float b1 = __low2float(b);
++  float b2 = __high2float(b);
++  __half r1 = a1 < b1 ? __low2half(a) : __low2half(b);
++  __half r2 = a2 < b2 ? __high2half(a) : __high2half(b);
++  return __halves2half2(r1, r2);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pmax<half2>(const half2& a, const half2& b) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float b1 = __hip_low2float(b);
-+  float b2 = __hip_high2float(b);
-+  __hip_half r1 = a1 > b1 ? __hip_low2half(a) : __hip_low2half(b);
-+  __hip_half r2 = a2 > b2 ? __hip_high2half(a) : __hip_high2half(b);
-+  return __hip_halves2half2(r1, r2);
++  float a1 = __low2float(a);
++  float a2 = __high2float(a);
++  float b1 = __low2float(b);
++  float b2 = __high2float(b);
++  __half r1 = a1 > b1 ? __low2half(a) : __low2half(b);
++  __half r2 = a2 > b2 ? __high2half(a) : __high2half(b);
++  return __halves2half2(r1, r2);
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::half predux<half2>(const half2& a) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  return __hip_hadd(__hip_low2half(a), __hip_high2half(a));
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  return Eigen::half(half_impl::raw_uint16_to_half(__hip_float2half_rn(a1 + a2)));
-+#endif
++  return __hadd(__low2half(a), __high2half(a));
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::half predux_max<half2>(const half2& a) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  __hip_half first = __hip_low2half(a);
-+  __hip_half second = __hip_high2half(a);
-+  return __hip_hgt(first, second) ? first : second;
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  return a1 > a2 ? __hip_low2half(a) : __hip_high2half(a);
-+#endif
++  __half first = __low2half(a);
++  __half second = __high2half(a);
++  return __hgt(first, second) ? first : second;
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::half predux_min<half2>(const half2& a) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  __hip_half first = __hip_low2half(a);
-+  __hip_half second = __hip_high2half(a);
-+  return __hip_hlt(first, second) ? first : second;
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  return a1 < a2 ? __hip_low2half(a) : __hip_high2half(a);
-+#endif
++  __half first = __low2half(a);
++  __half second = __high2half(a);
++  return __hlt(first, second) ? first : second;
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::half predux_mul<half2>(const half2& a) {
-+#ifdef __HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__
-+  return __hip_hmul(__hip_low2half(a), __hip_high2half(a));
-+#else
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  return Eigen::half(half_impl::raw_uint16_to_half(__hip_float2half_rn(a1 * a2)));
-+#endif
++  return __hmul(__low2half(a), __high2half(a));
 +}
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 plog1p<half2>(const half2& a) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
++  float a1 = __low2float(a);
++  float a2 = __high2float(a);
 +  float r1 = log1pf(a1);
 +  float r2 = log1pf(a2);
-+  return __hip_floats2half2_rn(r1, r2);
++  return __floats2half2_rn(r1, r2);
 +}
-+
-+#if defined(__HIP_ARCH_HAS_HALF_PRECISION_SUPPORT__) && (defined(__HCC__) || \
-+    (defined(__NVCC__) && defined __CUDACC_VER__ && __CUDACC_VER__ >= 80000))
 +
 +template<>  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
 +half2 plog<half2>(const half2& a) {
@@ -1637,42 +1670,6 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +half2 prsqrt<half2>(const half2& a) {
 +  return h2rsqrt(a);
 +}
-+
-+#else
-+
-+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 plog<half2>(const half2& a) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float r1 = logf(a1);
-+  float r2 = logf(a2);
-+  return __hip_floats2half2_rn(r1, r2);
-+}
-+
-+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pexp<half2>(const half2& a) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float r1 = expf(a1);
-+  float r2 = expf(a2);
-+  return __hip_floats2half2_rn(r1, r2);
-+}
-+
-+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 psqrt<half2>(const half2& a) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float r1 = sqrtf(a1);
-+  float r2 = sqrtf(a2);
-+  return __hip_floats2half2_rn(r1, r2);
-+}
-+
-+template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 prsqrt<half2>(const half2& a) {
-+  float a1 = __hip_low2float(a);
-+  float a2 = __hip_high2float(a);
-+  float r1 = rsqrtf(a1);
-+  float r2 = rsqrtf(a2);
-+  return __hip_floats2half2_rn(r1, r2);
-+}
-+
-+#endif
 +
 +#elif defined EIGEN_VECTORIZE_AVX
 +
@@ -1831,6 +1828,30 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +  to[stride*5].x = aux[5].x;
 +  to[stride*6].x = aux[6].x;
 +  to[stride*7].x = aux[7].x;
++}
++
++template<> EIGEN_STRONG_INLINE Eigen::half predux<Packet8h>(const Packet8h& a) {
++  Packet8f af = half2float(a);
++  float reduced = predux<Packet8f>(af);
++  return Eigen::half(reduced);
++}
++
++template<> EIGEN_STRONG_INLINE Eigen::half predux_max<Packet8h>(const Packet8h& a) {
++  Packet8f af = half2float(a);
++  float reduced = predux_max<Packet8f>(af);
++  return Eigen::half(reduced);
++}
++
++template<> EIGEN_STRONG_INLINE Eigen::half predux_min<Packet8h>(const Packet8h& a) {
++  Packet8f af = half2float(a);
++  float reduced = predux_min<Packet8f>(af);
++  return Eigen::half(reduced);
++}
++
++template<> EIGEN_STRONG_INLINE Eigen::half predux_mul<Packet8h>(const Packet8h& a) {
++  Packet8f af = half2float(a);
++  float reduced = predux_mul<Packet8f>(af);
++  return Eigen::half(reduced);
 +}
 +
 +EIGEN_STRONG_INLINE void
@@ -2070,10 +2091,10 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +}
 +
 +#endif // EIGEN_PACKET_MATH_HALF_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	2018-04-25 19:56:25.000000000 +0000
-@@ -0,0 +1,193 @@
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	2018-05-15 09:28:41.073177186 -0400
+@@ -0,0 +1,185 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
 +//
@@ -2095,10 +2116,8 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +  EIGEN_EMPTY_STRUCT_CTOR(scalar_cast_op)
 +  typedef Eigen::half result_type;
 +  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::half operator() (const float& a) const {
-+    #if defined(EIGEN_HAS_HIP_FP16) && \
-+        (defined(__HIP_DEVICE_COMPILE__) && \
-+        defined(__HIP_ARCH_HAS_WARP_SHUFFLE__))
-+      return __hip_float2half(a);
++    #if defined(EIGEN_HAS_HIP_FP16)
++    return __float2half(a);
 +    #else
 +      return Eigen::half(a);
 +    #endif
@@ -2115,10 +2134,8 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +  EIGEN_EMPTY_STRUCT_CTOR(scalar_cast_op)
 +  typedef Eigen::half result_type;
 +  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::half operator() (const int& a) const {
-+    #if defined(EIGEN_HAS_HIP_FP16) && \
-+        (defined(__HIP_DEVICE_COMPILE__) && \
-+        defined(__HIP_ARCH_HAS_WARP_SHUFFLE__))
-+      return __hip_float2half(static_cast<float>(a));
++    #if defined(EIGEN_HAS_HIP_FP16)
++    return __float2half(static_cast<float>(a));
 +    #else
 +      return Eigen::half(static_cast<float>(a));
 +    #endif
@@ -2135,10 +2152,8 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +  EIGEN_EMPTY_STRUCT_CTOR(scalar_cast_op)
 +  typedef float result_type;
 +  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator() (const Eigen::half& a) const {
-+    #if defined(EIGEN_HAS_HIP_FP16) && \
-+        (defined(__HIP_DEVICE_COMPILE__) && \
-+        defined(__HIP_ARCH_HAS_WARP_SHUFFLE__))
-+      return __hip_half2float(a);
++    #if defined(EIGEN_HAS_HIP_FP16)
++      return __half2float(a.x);
 +    #else
 +      return static_cast<float>(a);
 +    #endif
@@ -2151,11 +2166,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +
 +
 +
-+#if defined(EIGEN_HAS_HIP_FP16) && \
-+    (defined(__HIP_DEVICE_COMPILE__) && \
-+    defined(__HIP_ARCH_HAS_WARP_SHUFFLE__))
++#if defined(EIGEN_HAS_HIP_FP16)
 +
-+template <>
++ template <>
 +struct type_casting_traits<Eigen::half, float> {
 +  enum {
 +    VectorizedCast = 1,
@@ -2165,8 +2178,8 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +};
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float4 pcast<half2, float4>(const half2& a, const half2& b) {
-+  float2 r1 = __hip_half22float2(a);
-+  float2 r2 = __hip_half22float2(b);
++  float2 r1 = __half22float2(a);
++  float2 r2 = __half22float2(b);
 +  return make_float4(r1.x, r1.y, r2.x, r2.y);
 +}
 +
@@ -2181,7 +2194,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +
 +template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pcast<float4, half2>(const float4& a) {
 +  // Simply discard the second half of the input
-+  return __hip_floats2half2_rn(a.x, a.y);
++  return __floats2half2_rn(a.x, a.y);
 +}
 +
 +#elif defined EIGEN_VECTORIZE_AVX
@@ -2267,9 +2280,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +} // end namespace Eigen
 +
 +#endif // EIGEN_TYPE_CASTING_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/intrinsics.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/intrinsics.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	2018-05-14 21:02:25.608205811 -0400
 @@ -0,0 +1,585 @@
 +/* 
 +** Alternates for CUDA intrinsics
@@ -2856,9 +2869,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h eig
 +
 +#endif
 +
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h eigen-work-upstream/Eigen/src/Core/functors/BinaryFunctors.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/functors/BinaryFunctors.h	2018-05-14 17:54:36.117562568 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h eigen_archive/Eigen/src/Core/functors/BinaryFunctors.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/Eigen/src/Core/functors/BinaryFunctors.h	2018-05-14 21:02:25.608205811 -0400
 @@ -443,6 +443,10 @@
    typedef typename BinaryOp::second_argument_type second_argument_type;
    typedef typename BinaryOp::result_type          result_type;
@@ -2881,9 +2894,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h eig
    bind2nd_op(const second_argument_type &val) : m_value(val) {}
  
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const result_type operator() (const first_argument_type& a) const { return BinaryOp::operator()(a,m_value); }
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h eigen-work-upstream/Eigen/src/Core/util/Macros.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/util/Macros.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h eigen_archive/Eigen/src/Core/util/Macros.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/Eigen/src/Core/util/Macros.h	2018-05-14 21:02:25.612205811 -0400
 @@ -1003,9 +1003,12 @@
  #  define EIGEN_TRY try
  #  define EIGEN_CATCH(X) catch (X)
@@ -2898,9 +2911,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h eigen-work-upst
  #  else
  #    define EIGEN_THROW_X(X) std::abort()
  #    define EIGEN_THROW std::abort()
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h eigen-work-upstream/Eigen/src/Core/util/Memory.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/util/Memory.h	2018-05-14 16:24:44.005349882 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h eigen_archive/Eigen/src/Core/util/Memory.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/Eigen/src/Core/util/Memory.h	2018-05-14 21:02:25.612205811 -0400
 @@ -156,7 +156,11 @@
  
    void *result;
@@ -2959,9 +2972,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h eigen-work-upst
    }
  };
  
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h eigen-work-upstream/Eigen/src/Core/util/Meta.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/Eigen/src/Core/util/Meta.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h eigen_archive/Eigen/src/Core/util/Meta.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/Eigen/src/Core/util/Meta.h	2018-05-14 21:02:25.612205811 -0400
 @@ -16,6 +16,11 @@
  #include <math_constants.h>
  #endif
@@ -3058,9 +3071,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h eigen-work-upstre
  using internal::device::numeric_limits;
  #else
  using std::numeric_limits;
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor eigen-work-upstream/unsupported/Eigen/CXX11/Tensor
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/Tensor	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor eigen_archive/unsupported/Eigen/CXX11/Tensor
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/Tensor	2018-05-14 21:02:25.484205808 -0400
 @@ -81,7 +81,13 @@
  
  #ifdef EIGEN_USE_GPU
@@ -3116,9 +3129,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor eigen-work-up
  #include "src/Tensor/TensorConversion.h"
  #include "src/Tensor/TensorConvolution.h"
  #include "src/Tensor/TensorFFT.h"
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	2018-05-14 21:02:25.488205808 -0400
 @@ -0,0 +1,1528 @@
 +//#include "hip/hip_runtime.h"
 +// This file is part of Eigen, a lightweight C++ template library
@@ -4648,9 +4661,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorCon
 +
 +#endif // EIGEN_USE_GPU and __HIPCC__
 +#endif // EIGEN_CXX11_TENSOR_TENSOR_CONTRACTION_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2018-05-14 21:02:25.488205808 -0400
 @@ -35,17 +35,22 @@
    }
  
@@ -4709,9 +4722,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDev
  #endif
    }
  };
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	2018-05-14 21:02:25.488205808 -0400
 @@ -0,0 +1,352 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -5065,9 +5078,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDev
 +}  // end namespace Eigen
 +
 +#endif  // EIGEN_CXX11_TENSOR_TENSOR_DEVICE_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2018-05-14 21:02:25.488205808 -0400
 @@ -201,7 +201,7 @@
  };
  
@@ -5112,9 +5125,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExe
  #endif  // EIGEN_USE_GPU
  
  // SYCL Executor policy
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2018-05-14 21:02:25.488205808 -0400
 @@ -109,7 +109,10 @@
  
    EIGEN_DEVICE_FUNC const Dimensions& dimensions() const { return m_impl.dimensions(); }
@@ -5127,9 +5140,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorFor
      const Index numValues =  internal::array_prod(m_impl.dimensions());
      m_buffer = (CoeffReturnType*)m_device.allocate(numValues * sizeof(CoeffReturnType));
      // Should initialize the memory in case we're dealing with non POD types.
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2018-05-14 16:25:26.728505358 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2018-05-14 21:02:25.488205808 -0400
 @@ -350,7 +350,8 @@
  
  namespace internal {
@@ -5140,9 +5153,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorInd
    size_t result = 1;
    for (int i = 0; i < array_size<IndexList<FirstType, OtherTypes...> >::value; ++i) {
      result *= sizes[i];
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2018-05-14 21:02:25.488205808 -0400
 @@ -27,7 +27,7 @@
   */
  
@@ -5152,9 +5165,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMac
  #if EIGEN_HAS_VARIADIC_TEMPLATES
    // SFINAE doesn't work for gcc <= 4.7
    #ifdef EIGEN_COMP_GNUC
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2018-05-14 21:02:25.488205808 -0400
 @@ -859,7 +859,12 @@
      return inputIndex;
    }
@@ -5169,10 +5182,10 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMor
  #ifndef __SYCL_DEVICE_ONLY__
      return numext::maxi(min, numext::mini(max,value));
  #else
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2018-04-25 19:56:25.000000000 +0000
-@@ -334,7 +334,7 @@
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2018-05-15 09:38:14.637189629 -0400
+@@ -334,12 +334,12 @@
  };
  
  
@@ -5181,6 +5194,12 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
  template <int B, int N, typename S, typename R, typename I>
  __global__ void FullReductionKernel(R, const S, I, typename S::CoeffReturnType*, unsigned int*);
  
+ 
+-#ifdef EIGEN_HAS_CUDA_FP16
++#if defined(EIGEN_HAS_CUDA_FP16) || defined(EIGEN_HAS_HIP_FP16)
+ template <typename S, typename R, typename I>
+ __global__ void ReductionInitFullReduxKernelHalfFloat(R, const S, I, half2*);
+ template <int B, int N, typename S, typename R, typename I>
 @@ -495,7 +495,11 @@
  
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Dimensions& dimensions() const { return m_dimensions; }
@@ -5203,15 +5222,18 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
        bool reducing_inner_dims = true;
        for (int i = 0; i < NumReducedDims; ++i) {
          if (static_cast<int>(Layout) == static_cast<int>(ColMajor)) {
-@@ -694,7 +698,7 @@
+@@ -694,9 +698,9 @@
  #ifdef EIGEN_USE_THREADS
    template <typename S, typename O, bool V> friend struct internal::FullReducerShard;
  #endif
 -#if defined(EIGEN_USE_GPU) && defined(EIGEN_CUDACC)
 +#if defined(EIGEN_USE_GPU) && (defined(EIGEN_CUDACC) || defined(__HIPCC__))
    template <int B, int N, typename S, typename R, typename I> KERNEL_FRIEND void internal::FullReductionKernel(R, const S, I, typename S::CoeffReturnType*, unsigned int*);
- #ifdef EIGEN_HAS_CUDA_FP16
+-#ifdef EIGEN_HAS_CUDA_FP16
++#if defined(EIGEN_HAS_CUDA_FP16) || defined(EIGEN_HAS_HIP_FP16)
    template <typename S, typename R, typename I> KERNEL_FRIEND void internal::ReductionInitFullReduxKernelHalfFloat(R, const S, I, half2*);
+   template <int B, int N, typename S, typename R, typename I> KERNEL_FRIEND void internal::FullReductionKernelHalfFloat(R, const S, I, half*, half2*);
+   template <int NPT, typename S, typename R, typename I> KERNEL_FRIEND void internal::InnerReductionKernelHalfFloat(R, const S, I, I, half*);
 @@ -774,14 +778,21 @@
    // Indexed by reduced dimensions.
    array<Index, NumReducedDims> m_reducedDims;
@@ -5235,10 +5257,10 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
    static const bool RunningOnGPU = internal::is_same<Device, Eigen::GpuDevice>::value;
    static const bool RunningOnSycl = false;
  #elif defined(EIGEN_USE_SYCL)
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	1970-01-01 00:00:00.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	2018-04-30 21:22:37.000000000 +0000
-@@ -0,0 +1,807 @@
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	1969-12-31 19:00:00.000000000 -0500
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	2018-05-15 09:49:49.309204699 -0400
+@@ -0,0 +1,819 @@
 +//#include "hip/hip_runtime.h"
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -5455,7 +5477,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +  eigen_assert(hipGridDim_x == 1);
 +  if (num_coeffs % 2 != 0) {
 +    half last = input.m_impl.coeff(num_coeffs-1);
-+    *scratch = __halves2half2(last, reducer.initialize());
++    *scratch = __halves2half2(last.x, reducer.initialize().x);
 +  } else {
 +    *scratch = reducer.template initializePacket<half2>();
 +  }
@@ -5488,7 +5510,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +  if (hipGridDim_x == 1 && first_index == 0) {
 +    if (num_coeffs % 2 != 0) {
 +      half last = input.m_impl.coeff(num_coeffs-1);
-+      *scratch = __halves2half2(last, reducer.initialize());
++      *scratch = __halves2half2(last.x, reducer.initialize().x);
 +    } else {
 +      *scratch = reducer.template initializePacket<half2>();
 +    }
@@ -5506,7 +5528,11 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +
 +#pragma unroll
 +  for (int offset = HIP_WARP_SIZE/2; offset > 0; offset /= 2) {
-+    reducer.reducePacket(__shfl_down(accum, offset, HIP_WARP_SIZE), &accum);
++    // FIXME : remove this workaround once we have native half/half2 support for __shfl_down
++    union { int i; half2 h; } wka_in, wka_out;
++    wka_in.h = accum;
++    wka_out.i = __shfl_down(wka_in.i, offset, HIP_WARP_SIZE);
++    reducer.reducePacket(wka_out.h, &accum);
 +  }
 +
 +  if ((hipThreadIdx_x & (HIP_WARP_SIZE - 1)) == 0) {
@@ -5793,10 +5819,10 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +          if (col < num_coeffs_to_reduce) {
 +            // Peel;
 +            const half last1 = input.m_impl.coeff(row * num_coeffs_to_reduce + col);
-+            const half2 val1 = __halves2half2(last1, reducer.initialize());
++            const half2 val1 = __halves2half2(last1.x, reducer.initialize().x);
 +            reducer.reducePacket(val1, &reduced_val1);
 +            const half last2 = input.m_impl.coeff((row+1) * num_coeffs_to_reduce + col);
-+            const half2 val2 = __halves2half2(last2, reducer.initialize());
++            const half2 val2 = __halves2half2(last2.x, reducer.initialize().x);
 +            reducer.reducePacket(val2, &reduced_val2);
 +          }
 +          break;
@@ -5813,15 +5839,23 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +
 +#pragma unroll
 +      for (int offset = HIP_WARP_SIZE/2; offset > 0; offset /= 2) {
-+        reducer.reducePacket(__shfl_down(reduced_val1, offset, HIP_WARP_SIZE), &reduced_val1);
-+        reducer.reducePacket(__shfl_down(reduced_val2, offset, HIP_WARP_SIZE), &reduced_val2);
++	// FIXME : remove this workaround once we have native half/half2 support for __shfl_down
++	union { int i; half2 h; } wka_in, wka_out;
++
++	wka_in.h = reduced_val1;
++	wka_out.i = __shfl_down(wka_in.i, offset, HIP_WARP_SIZE);
++        reducer.reducePacket(wka_out.h, &reduced_val1);
++	
++	wka_in.h = reduced_val2;
++	wka_out.i = __shfl_down(wka_in.i, offset, HIP_WARP_SIZE);
++        reducer.reducePacket(wka_out.h, &reduced_val2);
 +      }
 +
 +      half val1 =  __low2half(reduced_val1);
 +      reducer.reduce(__high2half(reduced_val1), &val1);
 +      half val2 =  __low2half(reduced_val2);
 +      reducer.reduce(__high2half(reduced_val2), &val2);
-+      half2 val = __halves2half2(val1, val2);
++      half2 val = __halves2half2(val1.x, val2.x);
 +
 +      if ((hipThreadIdx_x & (HIP_WARP_SIZE - 1)) == 0) {
 +        half* loc = output + row;
@@ -6046,9 +6080,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +} // end namespace Eigen
 +
 +#endif // EIGEN_CXX11_TENSOR_TENSOR_REDUCTION_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h eigen-work-upstream/unsupported/Eigen/CXX11/src/util/CXX11Meta.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h eigen_archive/unsupported/Eigen/CXX11/src/util/CXX11Meta.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2018-05-14 21:02:25.488205808 -0400
 @@ -268,6 +268,7 @@
    typename Reducer
  > struct reduce<Reducer>
@@ -6081,9 +6115,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h
  constexpr inline decltype(reduce<product_op, Ts...>::run((*((Ts*)0))...)) arg_prod(Ts... ts)
  {
    return reduce<product_op, Ts...>::run(ts...);
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h eigen-work-upstream/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2017-10-26 20:44:28.000000000 +0000
-+++ eigen-work-upstream/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2018-04-25 19:56:25.000000000 +0000
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h eigen_archive/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2018-05-14 21:02:25.500205808 -0400
 @@ -121,7 +121,7 @@
  struct lgamma_impl<float> {
    EIGEN_DEVICE_FUNC
@@ -6102,3 +6136,38 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/Speci
      int dummy;
      return ::lgamma_r(x, &dummy);
  #else
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h	2018-05-15 09:53:16.985209205 -0400
+@@ -52,7 +52,7 @@
+ };
+ 
+ // For CUDA packet types when using a GpuDevice
+-#if defined(EIGEN_USE_GPU) && defined(EIGEN_CUDACC) && defined(EIGEN_HAS_CUDA_FP16)
++#if defined(EIGEN_USE_GPU) && ((defined(EIGEN_CUDACC) && defined(EIGEN_HAS_CUDA_FP16)) || defined(EIGEN_HAS_HIP_FP16))
+ template <>
+ struct PacketType<half, GpuDevice> {
+   typedef half2 type;
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRandom.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorRandom.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRandom.h	2017-10-26 16:44:28.000000000 -0400
++++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorRandom.h	2018-05-15 09:52:01.021207557 -0400
+@@ -84,9 +84,17 @@
+   Eigen::half result;
+   // Generate 10 random bits for the mantissa
+   unsigned rnd = PCG_XSH_RS_generator(state, stream);
+-  result.x = static_cast<uint16_t>(rnd & 0x3ffu);
++
++  unsigned short int raw_ushort = static_cast<uint16_t>(rnd & 0x3ffu);
+   // Set the exponent
+-  result.x |= (static_cast<uint16_t>(15) << 10);
++  raw_ushort |= (static_cast<uint16_t>(15) << 10);
++
++#if defined(EIGEN_HAS_HIP_FP16) 
++  result.x = __ushort_as_half(raw_ushort);
++#else
++  result.x = raw_ushort;
++#endif
++
+   // Return the final result
+   return result - Eigen::half(1.0f);
+ }
