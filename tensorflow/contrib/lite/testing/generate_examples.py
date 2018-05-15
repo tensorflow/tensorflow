@@ -20,6 +20,9 @@ Usage:
 generate_examples <output directory>
 
 bazel run //tensorflow/contrib/lite/testing:generate_examples
+
+To more easily debug failures use (or override) the --save_graphdefs flag to
+place text proto graphdefs into the generated zip files.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -90,15 +93,12 @@ KNOWN_BUGS = {
     r"fully_connected.*transpose_.=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
-    r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
-    # TOCO require matching dimensions in strided_slice.
-    r"strided_slice.*begin=\[0\].*end=\[1\].*": "73170889",
     # No support for SplitV
     r"split.*num_or_size_splits=\[2,2\]": "73377559",
     # Needs support for dimensions other than the last one in argmax.
@@ -430,7 +430,7 @@ def make_zip_of_tests(zip_path,
         report["toco_log"] = toco_log
 
         if FLAGS.save_graphdefs:
-          archive.writestr(label + ".pb",
+          archive.writestr(label + ".pbtxt",
                            text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
 
@@ -1812,7 +1812,19 @@ def make_strided_slice_tests(zip_path):
           "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
           "constant_indices": [False, True],
       },
-      # TODO(b/73170889) Restore test parameters removed in cl/191608113.
+      # Begin, end, strides dim are different from input shape
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0]],
+          "end": [[1]],
+          "strides": [None, [1]],
+          "begin_mask": [0],
+          "end_mask": [0],
+          "shrink_axis_mask": [1],
+          "constant_indices": [True],
+      },
       # 2-D
       {
           "dtype": [tf.float32, tf.int32, tf.int64],
@@ -2242,6 +2254,32 @@ def make_neg_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_sin_tests(zip_path):
+  """Make a set of tests to do sin."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the sin op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.sin(input_value)
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_where_tests(zip_path):
   """Make a set of tests to do where."""
 
@@ -2271,6 +2309,62 @@ def make_where_tests(zip_path):
                                       parameters["input_shape_set"][1])
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_slice_tests(zip_path):
+  """Make a set of tests to do slice."""
+
+  # TODO(renjieliu): add test/support for uint8.
+  test_parameters = [
+      # 4-D
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32, tf.int64],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
+          "size": [[8, 2, 2, 3], [11, 2, 1, 5]],
+      },
+      # 2-D
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32, tf.int64],
+          "input_shape": [[2, 3]],
+          "begin": [[0, 0], [1, 0]],
+          "size": [[2, 3], [2, 2]],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build graph for slice test."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    begin = tf.placeholder(
+        dtype=parameters["index_type"],
+        name="begin",
+        shape=[len(parameters["input_shape"])])
+    size = tf.placeholder(
+        dtype=parameters["index_type"],
+        name="size",
+        shape=[len(parameters["input_shape"])])
+    tensors = [input_tensor, begin, size]
+    out = tf.slice(input_tensor, begin, size)
+    return tensors, [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build inputs for slice test."""
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
+
+    begin_values = np.array(parameters["begin"]).astype(index_type)
+    size_values = np.array(parameters["size"]).astype(index_type)
+    values = [input_values, begin_values, size_values]
+
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 

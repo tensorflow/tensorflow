@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.kernels.bcast_ops."""
+"""Tests for tensorflow.kernels.functional_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -670,13 +670,12 @@ class FunctionalOpsTest(test.TestCase):
 
     with self.test_session(use_gpu=False) as sess:
 
-      def Run(x):
-        return sess.run(
-            functional_ops.If(math_ops.greater(x, 0), [x], Twice, Thrice))[0]
+      x = array_ops.placeholder(dtypes.float32)
+      ret = functional_ops.If(math_ops.greater(x, 0), [x], Twice, Thrice)[0]
 
-      self.assertAllEqual(Run(9.), 18.)
-      self.assertAllEqual(Run(-8.), -23.)
-      self.assertAllEqual(Run(0.), 1.)
+      self.assertAllEqual(sess.run(ret, feed_dict={x: 9.}), 18.)
+      self.assertAllEqual(sess.run(ret, feed_dict={x: -8.}), -23.)
+      self.assertAllEqual(sess.run(ret, feed_dict={x: 0.}), 1.)
 
   def testWhile(self):
 

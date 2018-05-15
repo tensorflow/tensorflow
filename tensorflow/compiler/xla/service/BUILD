@@ -2316,8 +2316,14 @@ tf_cc_test(
 
 cc_library(
     name = "device_memory_allocator",
-    srcs = ["device_memory_allocator.cc"],
-    hdrs = ["device_memory_allocator.h"],
+    srcs = [
+        "device_memory_allocator.cc",
+        "owning_device_memory.cc",
+    ],
+    hdrs = [
+        "device_memory_allocator.h",
+        "owning_device_memory.h",
+    ],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

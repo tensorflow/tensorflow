@@ -244,13 +244,11 @@ add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
 # tf_python_op_gen_main library
 ########################################################
 set(tf_python_op_gen_main_srcs
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
-    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
-    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
 )
 
 add_library(tf_python_op_gen_main OBJECT ${tf_python_op_gen_main_srcs})
@@ -464,12 +462,12 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"

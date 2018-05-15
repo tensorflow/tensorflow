@@ -220,8 +220,10 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   if (it == allocation_map.end()) {
-    allocation_map[device_memory.opaque()] = {device_memory, device_ordinal,
-                                              /*ref_count=*/1};
+    allocation_map[device_memory.opaque()] = {
+        OwningDeviceMemory(device_memory, device_ordinal,
+                           backend_->memory_allocator()),
+        /*ref_count=*/1};
   } else {
     it->second.ref_count++;
   }
@@ -235,8 +237,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   Allocation& allocation = it->second;
   TF_RET_CHECK(allocation.ref_count >= 1);
   if (allocation.ref_count == 1) {
-    TF_RETURN_IF_ERROR(backend_->memory_allocator()->Deallocate(
-        device_ordinal, &device_memory));
+    allocation.device_memory.Free();
     allocation_map.erase(it);
   } else {
     allocation.ref_count--;

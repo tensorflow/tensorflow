@@ -58,6 +58,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_COS;
     case HloOpcode::kExp:
       return UNOP_EXP;
+    case HloOpcode::kExpm1:
+      return UNOP_EXPM1;
     case HloOpcode::kFloor:
       return UNOP_FLOOR;
     case HloOpcode::kImag:
@@ -66,6 +68,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_IS_FINITE;
     case HloOpcode::kLog:
       return UNOP_LOG;
+    case HloOpcode::kLog1p:
+      return UNOP_LOG1P;
     case HloOpcode::kNot:
       return UNOP_NOT;
     case HloOpcode::kNegate:
@@ -337,7 +341,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_COS:
     case UNOP_SIN:
     case UNOP_EXP:
+    case UNOP_EXPM1:
     case UNOP_LOG:
+    case UNOP_LOG1P:
     case UNOP_TANH:
       if (!ShapeUtil::ElementIsFloating(arg) &&
           !ShapeUtil::ElementIsComplex(arg)) {

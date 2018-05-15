@@ -609,16 +609,25 @@ class ConvLSTM2DCell(Layer):
         name='recurrent_kernel',
         regularizer=self.recurrent_regularizer,
         constraint=self.recurrent_constraint)
+
     if self.use_bias:
-      self.bias = self.add_weight(shape=(self.filters * 4,),
-                                  initializer=self.bias_initializer,
-                                  name='bias',
-                                  regularizer=self.bias_regularizer,
-                                  constraint=self.bias_constraint)
       if self.unit_forget_bias:
-        bias_value = np.zeros((self.filters * 4,))
-        bias_value[self.filters: self.filters * 2] = 1.
-        K.set_value(self.bias, bias_value)
+
+        def bias_initializer(_, *args, **kwargs):
+          return K.concatenate([
+              self.bias_initializer((self.filters,), *args, **kwargs),
+              initializers.Ones()((self.filters,), *args, **kwargs),
+              self.bias_initializer((self.filters * 2,), *args, **kwargs),
+          ])
+      else:
+        bias_initializer = self.bias_initializer
+      self.bias = self.add_weight(
+          shape=(self.filters * 4,),
+          name='bias',
+          initializer=bias_initializer,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint)
+
     else:
       self.bias = None
 

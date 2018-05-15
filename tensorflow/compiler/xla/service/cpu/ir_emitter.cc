@@ -83,7 +83,7 @@ IrEmitter::IrEmitter(
     llvm::Module* llvm_module,
     std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx,
     std::unordered_map<const HloComputation*, int64> computation_to_profile_idx,
-    llvm::TargetMachine* target_machine,
+    const TargetMachineFeatures* target_machine_features,
     ExternalConstantPool* external_constant_pool)
     : assignment_(assignment),
       module_(llvm_module),
@@ -94,7 +94,7 @@ IrEmitter::IrEmitter(
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
-      target_machine_features_(target_machine),
+      target_machine_features_(*target_machine_features),
       external_constant_pool_(external_constant_pool) {
   ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
@@ -227,32 +227,6 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
   }
 }
 
-// Calculate the alignment of a buffer with a particular size.
-int IrEmitter::MinimumAlignmentForBufferSize(int64 buffer_size) {
-  // GLibc returns a pointer with alignment 8 on 32-bit platforms and 16 on
-  // 64-bit platforms.  TCMalloc returns a pointer with alignment 8 for
-  // allocations smaller than kMallocAlignmentThreshold bytes and at least
-  // alignment 16 for allocations greater than or equal to
-  // kMallocAlignmentThreshold bytes.  N.B. We could improve on this lower bound
-  // by explicitly allocating the memory with posix_memalign.  This is
-  // complicated by our desire to allow parameter buffers created by clients to
-  // be consumed directly by the JIT.
-  if (buffer_size == 0) {
-    // No need to align empty buffers.
-    return 1;
-  }
-
-  const int64 kMallocAlignmentThreshold = 512;
-
-  int pointer_size = module_->getDataLayout().getPointerSize();
-  int buffer_alignment = buffer_size >= kMallocAlignmentThreshold
-                             ? 2 * pointer_size
-                             : pointer_size;
-  DCHECK_GT(buffer_alignment, 0);
-
-  return buffer_alignment;
-}
-
 // Calculate the alignment of a buffer allocated for a given primitive type.
 int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   int64 byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
@@ -277,7 +251,7 @@ int IrEmitter::MinimumAlignmentForShape(const Shape& shape) {
   DCHECK_GE(buffer_size, 0);
   DCHECK_LE(buffer_size, SIZE_MAX);
 
-  return MinimumAlignmentForBufferSize(buffer_size);
+  return target_machine_features_.minimum_alignment_for_allocation(buffer_size);
 }
 
 void IrEmitter::AttachAlignmentMetadataForLoad(llvm::LoadInst* load,
@@ -290,7 +264,8 @@ void IrEmitter::AttachAlignmentMetadataForLoad(llvm::LoadInst* load,
 
 void IrEmitter::AttachAlignmentMetadataForLoad(llvm::LoadInst* load,
                                                int64 buffer_size) {
-  int alignment = MinimumAlignmentForBufferSize(buffer_size);
+  int alignment =
+      target_machine_features_.minimum_alignment_for_allocation(buffer_size);
   if (alignment > 1) {
     llvm_ir::SetAlignmentMetadataForLoad(load, alignment);
   }
@@ -861,7 +836,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
   // different data layouts.
-  if (PotentiallyImplementedAsEigenConvolution(*convolution)) {
+  if (PotentiallyImplementedAsEigenConvolution(*convolution,
+                                               target_machine_features_)) {
     const Shape& lhs_shape = lhs->shape();
     const Shape& rhs_shape = rhs->shape();
     const Shape& convolution_shape = convolution->shape();
@@ -1027,12 +1003,14 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         // We will accumulate the products into this sum to calculate
         // the output entry at the given index.
         PrimitiveType lhs_element_type = lhs->shape().element_type();
+        llvm::Type* lhs_llvm_type =
+            llvm_ir::PrimitiveTypeToIrType(lhs_element_type, module_);
         llvm::Value* sum_address = llvm_ir::EmitAllocaAtFunctionEntry(
-            llvm_ir::PrimitiveTypeToIrType(lhs_element_type, module_),
-            "convolution_sum_address", &ir_builder_,
+            lhs_llvm_type, "convolution_sum_address", &ir_builder_,
             MinimumAlignmentForPrimitiveType(lhs_element_type));
-        ir_builder_.CreateStore(
-            llvm::ConstantFP::get(ir_builder_.getFloatTy(), 0.0), sum_address);
+        llvm::Value* constant_zero =
+            llvm::Constant::getNullValue(lhs_llvm_type);
+        ir_builder_.CreateStore(constant_zero, sum_address);
 
         llvm_ir::ForLoopNest loops(IrName(convolution, "inner"), &ir_builder_);
         std::vector<llvm::Value*> kernel_spatial(num_spatial_dims);

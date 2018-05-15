@@ -63,11 +63,32 @@ def IsLoopExit(op):
   return op.type == "Exit" or op.type == "RefExit"
 
 
+def IsCondSwitch(op):
+  """Return true if `op` is the Switch for a conditional."""
+  if not IsSwitch(op):
+    return False
+  if not op.outputs:
+    return False
+  # Switch nodes are not part of the cond control flow context that they
+  # represent, so consider the consumers of its outputs to determine if it is
+  # cond switch or not. A switch is a cond switch iff all its consumers are in
+  # cond contexts.
+  is_cond_switch = True
+  for o in op.outputs:
+    for c in o.consumers():
+      ctxt = c._get_control_flow_context()  # pylint: disable=protected-access
+      if IsLoopEnter(c):
+        ctxt = ctxt.outer_context
+      is_cond_switch = is_cond_switch and (ctxt is not None and
+                                           ctxt.IsCondContext())
+  return is_cond_switch
+
+
 def IsLoopSwitch(op):
   """Return true if `op` is the Switch for a while loop."""
   if IsSwitch(op):
     ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
-    return ctxt and ctxt.IsWhileContext()
+    return ctxt is not None and ctxt.IsWhileContext() and not IsCondSwitch(op)
   return False
 
 
