@@ -333,6 +333,8 @@ tensorflow/contrib/metrics
 tensorflow/contrib/metrics/python
 tensorflow/contrib/metrics/python/metrics
 tensorflow/contrib/metrics/python/ops
+tensorflow/contrib/mixed_precision
+tensorflow/contrib/mixed_precision/python
 tensorflow/contrib/mpi_collectives/python
 tensorflow/contrib/mpi_collectives/python/ops
 tensorflow/contrib/model_pruning
