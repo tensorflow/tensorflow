@@ -1331,66 +1331,67 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       res_ensemble = boosted_trees_pb2.TreeEnsemble()
       res_ensemble.ParseFromString(serialized)
 
+      expected_result = """
+        trees {
+          nodes {
+            leaf {
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_weights: 1.0
+        tree_metadata{
+          num_layers_grown: 2
+          is_finalized: true
+          post_pruned_nodes_meta {
+            new_node_id: 0
+            logit_change: 0.0
+          }
+          post_pruned_nodes_meta {
+            new_node_id: 0
+            logit_change: -0.01
+          }
+          post_pruned_nodes_meta {
+            new_node_id: 0
+            logit_change: -0.0143
+          }
+          post_pruned_nodes_meta {
+            new_node_id: 0
+            logit_change: -0.033
+          }
+          post_pruned_nodes_meta {
+            new_node_id: 0
+            logit_change: -0.022343
+          }
+          post_pruned_nodes_meta {
+            new_node_id: 0
+            logit_change: -0.3143
+          }
+          post_pruned_nodes_meta {
+            new_node_id: 0
+            logit_change: -24.014299
+          }
+        }
+        tree_metadata {
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 2
+          last_layer_node_start: 0
+          last_layer_node_end: 1
+        }
+      """
+
       # Expect the ensemble to be empty as post-pruning will prune
       # the entire finalized tree.
       self.assertEqual(new_stamp, 2)
-      self.assertProtoEquals(
-          """
-      trees {
-        nodes {
-          leaf {
-          }
-        }
-      }
-      trees {
-        nodes {
-          leaf {
-          }
-        }
-      }
-      tree_weights: 1.0
-      tree_weights: 1.0
-      tree_metadata{
-        num_layers_grown: 2
-        is_finalized: true
-        post_pruned_nodes_meta {
-          new_node_id: 0
-          logit_change: 0.0
-        }
-        post_pruned_nodes_meta {
-          new_node_id: 0
-          logit_change: -0.01
-        }
-        post_pruned_nodes_meta {
-          new_node_id: 0
-          logit_change: -0.0143
-        }
-        post_pruned_nodes_meta {
-          new_node_id: 0
-          logit_change: -0.033
-        }
-        post_pruned_nodes_meta {
-          new_node_id: 0
-          logit_change: -0.022343
-        }
-        post_pruned_nodes_meta {
-          new_node_id: 0
-          logit_change: -0.3143
-        }
-        post_pruned_nodes_meta {
-          new_node_id: 0
-          logit_change: -24.0143
-        }
-      }
-      tree_metadata {
-      }
-      growing_metadata {
-        num_trees_attempted: 1
-        num_layers_attempted: 2
-        last_layer_node_start: 0
-        last_layer_node_end: 1
-      }
-      """, res_ensemble)
+      self.assertProtoEquals(expected_result, res_ensemble)
 
   def testPostPruningChangesNothing(self):
     """Test growing an ensemble with post-pruning with all gains >0."""
