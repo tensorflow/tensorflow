@@ -237,7 +237,7 @@ AllocationFinder::FindConsumers(const TensorSource& src,
   return;
 }
 
-Status AllocationFinder::CreateAllocationMap(HloModule* module) {
+StatusOr<bool> AllocationFinder::Run(HloModule* module) {
   FindAllocatingInstructions finder;
 
   for (const auto& comp : module->computations()) {
@@ -249,7 +249,7 @@ Status AllocationFinder::CreateAllocationMap(HloModule* module) {
     FindConsumers(inst, inst.first, inst.second);
   }
 
-  return Status::OK();
+  return true;
 }
 
 }

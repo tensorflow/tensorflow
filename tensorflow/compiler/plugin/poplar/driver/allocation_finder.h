@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_ALLOCATION_FINDER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_ALLOCATION_FINDER_H_
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+
 #include <vector>
 
 namespace xla {
@@ -47,15 +48,16 @@ using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
  * tensor, and if any of those instructions require a specific tensor allocation
  * method (e.g. convolution), then it notes the downstream instruction
  */
-class AllocationFinder {
+class AllocationFinder : public HloPassInterface {
 public:
-  AllocationFinder() {}
+  AllocationFinder(TensorAllocationMap& map) :
+      tensor_allocation_map(map) {}
 
   ~AllocationFinder() = default;
 
-  Status CreateAllocationMap(HloModule* module);
+  tensorflow::StringPiece name() const override { return "allocation-finder"; }
 
-  TensorAllocationMap tensor_allocation_map;
+  StatusOr<bool> Run(HloModule *module) override;
 
 private:
   void FindConsumers(const TensorSource&, const HloInstruction* tgt, int64);
@@ -66,6 +68,8 @@ private:
 
   std::set<HloInstruction*> visited;
   std::vector<const HloInstruction*> path;
+
+  TensorAllocationMap& tensor_allocation_map;
 };
 
 }

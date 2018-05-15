@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPUTATION_FLATTENER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace poplarplugin {

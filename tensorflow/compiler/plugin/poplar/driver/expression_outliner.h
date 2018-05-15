@@ -34,9 +34,11 @@ public:
 
   tensorflow::StringPiece name() const override { return "expression-outline"; }
 
+  StatusOr<bool> Run(HloModule *module) override;
+
+private:
   ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched&) override;
 
-  StatusOr<bool> Run(HloModule *module) override;
 };
 
 }

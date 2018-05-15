@@ -91,7 +91,7 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
   current_route.pop_back();
 }
 
-Status InplaceFinder::FindInplaceInstructions(HloModule* module) {
+StatusOr<bool> InplaceFinder::Run(HloModule* module) {
   HloComputation* comp = module->entry_computation();
 
   // For each input
@@ -113,7 +113,7 @@ Status InplaceFinder::FindInplaceInstructions(HloModule* module) {
   routes.clear();
   current_route.clear();
 
-  return Status::OK();
+  return true;
 }
 
 }

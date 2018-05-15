@@ -30,6 +30,7 @@ public:
 
   tensorflow::StringPiece name() const override { return "poplar-fuse"; }
 
+private:
   ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override;
 

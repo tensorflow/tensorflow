@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_INPLACE_FINDER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_INPLACE_FINDER_H_
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -34,15 +34,16 @@ using InplaceRoute = std::vector<HloInstruction*>;
  * Care is taken to track tensors through tuples, as they should still be
  * updated in place even when they have been made part of a tuple.
  */
-class InplaceFinder {
+class InplaceFinder : public HloPassInterface {
 public:
-  InplaceFinder() {}
+  InplaceFinder(InplaceInstructions& insts) :
+      inplace_instructions(insts) {}
 
   ~InplaceFinder() = default;
 
-  Status FindInplaceInstructions(HloModule* module);
+  tensorflow::StringPiece name() const override { return "inplace-finder"; }
 
-  InplaceInstructions inplace_instructions;
+  StatusOr<bool> Run(HloModule* module) override;
 
 private:
   void RouteFinder(HloInstruction* inst);
@@ -52,6 +53,9 @@ private:
   std::vector<int64> tuple_stack;
 
   InplaceRoute current_route;
+
+  InplaceInstructions& inplace_instructions;
+
 };
 
 }

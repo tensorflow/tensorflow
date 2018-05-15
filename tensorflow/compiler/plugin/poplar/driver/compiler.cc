@@ -216,40 +216,6 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
         std::unique_ptr<HloModule> module,
         perftools::gputools::StreamExecutor* executor,
         DeviceMemoryAllocator* device_allocator) {
-  VLOG(1) << "Begin HloPasses: " << module->name();
-
-  HloPassPipeline pipeline("IPU");
-  pipeline.AddPass<BatchNormExpander>(true, true, true, false);
-  pipeline.AddPass<GatherExpander>();
-  pipeline.AddPass<DotDecomposer>();
-  pipeline.AddPass<HloCSE>(false);
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
-          [](const Shape&, const Shape&) { return false; }, false, false);
-  pipeline.AddPass<ReshapeMover>();
-  pipeline.AddPass<Inliner>();
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
-          [](const Shape&, const Shape&) { return false; }, false, false);
-  pipeline.AddPass<ZeroSizedHloElimination>();
-  pipeline.AddPass<ComputationFlattener>();
-  pipeline.AddPass<TupleSimplifier>(true);
-  //pipeline.AddPass<WhileLoopSimplifier>();
-  //pass.AddPass<ConditionalSimplifier>();
-  pipeline.AddPass<HloConstantFolding>();
-  pipeline.AddPass<HloCSE>(true);
-  pipeline.AddPass<WideConstFinder>();
-  pipeline.AddPass<FuseOps>();
-  pipeline.AddPass<Outliner>();
-  pipeline.AddPass<ExpressionOutliner>();
-  pipeline.AddPass<HloSubcomputationUnification>();
-  pipeline.AddPass<HloDCE>();
-
-  bool ok;
-  TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));
-
-  if (!ok) {
-    VLOG(1) << "HLO module optimization returned false";
-  }
-
   return std::move(module);
 }
 
@@ -289,22 +255,42 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode());
   resources.num_resource_variables = module->config().resource_update_count();
 
+  {
+    HloPassPipeline pipeline("IPU");
+    pipeline.AddPass<BatchNormExpander>(true, true, true, false);
+    pipeline.AddPass<GatherExpander>();
+    pipeline.AddPass<DotDecomposer>();
+    pipeline.AddPass<HloCSE>(false);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
+        [](const Shape&, const Shape&) { return false; }, false, false);
+    pipeline.AddPass<ReshapeMover>();
+    pipeline.AddPass<Inliner>();
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
+        [](const Shape&, const Shape&) { return false; }, false, false);
+    pipeline.AddPass<ZeroSizedHloElimination>();
+    pipeline.AddPass<ComputationFlattener>();
+    pipeline.AddPass<TupleSimplifier>(true);
+    //pipeline.AddPass<WhileLoopSimplifier>();
+    //pass.AddPass<ConditionalSimplifier>();
+    pipeline.AddPass<HloConstantFolding>();
+    pipeline.AddPass<HloCSE>(true);
+    pipeline.AddPass<WideConstFinder>();
+    pipeline.AddPass<FuseOps>();
+    pipeline.AddPass<Outliner>();
+    pipeline.AddPass<InplaceFinder>(resources.inplace_instructions);
+    pipeline.AddPass<ExpressionOutliner>();
+    pipeline.AddPass<HloSubcomputationUnification>();
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<AllocationFinder>(resources.tensor_allocation_map);
+
+    bool ok;
+    TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));
+  }
+
   HloComputation* entry = module->entry_computation();
 
   if (getenv("TF_POPLAR_DUMP_HLO") != NULL) {
     DumpGraph(entry);
-  }
-
-  {
-    AllocationFinder finder;
-    TF_RETURN_IF_ERROR(finder.CreateAllocationMap(module.get()));
-    resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
-  }
-
-  {
-    InplaceFinder finder;
-    TF_RETURN_IF_ERROR(finder.FindInplaceInstructions(module.get()));
-    resources.inplace_instructions = std::move(finder.inplace_instructions);
   }
 
   // Set layout if there isn't one
