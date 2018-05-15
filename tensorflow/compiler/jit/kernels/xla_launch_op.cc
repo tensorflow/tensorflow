@@ -112,7 +112,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
-  const XlaDevice::Metadata* metadata;
+  const XlaDevice::Metadata* metadata = nullptr;
   Status s = XlaDevice::GetMetadata(ctx, &metadata);
   bool allocate_xla_tensors = s.ok();
 
@@ -153,9 +153,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == se::host::kHostPlatformId);
   options.device_allocator = xla_allocator;
-  // TODO(b/77671268): We don't set variable_representation_shape_fn here. This
-  // is restricted to Variables, but we need something like this to apply to
-  // normal Tensors too.
+  if (metadata) {
+    options.shape_representation_fn = metadata->shape_representation_fn();
+  }
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
@@ -164,9 +164,11 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   for (int i : constants_) {
     constant_args.insert({i, ctx->input(i)});
   }
-  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, constant_args,
-                                     variables, ctx, &kernel, &executable,
-                                     /*compile_options=*/nullptr));
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
+  OP_REQUIRES_OK(
+      ctx, cache->Compile(options, function_, constant_args, variables, ctx,
+                          &kernel, &executable, &compile_options));
 
   VLOG(1) << "Executing XLA Computation...";
 

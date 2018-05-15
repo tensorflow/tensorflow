@@ -195,11 +195,6 @@ void XlaComputationLaunchContext::PopulateOutputs(
 
         OP_REQUIRES_OK(
             ctx, ctx->allocate_output(i, const_tensor.shape(), &output_tensor));
-        if (XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor)) {
-          OP_REQUIRES_OK(ctx, xla_tensor->AllocateShapedBuffer(
-                                  const_tensor.dtype(), const_tensor.shape(),
-                                  client_, stream->parent()->device_ordinal()));
-        }
 
         Device* device = dynamic_cast<Device*>(ctx->device());
         OP_REQUIRES(ctx, device != nullptr,
