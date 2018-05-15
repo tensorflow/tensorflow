@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS_H_
 
+#include <functional>
+
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
 #include "tensorflow/core/platform/types.h"
 
 #if GOOGLE_CUDA
@@ -25,15 +28,14 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-// Logger for GIE info/warning/errors
-class Logger : public nvinfer1::ILogger {
- public:
-  Logger(string name = "DefaultLogger") : name_(name) {}
-  void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
+typedef std::function<PluginTensorRT*(const void*, size_t)>
+    PluginDeserializeFunc;
 
- private:
-  string name_;
-};
+typedef std::function<PluginTensorRT*(void)> PluginConstructFunc;
+
+// TODO(jie): work on error handling here
+string ExtractOpName(const void* serial_data, size_t serial_length,
+                     size_t* incremental);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
@@ -41,4 +43,4 @@ class Logger : public nvinfer1::ILogger {
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_PLUGIN_TRT_PLUGIN_UTILS_H_

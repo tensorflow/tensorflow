@@ -13,32 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
-
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
-namespace tensorrt {
 
-// Logger for GIE info/warning/errors
-class Logger : public nvinfer1::ILogger {
- public:
-  Logger(string name = "DefaultLogger") : name_(name) {}
-  void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
+REGISTER_OP("IncPluginTRT")
+    .Attr("inc: list(float)")
+    .Input("input: float32")
+    .Output("output: float32")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
 
- private:
-  string name_;
-};
-
-}  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
-
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
+#endif  // GOOGLE_TENSORRT
