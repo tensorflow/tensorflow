@@ -590,8 +590,8 @@ class MklConcatOp : public OpKernel {
       const int N = input_tensors.size();
 
       // Get Tensor shapes.
-      std::vector<MklDnnShape> input_shapes(N);
-      GetMklShapeList(context, "values", &input_shapes);
+      std::vector<MklDnnShape> mkl_input_shapes(N);
+      GetMklShapeList(context, "values", &mkl_input_shapes);
 
       const Tensor& concat_dim_tensor = (AxisArgName == NAME_IS_CONCAT_DIM)
                                             ? MklGetInput(context, 0)
@@ -610,14 +610,14 @@ class MklConcatOp : public OpKernel {
       int i = 0;
       bool invoke_eigen = false;
       bool are_all_mkl_inputs = true, are_all_tf_inputs = true;
-      const TensorShape expected_shape = input_shapes[0].IsMklTensor()
-                                             ? input_shapes[0].GetTfShape()
-                                             : input_tensors[0].shape();
+      const TensorShape expected_shape = mkl_input_shapes[0].IsMklTensor()
+                                       ? mkl_input_shapes[0].GetTfShape()
+                                       : input_tensors[0].shape();
       size_t expected_dims = expected_shape.dims();
 
       if (concat_dim < 0) concat_dim = expected_dims + concat_dim;
 
-      for (auto& s : input_shapes) {
+      for (auto& s : mkl_input_shapes) {
         TensorShape s_shape =
             s.IsMklTensor() ? s.GetTfShape() : input_tensors[i].shape();
         size_t s_dims = s_shape.dims();
@@ -660,14 +660,14 @@ class MklConcatOp : public OpKernel {
 
       // Call Eigen library
       if (invoke_eigen) {
-        CallEigenVersion(context, input_tensors, input_shapes);
+        CallEigenVersion(context, input_tensors, mkl_input_shapes);
         return;
       }
 
       memory::dims dst_dims;
 
       if (are_all_mkl_inputs)
-        dst_dims = TFShapeToMklDnnDims(input_shapes[0].GetTfShape());
+        dst_dims = TFShapeToMklDnnDims(mkl_input_shapes[0].GetTfShape());
       else
         // When all the inputs are in Tensorflow format, we don't know
         // what is the input data format. In that case, we just use
@@ -682,7 +682,7 @@ class MklConcatOp : public OpKernel {
       memory::format mkl_common_format = memory::format::any;
       if (are_all_mkl_inputs) {
         mkl_common_format =
-            FindMklCommonFormat(input_shapes, concat_dim,
+            FindMklCommonFormat(mkl_input_shapes, concat_dim,
                &isMklReorderNeeded, &dst_concat_dim_size);
 
         if (!isMklReorderNeeded) {
@@ -691,7 +691,7 @@ class MklConcatOp : public OpKernel {
             if (input_tensors[k].NumElements() == 0)
               continue;
 
-            auto src_md = input_shapes[k].GetMklLayout();
+            auto src_md = mkl_input_shapes[k].GetMklLayout();
             srcs[k].SetUsrMem(src_md, &input_tensors[k]);
             auto src_mpd = srcs[k].GetUsrMemPrimDesc();
             srcs_pd.push_back(src_mpd);
@@ -703,8 +703,9 @@ class MklConcatOp : public OpKernel {
             if (input_tensors[k].NumElements() == 0)
               continue;
 
-            auto src_dims = TFShapeToMklDnnDims(input_shapes[k].GetTfShape());
-            auto src_md = input_shapes[k].GetMklLayout();
+            auto src_dims = TFShapeToMklDnnDims(
+                mkl_input_shapes[k].GetTfShape());
+            auto src_md = mkl_input_shapes[k].GetMklLayout();
             srcs[k].SetUsrMem(src_md, &input_tensors[k]);
 
             if (src_md.data.format != mkl_common_format)
@@ -740,7 +741,7 @@ class MklConcatOp : public OpKernel {
       if (are_all_mkl_inputs) {
         // Since we are passing a specific format for destination,
         // we need to have dst_dims in MklDnn order (NCHW).
-        auto orig_tf_format = input_shapes[0].GetTfDataFormat();
+        auto orig_tf_format = mkl_input_shapes[0].GetTfDataFormat();
         dst_dims_in_nchw = MklDnnDimsInNCHW(
             dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
         // Set the output format same as the most common format of inputs
@@ -775,7 +776,8 @@ class MklConcatOp : public OpKernel {
       // But ifinput tensors are in NHWC order, then semantics need to change.
       // E.g., if we are concatinating over Channel (dimension 3 for NHWC),
       // then since MklDnn order is NCHW, concat_dim needs to be 1.
-      if (are_all_mkl_inputs) concat_dim = input_shapes[0].TfDimIdx(concat_dim);
+      if (are_all_mkl_inputs)
+         concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
 
       auto concat_pd = concat::primitive_desc(dst_md, concat_dim, srcs_pd);
 
@@ -788,7 +790,7 @@ class MklConcatOp : public OpKernel {
         dnn_shape_dst.SetMklLayout(&dst_pd);
         dnn_shape_dst.SetElemType(MklDnnType<T>());
         dnn_shape_dst.SetTfLayout(dst_dims.size(), dst_dims_in_nchw,
-                                  input_shapes[0].GetTfDataFormat());
+                                  mkl_input_shapes[0].GetTfDataFormat());
         tf_shape_dst.AddDim((dst_pd.get_size() / sizeof(T)));
       } else {
         dnn_shape_dst.SetMklTensor(false);
@@ -816,18 +818,18 @@ class MklConcatOp : public OpKernel {
   }
 
   void CallEigenVersion(OpKernelContext* context, const OpInputList& values,
-                        const MklDnnShapeList& input_shapes) {
-    CHECK_EQ(values.size(), input_shapes.size());
+                        const MklDnnShapeList& mkl_input_shapes) {
+    CHECK_EQ(values.size(), mkl_input_shapes.size());
 
     std::vector<Tensor> converted_values;
     TensorShapeList tf_input_shapes;
-    for (int i = 0; i < input_shapes.size(); i++) {
-      if (input_shapes[i].IsMklTensor()) {
+    for (int i = 0; i < mkl_input_shapes.size(); i++) {
+      if (mkl_input_shapes[i].IsMklTensor()) {
         // do conversion from MKL to TF
         Tensor tmp_tensor =
-            ConvertMklToTF<T>(context, values[i], input_shapes[i]);
+            ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i]);
         converted_values.push_back(tmp_tensor);
-        tf_input_shapes.push_back(input_shapes[i].GetTfShape());
+        tf_input_shapes.push_back(mkl_input_shapes[i].GetTfShape());
       } else {
         // no conversion since it is TF tensor already
         converted_values.push_back(values[i]);
@@ -876,16 +878,16 @@ class MklConcatOp : public OpKernel {
     for (int k=0; k <input_shapes.size(); k++) {
       auto src_dims = TFShapeToMklDnnDims(input_shapes[k].GetTfShape());
       *concat_dim_size += src_dims[concat_dim];
-      memory::format fmt = (memory::format)
-          input_shapes[k].GetMklLayout().data.format;
+      memory::format fmt = static_cast<memory::format>(
+          input_shapes[k].GetMklLayout().data.format);
       occurrence_map[fmt] += 1;
     }
 
     if (occurrence_map.size() == 1) {
        // this means that all inputs have a same format
        // return it with is_reorder_needed set false.
-       return (memory::format)
-           input_shapes[0].GetMklLayout().data.format;
+       return static_cast<memory::format>(
+           input_shapes[0].GetMklLayout().data.format);
     }
 
     // Input tensors have different formats. Thus, reorder is needed.
