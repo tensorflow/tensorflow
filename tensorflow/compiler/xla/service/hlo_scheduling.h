@@ -48,33 +48,42 @@ StatusOr<int64> MinimumMemoryForComputation(
 // that maps a tensor's logical size to its padded size.
 typedef std::function<StatusOr<std::vector<const HloInstruction*>>(
     const HloComputation&, const TuplePointsToAnalysis&,
-    const LogicalBuffer::SizeFunction&)>
+    const LogicalBuffer::SizeFunction&,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&)>
     MemorySchedulerAlgorithm;
 
 // List scheduler
 StatusOr<std::vector<const HloInstruction*>> ListMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function);
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation);
 
 // DFS-order scheduler
 StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function);
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation);
 
 // Naive Post Order scheduler
 StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function);
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation);
 
 // DFS-order scheduler with reversed heuristics. This helps some cases (see
 // b/78906799).
 StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerReverse(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function);
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation);
 
 // The default scheduling algorithm. Runs both the list scheduler
 // and the DFS scheduler, and chooses whichever returns a lower min-memory,
@@ -82,7 +91,9 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerReverse(
 StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function);
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation);
 
 // Returns an HloModuleSequence which seeks to minimize the memory required for
 // the computation. size_function is the function returning the number of bytes
@@ -93,10 +104,10 @@ CreateMemoryMinimizingSequence(const HloModule& module,
                                const MemorySchedulerAlgorithm& algorithm = {});
 
 // Overload of above that computes the sequence for a single computation.
+// Currently only used by the GPU backend.
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
-    const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerAlgorithm& algorithm = {});
+    const LogicalBuffer::SizeFunction& size_function);
 
 }  // namespace xla
 
