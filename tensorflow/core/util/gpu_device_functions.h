@@ -271,11 +271,15 @@ __device__ inline double GpuShuffleSync(unsigned mask, double value,
   hi = GpuShuffleSync(mask, hi, src_lane, width);
   lo = GpuShuffleSync(mask, lo, src_lane, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-#elif TENSORFLOW_USE_ROCM
-  // ROCM TODO add ROCM implementation
-  lo = hi = 0;
-#endif
   return value;
+#elif TENSORFLOW_USE_ROCM
+  uint64_t tmp = static_cast<uint64_t>(value);
+  lo = static_cast<unsigned>(tmp);
+  hi = static_cast<unsigned>(tmp >> 32);
+  hi = __shfl(static_cast<int>(hi), src_lane, width);
+  lo = __shfl(static_cast<int>(lo), src_lane, width);
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+#endif
 }
 
 // Wrapper for __shfl_up_sync. All threads in 'mask' must call this function in
@@ -305,11 +309,15 @@ __device__ inline double GpuShuffleUpSync(unsigned mask, double value,
   hi = GpuShuffleUpSync(mask, hi, delta, width);
   lo = GpuShuffleUpSync(mask, lo, delta, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-#elif TENSORFLOW_USE_ROCM
-  // ROCM TODO add ROCM implementation
-  lo = hi = 0;
-#endif
   return value;
+#elif TENSORFLOW_USE_ROCM
+  uint64_t tmp = static_cast<uint64_t>(value);
+  lo = static_cast<unsigned>(tmp);
+  hi = static_cast<unsigned>(tmp >> 32);
+  hi = __shfl_up(static_cast<int>(hi), delta, width);
+  lo = __shfl_up(static_cast<int>(lo), delta, width);
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+#endif
 }
 
 // Wrapper for __shfl_down_sync. All threads in 'mask' must call this function
@@ -339,11 +347,15 @@ __device__ inline double GpuShuffleDownSync(unsigned mask, double value,
   hi = GpuShuffleDownSync(mask, hi, delta, width);
   lo = GpuShuffleDownSync(mask, lo, delta, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-#elif TENSORFLOW_USE_ROCM
-  // ROCM TODO add ROCM implementation
-  lo = hi = 0;
-#endif
   return value;
+#elif TENSORFLOW_USE_ROCM
+  uint64_t tmp = static_cast<uint64_t>(value);
+  lo = static_cast<unsigned>(tmp);
+  hi = static_cast<unsigned>(tmp >> 32);
+  hi = __shfl_down(static_cast<int>(hi), delta, width);
+  lo = __shfl_down(static_cast<int>(lo), delta, width);
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+#endif
 }
 
 // Wrapper for __shfl_xor_sync. All threads in 'mask' must call this function in
@@ -378,11 +390,15 @@ __device__ inline double GpuShuffleXorSync(unsigned mask, double value,
   hi = GpuShuffleXorSync(mask, hi, lane_mask, width);
   lo = GpuShuffleXorSync(mask, lo, lane_mask, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
-#elif TENSORFLOW_USE_ROCM
-  // ROCM TODO add ROCM implementation
-  lo = hi = 0;
-#endif
   return value;
+#elif TENSORFLOW_USE_ROCM
+  uint64_t tmp = static_cast<uint64_t>(value);
+  lo = static_cast<unsigned>(tmp);
+  hi = static_cast<unsigned>(tmp >> 32);
+  hi = __shfl_xor(static_cast<int>(hi), lane_mask, width);
+  lo = __shfl_xor(static_cast<int>(lo), lane_mask, width);
+  return static_cast<double>(static_cast<uint64_t>(hi) << 32 | static_cast<uint64_t>(lo));
+#endif
 }
 
 // Wrapper for __ldg.
@@ -536,7 +552,7 @@ __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
 }
 
 
-#if __CUDA_ARCH__ < 600
+#if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM
 __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(ptr,
                                      [value](double a) { return a + value; });
@@ -546,15 +562,10 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 // see https://reviews.llvm.org/D39638
 __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   double result;
-#if GOOGLE_CUDA
   asm volatile("atom.add.f64 %0, [%1], %2;"
                : "=d"(result)
                : "l"(ptr), "d"(value)
                : "memory");
-#elif TENSORFLOW_USE_ROCM
-  // ROCM TODO add ROCM implementation
-  result = 0;
-#endif
   return result;
 }
 #endif
