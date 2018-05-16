@@ -687,6 +687,18 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SLICE: {
       break;
     }
+    case BuiltinOperator_TRANSPOSE_CONV: {
+      TfLiteTransposeConvParams* params =
+          MallocPOD<TfLiteTransposeConvParams>();
+      if (auto* transpose_conv_params =
+              op->builtin_options_as_TransposeConvOptions()) {
+        params->padding = parse_padding(transpose_conv_params->padding());
+        params->stride_width = transpose_conv_params->stride_w();
+        params->stride_height = transpose_conv_params->stride_h();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
