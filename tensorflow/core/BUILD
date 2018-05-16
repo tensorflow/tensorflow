@@ -337,6 +337,8 @@ cc_library(
     ],
     hdrs = PLATFORM_BASE_HDRS,
     copts = tf_copts(),
+    # TODO(ahentz): remove use of this library so we can move it into 'platform'
+    tags = ["avoid_dep"],
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
