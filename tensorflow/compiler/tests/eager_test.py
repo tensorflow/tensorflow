@@ -234,6 +234,23 @@ class EagerFunctionTest(XLATestCase):
       self.assertAllEqual([[1.]], c.numpy())
       self.assertAllEqual([[20., 40.], [90., 120.]], d.numpy())
 
+  def testDefunInGradientTape(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+
+      @function.defun(compiled=True)
+      def f(x):
+        x = v0 * v0 * x
+        return x
+
+      x = constant_op.constant(3.0)
+      with backprop.GradientTape() as tape:
+        y = f(x)
+      dy = tape.gradient(y, v0)
+
+    self.assertEqual(75, y.numpy())
+    self.assertEqual(30, dy.numpy())
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(
