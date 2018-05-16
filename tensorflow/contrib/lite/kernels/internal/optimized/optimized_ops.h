@@ -6292,7 +6292,7 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
           const int out_y_origin = (in_y * stride_height) - pad_height;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int out_channel = 0; out_channel < input_depth;
+              for (int out_channel = 0; out_channel < output_depth;
                    ++out_channel) {
                 // Compute output element location
                 const int out_x = out_x_origin + filter_x;
