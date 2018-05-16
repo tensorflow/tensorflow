@@ -1556,9 +1556,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     int64 rank = ShapeUtil::Rank(operand_literal.shape());
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
-    DimensionVector source_index(rank);
+    DimensionVector source_index(rank, 0);
 
-    std::fill(source_index.begin(), source_index.end(), 0);
+    // Used in the dual IterateThroughWindow lambdas below. Hoisted to avoid
+    // dynamic memory allocations.
+    auto curr_val_literal = Literal::CreateR0<ReturnT>(ReturnT());
+    auto selected_val_literal = Literal::CreateR0<ReturnT>(ReturnT());
+    auto source_literal_scatter = Literal::CreateR0<ReturnT>(ReturnT());
+    auto scattered_literal = Literal::CreateR0<ReturnT>(ReturnT());
     do {
       // For each element in `source`, we place a window in `operand`. For each
       // window placement, we iterate inside the window twice:
@@ -1582,14 +1587,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               selected_val = curr_val;
               selected_index = operand_index;
             }
-            const auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
-            const auto selected_val_literal =
-                Literal::CreateR0<ReturnT>(*selected_val);
-
-            const std::vector<const Literal*> args = {
-                selected_val_literal.get(), curr_val_literal.get()};
+            curr_val_literal->Set({}, curr_val);
+            selected_val_literal->Set({}, *selected_val);
             std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate<const Literal*>(*select, args)
+                embedded_evaluator
+                    .Evaluate<const Literal*>(
+                        *select,
+                        {selected_val_literal.get(), curr_val_literal.get()})
                     .ConsumeValueOrDie();
             bool selected = !computed_result->Get<bool>({});
             if (selected) {
@@ -1606,14 +1610,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                            selected_index->begin())) {
               auto source = source_literal.Get<ReturnT>(source_index);
               auto scattered = result->Get<ReturnT>(operand_index);
-              const auto source_literal = Literal::CreateR0<ReturnT>(source);
-              const auto scattered_literal =
-                  Literal::CreateR0<ReturnT>(scattered);
-
-              const std::vector<const Literal*> args = {
-                  source_literal.get(), scattered_literal.get()};
+              source_literal_scatter->Set({}, source);
+              scattered_literal->Set({}, scattered);
               std::unique_ptr<Literal> computed_result =
-                  embedded_evaluator.Evaluate<const Literal*>(*scatter, args)
+                  embedded_evaluator
+                      .Evaluate<const Literal*>(*scatter,
+                                                {source_literal_scatter.get(),
+                                                 scattered_literal.get()})
                       .ConsumeValueOrDie();
               result->Set(operand_index, computed_result->Get<ReturnT>({}));
               // Clear visit states so that the we can use the evaluator again
