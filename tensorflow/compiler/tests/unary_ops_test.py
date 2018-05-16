@@ -793,7 +793,9 @@ class UnaryOpsTest(XLATestCase):
     zero = np.asarray(0).astype(dtype)
     expected = np.logaddexp(zero, features)
     self._assertOpOutputMatchesExpected(
-        nn_ops.softplus, features, expected=expected)
+        nn_ops.softplus, features, expected=expected,
+        rtol=1e-6,
+        atol=9.1e-6)
 
   def testSoftplus(self):
     for dtype in self.float_types:
