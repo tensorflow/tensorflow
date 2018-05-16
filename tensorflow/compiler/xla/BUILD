@@ -310,6 +310,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )
@@ -324,6 +325,7 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":types",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

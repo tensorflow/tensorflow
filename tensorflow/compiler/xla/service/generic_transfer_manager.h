@@ -45,7 +45,7 @@ class GenericTransferManager : public TransferManager {
       se::StreamExecutor* executor, const ShapedBuffer& device_buffer) override;
 
   Status TransferLiteralToDevice(se::StreamExecutor* executor,
-                                 const Literal& literal,
+                                 const LiteralSlice& literal,
                                  const ShapedBuffer& device_buffer) override;
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
