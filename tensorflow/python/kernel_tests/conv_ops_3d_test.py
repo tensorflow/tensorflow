@@ -51,7 +51,7 @@ class Conv3DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
     if use_gpu:
-      if not test_util.CudaSupportsHalfMatMulAndConv():
+      if not test_util.GpuSupportsHalfMatMulAndConv():
         return [dtypes.float32]
       else:
         # It is important that float32 comes before float16 here,
