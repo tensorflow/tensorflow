@@ -20,9 +20,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/testing/util.h"
-#include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
 #include "tensorflow/contrib/lite/tools/verifier.h"
 #include "tensorflow/contrib/lite/version.h"
 #include "tensorflow/core/framework/numeric_types.h"

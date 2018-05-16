@@ -214,7 +214,6 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/utils:frame",
     ],
 )
 
@@ -267,7 +266,6 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/utils:frame",
         "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
@@ -517,6 +515,7 @@ cc_library(
         ":loop_optimizer",
         ":memory_optimizer",
         ":model_pruner",
+        ":remapper",
         ":shape_optimizer",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -662,6 +661,42 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
+    name = "remapper",
+    srcs = ["remapper.cc"],
+    hdrs = [
+        "remapper.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":constant_folding",
+        ":graph_optimizer",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "remapper_test",
+    srcs = ["remapper_test.cc"],
+    deps = [
+        ":remapper",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )

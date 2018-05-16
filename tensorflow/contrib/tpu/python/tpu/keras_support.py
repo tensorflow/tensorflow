@@ -49,8 +49,10 @@ from __future__ import print_function
 
 import collections
 import re
+import time
 
 from tensorflow.contrib.framework.python.framework import experimental
+from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.core.protobuf import config_pb2
@@ -75,9 +77,6 @@ class TPUEmbedding(embeddings.Embedding):
   replacement: it has the same behavior and will work on CPU and GPU devices.
   """
 
-  def __init__(self, *args, **kw):
-    super(TPUEmbedding, self).__init__(*args, **kw)
-
   def build(self, input_shape):
     if input_shape[0] is None:
       raise ValueError(
@@ -92,10 +91,11 @@ class TPUEmbedding(embeddings.Embedding):
     return math_ops.tensordot(inputs, self.embeddings, 1)
 
 
-class CompiledTPUOp(
+class TPUModelOp(
     collections.namedtuple(
-        'CompiledTPUOp',
-        ['tpu_execute_op', 'infeed_tensors', 'infeed_op', 'outfeed_op'])):
+        'TPUModelOp',
+        ['compile_op', 'execute_op', 'infeed_tensors', 'infeed_op',
+         'outfeed_op'])):
   pass
 
 
@@ -215,7 +215,8 @@ class TPUFunction(object):
     # Capture outfeed metadata computed during the rewrite.
     self._outfeed_spec = None
 
-    tpu_execute_op = tpu.rewrite(_model_fn)
+    compile_op, execute_op = tpu.split_compile_and_replicate(
+        _model_fn, inputs=[[]])
 
     # Generate CPU side operations to enqueue features/labels and dequeue
     # outputs from the model call.
@@ -237,7 +238,26 @@ class TPUFunction(object):
           shapes=[spec.shape for spec in self._outfeed_spec],
           name='outfeed-dequeue-%s' % self.execution_mode)
 
-    return CompiledTPUOp(tpu_execute_op, infeed_tensors, infeed_op, outfeed_op)
+    return TPUModelOp(
+        compile_op, execute_op, infeed_tensors, infeed_op, outfeed_op)
+
+  def _test_model_compiles(self, tpu_model_ops):
+    """Verifies that the given TPUModelOp can be compiled via XLA."""
+    session = K.get_session()
+
+    logging.info('Started compiling')
+    start_time = time.clock()
+
+    result = session.run(tpu_model_ops.compile_op)
+    proto = tpu_compilation_result.CompilationResultProto()
+    proto.ParseFromString(result)
+    if proto.status_error_message:
+      raise RuntimeError(
+          'Compilation failed: {}'.format(proto.status_error_message))
+
+    end_time = time.clock()
+    logging.info('Finished compiling. Time elapsed: %s secs',
+                 end_time - start_time)
 
   def __call__(self, inputs):
     assert isinstance(inputs, list)
@@ -268,18 +288,20 @@ class TPUFunction(object):
     if shape_key not in self._compilation_cache:
       logging.info('New input shapes; (re-)compiling: mode=%s, %s',
                    self.execution_mode, input_specs)
-      self._compilation_cache[shape_key] = self._specialize_model(input_specs)
+      new_tpu_model_ops = self._specialize_model(input_specs)
+      self._compilation_cache[shape_key] = new_tpu_model_ops
+      self._test_model_compiles(new_tpu_model_ops)
 
-    compiled_model = self._compilation_cache[shape_key]
+    tpu_model_ops = self._compilation_cache[shape_key]
 
     infeed_dict = {}
-    for tensor, value in zip(compiled_model.infeed_tensors, inputs):
+    for tensor, value in zip(tpu_model_ops.infeed_tensors, inputs):
       infeed_dict[tensor] = value
 
     session = K.get_session()
     _, _, outfeed_outputs = session.run([
-        compiled_model.infeed_op, compiled_model.tpu_execute_op,
-        compiled_model.outfeed_op
+        tpu_model_ops.infeed_op, tpu_model_ops.execute_op,
+        tpu_model_ops.outfeed_op
     ], infeed_dict)
 
     return outfeed_outputs
