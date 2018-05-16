@@ -339,7 +339,7 @@ class ResourceHandleOp : public OpKernel {
   string container_;
   string name_;
   mutex mutex_;
-  Tensor resource_ GUARDED_BY(mutex_);
+  Tensor resource_;
   std::atomic<bool> initialized_{false};
 };
 
@@ -516,13 +516,16 @@ template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
   if (!initialized_.load()) {
     mutex_lock ml(mutex_);
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                           &resource_, attr));
-    resource_.scalar<ResourceHandle>()() =
-        MakeResourceHandle<T>(ctx, container_, name_);
-    initialized_.store(true);
+    // Checking again to see if another thread has initialized the resource.
+    if (!initialized_.load()) {
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                             &resource_, attr));
+      resource_.scalar<ResourceHandle>()() =
+          MakeResourceHandle<T>(ctx, container_, name_);
+      initialized_.store(true);
+    }
   }
   ctx->set_output(0, resource_);
 }

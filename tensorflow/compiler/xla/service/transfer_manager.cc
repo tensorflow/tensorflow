@@ -37,7 +37,7 @@ TransferManager::GetPlatformTransferManagers() {
 }
 
 Status TransferManager::TransferArrayToDevice(
-    se::StreamExecutor* executor, const Literal& literal,
+    se::StreamExecutor* executor, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest) {
   const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
   TF_RET_CHECK(ShapeUtil::IsArray(on_device_shape))

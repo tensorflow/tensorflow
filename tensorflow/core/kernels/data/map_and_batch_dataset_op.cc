@@ -436,6 +436,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             gtl::MakeCleanup([this, result]() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
               result->Initialize(dataset()->batch_size_);
               input_batch_++;
+              cond_var_.notify_all();
             });
         mutex_lock l(result->mu);
         if (result->num_elements == 0) {
@@ -473,7 +474,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           }
           *end_of_sequence = false;
         }
-        cond_var_.notify_all();
         return result->status;
       }
 

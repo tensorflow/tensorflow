@@ -89,7 +89,7 @@ GenericTransferManager::TransferLiteralFromDevice(
 }
 
 Status GenericTransferManager::TransferLiteralToDevice(
-    se::StreamExecutor* executor, const Literal& literal,
+    se::StreamExecutor* executor, const LiteralSlice& literal,
     const ShapedBuffer& device_buffer) {
   const Shape& shape = literal.shape();
   VLOG(2) << "transferring literal shape to device: "

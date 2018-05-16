@@ -1211,7 +1211,7 @@ class Network(base_layer.Layer):
             format.
         ValueError: For invalid/unknown format arguments.
     """
-    filepath_is_h5 = filepath.endswith('.h5') or filepath.endswith('.keras')
+    filepath_is_h5 = _is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
         save_format = 'h5'
@@ -1293,12 +1293,15 @@ class Network(base_layer.Layer):
         ImportError: If h5py is not available and the weight file is in HDF5
             format.
     """
-    try:
-      pywrap_tensorflow.NewCheckpointReader(filepath)
-      save_format = 'tf'
-    except errors_impl.DataLossError:
-      # The checkpoint is not readable in TensorFlow format. Try HDF5.
+    if _is_hdf5_filepath(filepath):
       save_format = 'h5'
+    else:
+      try:
+        pywrap_tensorflow.NewCheckpointReader(filepath)
+        save_format = 'tf'
+      except errors_impl.DataLossError:
+        # The checkpoint is not readable in TensorFlow format. Try HDF5.
+        save_format = 'h5'
     if save_format == 'tf':
       status = self._checkpointable_saver.restore(filepath)
       if by_name:
@@ -1467,6 +1470,10 @@ def get_source_inputs(tensor, layer=None, node_index=None):
           if x not in source_tensors:
             source_tensors.append(x)
       return source_tensors
+
+
+def _is_hdf5_filepath(filepath):
+  return filepath.endswith('.h5') or filepath.endswith('.keras')
 
 
 def _make_node_key(layer_name, node_index):
