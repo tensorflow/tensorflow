@@ -1034,40 +1034,39 @@ def make_fused_batch_norm_tests(zip_path):
 def make_conv_tests(zip_path):
   """Make a set of tests to do convolution."""
 
-  test_parameters = [
-      {
-          "input_shape": [[1, 3, 4, 3]],
-          "filter_shape": [[1, 1, 3, 2]],
-          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
-          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
-          "padding": ["SAME", "VALID"],
-          "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
-          "constant_filter": [True, False],
-      },
-      {
-          "input_shape": [[2, 14, 14, 2]],
-          "filter_shape": [[6, 6, 2, 2]],
-          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
-          "dilations": [[1, 1, 1, 1], [1, 2, 2, 1]],
-          "padding": ["SAME", "VALID"],
-          "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
-          "constant_filter": [True, False],
-      }
-  ]
+  test_parameters = [{
+      "input_shape": [[1, 3, 4, 3], [4, 6, 6, 1]],
+      "filter_shape": [[1, 1], [2, 3], [3, 3]],
+      "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+      "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
+      "padding": ["SAME", "VALID"],
+      "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
+      "constant_filter": [True, False],
+      "channel_multiplier": [1, 2],
+  }]
+
+  def get_tensor_shapes(parameters):
+    input_shape = parameters["input_shape"]
+    filter_size = parameters["filter_shape"]
+    filter_shape = filter_size + [
+        input_shape[3], parameters["channel_multiplier"]
+    ]
+    return [input_shape, filter_shape]
 
   def build_graph(parameters):
     """Build a conv graph given `parameters`."""
+    input_shape, filter_shape = get_tensor_shapes(parameters)
     input_tensor = tf.placeholder(
-        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+        dtype=tf.float32, name="input", shape=input_shape)
 
     # Get filter input either as a placeholder or constants. Also get a list of
     # the input tensors that are represented as placeholders.
     if parameters["constant_filter"]:
-      filter_input = create_tensor_data(np.float32, parameters["filter_shape"])
+      filter_input = create_tensor_data(np.float32, filter_shape)
       input_tensors = [input_tensor]
     else:
       filter_input = tf.placeholder(
-          dtype=tf.float32, name="filter", shape=parameters["filter_shape"])
+          dtype=tf.float32, name="filter", shape=filter_shape)
       input_tensors = [input_tensor, filter_input]
 
     out = tf.nn.conv2d(
@@ -1082,9 +1081,10 @@ def make_conv_tests(zip_path):
   def build_inputs(parameters, sess, inputs, outputs):
     # Build list of input values either containing 1 tensor (input) or 2 tensors
     # (input, filter) based on whether filter is constant or variable input.
-    values = [create_tensor_data(np.float32, parameters["input_shape"])]
+    input_shape, filter_shape = get_tensor_shapes(parameters)
+    values = [create_tensor_data(np.float32, input_shape)]
     if not parameters["constant_filter"]:
-      values.append(create_tensor_data(np.float32, parameters["filter_shape"]))
+      values.append(create_tensor_data(np.float32, filter_shape))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
