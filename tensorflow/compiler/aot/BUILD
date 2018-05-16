@@ -214,7 +214,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:core",
-        "@llvm//:execution_engine",
         "@llvm//:support",
         "@llvm//:target",
     ],

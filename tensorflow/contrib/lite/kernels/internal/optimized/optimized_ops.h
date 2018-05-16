@@ -6187,7 +6187,6 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
 
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
-  TFLITE_DCHECK_EQ(axis[0], 3);
 
   // For ArgMax, the number of output dimensions = (number of input dimensions -
   // 1). For the sake of simplicity, the output dimensions are equal to the
@@ -6292,7 +6291,7 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
           const int out_y_origin = (in_y * stride_height) - pad_height;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int out_channel = 0; out_channel < input_depth;
+              for (int out_channel = 0; out_channel < output_depth;
                    ++out_channel) {
                 // Compute output element location
                 const int out_x = out_x_origin + filter_x;

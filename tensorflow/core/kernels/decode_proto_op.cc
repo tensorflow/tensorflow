@@ -287,8 +287,7 @@ struct FieldInfo {
 // It is more complex and provides better motivation for the API here.
 class CountCollector {
  public:
-  // Default constructor allows the collector to be a vector element.
-  CountCollector() = default;
+  CountCollector() = delete;
 
   // The count may be stored inside an Eigen Tensor to eliminate copying.
   explicit CountCollector(int32* count) : count_ptr_(count) {}

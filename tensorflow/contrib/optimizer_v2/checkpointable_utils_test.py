@@ -722,12 +722,22 @@ class CheckpointCompatibilityTests(test.TestCase):
       with self.assertRaises(AssertionError):
         self._check_sentinels(root)
       object_saver = checkpointable_utils.CheckpointableSaver(root)
+      self._set_sentinels(root)
       status = object_saver.restore(save_path)
-      with self.assertRaises(AssertionError):
-        status.assert_consumed()
+      if context.executing_eagerly():
+        self._check_sentinels(root)
+      if context.executing_eagerly():
+        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
+          status.assert_consumed()
+      else:
+        # When graph building, we haven't read any keys, so we don't know
+        # whether the restore will be complete.
+        with self.assertRaisesRegexp(AssertionError, "not restored"):
+          status.assert_consumed()
       status.run_restore_ops()
       self._check_sentinels(root)
       self._set_sentinels(root)
+      status = object_saver.restore(save_path)
       status.initialize_or_restore()
       self._check_sentinels(root)
 

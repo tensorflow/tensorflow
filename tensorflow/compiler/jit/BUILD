@@ -124,7 +124,6 @@ cc_library(
     srcs = ["xla_tensor.cc"],
     hdrs = ["xla_tensor.h"],
     deps = [
-        ":common",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",

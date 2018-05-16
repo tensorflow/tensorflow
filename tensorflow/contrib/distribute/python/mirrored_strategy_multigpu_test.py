@@ -28,9 +28,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribute as distribute_lib
@@ -435,6 +438,30 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         v0, v1 = dist.unwrap(v)
         self.assertEquals("foo/" + name + ":0", v0.name)
         self.assertEquals("tower_1/foo/" + name + ":0", v1.name)
+
+  def testDynamicRnnVariables(self):
+    def model_fn():
+      inputs = constant_op.constant(2 * [2 * [[0.0, 1.0, 2.0, 3.0, 4.0]]])
+      cell_fw = rnn_cell_impl.LSTMCell(300)
+      cell_bw = rnn_cell_impl.LSTMCell(300)
+      (outputs, _) = rnn.bidirectional_dynamic_rnn(
+          cell_fw,
+          cell_bw,
+          inputs,
+          dtype=dtypes.float32)
+      return outputs
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with context.graph_mode(), dist.scope():
+      result = dist.call_for_each_tower(model_fn, run_concurrently=False)
+      # Two variables are created by the RNN layer.
+      self.assertEquals(2, len(result))
+      for v in result:
+        self.assertIsInstance(v, values.DistributedValues)
+        _, v1 = dist.unwrap(v)
+        self.assertStartsWith(v1.name, "tower_1/")
 
 
 if __name__ == "__main__":

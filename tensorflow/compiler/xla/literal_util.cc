@@ -198,12 +198,11 @@ void Literal::DeallocateBuffers() {
 Literal::Literal(Literal&& other) : LiteralBase() { *this = std::move(other); }
 
 Literal& Literal::operator=(Literal&& other) {
-  CHECK(&other.root_piece_->subshape() == other.shape_.get());
-
+  DCHECK(&other.root_piece_->subshape() == other.shape_.get());
   using std::swap;
   swap(shape_, other.shape_);
   swap(root_piece_, other.root_piece_);
-  CHECK(&root_piece_->subshape() == shape_.get());
+  DCHECK(&root_piece_->subshape() == shape_.get());
 
   return *this;
 }
@@ -259,8 +258,8 @@ Status Literal::CopySliceFromInternal(
 
   if (ShapeUtil::Rank(src_literal.shape()) == 0 ||
       ShapeUtil::Rank(shape()) == 0) {
-    // If any of the two shapes are scalars, we can just call the
-    // StridedCopy() directly, and we know we will be copying only one value.
+    // If any of the two shapes are scalars, we can just call the StridedCopy()
+    // directly, and we know we will be copying only one value.
     TF_RET_CHECK(copy_size.empty());
     StridedCopy(data<NativeT>(), linear_index(shape(), dest_base), 0,
                 src_literal.data<NativeT>(),
@@ -372,9 +371,9 @@ std::vector<Literal> Literal::DecomposeTuple() {
 }
 
 namespace {
-// Copies the elements in 'src' to 'dest'. The shape and layout of the data
-// in the array slices are indicated by dest_shape and src_shape
-// respectively.
+
+// Copies the elements in 'src' to 'dest'. The shape and layout of the data in
+// the array slices are indicated by dest_shape and src_shape respectively.
 template <typename NativeT>
 void CopyElementsBetween(tensorflow::gtl::MutableArraySlice<NativeT> dest,
                          tensorflow::gtl::ArraySlice<NativeT> src,
@@ -393,6 +392,8 @@ void CopyElementsBetween(tensorflow::gtl::MutableArraySlice<NativeT> dest,
 }  // namespace
 
 Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src) {
+  CHECK(subshape_ != nullptr);
+  CHECK(src.subshape_ != nullptr);
   if (ShapeUtil::Equal(subshape(), src.subshape())) {
     // If the layouts are equal it's faster just to memcpy.
     memcpy(buffer(), src.buffer(), src.size_bytes());
@@ -422,8 +423,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src) {
 #undef COPY_ELEMENTS
       default:
         return Unimplemented(
-            "Copying a Literal object with element type %s is not "
-            "implemented.",
+            "Copying a Literal object with element type %s is not implemented.",
             PrimitiveType_Name(subshape().element_type()).c_str());
     }
   }
@@ -443,7 +443,6 @@ Status Literal::CopyFrom(const LiteralSlice& src_literal,
         ShapeUtil::HumanString(dest_subshape).c_str(),
         ShapeUtil::HumanString(src_subshape).c_str());
   }
-
   return root_piece_->ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
         if (!ShapeUtil::IsArray(piece->subshape())) {
@@ -470,7 +469,7 @@ Status Literal::CopyFrom(const LiteralSlice& src_literal,
         TF_RETURN_IF_ERROR(piece->CopyFrom(src_literal.piece(src_piece_index)));
         return Status::OK();
       });
-}  // namespace xla
+}
 
 Status Literal::MoveFrom(Literal&& src_literal,
                          const ShapeIndex& dest_shape_index) {
@@ -926,8 +925,8 @@ std::unique_ptr<Literal> LiteralBase::Transpose(
   // representation intact.
   // For example, consider the shape F32[11,8]{1,0} under a {1,0} permutation.
   // The shape with affine layout resulting from that operation will be
-  // F32[8,11]{0,1}, since it leaves the original most minor (the 8 sized),
-  // the most minor.
+  // F32[8,11]{0,1}, since it leaves the original most minor (the 8 sized), the
+  // most minor.
   //
   // Essentially, given MinMaj(Di) the position of the Di dimension within the
   // minor to major vector, and given T(Di) the index that the original Di
@@ -1146,6 +1145,27 @@ StatusOr<int64> LiteralBase::GetIntegralAsS64(
   }
 }
 
+size_t LiteralBase::Hash() const {
+  using tensorflow::Hash64;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = ShapeUtil::Hash(shape());
+
+  ShapeUtil::ForEachSubshape(
+      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsTuple(subshape)) {
+          return;
+        }
+
+        CHECK(LayoutUtil::IsDense(subshape.layout()));
+        hash_value = Hash64Combine(
+            hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
+                               size_bytes(index)));
+      });
+
+  return hash_value;
+}
+
 Status Literal::SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
                                  int64 value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
@@ -1292,6 +1312,7 @@ void LiteralBase::Piece::SortSparseElementsInternal() {
 }
 
 namespace {
+
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_layout, std::vector<string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
@@ -1558,10 +1579,10 @@ BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
       src_literal, converter);
 }
 
-// This template specialization is here to make the compiler happy. bit_cast
-// has a static check that the types are the same size. This specialization
-// should never be used because the source and destination types are checked
-// for identical sizes higher up.
+// This template specialization is here to make the compiler happy. bit_cast has
+// a static check that the types are the same size. This specialization should
+// never be used because the source and destination types are checked for
+// identical sizes higher up.
 template <typename NativeSrcT, typename NativeDestT>
 typename std::enable_if<(sizeof(NativeSrcT) != sizeof(NativeDestT)),
                         std::unique_ptr<Literal>>::type
@@ -1688,8 +1709,7 @@ StatusOr<std::unique_ptr<Literal>> LiteralBase::BitcastConvert(
   if (primitive_util::BitWidth(shape().element_type()) !=
       primitive_util::BitWidth(primitive_dest_type)) {
     return InvalidArgument(
-        "Cannot bitcast convert from %s to %s, bit widths are different: %d "
-        "!= "
+        "Cannot bitcast convert from %s to %s, bit widths are different: %d != "
         "%d",
         PrimitiveType_Name(shape().element_type()).c_str(),
         PrimitiveType_Name(primitive_dest_type).c_str(),
@@ -1794,6 +1814,7 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
 }
 
 namespace {
+
 template <typename NativeT>
 static bool AllElementsEqualValue(tensorflow::gtl::ArraySlice<NativeT> data,
                                   NativeT value) {
@@ -1866,7 +1887,7 @@ bool LiteralBase::IsAll(int8 value) const {
     }
     return true;
   });
-}  // namespace xla
+}
 
 bool LiteralBase::IsAllFloat(float value) const {
   return root_piece().ForEachSubpieceWithBool(
@@ -2027,6 +2048,7 @@ bool LiteralBase::IsZero(tensorflow::gtl::ArraySlice<int64> indices) const {
 }
 
 namespace {
+
 template <typename RepeatedFieldT, typename NativeT>
 void CopyToRepeatedField(RepeatedFieldT* dest,
                          const tensorflow::gtl::ArraySlice<NativeT> src) {
@@ -2102,6 +2124,7 @@ void* LiteralBase::Piece::untyped_data() {
 }
 
 namespace {
+
 template <typename RepeatedFieldT, typename NativeT>
 Status CopyFromRepeatedField(tensorflow::gtl::MutableArraySlice<NativeT> dest,
                              const RepeatedFieldT& src) {
@@ -2241,6 +2264,7 @@ StatusOr<std::unique_ptr<Literal>> Literal::CreateFromProto(
 
         return Status::OK();
       }));
+
   return std::move(literal);
 }
 
@@ -2269,6 +2293,22 @@ string LiteralBase::GetR1U8AsString() const {
                 ShapeUtil::ElementsIn(shape()));
 }
 
+void BorrowingLiteral::BuildPieceSubtree(const Shape& shape, Piece* piece) {
+  CHECK(ShapeUtil::IsTuple(shape));
+  for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const Shape& subshape = shape.tuple_shapes(i);
+
+    auto child_piece = Piece();
+    child_piece.set_subshape(&subshape);
+
+    if (ShapeUtil::IsTuple(subshape)) {
+      BuildPieceSubtree(subshape, &child_piece);
+    }
+
+    piece->emplace_back(std::move(child_piece));
+  }
+}
+
 LiteralSlice::LiteralSlice(const LiteralBase& literal)
     : LiteralBase(), root_piece_(&literal.root_piece()) {}
 
@@ -2276,25 +2316,32 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal,
                            const ShapeIndex& view_root)
     : LiteralBase(), root_piece_(&literal.piece(view_root)) {}
 
-size_t LiteralBase::Hash() const {
-  using tensorflow::Hash64;
-  using tensorflow::Hash64Combine;
+BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
+    : LiteralBase(), shape_(shape) {
+  CHECK(ShapeUtil::IsArray(shape_));
+  CHECK_NE(src_buf_ptr, nullptr);
+  CHECK(LayoutUtil::HasLayout(shape_));
 
-  size_t hash_value = ShapeUtil::Hash(shape());
+  root_piece_ = Piece();
+  root_piece_.set_buffer(const_cast<char*>(src_buf_ptr));
+  root_piece_.set_subshape(&shape_);
+}
 
-  ShapeUtil::ForEachSubshape(
-      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsTuple(subshape)) {
-          return;
-        }
+BorrowingLiteral::BorrowingLiteral(
+    tensorflow::gtl::ArraySlice<const char*> src_buf_ptrs, const Shape& shape)
+    : LiteralBase(), shape_(shape) {
+  CHECK(ShapeUtil::IsTuple(shape_));
+  CHECK(!ShapeUtil::IsNestedTuple(shape_));
+  CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(shape_));
+  root_piece_ = Piece();
+  root_piece_.set_subshape(&shape_);
+  BuildPieceSubtree(shape_, &root_piece_);
 
-        CHECK(LayoutUtil::IsDense(subshape.layout()));
-        hash_value = Hash64Combine(
-            hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
-                               size_bytes(index)));
-      });
-
-  return hash_value;
+  for (int i = 0; i < src_buf_ptrs.size(); ++i) {
+    const auto& src_shape = shape_.tuple_shapes(i);
+    CHECK(ShapeUtil::IsArray(src_shape));
+    root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
+  }
 }
 
 }  // namespace xla
