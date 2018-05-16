@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow.python.estimator import util
 from tensorflow.python.platform import test
+from tensorflow.python.util import function_utils
 
 
 class FnArgsTest(test.TestCase):
@@ -29,7 +29,7 @@ class FnArgsTest(test.TestCase):
   def test_simple_function(self):
     def fn(a, b):
       return a + b
-    self.assertEqual(('a', 'b'), util.fn_args(fn))
+    self.assertEqual(('a', 'b'), function_utils.fn_args(fn))
 
   def test_callable(self):
 
@@ -38,7 +38,7 @@ class FnArgsTest(test.TestCase):
       def __call__(self, a, b):
         return a + b
 
-    self.assertEqual(('a', 'b'), util.fn_args(Foo()))
+    self.assertEqual(('a', 'b'), function_utils.fn_args(Foo()))
 
   def test_bounded_method(self):
 
@@ -47,7 +47,7 @@ class FnArgsTest(test.TestCase):
       def bar(self, a, b):
         return a + b
 
-    self.assertEqual(('a', 'b'), util.fn_args(Foo().bar))
+    self.assertEqual(('a', 'b'), function_utils.fn_args(Foo().bar))
 
   def test_partial_function(self):
     expected_test_arg = 123
@@ -59,7 +59,7 @@ class FnArgsTest(test.TestCase):
 
     wrapped_fn = functools.partial(fn, test_arg=123)
 
-    self.assertEqual(('a',), util.fn_args(wrapped_fn))
+    self.assertEqual(('a',), function_utils.fn_args(wrapped_fn))
 
   def test_partial_function_with_positional_args(self):
     expected_test_arg = 123
@@ -71,7 +71,7 @@ class FnArgsTest(test.TestCase):
 
     wrapped_fn = functools.partial(fn, 123)
 
-    self.assertEqual(('a',), util.fn_args(wrapped_fn))
+    self.assertEqual(('a',), function_utils.fn_args(wrapped_fn))
 
     self.assertEqual(3, wrapped_fn(3))
     self.assertEqual(3, wrapped_fn(a=3))
@@ -88,7 +88,7 @@ class FnArgsTest(test.TestCase):
     wrapped_fn = functools.partial(fn, test_arg2=456)
     double_wrapped_fn = functools.partial(wrapped_fn, test_arg1=123)
 
-    self.assertEqual(('a',), util.fn_args(double_wrapped_fn))
+    self.assertEqual(('a',), function_utils.fn_args(double_wrapped_fn))
 
   def test_double_partial_with_positional_args_in_outer_layer(self):
     expected_test_arg1 = 123
@@ -102,7 +102,7 @@ class FnArgsTest(test.TestCase):
     wrapped_fn = functools.partial(fn, test_arg2=456)
     double_wrapped_fn = functools.partial(wrapped_fn, 123)
 
-    self.assertEqual(('a',), util.fn_args(double_wrapped_fn))
+    self.assertEqual(('a',), function_utils.fn_args(double_wrapped_fn))
 
     self.assertEqual(3, double_wrapped_fn(3))
     self.assertEqual(3, double_wrapped_fn(a=3))
@@ -119,7 +119,7 @@ class FnArgsTest(test.TestCase):
     wrapped_fn = functools.partial(fn, 123)  # binds to test_arg1
     double_wrapped_fn = functools.partial(wrapped_fn, 456)  # binds to test_arg2
 
-    self.assertEqual(('a',), util.fn_args(double_wrapped_fn))
+    self.assertEqual(('a',), function_utils.fn_args(double_wrapped_fn))
 
     self.assertEqual(3, double_wrapped_fn(3))
     self.assertEqual(3, double_wrapped_fn(a=3))

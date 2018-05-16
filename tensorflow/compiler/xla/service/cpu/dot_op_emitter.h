@@ -31,7 +31,9 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo);
+bool PotentiallyImplementedAsEigenDot(
+    const HloInstruction& hlo,
+    const TargetMachineFeatures& target_machine_features);
 
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
@@ -55,7 +57,7 @@ class DotOpEmitter {
   // dimensions as the result, and the result is computed as `addend_array` +
   // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
   // for Matrix-vector products.
-  static tensorflow::Status EmitDotOperation(
+  static Status EmitDotOperation(
       const HloInstruction& dot, const llvm_ir::IrArray& target_array,
       const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
       const llvm_ir::IrArray* addend_array,
@@ -74,18 +76,18 @@ class DotOpEmitter {
                const TargetMachineFeatures& target_machine_features);
 
   // Emits the IR to perform the dot operation.
-  tensorflow::Status Emit();
+  Status Emit();
 
   // Emits instructions to perform a scalar dot product (a multiply of the
   // LHS and RHS) and store the results in the target.
-  tensorflow::Status EmitScalarDot();
+  Status EmitScalarDot();
 
   // Emit an LLVM IR implementation of the dot operation if we can.  Returns
   // true if an LLVM IR implementation was emitted.
   bool EmitLlvmIrDotIfProfitable();
 
   // Emits a call to the CPU runtime to perform the matrix multiply.
-  tensorflow::Status EmitCallToRuntime();
+  Status EmitCallToRuntime();
 
   // Emits a series of nested loops for iterating over an operand array in the
   // dot operation. Loops are constructed in major to minor dimension layout

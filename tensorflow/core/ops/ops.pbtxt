@@ -6242,6 +6242,7 @@ op {
     allowed_values {
       list {
         s: "bilinear"
+        s: "nearest"
       }
     }
   }
@@ -6347,6 +6348,7 @@ op {
     allowed_values {
       list {
         s: "bilinear"
+        s: "nearest"
       }
     }
   }
@@ -16560,6 +16562,33 @@ op {
   }
   input_arg {
     name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+}
+op {
+  name: "NonMaxSuppressionV3"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
     type: DT_FLOAT
   }
   output_arg {

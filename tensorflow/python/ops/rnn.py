@@ -1401,6 +1401,13 @@ def static_state_saving_rnn(cell,
     outputs[-1] = nest.pack_sequence_as(
         structure=last_output, flat_sequence=flat_last_output)
 
+    if state_is_tuple:
+      state = nest.pack_sequence_as(
+          structure=state,
+          flat_sequence=[array_ops.identity(s) for s in flat_state])
+    else:
+      state = array_ops.identity(state)
+
   return (outputs, state)
 
 

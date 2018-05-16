@@ -120,11 +120,13 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
     case HloOpcode::kGather:
     case HloOpcode::kHostCompute:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kPower:

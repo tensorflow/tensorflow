@@ -997,6 +997,10 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
     request->SetResultBuffer(&output_buffer);
     request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
 
+    if (stats_ != nullptr) {
+      stats_->RecordStatObjectRequest();
+    }
+
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
                                     " when reading metadata of gs://", bucket,
                                     "/", object);

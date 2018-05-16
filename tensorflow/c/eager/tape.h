@@ -195,7 +195,9 @@ bool GradientTape<Gradient, BackwardFunction>::ShouldRecord(
   CHECK_EQ(tensor_ids.size(), dtypes.size());
   for (int i = 0; i < tensor_ids.size(); ++i) {
     if (tensor_tape_.find(tensor_ids[i]) != tensor_tape_.end()) {
-      return IsDtypeTrainable(dtypes[i]);
+      if (IsDtypeTrainable(dtypes[i])) {
+        return true;
+      }
     }
   }
   return false;

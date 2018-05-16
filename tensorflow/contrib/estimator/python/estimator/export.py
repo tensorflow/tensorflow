@@ -60,38 +60,16 @@ def export_saved_model_for_mode(
   with ops.Graph().as_default() as graph:
     with session.Session(graph=graph) as sess:
       loader.load(sess, [tag_constants.TRAINING], export_dir)
+      weights = graph.get_tensor_by_name(''linear/linear_model/age/weights')
       ...
   ```
 
-  This method takes an input_receiver_fn and mode. For the mode passed in,
-  this method builds a new graph by calling the input_receiver_fn to obtain
-  feature and label `Tensor`s. Next, this method calls the `Estimator`'s
-  model_fn in the passed mode to generate the model graph based on
-  those features and labels, and restores the given checkpoint
-  (or, lacking that, the most recent checkpoint) into the graph.
-  Finally, it creates a timestamped export directory below the
-  export_dir_base, and writes a `SavedModel` into it containing
-  the `MetaGraphDef` for the given mode and its associated signatures.
+  This method is a wrapper for _export_all_saved_models, and wraps a raw
+  input_receiver_fn in a dictionary to pass in to that function.
+  See _export_all_saved_models for full docs.
 
-  For prediction, the exported `MetaGraphDef` will provide one `SignatureDef`
-  for each element of the export_outputs dict returned from the model_fn,
-  named using the same keys.  One of these keys is always
-  signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, indicating which
-  signature will be served when a serving request does not specify one.
-  For each signature, the outputs are provided by the corresponding
-  `ExportOutput`s, and the inputs are always the input receivers provided by
-  the serving_input_receiver_fn.
-
-  For training and evaluation, the train_op is stored in an extra collection,
-  and loss, metrics, and predictions are included in a SignatureDef for the
-  mode in question.
-
-  Extra assets may be written into the SavedModel via the assets_extra
-  argument.  This should be a dict, where each key gives a destination path
-  (including the filename) relative to the assets.extra directory.  The
-  corresponding value gives the full path of the source file to be copied.
-  For example, the simple case of copying a single file without renaming it
-  is specified as `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+  See tf.contrib.estimator.export_saved_model_for_mode for the currently
+  exposed version of this function.
 
   Args:
     estimator: an instance of tf.estimator.Estimator
@@ -138,10 +116,39 @@ def export_all_saved_models(
   # pylint: disable=line-too-long
   """Exports requested train/eval/predict graphs as separate SavedModels.
 
-  This is a wrapper around export_saved_model_for_mode that accepts
-  multiple modes simultaneously and creates directories for each under
-  export_dir_base. See `Estimator.export_saved_model_for_mode` for
-  further details as to how the export works for each mode.
+  See tf.contrib.estimator.export_all_saved_models for the currently
+  exposed version of this function.
+
+  For each mode passed in via the input_receiver_fn_map,
+  this method builds a new graph by calling the input_receiver_fn to obtain
+  feature and label `Tensor`s. Next, this method calls the `Estimator`'s
+  model_fn in the passed mode to generate the model graph based on
+  those features and labels, and restores the given checkpoint
+  (or, lacking that, the most recent checkpoint) into the graph.
+  Only one of the modes is used for saving variables to the SavedModel
+  (order of preference: TRAIN, EVAL, then PREDICT), such that up to three
+  MetaGraphDefs are saved with a single set of variables in a single
+  SavedModel directory.
+
+  For prediction, the exported `MetaGraphDef` will provide one `SignatureDef`
+  for each element of the export_outputs dict returned from the model_fn,
+  named using the same keys.  One of these keys is always
+  signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, indicating which
+  signature will be served when a serving request does not specify one.
+  For each signature, the outputs are provided by the corresponding
+  `ExportOutput`s, and the inputs are always the input receivers provided by
+  the serving_input_receiver_fn.
+
+  For training and evaluation, the train_op is stored in an extra collection,
+  and loss, metrics, and predictions are included in a SignatureDef for the
+  mode in question.
+
+  Extra assets may be written into the SavedModel via the assets_extra
+  argument.  This should be a dict, where each key gives a destination path
+  (including the filename) relative to the assets.extra directory.  The
+  corresponding value gives the full path of the source file to be copied.
+  For example, the simple case of copying a single file without renaming it
+  is specified as `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 
   Sample usage:
   ```python
@@ -166,7 +173,7 @@ def export_all_saved_models(
       model_fn_lib.ModeKeys.PREDICT: serve_rcvr_fn,
   }
 
-  export_dirs = tf.contrib.estimator.export_all_saved_models(
+  export_dir = tf.contrib.estimator.export_all_saved_models(
       classifier,
       export_dir_base='my_model/',
       input_receiver_fn_map=rcvr_fn_map)
@@ -175,8 +182,8 @@ def export_all_saved_models(
   # can be used for serving, analysis with TFMA, or directly loaded in.
   with ops.Graph().as_default() as graph:
     with session.Session(graph=graph) as sess:
-      loader.load(sess, [tag_constants.TRAINING],
-                  export_dirs[tf.estimator.ModeKeys.TRAIN])
+      loader.load(sess, [tag_constants.TRAINING], export_dir)
+      weights = graph.get_tensor_by_name('linear/linear_model/age/weights')
       ...
   ```
 

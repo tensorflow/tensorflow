@@ -61,7 +61,7 @@ using TypesF16F32F64CF64 = ::testing::Types<Eigen::half, float>;
 #endif
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
-TEST_F(DotOperationTest, DotOfInputTupleElem) {
+XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
   XlaBuilder builder(TestName());
 
   XlaOp param;
@@ -798,7 +798,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64,
       this->error_spec_);
 }
 
-TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
+XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -826,7 +826,7 @@ TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
+XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -855,7 +855,7 @@ TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
 }
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-TEST_F(DotOperationTest,
+XLA_TEST_F(DotOperationTest,
        DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
            DotOfGatherOptimizationWithConstRHSReverseMM)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
@@ -886,7 +886,7 @@ TEST_F(DotOperationTest,
 }
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-TEST_F(DotOperationTest,
+XLA_TEST_F(DotOperationTest,
        DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
            DotOfGatherOptimizationWithConstLHSReverseMM)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
@@ -917,7 +917,7 @@ TEST_F(DotOperationTest,
 }
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-TEST_F(DotOperationTest,
+XLA_TEST_F(DotOperationTest,
        DISABLED_ON_CPU(DISABLED_ON_GPU(
            DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstRHSRows)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
@@ -953,7 +953,7 @@ TEST_F(DotOperationTest,
 }
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-TEST_F(DotOperationTest,
+XLA_TEST_F(DotOperationTest,
        DISABLED_ON_CPU(DISABLED_ON_GPU(
            DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstLHSRows)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
@@ -989,7 +989,7 @@ TEST_F(DotOperationTest,
 }
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-TEST_F(DotOperationTest,
+XLA_TEST_F(DotOperationTest,
        DISABLED_ON_CPU(DISABLED_ON_GPU(
            DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstRHSCols)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
@@ -1017,7 +1017,7 @@ TEST_F(DotOperationTest,
 }
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-TEST_F(DotOperationTest,
+XLA_TEST_F(DotOperationTest,
        DISABLED_ON_CPU(DISABLED_ON_GPU(
            DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstLHSCols)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(

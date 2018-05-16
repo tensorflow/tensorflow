@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -39,7 +39,7 @@ const char kFree[] = "Free";
 const char kFinish[] = "Finish";
 
 // CallSequence records a sequence of Alloc/Free/Finish calls.
-using CallSequence = std::vector<std::pair<string, const LogicalBuffer*>>;
+using CallSequence = std::vector<std::pair<string, const BufferValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
 class HeapCallRecorder : public HeapAlgorithm {
@@ -47,7 +47,7 @@ class HeapCallRecorder : public HeapAlgorithm {
   explicit HeapCallRecorder(CallSequence* calls) : calls_(calls) {}
   ~HeapCallRecorder() override {}
 
-  void Alloc(const LogicalBuffer* buffer, int64 size) override {
+  void Alloc(const BufferValue* buffer, int64 size) override {
     calls_->emplace_back(kAlloc, buffer);
     // Instead of assigning a real offset, we set the cardinality of the Alloc
     // call.  This isn't a valid assignment, but allows us to easily test for
@@ -55,7 +55,7 @@ class HeapCallRecorder : public HeapAlgorithm {
     const int64 offset = result_.chunk_map.size();
     result_.chunk_map.emplace(buffer, Chunk{offset, size});
   }
-  void Free(const LogicalBuffer* buffer, int64 size) override {
+  void Free(const BufferValue* buffer, int64 size) override {
     calls_->emplace_back(kFree, buffer);
   }
   Result Finish() override {
@@ -118,7 +118,7 @@ class HeapSimulatorTracker {
 
     // Hack the size_fn so that it returns a decreasing value as we step through
     // the sequence. This lets us ensure the Alloc calls are in the sequence
-    // order. The Free calls are sorted by LogicalBuffer.id, which is at least
+    // order. The Free calls are sorted by BufferValue.id, which is at least
     // deterministic.
     auto size_fn = [&reverse_position](const BufferValue& buffer) {
       return reverse_position[buffer.instruction()];
@@ -133,8 +133,8 @@ class HeapSimulatorTracker {
   HloModule* module() { return module_.get(); }
 
   // Returns the buffer defined at the given instruction and index.
-  const LogicalBuffer* BufferAt(const HloInstruction* instruction,
-                                const ShapeIndex& index) const {
+  const BufferValue* BufferAt(const HloInstruction* instruction,
+                              const ShapeIndex& index) const {
     return points_to_analysis_->GetBufferDefinedAt(instruction, index)
         .ConsumeValueOrDie();
   }
@@ -150,8 +150,8 @@ class HeapSimulatorTracker {
                            const ShapeIndex& index_a,
                            const HloInstruction* instruction_b,
                            const ShapeIndex& index_b) {
-    const LogicalBuffer* a = BufferAt(instruction_a, index_a);
-    const LogicalBuffer* b = BufferAt(instruction_b, index_b);
+    const BufferValue* a = BufferAt(instruction_a, index_a);
+    const BufferValue* b = BufferAt(instruction_b, index_b);
     EXPECT_EQ(result_.chunk_map[a].offset, result_.chunk_map[b].offset)
         << *a << ", " << *b;
   }
@@ -525,7 +525,7 @@ TEST_F(HeapSimulatorTest, WholeModule) {
       // Now the final cond less-than buffer is allocated.
       {kAlloc, tracker.BufferAt(cond_lt, {})},
 
-      // The order of the remaining Free calls is based on the LogicalBuffer.id,
+      // The order of the remaining Free calls is based on the BufferValue.id,
       // which is deterministic, but not obvious.
       {kFree, tracker.BufferAt(param, {})},
       {kFree, tracker.BufferAt(param, {0})},
@@ -547,40 +547,40 @@ TEST_F(HeapSimulatorTest, WholeModule) {
 class HeapAlgorithmTestBase : public ::testing::Test {
  protected:
   HeapAlgorithmTestBase() : builder_("heap_simulator_test") {
-    buffer_a_ = DummyLogicalBuffer();
-    buffer_b_ = DummyLogicalBuffer();
-    buffer_c_ = DummyLogicalBuffer();
-    buffer_d_ = DummyLogicalBuffer();
-    buffer_e_ = DummyLogicalBuffer();
-    buffer_f_ = DummyLogicalBuffer();
-    buffer_g_ = DummyLogicalBuffer();
-    buffer_h_ = DummyLogicalBuffer();
-    buffer_i_ = DummyLogicalBuffer();
+    buffer_a_ = DummyBufferValue();
+    buffer_b_ = DummyBufferValue();
+    buffer_c_ = DummyBufferValue();
+    buffer_d_ = DummyBufferValue();
+    buffer_e_ = DummyBufferValue();
+    buffer_f_ = DummyBufferValue();
+    buffer_g_ = DummyBufferValue();
+    buffer_h_ = DummyBufferValue();
+    buffer_i_ = DummyBufferValue();
   }
   ~HeapAlgorithmTestBase() override {}
 
-  const LogicalBuffer* buffer_a_;
-  const LogicalBuffer* buffer_b_;
-  const LogicalBuffer* buffer_c_;
-  const LogicalBuffer* buffer_d_;
-  const LogicalBuffer* buffer_e_;
-  const LogicalBuffer* buffer_f_;
-  const LogicalBuffer* buffer_g_;
-  const LogicalBuffer* buffer_h_;
-  const LogicalBuffer* buffer_i_;
+  const BufferValue* buffer_a_;
+  const BufferValue* buffer_b_;
+  const BufferValue* buffer_c_;
+  const BufferValue* buffer_d_;
+  const BufferValue* buffer_e_;
+  const BufferValue* buffer_f_;
+  const BufferValue* buffer_g_;
+  const BufferValue* buffer_h_;
+  const BufferValue* buffer_i_;
 
  private:
-  // Create a dummy LogicalBuffer to pass to the heap algorithm.
-  const LogicalBuffer* DummyLogicalBuffer() {
-    const LogicalBuffer::Id id = buffers_.size();
+  // Create a dummy BufferValue to pass to the heap algorithm.
+  const BufferValue* DummyBufferValue() {
+    const BufferValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
         HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(const0, ShapeIndex{}, id));
+    buffers_.emplace_back(MakeUnique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }
 
   HloComputation::Builder builder_;
-  std::vector<std::unique_ptr<LogicalBuffer>> buffers_;
+  std::vector<std::unique_ptr<BufferValue>> buffers_;
 };
 
 class NoFragmentationStatsHeapTest : public HeapAlgorithmTestBase {};

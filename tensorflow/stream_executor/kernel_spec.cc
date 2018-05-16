@@ -93,7 +93,7 @@ const char *CudaPtxInMemory::default_text() const {
     return nullptr;
   }
 
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
 
   auto ptx = ptx_by_compute_capability_.begin()->second;
   // Check if there is an entry in decompressed ptx table.
@@ -127,7 +127,7 @@ const char *CudaPtxInMemory::text(int compute_capability_major,
     return nullptr;
   }
 
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
 
   // Check if there is an entry in decompressed ptx table.
   auto decompressed_ptx_iter = decompressed_ptx_.find(ptx_iter->second);

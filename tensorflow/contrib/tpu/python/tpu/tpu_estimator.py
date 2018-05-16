@@ -46,7 +46,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -68,6 +67,7 @@ from tensorflow.python.training import evaluation
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -76,12 +76,13 @@ _ZERO_LOSS = 0.
 _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
+_CTX_KEY = 'context'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
 
-_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
+_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
 
 # TODO(b/65703635): Flip the value and remove all dead code. Currently, this is
@@ -1269,7 +1270,7 @@ class _ModelFnWrapper(object):
 
   def _call_model_fn(self, features, labels, is_export_mode=False):
     """Calls the model_fn with required parameters."""
-    model_fn_args = util.fn_args(self._model_fn)
+    model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
 
     # Makes deep copy with `config` and params` in case user mutates them.
@@ -1361,7 +1362,7 @@ class _OutfeedHostCall(object):
 
       if isinstance(host_call[1], (tuple, list)):
         fullargspec = tf_inspect.getfullargspec(host_call[0])
-        fn_args = util.fn_args(host_call[0])
+        fn_args = function_utils.fn_args(host_call[0])
         # wrapped_hostcall_with_global_step uses varargs, so we allow that.
         if fullargspec.varargs is None and len(host_call[1]) != len(fn_args):
           raise RuntimeError(
@@ -1612,7 +1613,9 @@ class TPUEstimator(estimator_lib.Estimator):
   ==========
 
   `model_fn` should return `TPUEstimatorSpec`, which expects the `eval_metrics`
-  for TPU evaluation.
+  for TPU evaluation. However, if eval_on_tpu is False, `model_fn` must return
+  `EstimatorSpec` and the evaluation will execute on CPU or GPU; in this case
+  the following discussion on TPU evaluation does not apply.
 
   `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`, where
   `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. (See
@@ -1759,7 +1762,9 @@ class TPUEstimator(estimator_lib.Estimator):
                train_batch_size=None,
                eval_batch_size=None,
                predict_batch_size=None,
-               batch_axis=None):
+               batch_axis=None,
+               eval_on_tpu=True,
+               warm_start_from=None):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -1777,7 +1782,8 @@ class TPUEstimator(estimator_lib.Estimator):
         basic python types. There are reserved keys for `TPUEstimator`,
         including 'batch_size'.
       use_tpu: A bool indicating whether TPU support is enabled. Currently,
-        - TPU training and evaluation respect this bit.
+        - TPU training and evaluation respect this bit, but eval_on_tpu can
+          override execution of eval. See below.
         - Predict still happens on CPU.
       train_batch_size: An int representing the global training batch size.
         TPUEstimator transforms this global batch size to a per-shard batch
@@ -1798,6 +1804,14 @@ class TPUEstimator(estimator_lib.Estimator):
         and per_host_input_for_training is True, batches will be sharded based
         on the major dimension. If tpu_config.per_host_input_for_training is
         False or `PER_HOST_V2`, batch_axis is ignored.
+      eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
+        model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
+      warm_start_from: Optional string filepath to a checkpoint or SavedModel to
+                       warm-start from, or a `tf.estimator.WarmStartSettings`
+                       object to fully configure warm-starting.  If the string
+                       filepath is provided instead of a `WarmStartSettings`,
+                       then all variables are warm-started, and it is assumed
+                       that vocabularies and Tensor names are unchanged.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -1850,7 +1864,8 @@ class TPUEstimator(estimator_lib.Estimator):
         model_fn=model_function,
         model_dir=model_dir,
         config=config,
-        params=params)
+        params=params,
+        warm_start_from=warm_start_from)
     self._iterations_per_training_loop = (
         self._config.tpu_config.iterations_per_loop)
 
@@ -1859,7 +1874,8 @@ class TPUEstimator(estimator_lib.Estimator):
     self._ctx = tpu_context._get_tpu_context(
         self._config, train_batch_size,
         eval_batch_size, predict_batch_size,
-        use_tpu)
+        use_tpu,
+        eval_on_tpu)
 
     self._is_input_fn_invoked = None
 
@@ -1930,7 +1946,7 @@ class TPUEstimator(estimator_lib.Estimator):
     Raises:
       ValueError: if input_fn takes invalid arguments or does not have `params`.
     """
-    input_fn_args = util.fn_args(input_fn)
+    input_fn_args = function_utils.fn_args(input_fn)
     config = self.config  # a deep copy.
     kwargs = {}
     if 'params' in input_fn_args:

@@ -410,6 +410,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "listdiff_op_test",
+    size = "small",
+    srcs = ["listdiff_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform_test",
+        "@six_archive//:six",
+    ],
+)
+
+tf_xla_py_test(
     name = "lrn_ops_test",
     size = "medium",
     srcs = ["lrn_ops_test.py"],
