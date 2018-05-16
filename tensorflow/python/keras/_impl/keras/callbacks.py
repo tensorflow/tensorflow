@@ -598,7 +598,7 @@ class RemoteMonitor(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     if requests is None:
-      raise ImportError('RemoteMonitor requires ' 'the `requests` library.')
+      raise ImportError('RemoteMonitor requires the `requests` library.')
     logs = logs or {}
     send = {}
     send['epoch'] = epoch
