@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -750,10 +751,7 @@ TEST_F(XlaCompilerTest, Variables) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
 }
 
-// Tests a simple graph that reads and writes a variable, with a
-// variable_representation_shape_fn passed to the compiler that flattens all
-// variable tensors to vectors.
-TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
+xla::StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
@@ -764,7 +762,15 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
   auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
   auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+  TF_RETURN_IF_ERROR(scope.ToGraph(graph.get()));
+  return std::move(graph);
+}
+
+// Tests a simple graph that reads and writes a variable, with a
+// shape_representation_fn passed to the compiler that flattens all
+// variable tensors to vectors.
+TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> graph, BuildTestGraph());
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(2);
@@ -779,15 +785,33 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
 
   // Compiles the graph.
   XlaCompiler::Options options = DefaultOptions();
-  options.variable_representation_shape_fn = [](const TensorShape& shape,
-                                                DataType type) {
+  options.shape_representation_fn = [](const TensorShape& shape,
+                                       DataType type) {
     return TensorShape({shape.num_elements()});
   };
   XlaCompiler compiler(options);
 
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = false;  // Only reshape variables.
+
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                     args, &result));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::ProgramShape> program_shape,
+                          client_->GetComputationShape(*result.computation));
+
+  ASSERT_EQ(program_shape->parameters_size(), 2);
+  EXPECT_TRUE(
+      xla::ShapeUtil::Compatible(program_shape->parameters(0),
+                                 xla::ShapeUtil::MakeShape(xla::S32, {2, 2})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->parameters(1), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->result(),
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::S32, {2, 2}),
+           xla::ShapeUtil::MakeShape(xla::S32, {4})})));
 
   // Tests that the generated computation works.
   std::unique_ptr<xla::Literal> param0_literal =
@@ -808,6 +832,75 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
 
   std::unique_ptr<xla::Literal> expected0 =
       xla::Literal::CreateR2<int32>({{27, 67}, {35, 402}});
+  std::unique_ptr<xla::Literal> expected1 =
+      xla::Literal::CreateR1<int32>({26, 66, 34, 401});
+  std::unique_ptr<xla::Literal> expected_literal =
+      xla::Literal::MakeTuple({expected0.get(), expected1.get()});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+}
+
+TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> graph, BuildTestGraph());
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 2});
+  args[1].kind = XlaCompiler::Argument::kResource;
+  args[1].resource_kind = XlaResource::kVariable;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2, 2});
+
+  // Compiles the graph.
+  XlaCompiler::Options options = DefaultOptions();
+  options.shape_representation_fn = [](const TensorShape& shape,
+                                       DataType type) {
+    return TensorShape({shape.num_elements()});
+  };
+  XlaCompiler compiler(options);
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;  // Reshape args and retvals.
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                     args, &result));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::ProgramShape> program_shape,
+                          client_->GetComputationShape(*result.computation));
+
+  ASSERT_EQ(program_shape->parameters_size(), 2);
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->parameters(0), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->parameters(1), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->result(),
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::S32, {4}),
+           xla::ShapeUtil::MakeShape(xla::S32, {4})})));
+
+  // Tests that the generated computation works.
+  std::unique_ptr<xla::Literal> param0_literal =
+      xla::Literal::CreateR1<int32>({4, 55, 1, -3});
+  std::unique_ptr<xla::Literal> param1_literal =
+      xla::Literal::CreateR1<int32>({22, 11, 33, 404});
+  std::unique_ptr<xla::GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+  std::unique_ptr<xla::GlobalData> param1_data =
+      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::GlobalData> actual =
+      client_
+          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+          .ConsumeValueOrDie();
+  std::unique_ptr<xla::Literal> actual_literal =
+      client_->Transfer(*actual).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::Literal> expected0 =
+      xla::Literal::CreateR1<int32>({27, 67, 35, 402});
   std::unique_ptr<xla::Literal> expected1 =
       xla::Literal::CreateR1<int32>({26, 66, 34, 401});
   std::unique_ptr<xla::Literal> expected_literal =

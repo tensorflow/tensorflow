@@ -208,10 +208,11 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RETURN_IF_ERROR(
       PrepareArguments(&xla_op_context, graph.get(), expressions, &arguments));
 
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = false;
   XlaCompiler::CompilationResult result;
-
-  TF_RETURN_IF_ERROR(compiler->CompileFunction(XlaCompiler::CompileOptions(),
-                                               func, arguments, &result));
+  TF_RETURN_IF_ERROR(
+      compiler->CompileFunction(compile_options, func, arguments, &result));
 
   TF_RET_CHECK(arguments.size() == expressions.size());
 
