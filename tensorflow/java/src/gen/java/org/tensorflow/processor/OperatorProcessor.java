@@ -332,23 +332,23 @@ public final class OperatorProcessor extends AbstractProcessor {
             "  // Operations are typed classes with convenience\n" +
             "  // builders in Ops.\n" +
             "  Constant three = ops.constant(3);\n" +
-            "  // Single-result operations implement the Input\n" +
+            "  // Single-result operations implement the Operand\n" +
             "  // interface, so this works too.\n" +
-            "  Input four = ops.constant(4);\n" +
+            "  Operand four = ops.constant(4);\n" +
             "  // Most builders are found within a group, and accept\n" +
-            "  // Input types as operands\n" +
-            "  Input nine = ops.math().add(four, ops.constant(5));\n" +
+            "  // Operand types as operands\n" +
+            "  Operand nine = ops.math().add(four, ops.constant(5));\n" +
             "  // Multi-result operations however offer methods to\n" +
             "  // select a particular result for use.\n" +
-            "  Input result = \n" +
+            "  Operand result = \n" +
             "      ops.math().add(ops.array().unique(s, a).y(), b);\n" +
             "  // Optional attributes\n" +
             "  ops.math().matMul(a, b, MatMul.transposeA(true));\n" +
             "  // Naming operators\n" +
-            "  ops.withOpName(“foo”).constant(5); // name “foo”\n" +
+            "  ops.withName(“foo”).constant(5); // name “foo”\n" +
             "  // Names can exist in a hierarchy\n" +
-            "  Ops sub = ops.withSubscope(“sub”);\n" +
-            "  sub.withOpName(“bar”).constant(4); // “sub/bar”\n" +
+            "  Ops sub = ops.withSubScope(“sub”);\n" +
+            "  sub.withName(“bar”).constant(4); // “sub/bar”\n" +
             "}\n" +
             "}</pre>\n", T_GRAPH, T_OPERATOR)
         .addMethods(methods)
