@@ -3455,7 +3455,6 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
             T2* output_data, const Dims<4>& output_dims) {
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
-  TFLITE_DCHECK_EQ(axis[0], 3);
 
   // For ArgMax, the number of output dimensions = (number of input dimensions -
   // 1). For the sake of simplicity, the output dimensions are equal to the

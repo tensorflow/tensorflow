@@ -31,6 +31,7 @@ from __future__ import print_function
 import argparse
 import itertools
 import os
+import random
 import re
 import sys
 import tempfile
@@ -101,10 +102,6 @@ KNOWN_BUGS = {
     r"div.*int32": "72051395",
     # No support for SplitV
     r"split.*num_or_size_splits=\[2,2\]": "73377559",
-    # Needs support for dimensions other than the last one in argmax.
-    r"arg_max.*axis=0.*": "77546240",
-    r"arg_max.*axis=1.*": "77546240",
-    r"arg_max.*axis=2.*": "77546240",
 }
 
 
@@ -2044,8 +2041,8 @@ def make_arg_max_tests(zip_path):
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
       "input_shape": [[1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
-      "axis": [0, 1, 2, 3],
       "output_type": [tf.int32, tf.int64],
+      "axis_is_last_dim": [True, False],
   }]
 
   def build_graph(parameters):
@@ -2054,7 +2051,10 @@ def make_arg_max_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    axis = tf.constant(parameters["axis"], name="axis")
+    if parameters["axis_is_last_dim"]:
+      axis = len(parameters["input_shape"]) - 1
+    else:
+      axis = random.randint(0, max(len(parameters["input_shape"]) - 2, 0))
     out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
     return [input_value], [out]
 
