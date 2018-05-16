@@ -1467,10 +1467,14 @@ class SeparableConv2D(SeparableConv):
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
+      dilation_rate: An integer or tuple/list of 2 integers, specifying
+          the dilation rate to use for dilated convolution.
+          Currently, specifying any `dilation_rate` value != 1 is
+          incompatible with specifying any `strides` value != 1.
       depth_multiplier: The number of depthwise convolution output channels
           for each input channel.
           The total number of depthwise convolution output
-          channels will be equal to `filterss_in * depth_multiplier`.
+          channels will be equal to `filters_in * depth_multiplier`.
       activation: Activation function to use.
           If you don't specify anything, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
@@ -1511,7 +1515,7 @@ class SeparableConv2D(SeparableConv):
                strides=(1, 1),
                padding='valid',
                data_format=None,
-               dilation_rate=1,
+               dilation_rate=(1, 1),
                depth_multiplier=1,
                activation=None,
                use_bias=True,
@@ -2095,14 +2099,14 @@ class ZeroPadding3D(Layer):
   """Zero-padding layer for 3D data (spatial or spatio-temporal).
 
   Arguments:
-      padding: int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
+      padding: int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
           - If int: the same symmetric padding
               is applied to width and height.
-          - If tuple of 2 ints:
+          - If tuple of 3 ints:
               interpreted as two different
               symmetric padding values for height and width:
               `(symmetric_dim1_pad, symmetric_dim2_pad, symmetric_dim3_pad)`.
-          - If tuple of 2 tuples of 2 ints:
+          - If tuple of 3 tuples of 2 ints:
               interpreted as
               `((left_dim1_pad, right_dim1_pad), (left_dim2_pad,
                 right_dim2_pad), (left_dim3_pad, right_dim3_pad))`

@@ -825,7 +825,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
         *elem_count *= dim;
       }
     }
-    if (elem_count.has_value() && *elem_count <= 8) {
+    if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
       return Printf("%s (%s)", constant->literal().ToString(),
                     ShapeUtil::HumanString(constant->shape()));
     }
@@ -925,6 +925,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
@@ -932,6 +933,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -1102,7 +1104,8 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   // Get the instruction's extra attributes excluding the names of its
   // subcomputations, since those are drawn explicitly in the graph.
   for (const auto& line : instr->ExtraAttributesToString(
-           HloPrintOptions().set_print_subcomputation_references(false))) {
+           HloPrintOptions().set_print_subcomputation_mode(
+               HloPrintOptions::PrintSubcomputationMode::kOff))) {
     lines.push_back(HtmlLikeStringSanitize(line));
   }
 

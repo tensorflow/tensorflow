@@ -142,6 +142,8 @@ enum BuiltinOperator : byte {
   GREATER_EQUAL = 62,
   LESS_EQUAL = 63,
   SELECT = 64,
+  SLICE = 65,
+  SIN = 66,
 }
 
 // Options for the builtin operators.
@@ -193,6 +195,7 @@ union BuiltinOptions {
   GreaterEqualOptions,
   LessEqualOptions,
   SelectOptions,
+  SliceOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -436,11 +439,18 @@ table NegOptions {
 table SelectOptions {
 }
 
+table SliceOptions {
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
   builtin_code:BuiltinOperator;
   custom_code:string;
+
+  // The version of the operator. The version need to be bumped whenever new
+  // parameters are introduced into an op.
+  version:int = 1;
 }
 
 enum CustomOptionsFormat : byte {

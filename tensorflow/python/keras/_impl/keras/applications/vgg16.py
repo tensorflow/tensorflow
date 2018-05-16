@@ -223,16 +223,6 @@ def VGG16(include_top=True,
           cache_subdir='models',
           file_hash='6d6bbae143d832006294945121d1f1fc')
     model.load_weights(weights_path)
-    if K.backend() == 'theano':
-      layer_utils.convert_all_kernels_in_model(model)
-
-    if K.image_data_format() == 'channels_first':
-      if include_top:
-        maxpool = model.get_layer(name='block5_pool')
-        shape = maxpool.output_shape[1:]
-        dense = model.get_layer(name='fc1')
-        layer_utils.convert_dense_weights_data_format(dense, shape,
-                                                      'channels_first')
 
   elif weights is not None:
     model.load_weights(weights)

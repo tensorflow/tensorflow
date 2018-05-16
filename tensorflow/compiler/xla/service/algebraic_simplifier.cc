@@ -92,26 +92,6 @@ bool ReshapeIsBitcast(
          valid_bitcast_callback(operand->shape(), reshape->shape());
 }
 
-// Adds a scalar computation to the module to enable optimizations with dot
-// converting into reduction.
-HloComputation* CreateScalarBinaryComputation(HloModule* module,
-                                              PrimitiveType primitive_type,
-                                              HloOpcode opcode) {
-  HloComputation::Builder b("scalar_computation");
-  auto scalar_lhs = b.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {}), "scalar_lhs"));
-  auto scalar_rhs = b.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {}), "scalar_rhs"));
-  auto scalar_op = b.AddInstruction(
-      HloInstruction::CreateBinary(ShapeUtil::MakeShape(primitive_type, {}),
-                                   opcode, scalar_lhs, scalar_rhs));
-  HloComputation* scalar_computation =
-      module->AddEmbeddedComputation(b.Build(scalar_op));
-  return scalar_computation;
-}
-
-}  // namespace
-
 // AlgebraicSimplifierVisitor traverses the HLO computation and reduces certain
 // algebraic expressions to simplified forms. Note: This only supports
 // simplifications that simply look at the operands of an instruction. For the
@@ -220,8 +200,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   HloInstruction* AddReduce(HloInstruction* hlo, int64 dim) {
     HloInstruction* zero = computation_->AddInstruction(
         HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
-    HloComputation* AddReduce_computation = CreateScalarBinaryComputation(
-        computation_->parent(), F32, HloOpcode::kAdd);
+    HloComputation* AddReduce_computation = GetOrCreateScalarAddComputation();
     Shape shape = ShapeUtil::DeleteDimension(dim, hlo->shape());
     return computation_->AddInstruction(HloInstruction::CreateReduce(
         shape, hlo, zero, {dim}, AddReduce_computation));
@@ -293,6 +272,24 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
 
+  HloComputation* GetOrCreateScalarAddComputation() {
+    if (scalar_add_computation_) {
+      return scalar_add_computation_;
+    }
+
+    HloComputation::Builder b("scalar_add_computation");
+    Shape shape = ShapeUtil::MakeShape(F32, {});
+    auto scalar_lhs = b.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "scalar_lhs"));
+    auto scalar_rhs = b.AddInstruction(
+        HloInstruction::CreateParameter(1, shape, "scalar_rhs"));
+    auto scalar_op = b.AddInstruction(HloInstruction::CreateBinary(
+        shape, HloOpcode::kAdd, scalar_lhs, scalar_rhs));
+    scalar_add_computation_ =
+        computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
+    return scalar_add_computation_;
+  }
+
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -311,7 +308,12 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   // Disable convolution simplification on platforms where it causes a slowdown.
   bool enable_conv_simplification_;
+
+  // Cached computation for adding two scalar F32.
+  HloComputation* scalar_add_computation_ = nullptr;
 };
+
+}  // namespace
 
 bool AlgebraicSimplifierVisitor::Run(
     HloComputation* computation, bool is_layout_sensitive,
@@ -501,13 +503,13 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
 }
 
 static HloInstruction* BuildTupleConstant(HloComputation* computation,
-                                          const Literal& literal) {
+                                          const LiteralSlice& literal) {
   if (ShapeUtil::IsTuple(literal.shape())) {
     std::vector<HloInstruction*> elems;
     elems.reserve(ShapeUtil::TupleElementCount(literal.shape()));
     for (int i = 0; i < ShapeUtil::TupleElementCount(literal.shape()); ++i) {
       elems.push_back(
-          BuildTupleConstant(computation, LiteralView::Create(literal, {i})));
+          BuildTupleConstant(computation, LiteralSlice(literal, {i})));
     }
     return computation->AddInstruction(HloInstruction::CreateTuple(elems));
   } else {

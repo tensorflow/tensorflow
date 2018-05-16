@@ -47,6 +47,9 @@ message RewriterConfig {
   // Statically infer the value of tensors when possible, and materialize the
   // result using constants.
   Toggle constant_folding = 3;
+  // Shape optimizations (default is OFF)
+  // Simplify computations made on shapes;
+  Toggle shape_optimization = 13;
   // Arithmetic optimizations (default is ON)
   // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
   Toggle arithmetic_optimization = 7;

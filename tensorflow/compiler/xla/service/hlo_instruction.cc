@@ -51,7 +51,7 @@ using ::tensorflow::strings::StrCat;
 
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
-    HloModule* module, const HloInstructionProto& proto,
+    const HloInstructionProto& proto,
     const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
     const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map) {
   TF_RET_CHECK(!proto.opcode().empty());
@@ -257,10 +257,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCos:
     case HloOpcode::kClz:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
@@ -1245,10 +1247,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
@@ -1557,6 +1561,8 @@ const Literal& HloInstruction::literal() const {
   return *literal_;
 }
 
+bool HloInstruction::HasLiteral() const { return literal_ != nullptr; }
+
 bool HloInstruction::CanHaveDimensionsField() const {
   return (opcode() == HloOpcode::kReverse ||
           opcode() == HloOpcode::kConcatenate ||
@@ -1697,6 +1703,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
@@ -1704,6 +1711,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
@@ -2098,13 +2106,40 @@ string PrintName(const string& name, const HloPrintOptions& options) {
 }  // namespace
 
 string HloInstruction::ToString(const HloPrintOptions& options) const {
-  string result =
-      StrCat(PrintName(name(), options), " = ",
-             ShapeUtil::HumanStringWithLayout(shape()), " ",
-             HloOpcodeString(opcode()), "(", OperandsToString(options), ")");
+  CanonicalNameMap new_map;
+  return ToStringWithCanonicalNameMap(options, &new_map);
+}
+
+string HloInstruction::ToStringWithCanonicalNameMap(
+    const HloPrintOptions& options,
+    CanonicalNameMap* canonical_name_map) const {
+  string result = "";
+
+  // Logic to print the instruction name (e.g. "%foo = ").
+  if (options.canonicalize_instruction_names()) {
+    if (options.is_in_nested_computation()) {
+      // If we are canonicalizing instruction names and this is a top-level
+      // HloInstruction::ToString() call, don't print an instruction name.
+      StrAppend(&result,
+                PrintName(canonical_name_map->LookupOrInsert(name()), options),
+                " = ");
+    }
+  } else {
+    StrAppend(&result, PrintName(name(), options), " = ");
+  }
+
+  // Print opcode, operand(s) and shape.
+  StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ",
+            HloOpcodeString(opcode()), "(",
+            OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
+            ")");
+
+  // Print additional attributes. If an instruction contains a subcomputation,
+  // the subcomputation is also printed here.
   for (const string& extra : ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
+
   if (options.print_metadata() &&
       (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
        !metadata_.source_file().empty())) {
@@ -2117,6 +2152,13 @@ string HloInstruction::ToString(const HloPrintOptions& options) const {
 }
 
 string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
+  CanonicalNameMap new_map;
+  return OperandsToStringWithCanonicalNameMap(options, &new_map);
+}
+
+string HloInstruction::OperandsToStringWithCanonicalNameMap(
+    const HloPrintOptions& options,
+    CanonicalNameMap* canonical_name_map) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
@@ -2156,7 +2198,14 @@ string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
       if (options.print_operand_shape()) {
         str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
       }
-      if (!options.compact_operands()) {
+
+      // In a top-level HloInstruction::ToString() call, the operand name is not
+      // part of the canonical string.
+      if (options.canonicalize_instruction_names() &&
+          options.is_in_nested_computation()) {
+        str.push_back(PrintName(
+            canonical_name_map->LookupOrInsert(operand->name()), options));
+      } else if (!options.compact_operands()) {
         str.push_back(PrintName(operand->name(), options));
       }
       StrAppend(out, Join(str, " "));
@@ -2225,7 +2274,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("fft_length={", Join(fft_length(), ","), "}"));
   }
 
-  if (options.print_subcomputation_references()) {
+  if (options.print_subcomputation_mode() ==
+      HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
       extra.push_back(
           StrCat("condition=", PrintName(while_condition()->name(), options)));
@@ -2253,8 +2303,45 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                                      PrintName(computation->name(), options));
                          })));
     }
+  } else if (options.print_subcomputation_mode() ==
+             HloPrintOptions::PrintSubcomputationMode::kFullBodies) {
+    HloPrintOptions new_options = options;
+    new_options.set_is_in_nested_computation(true);
+    switch (opcode()) {
+      case HloOpcode::kWhile:
+        extra.push_back(
+            StrCat("condition=\n", while_condition()->ToString(new_options)));
+        extra.push_back(StrCat("body=\n", while_body()->ToString(new_options)));
+        break;
+      case HloOpcode::kSelectAndScatter:
+        extra.push_back(StrCat("select=\n", select()->ToString(new_options)));
+        extra.push_back(StrCat("scatter=\n", scatter()->ToString(new_options)));
+        break;
+      case HloOpcode::kConditional:
+        extra.push_back(StrCat("true_computation=\n",
+                               true_computation()->ToString(new_options)));
+        extra.push_back(StrCat("false_computation=\n",
+                               false_computation()->ToString(new_options)));
+        break;
+      case HloOpcode::kCall:
+      case HloOpcode::kMap:
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReduce:
+        extra.push_back(
+            StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        break;
+      default:
+        if (!called_computations().empty()) {
+          extra.push_back(
+              StrCat("calls=\n",
+                     Join(called_computations(), ", ",
+                          [&](string* out, const HloComputation* computation) {
+                            StrAppend(out, computation->ToString(new_options));
+                          })));
+        }
+        break;
+    }
   }
-
   if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv ||
       opcode() == HloOpcode::kSendDone || opcode() == HloOpcode::kRecvDone) {
     extra.push_back(StrCat("channel_id=", channel_id_));
@@ -2292,7 +2379,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   }
 
   // By contract, we print the custom call target even if
-  // !options.print_subcomputation_references(), because the call target is not
+  // options.print_subcomputation_mode() == kOff, because the call target is not
   // an HloComputation.
   if (opcode() == HloOpcode::kCustomCall) {
     extra.push_back(
@@ -2392,6 +2479,10 @@ HloInstructionProto HloInstruction::ToProto() const {
   proto.set_fft_type(fft_type_);
   for (int64 fft_len : fft_length_) {
     proto.add_fft_length(fft_len);
+  }
+
+  if (has_sharding()) {
+    *proto.mutable_sharding() = sharding().ToProto();
   }
 
   proto.set_channel_name(channel_name_);
@@ -2614,6 +2705,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleNegate(this);
     case HloOpcode::kExp:
       return visitor->HandleExp(this);
+    case HloOpcode::kExpm1:
+      return visitor->HandleExpm1(this);
     case HloOpcode::kFloor:
       return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
@@ -2622,6 +2715,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleClz(this);
     case HloOpcode::kLog:
       return visitor->HandleLog(this);
+    case HloOpcode::kLog1p:
+      return visitor->HandleLog1p(this);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this);
     case HloOpcode::kCos:
@@ -2968,10 +3063,12 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
@@ -3036,7 +3133,7 @@ bool HloInstruction::IsElementwise() const {
 
 bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
   CHECK(IsElementwise());
-  return !ShapeUtil::Equal(shape(), operand(operand_idx)->shape());
+  return !ShapeUtil::SameDimensions(shape(), operand(operand_idx)->shape());
 }
 
 namespace {

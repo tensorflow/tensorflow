@@ -295,42 +295,6 @@ class Template(checkpointable.CheckpointableBase):
     # which is not the same as whether the scope has been created.
     self._variables_created = False
 
-  @property
-  def _checkpoint_dependencies(self):
-    """Sanity checking for object-based saving.
-
-    Does not override Checkpointable dependency tracking, but checks that
-    variables accessible through Checkpointable dependencies on other `Template`
-    objects include all of the variable_scope-filtered `Template.variables`.
-
-    Returns:
-      A list of checkpointable.CheckpointableReference objects.
-    Raises:
-      ValueError: If this object is not compatible with object-based saving.
-    """
-    dependencies = super(Template, self)._checkpoint_dependencies
-    dependency_variables = []
-    for _, dependency in dependencies:
-      if isinstance(dependency, Template):
-        dependency_variables.extend(dependency.variables)
-      else:
-        dependency_variables.append(dependency)
-    dependency_variables = set(dependency_variables)
-    not_included_variables = []
-    for expected_variable in sorted(self.variables, key=lambda v: v.name):
-      if expected_variable not in dependency_variables:
-        not_included_variables.append(expected_variable)
-    if not_included_variables:
-      # Trying to save a Template which improperly tracks its variables.
-      raise ValueError(
-          ("The Template '%s' references variables which are not included via "
-           "object-based dependency tracking. Most likely a custom "
-           "getter/creator was registered which does not call Template's "
-           "custom variable creator (which is responsible for tracking "
-           "dependencies).\n\nExpected these variables to be dependencies: %s")
-          % (self, not_included_variables))
-    return dependencies
-
   def _checkpointable_custom_creator(self, next_creator, name, initial_value,
                                      checkpointable_parent=None, **kwargs):
     """A variable creation hook which adds Checkpointable dependencies.

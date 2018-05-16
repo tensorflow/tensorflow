@@ -14,22 +14,27 @@
 # ==============================================================================
 """Tools for working with object-based checkpoints.
 
-
-For creating and managing dependencies:
-@@CheckpointableObjectGraph
+Visualization and inspection:
 @@dot_graph_from_checkpoint
 @@object_metadata
+
+Creating and managing dependencies:
+@@Checkpointable
+@@CheckpointableObjectGraph
 @@NoDependency
 @@split_dependency
+@@UniqueNameTracker
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.checkpoint.python.containers import UniqueNameTracker
 from tensorflow.contrib.checkpoint.python.split_dependency import split_dependency
 from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkpoint
 from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import CheckpointableObjectGraph
+from tensorflow.python.training.checkpointable import Checkpointable
 from tensorflow.python.training.checkpointable import NoDependency
 from tensorflow.python.training.checkpointable_utils import object_metadata
 

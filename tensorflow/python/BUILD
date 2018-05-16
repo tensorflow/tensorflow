@@ -502,7 +502,10 @@ py_test(
 
 cc_library(
     name = "python_op_gen",
-    srcs = ["framework/python_op_gen.cc"],
+    srcs = [
+        "framework/python_op_gen.cc",
+        "framework/python_op_gen_internal.cc",
+    ],
     hdrs = [
         "framework/python_op_gen.h",
         "framework/python_op_gen_internal.h",
@@ -524,12 +527,12 @@ cc_library(
     srcs = ["framework/python_op_gen_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":python_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python/eager:python_eager_op_gen",
     ],
 )
 
@@ -624,6 +627,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":pywrap_tensorflow",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -3033,9 +3037,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
         ":dtypes",
         ":io_ops_gen",
         ":ops",
+        ":saveable_object",
         ":util",
         "//tensorflow/python/eager:context",
     ],
@@ -3221,6 +3228,18 @@ py_test(
 )
 
 py_test(
+    name = "util_serialization_test",
+    size = "small",
+    srcs = ["util/serialization_test.py"],
+    main = "util/serialization_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
+py_test(
     name = "future_api_test",
     size = "small",
     srcs = ["util/future_api_test.py"],
@@ -3228,6 +3247,16 @@ py_test(
     deps = [
         ":util",
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "function_utils_test",
+    srcs = ["util/function_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
     ],
 )
 
@@ -3526,7 +3555,6 @@ tf_py_wrap_cc(
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/python/eager:python_eager_op_gen",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
@@ -3941,7 +3969,18 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
-    tags = ["noguitar"],
+)
+
+py_test(
+    name = "c_api_util_test",
+    size = "small",
+    srcs = ["framework/c_api_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":c_api_util",
+        ":framework_test_lib",
+        ":platform_test",
+    ],
 )
 
 py_test(
@@ -4217,7 +4256,7 @@ tf_py_test(
 
 py_test(
     name = "basic_session_run_hooks_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/basic_session_run_hooks_test.py"],
     srcs_version = "PY2AND3",
     tags = [

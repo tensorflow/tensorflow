@@ -23,8 +23,11 @@ import functools
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
@@ -363,6 +366,15 @@ class ScatterNdTest(test.TestCase):
   def scatter_nd(self, indices, updates, shape, input_=None):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testInvalidShape(self):
+    # TODO(apassos) figure out how to unify these errors
+    with self.assertRaises(errors.InvalidArgumentError
+                           if context.executing_eagerly() else ValueError):
+      array_ops.scatter_nd(indices=[0],  # this should be indices=[[0]]
+                           updates=[0.0],
+                           shape=[1])
 
   def testString(self):
     indices = constant_op.constant([[4], [3], [1], [7]],

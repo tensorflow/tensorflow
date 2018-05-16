@@ -55,6 +55,8 @@ gen_zipped_test_files(
         "reshape.zip",
         "resize_bilinear.zip",
         "sigmoid.zip",
+        "sin.zip",
+        "slice.zip",
         "softmax.zip",
         "space_to_batch_nd.zip",
         "space_to_depth.zip",

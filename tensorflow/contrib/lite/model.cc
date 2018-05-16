@@ -184,8 +184,10 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
   for (const OperatorCode* opcode : *opcodes) {
-    TfLiteRegistration* registration = nullptr;
+    const TfLiteRegistration* registration = nullptr;
     auto builtin_code = opcode->builtin_code();
+    int version = opcode->version();
+
     if (builtin_code > BuiltinOperator_MAX ||
         builtin_code < BuiltinOperator_MIN) {
       error_reporter_->Report(
@@ -194,8 +196,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
           builtin_code);
       status = kTfLiteError;
     } else if (builtin_code != BuiltinOperator_CUSTOM) {
-      flatbuffer_op_index_to_registration_types_.push_back(builtin_code);
-      registration = op_resolver_.FindOp(builtin_code);
+      registration = op_resolver_.FindOp(builtin_code, version);
       if (registration == nullptr) {
         error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
                                 EnumNameBuiltinOperator(builtin_code));
@@ -207,11 +208,13 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
       status = kTfLiteError;
     } else {
       const char* name = opcode->custom_code()->c_str();
-      registration = op_resolver_.FindOp(name);
+      registration = op_resolver_.FindOp(name, version);
       flatbuffer_op_index_to_registration_types_.push_back(
           BuiltinOperator_CUSTOM);
       if (registration == nullptr) {
-        error_reporter_->Report("Didn't find custom op for name '%s'\n", name);
+        error_reporter_->Report(
+            "Didn't find custom op for name '%s' with version %d\n", name,
+            version);
         status = kTfLiteError;
       }
     }
@@ -333,6 +336,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->stride_height = conv_params->stride_h();
         params->activation =
             parse_activation(conv_params->fused_activation_function());
+
         params->dilation_width_factor = conv_params->dilation_w_factor();
         params->dilation_height_factor = conv_params->dilation_h_factor();
       }
@@ -352,6 +356,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_PRELU:
     case BuiltinOperator_FLOOR:
     case BuiltinOperator_NEG:
+    case BuiltinOperator_SIN:
       break;
     case BuiltinOperator_CAST: {
       TfLiteCastParams* params = MallocPOD<TfLiteCastParams>();
@@ -679,6 +684,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SELECT: {
       break;
     }
+    case BuiltinOperator_SLICE: {
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
@@ -703,27 +711,30 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       status = kTfLiteError;
       continue;
     }
-    const TfLiteRegistration* reg =
+
+    const TfLiteRegistration* registration =
         flatbuffer_op_index_to_registration_[op->opcode_index()];
-    if (reg == nullptr) {
+    if (registration == nullptr) {
       error_reporter_->Report("Skipping op for opcode_index %d\n", index);
       status = kTfLiteError;
       continue;
     }
 
-    auto op_type =
-        flatbuffer_op_index_to_registration_types_[op->opcode_index()];
+    BuiltinOperator op_type =
+        static_cast<BuiltinOperator>(registration->builtin_code);
+
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
           "Found builtin operator %s with custom options.\n",
           EnumNameBuiltinOperator(op_type));
     }
+
     if (op->custom_options()) {
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()),
           reinterpret_cast<const char*>(op->custom_options()->data()),
-          op->custom_options()->size(), nullptr, reg);
+          op->custom_options()->size(), nullptr, registration);
     } else {
       void* builtin_data = nullptr;
       TF_LITE_ENSURE_STATUS(
@@ -731,7 +742,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
-          reg);
+          registration);
     }
   }
 

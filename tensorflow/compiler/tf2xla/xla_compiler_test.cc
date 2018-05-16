@@ -225,7 +225,7 @@ TEST_F(XlaCompilerTest, Simple) {
       xla::Literal::CreateR1<int32>({4, 143});
   std::unique_ptr<xla::Literal> expected_literal =
       xla::Literal::MakeTuple({expected0.get()});
-  xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
 }
 
 TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
@@ -320,7 +320,8 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         xla::Literal::CreateR1<int32>({-7, -42});
     std::unique_ptr<xla::Literal> expected_literal =
         xla::Literal::MakeTuple({expected0.get()});
-    xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+    EXPECT_TRUE(
+        xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
   }
 
   {
@@ -355,7 +356,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         xla::Literal::CreateR1<int32>({-7, -42});
     std::unique_ptr<xla::Literal> expected =
         xla::Literal::MakeTuple({expected0.get(), expected1.get()});
-    xla::LiteralTestUtil::ExpectEqual(*expected, *actual_literal);
+    EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected, *actual_literal));
   }
 }
 
@@ -523,7 +524,7 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
       {output_base.get(), output_grad1.get(), output_grad2.get()});
   std::unique_ptr<xla::Literal> expected_literal =
       xla::Literal::MakeTuple({output_read.get(), output_resource.get()});
-  xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
 }
 
 // Tests compilation and execution of a graph that adds two tensors.
@@ -746,7 +747,7 @@ TEST_F(XlaCompilerTest, Variables) {
       xla::Literal::CreateR1<int32>({4, 143});
   std::unique_ptr<xla::Literal> expected_literal =
       xla::Literal::MakeTuple({expected0.get(), expected1.get()});
-  xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
 }
 
 // Tests a simple graph that reads and writes a variable, with a
@@ -811,7 +812,7 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
       xla::Literal::CreateR1<int32>({26, 66, 34, 401});
   std::unique_ptr<xla::Literal> expected_literal =
       xla::Literal::MakeTuple({expected0.get(), expected1.get()});
-  xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
 }
 
 }  // namespace

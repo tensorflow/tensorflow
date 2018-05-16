@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.keras._impl.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.keras._impl.keras.utils.data_utils import OrderedEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence
 from tensorflow.python.keras._impl.keras.utils.data_utils import SequenceEnqueuer
 from tensorflow.python.keras._impl.keras.utils.generic_utils import custom_object_scope

@@ -142,19 +142,25 @@ Status HloCostAnalysis::HandleReducePrecision(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleParameter(const HloInstruction*) {
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleGetTupleElement(const HloInstruction*) {
   // GetTupleElement forwards a pointer and does not touch each element in the
   // output.
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
@@ -329,6 +335,7 @@ Status HloCostAnalysis::HandleSelectAndScatter(
 Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
   // A bitcast does no computation and touches no memory.
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
@@ -555,11 +562,13 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction*) {
-  // We can't do anything sane with CustomCalls, since we don't know what they
-  // do, and returning an error status will stop iteration over this
-  // computation, which is probably also not what we want.  So just punt and
-  // return OK.  This will cause all of the properties to be reported as 0,
-  // which is fine.
+  // Mark applicable fields as "unknown", since we don't know what CustomCall
+  // does.  This is better than returning an error, which would stop iteration,
+  // and therefore would prevent us from getting *any* stats for a computation
+  // which contains a CustomCall.
+  current_properties_[kOptimalSecondsKey] = -1;
+  current_properties_[kBytesAccessedKey] = -1;
+  current_properties_[kFlopsKey] = -1;
   current_should_compute_bottleneck_time_ = false;
   return Status::OK();
 }

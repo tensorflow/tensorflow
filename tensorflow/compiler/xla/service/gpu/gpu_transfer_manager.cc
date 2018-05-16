@@ -44,8 +44,8 @@ GpuTransferManager::GpuTransferManager()
           /*pointer_size=*/llvm::DataLayout(gpu::GpuCompiler::kDataLayout)
               .getPointerSize(0 /* default address space */)) {}
 
-Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                                   const Literal& literal) {
+Status GpuTransferManager::TransferLiteralToInfeed(
+    se::StreamExecutor* executor, const LiteralSlice& literal) {
   const Shape& shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);

@@ -114,9 +114,19 @@ class TestText(test.TestCase):
     seq = keras.preprocessing.text.text_to_word_sequence(text)
     self.assertEqual(seq, ['hello', 'world'])
 
+  def test_text_to_word_sequence_multichar_split(self):
+    text = 'hello!stop?world!'
+    seq = keras.preprocessing.text.text_to_word_sequence(text, split='stop')
+    self.assertEqual(seq, ['hello', 'world'])
+
   def test_text_to_word_sequence_unicode(self):
     text = u'ali! veli? kırk dokuz elli'
     seq = keras.preprocessing.text.text_to_word_sequence(text)
+    self.assertEqual(seq, [u'ali', u'veli', u'kırk', u'dokuz', u'elli'])
+
+  def test_text_to_word_sequence_unicode_multichar_split(self):
+    text = u'ali!stopveli?stopkırkstopdokuzstopelli'
+    seq = keras.preprocessing.text.text_to_word_sequence(text, split='stop')
     self.assertEqual(seq, [u'ali', u'veli', u'kırk', u'dokuz', u'elli'])
 
   def test_tokenizer_unicode(self):

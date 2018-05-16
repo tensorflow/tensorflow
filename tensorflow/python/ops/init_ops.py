@@ -488,9 +488,9 @@ class Orthogonal(Initializer):
 
   If the shape of the tensor to initialize is two-dimensional, it is initialized
   with an orthogonal matrix obtained from the QR decomposition of a matrix of
-  uniform random numbers. If the matrix has fewer rows than columns then the
-  output will have orthogonal rows. Otherwise, the output will have orthogonal
-  columns.
+  random numbers drawn from a normal distribution.
+  If the matrix has fewer rows than columns then the output will have orthogonal
+  rows. Otherwise, the output will have orthogonal columns.
 
   If the shape of the tensor to initialize is more than two-dimensional,
   a matrix of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])`

@@ -171,6 +171,7 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
         "//tensorflow/core/distributed_runtime:recent_request_ids",

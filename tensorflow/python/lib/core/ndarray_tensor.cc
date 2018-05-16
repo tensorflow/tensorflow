@@ -145,7 +145,7 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
   while (PyArray_ITER_NOTDONE(iter.get())) {
     auto item = tensorflow::make_safe(PyArray_GETITEM(
         array, static_cast<char*>(PyArray_ITER_DATA(iter.get()))));
-    if (!item.get()) {
+    if (!item) {
       return errors::Internal("Unable to get element from the feed - no item.");
     }
     char* ptr;

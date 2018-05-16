@@ -66,9 +66,6 @@ namespace dnn {
 class BatchDescriptor;
 class FilterDescriptor;
 class ConvolutionDescriptor;
-class BatchDescriptor;
-class FilterDescriptor;
-class ConvolutionDescriptor;
 class ProfileResult;
 class AlgorithmDesc;
 }  // namespace dnn
@@ -2019,7 +2016,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock{mu_};
+    tf_shared_lock lock(mu_);
     return !ok_;
   }
 
@@ -2029,7 +2026,7 @@ class Stream {
     if (operation_retcode) {
       return;
     }
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     ok_ = false;
   }
 

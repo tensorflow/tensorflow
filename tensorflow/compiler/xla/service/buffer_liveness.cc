@@ -44,7 +44,7 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
   return std::move(liveness);
 }
 
-tensorflow::Status BufferLiveness::Analyze() {
+Status BufferLiveness::Analyze() {
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
   for (auto* computation : module_->computations()) {
     if (computation->IsFusionComputation()) {
@@ -71,7 +71,7 @@ tensorflow::Status BufferLiveness::Analyze() {
   }
 
   XLA_VLOG_LINES(3, ToString());
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 string BufferLiveness::ToString() const {

@@ -33,6 +33,7 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils import generic_utils
 from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -501,6 +502,17 @@ class Permute(Layer):
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
 
+  Arguments:
+      data_format: A string,
+          one of `channels_last` (default) or `channels_first`.
+          The ordering of the dimensions in the inputs.
+          `channels_last` corresponds to inputs with shape
+          `(batch, ..., channels)` while `channels_first` corresponds to
+          inputs with shape `(batch, channels, ...)`.
+          It defaults to the `image_data_format` value found in your
+          Keras config file at `~/.keras/keras.json`.
+          If you never set it, then it will be "channels_last".
+
   Example:
 
   ```python
@@ -515,11 +527,19 @@ class Flatten(Layer):
   ```
   """
 
-  def __init__(self, **kwargs):
+  def __init__(self, data_format=None, **kwargs):
     super(Flatten, self).__init__(**kwargs)
+    self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(min_ndim=2)
 
   def call(self, inputs):
+    if self.data_format == 'channels_first':
+      permutation = [0]
+      permutation.extend([i for i in
+                          range(2, K.ndim(inputs))])
+      permutation.append(1)
+      inputs = array_ops.transpose(inputs, perm=permutation)
+
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
@@ -533,6 +553,11 @@ class Flatten(Layer):
     else:
       output_shape += [None]
     return tensor_shape.TensorShape(output_shape)
+
+  def get_config(self):
+    config = {'data_format': self.data_format}
+    base_config = super(Flatten, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @tf_export('keras.layers.RepeatVector')
