@@ -924,7 +924,7 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
                             input_dims_in_tiles[2];
     GPU_LAUNCH_KERNEL(SwapDimension1And2InTensor3UsingTiles<T, kNumThreads,
                                           kTileSize, kTileSize, conjugate>,
-        dim3(total_tiles_count), dim3(kTileSize, kNumThreads / kTileSize), 0, d.stream(),
+        dim3(total_tiles_count), dim3(kNumThreads), 0, d.stream(),
         input, input_dims, output);
 
   } else if (narrow_matrix) {
