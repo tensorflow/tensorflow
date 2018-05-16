@@ -49,6 +49,17 @@ tf_cuda_library(
         "//conditions:default": [],
     }) + [
         "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
+        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:remote_device",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -74,6 +85,17 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/distributed_runtime:remote_device",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
+        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
     ],
 )
 
@@ -92,6 +114,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
     ],
 )
 
