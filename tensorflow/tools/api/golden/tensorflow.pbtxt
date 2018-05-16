@@ -489,6 +489,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "sparse"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "spectral"
     mtype: "<type \'module\'>"
   }

@@ -295,7 +295,8 @@ def sparse_add(a, b, thresh=0):
                                                   a.dense_shape, b)
 
 
-def _sparse_cross(inputs, name=None):
+@tf_export("sparse.cross")
+def sparse_cross(inputs, name=None):
   """Generates sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
@@ -324,7 +325,11 @@ def _sparse_cross(inputs, name=None):
   return _sparse_cross_internal(inputs=inputs, hashed_output=False, name=name)
 
 
-def _sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
+_sparse_cross = sparse_cross
+
+
+@tf_export("sparse.cross_hashed")
+def sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
   """Generates hashed sparse cross from a list of sparse and dense tensors.
 
   For example, if the inputs are
@@ -367,6 +372,8 @@ def _sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
       hash_key=hash_key,
       name=name)
 
+
+_sparse_cross_hashed = sparse_cross_hashed
 
 _DEFAULT_HASH_KEY = 0xDECAFCAFFE
 
