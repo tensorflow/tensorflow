@@ -689,6 +689,9 @@ class MklConcatOp : public OpKernel {
       std::vector<MklDnnData<T>> srcs(N, MklDnnData<T>(&cpu_engine));
       int64 dst_concat_dim_size = 0;
       for (int k = 0; k < N; k++) {
+         if (input_tensors[k].NumElements() == 0)
+              continue;
+
         bool is_mkl_tensor = input_shapes[k].IsMklTensor();
         memory::dims src_dims;
 
@@ -735,7 +738,8 @@ class MklConcatOp : public OpKernel {
 
       std::vector<primitive::at> inputs;
       for (int k = 0; k < input_tensors.size(); k++)
-        inputs.push_back(srcs[k].GetOpMem());
+        if (input_tensors[k].NumElements() > 0)
+          inputs.push_back(srcs[k].GetOpMem());
 
       // If all inputs are in MKL format, then meaning of concat_dim needs to
       // change. Value of concat_dim is tied to input Tensorflow data format
