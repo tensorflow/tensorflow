@@ -111,15 +111,15 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
           // which increments the value of AllocationId. 
           // Thus AllocationId becomes more than 3 and 4 if 
           // MKL is used. Now they are 9 and 10 for MKL. 
-          EXPECT_EQ(15, cm->AllocationId(node, 0));
+          EXPECT_EQ(19, cm->AllocationId(node, 0));
 #else
-          EXPECT_EQ(9, cm->AllocationId(node, 0));
+          EXPECT_EQ(13, cm->AllocationId(node, 0));
 #endif 
         } else {
 #ifdef INTEL_MKL
-          EXPECT_EQ(16, cm->AllocationId(node, 0));
+          EXPECT_EQ(20, cm->AllocationId(node, 0));
 #else
-          EXPECT_EQ(10, cm->AllocationId(node, 0));
+          EXPECT_EQ(14, cm->AllocationId(node, 0));
 #endif 
         }
       }
