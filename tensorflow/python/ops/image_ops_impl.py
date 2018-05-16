@@ -1048,19 +1048,19 @@ def resize_image_with_pad(image, target_height, target_width,
     # Find the ratio by which the image must be adjusted
     # to fit within the target
     ratio = max_(f_width / f_target_width, f_height / f_target_height)
-    p_height_float = max_((f_target_height - (f_height / ratio)) * ratio / 2, 0)
-    p_width_float = max_((f_target_width - (f_width / ratio)) * ratio / 2, 0)
-    p_height = math_ops.cast(math_ops.ceil(p_height_float), dtype=dtypes.int32)
-    p_width = math_ops.cast(math_ops.ceil(p_width_float), dtype=dtypes.int32)
+    resized_height_float = f_height / ratio
+    resized_width_float = f_width / ratio
+    resized_height = math_ops.cast(math_ops.floor(p_height_float), dtype=dtypes.int32)
+    resized_width = math_ops.cast(math_ops.floor(p_width_float), dtype=dtypes.int32)
 
-    padded_height = height + (p_height * 2)
-    padded_width = width + (p_width * 2)
+    p_height = target_height - resized_height
+    p_weight = target_width - resized_width
 
-    # Pad first, then resize to meet requested dimensions
+    # Resize first, then pad to meet requested dimensions
+    resized = resize_images(image, [resized_height, resized_width], method)
+    
     padded = pad_to_bounding_box(image, p_height, p_width,
-                                 padded_height, padded_width)
-
-    resized = resize_images(padded, [target_height, target_width], method)
+                                 target_height, target_width)
 
     if resized.get_shape().ndims is None:
       raise ValueError('resized contains no shape.')
