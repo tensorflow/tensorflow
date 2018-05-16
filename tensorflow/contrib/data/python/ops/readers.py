@@ -201,6 +201,112 @@ def _get_sorted_col_indices(select_columns, column_names):
   return result
 
 
+def _maybe_shuffle_and_repeat(
+    dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed):
+  """Optionally shuffle and repeat dataset, as requested."""
+  if num_epochs != 1 and shuffle:
+    # Use shuffle_and_repeat for perf
+    return dataset.apply(
+        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
+                                       shuffle_seed))
+  elif shuffle:
+    return dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  elif num_epochs != 1:
+    return dataset.repeat(num_epochs)
+  return dataset
+
+
+def make_tf_record_dataset(
+    file_pattern,
+    batch_size,
+    parser_fn=None,
+    num_epochs=None,
+    shuffle=True,
+    shuffle_buffer_size=None,
+    shuffle_seed=None,
+    prefetch_buffer_size=None,
+    num_parallel_reads=None,
+    num_parallel_parser_calls=None,
+    drop_final_batch=False):
+  """Reads and optionally parses TFRecord files into a dataset.
+
+  Provides common functionality such as batching, optional parsing, shuffling,
+  and performant defaults.
+
+  Args:
+    file_pattern: List of files or patterns of TFRecord file paths.
+      See @{tf.gfile.Glob} for pattern rules.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
+    parser_fn: (Optional.) A function accepting string input to parse
+      and process the record contents. This function must map records
+      to components of a fixed shape, so they may be batched. By
+      default, uses the record contents unmodified.
+    num_epochs: (Optional.) An int specifying the number of times this
+      dataset is repeated.  If None (the default), cycles through the
+      dataset forever.
+    shuffle: (Optional.) A bool that indicates whether the input
+      should be shuffled. Defaults to `True`.
+    shuffle_buffer_size: (Optional.) Buffer size to use for
+      shuffling. A large buffer size ensures better shuffling, but
+      increases memory usage and startup time.
+    shuffle_seed: (Optional.) Randomization seed to use for shuffling.
+    prefetch_buffer_size: (Optional.) An int specifying the number of
+      feature batches to prefetch for performance improvement.
+      Defaults to auto-tune. Set to 0 to disable prefetching.
+    num_parallel_reads: (Optional.) Number of threads used to read
+      records from files. By default or if set to a value >1, the
+      results will be interleaved.
+    num_parallel_parser_calls: (Optional.) Number of parallel
+      records to parse in parallel. Defaults to an automatic selection.
+    drop_final_batch: (Optional.) Whether the last batch should be
+      dropped in case its size is smaller than `batch_size`; the
+      default behavior is not to drop the smaller batch.
+
+  Returns:
+    A dataset, where each element matches the output of `parser_fn`
+    except it will have an additional leading `batch-size` dimension,
+    or a `batch_size`-length 1-D tensor of strings if `parser_fn` is
+    unspecified.
+  """
+  files = dataset_ops.Dataset.list_files(
+      file_pattern, shuffle=shuffle, seed=shuffle_seed)
+
+  if num_parallel_reads is None:
+    # Note: We considered auto-tuning this value, but there is a concern
+    # that this affects the mixing of records from different files, which
+    # could affect training convergence/accuracy, so we are defaulting to
+    # a constant for now.
+    num_parallel_reads = 24
+  dataset = core_readers.TFRecordDataset(
+      files, num_parallel_reads=num_parallel_reads)
+
+  if shuffle_buffer_size is None:
+    # TODO(josh11b): Auto-tune this value when not specified
+    shuffle_buffer_size = 10000
+  dataset = _maybe_shuffle_and_repeat(
+      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
+
+  if parser_fn is None:
+    if drop_final_batch:
+      dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
+    else:
+      dataset = dataset.batch(batch_size)
+  else:
+    # TODO(josh11b): if num_parallel_parser_calls is None, use some function
+    # of num cores instead of map_and_batch's default behavior of one batch.
+    dataset = dataset.apply(batching.map_and_batch(
+        parser_fn, batch_size, num_parallel_calls=num_parallel_parser_calls,
+        drop_remainder=drop_final_batch))
+
+  if prefetch_buffer_size is None:
+    prefetch_buffer_size = -1  # tf.config.data.AUTOTUNE
+  if prefetch_buffer_size == 0:
+    return dataset
+  else:
+    return dataset.prefetch(buffer_size=prefetch_buffer_size)
+
+
 def make_csv_dataset(
     file_pattern,
     batch_size,
@@ -234,8 +340,8 @@ def make_csv_dataset(
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
       records. See @{tf.gfile.Glob} for pattern rules.
-    batch_size: An int representing the number of consecutive elements of this
-      dataset to combine in a single batch.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
     column_names: An optional list of strings that corresponds to the CSV
       columns, in order. One per column of the input record. If this is not
       provided, infers the column names from the first row of the records.
@@ -282,8 +388,7 @@ def make_csv_dataset(
       If None, cycles through the dataset forever.
     shuffle: A bool that indicates whether the input should be shuffled.
     shuffle_buffer_size: Buffer size to use for shuffling. A large buffer size
-      ensures better shuffling, but would increase memory usage and startup
-      time.
+      ensures better shuffling, but increases memory usage and startup time.
     shuffle_seed: Randomization seed to use for shuffling.
     prefetch_buffer_size: An int specifying the number of feature batches to
       prefetch for performance improvement. Recommended value is the number of
@@ -400,15 +505,8 @@ def make_csv_dataset(
       interleave_ops.parallel_interleave(
           filename_to_dataset, cycle_length=num_parallel_reads, sloppy=sloppy))
 
-  if num_epochs != 1 and shuffle:
-    # Use shuffle_and_repeat for perf
-    dataset = dataset.apply(
-        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
-                                       shuffle_seed))
-  elif shuffle:
-    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
-  elif num_epochs != 1:
-    dataset = dataset.repeat(num_epochs)
+  dataset = _maybe_shuffle_and_repeat(
+      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
   # Use map_and_batch for perf
   # TODO(b/76425672): use num_parallel_calls for better performance tuning when
@@ -623,8 +721,8 @@ def make_batched_features_dataset(file_pattern,
   Args:
     file_pattern: List of files or patterns of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int representing the number of consecutive elements of this
-      dataset to combine in a single batch.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
     reader: A function or class that can be
@@ -680,16 +778,8 @@ def make_batched_features_dataset(file_pattern,
     dataset = dataset.map(lambda _, v: v)
 
   # Apply dataset repeat and shuffle transformations.
-  repeat_dataset = (num_epochs != 1)
-  if repeat_dataset and shuffle:
-    # Used fused shuffle_and_repeat operation for better performance
-    dataset = dataset.apply(
-        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
-                                       shuffle_seed))
-  elif repeat_dataset:
-    dataset = dataset.repeat(num_epochs)
-  elif shuffle:
-    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  dataset = _maybe_shuffle_and_repeat(
+      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
   if drop_final_batch:
     dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
@@ -763,8 +853,8 @@ def read_batch_features(file_pattern,
   Args:
     file_pattern: List of files or patterns of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int representing the number of consecutive elements of this
-      dataset to combine in a single batch.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
     reader: A function or class that can be
