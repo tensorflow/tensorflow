@@ -26,7 +26,6 @@ py_library(
         "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:checkpointable",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
@@ -34,6 +33,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",
     ],
 )

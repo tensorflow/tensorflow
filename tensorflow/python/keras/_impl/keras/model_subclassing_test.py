@@ -31,7 +31,7 @@ from tensorflow.python.keras._impl import keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:

@@ -17,7 +17,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 
 
 class InterfaceTests(test.TestCase):

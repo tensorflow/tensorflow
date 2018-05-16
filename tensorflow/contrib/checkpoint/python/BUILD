@@ -19,7 +19,7 @@ py_library(
     srcs = ["containers.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/python:checkpointable"],
+    deps = ["//tensorflow/python/training/checkpointable:base"],
 )
 
 py_test(
@@ -27,11 +27,11 @@ py_test(
     srcs = ["containers_test.py"],
     deps = [
         ":containers",
-        "//tensorflow/python:checkpointable",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",
     ],
 )
