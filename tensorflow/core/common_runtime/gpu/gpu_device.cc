@@ -879,7 +879,8 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
   if (num_gpus_to_use > valid_cuda_gpu_ids.size()) {
     num_gpus_to_use = valid_cuda_gpu_ids.size();
   }
-  if (!valid_cuda_gpu_ids.empty()) {
+  // If we aren't going to use any GPUs, don't initialize them.
+  if (num_gpus_to_use > 0 && !valid_cuda_gpu_ids.empty()) {
     // Save the original device.
     int original_device = 0;
     cudaError_t err = cudaGetDevice(&original_device);
