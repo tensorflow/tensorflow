@@ -191,7 +191,7 @@ class VectorLaplaceLinearOperator(
       ValueError: if `scale` is unspecified.
       TypeError: if not `scale.dtype.is_floating`
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     if scale is None:
       raise ValueError("Missing required `scale` parameter.")
     if not scale.dtype.is_floating:

@@ -21,11 +21,11 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
 namespace tensorflow {

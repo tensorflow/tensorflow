@@ -37,8 +37,8 @@ struct TransposeContext {
     perm = GetInput(context, node, 1);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
-  TfLiteTensor* perm;
+  const TfLiteTensor* input;
+  const TfLiteTensor* perm;
   TfLiteTensor* output;
 };
 

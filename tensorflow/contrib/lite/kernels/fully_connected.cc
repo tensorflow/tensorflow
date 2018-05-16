@@ -89,8 +89,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 3);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
   TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
@@ -158,8 +158,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
                      TfLiteFullyConnectedParams* params, OpData* data,
-                     TfLiteTensor* input, TfLiteTensor* filter,
-                     TfLiteTensor* bias, TfLiteTensor* output) {
+                     const TfLiteTensor* input, const TfLiteTensor* filter,
+                     const TfLiteTensor* bias, TfLiteTensor* output) {
   int total_input_size = 1;
   for (int i = 0; i < input->dims->size; i++) {
     total_input_size *= input->dims->data[i];
@@ -191,8 +191,10 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
                               TfLiteFullyConnectedParams* params, OpData* data,
-                              TfLiteTensor* input, TfLiteTensor* filter,
-                              TfLiteTensor* bias, TfLiteTensor* input_quantized,
+                              const TfLiteTensor* input,
+                              const TfLiteTensor* filter,
+                              const TfLiteTensor* bias,
+                              TfLiteTensor* input_quantized,
                               TfLiteTensor* output) {
   // Check the types for this hybrid Op.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
@@ -271,8 +273,9 @@ TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteFullyConnectedParams* params, OpData* data,
-                           TfLiteTensor* input, TfLiteTensor* filter,
-                           TfLiteTensor* bias, TfLiteTensor* output) {
+                           const TfLiteTensor* input,
+                           const TfLiteTensor* filter, const TfLiteTensor* bias,
+                           TfLiteTensor* output) {
   gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
 
   int32_t input_offset = -input->params.zero_point;
@@ -311,8 +314,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                        TfLiteFullyConnectedParams* params, OpData* data,
-                       TfLiteTensor* input, TfLiteTensor* filter,
-                       TfLiteTensor* bias, TfLiteTensor* output) {
+                       const TfLiteTensor* input, const TfLiteTensor* filter,
+                       const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
                                 &output_activation_max);
@@ -342,8 +345,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
   TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 

@@ -437,7 +437,7 @@ XlaOp XlaBuilder::Mul(const XlaOp& lhs, const XlaOp& rhs,
   return BinaryOp(HloOpcode::kMultiply, lhs, rhs, broadcast_dimensions);
 }
 
-XlaOp XlaBuilder::ConstantLiteral(const Literal& literal) {
+XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
   return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = literal.shape();
@@ -1173,6 +1173,10 @@ XlaOp XlaBuilder::Exp(const XlaOp& operand) {
   return UnaryOp(HloOpcode::kExp, operand);
 }
 
+XlaOp XlaBuilder::Expm1(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kExpm1, operand);
+}
+
 XlaOp XlaBuilder::Floor(const XlaOp& operand) {
   return UnaryOp(HloOpcode::kFloor, operand);
 }
@@ -1187,6 +1191,10 @@ XlaOp XlaBuilder::Round(const XlaOp& operand) {
 
 XlaOp XlaBuilder::Log(const XlaOp& operand) {
   return UnaryOp(HloOpcode::kLog, operand);
+}
+
+XlaOp XlaBuilder::Log1p(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kLog1p, operand);
 }
 
 XlaOp XlaBuilder::Sign(const XlaOp& operand) {

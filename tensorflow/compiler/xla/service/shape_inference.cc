@@ -58,6 +58,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_COS;
     case HloOpcode::kExp:
       return UNOP_EXP;
+    case HloOpcode::kExpm1:
+      return UNOP_EXPM1;
     case HloOpcode::kFloor:
       return UNOP_FLOOR;
     case HloOpcode::kImag:
@@ -66,6 +68,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_IS_FINITE;
     case HloOpcode::kLog:
       return UNOP_LOG;
+    case HloOpcode::kLog1p:
+      return UNOP_LOG1P;
     case HloOpcode::kNot:
       return UNOP_NOT;
     case HloOpcode::kNegate:
@@ -168,8 +172,8 @@ bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
   return std::set<int64>(slice.begin(), slice.end()).size() == slice.size();
 }
 
-tensorflow::Status ExpectNotTupleOrOpaque(const Shape& shape,
-                                          tensorflow::StringPiece op_type) {
+Status ExpectNotTupleOrOpaque(const Shape& shape,
+                              tensorflow::StringPiece op_type) {
   if (ShapeUtil::IsTuple(shape)) {
     return InvalidArgument("Expected non-tuple argument for %s, but got %s.",
                            std::string(op_type).c_str(),
@@ -179,13 +183,13 @@ tensorflow::Status ExpectNotTupleOrOpaque(const Shape& shape,
                            std::string(op_type).c_str(),
                            ShapeUtil::HumanString(shape).c_str());
   } else {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 }
 
-tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
-                                      const Shape& init_value_shape,
-                                      const PrimitiveType& input_element_type) {
+Status VerifyReducerShape(const ProgramShape& reducer_shape,
+                          const Shape& init_value_shape,
+                          const PrimitiveType& input_element_type) {
   if (reducer_shape.parameters_size() != 2) {
     return InvalidArgument(
         "Reduction function must take 2 parameters, but "
@@ -245,7 +249,7 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
         ShapeUtil::HumanString(accumulator_shape).c_str());
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
@@ -337,7 +341,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_COS:
     case UNOP_SIN:
     case UNOP_EXP:
+    case UNOP_EXPM1:
     case UNOP_LOG:
+    case UNOP_LOG1P:
     case UNOP_TANH:
       if (!ShapeUtil::ElementIsFloating(arg) &&
           !ShapeUtil::ElementIsComplex(arg)) {
@@ -1212,11 +1218,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       scale_shape, "scale input of batch norm training"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
 
   if (feature_index >= ShapeUtil::Rank(operand_shape)) {
     return InvalidArgument(
@@ -1318,15 +1324,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       scale_shape, "scale input of batch norm inference"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(variance_shape) ==
-               tensorflow::Status::OK());
+               Status::OK());
 
   if (feature_index >= ShapeUtil::Rank(operand_shape)) {
     return InvalidArgument(

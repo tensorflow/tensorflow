@@ -938,13 +938,13 @@ INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserShortTest,
 TEST_F(HloParserTest, Empty) {
   const string original = "";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, Garbage) {
   const string original = "HloModule thi$ str1ng makes# N0 sen$e @all!*&^%$";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, WrongOpcode) {
@@ -958,7 +958,7 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
 
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, WrongShape) {
@@ -970,7 +970,7 @@ ENTRY %blabla (x: g32[]) -> g32[] {
 
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, WrongOperandsSize) {
@@ -983,7 +983,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, OperandNotFound) {
@@ -994,7 +994,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 }
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, MoreConstants) {
@@ -1036,7 +1036,7 @@ ENTRY %some_2 () -> f32[2] {
 
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 1, but sees larger");
 }
@@ -1050,7 +1050,7 @@ ENTRY %some_2x3 () -> f32[2,3] {
 
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 2, but sees 1");
 }
@@ -1064,7 +1064,7 @@ ENTRY %some_2x3x2 () -> f32[2,3,2] {
 
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects 3 elements in the [0]th element");
 }
@@ -1079,7 +1079,7 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
 
 )";
   auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
+  EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type F16");
 }

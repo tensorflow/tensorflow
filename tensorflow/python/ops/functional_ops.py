@@ -843,7 +843,9 @@ def _ForUsingWhile(start,
     return (i + 1, n, start, delta) + tuple(for_result) + extra_args
 
   if hostmem is not None:
-    hostmem = [(4 + _) for _ in hostmem]
+    hostmem = [0, 1, 2, 3] + [(4 + _) for _ in hostmem]
+  else:
+    hostmem = [0, 1, 2, 3]
 
   results = While(
       input_=[0, n, start, delta] + inputs + WhileBody.captured_inputs,

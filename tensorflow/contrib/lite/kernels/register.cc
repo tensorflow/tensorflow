@@ -87,6 +87,8 @@ TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_SELECT();
+TfLiteRegistration* Register_SLICE();
+TfLiteRegistration* Register_SIN();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -155,35 +157,14 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT());
+  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
+  AddBuiltin(BuiltinOperator_SIN, Register_SIN());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
-}
-
-TfLiteRegistration* BuiltinOpResolver::FindOp(
-    tflite::BuiltinOperator op) const {
-  auto it = builtins_.find(op);
-  return it != builtins_.end() ? it->second : nullptr;
-}
-
-TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op) const {
-  auto it = custom_ops_.find(op);
-  return it != custom_ops_.end() ? it->second : nullptr;
-}
-
-void BuiltinOpResolver::AddBuiltin(tflite::BuiltinOperator op,
-                                   TfLiteRegistration* registration) {
-  registration->builtin_code = op;
-  builtins_.insert(std::make_pair(op, registration));
-}
-
-void BuiltinOpResolver::AddCustom(const char* name,
-                                  TfLiteRegistration* registration) {
-  registration->builtin_code = BuiltinOperator_CUSTOM;
-  custom_ops_.insert(std::make_pair(std::string(name), registration));
 }
 
 }  // namespace builtin

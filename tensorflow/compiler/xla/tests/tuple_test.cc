@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
@@ -515,7 +514,7 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 class TupleHloTest : public HloTestBase {};
 
 // Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
+XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   const char* testcase = R"(
     HloModule m
 

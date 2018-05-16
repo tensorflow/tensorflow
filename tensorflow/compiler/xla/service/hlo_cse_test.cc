@@ -72,7 +72,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = Literal::CreateR0<float>(84.0);
-  LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(1e-4)));
 }
 
 TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
@@ -104,7 +104,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = Literal::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-  LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(1e-4)));
 }
 
 TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
@@ -134,7 +134,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = Literal::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-  LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(1e-4)));
 }
 
 TEST_F(HloCseTest, ConstantsSameValueDifferentType) {

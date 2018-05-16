@@ -182,6 +182,8 @@ class FunctionTest(test.TestCase):
     def APlus2B(a, b):
       return a + b * 2
 
+    # APlus2B is stateless.
+    self.assertEqual([], APlus2B.stateful_ops)
     with ops.Graph().as_default():
       call = APlus2B([1.0], [2.0])
       self.assertEqual("APlus2B", call.op.name)
@@ -428,6 +430,8 @@ class FunctionTest(test.TestCase):
       with ops.control_dependencies([check]):
         return x * 2
 
+    # Foo contains a stateful op (Assert).
+    self.assertEqual([("Assert", "Assert")], Foo.stateful_ops)
     g = ops.Graph()
     with g.as_default(), self.test_session():
       self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)
@@ -1717,6 +1721,54 @@ class VariableHoistingTest(test.TestCase):
   def testBasicResource(self):
     self._testSimpleModel(True, use_resource=True)
     self._testSimpleModel(False, use_resource=True)
+
+
+class DevicePlacementTest(test.TestCase):
+
+  def testNoDeviceGraph(self):
+    with ops.Graph().as_default():
+
+      @function.Defun(*[dtypes.float32] * 2)
+      def Matmul(a, b):
+        return math_ops.matmul(a, b)
+
+      Matmul(1., 2.)
+
+      gdef = ops.get_default_graph().as_graph_def()
+      self.assertAllEqual(len(gdef.library.function), 1)
+      fdef = gdef.library.function[0]
+
+      for node in fdef.node_def:
+        self.assertAllEqual(node.device, "")
+
+  def testNestedDevices(self):
+    with ops.Graph().as_default(), ops.device("CPU:0"):
+
+      @function.Defun(*[dtypes.float32] * 2)
+      def Matmul(a, b):
+        return math_ops.matmul(a, b)
+
+      with ops.device("CPU:1"):
+
+        @function.Defun(*[dtypes.float32] * 2)
+        def Divide(a, b):
+          return math_ops.divide(a, b)
+
+        Divide(Matmul(1., 2.), 3.)
+
+      gdef = ops.get_default_graph().as_graph_def()
+      matmul_fdef = [
+          f for f in gdef.library.function if "Matmul" in f.signature.name
+      ]
+      divide_fdef = [
+          f for f in gdef.library.function if "Divide" in f.signature.name
+      ]
+      self.assertAllEqual(len(matmul_fdef), 1)
+      self.assertAllEqual(len(divide_fdef), 1)
+      for node in matmul_fdef[0].node_def:
+        self.assertAllEqual(node.device, "/device:CPU:0")
+      for node in divide_fdef[0].node_def:
+        self.assertAllEqual(node.device, "/device:CPU:1")
 
 
 if __name__ == "__main__":

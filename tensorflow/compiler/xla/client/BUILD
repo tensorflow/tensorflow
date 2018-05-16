@@ -179,31 +179,6 @@ cc_library(
 )
 
 cc_library(
-    name = "computation_builder",
-    srcs = ["computation_builder.cc"],
-    hdrs = ["computation_builder.h"],
-    deps = [
-        ":client",
-        ":computation",
-        ":global_data",
-        ":padding",
-        "//tensorflow/compiler/xla:array",
-        "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:array3d",
-        "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "sharding_builder",
     srcs = ["sharding_builder.cc"],
     hdrs = ["sharding_builder.h"],

@@ -69,7 +69,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
@@ -122,7 +122,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 void AverageEvalFloat(TfLiteContext* context, TfLiteNode* node,
                       TfLitePoolParams* params, OpData* data,
-                      TfLiteTensor* input, TfLiteTensor* output) {
+                      const TfLiteTensor* input, TfLiteTensor* output) {
   float activation_min, activation_max;
   CalculateActivationRangeFloat(params->activation, &activation_min,
                                 &activation_max);
@@ -143,7 +143,7 @@ void AverageEvalFloat(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void AverageEvalQuantized(TfLiteContext* context, TfLiteNode* node,
                           TfLitePoolParams* params, OpData* data,
-                          TfLiteTensor* input, TfLiteTensor* output) {
+                          const TfLiteTensor* input, TfLiteTensor* output) {
   int32_t activation_min;
   int32_t activation_max;
   CalculateActivationRangeUint8(params->activation, output, &activation_min,
@@ -165,8 +165,8 @@ void AverageEvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
-                  TfLitePoolParams* params, OpData* data, TfLiteTensor* input,
-                  TfLiteTensor* output) {
+                  TfLitePoolParams* params, OpData* data,
+                  const TfLiteTensor* input, TfLiteTensor* output) {
   float activation_min, activation_max;
   CalculateActivationRangeFloat(params->activation, &activation_min,
                                 &activation_max);
@@ -187,7 +187,7 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       TfLitePoolParams* params, OpData* data,
-                      TfLiteTensor* input, TfLiteTensor* output) {
+                      const TfLiteTensor* input, TfLiteTensor* output) {
   int32_t activation_min;
   int32_t activation_max;
   CalculateActivationRangeUint8(params->activation, output, &activation_min,
@@ -209,8 +209,8 @@ void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 void L2EvalFloat(TfLiteContext* context, TfLiteNode* node,
-                 TfLitePoolParams* params, OpData* data, TfLiteTensor* input,
-                 TfLiteTensor* output) {
+                 TfLitePoolParams* params, OpData* data,
+                 const TfLiteTensor* input, TfLiteTensor* output) {
   float activation_min, activation_max;
   CalculateActivationRangeFloat(params->activation, &activation_min,
                                 &activation_max);
@@ -236,7 +236,7 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       AverageEvalFloat<kernel_type>(context, node, params, data, input, output);
@@ -258,7 +258,7 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       MaxEvalFloat<kernel_type>(context, node, params, data, input, output);
@@ -279,7 +279,7 @@ TfLiteStatus L2Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       L2EvalFloat<kernel_type>(context, node, params, data, input, output);

@@ -99,9 +99,9 @@ cc_library(
     hdrs = ["service_interface.h"],
     visibility = [":friends"],
     deps = [
+        ":status",
         ":xla_data_proto",
         ":xla_proto",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -245,6 +245,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protobuf_util",
+        ":status",
         ":status_macros",
         ":statusor",
         ":types",
@@ -327,6 +328,23 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "error_spec",
+    hdrs = ["error_spec.h"],
+)
+
+cc_library(
+    name = "literal_comparison",
+    srcs = ["literal_comparison.cc"],
+    hdrs = ["literal_comparison.h"],
+    deps = [
+        ":error_spec",
+        ":literal_util",
+        ":util",
+        "//tensorflow/core:lib",
     ],
 )
 

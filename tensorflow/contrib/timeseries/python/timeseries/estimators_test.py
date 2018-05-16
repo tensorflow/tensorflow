@@ -68,15 +68,16 @@ class TimeSeriesRegressorTest(test.TestCase):
     eval_input_fn = input_pipeline.RandomWindowInputFn(
         input_pipeline.NumpyReader(features), shuffle_seed=3, num_threads=1,
         batch_size=16, window_size=16)
-    first_estimator.train(input_fn=train_input_fn, steps=5)
+    first_estimator.train(input_fn=train_input_fn, steps=1)
     first_loss_before_fit = first_estimator.evaluate(
         input_fn=eval_input_fn, steps=1)["loss"]
-    first_estimator.train(input_fn=train_input_fn, steps=50)
+    self.assertAllEqual([], first_loss_before_fit.shape)
+    first_estimator.train(input_fn=train_input_fn, steps=1)
     first_loss_after_fit = first_estimator.evaluate(
         input_fn=eval_input_fn, steps=1)["loss"]
-    self.assertLess(first_loss_after_fit, first_loss_before_fit)
+    self.assertAllEqual([], first_loss_after_fit.shape)
     second_estimator = estimator_fn(model_dir, exogenous_feature_columns)
-    second_estimator.train(input_fn=train_input_fn, steps=2)
+    second_estimator.train(input_fn=train_input_fn, steps=1)
     whole_dataset_input_fn = input_pipeline.WholeDatasetInputFn(
         input_pipeline.NumpyReader(features))
     whole_dataset_evaluation = second_estimator.evaluate(

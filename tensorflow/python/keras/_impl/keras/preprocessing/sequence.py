@@ -357,9 +357,15 @@ class TimeseriesGenerator(Sequence):
     self.reverse = reverse
     self.batch_size = batch_size
 
+    if self.start_index > self.end_index:
+      raise ValueError('`start_index+length=%i > end_index=%i` '
+                       'is disallowed, as no part of the sequence '
+                       'would be left to be used as current step.' %
+                       (self.start_index, self.end_index))
+
   def __len__(self):
     length = int(
-        np.ceil((self.end_index - self.start_index) /
+        np.ceil((self.end_index - self.start_index + 1) /
                 (self.batch_size * self.stride)))
     return length if length >= 0 else 0
 
@@ -373,11 +379,12 @@ class TimeseriesGenerator(Sequence):
   def __getitem__(self, index):
     if self.shuffle:
       rows = np.random.randint(
-          self.start_index, self.end_index, size=self.batch_size)
+          self.start_index, self.end_index + 1, size=self.batch_size)
     else:
       i = self.start_index + self.batch_size * self.stride * index
-      rows = np.arange(i, min(i + self.batch_size * self.stride,
-                              self.end_index), self.stride)
+      rows = np.arange(
+          i, min(i + self.batch_size * self.stride, self.end_index + 1),
+          self.stride)
 
     samples, targets = self._empty_batch(len(rows))
     for j in range(len(rows)):

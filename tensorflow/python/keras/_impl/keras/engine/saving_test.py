@@ -253,7 +253,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_sequential_model_saving(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       model = keras.models.Sequential()
@@ -290,7 +290,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_sequential_model_saving_2(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       # test with custom optimizer, loss
@@ -326,7 +326,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_functional_model_saving(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       inputs = keras.layers.Input(shape=(3,))
@@ -354,7 +354,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_saving_without_compilation(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       model = keras.models.Sequential()
@@ -370,7 +370,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_saving_with_tf_optimizer(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       model = keras.models.Sequential()
@@ -388,7 +388,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_saving_right_after_compilation(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       model = keras.models.Sequential()
@@ -405,7 +405,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_saving_lambda_numpy_array_arguments(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     mean = np.random.random((4, 2, 3))
     std = np.abs(np.random.random((4, 2, 3))) + 1e-5
@@ -427,7 +427,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_saving_model_with_long_layer_names(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       # This layer name will make the `layers_name` HDF5 attribute blow
@@ -468,7 +468,7 @@ class TestWholeModelSaving(test.TestCase):
 
   def test_saving_model_with_long_weights_names(self):
     if h5py is None:
-      return  # Skip test if models cannot be saved.
+      self.skipTest('h5py required to run this test')
 
     with self.test_session():
       x = keras.Input(shape=(2,), name='nested_model_input')
@@ -505,6 +505,43 @@ class TestWholeModelSaving(test.TestCase):
       # The chunking of layer names array should have happened.
       self.assertGreater(num_weight_arrays, 0)
       out2 = model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+      # Cleanup
+      os.close(fd)
+      os.remove(fname)
+
+  def test_model_saving_to_pre_created_h5py_file(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    with self.test_session():
+      inputs = keras.Input(shape=(3,))
+      x = keras.layers.Dense(2)(inputs)
+      outputs = keras.layers.Dense(3)(x)
+
+      model = keras.Model(inputs, outputs)
+      model.compile(loss=keras.losses.MSE,
+                    optimizer=keras.optimizers.Adam(),
+                    metrics=[keras.metrics.categorical_accuracy])
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3))
+      model.train_on_batch(x, y)
+
+      out = model.predict(x)
+      fd, fname = tempfile.mkstemp('.h5')
+      with h5py.File(fname, mode='r+') as h5file:
+        keras.models.save_model(model, h5file)
+        loaded_model = keras.models.load_model(h5file)
+        out2 = loaded_model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+      # Test non-default options in h5
+      with h5py.File('_', driver='core',
+                     backing_store=False) as h5file:
+        keras.models.save_model(model, h5file)
+        loaded_model = keras.models.load_model(h5file)
+        out2 = loaded_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
       # Cleanup
