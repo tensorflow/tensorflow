@@ -39,6 +39,10 @@ py_library(
         ":gc",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:metric_keys",
+        "//tensorflow/python/estimator:util",
     ],
 )
 
