@@ -2712,7 +2712,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
-        "@com_google_absl//absl/memory",
     ],
 )
 

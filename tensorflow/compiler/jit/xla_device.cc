@@ -18,7 +18,6 @@ limitations under the License.
 #include <stdlib.h>
 #include <unordered_set>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -230,7 +230,7 @@ Status XlaDevice::CreateAndSetGpuDeviceInfo() {
     GetAllocator({});
     // XlaDevice owns both gpu_device_info_ and
     // gpu_device_info_->default_context.
-    gpu_device_info_ = absl::make_unique<GpuDeviceInfo>();
+    gpu_device_info_ = MakeUnique<GpuDeviceInfo>();
     gpu_device_info_->stream = stream;
     gpu_device_info_->default_context =
         new XlaDeviceContext(stream, client(), transfer_as_literal_);
