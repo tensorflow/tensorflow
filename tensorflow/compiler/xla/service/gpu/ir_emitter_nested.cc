@@ -116,6 +116,17 @@ Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
 Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
+  // For MOF we give the loop emitter an array for every output it should
+  // generate.
+  if (hlo.IsMultiOutputFusion()) {
+    std::vector<llvm_ir::IrArray> target_arrays;
+    for (int64 i = 0, e = ShapeUtil::TupleElementCount(hlo.shape()); i != e;
+         ++i) {
+      target_arrays.push_back(GetIrArray(hlo, hlo, {i}));
+    }
+    return llvm_ir::LoopEmitter(element_generator, target_arrays, &ir_builder_)
+        .EmitLoop();
+  }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo),
                               &ir_builder_)
       .EmitLoop();
