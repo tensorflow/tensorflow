@@ -15,6 +15,7 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_MPI
 
+#include <iostream>
 #include "tensorflow/contrib/mpi/mpi_utils.h"
 namespace tensorflow {
 
