@@ -151,6 +151,7 @@ py_library(
         ":one_device_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/optimizer_v2:training",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
