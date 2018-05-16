@@ -26,8 +26,8 @@ namespace poplarplugin {
 
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
                        bool root_computation_only)
-        : root_computation_only_(root_computation_only)
-        , patterns_(std::move(patterns)) {
+    : root_computation_only_(root_computation_only),
+      patterns_(std::move(patterns)) {
   matches_.resize(patterns.size());
 }
 
@@ -40,7 +40,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
     match.instructions[node_num] = nullptr;
   }
 
-  for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
+  for (unsigned int node_num = 0; node_num < pattern.size(); node_num++) {
     HloInstruction* inst = match.instructions[node_num];
     if (inst == nullptr) {
       return false;
@@ -64,7 +64,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
         return false;
       }
 
-      for (unsigned int i=0; i<node.operands.size(); i++) {
+      for (unsigned int i = 0; i < node.operands.size(); i++) {
         HloInstruction* operand = inst->mutable_operand(i);
         int n = node.operands[i];
 
@@ -92,7 +92,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
   }
 
   ReplacedInstructions replaced;
-  for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
+  for (unsigned int node_num = 0; node_num < pattern.size(); node_num++) {
     const HloMatcherNode& node(pattern[node_num]);
 
     if (node.include_in_replacement) {
@@ -124,19 +124,18 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
 
 void HloMatcher::AddMatch(unsigned pattern, const HloMatcherMatched& match) {
   matches_[pattern].push_back(match);
-  for (unsigned i=0; i<match.instructions.size(); i++) {
-    match_map_.insert(std::make_pair(match.instructions[i],
-                                     &matches_[pattern].back()));
+  for (unsigned i = 0; i < match.instructions.size(); i++) {
+    match_map_.insert(
+        std::make_pair(match.instructions[i], &matches_[pattern].back()));
   }
 }
 
 // TODO - make this non-recursive
 void HloMatcher::MatchPatternStart(HloComputation* computation,
                                    HloInstruction* instruction) {
-
   visited_.insert(instruction);
 
-  for (unsigned i=0; i<patterns_.size(); i++) {
+  for (unsigned i = 0; i < patterns_.size(); i++) {
     if (instruction->opcode() == patterns_[i][0].opcode) {
       // Try matching the whole pattern
       HloMatcherMatched match;
@@ -157,10 +156,7 @@ void HloMatcher::MatchPatternStart(HloComputation* computation,
   }
 }
 
-
-
-StatusOr<bool> HloMatcher::Run(HloModule *module) {
-
+StatusOr<bool> HloMatcher::Run(HloModule* module) {
   if (root_computation_only_) {
     HloComputation* comp = module->entry_computation();
     visited_.clear();
@@ -180,8 +176,8 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
   }
 
   unsigned int replacement_count = 0;
-  for (int pattern=0; pattern<matches_.size(); pattern++) {
-    for (HloMatcherMatched& match :  matches_[pattern]) {
+  for (int pattern = 0; pattern < matches_.size(); pattern++) {
+    for (HloMatcherMatched& match : matches_[pattern]) {
       if (match.ok) {
         const ReplacedInstructions& replaced = ReplaceNodes(pattern, match);
         for (auto i : replaced) {
@@ -205,10 +201,8 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
 }
 
 ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
-        const HloMatcherMatched& matched,
-        const std::string& outlined_computation_name,
-        const char metadata_index) {
-
+    const HloMatcherMatched& matched,
+    const std::string& outlined_computation_name, const char metadata_index) {
   auto& instructions_to_outline = matched.instructions;
   HloModule* module = matched.computation->parent();
   HloInstruction* root = instructions_to_outline[0];
@@ -225,7 +219,6 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
 
   for (HloInstruction* instruction_to_outline : to_outline) {
     if (outlined.find(instruction_to_outline) == outlined.end()) {
-
       auto* new_inst = builder.AddInstruction(instruction_to_outline->Clone());
       outlined[instruction_to_outline] = new_inst;
 
@@ -233,10 +226,9 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
         HloInstruction* old_operand = new_inst->mutable_operand(operand);
         HloInstruction** operand_slot = &(outlined[old_operand]);
         if (*operand_slot == nullptr) {
-
           int parameter_num = -1;
           for (auto* old_user : old_operand->users()) {
-            for (int i=0; i<matched.parameters.size(); i++) {
+            for (int i = 0; i < matched.parameters.size(); i++) {
               auto& param = matched.parameters[i];
               if (param.first == old_user &&
                   old_user->operand_count() > param.second &&
@@ -252,9 +244,10 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
 
           if (parameter_num != -1) {
             arguments[parameter_num] = old_operand;
-            *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
-                parameter_num, old_operand->shape(),
-                StrCat("arg_", parameter_num)));
+            *operand_slot =
+                builder.AddInstruction(HloInstruction::CreateParameter(
+                    parameter_num, old_operand->shape(),
+                    StrCat("arg_", parameter_num)));
           }
         }
 
@@ -268,7 +261,7 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
     }
   }
 
-  for (int i=0; i<arguments.size(); i++) {
+  for (int i = 0; i < arguments.size(); i++) {
     if (arguments[i] == nullptr) {
       LOG(FATAL) << "Argument " << i << " not found for outline "
                  << outlined_computation_name;
@@ -276,12 +269,11 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   }
 
   // Creates a call to the nested computation.
-  HloComputation* nested_computation = module->AddEmbeddedComputation(
-          builder.Build(FindOrDie(outlined, root)));
+  HloComputation* nested_computation =
+      module->AddEmbeddedComputation(builder.Build(FindOrDie(outlined, root)));
 
   HloInstruction* call = matched.computation->AddInstruction(
-          HloInstruction::CreateCall(root->shape(), arguments,
-                                     nested_computation));
+      HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
 
   call->set_metadata(instructions_to_outline[metadata_index]->metadata());
 
@@ -298,11 +290,5 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   return replaced;
 }
 
-
-
-
-
-
-
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

@@ -25,9 +25,8 @@ namespace {
 using ConversionsTest = HloTestBase;
 
 TEST_F(ConversionsTest, Int64ToInt32Input) {
-  int64 src[] = {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
-  };
+  int64 src[] = {0, 1,  2,  3,  4,  5,  6,  7,  8,  9,
+                 0, -1, -2, -3, -4, -5, -6, -7, -8, -9};
   std::vector<char> res = ConvInt64ToInt32((void*)src, sizeof(src), 0);
 
   EXPECT_EQ(20 * sizeof(int32), res.size());
@@ -42,9 +41,8 @@ TEST_F(ConversionsTest, Int64ToInt32Input) {
 }
 
 TEST_F(ConversionsTest, Int32ToInt64Input) {
-  int32 src[] = {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
-  };
+  int32 src[] = {0, 1,  2,  3,  4,  5,  6,  7,  8,  9,
+                 0, -1, -2, -3, -4, -5, -6, -7, -8, -9};
   std::vector<char> res = ConvInt32ToInt64((void*)src, sizeof(src), 0);
 
   EXPECT_EQ(20 * sizeof(int64), res.size());
@@ -59,9 +57,8 @@ TEST_F(ConversionsTest, Int32ToInt64Input) {
 }
 
 TEST_F(ConversionsTest, Int64ToInt32Output) {
-  int64 src[] = {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
-  };
+  int64 src[] = {0, 1,  2,  3,  4,  5,  6,  7,  8,  9,
+                 0, -1, -2, -3, -4, -5, -6, -7, -8, -9};
   std::vector<char> res = ConvInt64ToInt32((void*)src, 0, sizeof(src) / 2);
 
   EXPECT_EQ(20 * sizeof(int32), res.size());
@@ -76,9 +73,8 @@ TEST_F(ConversionsTest, Int64ToInt32Output) {
 }
 
 TEST_F(ConversionsTest, Int32ToInt64Output) {
-  int32 src[] = {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
-  };
+  int32 src[] = {0, 1,  2,  3,  4,  5,  6,  7,  8,  9,
+                 0, -1, -2, -3, -4, -5, -6, -7, -8, -9};
   std::vector<char> res = ConvInt32ToInt64((void*)src, 0, sizeof(src) * 2);
 
   EXPECT_EQ(20 * sizeof(int64), res.size());
@@ -107,9 +103,8 @@ TEST_F(ConversionsTest, GetConvertors) {
   EXPECT_EQ(nullptr, GetInputConversionFunction(f16));
   EXPECT_EQ(nullptr, GetOutputConversionFunction(s32));
   EXPECT_EQ(nullptr, GetOutputConversionFunction(f16));
-
 }
 
-}
-}
-}
+}  // namespace
+}  // namespace poplarplugin
+}  // namespace xla

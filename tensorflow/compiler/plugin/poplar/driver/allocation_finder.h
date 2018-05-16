@@ -31,15 +31,12 @@ struct TensorTarget {
   const HloInstruction* tgt;
   int64 input_index;
   std::vector<const HloInstruction*> path;
-  TensorTarget(const HloInstruction* tgt,
-               int64 input_index,
-               const std::vector<const HloInstruction*>& path)  :
-      tgt(tgt),
-      input_index(input_index),
-      path(path) {}
+  TensorTarget(const HloInstruction* tgt, int64 input_index,
+               const std::vector<const HloInstruction*>& path)
+      : tgt(tgt), input_index(input_index), path(path) {}
 };
 
-using TensorSource = std::pair<const HloInstruction*,int64>;
+using TensorSource = std::pair<const HloInstruction*, int64>;
 using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
 
 /**
@@ -49,17 +46,16 @@ using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
  * method (e.g. convolution), then it notes the downstream instruction
  */
 class AllocationFinder : public HloPassInterface {
-public:
-  AllocationFinder(TensorAllocationMap& map) :
-      tensor_allocation_map(map) {}
+ public:
+  AllocationFinder(TensorAllocationMap& map) : tensor_allocation_map(map) {}
 
   ~AllocationFinder() = default;
 
   tensorflow::StringPiece name() const override { return "allocation-finder"; }
 
-  StatusOr<bool> Run(HloModule *module) override;
+  StatusOr<bool> Run(HloModule* module) override;
 
-private:
+ private:
   void FindConsumers(const TensorSource&, const HloInstruction* tgt, int64);
 
   // Should return true when target 'a' should be used over 'b'
@@ -72,7 +68,7 @@ private:
   TensorAllocationMap& tensor_allocation_map;
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

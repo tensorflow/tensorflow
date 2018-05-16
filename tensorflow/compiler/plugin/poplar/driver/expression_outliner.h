@@ -27,7 +27,7 @@ namespace poplarplugin {
 // Extract elementwise ops into a called sub-graph
 
 class ExpressionOutliner : public HloMatcher {
-public:
+ public:
   ExpressionOutliner();
 
   ~ExpressionOutliner() override = default;
@@ -36,12 +36,11 @@ public:
 
   StatusOr<bool> Run(HloModule *module) override;
 
-private:
-  ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched&) override;
-
+ private:
+  ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched &) override;
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

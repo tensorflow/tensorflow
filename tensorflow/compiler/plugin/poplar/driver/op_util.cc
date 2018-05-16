@@ -11,16 +11,14 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
-ArgVector
-FindTupleInInstructionInput(const TensorMap& map,
-                            const HloInstruction* inst,
-                            int64 input,
-                            int64 n) {
+ArgVector FindTupleInInstructionInput(const TensorMap& map,
+                                      const HloInstruction* inst, int64 input,
+                                      int64 n) {
   const HloInstruction* operand = inst->operand(input);
   const Shape& shape = operand->shape();
   OutVector outputs = FindInstructionOutputs(map, operand);
-  int64 start=0;
-  for (int64 i=0; i<n; i++) {
+  int64 start = 0;
+  for (int64 i = 0; i < n; i++) {
     start += CountShapes(ShapeUtil::GetTupleElementShape(shape, i));
   }
   int64 end = start + CountShapes(ShapeUtil::GetTupleElementShape(shape, n));
@@ -28,10 +26,9 @@ FindTupleInInstructionInput(const TensorMap& map,
   return ArgVector(&outputs[start], &outputs[end]);
 }
 
-StatusOr<poplar::Tensor>
-FindInstructionInput(const TensorMap& map,
-                     const HloInstruction* inst,
-                     int64 input) {
+StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
+                                              const HloInstruction* inst,
+                                              int64 input) {
   const HloInstruction* operand = inst->operand(input);
   OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
@@ -42,18 +39,15 @@ FindInstructionInput(const TensorMap& map,
   return outputs[0];
 }
 
-ArgVector
-FindInstructionInputs(const TensorMap& map,
-                      const HloInstruction* inst,
-                      int64 input) {
+ArgVector FindInstructionInputs(const TensorMap& map,
+                                const HloInstruction* inst, int64 input) {
   const HloInstruction* operand = inst->operand(input);
   OutVector inputs = FindInstructionOutputs(map, operand);
   return inputs;
 }
 
-OutVector
-FindInstructionOutputs(const TensorMap& map,
-                       const HloInstruction* inst) {
+OutVector FindInstructionOutputs(const TensorMap& map,
+                                 const HloInstruction* inst) {
   auto lower = std::make_pair(inst->name(), 0);
   auto upper = std::make_pair(inst->name(), std::numeric_limits<int64>::max());
   OutVector outputs;
@@ -63,12 +57,9 @@ FindInstructionOutputs(const TensorMap& map,
   return outputs;
 }
 
-Status
-AddOutputTensor(TensorMap& map,
-                const HloInstruction* inst,
-                int64 n,
-                const poplar::Tensor& tensor) {
-  auto p = std::make_pair(inst->name(),n);
+Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
+                       const poplar::Tensor& tensor) {
+  auto p = std::make_pair(inst->name(), n);
   auto it = map.find(p);
   if (it != map.end()) {
     return Status(tensorflow::error::UNKNOWN,
@@ -79,24 +70,22 @@ AddOutputTensor(TensorMap& map,
   return Status::OK();
 }
 
-template<typename TYPE>
-static void SetVertexField(poplar::Graph& graph,
-                           const poplar::FieldRef &field,
+template <typename TYPE>
+static void SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                            const Literal& literal) {
   const TYPE* value(static_cast<const TYPE*>(literal.untyped_data()));
   graph.setInitialValue<TYPE>(field, *value);
 }
 
 static void SetFp16VertexField(poplar::Graph& graph,
-                               const poplar::FieldRef &field,
+                               const poplar::FieldRef& field,
                                const Literal& literal) {
   const uint16_t* value(static_cast<const uint16_t*>(literal.untyped_data()));
   graph.setInitialValueHalf(field, *value);
 }
 
-Status SetVertexField(poplar::Graph &graph,
-                            const poplar::FieldRef &field,
-                            const Literal &literal) {
+Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
+                      const Literal& literal) {
   switch (literal.shape().element_type()) {
     case PRED:
       SetVertexField<bool>(graph, field, literal);
@@ -119,5 +108,5 @@ Status SetVertexField(poplar::Graph &graph,
   return Status::OK();
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

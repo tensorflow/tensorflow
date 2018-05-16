@@ -28,7 +28,7 @@ namespace poplarplugin {
  * and replaces with a broadcast scalar zero
  */
 class WideConstFinder : public HloPassInterface {
-public:
+ public:
   WideConstFinder();
 
   ~WideConstFinder() override = default;
@@ -38,7 +38,7 @@ public:
   StatusOr<bool> Run(HloModule *module) override;
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

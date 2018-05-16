@@ -47,8 +47,8 @@ struct CompilerResources {
 
   poprand::Random random;
 
-  CompilerResources(uint64 seed, poprand::RandomGenMode mode) :
-          random(mode, seed) {}
+  CompilerResources(uint64 seed, poprand::RandomGenMode mode)
+      : random(mode, seed) {}
 };
 
 }  // namespace poplarplugin

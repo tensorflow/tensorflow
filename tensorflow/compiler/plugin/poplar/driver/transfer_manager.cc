@@ -25,14 +25,13 @@ namespace xla {
 namespace poplarplugin {
 
 PoplarTransferManager::PoplarTransferManager()
-        : GenericTransferManager(kPoplarPlatformId,
-        /*pointer_size=*/sizeof(void *)) {}
+    : GenericTransferManager(kPoplarPlatformId,
+                             /*pointer_size=*/sizeof(void *)) {}
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
-static std::unique_ptr<xla::TransferManager>
-CreatePoplarTransferManager() {
+static std::unique_ptr<xla::TransferManager> CreatePoplarTransferManager() {
   return xla::MakeUnique<xla::poplarplugin::PoplarTransferManager>();
 }
 

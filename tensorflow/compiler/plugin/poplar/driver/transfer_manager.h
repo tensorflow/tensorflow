@@ -23,16 +23,16 @@ namespace xla {
 namespace poplarplugin {
 
 class PoplarTransferManager : public GenericTransferManager {
-public:
+ public:
   PoplarTransferManager();
 
   ~PoplarTransferManager() override = default;
 
-private:
+ private:
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarTransferManager);
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

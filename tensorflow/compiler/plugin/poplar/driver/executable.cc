@@ -22,14 +22,13 @@ namespace xla {
 namespace poplarplugin {
 
 PoplarExecutable::PoplarExecutable(
-        std::unique_ptr<HloModule> hlo_module,
-        std::unique_ptr<HloProfilePrinterData> profile_printer,
-        std::unique_ptr<HloProfileIndexMap> profile_index_map,
-        std::shared_ptr<poplar::Engine> engine,
-        const ::xla::poplarplugin::OutputMap& output_map,
-        const std::vector<Shape>& parameter_shapes)
-    : Executable(std::move(hlo_module),
-                 std::move(profile_printer),
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<HloProfilePrinterData> profile_printer,
+    std::unique_ptr<HloProfileIndexMap> profile_index_map,
+    std::shared_ptr<poplar::Engine> engine,
+    const ::xla::poplarplugin::OutputMap& output_map,
+    const std::vector<Shape>& parameter_shapes)
+    : Executable(std::move(hlo_module), std::move(profile_printer),
                  std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
       output_map_(std::move(output_map)),
@@ -38,8 +37,7 @@ PoplarExecutable::PoplarExecutable(
 
 PoplarExecutable::~PoplarExecutable() {}
 
-StatusOr<ScopedShapedBuffer>
-PoplarExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -66,11 +64,9 @@ PoplarExecutable::ExecuteOnStream(
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
   se::DeviceMemoryBase result;
-  TF_ASSIGN_OR_RETURN(result,
-                      poplarExecutor->ExecuteEngine(executor,
-                                                    *this,
-                                                    memory_allocator,
-                                                    argument_buffers));
+  TF_ASSIGN_OR_RETURN(
+      result, poplarExecutor->ExecuteEngine(executor, *this, memory_allocator,
+                                            argument_buffers));
 
   first_execution_ = false;
 
@@ -91,28 +87,26 @@ PoplarExecutable::ExecuteOnStream(
   // the respective location in ShapedBuffer which is returned to the caller.
 
   TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
-              [&result, poplarExecutor](const ShapeIndex& index,
-                                        se::DeviceMemoryBase* device_memory) {
-                se::DeviceMemoryBase buffer = result;
-                for (auto i : index) {
-                  TF_ASSIGN_OR_RETURN(
-                      buffer,
-                      poplarExecutor->GetTupleBufferByIndex(buffer, i));
-                }
-                CHECK(!buffer.is_null() || buffer.size() == 0);
-                *device_memory = buffer;
-                return Status::OK();
-              }));
+      [&result, poplarExecutor](const ShapeIndex& index,
+                                se::DeviceMemoryBase* device_memory) {
+        se::DeviceMemoryBase buffer = result;
+        for (auto i : index) {
+          TF_ASSIGN_OR_RETURN(buffer,
+                              poplarExecutor->GetTupleBufferByIndex(buffer, i));
+        }
+        CHECK(!buffer.is_null() || buffer.size() == 0);
+        *device_memory = buffer;
+        return Status::OK();
+      }));
 
   return std::move(result_buffer);
 }
 
-StatusOr<ScopedShapedBuffer>
-PoplarExecutable::ExecuteAsyncOnStream(
-        const ServiceExecutableRunOptions* run_options,
-        tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   return tensorflow::errors::Unimplemented(
-          "ExecuteAsyncOnStream is not yet supported on Poplar.");
+      "ExecuteAsyncOnStream is not yet supported on Poplar.");
 }
 
 /*static*/ int64 PoplarExecutable::ShapeSizeBytes(const Shape& shape) {
@@ -124,4 +118,3 @@ PoplarExecutable::ExecuteAsyncOnStream(
 
 }  // namespace poplarplugin
 }  // namespace xla
-

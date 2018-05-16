@@ -8,9 +8,9 @@
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
@@ -19,7 +19,7 @@ class Literal;
 
 namespace poplarplugin {
 
-template<typename To, typename From>
+template <typename To, typename From>
 To convert_array(const From& from) {
   To out;
   for (const auto& e : from) {
@@ -28,16 +28,14 @@ To convert_array(const From& from) {
   return out;
 };
 
-int64
-CountShapes(const Shape& shape);
+int64 CountShapes(const Shape& shape);
 
-std::vector<xla::Shape>
-FlattenedXlaShape(const xla::Shape& shape);
+std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape);
 
-StatusOr<std::vector<int64>>
-LiteralVectorToInt64Vector(const xla::Literal& lit);
+StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
+    const xla::Literal& lit);
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

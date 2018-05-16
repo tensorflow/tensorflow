@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
-
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,11 +30,9 @@ namespace xp = ::xla::poplarplugin;
 
 namespace tensorflow {
 
-IpuSummaryOp::IpuSummaryOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx) {}
+IpuSummaryOp::IpuSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
 void IpuSummaryOp::Compute(OpKernelContext* ctx) {
-
   auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
   OP_REQUIRES(ctx, platform.ok(), platform.status());
 
@@ -47,12 +44,11 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
   int num = out.size();
 
   Tensor* output_tensor = nullptr;
-  OP_REQUIRES_OK(ctx,
-                 ctx->allocate_output("out", TensorShape({num}),
-                                      &output_tensor));
+  OP_REQUIRES_OK(
+      ctx, ctx->allocate_output("out", TensorShape({num}), &output_tensor));
   auto output_flat = output_tensor->flat<string>();
 
-  unsigned i=0;
+  unsigned i = 0;
   for (auto& e : out) {
     std::string str;
     e.SerializeToString(&str);

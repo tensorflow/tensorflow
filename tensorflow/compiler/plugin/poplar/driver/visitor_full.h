@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_FULL_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_FULL_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_base.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_base.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -33,7 +33,7 @@ namespace poplarplugin {
  * or Concatinate.
  */
 class FullVisitor : public BaseVisitor {
-public:
+ public:
   FullVisitor(poplar::Graph& graph, CompilerResources&);
 
   Status HandleConcatenate(HloInstruction* inst) override;
@@ -67,7 +67,6 @@ public:
   Status HandleWhile(HloInstruction* inst) override;
 
   Status HandlePad(HloInstruction* inst) override;
-
 };
 
 }  // namespace poplarplugin

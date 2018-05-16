@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_BASE_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_BASE_H_
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -34,7 +34,7 @@ struct CompilerResources;
  * to element dependencies.
  */
 class BaseVisitor : public DfsHloVisitor {
-public:
+ public:
   BaseVisitor(poplar::Graph& graph, CompilerResources&);
 
   virtual const Shape& GetOutputShape(HloInstruction*) const;
@@ -137,13 +137,12 @@ public:
 
   poplar::program::Sequence sequence;
 
-protected:
+ protected:
   Status Unimplemented(HloInstruction* inst);
 
   poplar::Graph& graph_;
 
   CompilerResources& resources_;
-
 };
 
 }  // namespace poplarplugin

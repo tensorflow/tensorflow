@@ -1,25 +1,25 @@
 #include <algorithm>
 
-#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
 
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/stream_executor/lib/strcat.h"
 
-#include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
+#include <poplar/Graph.hpp>
 #include <popops/AllTrue.hpp>
 
 using tensorflow::str_util::StartsWith;
@@ -27,12 +27,9 @@ using tensorflow::str_util::StartsWith;
 namespace xla {
 namespace poplarplugin {
 
-static StatusOr<ComputationMap::iterator>
-GetOrCompileSubComputation(poplar::Graph &graph,
-                           CompilerResources& res,
-                           const ArgVectors& inputs,
-                           const HloComputation* comp) {
-
+static StatusOr<ComputationMap::iterator> GetOrCompileSubComputation(
+    poplar::Graph& graph, CompilerResources& res, const ArgVectors& inputs,
+    const HloComputation* comp) {
   auto body(res.computation_map.find(comp));
   if (body != res.computation_map.end()) {
     return body;
@@ -42,16 +39,15 @@ GetOrCompileSubComputation(poplar::Graph &graph,
   XLA_VLOG_LINES(1, comp->ToString());
 
   auto compiled = res.computation_map.emplace(
-          std::piecewise_construct,
-          std::forward_as_tuple(comp),
-          std::forward_as_tuple(graph, res, inputs));
+      std::piecewise_construct, std::forward_as_tuple(comp),
+      std::forward_as_tuple(graph, res, inputs));
   TF_RETURN_IF_ERROR(comp->Accept(&(res.computation_map.at(comp))));
 
   return compiled.first;
 }
 
 class ParallelMapTester : public DfsHloVisitorWithDefault {
-public:
+ public:
   ParallelMapTester() : _is_ok(true) {}
 
   Status DefaultAction(HloInstruction* inst) override {
@@ -79,9 +75,8 @@ public:
   bool _is_ok;
 };
 
-StatusOr<bool>
-IsParallelMap(const HloInstruction* inst,
-              const HloComputation* computation) {
+StatusOr<bool> IsParallelMap(const HloInstruction* inst,
+                             const HloComputation* computation) {
   HloInstruction* root(computation->root_instruction());
 
   ParallelMapTester tester;
@@ -90,13 +85,11 @@ IsParallelMap(const HloInstruction* inst,
   return tester._is_ok;
 }
 
-StatusOr<poplar::program::Program>
-CreateParallelMap(poplar::Graph &graph,
-                  CompilerResources& res,
-                  const HloInstruction *inst,
-                  const xla::Shape& output,
-                  TensorMap& tensor_map) {
-
+StatusOr<poplar::program::Program> CreateParallelMap(poplar::Graph& graph,
+                                                     CompilerResources& res,
+                                                     const HloInstruction* inst,
+                                                     const xla::Shape& output,
+                                                     TensorMap& tensor_map) {
   int64 op_count(inst->operand_count());
   ArgVector inputs;
 
@@ -110,21 +103,18 @@ CreateParallelMap(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
   auto outputs = visitor.outputs();
-  for (size_t i=0; i<outputs.size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
-                                       outputs[i]));
+  for (size_t i = 0; i < outputs.size(); i++) {
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, outputs[i]));
   }
 
   return visitor.sequence;
 }
 
-StatusOr<poplar::program::Program>
-CreateCallOp(poplar::Graph &graph,
-             CompilerResources& res,
-             const HloInstruction *inst,
-             const xla::Shape& output,
-             TensorMap& tensor_map) {
-
+StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
+                                                CompilerResources& res,
+                                                const HloInstruction* inst,
+                                                const xla::Shape& output,
+                                                TensorMap& tensor_map) {
   int64 op_count(inst->operand_count());
   HloComputation* comp = inst->to_apply();
   poplar::program::Sequence seq;
@@ -135,16 +125,15 @@ CreateCallOp(poplar::Graph &graph,
     args.push_back(t);
   }
 
-  if (StartsWith(comp->name(), "__inline"))
-  {
+  if (StartsWith(comp->name(), "__inline")) {
     InlineCallVisitor inline_visitor(graph, res, args);
     TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
     seq.add(inline_visitor.sequence);
 
     for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
-                                         inline_visitor.outputs()[i]));
+      TF_RETURN_IF_ERROR(
+          AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
     }
   } else {
     ComputationMap::iterator subcomp_visitor;
@@ -166,9 +155,10 @@ CreateCallOp(poplar::Graph &graph,
 
     seq.add(subcomp_visitor->second.sequence);
 
-    for (size_t i=0; i<subcomp_visitor->second.outputs().size(); i++) {
+    for (size_t i = 0; i < subcomp_visitor->second.outputs().size(); i++) {
       auto name = se::port::StrCat(inst->name(), "_out_", i);
-      poplar::Tensor o = graph.clone(subcomp_visitor->second.outputs()[i], name);
+      poplar::Tensor o =
+          graph.clone(subcomp_visitor->second.outputs()[i], name);
       seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
     }
@@ -177,13 +167,11 @@ CreateCallOp(poplar::Graph &graph,
   return seq;
 }
 
-StatusOr<poplar::program::Program>
-CreateFusionOp(poplar::Graph &graph,
-               CompilerResources& res,
-               const HloInstruction *inst,
-               const xla::Shape& output,
-               TensorMap& tensor_map) {
-
+StatusOr<poplar::program::Program> CreateFusionOp(poplar::Graph& graph,
+                                                  CompilerResources& res,
+                                                  const HloInstruction* inst,
+                                                  const xla::Shape& output,
+                                                  TensorMap& tensor_map) {
   int64 op_count(inst->operand_count());
   HloComputation* comp = inst->fused_instructions_computation();
   poplar::program::Sequence seq;
@@ -201,34 +189,28 @@ CreateFusionOp(poplar::Graph &graph,
   seq.add(inline_visitor.sequence);
 
   for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
-                                       inline_visitor.outputs()[i]));
+    TF_RETURN_IF_ERROR(
+        AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
   }
 
   return seq;
 }
 
-
-
-StatusOr<poplar::program::Program>
-CreateWhileOp(poplar::Graph &graph,
-              CompilerResources& res,
-              const HloInstruction *inst,
-              const xla::Shape& output,
-              TensorMap& tensor_map) {
-
+StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
+                                                 CompilerResources& res,
+                                                 const HloInstruction* inst,
+                                                 const xla::Shape& output,
+                                                 TensorMap& tensor_map) {
   ArgVectors inputs;
   inputs.push_back(FindInstructionInputs(tensor_map, inst, 0));
 
   ComputationMap::iterator body;
-  TF_ASSIGN_OR_RETURN(body,
-                      GetOrCompileSubComputation(graph, res, inputs,
-                                                 inst->while_body()));
+  TF_ASSIGN_OR_RETURN(
+      body, GetOrCompileSubComputation(graph, res, inputs, inst->while_body()));
 
   ComputationMap::iterator cond;
-  TF_ASSIGN_OR_RETURN(cond,
-                      GetOrCompileSubComputation(graph, res, inputs,
-                                                 inst->while_condition()));
+  TF_ASSIGN_OR_RETURN(cond, GetOrCompileSubComputation(
+                                graph, res, inputs, inst->while_condition()));
 
   unsigned int param_count = inputs[0].size();
 
@@ -254,9 +236,8 @@ CreateWhileOp(poplar::Graph &graph,
                   "Invalid number of condition outputs");
   }
 
-
   poplar::program::Sequence main_seq;
-  for (unsigned int i=0; i<param_count; i++) {
+  for (unsigned int i = 0; i < param_count; i++) {
     if (body_outputs[i].isParallelWriteable()) {
       main_seq.add(poplar::program::Copy(inputs[0][i], body_outputs[i]));
     }
@@ -276,7 +257,7 @@ CreateWhileOp(poplar::Graph &graph,
   std::vector<int> alias_type(param_count, 0);
   for (unsigned int o = 0; o < param_count; o++) {
     if (body->second.input_valid(0, o)) {
-      for (unsigned int i=0; i<param_count; i++) {
+      for (unsigned int i = 0; i < param_count; i++) {
         if (body->second.input_valid(0, i)) {
           if (body_outputs[o].intersectsWith(body_inputs[i])) {
             alias_type[o] = 1;
@@ -294,7 +275,7 @@ CreateWhileOp(poplar::Graph &graph,
 
   // Create a temporary copy location for outputs which need preserving
   std::vector<poplar::Tensor> copies(param_count);
-  for (unsigned int o=0; o<param_count; o++) {
+  for (unsigned int o = 0; o < param_count; o++) {
     if (alias_type[o] == 1) {
       auto name = se::port::StrCat(inst->name(), "_bodyout_temp_", o);
       copies[o] = graph.clone(body_outputs[o], name);
@@ -302,7 +283,7 @@ CreateWhileOp(poplar::Graph &graph,
     }
   }
 
-  for (unsigned int o=0; o<param_count; o++) {
+  for (unsigned int o = 0; o < param_count; o++) {
     switch (alias_type[o]) {
       case 0:
         body_seq.add(poplar::program::Copy(body_outputs[o], body_inputs[o]));
@@ -320,7 +301,7 @@ CreateWhileOp(poplar::Graph &graph,
 
   // Condition
   poplar::program::Sequence cond_seq;
-  for (unsigned int i=0; i<param_count; i++) {
+  for (unsigned int i = 0; i < param_count; i++) {
     if (cond->second.input_valid(0, i)) {
       cond_seq.add(poplar::program::Copy(body_outputs[i], cond_inputs[i]));
     }
@@ -332,7 +313,7 @@ CreateWhileOp(poplar::Graph &graph,
   // Main
   main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, pred, body_seq));
 
-  for (unsigned int i=0; i<param_count; i++) {
+  for (unsigned int i = 0; i < param_count; i++) {
     auto name = se::port::StrCat(inst->name(), "_out_", i);
     poplar::Tensor o = graph.clone(body_outputs[i], name);
     main_seq.add(poplar::program::Copy(body_outputs[i], o));
@@ -342,13 +323,11 @@ CreateWhileOp(poplar::Graph &graph,
   return main_seq;
 }
 
-StatusOr<poplar::program::Program>
-CreateIfOp(poplar::Graph &graph,
-           CompilerResources& res,
-           const HloInstruction *inst,
-           const xla::Shape& output,
-           TensorMap& tensor_map) {
-
+StatusOr<poplar::program::Program> CreateIfOp(poplar::Graph& graph,
+                                              CompilerResources& res,
+                                              const HloInstruction* inst,
+                                              const xla::Shape& output,
+                                              TensorMap& tensor_map) {
   poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
 
@@ -378,7 +357,7 @@ CreateIfOp(poplar::Graph &graph,
   }
 
   poplar::program::Sequence true_seq;
-  for (unsigned int i=0; i<true_body->second.inputs()[0].size(); i++) {
+  for (unsigned int i = 0; i < true_body->second.inputs()[0].size(); i++) {
     if (true_body->second.input_valid(0, i)) {
       true_seq.add(poplar::program::Copy(true_inputs[0][i],
                                          true_body->second.inputs()[0][i]));
@@ -387,7 +366,7 @@ CreateIfOp(poplar::Graph &graph,
   true_seq.add(true_body->second.sequence);
 
   poplar::program::Sequence false_seq;
-  for (unsigned int i=0; i<false_body->second.inputs()[0].size(); i++) {
+  for (unsigned int i = 0; i < false_body->second.inputs()[0].size(); i++) {
     if (false_body->second.input_valid(0, i)) {
       false_seq.add(poplar::program::Copy(false_inputs[0][i],
                                           false_body->second.inputs()[0][i]));
@@ -401,7 +380,7 @@ CreateIfOp(poplar::Graph &graph,
                   "Mismatched output size");
   }
 
-  for (unsigned int i=0; i<output_count; i++) {
+  for (unsigned int i = 0; i < output_count; i++) {
     poplar::Tensor out = graph.clone(true_body->second.outputs()[i]);
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
 
@@ -413,6 +392,5 @@ CreateIfOp(poplar::Graph &graph,
   return seq;
 }
 
-}
-}
-
+}  // namespace poplarplugin
+}  // namespace xla

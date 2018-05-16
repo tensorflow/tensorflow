@@ -24,31 +24,24 @@ limitations under the License.
 namespace poplar {
 class Graph;
 class Tensor;
-}
+}  // namespace poplar
 
 namespace xla {
 namespace poplarplugin {
 
 class MapVisitor : public BaseVisitor {
-public:
-  MapVisitor(poplar::Graph& graph,
-             CompilerResources& res,
-             const ArgVector& inputs,
-             const xla::Shape& shape);
-
+ public:
+  MapVisitor(poplar::Graph& graph, CompilerResources& res,
+             const ArgVector& inputs, const xla::Shape& shape);
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
 
-  const Shape& GetOutputShape(HloInstruction*) const override {
-    return shape_;
-  }
+  const Shape& GetOutputShape(HloInstruction*) const override { return shape_; }
 
-  const OutVector& outputs() {
-    return outputs_;
-  }
+  const OutVector& outputs() { return outputs_; }
 
-private:
+ private:
   ArgVector operands_;
   OutVector outputs_;
   xla::Shape shape_;

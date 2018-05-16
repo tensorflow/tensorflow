@@ -53,9 +53,7 @@ PoplarPlatform::~PoplarPlatform() {}
 
 se::Platform::Id PoplarPlatform::id() const { return kPoplarPlatformId; }
 
-int PoplarPlatform::VisibleDeviceCount() const {
-  return num_devices_;
-}
+int PoplarPlatform::VisibleDeviceCount() const { return num_devices_; }
 
 const std::string& PoplarPlatform::Name() const { return name_; }
 
@@ -67,8 +65,7 @@ StatusOr<se::StreamExecutor*> PoplarPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
-StatusOr<se::StreamExecutor*>
-PoplarPlatform::ExecutorForDeviceWithPluginConfig(
+StatusOr<se::StreamExecutor*> PoplarPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const se::PluginConfig& plugin_config) {
   se::StreamExecutorConfig config;
   config.ordinal = device_ordinal;
@@ -101,15 +98,12 @@ void PoplarPlatform::UnregisterTraceListener(se::TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister poplar trace listener";
 }
 
-Status
-PoplarPlatform::ConfigurePoplarDevices(void* device,
-                                       int ordinal,
-                                       const tensorflow::IPUOptions& opts) {
-
-  se::StreamExecutor *executor;
+Status PoplarPlatform::ConfigurePoplarDevices(
+    void* device, int ordinal, const tensorflow::IPUOptions& opts) {
+  se::StreamExecutor* executor;
   TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
-  auto *e = static_cast<PoplarExecutor *>(executor->implementation());
+  auto* e = static_cast<PoplarExecutor*>(executor->implementation());
 
   if (opts.device_config().size() > ordinal) {
     TF_RETURN_IF_ERROR(
@@ -127,15 +121,15 @@ Status PoplarPlatform::ClosePoplarDevice(void* device, int ordinal) {
     return Status(tensorflow::error::UNKNOWN, "Invalid ordinal value");
   }
 
-  se::StreamExecutor *executor;
+  se::StreamExecutor* executor;
   TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
-  auto *e = static_cast<PoplarExecutor *>(executor->implementation());
+  auto* e = static_cast<PoplarExecutor*>(executor->implementation());
   return e->ClosePoplarDevice(device);
 }
 
-Status
-PoplarPlatform::GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out) {
+Status PoplarPlatform::GetCompilerEvents(
+    std::list<tensorflow::IpuTraceEvent>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
     se::StreamExecutor* executor;
     TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
@@ -153,11 +147,11 @@ static void InitializePoplarPlatform() {
   SE_CHECK_OK(se::MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(
-    poplar_platform, xla::poplarplugin::InitializePoplarPlatform());
+REGISTER_MODULE_INITIALIZER(poplar_platform,
+                            xla::poplarplugin::InitializePoplarPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 REGISTER_MODULE_INITIALIZER_SEQUENCE(poplar_platform, multi_platform_manager);

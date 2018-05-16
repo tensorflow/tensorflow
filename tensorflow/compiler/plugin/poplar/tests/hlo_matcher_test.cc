@@ -25,16 +25,12 @@ namespace {
 using HloMatcherTest = HloTestBase;
 
 class TestMatcher : public HloMatcher {
-public:
-  TestMatcher(const std::vector<HloMatcherPattern>& patterns,
-              const char* name,
-              const char index,
-              bool root_only)
-          : HloMatcher(patterns, root_only),
-            match_index(index),
-            match_name(name) {}
+ public:
+  TestMatcher(const std::vector<HloMatcherPattern>& patterns, const char* name,
+              const char index, bool root_only)
+      : HloMatcher(patterns, root_only), match_index(index), match_name(name) {}
 
-private:
+ private:
   ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override {
     replace_count++;
@@ -42,50 +38,45 @@ private:
     match_count.push_back(match.instructions.size());
 
     ReplacedInstructions replaced =
-            OutlineExpressionFromComputation(match, match_name, match_index);
+        OutlineExpressionFromComputation(match, match_name, match_index);
 
     return replaced;
   }
 
-public:
-  int replace_count=0;
-  char match_index=0;
+ public:
+  int replace_count = 0;
+  char match_index = 0;
   const char* match_name = nullptr;
   std::vector<unsigned int> match_pattern;
   std::vector<unsigned int> match_count;
 };
 
-
-
-
 TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
 
   auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape, "in1"));
-  auto i2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, shape, "in2"));
-  auto i3 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, shape, "in3"));
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
   auto add2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({add2}));
+  builder.AddInstruction(HloInstruction::CreateTuple({add2}));
 
   auto computation = builder.Build();
 
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-
   std::vector<HloMatcherPattern> patterns = {
-    {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}}};
+      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
+       {HloOpcode::kParameter, false, 0, nullptr, {}},
+       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
   TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -93,34 +84,30 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
   EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
 }
 
-
 TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
 
   auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape, "in1"));
-  auto i2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, shape, "in2"));
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i1));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i1));
   auto add2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({add1, add2}));
+  builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
 
   auto computation = builder.Build();
 
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-
   std::vector<HloMatcherPattern> patterns = {
-          {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-           {HloOpcode::kParameter, false, 0, nullptr, {}},
-           {HloOpcode::kParameter, false, 1, nullptr, {}}}
-  };
+      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
+       {HloOpcode::kParameter, false, 0, nullptr, {}},
+       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
   TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -128,27 +115,25 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
   EXPECT_EQ(5, hlo_module->entry_computation()->instruction_count());
 }
 
-
 TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
   Shape shape2 = ShapeUtil::MakeShape(F32, {10});
 
   auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 = builder.AddInstruction(
-          HloInstruction::CreateBroadcast(shape1, i3, {1}));
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
+  auto b1 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, i2));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, i2));
   auto add2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, add1, b1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, add1, b1));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({add2}));
+  builder.AddInstruction(HloInstruction::CreateTuple({add2}));
 
   OpMetadata add1_md;
   add1_md.set_op_type("Add");
@@ -165,17 +150,15 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-
   std::vector<HloMatcherPattern> patterns = {
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+      {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+       {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+       {HloOpcode::kParameter, false, 1, nullptr, {}},
+       {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
-    {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}}
-  };
+      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
+       {HloOpcode::kParameter, false, 0, nullptr, {}},
+       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
   TestMatcher matcher(patterns, "test2", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -190,32 +173,28 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
   EXPECT_EQ("long/add1", call_inst->operand(1)->metadata().op_name());
 }
 
-
-
-
 TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
   Shape shape2 = ShapeUtil::MakeShape(F32, {10});
 
   auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 = builder.AddInstruction(
-          HloInstruction::CreateBroadcast(shape1, i3, {1}));
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
+  auto b1 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
   auto sub1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, b1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, b1));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
 
   auto sub2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({sub2}));
+  builder.AddInstruction(HloInstruction::CreateTuple({sub2}));
 
   OpMetadata md;
   md.set_op_type("Broadcast");
@@ -227,13 +206,11 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-
   std::vector<HloMatcherPattern> patterns = {
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}}
-  };
+      {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+       {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+       {HloOpcode::kParameter, false, 0, nullptr, {}},
+       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
   TestMatcher matcher(patterns, "fuse", 1, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -247,47 +224,40 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   EXPECT_EQ("long/bc", call_inst->metadata().op_name());
 }
 
-
-
-
-
 TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
   Shape shape2 = ShapeUtil::MakeShape(F32, {10});
 
   auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 = builder.AddInstruction(
-          HloInstruction::CreateBroadcast(shape1, i3, {1}));
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
+  auto b1 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, b1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, b1));
   auto add2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
 
   auto sub1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, add2));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, add2));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({sub1}));
+  builder.AddInstruction(HloInstruction::CreateTuple({sub1}));
 
   auto computation = builder.Build();
 
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-
-  std::vector<HloMatcherPattern> patterns = {
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-    }
-  };
+  std::vector<HloMatcherPattern> patterns = {{
+      {HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+      {HloOpcode::kParameter, false, 0, nullptr, {}},
+      {HloOpcode::kParameter, false, 1, nullptr, {}},
+  }};
   TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -295,47 +265,40 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
   EXPECT_EQ(7, hlo_module->entry_computation()->instruction_count());
 }
 
-
-
-
-
 TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
   Shape shape2 = ShapeUtil::MakeShape(F32, {10});
 
   auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 = builder.AddInstruction(
-          HloInstruction::CreateBroadcast(shape1, i3, {1}));
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
+  auto b1 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
   auto sub1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, b1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, b1));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
 
   auto sub2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({sub2}));
+  builder.AddInstruction(HloInstruction::CreateTuple({sub2}));
 
   auto computation = builder.Build();
 
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-
   std::vector<HloMatcherPattern> patterns = {
-    {{HloOpcode::kSubtract, true, 0, nullptr, {1, 3}},
-     {HloOpcode::kAdd, true, 0, nullptr, {4, 2}},
-     {HloOpcode::kBroadcast, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 2, nullptr, {}}}
-  };
+      {{HloOpcode::kSubtract, true, 0, nullptr, {1, 3}},
+       {HloOpcode::kAdd, true, 0, nullptr, {4, 2}},
+       {HloOpcode::kBroadcast, false, 1, nullptr, {}},
+       {HloOpcode::kParameter, false, 0, nullptr, {}},
+       {HloOpcode::kParameter, false, 2, nullptr, {}}}};
   TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -349,31 +312,28 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
   Shape shape2 = ShapeUtil::MakeShape(F32, {10});
 
   auto builder = HloComputation::Builder(TestName());
-  auto i1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, shape1, "in1"));
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
   auto i2 = builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::One(F32).CloneToUnique()));
+      HloInstruction::CreateConstant(Literal::One(F32).CloneToUnique()));
   auto sub1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, i2));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, i2));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, i2));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, i2));
   auto sub2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({sub2}));
+  builder.AddInstruction(HloInstruction::CreateTuple({sub2}));
 
   auto computation = builder.Build();
 
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-
   std::vector<HloMatcherPattern> patterns = {
-    {{HloOpcode::kSubtract, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}}
-  };
+      {{HloOpcode::kSubtract, true, 0, nullptr, {2, 1}},
+       {HloOpcode::kConstant, true, 0, nullptr, {}},
+       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
   TestMatcher matcher(patterns, "abc", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -385,7 +345,6 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
   EXPECT_EQ("abc", call_inst->to_apply()->name());
 }
 
-
-}
-}
-}
+}  // namespace
+}  // namespace poplarplugin
+}  // namespace xla

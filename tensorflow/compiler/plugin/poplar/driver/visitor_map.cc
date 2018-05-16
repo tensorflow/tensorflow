@@ -16,13 +16,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
 
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -34,14 +34,9 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-MapVisitor::MapVisitor(poplar::Graph& graph,
-                       CompilerResources& res,
-                       const ArgVector& inputs,
-                       const xla::Shape& shape)
-        : BaseVisitor(graph, res),
-          operands_(std::move(inputs)),
-          shape_(shape) {
-}
+MapVisitor::MapVisitor(poplar::Graph& graph, CompilerResources& res,
+                       const ArgVector& inputs, const xla::Shape& shape)
+    : BaseVisitor(graph, res), operands_(std::move(inputs)), shape_(shape) {}
 
 Status MapVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
@@ -55,7 +50,6 @@ Status MapVisitor::FinishVisit(HloInstruction* inst) {
   tensor_map.clear();
   return Status::OK();
 }
-
 
 }  // namespace poplarplugin
 }  // namespace xla

@@ -24,35 +24,29 @@ limitations under the License.
 namespace poplar {
 class Graph;
 class Tensor;
-}
+}  // namespace poplar
 
 namespace xla {
 namespace poplarplugin {
 
 class SubComputationVisitor : public FullVisitor {
-public:
-  SubComputationVisitor(poplar::Graph& graph,
-                        CompilerResources& res,
+ public:
+  SubComputationVisitor(poplar::Graph& graph, CompilerResources& res,
                         const ArgVectors& inputs);
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
 
-  const ArgVectors& inputs() {
-    return inputs_;
-  }
+  const ArgVectors& inputs() { return inputs_; }
 
-  const OutVector& outputs() {
-    return outputs_;
-  }
+  const OutVector& outputs() { return outputs_; }
 
   bool input_valid(unsigned int param, unsigned int index) {
-    return (param < input_valid_.size() &&
-            index < input_valid_[param].size() &&
+    return (param < input_valid_.size() && index < input_valid_[param].size() &&
             input_valid_[param][index]);
   }
 
-private:
+ private:
   ArgVectors temp_inputs_;
   ArgVectors inputs_;
   OutVector outputs_;

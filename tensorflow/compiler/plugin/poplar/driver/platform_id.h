@@ -22,6 +22,6 @@ namespace xla {
 namespace poplarplugin {
 extern const stream_executor::Platform::Id kPoplarPlatformId;
 }
-}
+}  // namespace xla
 
 #endif

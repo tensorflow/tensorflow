@@ -68,31 +68,27 @@ TEST_F(OutlinerTest, Convolution) {
 
   auto builder = HloComputation::Builder(TestName());
   auto in = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, image_shape, "input"));
+      HloInstruction::CreateParameter(0, image_shape, "input"));
   auto w1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, kernel_shape, "weights1"));
+      HloInstruction::CreateParameter(1, kernel_shape, "weights1"));
   auto w2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, kernel_shape, "weights2"));
+      HloInstruction::CreateParameter(2, kernel_shape, "weights2"));
   auto b1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(3, bias_shape, "bias1"));
+      HloInstruction::CreateParameter(3, bias_shape, "bias1"));
   auto b2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(4, bias_shape, "bias2"));
+      HloInstruction::CreateParameter(4, bias_shape, "bias2"));
   auto c1 = builder.AddInstruction(
-          HloInstruction::CreateConvolve(image_shape, in, w1, window,
-                                         dimension));
+      HloInstruction::CreateConvolve(image_shape, in, w1, window, dimension));
   auto a1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, c1, b1));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, c1, b1));
   auto c2 = builder.AddInstruction(
-          HloInstruction::CreateConvolve(image_shape, a1, w2, window,
-                                         dimension));
+      HloInstruction::CreateConvolve(image_shape, a1, w2, window, dimension));
   auto a2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, c2, b2));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, c2, b2));
 
-  builder.AddInstruction(
-        HloInstruction::CreateTuple({a2}));
+  builder.AddInstruction(HloInstruction::CreateTuple({a2}));
 
   auto computation = builder.Build();
-
 
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
@@ -100,14 +96,12 @@ TEST_F(OutlinerTest, Convolution) {
   EXPECT_THAT(hlo_module->computation_count(), 1);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);
 
-
   Outliner outliner;
   EXPECT_TRUE(outliner.Run(hlo_module.get()).ValueOrDie());
   EXPECT_THAT(hlo_module->computation_count(), 3);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);
 }
 
-
-}
-}
-}
+}  // namespace
+}  // namespace poplarplugin
+}  // namespace xla

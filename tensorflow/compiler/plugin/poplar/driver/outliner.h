@@ -25,7 +25,7 @@ class HloModule;
 namespace poplarplugin {
 
 class Outliner : public HloMatcher {
-public:
+ public:
   Outliner();
 
   ~Outliner() override = default;
@@ -34,10 +34,9 @@ public:
 
   ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override;
-
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

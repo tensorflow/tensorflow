@@ -19,6 +19,5 @@ namespace xla {
 namespace poplarplugin {
 
 PLATFORM_DEFINE_ID(kPoplarPlatformId);
-
 }
-}
+}  // namespace xla

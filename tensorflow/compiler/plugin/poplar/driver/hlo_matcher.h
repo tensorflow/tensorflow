@@ -71,22 +71,21 @@ using HloMatcherPattern = std::vector<HloMatcherNode>;
 using ReplacedInstructions = std::vector<HloInstruction*>;
 
 class HloMatcher : public HloPassInterface {
-public:
+ public:
   HloMatcher(const std::vector<HloMatcherPattern>& patterns, bool root_only);
 
   ~HloMatcher() override = default;
 
   tensorflow::StringPiece name() const override { return "matcher"; }
 
-  StatusOr<bool> Run(HloModule *module) override;
+  StatusOr<bool> Run(HloModule* module) override;
 
-protected:
+ protected:
   ReplacedInstructions OutlineExpressionFromComputation(
-          const HloMatcherMatched& matched,
-          const std::string& outlined_computation_name,
-          const char metadata_index);
+      const HloMatcherMatched& matched,
+      const std::string& outlined_computation_name, const char metadata_index);
 
-private:
+ private:
   virtual ReplacedInstructions ReplaceNodes(int pattern,
                                             const HloMatcherMatched&) = 0;
 
@@ -113,7 +112,7 @@ private:
   std::multimap<const HloInstruction*, HloMatcherMatched*> match_map_;
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

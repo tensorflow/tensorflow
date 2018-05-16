@@ -25,15 +25,13 @@ namespace poplarplugin {
 
 void InplaceFinder::RouteFinder(HloInstruction* inst) {
   switch (inst->opcode()) {
-    case HloOpcode::kParameter:
-    {
+    case HloOpcode::kParameter: {
       if (ShapeUtil::IsTuple(inst->shape())) {
         tuple_stack.push_back(-1);
       }
       break;
     }
-    case HloOpcode::kDynamicUpdateSlice:
-    {
+    case HloOpcode::kDynamicUpdateSlice: {
       if (inst->operand(0) != current_route.back()) {
         return;
       }
@@ -41,13 +39,11 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
     }
     case HloOpcode::kAdd:
     case HloOpcode::kSubtract:
-    case HloOpcode::kMultiply:
-    {
+    case HloOpcode::kMultiply: {
       // Operation must be part of an TF core update
       const OpMetadata& md(inst->metadata());
       const std::string& tf_op(md.op_type());
-      if (!(tf_op == "AssignAddVariableOp" ||
-            tf_op == "AssignSubVariableOp" ||
+      if (!(tf_op == "AssignAddVariableOp" || tf_op == "AssignSubVariableOp" ||
             tf_op == "ResourceApplyGradientDescent" ||
             tf_op == "ResourceApplyMomentum" ||
             tf_op == "ResourceApplyAdagrad" ||
@@ -62,13 +58,11 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
       }
       break;
     }
-    case HloOpcode::kTuple:
-    {
+    case HloOpcode::kTuple: {
       tuple_stack.push_back(inst->operand_index(current_route.back()));
       break;
     }
-    case HloOpcode::kGetTupleElement:
-    {
+    case HloOpcode::kGetTupleElement: {
       if (inst->tuple_index() != tuple_stack.back()) {
         return;
       }
@@ -116,5 +110,5 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
   return true;
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

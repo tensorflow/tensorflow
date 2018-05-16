@@ -48,5 +48,5 @@ StatusOr<bool> ComputationFlattener::Run(HloModule *module) {
   return true;
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

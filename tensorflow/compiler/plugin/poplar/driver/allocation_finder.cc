@@ -58,7 +58,7 @@ int64 ExtractFromTuple(const Shape& tuple, int64 tuple_index,
 }
 
 class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
-public:
+ public:
   FindAllocatingInstructions() {}
 
   ~FindAllocatingInstructions() override = default;
@@ -100,32 +100,27 @@ public:
   std::vector<TensorSource> allocating_instructions;
 };
 
-}
+}  // namespace
 
-bool
-AllocationFinder::CompareConvolutionTargets(const TensorTarget& a,
-                                            const TensorTarget& b) {
+bool AllocationFinder::CompareConvolutionTargets(const TensorTarget& a,
+                                                 const TensorTarget& b) {
   return IsForwardConvolution(a.tgt) && !IsForwardConvolution(b.tgt);
 }
 
-bool
-AllocationFinder::CompareDotTargets(const TensorTarget& a,
-                                    const TensorTarget& b) {
+bool AllocationFinder::CompareDotTargets(const TensorTarget& a,
+                                         const TensorTarget& b) {
   return IsForwardMatMul(a.tgt) && !IsForwardMatMul(b.tgt);
 }
 
-void
-AllocationFinder::FindConsumers(const TensorSource& src,
-                                const HloInstruction* tgt,
-                                int64 index) {
+void AllocationFinder::FindConsumers(const TensorSource& src,
+                                     const HloInstruction* tgt, int64 index) {
   path.emplace_back(tgt);
   for (auto user : tgt->users()) {
     if (visited.count(user) == 0) {
       visited.insert(user);
       int64 op_index = user->operand_index(tgt);
       switch (user->opcode()) {
-        case HloOpcode::kConvolution:
-        {
+        case HloOpcode::kConvolution: {
           auto t = TensorTarget(user, op_index, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
@@ -135,8 +130,7 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           tensor_allocation_map.insert(std::make_pair(src, t));
           break;
         }
-        case HloOpcode::kDot:
-        {
+        case HloOpcode::kDot: {
           auto t = TensorTarget(user, op_index, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
@@ -146,8 +140,7 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           tensor_allocation_map.insert(std::make_pair(src, t));
           break;
         }
-        case HloOpcode::kDynamicSlice:
-        {
+        case HloOpcode::kDynamicSlice: {
           if (op_index == 0) {
             auto t = TensorTarget(user, op_index, path);
             auto i = tensor_allocation_map.find(src);
@@ -158,9 +151,8 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           }
           break;
         }
-        case HloOpcode::kDynamicUpdateSlice:
-        {
-          if (op_index == 0 || op_index==1) {
+        case HloOpcode::kDynamicUpdateSlice: {
+          if (op_index == 0 || op_index == 1) {
             auto t = TensorTarget(user, op_index, path);
             auto i = tensor_allocation_map.find(src);
             if (i != tensor_allocation_map.end()) {
@@ -170,11 +162,10 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           }
           break;
         }
-        case HloOpcode::kCall:
-        {
+        case HloOpcode::kCall: {
           HloComputation* comp = user->to_apply();
           if (comp->name().substr(0, 8) != "_pop_op_") {
-            HloInstruction *param = comp->parameter_instruction(op_index);
+            HloInstruction* param = comp->parameter_instruction(op_index);
             FindConsumers(src, param, index);
           } else {
             auto end = comp->name().find('.');
@@ -190,21 +181,18 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           }
           break;
         }
-        case HloOpcode::kWhile:
-        {
+        case HloOpcode::kWhile: {
           HloComputation* comp = user->while_body();
           HloInstruction* param = comp->parameter_instruction(op_index);
           FindConsumers(src, param, index);
           break;
         }
-        case HloOpcode::kTuple:
-        {
+        case HloOpcode::kTuple: {
           int64 new_index = InsertIntoTuple(user->shape(), op_index, index);
           FindConsumers(src, user, new_index);
           break;
         }
-        case HloOpcode::kGetTupleElement:
-        {
+        case HloOpcode::kGetTupleElement: {
           int64 tuple_index = user->tuple_index();
           int64 new_index = ExtractFromTuple(tgt->shape(), tuple_index, index);
           if (new_index != -1) {
@@ -212,18 +200,15 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           }
           break;
         }
-        case HloOpcode::kReshape:
-        {
+        case HloOpcode::kReshape: {
           FindConsumers(src, user, index);
           break;
         }
-        case HloOpcode::kTranspose:
-        {
+        case HloOpcode::kTranspose: {
           FindConsumers(src, user, index);
           break;
         }
-        default:
-        {
+        default: {
           auto shapes = FlattenedXlaShape(src.first->shape());
           if (ShapeUtil::Equal(shapes[src.second], user->shape())) {
             FindConsumers(src, user, index);
@@ -252,5 +237,5 @@ StatusOr<bool> AllocationFinder::Run(HloModule* module) {
   return true;
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

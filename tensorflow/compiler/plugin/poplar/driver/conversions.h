@@ -22,7 +22,7 @@ std::vector<char> ConvInt32ToInt64(const void *src, int64 ssize, int64 dsize);
 ConversionFn GetInputConversionFunction(const xla::Shape &);
 ConversionFn GetOutputConversionFunction(const xla::Shape &);
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

@@ -23,13 +23,13 @@ namespace xla {
 namespace poplarplugin {
 
 static const FusedGraphInfo fuse_info[] = {
-  {"pop_backprop_conv", 0},
-  {"pop_depth_conv", 0},
-  {"pop_convolution", 0},
+    {"pop_backprop_conv", 0},
+    {"pop_depth_conv", 0},
+    {"pop_convolution", 0},
 };
 
-static bool
-IsPoplibsFusion(const HloInstruction* inst, const std::string& type) {
+static bool IsPoplibsFusion(const HloInstruction* inst,
+                            const std::string& type) {
   const HloComputation* comp = inst->to_apply();
   if (comp->name().substr(0, 8) == "_pop_op_") {
     auto end = comp->name().find('.');
@@ -49,20 +49,20 @@ static bool IsPoplibsDepthwiseConv(const HloInstruction* inst) {
 
 static const std::vector<HloMatcherPattern> patterns = {
 
-  // Backprop input convolution
-  {{HloOpcode::kCall, true, 0, IsPoplibsBackpropInputConv, {1, 2}},
-   {HloOpcode::kParameter, false, 0, nullptr, {}},
-   {HloOpcode::kParameter, false, 1, nullptr, {}}},
+    // Backprop input convolution
+    {{HloOpcode::kCall, true, 0, IsPoplibsBackpropInputConv, {1, 2}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
-  // Depthwise convolution (forward pass)
-  {{HloOpcode::kCall, true, 0, IsPoplibsDepthwiseConv, {1, 2}},
-   {HloOpcode::kParameter, false, 0, nullptr, {}},
-   {HloOpcode::kParameter, false, 1, nullptr, {}}},
+    // Depthwise convolution (forward pass)
+    {{HloOpcode::kCall, true, 0, IsPoplibsDepthwiseConv, {1, 2}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
-  // Stand-alone convolution
-  {{HloOpcode::kConvolution, true, 0, nullptr, {1, 2}},
-   {HloOpcode::kParameter, false, 0, nullptr, {}},
-   {HloOpcode::kParameter, false, 1, nullptr, {}}},
+    // Stand-alone convolution
+    {{HloOpcode::kConvolution, true, 0, nullptr, {1, 2}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
 };
 
@@ -74,5 +74,5 @@ ReplacedInstructions Outliner::ReplaceNodes(int pattern,
   return OutlineExpressionFromComputation(match, fuse.name, fuse.op_index);
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

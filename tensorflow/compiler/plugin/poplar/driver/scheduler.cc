@@ -26,7 +26,7 @@ namespace poplarplugin {
 namespace {
 
 class DepthFinder {
-public:
+ public:
   DepthFinder(const std::list<HloInstruction*> insts) {
     for (auto i : insts) {
       distance[i] = 0;
@@ -38,7 +38,7 @@ public:
     if (distance.find(inst) != distance.end()) {
       return distance.at(inst);
     }
-    
+
     for (auto o : inst->operands()) {
       int64 c = FindDepths(o);
       cost = std::max(cost, c);
@@ -53,14 +53,14 @@ public:
     return distance.at(a) < distance.at(b);
   }
 
-private:
+ private:
   std::map<const HloInstruction*, int64> distance;
-
 };
 
-}
+}  // namespace
 
-StatusOr<std::vector<const HloInstruction*>> Scheduler::schedule(HloComputation* comp) {
+StatusOr<std::vector<const HloInstruction*>> Scheduler::schedule(
+    HloComputation* comp) {
   DepthFinder depths(comp->MakeInstructionPostOrder());
   depths.FindDepths(comp->root_instruction());
 
@@ -70,15 +70,13 @@ StatusOr<std::vector<const HloInstruction*>> Scheduler::schedule(HloComputation*
     return Status::OK();
   });
   TF_RETURN_IF_ERROR(comp->AcceptWithOperandOrder(
-          &visitor,
-          [&depths](const HloInstruction* a,
-                    const HloInstruction* b) {
-            return depths.Compare(a, b);
-          }));
+      &visitor, [&depths](const HloInstruction* a, const HloInstruction* b) {
+        return depths.Compare(a, b);
+      }));
 
   CHECK_EQ(sequence.size(), comp->instruction_count());
   return sequence;
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

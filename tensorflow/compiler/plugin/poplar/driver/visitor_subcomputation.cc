@@ -16,15 +16,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -38,11 +38,10 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
-SubComputationVisitor::SubComputationVisitor(
-        poplar::Graph& graph,
-        CompilerResources& res,
-        const ArgVectors& inputs)
-        : FullVisitor(graph, res) {
+SubComputationVisitor::SubComputationVisitor(poplar::Graph& graph,
+                                             CompilerResources& res,
+                                             const ArgVectors& inputs)
+    : FullVisitor(graph, res) {
   temp_inputs_ = inputs;
   inputs_.resize(temp_inputs_.size());
   input_valid_.resize(temp_inputs_.size());
@@ -51,7 +50,6 @@ SubComputationVisitor::SubComputationVisitor(
 static bool InputIsUnused(HloInstruction* inst,
                           const std::vector<xla::Shape>& shapes,
                           unsigned int index) {
-
   if (inst->parent()->root_instruction() == inst) {
     return false;
   }
@@ -88,7 +86,7 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   ArgVector inputs;
   std::vector<xla::Shape> shapes = FlattenedXlaShape(inst->shape());
   std::vector<bool> valid(shapes.size());
-  for (unsigned int i=0; i<shapes.size(); i++) {
+  for (unsigned int i = 0; i < shapes.size(); i++) {
     if (InputIsUnused(inst, shapes, i)) {
       valid[i] = false;
       poplar::Tensor none;
@@ -126,7 +124,6 @@ Status SubComputationVisitor::FinishVisit(HloInstruction* inst) {
   tensor_map.clear();
   return Status::OK();
 }
-
 
 }  // namespace poplarplugin
 }  // namespace xla

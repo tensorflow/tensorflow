@@ -23,7 +23,7 @@ namespace poplarplugin {
 
 namespace {
 
-bool IsPopopsElementwise(const HloInstruction *inst) {
+bool IsPopopsElementwise(const HloInstruction* inst) {
   switch (inst->opcode()) {
     // Unary
     case HloOpcode::kAbs:
@@ -77,17 +77,16 @@ bool IsPopopsElementwise(const HloInstruction *inst) {
   }
 }
 
-}
+}  // namespace
 
 ExpressionOutliner::ExpressionOutliner() : HloMatcher({}, true) {}
 
-ReplacedInstructions
-ExpressionOutliner::ReplaceNodes(int, const HloMatcherMatched&) {
+ReplacedInstructions ExpressionOutliner::ReplaceNodes(
+    int, const HloMatcherMatched&) {
   return {};
 }
 
-StatusOr<bool> ExpressionOutliner::Run(HloModule *module) {
-
+StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   HloComputation* comp = module->entry_computation();
 
   std::list<HloInstruction*> all_ops;
@@ -117,8 +116,8 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule *module) {
       HloInstruction* inst = potential_list.front();
       potential_list.pop_front();
       potential_set.erase(inst);
-      auto current = std::find(match.instructions.begin(),
-                               match.instructions.end(), inst);
+      auto current =
+          std::find(match.instructions.begin(), match.instructions.end(), inst);
       if (current != match.instructions.end()) {
         match.instructions.erase(current);
       }
@@ -129,10 +128,10 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule *module) {
         bool ok_to_outline =
             (std::find(all_ops.begin(), all_ops.end(), op) != all_ops.end());
 
-        bool all_users_ok=true;
+        bool all_users_ok = true;
         for (auto* user : op->users()) {
-          all_users_ok &= ((potential_set.count(user) > 0) ||
-                           (outlined.count(user) > 0));
+          all_users_ok &=
+              ((potential_set.count(user) > 0) || (outlined.count(user) > 0));
         }
         if (ok_to_outline && all_users_ok) {
           if (potential_set.count(op) == 0) {
@@ -163,5 +162,5 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule *module) {
   return true;
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

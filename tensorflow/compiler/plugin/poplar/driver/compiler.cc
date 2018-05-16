@@ -16,10 +16,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <stdlib.h>
-#include <fstream>
 #include <dlfcn.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <fstream>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 
@@ -82,7 +82,7 @@ static std::string GetPathToGraphProgFile() {
   static const void* dummy;
   if (dladdr(&dummy, &dlInfo)) {
     std::string path(dlInfo.dli_fname);
-    path = path.substr(0, path.find_last_of( '/' ) + 1);
+    path = path.substr(0, path.find_last_of('/') + 1);
     path = path + "../compiler/plugin/poplar/tf.gp";
     if (access(path.c_str(), R_OK) != -1) {
       return path;
@@ -104,13 +104,12 @@ static std::string GetPathToGraphProgFile() {
 }
 
 class EntryVisitor : public FullVisitor {
-public:
-  EntryVisitor(poplar::Graph& graph,
-               CompilerResources& resources,
+ public:
+  EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
                uint64 num_parameters)
-          : FullVisitor(graph, resources),
-            parameter_shapes(num_parameters),
-            all_outputs_are_parameters(false) {}
+      : FullVisitor(graph, resources),
+        parameter_shapes(num_parameters),
+        all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
     VLOG(1) << "Processing " << inst->name();
@@ -123,18 +122,18 @@ public:
     HloModule* module = inst->parent()->parent();
     ComputationLayout* layout = module->mutable_host_entry_computation_layout();
     if (layout->parameter_count() > inst->parameter_number()) {
-      const Shape& mod_shape = layout->parameter_shape(inst->parameter_number());
+      const Shape& mod_shape =
+          layout->parameter_shape(inst->parameter_number());
       module_shapes = FlattenedXlaShape(mod_shape);
     }
 
     poplar::DataTransferOptions opt;
     opt.convertHalf = true;
 
-    for (unsigned i=0; i<shapes.size(); i++) {
+    for (unsigned i = 0; i < shapes.size(); i++) {
       poplar::Tensor out;
-      TF_ASSIGN_OR_RETURN(out,
-                          AddTensor(graph_, std::make_pair(inst,i), shapes[i],
-                                    resources_));
+      TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, std::make_pair(inst, i),
+                                         shapes[i], resources_));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
 
       if (module_shapes.size() > i) {
@@ -145,8 +144,8 @@ public:
         }
       }
 
-      graph_.createHostWrite(
-          GetInputCopyHandle(inst->parameter_number(), i), out, opt);
+      graph_.createHostWrite(GetInputCopyHandle(inst->parameter_number(), i),
+                             out, opt);
     }
     return Status::OK();
   }
@@ -162,10 +161,9 @@ public:
     auto* layout = comp->parent()->mutable_host_entry_computation_layout();
     std::vector<Shape> shapes = FlattenedXlaShape(layout->result_shape());
 
-    for (size_t o=0; o<outputs.size(); o++) {
-
+    for (size_t o = 0; o < outputs.size(); o++) {
       // For each output, if there is an identical input, put it into the map
-      for (int64 i=0; i<comp->num_parameters(); i++) {
+      for (int64 i = 0; i < comp->num_parameters(); i++) {
         HloInstruction* param = comp->parameter_instruction(i);
         if (non_standard_parameter_layout.count(inst) == 0) {
           auto in = FindInstructionOutputs(tensor_map, param);
@@ -183,7 +181,7 @@ public:
 
     if (inst->opcode() == HloOpcode::kParameter) {
       all_outputs_are_parameters = true;
-    } else if (inst->opcode() == HloOpcode::kTuple){
+    } else if (inst->opcode() == HloOpcode::kTuple) {
       all_outputs_are_parameters = true;
       for (auto op : inst->operands()) {
         all_outputs_are_parameters &= (op->opcode() == HloOpcode::kParameter);
@@ -213,17 +211,16 @@ static void DumpGraph(const HloComputation* comp) {
 }
 
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
-        std::unique_ptr<HloModule> module,
-        perftools::gputools::StreamExecutor* executor,
-        DeviceMemoryAllocator* device_allocator) {
+    std::unique_ptr<HloModule> module,
+    perftools::gputools::StreamExecutor* executor,
+    DeviceMemoryAllocator* device_allocator) {
   return std::move(module);
 }
 
 StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
-        std::unique_ptr<HloModule> module,
-        perftools::gputools::StreamExecutor* stream_exec,
-        DeviceMemoryAllocator* device_allocator) {
-
+    std::unique_ptr<HloModule> module,
+    perftools::gputools::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << "Begin compilation: " << module->name();
 
   if (stream_exec == nullptr) {
@@ -236,7 +233,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
-  std::lock_guard <std::mutex> g(static_mu_);
+  std::lock_guard<std::mutex> g(static_mu_);
 
   poplar::Graph graph(dev);
   graph.addCodelets(GetPathToGraphProgFile());
@@ -261,17 +258,17 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<GatherExpander>();
     pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<HloCSE>(false);
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
-        [](const Shape&, const Shape&) { return false; }, false, false);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        false, [](const Shape&, const Shape&) { return false; }, false, false);
     pipeline.AddPass<ReshapeMover>();
     pipeline.AddPass<Inliner>();
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
-        [](const Shape&, const Shape&) { return false; }, false, false);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        false, [](const Shape&, const Shape&) { return false; }, false, false);
     pipeline.AddPass<ZeroSizedHloElimination>();
     pipeline.AddPass<ComputationFlattener>();
     pipeline.AddPass<TupleSimplifier>(true);
-    //pipeline.AddPass<WhileLoopSimplifier>();
-    //pass.AddPass<ConditionalSimplifier>();
+    // pipeline.AddPass<WhileLoopSimplifier>();
+    // pass.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<HloCSE>(true);
     pipeline.AddPass<WideConstFinder>();
@@ -294,8 +291,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   // Set layout if there isn't one
-  auto comp_layout = module->mutable_host_entry_computation_layout()
-          ->mutable_result_layout();
+  auto comp_layout =
+      module->mutable_host_entry_computation_layout()->mutable_result_layout();
   if (!comp_layout->LayoutIsSet()) {
     auto shape = entry->root_instruction()->shape();
     TF_CHECK_OK(comp_layout->CopyLayoutFromShape(shape));
@@ -310,8 +307,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {
     TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
-  }
-  catch (std::logic_error e) {
+  } catch (std::logic_error e) {
     return Status(tensorflow::error::UNKNOWN,
                   StrCat("[Poplar Compile] ", e.what()));
   }
@@ -327,8 +323,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       VLOG(1) << "Compile engine " << module->name();
 
       engine.reset(new poplar::Engine(dev, graph, progs));
-    }
-    catch (std::logic_error e) {
+    } catch (std::logic_error e) {
       return Status(tensorflow::error::UNKNOWN,
                     StrCat("[Poplar Engine] ", e.what()));
     }
@@ -353,17 +348,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
     profile_printer =
-            CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
+        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
   }
 
   std::unique_ptr<Executable> executable;
-  executable.reset(
-          new PoplarExecutable(std::move(module),
-                               std::move(profile_printer),
-                               std::move(profile_index_map),
-                               std::move(engine),
-                               std::move(visitor.output_map),
-                               std::move(visitor.parameter_shapes)));
+  executable.reset(new PoplarExecutable(
+      std::move(module), std::move(profile_printer),
+      std::move(profile_index_map), std::move(engine),
+      std::move(visitor.output_map), std::move(visitor.parameter_shapes)));
 
   return std::move(executable);
 }
@@ -372,7 +364,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
     std::vector<std::vector<perftools::gputools::StreamExecutor*>> stream_execs,
     DeviceMemoryAllocator* device_allocator) {
-
   std::vector<std::unique_ptr<Executable>> result;
   for (size_t i = 0; i < modules.size(); i++) {
     if (stream_execs[i].size() != 1) {
@@ -380,11 +371,12 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     }
 
     TF_ASSIGN_OR_RETURN(modules[i],
-        RunHloPasses(std::move(modules[i]), stream_execs[i][0],
-                     device_allocator));
+                        RunHloPasses(std::move(modules[i]), stream_execs[i][0],
+                                     device_allocator));
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-    RunBackend(std::move(modules[i]), stream_execs[i][0], device_allocator));
+                        RunBackend(std::move(modules[i]), stream_execs[i][0],
+                                   device_allocator));
 
     result.push_back(std::move(executable));
   }
@@ -396,7 +388,6 @@ StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 PoplarCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
     const AotCompilationOptions& aot_options) {
-
   return tensorflow::errors::InvalidArgument(
       "AOT compilation not supported on Poplar");
 }
@@ -405,8 +396,8 @@ se::Platform::Id PoplarCompiler::PlatformId() const {
   return kPoplarPlatformId;
 }
 
-HloCostAnalysis::ShapeSizeFunction
-PoplarCompiler::ShapeSizeBytesFunction() const {
+HloCostAnalysis::ShapeSizeFunction PoplarCompiler::ShapeSizeBytesFunction()
+    const {
   return PoplarExecutable::ShapeSizeBytes;
 }
 
@@ -421,18 +412,16 @@ static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
 
 static bool RegisterComputationPlacer() {
   xla::ComputationPlacer::RegisterComputationPlacer(
-          xla::poplarplugin::kPoplarPlatformId,
-          &CreateComputationPlacer);
+      xla::poplarplugin::kPoplarPlatformId, &CreateComputationPlacer);
   return true;
 }
 
 bool placer_registration = RegisterComputationPlacer();
 
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(xla::poplarplugin::kPoplarPlatformId,
-                                         []() {
-    return xla::MakeUnique<xla::poplarplugin::PoplarCompiler>();
-  });
+  xla::Compiler::RegisterCompilerFactory(
+      xla::poplarplugin::kPoplarPlatformId,
+      []() { return xla::MakeUnique<xla::poplarplugin::PoplarCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

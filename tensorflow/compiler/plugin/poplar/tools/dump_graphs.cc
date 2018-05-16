@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/event.pb.h"
 #include "tensorflow/core/util/events_writer.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 
@@ -41,7 +41,7 @@ void DumpXlaGraph(const string& logdir, const string& graphdef_file) {
   TF_CHECK_OK(env->RecursivelyCreateDir(run_dir));
 
   GraphDef graphdef;
-  if (graphdef_file.substr(graphdef_file.size()-3, 3) == "txt") {
+  if (graphdef_file.substr(graphdef_file.size() - 3, 3) == "txt") {
     TF_CHECK_OK(ReadTextProto(env, graphdef_file, &graphdef));
   } else {
     std::cout << "trying to read file\n";
@@ -58,7 +58,7 @@ void DumpXlaGraph(const string& logdir, const string& graphdef_file) {
   std::cout << "Wrote a HLO graph to " << event_writer.FileName() << std::endl;
 }
 
-}
+}  // namespace tensorflow
 
 int main(int argc, char** argv) {
   tensorflow::string FLAGS_xla_graphdef;
@@ -66,8 +66,7 @@ int main(int argc, char** argv) {
   tensorflow::string FLAGS_logdir;
 
   std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("xla_in", &FLAGS_xla_graphdef,
-                       "XLA Graphdef file"),
+      tensorflow::Flag("xla_in", &FLAGS_xla_graphdef, "XLA Graphdef file"),
       tensorflow::Flag("compute_in", &FLAGS_poplar_compute,
                        "Poplar compute graph file"),
       tensorflow::Flag("logdir", &FLAGS_logdir,

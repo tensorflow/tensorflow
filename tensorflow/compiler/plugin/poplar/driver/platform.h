@@ -19,9 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_H_
 
+#include <list>
 #include <memory>
 #include <string>
-#include <list>
 
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -39,7 +39,7 @@ limitations under the License.
 namespace se = stream_executor;
 
 namespace tensorflow {
-  class IpuTraceEvent;
+class IpuTraceEvent;
 }
 
 namespace xla {
@@ -95,8 +95,7 @@ class PoplarPlatform : public se::Platform {
   SE_DISALLOW_COPY_AND_ASSIGN(PoplarPlatform);
 };
 
-}
-}
-
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

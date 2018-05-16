@@ -33,10 +33,9 @@ namespace poplarplugin {
 namespace Scheduler {
 
 StatusOr<std::vector<const HloInstruction*>> schedule(HloComputation* comp);
-
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

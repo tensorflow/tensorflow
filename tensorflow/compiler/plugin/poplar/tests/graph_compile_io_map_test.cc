@@ -28,13 +28,11 @@ namespace poplarplugin {
  * correct */
 
 class GraphCompileIoMapTest : public HloTestBase {
-public:
+ public:
  public:
   explicit GraphCompileIoMapTest(se::Platform* platform = nullptr)
-  : HloTestBase() {}
-  const OutputMap& GetMap(PoplarExecutable* e) {
-    return e->output_map_;
-  }
+      : HloTestBase() {}
+  const OutputMap& GetMap(PoplarExecutable* e) { return e->output_map_; }
 };
 
 namespace {
@@ -44,13 +42,12 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, image_shape, "input1"));
   auto in2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, image_shape, "input2"));
   auto add = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({add}));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+  builder.AddInstruction(HloInstruction::CreateTuple({add}));
 
   auto computation = builder.Build();
 
@@ -62,18 +59,18 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<PoplarPlatform*>(platform);
+  auto* p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
-  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     stream_executor,
-                                     nullptr).ConsumeValueOrDie();
+  hlo_module =
+      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
-          compiler.RunBackend(std::move(hlo_module),
-                              stream_executor, nullptr).ConsumeValueOrDie();
+      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(0, GetMap(e).size());
@@ -84,13 +81,12 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, image_shape, "input1"));
   auto in2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, image_shape, "input2"));
   auto add = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({add}));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+  builder.AddInstruction(HloInstruction::CreateTuple({add}));
 
   OpMetadata metadata1;
   metadata1.set_op_name("grad%1");
@@ -107,18 +103,18 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<PoplarPlatform*>(platform);
+  auto* p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
-  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     stream_executor,
-                                     nullptr).ConsumeValueOrDie();
+  hlo_module =
+      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
-        compiler.RunBackend(std::move(hlo_module),
-                            stream_executor, nullptr).ConsumeValueOrDie();
+      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(1, GetMap(e).size());
@@ -130,13 +126,12 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, image_shape, "input1"));
   auto in2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, image_shape, "input2"));
   auto add = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in1));
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({add}));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in1));
+  builder.AddInstruction(HloInstruction::CreateTuple({add}));
 
   OpMetadata metadata1;
   metadata1.set_op_name("grad%1");
@@ -153,18 +148,18 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<PoplarPlatform*>(platform);
+  auto* p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
-  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     stream_executor,
-                                     nullptr).ConsumeValueOrDie();
+  hlo_module =
+      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
-        compiler.RunBackend(std::move(hlo_module),
-                            stream_executor, nullptr).ConsumeValueOrDie();
+      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(1, GetMap(e).size());
@@ -176,21 +171,18 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, image_shape, "input1"));
   auto in2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, image_shape, "input2"));
   auto in3 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, image_shape, "input3"));
+      HloInstruction::CreateParameter(2, image_shape, "input3"));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
   auto add2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
-  auto tup1 = builder.AddInstruction(
-          HloInstruction::CreateTuple({add1, add2}));
-  auto tup2 = builder.AddInstruction(
-          HloInstruction::CreateTuple({add2, in3}));
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({tup1, tup2}));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
+  auto tup1 = builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
+  auto tup2 = builder.AddInstruction(HloInstruction::CreateTuple({add2, in3}));
+  builder.AddInstruction(HloInstruction::CreateTuple({tup1, tup2}));
 
   OpMetadata metadata1;
   metadata1.set_op_name("grad%1");
@@ -212,18 +204,18 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<PoplarPlatform*>(platform);
+  auto* p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
-  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     stream_executor,
-                                     nullptr).ConsumeValueOrDie();
+  hlo_module =
+      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
-        compiler.RunBackend(std::move(hlo_module),
-                            stream_executor, nullptr).ConsumeValueOrDie();
+      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   ASSERT_EQ(2, GetMap(e).size());
@@ -236,26 +228,22 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, image_shape, "input1"));
   auto in2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, image_shape, "input2"));
   auto in3 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, image_shape, "input3"));
+      HloInstruction::CreateParameter(2, image_shape, "input3"));
   auto add1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
   auto add2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
-  auto tup1 = builder.AddInstruction(
-          HloInstruction::CreateTuple({add1, add2}));
-  auto tup2 = builder.AddInstruction(
-          HloInstruction::CreateTuple({add2, in3}));
-  auto tup3 = builder.AddInstruction(
-          HloInstruction::CreateTuple({tup1, tup2}));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in3));
+  auto tup1 = builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
+  auto tup2 = builder.AddInstruction(HloInstruction::CreateTuple({add2, in3}));
+  auto tup3 = builder.AddInstruction(HloInstruction::CreateTuple({tup1, tup2}));
   builder.AddInstruction(
-          HloInstruction::CreateGetTupleElement(tup3->shape(), tup3, 1));
+      HloInstruction::CreateGetTupleElement(tup3->shape(), tup3, 1));
 
   auto computation = builder.Build();
-
 
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
@@ -265,24 +253,24 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
   tensorflow::IPUOptions opts;
-  auto *p = static_cast<PoplarPlatform*>(platform);
+  auto* p = static_cast<PoplarPlatform*>(platform);
   EXPECT_TRUE(p->ConfigurePoplarDevices(nullptr, 0, opts).ok());
 
   PoplarCompiler compiler;
 
-  hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     stream_executor,
-                                     nullptr).ConsumeValueOrDie();
+  hlo_module =
+      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
-        compiler.RunBackend(std::move(hlo_module),
-                            stream_executor, nullptr).ConsumeValueOrDie();
+      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   ASSERT_EQ(1, GetMap(e).size());
   EXPECT_EQ(2, GetMap(e).at(1));
 }
 
-}
-}
-}
+}  // namespace
+}  // namespace poplarplugin
+}  // namespace xla

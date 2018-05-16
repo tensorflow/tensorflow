@@ -30,7 +30,7 @@ class ComputationFlattener : public HloPassInterface {
   StatusOr<bool> Run(HloModule *module) override;
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

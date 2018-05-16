@@ -4,7 +4,6 @@
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
-
 namespace xla {
 namespace poplarplugin {
 
@@ -25,8 +24,7 @@ bool IsRandomUniform(const HloInstruction *inst) {
 }
 
 bool IsConstantZero(const HloInstruction *inst) {
-  return !ShapeUtil::HasZeroElements(inst->shape()) &&
-         inst->literal().IsAll(0);
+  return !ShapeUtil::HasZeroElements(inst->shape()) && inst->literal().IsAll(0);
 }
 
 bool IsConstantHalf(const HloInstruction *inst) {
@@ -36,7 +34,7 @@ bool IsConstantHalf(const HloInstruction *inst) {
 
 bool IsConstantOne(const HloInstruction *inst) {
   return !ShapeUtil::HasZeroElements(inst->shape()) &&
-      inst->literal().IsAllFloat(1.0);
+         inst->literal().IsAllFloat(1.0);
 }
 
 bool IsPoplarConvolution(const HloInstruction *inst) {
@@ -60,7 +58,7 @@ bool IsAveragePool(const HloInstruction *inst) {
 bool Is2DReductionWindow(const HloInstruction *inst) {
   const Window &window(inst->window());
   int reduction_count = 0;
-  for (int64 i=0; i<window.dimensions_size(); i++) {
+  for (int64 i = 0; i < window.dimensions_size(); i++) {
     if (window.dimensions(i).size() != 1 ||
         window.dimensions(i).stride() != 1 ||
         window.dimensions(i).padding_low() != 0 ||
@@ -81,10 +79,10 @@ bool IsConvFilterSpatialReverse(const HloInstruction *inst) {
   // special 'reverse spatial dimensions' feature of the convolution
   // to achieve the reverse
   if (inst->users().size() != 1) return false;
-  const std::vector<int64>& rev(inst->dimensions());
+  const std::vector<int64> &rev(inst->dimensions());
 
-  HloInstruction* conv = inst->users()[0];
-  const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
+  HloInstruction *conv = inst->users()[0];
+  const ConvolutionDimensionNumbers &d(conv->convolution_dimension_numbers());
 
   if (rev.size() != d.kernel_spatial_dimensions_size()) return false;
   for (int64 i = 0; i < rev.size(); i++) {
@@ -95,19 +93,19 @@ bool IsConvFilterSpatialReverse(const HloInstruction *inst) {
 }
 
 bool IsBiasReduce(const HloInstruction *inst) {
-  HloInstruction* root(inst->to_apply()->root_instruction());
+  HloInstruction *root(inst->to_apply()->root_instruction());
   if (!hlo_query::AllOperandsAreParameters(*root)) {
     return false;
   }
   if (root->opcode() != HloOpcode::kAdd) {
-      return false;
+    return false;
   }
 
   if (ShapeUtil::Rank(inst->shape()) != 1) return false;
 
   if (ShapeUtil::Rank(inst->operand(0)->shape()) != 4) return false;
 
-  const std::vector<int64>& dims(inst->dimensions());
+  const std::vector<int64> &dims(inst->dimensions());
   if (dims.size() != ShapeUtil::Rank(inst->operand(0)->shape()) - 1) {
     return false;
   }
@@ -118,7 +116,7 @@ bool IsBiasReduce(const HloInstruction *inst) {
 }
 
 bool IsOutputFeed(const HloInstruction *inst) {
-  HloInstruction* root = inst->parent()->root_instruction();
+  HloInstruction *root = inst->parent()->root_instruction();
   if (inst == root) return true;
   if (inst->user_count() != 1) return false;
   if (inst->users()[0] == root) return true;
@@ -126,61 +124,59 @@ bool IsOutputFeed(const HloInstruction *inst) {
 }
 
 bool IsForwardConvolution(const HloInstruction *inst) {
-  const std::string& tf_core_op = inst->metadata().op_type();
-  return (tf_core_op == "Conv2D" ||
-          tf_core_op == "Conv3D" ||
+  const std::string &tf_core_op = inst->metadata().op_type();
+  return (tf_core_op == "Conv2D" || tf_core_op == "Conv3D" ||
           tf_core_op == "DepthwiseConv2dNative");
 }
 
 bool IsGradientConvolution(const HloInstruction *inst) {
-  const std::string& tf_core_op = inst->metadata().op_type();
+  const std::string &tf_core_op = inst->metadata().op_type();
   return (tf_core_op == "Conv2DBackpropInput" ||
           tf_core_op == "Conv3DBackpropInputV2" ||
           tf_core_op == "DepthwiseConv2dNativeBackpropInput");
 }
 
 bool IsWeightUpdateConvolution(const HloInstruction *inst) {
-  const std::string& tf_core_op = inst->metadata().op_type();
+  const std::string &tf_core_op = inst->metadata().op_type();
   return (tf_core_op == "Conv2DBackpropFilter" ||
           tf_core_op == "Conv3DBackpropFilterV2" ||
           tf_core_op == "DepthwiseConv2dNativeBackpropFilter");
 }
 
-bool IsForwardMatMul(const HloInstruction* inst) {
-  const HloInstruction* lh = inst->operand(0);
-  const HloInstruction* rh = inst->operand(1);
+bool IsForwardMatMul(const HloInstruction *inst) {
+  const HloInstruction *lh = inst->operand(0);
+  const HloInstruction *rh = inst->operand(1);
   return (lh->opcode() != HloOpcode::kTranspose &&
           rh->opcode() != HloOpcode::kTranspose);
 }
 
-bool IsGradientMatMul(const HloInstruction* inst) {
-//  const HloInstruction* lh = inst->operand(0);
-//  const HloInstruction* rh = inst->operand(1);
-//  return (lh->opcode() != HloOpcode::kTranspose &&
-//          rh->opcode() == HloOpcode::kTranspose);
+bool IsGradientMatMul(const HloInstruction *inst) {
+  //  const HloInstruction* lh = inst->operand(0);
+  //  const HloInstruction* rh = inst->operand(1);
+  //  return (lh->opcode() != HloOpcode::kTranspose &&
+  //          rh->opcode() == HloOpcode::kTranspose);
   return false;
 }
 
-bool IsWeightUpdateMatMul(const HloInstruction* inst) {
-//  const HloInstruction* lh = inst->operand(0);
-//  const HloInstruction* rh = inst->operand(1);
-//  return (lh->opcode() == HloOpcode::kTranspose &&
-//          rh->opcode() != HloOpcode::kTranspose);
+bool IsWeightUpdateMatMul(const HloInstruction *inst) {
+  //  const HloInstruction* lh = inst->operand(0);
+  //  const HloInstruction* rh = inst->operand(1);
+  //  return (lh->opcode() == HloOpcode::kTranspose &&
+  //          rh->opcode() != HloOpcode::kTranspose);
   // Cannot mark as MATMUL WU until poplibs T2934 fixed
   return false;
 }
 
-bool IsTfReluGradOp(const HloInstruction* inst) {
-  const std::string& tf_core_op = inst->metadata().op_type();
+bool IsTfReluGradOp(const HloInstruction *inst) {
+  const std::string &tf_core_op = inst->metadata().op_type();
   return tf_core_op == "ReluGrad";
 }
 
-bool IsTrueParameter(const HloInstruction* inst) {
+bool IsTrueParameter(const HloInstruction *inst) {
   return inst->opcode() == HloOpcode::kParameter;
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif
-

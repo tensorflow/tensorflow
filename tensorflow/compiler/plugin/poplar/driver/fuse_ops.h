@@ -23,20 +23,19 @@ namespace xla {
 namespace poplarplugin {
 
 class FuseOps : public HloMatcher {
-public:
+ public:
   FuseOps();
 
   ~FuseOps() override = default;
 
   tensorflow::StringPiece name() const override { return "poplar-fuse"; }
 
-private:
+ private:
   ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override;
-
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

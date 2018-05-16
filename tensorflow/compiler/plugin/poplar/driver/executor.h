@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/lib/error.h"
@@ -36,15 +36,15 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 #include <list>
 #include <mutex>
 
-#include <poplar/Tensor.hpp>
-#include <poplar/Engine.hpp>
 #include <poplar/Device.hpp>
+#include <poplar/Engine.hpp>
+#include <poplar/Tensor.hpp>
 
 #include <poprand/RandomGen.hpp>
 
@@ -55,11 +55,10 @@ namespace poplarplugin {
 
 class PoplarExecutable;
 
-
 std::string GetInputCopyHandle(int64 parameter, int64 index);
 std::string GetOutputCopyHandle(int64 index);
 
-typedef std::vector<char> (*ConversionFn)(const void*, int64, int64);
+typedef std::vector<char> (*ConversionFn)(const void *, int64, int64);
 
 using Args = tensorflow::gtl::ArraySlice<se::DeviceMemoryBase>;
 
@@ -100,20 +99,28 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   bool HostMemoryRegister(void *mem, uint64 size) override { return true; }
   bool HostMemoryUnregister(void *mem) override { return true; }
 
-  bool Memcpy(se::Stream *stream, void *host_dst, const se::DeviceMemoryBase&,
+  bool Memcpy(se::Stream *stream, void *host_dst, const se::DeviceMemoryBase &,
               uint64 size) override;
-  bool Memcpy(se::Stream *stream, se::DeviceMemoryBase*, const void*,
+  bool Memcpy(se::Stream *stream, se::DeviceMemoryBase *, const void *,
               uint64 size) override;
   bool MemcpyDeviceToDevice(se::Stream *stream, se::DeviceMemoryBase *pop_dst,
                             const se::DeviceMemoryBase &host_src,
-                            uint64 size) override { return false; }
+                            uint64 size) override {
+    return false;
+  }
 
   bool MemZero(se::Stream *stream, se::DeviceMemoryBase *location,
-               uint64 size) override { return false; }
-  bool Memset(se::Stream *stream, se::DeviceMemoryBase*, uint8,
-              uint64 size) override { return false; }
-  bool Memset32(se::Stream *stream, se::DeviceMemoryBase*, uint32,
-                uint64 size) override { return false; }
+               uint64 size) override {
+    return false;
+  }
+  bool Memset(se::Stream *stream, se::DeviceMemoryBase *, uint8,
+              uint64 size) override {
+    return false;
+  }
+  bool Memset32(se::Stream *stream, se::DeviceMemoryBase *, uint32,
+                uint64 size) override {
+    return false;
+  }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return false; }
@@ -122,20 +129,22 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   }
 
   bool SynchronousMemSet(se::DeviceMemoryBase *location, int value,
-                         uint64 size) override { return false; }
+                         uint64 size) override {
+    return false;
+  }
 
-  Status SynchronousMemcpy(se::DeviceMemoryBase *pop_dst,
-                                 const void *host_src, uint64 size) override;
-  Status SynchronousMemcpy(void *host_dst,
-                                 const se::DeviceMemoryBase &pop_src,
-                                 uint64 size) override;
-  Status SynchronousMemcpyDeviceToDevice(se::DeviceMemoryBase*,
-                                               const se::DeviceMemoryBase&,
-                                               uint64 size) override {
+  Status SynchronousMemcpy(se::DeviceMemoryBase *pop_dst, const void *host_src,
+                           uint64 size) override;
+  Status SynchronousMemcpy(void *host_dst, const se::DeviceMemoryBase &pop_src,
+                           uint64 size) override;
+  Status SynchronousMemcpyDeviceToDevice(se::DeviceMemoryBase *,
+                                         const se::DeviceMemoryBase &,
+                                         uint64 size) override {
     return Status{tensorflow::error::UNIMPLEMENTED, ""};
   }
 
-  bool HostCallback(se::Stream *stream, std::function<void()> callback) override;
+  bool HostCallback(se::Stream *stream,
+                    std::function<void()> callback) override;
 
   Status AllocateEvent(se::Event *event) override {
     return Status{tensorflow::error::UNIMPLEMENTED, ""};
@@ -159,7 +168,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   bool AllocateStream(se::Stream *stream) override { return true; }
   void DeallocateStream(se::Stream *stream) override {}
-  bool CreateStreamDependency(se::Stream*, se::Stream*) override;
+  bool CreateStreamDependency(se::Stream *, se::Stream *) override;
 
   bool AllocateTimer(se::Timer *timer) override { return true; }
   void DeallocateTimer(se::Timer *timer) override {}
@@ -194,51 +203,52 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   }
 
   std::unique_ptr<se::internal::EventInterface> CreateEventImplementation()
-  override { return nullptr; }
+      override {
+    return nullptr;
+  }
 
   std::unique_ptr<se::internal::KernelInterface> CreateKernelImplementation()
-  override { return nullptr; }
+      override {
+    return nullptr;
+  }
 
   std::unique_ptr<se::internal::StreamInterface> GetStreamImplementation()
-  override {
+      override {
     return std::unique_ptr<se::internal::StreamInterface>(
         new se::host::HostStream());
   }
 
   std::unique_ptr<se::internal::TimerInterface> GetTimerImplementation()
-  override {
+      override {
     return std::unique_ptr<se::internal::TimerInterface>(
         new se::host::HostTimer());
   }
 
-
   // Poplar Interface
 
-  Status InitializePoplarDevice(void*,
-                                const tensorflow::IPUOptions::DeviceConfig&);
+  Status InitializePoplarDevice(void *,
+                                const tensorflow::IPUOptions::DeviceConfig &);
 
-  Status ClosePoplarDevice(void*);
+  Status ClosePoplarDevice(void *);
 
-  const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
+  const poplar::Device &GetPoplarDevice() const { return poplar_device_; }
 
   const poprand::RandomGenMode GetRandomGenMode() const;
 
   bool CompilerReportingEnabled() const { return profile_compilation_; }
 
   void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
-                      const std::string& module_name,
-                      const std::string& content, int value);
+                      const std::string &module_name,
+                      const std::string &content, int value);
 
-  Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
+  Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent> &out);
 
-  StatusOr<se::DeviceMemoryBase>
-  ExecuteEngine(se::StreamExecutor* executor,
-                const xla::poplarplugin::PoplarExecutable&,
-                xla::DeviceMemoryAllocator* allocator,
-                const Args&);
+  StatusOr<se::DeviceMemoryBase> ExecuteEngine(
+      se::StreamExecutor *executor, const xla::poplarplugin::PoplarExecutable &,
+      xla::DeviceMemoryAllocator *allocator, const Args &);
 
-  StatusOr<se::DeviceMemoryBase>
-  GetTupleBufferByIndex(const se::DeviceMemoryBase& base, int64 value);
+  StatusOr<se::DeviceMemoryBase> GetTupleBufferByIndex(
+      const se::DeviceMemoryBase &base, int64 value);
 
  private:
   struct TensorControl {
@@ -250,38 +260,30 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     ConversionFn output_convertor;
     char data[0];
   };
-  using InputPair = std::pair<TensorControl*, ConversionFn>;
+  using InputPair = std::pair<TensorControl *, ConversionFn>;
   using InputPairList = std::vector<InputPair>;
   using ArgsHandleMap = std::map<std::string, InputPair>;
 
-  static void
-  FlattenedDeviceMemoryList(InputPairList&, const xla::Shape&, void*);
+  static void FlattenedDeviceMemoryList(InputPairList &, const xla::Shape &,
+                                        void *);
 
-  static void
-  CreateArgsHandleMap(ArgsHandleMap&, const Args&,
-                      const std::vector<xla::Shape>&);
+  static void CreateArgsHandleMap(ArgsHandleMap &, const Args &,
+                                  const std::vector<xla::Shape> &);
 
-  std::tuple<se::DeviceMemoryBase,int64>
-  AllocateSingleOutput(xla::DeviceMemoryAllocator* allocator,
-                       const xla::Shape& shape,
-                       const int64 n,
-                       const OutputMap& map,
-                       const Args& args);
+  std::tuple<se::DeviceMemoryBase, int64> AllocateSingleOutput(
+      xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
+      const int64 n, const OutputMap &map, const Args &args);
 
-  std::tuple<se::DeviceMemoryBase,int64>
-  AllocateOutputBuffer(xla::DeviceMemoryAllocator* allocator,
-                       const xla::Shape& shape,
-                       const int64 n,
-                       const OutputMap& map,
-                       const Args& args);
+  std::tuple<se::DeviceMemoryBase, int64> AllocateOutputBuffer(
+      xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
+      const int64 n, const OutputMap &map, const Args &args);
 
-  std::tuple<se::DeviceMemoryBase,int64>
-  RemapArgs(const xla::Shape&,
-            const int64,
-            const OutputMap&,
-            const Args&);
+  std::tuple<se::DeviceMemoryBase, int64> RemapArgs(const xla::Shape &,
+                                                    const int64,
+                                                    const OutputMap &,
+                                                    const Args &);
 
-  Status MoveDeviceToHost(TensorControl* tc);
+  Status MoveDeviceToHost(TensorControl *tc);
 
   int ordinal_;
 
@@ -291,9 +293,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   poplar::Device poplar_device_;
 
-  void* active_xla_device_;
+  void *active_xla_device_;
 
-  std::list<TensorControl*> allocations_;
+  std::list<TensorControl *> allocations_;
 
   bool profile_compilation_;
   bool profile_execution_;
@@ -304,8 +306,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   std::list<tensorflow::IpuTraceEvent> reports_;
 };
 
-}
-}
-
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif

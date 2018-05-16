@@ -25,7 +25,7 @@ namespace poplarplugin {
 
 WideConstFinder::WideConstFinder() {}
 
-StatusOr<bool> WideConstFinder::Run(HloModule *module) {
+StatusOr<bool> WideConstFinder::Run(HloModule* module) {
   std::vector<HloComputation*> comps(module->computations().begin(),
                                      module->computations().end());
 
@@ -36,14 +36,14 @@ StatusOr<bool> WideConstFinder::Run(HloModule *module) {
           const Literal& literal = inst->literal();
           if (literal.IsAll(0)) {
             auto zero =
-                    Literal::Zero(inst->shape().element_type()).CloneToUnique();
+                Literal::Zero(inst->shape().element_type()).CloneToUnique();
             HloInstruction* c = comp->AddInstruction(
-                    HloInstruction::CreateConstant(std::move(zero)));
+                HloInstruction::CreateConstant(std::move(zero)));
 
             std::vector<int64> dims(ShapeUtil::Rank(inst->shape()));
             std::iota(dims.begin(), dims.end(), 0);
             HloInstruction* b = comp->AddInstruction(
-                    HloInstruction::CreateBroadcast(inst->shape(), c, dims));
+                HloInstruction::CreateBroadcast(inst->shape(), c, dims));
 
             if (!inst->ReplaceAllUsesWith(b).ok()) {
               return false;
@@ -56,6 +56,5 @@ StatusOr<bool> WideConstFinder::Run(HloModule *module) {
   return true;
 }
 
-
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

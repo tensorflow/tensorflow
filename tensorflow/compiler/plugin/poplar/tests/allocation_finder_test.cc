@@ -74,33 +74,31 @@ static ConvolutionDimensionNumbers GetConvDimensions() {
   return dimension;
 }
 
-
 // Check basic parameter matching
 TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape = ShapeInference::InferConvolveShape(
-        input_shape, weight_shape,
-        GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   auto builder = HloComputation::Builder(TestName());
   auto op0 = builder.AddInstruction(
-    HloInstruction::CreateParameter(0, input_shape, "op0"));
+      HloInstruction::CreateParameter(0, input_shape, "op0"));
   auto op1 = builder.AddInstruction(
-    HloInstruction::CreateParameter(1, input_shape, "op1"));
+      HloInstruction::CreateParameter(1, input_shape, "op1"));
   auto op2 = builder.AddInstruction(
-    HloInstruction::CreateParameter(2, weight_shape, "op2"));
+      HloInstruction::CreateParameter(2, weight_shape, "op2"));
 
   auto add = builder.AddInstruction(
-    HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+      HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
 
-  auto conv = builder.AddInstruction(
-    HloInstruction::CreateConvolve(conv_shape, op1, op2,
-                                   GetConv1Window(), GetConvDimensions()));
+  auto conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      conv_shape, op1, op2, GetConv1Window(), GetConvDimensions()));
 
-  builder.AddInstruction(
-          HloInstruction::CreateTuple({add, conv}));
+  builder.AddInstruction(HloInstruction::CreateTuple({add, conv}));
 
   auto computation = builder.Build();
 
@@ -116,12 +114,12 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
 
   ASSERT_EQ(map.size(), 2);
 
-  auto t1 = map.at(std::make_pair(op1,0));
+  auto t1 = map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t1.tgt, c_conv);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 1);
 
-  auto t2 = map.at(std::make_pair(op2,0));
+  auto t2 = map.at(std::make_pair(op2, 0));
   EXPECT_EQ(t2.tgt, c_conv);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 1);
@@ -132,41 +130,39 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape = ShapeInference::InferConvolveShape(
-          input_shape, weight_shape,
-          GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation */
   auto builder_sub = HloComputation::Builder(TestName());
   auto op0_sub = builder_sub.AddInstruction(
-        HloInstruction::CreateParameter(0, input_shape, "input"));
+      HloInstruction::CreateParameter(0, input_shape, "input"));
   auto op1_sub = builder_sub.AddInstruction(
-        HloInstruction::CreateParameter(1, weight_shape, "weights"));
+      HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
-  auto conv = builder_sub.AddInstruction(
-        HloInstruction::CreateConvolve(conv_shape, op0_sub, op1_sub,
-                                       GetConv1Window(), GetConvDimensions()));
+  auto conv = builder_sub.AddInstruction(HloInstruction::CreateConvolve(
+      conv_shape, op0_sub, op1_sub, GetConv1Window(), GetConvDimensions()));
 
   auto computation_sub = builder_sub.Build();
 
   /* Create main computation */
   auto builder_main = HloComputation::Builder(TestName());
   auto op0 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(0, input_shape, "op0"));
+      HloInstruction::CreateParameter(0, input_shape, "op0"));
   auto op1 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(1, input_shape, "op1"));
+      HloInstruction::CreateParameter(1, input_shape, "op1"));
   auto op2 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(2, weight_shape, "op2"));
+      HloInstruction::CreateParameter(2, weight_shape, "op2"));
 
   auto add = builder_main.AddInstruction(
-          HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+      HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
 
-  auto call = builder_main.AddInstruction(
-          HloInstruction::CreateCall(conv_shape, {op1, op2},
-                                     computation_sub.get()));
+  auto call = builder_main.AddInstruction(HloInstruction::CreateCall(
+      conv_shape, {op1, op2}, computation_sub.get()));
 
-  builder_main.AddInstruction(
-          HloInstruction::CreateTuple({add, call}));
+  builder_main.AddInstruction(HloInstruction::CreateTuple({add, call}));
 
   auto computation_main = builder_main.Build();
 
@@ -182,51 +178,51 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   const HloInstruction* c_conv = conv;
 
   ASSERT_EQ(map.size(), 4);
-  auto t1 = map.at(std::make_pair(op1,0));
+  auto t1 = map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t1.tgt, c_conv);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 2);
 
-  auto t2 = map.at(std::make_pair(op2,0));
+  auto t2 = map.at(std::make_pair(op2, 0));
   EXPECT_EQ(t2.tgt, c_conv);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 2);
 
-  auto t3 = map.at(std::make_pair(op0_sub,0));
+  auto t3 = map.at(std::make_pair(op0_sub, 0));
   EXPECT_EQ(t3.tgt, c_conv);
   EXPECT_EQ(t3.input_index, 0ll);
   EXPECT_EQ(t3.path.size(), 1);
 
-  auto t4 = map.at(std::make_pair(op1_sub,0));
+  auto t4 = map.at(std::make_pair(op1_sub, 0));
   EXPECT_EQ(t4.tgt, c_conv);
   EXPECT_EQ(t4.input_index, 1ll);
   EXPECT_EQ(t4.path.size(), 1);
 }
-
 
 // Check it works for multiple valid destinations (perferred one first)
 TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv1_shape = ShapeInference::InferConvolveShape(
-          input_shape, weight_shape,
-          GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv1_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
-  Shape conv2_shape = ShapeInference::InferConvolveShape(
-          input_shape, weight_shape,
-          GetConv2Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv2_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv2Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation 1 */
   auto builder_sub1 = HloComputation::Builder(TestName());
   auto op0_sub1 = builder_sub1.AddInstruction(
-          HloInstruction::CreateParameter(0, input_shape, "input"));
+      HloInstruction::CreateParameter(0, input_shape, "input"));
   auto op1_sub1 = builder_sub1.AddInstruction(
-          HloInstruction::CreateParameter(1, weight_shape, "weights"));
+      HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
-  auto conv1 = builder_sub1.AddInstruction(
-          HloInstruction::CreateConvolve(conv1_shape, op0_sub1, op1_sub1,
-                                         GetConv1Window(), GetConvDimensions()));
+  auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
+      conv1_shape, op0_sub1, op1_sub1, GetConv1Window(), GetConvDimensions()));
   {
     OpMetadata metadata;
     metadata.set_op_name("Conv1");
@@ -239,13 +235,12 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   /* Create convolution sub-computation 2 */
   auto builder_sub2 = HloComputation::Builder(TestName());
   auto op0_sub2 = builder_sub2.AddInstruction(
-          HloInstruction::CreateParameter(0, input_shape, "input"));
+      HloInstruction::CreateParameter(0, input_shape, "input"));
   auto op1_sub2 = builder_sub2.AddInstruction(
-          HloInstruction::CreateParameter(1, weight_shape, "weights"));
+      HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
-  auto conv2 = builder_sub2.AddInstruction(
-          HloInstruction::CreateConvolve(conv2_shape, op0_sub2, op1_sub2,
-                                         GetConv1Window(), GetConvDimensions()));
+  auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
+      conv2_shape, op0_sub2, op1_sub2, GetConv1Window(), GetConvDimensions()));
   {
     OpMetadata metadata;
     metadata.set_op_name("Conv2");
@@ -258,25 +253,22 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   /* Create main computation */
   auto builder_main = HloComputation::Builder(TestName());
   auto op0 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(0, input_shape, "op0"));
+      HloInstruction::CreateParameter(0, input_shape, "op0"));
   auto op1 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(1, input_shape, "op1"));
+      HloInstruction::CreateParameter(1, input_shape, "op1"));
   auto op2 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(2, weight_shape, "op2"));
+      HloInstruction::CreateParameter(2, weight_shape, "op2"));
 
   auto add = builder_main.AddInstruction(
-          HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+      HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
 
-  auto call1 = builder_main.AddInstruction(
-          HloInstruction::CreateCall(conv1_shape, {op1, op2},
-                                     computation_sub1.get()));
+  auto call1 = builder_main.AddInstruction(HloInstruction::CreateCall(
+      conv1_shape, {op1, op2}, computation_sub1.get()));
 
-  auto call2 = builder_main.AddInstruction(
-          HloInstruction::CreateCall(conv2_shape, {op1, op2},
-                                     computation_sub2.get()));
+  auto call2 = builder_main.AddInstruction(HloInstruction::CreateCall(
+      conv2_shape, {op1, op2}, computation_sub2.get()));
 
-  builder_main.AddInstruction(
-          HloInstruction::CreateTuple({add, call1, call2}));
+  builder_main.AddInstruction(HloInstruction::CreateTuple({add, call1, call2}));
 
   auto computation_main = builder_main.Build();
 
@@ -294,32 +286,32 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   const HloInstruction* c_conv2 = conv2;
 
   ASSERT_EQ(map.size(), 6);
-  auto t1 = map.at(std::make_pair(op1,0));
+  auto t1 = map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t1.tgt, c_conv1);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 2);
 
-  auto t2 = map.at(std::make_pair(op2,0));
+  auto t2 = map.at(std::make_pair(op2, 0));
   EXPECT_EQ(t2.tgt, c_conv1);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 2);
 
-  auto t3 = map.at(std::make_pair(op0_sub1,0));
+  auto t3 = map.at(std::make_pair(op0_sub1, 0));
   EXPECT_EQ(t3.tgt, c_conv1);
   EXPECT_EQ(t3.input_index, 0ll);
   EXPECT_EQ(t3.path.size(), 1);
 
-  auto t4 = map.at(std::make_pair(op1_sub1,0));
+  auto t4 = map.at(std::make_pair(op1_sub1, 0));
   EXPECT_EQ(t4.tgt, c_conv1);
   EXPECT_EQ(t4.input_index, 1ll);
   EXPECT_EQ(t4.path.size(), 1);
 
-  auto t5 = map.at(std::make_pair(op0_sub2,0));
+  auto t5 = map.at(std::make_pair(op0_sub2, 0));
   EXPECT_EQ(t5.tgt, c_conv2);
   EXPECT_EQ(t5.input_index, 0ll);
   EXPECT_EQ(t5.path.size(), 1);
 
-  auto t6 = map.at(std::make_pair(op1_sub2,0));
+  auto t6 = map.at(std::make_pair(op1_sub2, 0));
   EXPECT_EQ(t6.tgt, c_conv2);
   EXPECT_EQ(t6.input_index, 1ll);
   EXPECT_EQ(t6.path.size(), 1);
@@ -330,24 +322,25 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv1_shape = ShapeInference::InferConvolveShape(
-          input_shape, weight_shape,
-          GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv1_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
-  Shape conv2_shape = ShapeInference::InferConvolveShape(
-          input_shape, weight_shape,
-          GetConv2Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv2_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv2Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   /* Create convolution sub-computation 1 */
   auto builder_sub1 = HloComputation::Builder(TestName());
   auto op0_sub1 = builder_sub1.AddInstruction(
-          HloInstruction::CreateParameter(0, input_shape, "input"));
+      HloInstruction::CreateParameter(0, input_shape, "input"));
   auto op1_sub1 = builder_sub1.AddInstruction(
-          HloInstruction::CreateParameter(1, weight_shape, "weights"));
+      HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
-  auto conv1 = builder_sub1.AddInstruction(
-          HloInstruction::CreateConvolve(conv1_shape, op0_sub1, op1_sub1,
-                                         GetConv1Window(), GetConvDimensions()));
+  auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
+      conv1_shape, op0_sub1, op1_sub1, GetConv1Window(), GetConvDimensions()));
   {
     OpMetadata metadata;
     metadata.set_op_name("Conv1");
@@ -355,19 +348,17 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
     conv1->set_metadata(metadata);
   }
 
-
   auto computation_sub1 = builder_sub1.Build();
 
   /* Create convolution sub-computation 2 */
   auto builder_sub2 = HloComputation::Builder(TestName());
   auto op0_sub2 = builder_sub2.AddInstruction(
-          HloInstruction::CreateParameter(0, input_shape, "input"));
+      HloInstruction::CreateParameter(0, input_shape, "input"));
   auto op1_sub2 = builder_sub2.AddInstruction(
-          HloInstruction::CreateParameter(1, weight_shape, "weights"));
+      HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
-  auto conv2 = builder_sub2.AddInstruction(
-          HloInstruction::CreateConvolve(conv2_shape, op0_sub2, op1_sub2,
-                                         GetConv1Window(), GetConvDimensions()));
+  auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
+      conv2_shape, op0_sub2, op1_sub2, GetConv1Window(), GetConvDimensions()));
   {
     OpMetadata metadata;
     metadata.set_op_name("Conv2");
@@ -380,25 +371,22 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   /* Create main computation */
   auto builder_main = HloComputation::Builder(TestName());
   auto op0 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(0, input_shape, "op0"));
+      HloInstruction::CreateParameter(0, input_shape, "op0"));
   auto op1 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(1, input_shape, "op1"));
+      HloInstruction::CreateParameter(1, input_shape, "op1"));
   auto op2 = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(2, weight_shape, "op2"));
+      HloInstruction::CreateParameter(2, weight_shape, "op2"));
 
   auto add = builder_main.AddInstruction(
-          HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+      HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
 
-  auto call1 = builder_main.AddInstruction(
-          HloInstruction::CreateCall(conv1_shape, {op1, op2},
-                                     computation_sub1.get()));
+  auto call1 = builder_main.AddInstruction(HloInstruction::CreateCall(
+      conv1_shape, {op1, op2}, computation_sub1.get()));
 
-  auto call2 = builder_main.AddInstruction(
-          HloInstruction::CreateCall(conv2_shape, {op1, op2},
-                                     computation_sub2.get()));
+  auto call2 = builder_main.AddInstruction(HloInstruction::CreateCall(
+      conv2_shape, {op1, op2}, computation_sub2.get()));
 
-  builder_main.AddInstruction(
-          HloInstruction::CreateTuple({add, call1, call2}));
+  builder_main.AddInstruction(HloInstruction::CreateTuple({add, call1, call2}));
 
   auto computation_main = builder_main.Build();
 
@@ -417,32 +405,32 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
 
   ASSERT_EQ(map.size(), 6);
 
-  auto t1 = map.at(std::make_pair(op1,0));
+  auto t1 = map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t1.tgt, c_conv2);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 2);
 
-  auto t2 = map.at(std::make_pair(op2,0));
+  auto t2 = map.at(std::make_pair(op2, 0));
   EXPECT_EQ(t2.tgt, c_conv2);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 2);
 
-  auto t3 = map.at(std::make_pair(op0_sub1,0));
+  auto t3 = map.at(std::make_pair(op0_sub1, 0));
   EXPECT_EQ(t3.tgt, c_conv1);
   EXPECT_EQ(t3.input_index, 0ll);
   EXPECT_EQ(t3.path.size(), 1);
 
-  auto t4 = map.at(std::make_pair(op1_sub1,0));
+  auto t4 = map.at(std::make_pair(op1_sub1, 0));
   EXPECT_EQ(t4.tgt, c_conv1);
   EXPECT_EQ(t4.input_index, 1ll);
   EXPECT_EQ(t4.path.size(), 1);
 
-  auto t5 = map.at(std::make_pair(op0_sub2,0));
+  auto t5 = map.at(std::make_pair(op0_sub2, 0));
   EXPECT_EQ(t5.tgt, c_conv2);
   EXPECT_EQ(t5.input_index, 0ll);
   EXPECT_EQ(t5.path.size(), 1);
 
-  auto t6 = map.at(std::make_pair(op1_sub2,0));
+  auto t6 = map.at(std::make_pair(op1_sub2, 0));
   EXPECT_EQ(t6.tgt, c_conv2);
   EXPECT_EQ(t6.input_index, 1ll);
   EXPECT_EQ(t6.path.size(), 1);
@@ -453,29 +441,28 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape = ShapeInference::InferConvolveShape(
-          input_shape, weight_shape,
-          GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   std::unique_ptr<Literal> literal = Literal::CreateFromShape(weight_shape);
 
   auto builder = HloComputation::Builder(TestName());
   auto op0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, input_shape, "op0"));
+      HloInstruction::CreateParameter(0, input_shape, "op0"));
   auto op1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(1, input_shape, "op1"));
+      HloInstruction::CreateParameter(1, input_shape, "op1"));
   auto op2 = builder.AddInstruction(
-        HloInstruction::CreateConstant(std::move(literal)));
+      HloInstruction::CreateConstant(std::move(literal)));
 
   auto add = builder.AddInstruction(
-        HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+      HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
 
-  auto conv = builder.AddInstruction(
-        HloInstruction::CreateConvolve(conv_shape, op1, op2,
-                                       GetConv1Window(), GetConvDimensions()));
+  auto conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      conv_shape, op1, op2, GetConv1Window(), GetConvDimensions()));
 
-  builder.AddInstruction(
-        HloInstruction::CreateTuple({add, conv}));
+  builder.AddInstruction(HloInstruction::CreateTuple({add, conv}));
 
   auto computation = builder.Build();
 
@@ -491,12 +478,12 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
 
   ASSERT_EQ(map.size(), 2);
 
-  auto t1 = map.at(std::make_pair(op1,0));
+  auto t1 = map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t1.tgt, c_conv);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 1);
 
-  auto t2 = map.at(std::make_pair(op2,0));
+  auto t2 = map.at(std::make_pair(op2, 0));
   EXPECT_EQ(t2.tgt, c_conv);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 1);
@@ -508,27 +495,26 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
 
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape,rhs_shape});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
 
   auto b = HloComputation::Builder(TestName());
-  auto in = b.AddInstruction(
-          HloInstruction::CreateParameter(0, lhs_shape, "in"));
-  auto w = b.AddInstruction(
-          HloInstruction::CreateParameter(1, rhs_shape, "weight"));
+  auto in =
+      b.AddInstruction(HloInstruction::CreateParameter(0, lhs_shape, "in"));
+  auto w =
+      b.AddInstruction(HloInstruction::CreateParameter(1, rhs_shape, "weight"));
 
-  auto tuple = b.AddInstruction(
-          HloInstruction::CreateTuple({in, w}));
+  auto tuple = b.AddInstruction(HloInstruction::CreateTuple({in, w}));
 
-  auto in1 = b.AddInstruction(HloInstruction::CreateGetTupleElement(
-        lhs_shape, tuple, 0));
-  auto w1 = b.AddInstruction(HloInstruction::CreateGetTupleElement(
-        rhs_shape, tuple, 1));
+  auto in1 = b.AddInstruction(
+      HloInstruction::CreateGetTupleElement(lhs_shape, tuple, 0));
+  auto w1 = b.AddInstruction(
+      HloInstruction::CreateGetTupleElement(rhs_shape, tuple, 1));
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot_inst = b.AddInstruction(
-          HloInstruction::CreateDot(lhs_shape, in1, w1, dot_dnums));
+      HloInstruction::CreateDot(lhs_shape, in1, w1, dot_dnums));
 
   hlo_module->AddEntryComputation(b.Build());
 
@@ -541,12 +527,12 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
 
   ASSERT_EQ(map.size(), 2);
 
-  auto t1 = map.at(std::make_pair(in,0));
+  auto t1 = map.at(std::make_pair(in, 0));
   EXPECT_EQ(t1.tgt, dot);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 3);
 
-  auto t2 = map.at(std::make_pair(w,0));
+  auto t2 = map.at(std::make_pair(w, 0));
   EXPECT_EQ(t2.tgt, dot);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 3);
@@ -558,22 +544,22 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
 
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape,rhs_shape});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
 
   auto b = HloComputation::Builder(TestName());
   auto in = b.AddInstruction(
-          HloInstruction::CreateParameter(0, tuple_shape, "tuple"));
+      HloInstruction::CreateParameter(0, tuple_shape, "tuple"));
 
-  auto in1 = b.AddInstruction(HloInstruction::CreateGetTupleElement(
-          lhs_shape, in, 0));
-  auto w1 = b.AddInstruction(HloInstruction::CreateGetTupleElement(
-          rhs_shape, in, 1));
+  auto in1 =
+      b.AddInstruction(HloInstruction::CreateGetTupleElement(lhs_shape, in, 0));
+  auto w1 =
+      b.AddInstruction(HloInstruction::CreateGetTupleElement(rhs_shape, in, 1));
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot_inst = b.AddInstruction(
-          HloInstruction::CreateDot(lhs_shape, in1, w1, dot_dnums));
+      HloInstruction::CreateDot(lhs_shape, in1, w1, dot_dnums));
 
   hlo_module->AddEntryComputation(b.Build());
 
@@ -586,12 +572,12 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
 
   ASSERT_EQ(map.size(), 2);
 
-  auto t1 = map.at(std::make_pair(in,0));
+  auto t1 = map.at(std::make_pair(in, 0));
   EXPECT_EQ(t1.tgt, dot);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 2);
 
-  auto t2 = map.at(std::make_pair(in,1));
+  auto t2 = map.at(std::make_pair(in, 1));
   EXPECT_EQ(t2.tgt, dot);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 2);
@@ -604,8 +590,8 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
   Shape counter_shape = ShapeUtil::MakeShape(S32, {});
   Shape input_shape = ShapeUtil::MakeShape(F32, {2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape(
-          {counter_shape,input_shape,weight_shape});
+  Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({counter_shape, input_shape, weight_shape});
 
   const HloInstruction* dot_inst;
   const HloInstruction* body_param;
@@ -613,70 +599,67 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
   /* Create while condition */
   HloComputation* comp_cond;
   {
-  auto builder_cond = HloComputation::Builder(TestName());
-  auto tuple = builder_cond.AddInstruction(
-          HloInstruction::CreateParameter(0, tuple_shape, "cond_tuple"));
-  auto limit = builder_cond.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(10)));
-  auto c = builder_cond.AddInstruction(
-          HloInstruction::CreateGetTupleElement(ShapeUtil::MakeShape(S32, {}),
-                                                tuple, 0));
-  builder_cond.AddInstruction(HloInstruction::CreateBinary(
+    auto builder_cond = HloComputation::Builder(TestName());
+    auto tuple = builder_cond.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape, "cond_tuple"));
+    auto limit = builder_cond.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(10)));
+    auto c = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
+        ShapeUtil::MakeShape(S32, {}), tuple, 0));
+    builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
 
-  comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
+    comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
   }
 
   /* Create while body */
   HloComputation* comp_body;
   {
-  auto builder_body = HloComputation::Builder(TestName());
-  auto tuple = builder_body.AddInstruction(
-          HloInstruction::CreateParameter(0, tuple_shape, "body_tuple"));
-  auto c = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
-          counter_shape, tuple, 0));
-  auto in = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
-          input_shape, tuple, 1));
-  auto w = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
-          weight_shape, tuple, 2));
-  auto one = builder_body.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
-  auto new_c = builder_body.AddInstruction(HloInstruction::CreateBinary(
-          c->shape(), HloOpcode::kAdd, c, one));
+    auto builder_body = HloComputation::Builder(TestName());
+    auto tuple = builder_body.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape, "body_tuple"));
+    auto c = builder_body.AddInstruction(
+        HloInstruction::CreateGetTupleElement(counter_shape, tuple, 0));
+    auto in = builder_body.AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape, tuple, 1));
+    auto w = builder_body.AddInstruction(
+        HloInstruction::CreateGetTupleElement(weight_shape, tuple, 2));
+    auto one = builder_body.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+    auto new_c = builder_body.AddInstruction(
+        HloInstruction::CreateBinary(c->shape(), HloOpcode::kAdd, c, one));
 
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(1);
-  dot_dnums.add_rhs_contracting_dimensions(0);
-  auto new_in = builder_body.AddInstruction(
-          HloInstruction::CreateDot(input_shape, in, w, dot_dnums));
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(1);
+    dot_dnums.add_rhs_contracting_dimensions(0);
+    auto new_in = builder_body.AddInstruction(
+        HloInstruction::CreateDot(input_shape, in, w, dot_dnums));
 
-  dot_inst = new_in;
-  body_param = tuple;
+    dot_inst = new_in;
+    body_param = tuple;
 
-  builder_body.AddInstruction(
-          HloInstruction::CreateTuple({new_c, new_in, w}));
+    builder_body.AddInstruction(
+        HloInstruction::CreateTuple({new_c, new_in, w}));
 
-  comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
+    comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
   }
-
 
   /* Create main computation */
   auto builder_main = HloComputation::Builder(TestName());
   auto c = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(0, counter_shape, "counter"));
+      HloInstruction::CreateParameter(0, counter_shape, "counter"));
   auto in = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(1, input_shape, "in"));
+      HloInstruction::CreateParameter(1, input_shape, "in"));
   auto w = builder_main.AddInstruction(
-          HloInstruction::CreateParameter(2, weight_shape, "weight"));
+      HloInstruction::CreateParameter(2, weight_shape, "weight"));
 
-  auto init = builder_main.AddInstruction(
-          HloInstruction::CreateTuple({c, in, w}));
+  auto init =
+      builder_main.AddInstruction(HloInstruction::CreateTuple({c, in, w}));
 
   auto main = builder_main.AddInstruction(
-          HloInstruction::CreateWhile(tuple_shape, comp_cond, comp_body, init));
+      HloInstruction::CreateWhile(tuple_shape, comp_cond, comp_body, init));
 
-  builder_main.AddInstruction(
-          HloInstruction::CreateTuple({main}));
+  builder_main.AddInstruction(HloInstruction::CreateTuple({main}));
 
   hlo_module->AddEntryComputation(builder_main.Build());
 
@@ -687,22 +670,22 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
 
   ASSERT_EQ(map.size(), 4);
 
-  auto t1 = map.at(std::make_pair(in,0));
+  auto t1 = map.at(std::make_pair(in, 0));
   EXPECT_EQ(t1.tgt, dot_inst);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 4);
 
-  auto t2 = map.at(std::make_pair(w,0));
+  auto t2 = map.at(std::make_pair(w, 0));
   EXPECT_EQ(t2.tgt, dot_inst);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 4);
 
-  auto t3 = map.at(std::make_pair(body_param,1));
+  auto t3 = map.at(std::make_pair(body_param, 1));
   EXPECT_EQ(t3.tgt, dot_inst);
   EXPECT_EQ(t3.input_index, 0ll);
   EXPECT_EQ(t3.path.size(), 2);
 
-  auto t4 = map.at(std::make_pair(body_param,2));
+  auto t4 = map.at(std::make_pair(body_param, 2));
   EXPECT_EQ(t4.tgt, dot_inst);
   EXPECT_EQ(t4.input_index, 1ll);
   EXPECT_EQ(t4.path.size(), 2);
@@ -715,26 +698,25 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
-  Shape conv_shape = ShapeInference::InferConvolveShape(
-      input_shape, weight_shape,
-      GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+  Shape conv_shape =
+      ShapeInference::InferConvolveShape(input_shape, weight_shape,
+                                         GetConv1Window(), GetConvDimensions())
+          .ConsumeValueOrDie();
 
   auto builder = HloComputation::Builder(TestName());
   auto op0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, arg_shape, "op0"));
-  auto rs0 = builder.AddInstruction(
-      HloInstruction::CreateReshape(reshape_shape, op0));
+  auto rs0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(reshape_shape, op0));
   auto ds0 = builder.AddInstruction(
       HloInstruction::CreateTranspose(input_shape, rs0, {0, 2, 3, 1}));
   auto op1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, weight_shape, "op1"));
 
-  auto conv = builder.AddInstruction(
-      HloInstruction::CreateConvolve(conv_shape, ds0, op1,
-                                     GetConv1Window(), GetConvDimensions()));
+  auto conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      conv_shape, ds0, op1, GetConv1Window(), GetConvDimensions()));
 
-  builder.AddInstruction(
-      HloInstruction::CreateTuple({conv}));
+  builder.AddInstruction(HloInstruction::CreateTuple({conv}));
 
   auto computation = builder.Build();
 
@@ -750,17 +732,17 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
 
   ASSERT_EQ(map.size(), 2);
 
-  auto t1 = map.at(std::make_pair(op0,0));
+  auto t1 = map.at(std::make_pair(op0, 0));
   EXPECT_EQ(t1.tgt, c_conv);
   EXPECT_EQ(t1.input_index, 0ll);
   EXPECT_EQ(t1.path.size(), 3);
 
-  auto t2 = map.at(std::make_pair(op1,0));
+  auto t2 = map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t2.tgt, c_conv);
   EXPECT_EQ(t2.input_index, 1ll);
   EXPECT_EQ(t2.path.size(), 1);
 }
 
-}
-}
-}
+}  // namespace
+}  // namespace poplarplugin
+}  // namespace xla

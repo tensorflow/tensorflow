@@ -17,7 +17,6 @@ std::vector<char> ConvInt64ToInt32(const void *src, int64 ssize, int64 dsize) {
   return result;
 }
 
-
 std::vector<char> ConvInt32ToInt64(const void *src, int64 ssize, int64 dsize) {
   int64 count = ssize / sizeof(int32);
   if (count == 0) {
@@ -52,5 +51,5 @@ ConversionFn GetOutputConversionFunction(const xla::Shape &shape) {
   }
 }
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla

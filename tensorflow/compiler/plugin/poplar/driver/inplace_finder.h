@@ -35,9 +35,8 @@ using InplaceRoute = std::vector<HloInstruction*>;
  * updated in place even when they have been made part of a tuple.
  */
 class InplaceFinder : public HloPassInterface {
-public:
-  InplaceFinder(InplaceInstructions& insts) :
-      inplace_instructions(insts) {}
+ public:
+  InplaceFinder(InplaceInstructions& insts) : inplace_instructions(insts) {}
 
   ~InplaceFinder() = default;
 
@@ -45,7 +44,7 @@ public:
 
   StatusOr<bool> Run(HloModule* module) override;
 
-private:
+ private:
   void RouteFinder(HloInstruction* inst);
 
   std::multimap<HloInstruction*, InplaceRoute> routes;
@@ -55,10 +54,9 @@ private:
   InplaceRoute current_route;
 
   InplaceInstructions& inplace_instructions;
-
 };
 
-}
-}
+}  // namespace poplarplugin
+}  // namespace xla
 
 #endif
