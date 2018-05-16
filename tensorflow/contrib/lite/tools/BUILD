@@ -95,7 +95,6 @@ cc_library(
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/schema:schema_fbs",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -110,7 +109,6 @@ cc_test(
         ":verifier",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:schema_fbs_version",
-        "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/testing:util",
         "//tensorflow/core:framework_lite",

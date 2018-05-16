@@ -293,13 +293,9 @@ cc_library(
     deps = [
         ":generate_testspec",
         ":parse_testdata_lib",
-        ":split",
         ":tflite_driver",
-        ":util",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
 
