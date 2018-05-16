@@ -37,6 +37,8 @@ depending on the python version.
 *   @{tf.test.assert_equal_graph_def}
 *   @{tf.test.get_temp_dir}
 *   @{tf.test.is_built_with_cuda}
+*   @{tf.test.is_built_with_rocm}
+*   @{tf.test.is_built_with_gpu_support}
 *   @{tf.test.is_gpu_available}
 *   @{tf.test.gpu_device_name}
 

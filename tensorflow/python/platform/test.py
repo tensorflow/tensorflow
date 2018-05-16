@@ -26,6 +26,8 @@ depending on the python version.
 @@assert_equal_graph_def
 @@get_temp_dir
 @@is_built_with_cuda
+@@is_built_with_rocm
+@@is_built_with_gpu_support
 @@is_gpu_available
 @@gpu_device_name
 @@compute_gradient
@@ -107,3 +109,17 @@ def test_src_dir_path(relative_path):
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
+
+  
+@tf_export('test.is_built_with_rocm')
+def is_built_with_rocm():
+  """Returns whether TensorFlow was built with ROCm (GPU) support."""
+  return _test_util.IsBuiltWithROCm()
+
+
+@tf_export('test.is_built_with_gpu_support')
+def is_built_with_gpu_support():
+  """Returns whether TensorFlow was built with GPU (either CUDA or ROCm) support.
+  """
+  return is_built_with_cuda() or is_built_with_rocm()
+
