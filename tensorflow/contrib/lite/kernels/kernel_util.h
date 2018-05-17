@@ -47,8 +47,9 @@ inline int64_t NumElements(const TfLiteTensor* t) {
   return count;
 }
 
-inline TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
-                                            const TfLiteNode* node, int index) {
+inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
+                                                  const TfLiteNode* node,
+                                                  int index) {
   const bool use_tensor = node->inputs->data[index] != kOptionalTensor;
   if (use_tensor) {
     return &context->tensors[node->inputs->data[index]];
