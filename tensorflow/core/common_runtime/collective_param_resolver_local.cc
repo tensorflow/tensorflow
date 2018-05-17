@@ -318,9 +318,6 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
 // ring order implicit in the device order.
 void GenerateSubdivPerms(const string& device, int source_rank,
                          CollectiveParams* cp) {
-  CHECK_GT(cp->instance.impl_details.subdiv_offsets.size(), 0);
-  cp->instance.impl_details.subdiv_permutations.resize(
-      cp->instance.impl_details.subdiv_offsets.size());
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
   // sense when each task has the same number of devices but we can't

@@ -338,7 +338,7 @@ tf_cc_binary(
             "-z defs",
             "-s",
             "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
-            LINKER_VERSION_SCRIPT,
+            "$(location {})".format(LINKER_VERSION_SCRIPT),
         ],
     }),
     linkshared = 1,

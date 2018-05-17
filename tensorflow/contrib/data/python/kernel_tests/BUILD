@@ -12,7 +12,6 @@ py_test(
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss",
         "no_pip",
     ],
     deps = [
@@ -303,6 +302,7 @@ py_test(
     name = "reader_dataset_ops_test",
     size = "medium",
     srcs = ["reader_dataset_ops_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -317,6 +317,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",

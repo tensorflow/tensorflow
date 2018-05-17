@@ -49,9 +49,20 @@ class HloModule;
 
 // Describes a computation at the HLO level.
 //
-// An HloComputation contains a directed acyclic graph of HLO instructions. The
-// computation has a single root instruction which produces the output of the
-// computation.
+// You can think of an HloComputation like a function.  It has some inputs
+// (parameters) and returns exactly one value (the value of its root node).  If
+// you want to return multiple values, you can return a tuple.
+//
+// The instructions inside of a computation do not have an explicit total order.
+// Instead, they have a partial order determined by their data and control
+// dependencies.
+//
+// An HloModule contains one "entry computation" -- this is like main() in a C
+// program.  Every other computation inside of a module is attached to one or
+// more HloInstructions, as a "nested computation".  For example, the kMap
+// instruction has a nested computation and "applies" it to every element of its
+// input, elementwise.  (That is, the input [x, y, z] is transformed to [f(x),
+// f(y), f(z)].)
 class HloComputation {
  public:
   // Builder class for HloComputation.

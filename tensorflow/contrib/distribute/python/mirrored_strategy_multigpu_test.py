@@ -119,7 +119,6 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.assertEqual(expected, self.evaluate(unwrapped[0]))
 
 
-@test_util.with_c_api
 class MirroredStrategyVariableCreationTest(test.TestCase):
 
   config = config_pb2.ConfigProto()

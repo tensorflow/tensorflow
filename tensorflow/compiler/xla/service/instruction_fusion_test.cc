@@ -25,6 +25,91 @@ namespace op = xla::testing::opcode_matchers;
 
 using InstructionFusionTest = HloTestBase;
 
+// Subclass of InstructionFusion exposing the protected methods Fuse and
+// FuseIntoMultiOutput for testing.
+class InstructionFusionForTesting : public InstructionFusion {
+ public:
+  explicit InstructionFusionForTesting(HloModule* module)
+      : InstructionFusion(InstructionFusion::IsExpensive) {
+    module_ = module;
+    computation_ = module->entry_computation();
+  }
+
+  HloInstruction* Fuse(HloInstruction* producer,
+                       HloInstruction* consumer) override {
+    return InstructionFusion::Fuse(producer, consumer);
+  }
+
+  HloInstruction* FuseIntoMultiOutput(HloInstruction* producer,
+                                      HloInstruction* consumer) override {
+    return InstructionFusion::FuseIntoMultiOutput(producer, consumer);
+  }
+};
+
+TEST_F(InstructionFusionTest, FuseInstructions) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0)
+    add = f32[4,3]{1,0} add(p0, p0)
+    ROOT sub = f32[4,3]{1,0} subtract(add, p0)
+  })")
+                    .ValueOrDie();
+  HloInstruction* sub = module->entry_computation()->root_instruction();
+  HloInstruction* add = sub->mutable_operand(0);
+  HloInstruction* fusion =
+      InstructionFusionForTesting(module.get()).Fuse(add, sub);
+
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Subtract(op::Add(), op::Parameter()))
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  fused_computation {
+    p1 = f32[4,3] parameter(0)
+    add = f32[4,3] add(p1, p1)
+  }
+  ENTRY entry_computation {
+    p0 = f32[4,3] parameter(0)
+    abs = f32[4,3] abs(p0)
+    ROOT fusion = f32[4,3] fusion(abs), kind=kLoop, calls=fused_computation
+  })")
+                    .ValueOrDie();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* abs = root->mutable_operand(0);
+  HloInstruction* fusion =
+      InstructionFusionForTesting(module.get()).Fuse(abs, root);
+
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(), op::Add(op::Abs(), op::Abs()))
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0)
+    abs = f32[4,3]{1,0} abs(p0)
+    tanh = f32[4,3]{1,0} tanh(abs)
+    ROOT add = f32[4,3]{1,0} add(abs, tanh)
+  })")
+                    .ValueOrDie();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* abs = root->mutable_operand(0);
+  HloInstruction* tanh = root->mutable_operand(1);
+  HloInstruction* fusion =
+      InstructionFusionForTesting(module.get()).FuseIntoMultiOutput(abs, tanh);
+
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(), op::Tuple(op::Tanh(), op::Abs()))
+      << module->ToString();
+}
+
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(

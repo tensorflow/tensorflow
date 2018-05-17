@@ -1,5 +1,3 @@
-
-
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -86,12 +84,11 @@ namespace {
 // since its output buffer is bigger than input. The sequence it creates will
 // be:
 //   A D E F B C G
-// , which has a maximum memory usage of 5 (at one point, B and F will be alive
-// together).
+// , which has a maximum memory usage of 6 (B is alive while F is executing).
 //
-// An optimal to shedule the previous graph will be:
+// An optimal way to shedule the previous graph is:
 //   A B C D E F G
-// , which has a maximum memory usage of 4.
+// , which has a maximum memory usage of 5 (when F is executing).
 //
 class ListScheduler {
  public:
@@ -100,8 +97,11 @@ class ListScheduler {
   static StatusOr<std::vector<const HloInstruction*>> Run(
       const HloComputation& computation,
       const TuplePointsToAnalysis& points_to_analysis,
-      const LogicalBuffer::SizeFunction& size_function) {
-    ListScheduler scheduler(computation, points_to_analysis, size_function);
+      const LogicalBuffer::SizeFunction& size_function,
+      const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+          memory_by_computation) {
+    ListScheduler scheduler(computation, points_to_analysis, size_function,
+                            memory_by_computation);
     return scheduler.CreateSchedule();
   }
 
@@ -122,10 +122,13 @@ class ListScheduler {
 
   ListScheduler(const HloComputation& computation,
                 const TuplePointsToAnalysis& points_to_analysis,
-                const LogicalBuffer::SizeFunction& size_function)
+                const LogicalBuffer::SizeFunction& size_function,
+                const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+                    memory_by_computation)
       : computation_(computation),
         points_to_analysis_(points_to_analysis),
-        size_function_(size_function) {
+        size_function_(size_function),
+        memory_by_computation_(memory_by_computation) {
     // Create a map containing the LogicalBuffer uses for each HLO
     // instruction. An HLO instruction "uses" a LogicalBuffer if the
     // LogicalBuffer is in an operand of the instruction as indicated by
@@ -215,6 +218,12 @@ class ListScheduler {
   }
 
   // Returns the number of bytes freed if the HLO instruction is scheduled.
+  // If the instruction calls subcomputations, we count the memory used by the
+  // subcomputations as memory "defined" by the instruction. This is not
+  // entirely accurate, because subcomputation memory will be freed after the
+  // instruction finishes. But it is more accurate than not taking
+  // subcomputations into account at all. In the future, we may improve
+  // accounting for subcomputation memory (b/65409243).
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
@@ -224,7 +233,19 @@ class ListScheduler {
         freed_bytes += size_function_(*buffer);
       }
     }
-    return freed_bytes - entry.bytes_defined;
+    // We only count the memory usage of the largest subcomputation, instead of
+    // adding them all, because subcomputations won't execute in parallel.
+    int64 max_subcomputation_bytes = 0;
+    for (const auto* c : entry.instruction->called_computations()) {
+      auto it = memory_by_computation_.find(c);
+      if (it != memory_by_computation_.end()) {
+        int64 subcomputation_bytes = it->second;
+        if (subcomputation_bytes > max_subcomputation_bytes) {
+          max_subcomputation_bytes = subcomputation_bytes;
+        }
+      }
+    }
+    return freed_bytes - entry.bytes_defined - max_subcomputation_bytes;
   }
 
   // Constructs the scheduling priority of the given instruction.
@@ -345,6 +366,11 @@ class ListScheduler {
   const HloComputation& computation_;
   const TuplePointsToAnalysis& points_to_analysis_;
   const LogicalBuffer::SizeFunction& size_function_;
+  // Computations are analyzed in post-order. When scheduling an instruction
+  // that includes subcomputations, such as a while loop, we use this map to
+  // look up the memory needed by subcomputations.
+  const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+      memory_by_computation_;
 
   // A map containing the LogicalBuffers that each instruction uses.
   tensorflow::gtl::FlatMap<const HloInstruction*,
@@ -370,6 +396,24 @@ int64 SumLogicalBufferSizes(
   return size;
 }
 
+StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function,
+    const MemorySchedulerAlgorithm& algorithm,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
+  VLOG(2) << "Computation: " << computation.name();
+  if (algorithm) {
+    return algorithm(computation, points_to_analysis, size_function,
+                     memory_by_computation);
+  }
+  return DefaultMemoryScheduler(computation, points_to_analysis, size_function,
+                                memory_by_computation);
+}
+
+}  // namespace
+
 StatusOr<int64> MinimumMemoryForComputation(
     const HloComputation& computation,
     const std::vector<const HloInstruction*>& sequence,
@@ -381,20 +425,6 @@ StatusOr<int64> MinimumMemoryForComputation(
                          sequence, points_to_analysis, size_function));
   return result.heap_size;
 }
-
-StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
-    const HloComputation& computation,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerAlgorithm& algorithm) {
-  VLOG(2) << "Computation: " << computation.name();
-  if (algorithm) {
-    return algorithm(computation, points_to_analysis, size_function);
-  }
-  return DefaultMemoryScheduler(computation, points_to_analysis, size_function);
-}
-
-}  // namespace
 
 StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerImpl(
     const HloComputation& computation,
@@ -457,14 +487,19 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerImpl(
 StatusOr<std::vector<const HloInstruction*>> ListMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
-  return ListScheduler::Run(computation, points_to_analysis, size_function);
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
+  return ListScheduler::Run(computation, points_to_analysis, size_function,
+                            memory_by_computation);
 }
 
 StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
   const auto& post_order = computation.MakeInstructionPostOrder();
   return std::vector<const HloInstruction*>{post_order.begin(),
                                             post_order.end()};
@@ -473,7 +508,9 @@ StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
 StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
   return DFSMemorySchedulerImpl(computation, points_to_analysis, size_function,
                                 /*reverse_heuristics=*/false);
 }
@@ -481,7 +518,9 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
 StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerReverse(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
   return DFSMemorySchedulerImpl(computation, points_to_analysis, size_function,
                                 /*reverse_heuristics=*/true);
 }
@@ -489,7 +528,9 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerReverse(
 StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
   // We try both a list-scheduler based ordering and a DFS based ordering, and
   // choose whichever returns a lower min-memory, not accounting for
   // fragmentation.
@@ -499,16 +540,17 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
   // within the caller's context. But it's good enough for now.
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
-      ListMemoryScheduler(computation, points_to_analysis, size_function));
+      ListMemoryScheduler(computation, points_to_analysis, size_function,
+                          memory_by_computation));
   TF_ASSIGN_OR_RETURN(
       const int64 list_memory,
       MinimumMemoryForComputation(computation, list_sequence,
                                   points_to_analysis, size_function));
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<const HloInstruction*> dfs_sequence,
-      DFSMemoryScheduler(computation, points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> dfs_sequence,
+                      DFSMemoryScheduler(computation, points_to_analysis,
+                                         size_function, memory_by_computation));
   TF_ASSIGN_OR_RETURN(
       const int64 dfs_memory,
       MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
@@ -517,7 +559,8 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> post_order_sequence,
-      PostOrderMemoryScheduler(computation, points_to_analysis, size_function));
+      PostOrderMemoryScheduler(computation, points_to_analysis, size_function,
+                               memory_by_computation));
   TF_ASSIGN_OR_RETURN(
       const int64 post_order_memory,
       MinimumMemoryForComputation(computation, post_order_sequence,
@@ -525,9 +568,10 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
-  TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> reverse_dfs,
-                      DFSMemorySchedulerReverse(computation, points_to_analysis,
-                                                size_function));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<const HloInstruction*> reverse_dfs,
+      DFSMemorySchedulerReverse(computation, points_to_analysis, size_function,
+                                memory_by_computation));
   TF_ASSIGN_OR_RETURN(
       const int64 reverse_dfs_memory,
       MinimumMemoryForComputation(computation, reverse_dfs, points_to_analysis,
@@ -563,24 +607,32 @@ CreateMemoryMinimizingSequence(const HloModule& module,
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
-  for (const auto* computation : module.MakeNonfusionComputations()) {
-    TF_ASSIGN_OR_RETURN(
-        sequence[computation],
-        CreateMemoryMinimizingSequence(*computation, *points_to_analysis,
-                                       size_function, algorithm));
+  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
+  for (const auto* computation : module.MakeComputationPostOrder()) {
+    if (!computation->IsFusionComputation()) {
+      TF_ASSIGN_OR_RETURN(auto one_computation_sequence,
+                          CreateMemoryMinimizingSequence(
+                              *computation, *points_to_analysis, size_function,
+                              algorithm, memory_by_computation));
+      memory_by_computation[computation] =
+          MinimumMemoryForComputation(*computation, one_computation_sequence,
+                                      *points_to_analysis, size_function)
+              .ValueOrDie();
+      sequence[computation] = std::move(one_computation_sequence);
+    }
   }
   return sequence;
 }
 
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
-    const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerAlgorithm& algorithm) {
+    const LogicalBuffer::SizeFunction& size_function) {
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
+  tensorflow::gtl::FlatMap<const HloComputation*, int64> empty_map;
   return CreateMemoryMinimizingSequence(computation, *points_to_analysis,
-                                        size_function, algorithm);
+                                        size_function, nullptr, empty_map);
 }
 
 }  // namespace xla

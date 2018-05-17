@@ -99,6 +99,7 @@ tensorflow/python/summary
 tensorflow/python/summary/writer
 tensorflow/python/tools
 tensorflow/python/training
+tensorflow/python/training/checkpointable
 tensorflow/python/user_ops
 tensorflow/python/util
 tensorflow/python/util/protobuf

@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -171,7 +170,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
     int64 device = device_assignment(i, 0);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
-    streams.push_back(absl::make_unique<se::Stream>(executor));
+    streams.push_back(MakeUnique<se::Stream>(executor));
     streams.back()->Init();
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
         device, streams.back().get(), &device_assignment));
@@ -198,7 +197,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
     num_threads += options.num_replicas;
   }
   if (num_threads > 0) {
-    pool = absl::make_unique<tensorflow::thread::ThreadPool>(
+    pool = MakeUnique<tensorflow::thread::ThreadPool>(
         tensorflow::Env::Default(), "infeed_outfeed",
         /*num_threads=*/num_threads);
   }
@@ -229,7 +228,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64 step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
-          auto literal = absl::make_unique<Literal>();
+          auto literal = MakeUnique<Literal>();
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
               executor, options.outfeed_shape, literal.get()));
           if (options.outfeed_values != nullptr) {

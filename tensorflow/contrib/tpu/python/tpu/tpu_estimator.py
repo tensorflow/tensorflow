@@ -627,8 +627,8 @@ class _StoppingPredictHook(session_run_hook.SessionRunHook):
       raise errors.OutOfRangeError(None, None, 'Stopped by stopping signal.')
 
 
-def generate_per_core_enqueue_ops_fn_for_host(ctx, input_fn,
-                                              inputs_structure_recorder):
+def generate_per_core_enqueue_ops_fn_for_host(
+    ctx, input_fn, inputs_structure_recorder, host_device, host_id):
   """Generates infeed enqueue ops for per-core input_fn on a single host."""
   captured_infeed_queue = _CapturedObject()
 
@@ -638,7 +638,12 @@ def generate_per_core_enqueue_ops_fn_for_host(ctx, input_fn,
     per_host_sharded_inputs = []
     for core_ordinal in range(num_cores_per_host):
       with ops.name_scope('ordinal_%d' % (core_ordinal)):
-        inputs = _Inputs.from_input_fn(input_fn())
+        user_context = tpu_context.TPUContext(
+            internal_ctx=ctx,
+            input_device=host_device,
+            invocation_index=host_id * ctx.num_of_cores_per_host + core_ordinal
+        )
+        inputs = _Inputs.from_input_fn(input_fn(user_context))
         if inputs.is_dataset:
           raise TypeError(
               '`input_fn` returning `Dataset`  is not yet supported in '
@@ -675,7 +680,11 @@ def generate_per_host_enqueue_ops_fn_for_host(
   hooks = []
 
   with ops.device(device):
-    inputs = _Inputs.from_input_fn(input_fn())
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx,
+        input_device=device,
+        invocation_index=host_id)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
 
     is_dataset = inputs.is_dataset
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
@@ -693,7 +702,7 @@ def generate_per_host_enqueue_ops_fn_for_host(
       hooks.append(inputs.dataset_initializer_hook())
 
   # TODO(ylc): Refactoring the code to merge the tpu ordinal logic here and the
-  # _TPUContext.tpu_ordinal_function. We should either introduce another
+  # _InternalTPUContext.tpu_ordinal_function. We should either introduce another
   # abstraction or a different helper method.
   def _tpu_ordinal_function_impl(shard_index_in_host):
     # We put both enqueue/dequeue op at tpu.core(0) in each replica.
@@ -746,12 +755,15 @@ def generate_per_host_enqueue_ops_fn_for_host(
 def generate_per_host_v2_enqueue_ops_fn_for_host(
     ctx, input_fn, inputs_structure_recorder, device, host_id):
   """Generates infeed enqueue ops for per-host input_fn on a single host."""
-  del host_id  # unused
   captured_infeed_queue = _CapturedObject()
   hooks = []
 
   with ops.device(device):
-    inputs = _Inputs.from_input_fn(input_fn())
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx,
+        input_device=device,
+        invocation_index=host_id)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
 
     is_dataset = inputs.is_dataset
     if not is_dataset:
@@ -802,13 +814,14 @@ class _InputPipeline(object):
   """`_InputPipeline` handles invoking `input_fn` and piping to infeed queue.
 
   `_InputPipeline` abstracts the per-core/per-host `input_fn` invocation from
-  call site.  To be precise, based on the configuration in `_TPUContext`,  it
-  invokes `input_fn` for all cores (usually multi-host TPU training) or for one
-  host (usually for single-host TPU evaluation), and sends all `features` and
-  `labels` returned by `input_fn` to TPU infeed. For per-core invocation,
-  `features` and `labels` are piped to infeed directly, one tuple for each
-  core. For per-host invocation,  `features` and `labels` are split at host
-  (with respect to `batch_axis`) and piped to all cores accordingly.
+  call site.  To be precise, based on the configuration in
+  `_InternalTPUContext`,  it invokes `input_fn` for all cores (usually
+  multi-host TPU training) or for one host (usually for single-host TPU
+  evaluation), and sends all `features` and `labels` returned by `input_fn` to
+  TPU infeed. For per-core invocation, `features` and `labels` are piped to
+  infeed directly, one tuple for each core. For per-host invocation,  `features`
+  and `labels` are split at host (with respect to `batch_axis`) and piped to all
+  cores accordingly.
 
   In addition, flatten/unflatten are handled by `_InputPipeline` also.  Model
   inputs returned by the `input_fn` can have one of the following forms:
@@ -961,7 +974,7 @@ class _InputPipeline(object):
       batch_axis: A python tuple of int values describing how each tensor
         produced by the Estimator `input_fn` should be split across the TPU
         compute shards.
-      ctx: A `_TPUContext` instance with mode.
+      ctx: A `_InternalTPUContext` instance with mode.
 
     Raises:
       ValueError: If both `sharded_features` and `num_cores` are `None`.
@@ -1016,7 +1029,8 @@ class _InputPipeline(object):
           with ops.name_scope('input_pipeline_task%d' % (host_id)):
             enqueue_ops_fn, captured_infeed_queue = (
                 generate_per_core_enqueue_ops_fn_for_host(
-                    self._ctx, self._input_fn, self._inputs_structure_recorder))
+                    self._ctx, self._input_fn, self._inputs_structure_recorder,
+                    host_device, host_id))
 
             if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
               run_infeed_loop_on_coordinator = False
@@ -1826,7 +1840,7 @@ class TPUEstimator(estimator_lib.Estimator):
 
     if use_tpu:
       # Perform some very basic validations. More validations will be found in
-      # _TPUContext.
+      # _InternalTPUContext.
       if train_batch_size is None:
         raise ValueError('`train_batch_size` cannot be `None`')
       util_lib.check_positive_integer(train_batch_size, 'train_batch_size')
@@ -1869,7 +1883,7 @@ class TPUEstimator(estimator_lib.Estimator):
     self._iterations_per_training_loop = (
         self._config.tpu_config.iterations_per_loop)
 
-    # All properties passed to _TPUContext are immutable.
+    # All properties passed to _InternalTPUContext are immutable.
     # pylint: disable=protected-access
     self._ctx = tpu_context._get_tpu_context(
         self._config, train_batch_size,
@@ -1990,7 +2004,8 @@ class TPUEstimator(estimator_lib.Estimator):
       # tf.while_loop also. So, we either pass input_fn to model_fn or pass
       # dequeue_fn to model_fn. Here, `input_fn` is passed directly as
       # `features` in `model_fn` signature.
-      def _input_fn():
+      def _input_fn(ctx):
+        kwargs['params'][_CTX_KEY] = ctx
         return input_fn(**kwargs)
 
       return _input_fn

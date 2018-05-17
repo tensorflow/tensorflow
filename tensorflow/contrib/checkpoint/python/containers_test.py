@@ -24,9 +24,8 @@ from tensorflow.contrib.checkpoint.python import containers
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpointable
-from tensorflow.python.training import checkpointable_utils
-from tensorflow.python.training.checkpointable_utils import object_metadata
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class UniqueNameTrackerTests(test.TestCase):
@@ -86,7 +85,7 @@ class UniqueNameTrackerTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     save_path = checkpoint.save(checkpoint_prefix)
-    metadata = object_metadata(save_path)
+    metadata = checkpointable_utils.object_metadata(save_path)
     dependency_names = []
     for node in metadata.nodes:
       for child in node.children:

@@ -893,13 +893,9 @@ inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
 inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
                             int32 input_zero_point, uint8* output_data,
                             const Dims<4>& output_dims) {
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
   const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  TFLITE_DCHECK_EQ(batches, 1);
-  TFLITE_DCHECK_EQ(height, 1);
-  TFLITE_DCHECK_EQ(width, 1);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  TFLITE_DCHECK_EQ(outer_size, 1);
   int32 square_l2_norm = 0;
   for (int i = 0; i < depth; i++) {
     int32 diff = input_data[Offset(input_dims, i, 0, 0, 0)] - input_zero_point;
@@ -1021,9 +1017,7 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
     TFLITE_DCHECK_EQ(output_activation_max, 32767);
   }
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   TFLITE_DCHECK(input1_shift == 0 || input2_shift == 0);
   TFLITE_DCHECK_GE(input1_shift, 0);
@@ -1399,9 +1393,7 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
                 int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Mul/Int16");
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -1421,9 +1413,7 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
   gemmlowp::ScopedProfilingLabel label("Mul/Int16Uint8");
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -3529,7 +3519,7 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   // computing their influence on the output, rather than looping through the
   // output elements in the typical "gather" access pattern of a conv. We
   // therefore must initialize the output array to zero.
-  for (int i = 0; i < RequiredBufferSizeForDims(output_dims); i++) {
+  for (int i = 0; i < FlatSize(output_dims); i++) {
     output_data[i] = 0.0f;
   }
 
@@ -3592,15 +3582,9 @@ template <typename T, ComparisonFn<T> F>
 inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
                        const T* input2_data, const Dims<4>& input2_dims,
                        bool* output_data, const Dims<4>& output_dims) {
-  const int64_t batches =
-      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
-  const int64_t height =
-      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
-  const int64_t width =
-      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
-  const int64_t depth =
-      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  for (int64_t i = 0; i < batches * height * width * depth; ++i) {
+  const int64_t flatsize =
+      MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int64_t i = 0; i < flatsize; ++i) {
     output_data[i] = F(input1_data[i], input2_data[i]);
   }
 }
@@ -3613,15 +3597,9 @@ inline void Comparison(int left_shift, const T* input1_data,
                        int32 input2_offset, int32 input2_multiplier,
                        int input2_shift, bool* output_data,
                        const Dims<4>& output_dims) {
-  const int64_t batches =
-      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
-  const int64_t height =
-      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
-  const int64_t width =
-      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
-  const int64_t depth =
-      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  for (int64_t i = 0; i < batches * height * width * depth; ++i) {
+  const int64_t flatsize =
+      MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int64_t i = 0; i < flatsize; ++i) {
     const int32 input1_val = input1_offset + input1_data[i];
     const int32 input2_val = input2_offset + input2_data[i];
     const int32 shifted_input1_val = input1_val * (1 << left_shift);
@@ -3749,19 +3727,9 @@ inline void Select(const D* input_condition_data,
                    const Dims<4>& input_x_dims, const T* input_y_data,
                    const Dims<4>& input_y_dims, T* output_data,
                    const Dims<4>& output_dims) {
-  const int64_t batches =
-      MatchingArraySize(input_condition_dims, 3, input_x_dims, 3, input_y_dims,
-                        3, output_dims, 3);
-  const int64_t height =
-      MatchingArraySize(input_condition_dims, 2, input_x_dims, 2, input_y_dims,
-                        2, output_dims, 2);
-  const int64_t width = MatchingArraySize(input_condition_dims, 1, input_x_dims,
-                                          1, input_y_dims, 1, output_dims, 1);
-  const int64_t depth = MatchingArraySize(input_condition_dims, 0, input_x_dims,
-                                          0, input_y_dims, 0, output_dims, 0);
-
-  const int64_t num_elements = batches * height * width * depth;
-  for (int64_t i = 0; i < num_elements; ++i) {
+  const int64_t flatsize =
+      MatchingFlatSize(input_x_dims, input_y_dims, output_dims);
+  for (int64_t i = 0; i < flatsize; ++i) {
     output_data[i] =
         input_condition_data[i] ? input_x_data[i] : input_y_data[i];
   }
@@ -3773,25 +3741,16 @@ inline void RankOneSelect(const D* input_condition_data,
                           const T* input_x_data, const Dims<4>& input_x_dims,
                           const T* input_y_data, const Dims<4>& input_y_dims,
                           T* output_data, const Dims<4>& output_dims) {
-  const int64_t rank = ArraySize(input_condition_dims, 0);
-
-  const int64_t batches =
-      MatchingArraySize(input_x_dims, 3, input_y_dims, 3, output_dims, 3);
-  const int64_t height =
-      MatchingArraySize(input_x_dims, 2, input_y_dims, 2, output_dims, 2);
-  const int64_t width =
-      MatchingArraySize(input_x_dims, 1, input_y_dims, 1, output_dims, 1);
-  const int64_t depth =
-      MatchingArraySize(input_x_dims, 0, input_y_dims, 0, output_dims, 0);
-
-  TFLITE_DCHECK_EQ(rank, batches);
+  const int64_t rank = MatchingArraySize(input_condition_dims, 0, input_x_dims,
+                                         3, input_y_dims, 3, output_dims, 3);
+  const int64_t inner_size =
+      MatchingFlatSizeSkipDim(input_x_dims, 3, input_y_dims, output_dims);
 
   int64_t offset = 0;
-  int64_t size = depth * height * width;
   for (int64_t i = 0; i < rank; i++) {
     const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
-    memcpy(output_data + offset, input_data + offset, size * sizeof(T));
-    offset += size;
+    memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
+    offset += inner_size;
   }
 }
 

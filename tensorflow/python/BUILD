@@ -1478,6 +1478,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/training/checkpointable:__pkg__",
     ],
 )
 
@@ -2676,7 +2677,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":checkpointable",
         ":control_flow_ops",
         ":dtypes",
         ":framework_ops",
@@ -2687,6 +2687,7 @@ py_library(
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
     ],
 )
 
@@ -2973,9 +2974,9 @@ py_library(
         ["training/**/*.py"],
         exclude = [
             "**/*test*",
+            "training/checkpointable/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
-            "training/checkpointable.py",
             "training/saveable_object.py",
             "training/training_util.py",
         ],
@@ -2985,7 +2986,6 @@ py_library(
         ":array_ops",
         ":array_ops_gen",
         ":checkpoint_ops_gen",
-        ":checkpointable",
         ":client",
         ":control_flow_ops",
         ":data_flow_ops",
@@ -3025,36 +3025,11 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/ops/losses",
         # `layers` dependency only exists due to the use of a small utility.
         "//tensorflow/python/keras:layers",
-    ],
-)
-
-py_library(
-    name = "checkpointable",
-    srcs = ["training/checkpointable.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":constant_op",
-        ":control_flow_ops",
-        ":dtypes",
-        ":io_ops_gen",
-        ":ops",
-        ":saveable_object",
-        ":util",
-        "//tensorflow/python/eager:context",
-    ],
-)
-
-py_test(
-    name = "checkpointable_test",
-    srcs = ["training/checkpointable_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":checkpointable",
-        ":client_testlib",
+        "//tensorflow/python/ops/losses",
+        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/checkpointable:util",
     ],
 )
 
@@ -3091,39 +3066,6 @@ py_library(
         ":variable_scope",
         "//tensorflow/python/data",
         "//tensorflow/python/ops/losses",
-    ],
-)
-
-py_test(
-    name = "checkpointable_utils_test",
-    srcs = ["training/checkpointable_utils_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # TODO: needs investigation on Windows
-        "notsan",  # b/74395663
-    ],
-    deps = [
-        ":checkpointable",
-        ":constant_op",
-        ":control_flow_ops",
-        ":dtypes",
-        ":framework_ops",
-        ":framework_test_lib",
-        ":init_ops",
-        ":resource_variable_ops",
-        ":session",
-        ":state_ops",
-        ":template",
-        ":training",
-        ":training_util",
-        ":variable_scope",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras:layers",
-        "@six_archive//:six",
     ],
 )
 
@@ -4512,7 +4454,6 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:util",
         "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
     ],
@@ -4549,7 +4490,6 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:util",
         "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
         "@six_archive//:six",

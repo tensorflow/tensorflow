@@ -354,7 +354,7 @@ class Dataset(object):
     else:
       args = tuple(ops.convert_n_to_tensor(args, name="args"))
 
-    flattened_types = nest.flatten(output_types)
+    flattened_types = [dtypes.as_dtype(dt) for dt in nest.flatten(output_types)]
     flattened_shapes = nest.flatten(output_shapes)
 
     generator_state = Dataset._GeneratorState(generator)
