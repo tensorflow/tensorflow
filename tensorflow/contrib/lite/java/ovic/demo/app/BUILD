@@ -1,5 +1,3 @@
-load("//tools/build_defs/android:rules.bzl", "android_binary")
-
 # Sample app for OVIC benchmarking.
 licenses(["notice"])  # Apache 2.0
 
