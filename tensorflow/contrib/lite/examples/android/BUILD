@@ -1,6 +1,8 @@
 # Description:
 #   TensorFlow camera demo app for Android.
 
+load("//tools/build_defs/android:rules.bzl", "android_binary")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
