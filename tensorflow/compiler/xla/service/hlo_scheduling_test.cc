@@ -190,11 +190,7 @@ ENTRY root {
                                       instructions_by_name.at("e")));
 }
 
-// The current scheduler is suboptimal, in that it does not account for the
-// memory used by subcomputations when choosing a schedule.
-// This test demonstrates the current behavior.
-// We are working on improving it (b/65409243).
-TEST_F(HloSchedulingTest, SubcomputationsNotAccounted) {
+TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   // %WhileCond (cond_param: f32[4]) -> pred[] {
   //   %cond_param = f32[4]{0} parameter(0)
   //   %constant = f32[1,4]{1,0} constant(f32[1,4] { { 0, 0, 0, 0 } })
@@ -273,22 +269,22 @@ TEST_F(HloSchedulingTest, SubcomputationsNotAccounted) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      SequentialHloOrdering::HloModuleSequence sequence,
-      CreateMemoryMinimizingSequence(*module, [](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape());
-      }));
+  TF_ASSERT_OK_AND_ASSIGN(SequentialHloOrdering::HloModuleSequence sequence,
+                          CreateMemoryMinimizingSequence(
+                              *module,
+                              [](const BufferValue& buffer) {
+                                return ShapeUtil::ByteSizeOf(buffer.shape());
+                              },
+                              ListMemoryScheduler));
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),
             sequence.at(module->entry_computation()).size());
   SequentialHloOrdering ordering(module.get(), sequence);
-  // TODO(b/65409243): while_loop is scheduled first by List; it's thought to be
-  // cheaper than transpose because the temporary memory needed for
-  // subcomputations is ignored. If we count the temporary memory as part of
-  // bytes_defined, then transpose would be scheduled first. Incidentally,
-  // ignoring subcomputations results in a better schedule here.
-  EXPECT_TRUE(ordering.ExecutesBefore(while_loop, transpose));
-  EXPECT_TRUE(ordering.ExecutesBefore(bcast, transpose));
+  // This schedule is an example of List's greedy heuristics being suboptimal.
+  // The while_loop is more expensive than transpose, so it would have been
+  // better to schedule it first, instead of during the busy time.
+  EXPECT_TRUE(ordering.ExecutesBefore(transpose, while_loop));
+  EXPECT_TRUE(ordering.ExecutesBefore(transpose, bcast));
   EXPECT_TRUE(ordering.ExecutesBefore(bcast, add));
   EXPECT_TRUE(ordering.ExecutesBefore(transpose, add));
 }

@@ -139,6 +139,9 @@ class BaseGPUDevice : public LocalDevice {
 
   void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
 
+  string ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                    const int& stream_id);
+
   // This method returns an initialization status, in addition to
   // calling the "done" StatusCallback, if there is a failure to
   // allocate memory or if the tensor "from" is not DMA-copyable.

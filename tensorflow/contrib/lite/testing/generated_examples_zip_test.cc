@@ -307,7 +307,9 @@ INSTANTIATE_TESTS(split)
 INSTANTIATE_TESTS(squeeze)
 INSTANTIATE_TESTS(strided_slice)
 INSTANTIATE_TESTS(sub)
+INSTANTIATE_TESTS(topk)
 INSTANTIATE_TESTS(transpose)
+INSTANTIATE_TESTS(transpose_conv)
 INSTANTIATE_TESTS(where)
 
 }  // namespace testing

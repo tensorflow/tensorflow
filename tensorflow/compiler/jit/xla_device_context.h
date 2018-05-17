@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -45,8 +46,9 @@ class XlaDeviceAllocator : public Allocator {
 // Helper class for managing data transfers between host and XLA devices.
 class XlaTransferManager {
  public:
-  explicit XlaTransferManager(se::Stream* stream, xla::LocalClient* client,
-                              bool transfer_as_literal);
+  explicit XlaTransferManager(
+      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
@@ -69,7 +71,8 @@ class XlaTransferManager {
   // Transfer manager, for marshalling data to and from the device.
   xla::TransferManager* transfer_manager_;
   // True if we must use XLA's TransferManager for correct device transfers.
-  bool transfer_as_literal_;
+  const bool transfer_as_literal_;
+  const XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -77,8 +80,9 @@ class XlaTransferManager {
 // wraps the methods in XlaTransferManager.
 class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaDeviceContext(se::Stream* stream, xla::LocalClient* client,
-                            bool transfer_as_literal);
+  explicit XlaDeviceContext(
+      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,

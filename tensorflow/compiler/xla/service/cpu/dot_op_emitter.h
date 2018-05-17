@@ -112,13 +112,13 @@ class DotOpEmitter {
     // The number of columns on the RHS.
     int64 n;
 
-    // True if the LHS matrix column major.
+    // True if the LHS matrix is column major.
     bool lhs_column_major;
 
     // True if the LHS contraction dimension is not 1.
     bool lhs_non_canonical;
 
-    // True if the RHS matrix column major.
+    // True if the RHS matrix is column major.
     bool rhs_column_major;
 
     // True if the RHS contraction dimension is not 0.

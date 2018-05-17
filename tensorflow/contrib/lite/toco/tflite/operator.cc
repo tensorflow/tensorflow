@@ -701,6 +701,29 @@ class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
   }
 };
 
+class TransposeConv
+    : public BuiltinOperator<TransposeConvOperator,
+                             ::tflite::TransposeConvOptions,
+                             ::tflite::BuiltinOptions_TransposeConvOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto padding = Padding::Serialize(op.padding.type);
+    return ::tflite::CreateTransposeConvOptions(
+        *builder, padding, op.stride_width, op.stride_height);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->padding.type = Padding::Deserialize(options.padding());
+    op->stride_width = options.stride_w();
+    op->stride_height = options.stride_h();
+  }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -877,6 +900,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Cast(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
   ops.emplace_back(
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
+  ops.emplace_back(new TransposeConv(::tflite::BuiltinOperator_TRANSPOSE_CONV,
+                                     OperatorType::kTransposeConv));
 
   // Custom Operators.
   ops.emplace_back(

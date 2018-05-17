@@ -256,6 +256,23 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   string ToString() const;
 
+  // Returns true if 'user' cannot possibly use the buffer at 'index' in
+  // 'operand'. Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                               const ShapeIndex& index,
+                               const HloInstruction* user) const;
+
+  // Returns true if 'user' (at 'user_index') can share a buffer with its
+  // operand 'operand' (at 'operand_index'). Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool CanShareOperandBufferWithUser(HloInstruction* operand,
+                                     const ShapeIndex& operand_index,
+                                     HloInstruction* user,
+                                     const ShapeIndex& user_index) const;
+
  private:
   explicit TuplePointsToAnalysis(
       const HloModule* module,
@@ -309,6 +326,13 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     DCHECK_LT(id, per_instruction_.size());
     return &per_instruction_[id];
   }
+
+  std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
+      HloInstruction* instruction, const ShapeIndex& index) const;
+  bool HasUniqueFusedUseOfOperandAt(HloInstruction* operand,
+                                    const ShapeIndex& operand_index,
+                                    HloInstruction* fusion,
+                                    const int64 use_operand_index) const;
 
   // The module this analysis is performed on.
   const HloModule* module_;

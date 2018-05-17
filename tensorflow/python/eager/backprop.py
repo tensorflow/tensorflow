@@ -37,6 +37,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -668,11 +669,11 @@ class GradientTape(object):
   be computed as:
 
   ```python
-  x = tf.constant(3.)
-  with tfe.GradientTape() as g:
+  x = tf.constant(3.0)
+  with tf.GradientTape() as g:
     g.watch(x)
     y = x * x
-  grad = g.gradient(y, [x])[0] # Will compute to 6.0
+  dy_dx = g.gradient(y, x) # Will compute to 6.0
   ```
 
   GradientTapes can be nested to compute higher-order derivatives. For example,
@@ -695,7 +696,7 @@ class GradientTape(object):
 
   ```python
   x = tf.constant(3.0)
-  with tfe.GradientTape(persistent=True) as g:
+  with tf.GradientTape(persistent=True) as g:
     g.watch(x)
     y = x * x
     z = y * y
@@ -717,13 +718,29 @@ class GradientTape(object):
     """
     self._tape = None
     self._persistent = persistent
+    self._recording = False
 
   def __enter__(self):
-    self._tape = tape.push_new_tape(persistent=self._persistent)
+    """Enters a context inside which operations are recorded on this tape."""
+    self._start_recording()
     return self
 
   def __exit__(self, typ, value, traceback):
+    """Exits the recording context, no further operations are traced."""
+    if self._recording:
+      self._stop_recording()
+
+  def _start_recording(self):
+    if self._recording:
+      raise ValueError("Tape is already recording.")
+    self._tape = tape.push_new_tape(persistent=self._persistent)
+    self._recording = True
+
+  def _stop_recording(self):
+    if not self._recording:
+      raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
+    self._recording = False
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -761,9 +778,23 @@ class GradientTape(object):
        than once on a non-persistent tape.
     """
     if self._tape is None:
-      raise RuntimeError("GradientTape.gradient can only be called once "
-                         "on non-persistent tapes, and "
-                         "only when the context manager has exited.")
+      raise RuntimeError("GradientTape.gradient can only be called once on "
+                         "non-persistent tapes.")
+    if self._recording:
+      if not self._persistent:
+        self._stop_recording()
+      else:
+        logging.log_first_n(logging.WARN,
+                            "Calling GradientTape.gradient on a persistent "
+                            "tape inside it's context is significantly less "
+                            "efficient than calling it outside the context (it "
+                            "causes the gradient ops to be recorded on the "
+                            "tape, leading to increased CPU and memory usage). "
+                            "Only call GradientTape.gradient inside the "
+                            "context if you actually want to trace the "
+                            "gradient in order to compute higher order "
+                            "derrivatives.", 1)
+
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 

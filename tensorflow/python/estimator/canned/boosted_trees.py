@@ -57,7 +57,7 @@ def _get_transformed_features(features, sorted_feature_columns):
 
   Args:
     features: a dicionary of name to Tensor.
-    feature_columns: a list/set of tf.feature_column.
+    sorted_feature_columns: a list/set of tf.feature_column, sorted by name.
 
   Returns:
     result_features: a list of the transformed features, sorted by the name.
@@ -256,7 +256,7 @@ class _CacheTrainingStatesUsingHashTable(object):
     elif dtypes.as_dtype(dtypes.string).is_compatible_with(example_ids.dtype):
       empty_key = ''
     else:
-      raise ValueError('Unsupported example_id_feature dtype %s.',
+      raise ValueError('Unsupported example_id_feature dtype %s.' %
                        example_ids.dtype)
     # Cache holds latest <tree_id, node_id, logits> for each example.
     # tree_id and node_id are both int32 but logits is a float32.
@@ -675,6 +675,7 @@ def _create_classification_head_and_closed_form(n_classes, weight_column,
       predictions = math_ops.reciprocal(math_ops.exp(-logits) + 1.0)
       normalizer = math_ops.reciprocal(
           math_ops.cast(array_ops.size(predictions), dtypes.float32))
+      labels = math_ops.cast(labels, dtypes.float32)
       gradients = (predictions - labels) * normalizer
       hessians = predictions * (1.0 - predictions) * normalizer
       return gradients, hessians

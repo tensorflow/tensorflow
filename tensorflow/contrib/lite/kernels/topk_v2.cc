@@ -34,9 +34,8 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   // INT32 number of top results is supported.
   TF_LITE_ENSURE_EQ(context, top_k->type, kTfLiteInt32);
   // Check that the tensor contains only one value.
-  TF_LITE_ENSURE_EQ(context, NumDimensions(top_k), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(top_k), 1);
-  const int32 k = top_k->data.i32[0];
+  const int32 k = *GetTensorData<int32_t>(top_k);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const int num_dimensions = NumDimensions(input);

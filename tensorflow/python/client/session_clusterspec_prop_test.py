@@ -42,7 +42,6 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
-ops._USE_C_API = True
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -77,7 +76,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     config = config_pb2.ConfigProto(cluster_def=cluster_def)
 
     with ops.Graph().as_default() as g, ops.device('/job:worker/task:1'):
-      with ops.device('/cpu:0'):	 
+      with ops.device('/cpu:0'):
         const = constant_op.constant(17)
     sess = session.Session(server1.target, config=config, graph=g)
     run_options = config_pb2.RunOptions(
@@ -459,7 +458,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.FailedPreconditionError):
       sess3.run(v)
 
-  @test_util.disable_c_api  # Partial runs don't work with C API
   def testClusterSpecPropagationPartialRun(self):
     """Test successful partial run with ClusterSpec propagation."""
     server1 = server_lib.Server.create_local_server()

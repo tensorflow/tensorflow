@@ -160,6 +160,49 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[0], [1], [1], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
 
+  def testTrainClassifierWithLabelVocabulary(self):
+    apple, banana = 'apple', 'banana'
+    def _input_fn_with_label_vocab():
+      return FEATURES_DICT, [[apple], [banana], [banana], [apple], [apple]]
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        label_vocabulary=[apple, banana])
+    est.train(input_fn=_input_fn_with_label_vocab, steps=5)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=_input_fn_with_label_vocab, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
+
+  def testTrainClassifierWithIntegerLabel(self):
+    def _input_fn_with_integer_label():
+      return (FEATURES_DICT,
+              constant_op.constant([[0], [1], [1], [0], [0]], dtypes.int32))
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+    est.train(input_fn=_input_fn_with_integer_label, steps=5)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=_input_fn_with_integer_label, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
+
   def testTrainClassifierWithDataset(self):
     train_input_fn = _make_train_input_fn_dataset(is_classification=True)
     predict_input_fn = numpy_io.numpy_input_fn(

@@ -135,7 +135,7 @@ TfLiteStatus CheckLstmTensorDimensions(
   TF_LITE_ENSURE(context, params->cell_clip >= 0);
   TF_LITE_ENSURE(context, params->proj_clip >= 0);
 
-  TfLiteTensor* input_to_input_weights =
+  const TfLiteTensor* input_to_input_weights =
       GetOptionalInputTensor(context, node, input_to_input_weights_tensor);
   if (input_to_input_weights) {
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->size, 2);
@@ -155,7 +155,7 @@ TfLiteStatus CheckLstmTensorDimensions(
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[1], n_input);
 
-  TfLiteTensor* recurrent_to_input_weights =
+  const TfLiteTensor* recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, recurrent_to_input_weights_tensor);
   if (recurrent_to_input_weights) {
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->size, 2);
@@ -189,21 +189,21 @@ TfLiteStatus CheckLstmTensorDimensions(
        (recurrent_to_input_weights == nullptr));
   TF_LITE_ENSURE(context, cifg_weights_all_or_none == true);
 
-  TfLiteTensor* cell_to_input_weights =
+  const TfLiteTensor* cell_to_input_weights =
       GetOptionalInputTensor(context, node, cell_to_input_weights_tensor);
   if (cell_to_input_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->data[0], n_cell);
   }
 
-  TfLiteTensor* cell_to_forget_weights =
+  const TfLiteTensor* cell_to_forget_weights =
       GetOptionalInputTensor(context, node, cell_to_forget_weights_tensor);
   if (cell_to_forget_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->data[0], n_cell);
   }
 
-  TfLiteTensor* cell_to_output_weights =
+  const TfLiteTensor* cell_to_output_weights =
       GetOptionalInputTensor(context, node, cell_to_output_weights_tensor);
   if (cell_to_output_weights) {
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->size, 1);
@@ -222,7 +222,7 @@ TfLiteStatus CheckLstmTensorDimensions(
   TF_LITE_ENSURE(context, peephole_weights_all_or_none == true);
 
   // Make sure the input gate bias is present only when not a CIFG-LSTM.
-  TfLiteTensor* input_gate_bias =
+  const TfLiteTensor* input_gate_bias =
       GetOptionalInputTensor(context, node, input_gate_bias_tensor);
   if (use_cifg) {
     TF_LITE_ENSURE_EQ(context, input_gate_bias, nullptr);
@@ -246,7 +246,7 @@ TfLiteStatus CheckLstmTensorDimensions(
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->data[0], n_cell);
 
-  TfLiteTensor* projection_weights =
+  const TfLiteTensor* projection_weights =
       GetOptionalInputTensor(context, node, projection_weights_tensor);
   if (projection_weights) {
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->size, 2);
@@ -254,7 +254,7 @@ TfLiteStatus CheckLstmTensorDimensions(
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[1], n_cell);
   }
 
-  TfLiteTensor* projection_bias =
+  const TfLiteTensor* projection_bias =
       GetOptionalInputTensor(context, node, projection_bias_tensor);
   if (projection_bias) {
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->size, 1);
@@ -374,7 +374,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   fw_output_state->allocation_type = kTfLiteArenaRwPersistent;
   fw_cell_state->allocation_type = kTfLiteArenaRwPersistent;
 
-  TfLiteTensor* fw_input_to_input_weights =
+  const TfLiteTensor* fw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kFwInputToInputWeightsTensor);
   const bool fw_use_cifg = (fw_input_to_input_weights == nullptr);
   TfLiteIntArray* fw_scratch_buffer_size = TfLiteIntArrayCreate(2);
@@ -442,7 +442,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   bw_output_state->allocation_type = kTfLiteArenaRwPersistent;
   bw_cell_state->allocation_type = kTfLiteArenaRwPersistent;
 
-  TfLiteTensor* bw_input_to_input_weights =
+  const TfLiteTensor* bw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kBwInputToInputWeightsTensor);
   const bool bw_use_cifg = (bw_input_to_input_weights == nullptr);
   TfLiteIntArray* bw_scratch_buffer_size = TfLiteIntArrayCreate(2);
@@ -470,7 +470,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int n_input = input->dims->data[2];
 
   // Tensors for the forward cell.
-  TfLiteTensor* fw_input_to_input_weights =
+  const TfLiteTensor* fw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kFwInputToInputWeightsTensor);
   const TfLiteTensor* fw_input_to_forget_weights =
       GetInput(context, node, kFwInputToForgetWeightsTensor);
@@ -479,7 +479,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* fw_input_to_output_weights =
       GetInput(context, node, kFwInputToOutputWeightsTensor);
 
-  TfLiteTensor* fw_recurrent_to_input_weights =
+  const TfLiteTensor* fw_recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kFwRecurrentToInputWeightsTensor);
   const TfLiteTensor* fw_recurrent_to_forget_weights =
       GetInput(context, node, kFwRecurrentToForgetWeightsTensor);
@@ -488,14 +488,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* fw_recurrent_to_output_weights =
       GetInput(context, node, kFwRecurrentToOutputWeightsTensor);
 
-  TfLiteTensor* fw_cell_to_input_weights =
+  const TfLiteTensor* fw_cell_to_input_weights =
       GetOptionalInputTensor(context, node, kFwCellToInputWeightsTensor);
-  TfLiteTensor* fw_cell_to_forget_weights =
+  const TfLiteTensor* fw_cell_to_forget_weights =
       GetOptionalInputTensor(context, node, kFwCellToForgetWeightsTensor);
-  TfLiteTensor* fw_cell_to_output_weights =
+  const TfLiteTensor* fw_cell_to_output_weights =
       GetOptionalInputTensor(context, node, kFwCellToOutputWeightsTensor);
 
-  TfLiteTensor* fw_input_gate_bias =
+  const TfLiteTensor* fw_input_gate_bias =
       GetOptionalInputTensor(context, node, kFwInputGateBiasTensor);
   const TfLiteTensor* fw_forget_gate_bias =
       GetInput(context, node, kFwForgetGateBiasTensor);
@@ -504,9 +504,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* fw_output_gate_bias =
       GetInput(context, node, kFwOutputGateBiasTensor);
 
-  TfLiteTensor* fw_projection_weights =
+  const TfLiteTensor* fw_projection_weights =
       GetOptionalInputTensor(context, node, kFwProjectionWeightsTensor);
-  TfLiteTensor* fw_projection_bias =
+  const TfLiteTensor* fw_projection_bias =
       GetOptionalInputTensor(context, node, kFwProjectionBiasTensor);
 
   TfLiteTensor* fw_output_state =
@@ -515,7 +515,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
 
   // Tensors for the backward cell.
-  TfLiteTensor* bw_input_to_input_weights =
+  const TfLiteTensor* bw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kBwInputToInputWeightsTensor);
   const TfLiteTensor* bw_input_to_forget_weights =
       GetInput(context, node, kBwInputToForgetWeightsTensor);
@@ -524,7 +524,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bw_input_to_output_weights =
       GetInput(context, node, kBwInputToOutputWeightsTensor);
 
-  TfLiteTensor* bw_recurrent_to_input_weights =
+  const TfLiteTensor* bw_recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kBwRecurrentToInputWeightsTensor);
   const TfLiteTensor* bw_recurrent_to_forget_weights =
       GetInput(context, node, kBwRecurrentToForgetWeightsTensor);
@@ -533,14 +533,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bw_recurrent_to_output_weights =
       GetInput(context, node, kBwRecurrentToOutputWeightsTensor);
 
-  TfLiteTensor* bw_cell_to_input_weights =
+  const TfLiteTensor* bw_cell_to_input_weights =
       GetOptionalInputTensor(context, node, kBwCellToInputWeightsTensor);
-  TfLiteTensor* bw_cell_to_forget_weights =
+  const TfLiteTensor* bw_cell_to_forget_weights =
       GetOptionalInputTensor(context, node, kBwCellToForgetWeightsTensor);
-  TfLiteTensor* bw_cell_to_output_weights =
+  const TfLiteTensor* bw_cell_to_output_weights =
       GetOptionalInputTensor(context, node, kBwCellToOutputWeightsTensor);
 
-  TfLiteTensor* bw_input_gate_bias =
+  const TfLiteTensor* bw_input_gate_bias =
       GetOptionalInputTensor(context, node, kBwInputGateBiasTensor);
   const TfLiteTensor* bw_forget_gate_bias =
       GetInput(context, node, kBwForgetGateBiasTensor);
@@ -549,9 +549,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bw_output_gate_bias =
       GetInput(context, node, kBwOutputGateBiasTensor);
 
-  TfLiteTensor* bw_projection_weights =
+  const TfLiteTensor* bw_projection_weights =
       GetOptionalInputTensor(context, node, kBwProjectionWeightsTensor);
-  TfLiteTensor* bw_projection_bias =
+  const TfLiteTensor* bw_projection_bias =
       GetOptionalInputTensor(context, node, kBwProjectionBiasTensor);
 
   TfLiteTensor* bw_output_state =

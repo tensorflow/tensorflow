@@ -144,6 +144,7 @@ enum BuiltinOperator : byte {
   SELECT = 64,
   SLICE = 65,
   SIN = 66,
+  TRANSPOSE_CONV = 67,
 }
 
 // Options for the builtin operators.
@@ -196,6 +197,7 @@ union BuiltinOptions {
   LessEqualOptions,
   SelectOptions,
   SliceOptions,
+  TransposeConvOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -440,6 +442,12 @@ table SelectOptions {
 }
 
 table SliceOptions {
+}
+
+table TransposeConvOptions {
+  padding:Padding;
+  stride_w:int;
+  stride_h:int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
