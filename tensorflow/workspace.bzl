@@ -96,11 +96,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_google_absl",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
-          "https://github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/9613678332c976568272c8f4a78631a29159271d.tar.gz",
+          "https://github.com/abseil/abseil-cpp/archive/9613678332c976568272c8f4a78631a29159271d.tar.gz",
       ],
-     sha256 = "5996380e3e8b981f55d1c8d58e709c00dbb4806ba367be75d0925a68cc2f6478",
-     strip_prefix = "abseil-cpp-720c017e30339fd1786ce4aac68bc8559736e53f",
+     sha256 = "1273a1434ced93bc3e703a48c5dced058c95e995c8c009e9bdcb24a69e2180e9",
+     strip_prefix = "abseil-cpp-9613678332c976568272c8f4a78631a29159271d",
      build_file = clean_dep("//third_party:com_google_absl.BUILD"),
   )
 
@@ -189,11 +189,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "highwayhash",
       urls = [
-          "https://mirror.bazel.build/github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
-          "https://github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
+          "http://mirror.bazel.build/github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
+          "https://github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
       ],
-      sha256 = "0f30a15b1566d93f146c8d149878a06e91d9bb7ec2cfd76906df62a82be4aac9",
-      strip_prefix = "highwayhash-dfcb97ca4fe9277bf9dc1802dd979b071896453b",
+      sha256 = "9c3e0e87d581feeb0c18d814d98f170ff23e62967a2bd6855847f0b2fe598a37",
+      strip_prefix = "highwayhash-fd3d9af80465e4383162e4a7c5e2f406e82dd968",
       build_file = clean_dep("//third_party:highwayhash.BUILD"),
   )
 
@@ -228,6 +228,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
       strip_prefix = "libpng-1.6.34",
       build_file = clean_dep("//third_party:png.BUILD"),
+      patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
   )
 
   tf_http_archive(
@@ -299,11 +300,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "absl_py",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
-          "https://github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/ea8c4d2ddbf3fba610c4d613260561699b776db8.tar.gz",
+          "https://github.com/abseil/abseil-py/archive/ea8c4d2ddbf3fba610c4d613260561699b776db8.tar.gz",
       ],
-      sha256 = "29e4584e778bee13aa4093824133d131d927cc160561892880118d9ff7b95a6a",
-      strip_prefix = "abseil-py-acec853355ef987eae48a8d87a79351c15dff593",
+      sha256 = "c30b48e0d2580ef1412e55c5c0e1dab8db2ee4ab56e2075eccff29c90c7c7059",
+      strip_prefix = "abseil-py-ea8c4d2ddbf3fba610c4d613260561699b776db8",
   )
 
   tf_http_archive(
@@ -452,11 +453,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/c1e9b6f826c86c87a7e7173f1baf7e7df9f43e32.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/c1e9b6f826c86c87a7e7173f1baf7e7df9f43e32.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f.tar.gz",
       ],
-      sha256 = "92b7c01074f694a77b4d664951d1ec071e30ef19c61e673158e95fbb6e447b54",
-      strip_prefix = "llvm-c1e9b6f826c86c87a7e7173f1baf7e7df9f43e32",
+      sha256 = "1b75cb65517e41aaa70a95af55e45d08f37d0d44a192669b10d7b14b976dcc2a",
+      strip_prefix = "llvm-e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
@@ -742,6 +743,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip"
       ],
       build_file = clean_dep("//third_party:tflite_smartreply.BUILD"),
+  )
+
+  tf_http_archive(
+      name = "tflite_ovic_testdata",
+      sha256 = "a9a705d8d519220178e2e65d383fdb21da37fdb31d1e909b0a1acdac46479e9c",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+      ],
+      build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
+      strip_prefix = "ovic",
   )
 
   ##############################################################################

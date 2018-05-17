@@ -41,26 +41,44 @@ class HloModuleConfig {
   explicit HloModuleConfig(const ProgramShape& program_shape);
 
   // Checks if this config has an entry computation layout already.
-  bool has_entry_computation_layout() const {
-    return entry_computation_layout_.has_value();
+  bool has_host_entry_computation_layout() const {
+    return host_entry_computation_layout_.has_value();
+  }
+
+  bool has_device_entry_computation_layout() const {
+    return device_entry_computation_layout_.has_value();
   }
 
   // Sets the entry computation layout for this config. If the entry computation
   // layout already exists, it is silently replaced.
   void SetDefaultComputationLayout(const ProgramShape& program_shape);
 
-  // Returns a constant reference to the layout of the entry computation.
-  // Assumes the layout was set.
-  const ComputationLayout& entry_computation_layout() const {
-    CHECK(entry_computation_layout_.has_value());
-    return *entry_computation_layout_;
+  // Returns a constant reference to the on-host layout of the entry
+  // computation. Assumes the layout was set.
+  const ComputationLayout& host_entry_computation_layout() const {
+    CHECK(host_entry_computation_layout_.has_value());
+    return *host_entry_computation_layout_;
   }
 
-  // Returns a mutable pointer to the layout of the entry computation. Assumes
-  // the layout was set.
-  ComputationLayout* mutable_entry_computation_layout() {
-    CHECK(entry_computation_layout_.has_value());
-    return &(*entry_computation_layout_);
+  // Returns a mutable pointer to the layout of the on-host entry computation.
+  // Assumes the layout was set.
+  ComputationLayout* mutable_host_entry_computation_layout() {
+    CHECK(host_entry_computation_layout_.has_value());
+    return &(*host_entry_computation_layout_);
+  }
+
+  // Returns a constant reference to the on-device layout of the entry
+  // computation. Assumes the layout was set.
+  const ComputationLayout& device_entry_computation_layout() const {
+    CHECK(device_entry_computation_layout_.has_value());
+    return *device_entry_computation_layout_;
+  }
+
+  // Returns a mutable pointer to the layout of the on-device entry computation.
+  // Assumes the layout was set.
+  ComputationLayout* mutable_device_entry_computation_layout() {
+    CHECK(device_entry_computation_layout_.has_value());
+    return &(*device_entry_computation_layout_);
   }
 
   // Returns whether to enable HLO-level profiling.
@@ -109,7 +127,8 @@ class HloModuleConfig {
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> host_entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> device_entry_computation_layout_;
 
   // Whether this is a 'host module'.
   bool is_host_module_ = false;

@@ -24,13 +24,17 @@ inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
-inline TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
-                              int index) {
+inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
+                                    int index) {
   return &context->tensors[node->inputs->data[index]];
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {
   return &context->tensors[node->outputs->data[index]];
+}
+inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
+                                  int index) {
+  return &context->tensors[node->temporaries->data[index]];
 }
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
@@ -43,8 +47,9 @@ inline int64_t NumElements(const TfLiteTensor* t) {
   return count;
 }
 
-inline TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
-                                            const TfLiteNode* node, int index) {
+inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
+                                                  const TfLiteNode* node,
+                                                  int index) {
   const bool use_tensor = node->inputs->data[index] != kOptionalTensor;
   if (use_tensor) {
     return &context->tensors[node->inputs->data[index]];
@@ -74,9 +79,12 @@ inline void SetTensorToDynamic(TfLiteTensor* tensor) {
 // Calculates the multiplication factor for a quantized convolution (or
 // quantized depthwise convolution) involving the given tensors. Returns an
 // error if the scales of the tensors are not compatible.
-TfLiteStatus GetQuantizedConvolutionMultipler(
-    TfLiteContext* context, TfLiteTensor* input, TfLiteTensor* filter,
-    TfLiteTensor* bias, TfLiteTensor* output, double* multiplier);
+TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
+                                              const TfLiteTensor* input,
+                                              const TfLiteTensor* filter,
+                                              const TfLiteTensor* bias,
+                                              TfLiteTensor* output,
+                                              double* multiplier);
 
 // Calculates the useful range of an activation layer given its activation
 // tensor.
@@ -88,13 +96,13 @@ void CalculateActivationRangeFloat(TfLiteFusedActivation activation,
                                    float* activation_max);
 
 // Return true if the given tensors have the same shape.
-bool HaveSameShapes(TfLiteTensor* input1, TfLiteTensor* input2);
+bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2);
 
 // Calculate the output_shape that is necessary for element-wise operations
 // with broadcasting involving the two input tensors.
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
-                                        TfLiteTensor* input1,
-                                        TfLiteTensor* input2,
+                                        const TfLiteTensor* input1,
+                                        const TfLiteTensor* input2,
                                         TfLiteIntArray** output_shape);
 }  // namespace tflite
 

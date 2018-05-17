@@ -71,6 +71,11 @@ class KerasRegularizersTest(test.TestCase):
         model.fit(x_train, y_train, batch_size=10,
                   epochs=1, verbose=0)
 
+  def test_zero_regularization(self):
+    inputs = keras.backend.ones(shape=(10, 10))
+    layer = keras.layers.Dense(3, kernel_regularizer=keras.regularizers.l2(0))
+    layer(inputs)
+
 
 if __name__ == '__main__':
   test.main()

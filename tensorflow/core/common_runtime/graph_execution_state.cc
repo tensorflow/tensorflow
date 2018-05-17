@@ -76,7 +76,7 @@ GraphExecutionState::~GraphExecutionState() {
     GraphDef* graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
 #ifndef __ANDROID__
-  VLOG(1) << "Graph proto is " << graph_def->DebugString();
+  VLOG(4) << "Graph proto is " << graph_def->DebugString();
 #endif  // __ANDROID__
 
   std::unique_ptr<GraphExecutionState> ret(
@@ -490,18 +490,31 @@ Status GraphExecutionState::OptimizeGraph(
         cpu_device = device;
       }
     }
-    grappler::VirtualCluster cluster(device_map);
+    grappler::VirtualCluster cluster(device_map, device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
         item, rewrite_options, cpu_device, &cluster, &new_graph));
 
     // Merge optimized graph function library with an original library.
     // Optimized graph might have new functions specialized for it's
-    // instantiation context (see Grappler function optimizer).
+    // instantiation context (see Grappler function optimizer), and modified
+    // function body for the existing functions.
+    optimized_flib->reset(new FunctionLibraryDefinition(*flib_def_));
+
+    for (const FunctionDef& fdef : new_graph.library().function()) {
+      const string& func_name = fdef.signature().name();
+
+      if ((*optimized_flib)->Find(func_name)) {
+        VLOG(3) << "Replace function: name=" << func_name;
+        TF_RETURN_IF_ERROR((*optimized_flib)->RemoveFunction(func_name));
+        TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
+      } else {
+        VLOG(3) << "Add new function: name=" << func_name;
+        TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
+      }
+    }
+
     optimized_graph->reset(new Graph(OpRegistry::Global()));
-    optimized_flib->reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                                        new_graph.library()));
-    TF_RETURN_IF_ERROR((*optimized_flib)->AddLibrary(*flib_def_));
 
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
@@ -540,6 +553,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
 
   Status s = OptimizeGraph(options, &optimized_graph, &optimized_flib);
   if (!s.ok()) {
+    VLOG(2) << "Grappler optimization failed. Error: " << s.error_message();
     // Simply copy the original graph and the function library if we couldn't
     // optimize it.
     optimized_graph.reset(new Graph(flib_def_.get()));

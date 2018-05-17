@@ -1902,6 +1902,78 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
   EXPECT_EQ("fedcba98", result);
 }
 
+TEST(GcsFileSystemTest, RenameFile_Object_FlushTargetStatCache) {
+  std::vector<HttpRequest*> requests(
+      {// Stat the target file.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fdst.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"1000\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       // IsDirectory is checking whether there are children objects.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsrc.txt%2F"
+           "&maxResults=1\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{}"),
+       // IsDirectory is checking if the path exists as an object.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       // Copying to the new location.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt/rewriteTo/b/bucket/o/path%2Fdst.txt\n"
+           "Auth Token: fake_token\n"
+           "Post: yes\n"
+           "Timeouts: 5 1 10\n",
+           "{\"done\": true}"),
+       // Deleting the original file.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n"
+           "Delete: yes\n",
+           ""),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fdst.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+      3600 /* stat cache max age */, 0 /* stat cache max entries */,
+      0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, 0 /* initial retry delay*/,
+      kTestTimeoutConfig, nullptr /* gcs additional header */);
+  // Do an initial stat of the destination file to load their contents into the
+  // stat cache.
+  FileStatistics stat_before_renaming;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/path/dst.txt", &stat_before_renaming));
+  EXPECT_EQ(1000, stat_before_renaming.length);
+
+  TF_EXPECT_OK(
+      fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
+
+  FileStatistics stat_after_renaming;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/path/dst.txt", &stat_after_renaming));
+  EXPECT_EQ(1010, stat_after_renaming.length);
+}
+
 /// Tests the scenario when deletion returns a failure, but actually succeeds.
 TEST(GcsFileSystemTest, RenameFile_Object_DeletionRetried) {
   std::vector<HttpRequest*> requests(
@@ -2761,41 +2833,71 @@ TEST(GcsFileSystemTest, CreateHttpRequest) {
   TF_EXPECT_OK(request->Send());
 }
 
+class TestGcsStats : public GcsStatsInterface {
+ public:
+  void Init(GcsFileSystem* fs, GcsThrottle* throttle,
+            const FileBlockCache* block_cache) override {
+    CHECK(fs_ == nullptr);
+    CHECK(throttle_ == nullptr);
+    CHECK(block_cache_ == nullptr);
+
+    fs_ = fs;
+    throttle_ = throttle;
+    block_cache_ = block_cache;
+  }
+
+  void RecordBlockLoadRequest(const string& file, size_t offset) override {
+    block_load_request_file_ = file;
+  }
+
+  void RecordBlockRetrieved(const string& file, size_t offset,
+                            size_t bytes_transferred) override {
+    block_retrieved_file_ = file;
+    block_retrieved_bytes_transferred_ = bytes_transferred;
+  }
+
+  void RecordStatObjectRequest() override { stat_object_request_count_++; }
+
+  HttpRequest::RequestStats* HttpStats() override { return nullptr; }
+
+  GcsFileSystem* fs_ = nullptr;
+  GcsThrottle* throttle_ = nullptr;
+  const FileBlockCache* block_cache_ = nullptr;
+
+  string block_load_request_file_;
+  string block_retrieved_file_;
+  size_t block_retrieved_bytes_transferred_ = 0;
+  int stat_object_request_count_ = 0;
+};
+
+TEST(GcsFileSystemTest, Stat_StatsRecording) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+      "file.txt?fields=size%2Cupdated\n"
+      "Auth Token: fake_token\n"
+      "Timeouts: 5 1 10\n",
+      strings::StrCat("{\"size\": \"1010\","
+                      "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay */, kTestTimeoutConfig,
+                   nullptr /* gcs additional header */);
+
+  TestGcsStats stats;
+  fs.SetStats(&stats);
+  EXPECT_EQ(stats.fs_, &fs);
+
+  FileStatistics stat;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
+  EXPECT_EQ(1, stats.stat_object_request_count_);
+}
+
 TEST(GcsFileSystemTest, NewRandomAccessFile_StatsRecording) {
-  class TestGcsStats : public GcsStatsInterface {
-   public:
-    void Init(GcsFileSystem* fs, GcsThrottle* throttle,
-              const FileBlockCache* block_cache) override {
-      CHECK(fs_ == nullptr);
-      CHECK(throttle_ == nullptr);
-      CHECK(block_cache_ == nullptr);
-
-      fs_ = fs;
-      throttle_ = throttle;
-      block_cache_ = block_cache;
-    }
-
-    void RecordBlockLoadRequest(const string& file, size_t offset) override {
-      block_load_request_file_ = file;
-    }
-
-    void RecordBlockRetrieved(const string& file, size_t offset,
-                              size_t bytes_transferred) override {
-      block_retrieved_file_ = file;
-      block_retrieved_bytes_transferred_ = bytes_transferred;
-    }
-
-    HttpRequest::RequestStats* HttpStats() override { return nullptr; }
-
-    GcsFileSystem* fs_ = nullptr;
-    GcsThrottle* throttle_ = nullptr;
-    const FileBlockCache* block_cache_ = nullptr;
-
-    string block_load_request_file_;
-    string block_retrieved_file_;
-    size_t block_retrieved_bytes_transferred_ = 0;
-  };
-
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
       "Auth Token: fake_token\n"

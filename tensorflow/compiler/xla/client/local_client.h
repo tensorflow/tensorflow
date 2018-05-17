@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -42,15 +43,6 @@ class LocalExecutable {
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ExecutableRunOptions run_options);
 
-  // Return the layout (contained in a shape) of the result produced by the
-  // computation.
-  const Shape& result_layout() const {
-    return executable_->module_config()
-        .entry_computation_layout()
-        .result_layout()
-        .shape();
-  }
-
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
 
@@ -67,7 +59,7 @@ class LocalExecutable {
 
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
-  tensorflow::Status ValidateExecutionOptions(
+  Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
@@ -79,13 +71,13 @@ class LocalExecutable {
 
   // Records the arguments used to invoke the computation in a SessionModule
   // proto.
-  tensorflow::Status RecordArguments(
+  Status RecordArguments(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       SessionModule* session_module);
 
   // Records the result of the computation in a SessionModule proto.
-  tensorflow::Status RecordResult(const ShapedBuffer* result,
-                                  SessionModule* session_module);
+  Status RecordResult(const ShapedBuffer* result,
+                      SessionModule* session_module);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(

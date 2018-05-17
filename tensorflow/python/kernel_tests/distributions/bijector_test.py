@@ -24,6 +24,7 @@ import numpy as np
 import six
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.platform import test
@@ -274,6 +275,17 @@ class BijectorReduceEventDimsTest(test.TestCase):
     self.assertAllClose(
         8.,
         self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=2)))
+
+  def testHandlesNonStaticEventNdims(self):
+    x_ = [[[1., 2.], [3., 4.]]]
+    x = array_ops.placeholder_with_default(x_, shape=None)
+    event_ndims = array_ops.placeholder(dtype=np.int32, shape=[])
+    bij = ExpOnlyJacobian(forward_min_event_ndims=1)
+    bij.inverse_log_det_jacobian(x, event_ndims=event_ndims)
+    with self.test_session() as sess:
+      ildj = sess.run(bij.inverse_log_det_jacobian(x, event_ndims=event_ndims),
+                      feed_dict={event_ndims: 1})
+    self.assertAllClose(-np.log(x_), ildj)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -785,10 +785,14 @@ class LSTMCell(LayerRNNCell):
         shape=[input_depth + h_depth, 4 * self._num_units],
         initializer=self._initializer,
         partitioner=maybe_partitioner)
+    if self.dtype is None:
+      initializer = init_ops.zeros_initializer
+    else:
+      initializer = init_ops.zeros_initializer(dtype=self.dtype)
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],
-        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+        initializer=initializer)
     if self._use_peepholes:
       self._w_f_diag = self.add_variable("w_f_diag", shape=[self._num_units],
                                          initializer=self._initializer)
@@ -1001,6 +1005,8 @@ class DropoutWrapper(RNNCell):
 
     # Set cell, variational_recurrent, seed before running the code below
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._variational_recurrent = variational_recurrent
     self._seed = seed
 
@@ -1148,6 +1154,8 @@ class ResidualWrapper(RNNCell):
         and outputs.
     """
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._residual_fn = residual_fn
 
   @property
@@ -1203,6 +1211,8 @@ class DeviceWrapper(RNNCell):
       device: A device string or function, for passing to `tf.device`.
     """
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._device = device
 
   @property
@@ -1318,7 +1328,7 @@ class MultiRNNCell(RNNCell):
     return cur_inp, new_states
 
 
-class _SlimRNNCell(RNNCell):
+class _SlimRNNCell(RNNCell, checkpointable.NotCheckpointable):
   """A simple wrapper for slim.rnn_cells."""
 
   def __init__(self, cell_fn):

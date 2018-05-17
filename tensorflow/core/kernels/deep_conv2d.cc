@@ -393,9 +393,8 @@ struct TransformFilters {
 
     // Calculate filter transform batch based on cache/filter sizes.
 
-    // Cache budget (based on L2 cache size = 256KB).
-    // TODO(andydavis) Read cache size from system.
-    const int64 cache_size = (256LL << 10) / sizeof(T);
+    // Cache budget (based on L2 cache size).
+    const int64 cache_size = Eigen::l2CacheSize() / sizeof(T);
 
     // Fixed cost.
     const int64 filter_transform_matrix_size =
@@ -1017,9 +1016,8 @@ struct DeepConv2D<CPUDevice, T> {
       const int64 filter_shard_size = filter_shards_row * filter_shards_col;
       const int64 out_tile_spatial_size = out_tile_rows * out_tile_cols;
 
-      // Cache budget (based on L2 cache size = 256KB).
-      // TODO(andydavis) Read cache size from the system.
-      const int64 cache_size = (256LL << 10) / sizeof(T);
+      // Cache budget (based on L2 cache size).
+      const int64 cache_size = Eigen::l2CacheSize() / sizeof(T);
 
       // Fixed costs.
       const int64 tile_transform_matrix_size =

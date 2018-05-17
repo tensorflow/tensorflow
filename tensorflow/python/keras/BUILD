@@ -40,7 +40,6 @@ py_library(
         "_impl/keras/datasets/imdb.py",
         "_impl/keras/datasets/mnist.py",
         "_impl/keras/datasets/reuters.py",
-        "_impl/keras/estimator.py",
         "_impl/keras/preprocessing/__init__.py",
         "_impl/keras/preprocessing/image.py",
         "_impl/keras/preprocessing/sequence.py",
@@ -74,7 +73,6 @@ py_library(
         "datasets/imdb/__init__.py",
         "datasets/mnist/__init__.py",
         "datasets/reuters/__init__.py",
-        "estimator/__init__.py",
         "initializers/__init__.py",
         "layers/__init__.py",
         "losses/__init__.py",
@@ -99,8 +97,6 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/saved_model",
         "//tensorflow/python:training",
     ],
@@ -188,6 +184,7 @@ py_library(
         "_impl/keras/layers/convolutional.py",
         "_impl/keras/layers/convolutional_recurrent.py",
         "_impl/keras/layers/core.py",
+        "_impl/keras/layers/cudnn_recurrent.py",
         "_impl/keras/layers/embeddings.py",
         "_impl/keras/layers/local.py",
         "_impl/keras/layers/merge.py",
@@ -206,6 +203,7 @@ py_library(
     deps = [
         ":engine",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
@@ -314,7 +312,7 @@ py_test(
 
 py_test(
     name = "metrics_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/metrics_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -334,6 +332,7 @@ py_test(
     size = "large",
     srcs = ["_impl/keras/applications/densenet_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomsan"],  # times out, http://b/78650237
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -392,7 +391,7 @@ py_test(
 
 py_test(
     name = "resnet50_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/applications/resnet50_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -476,6 +475,19 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "cudnn_recurrent_test",
+    size = "large",
+    srcs = ["_impl/keras/layers/cudnn_recurrent_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 2,
+)
+
 py_test(
     name = "pooling_test",
     size = "small",
@@ -547,7 +559,7 @@ py_test(
 
 py_test(
     name = "normalization_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
@@ -588,6 +600,7 @@ py_test(
     name = "lstm_test",
     size = "medium",
     srcs = ["_impl/keras/layers/lstm_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",  # times out b/63678675
@@ -627,8 +640,12 @@ py_test(
     name = "wrappers_test",
     size = "medium",
     srcs = ["_impl/keras/layers/wrappers_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "noasan",  # http://b/78599823
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -845,6 +862,7 @@ py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -870,25 +888,6 @@ py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "estimator_test",
-    size = "large",
-    srcs = ["_impl/keras/estimator_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/estimator:numpy_io",
-        "//tensorflow/python/estimator:run_config",
         "//third_party/py/numpy",
     ],
 )

@@ -18,12 +18,53 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 import numpy as np
 
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
+
+
+class _RNNCellWithConstants(keras.layers.Layer):
+
+  def __init__(self, units, **kwargs):
+    self.units = units
+    self.state_size = units
+    super(_RNNCellWithConstants, self).__init__(**kwargs)
+
+  def build(self, input_shape):
+    [input_shape, constant_shape] = input_shape
+
+    self.input_kernel = self.add_weight(
+        shape=(input_shape[-1], self.units),
+        initializer='uniform',
+        name='kernel')
+    self.recurrent_kernel = self.add_weight(
+        shape=(self.units, self.units),
+        initializer='uniform',
+        name='recurrent_kernel')
+    self.constant_kernel = self.add_weight(
+        shape=(constant_shape[-1], self.units),
+        initializer='uniform',
+        name='constant_kernel')
+    self.built = True
+
+  def call(self, inputs, states, constants):
+    [prev_output] = states
+    [constant] = constants
+    h_input = keras.backend.dot(inputs, self.input_kernel)
+    h_state = keras.backend.dot(prev_output, self.recurrent_kernel)
+    h_const = keras.backend.dot(constant, self.constant_kernel)
+    output = h_input + h_state + h_const
+    return output, [output]
+
+  def get_config(self):
+    config = {'units': self.units}
+    base_config = super(_RNNCellWithConstants, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 class TimeDistributedTest(test.TestCase):
@@ -382,6 +423,100 @@ class BidirectionalTest(test.TestCase):
       assert not layer.trainable_weights
       layer.trainable = True
       assert len(layer.trainable_weights) == 6
+
+  def test_Bidirectional_with_constants(self):
+    with self.test_session():
+      # Test basic case.
+      x = keras.Input((5, 5))
+      c = keras.Input((3,))
+      cell = _RNNCellWithConstants(32)
+      custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
+      with keras.utils.CustomObjectScope(custom_objects):
+        layer = keras.layers.Bidirectional(keras.layers.RNN(cell))
+      y = layer(x, constants=c)
+      model = keras.Model([x, c], y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          [np.zeros((6, 5, 5)), np.zeros((6, 3))],
+          np.zeros((6, 64))
+      )
+
+      # Test basic case serialization.
+      x_np = np.random.random((6, 5, 5))
+      c_np = np.random.random((6, 3))
+      y_np = model.predict([x_np, c_np])
+      weights = model.get_weights()
+      config = layer.get_config()
+
+      with keras.utils.CustomObjectScope(custom_objects):
+        layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
+      y = layer(x, constants=c)
+      model = keras.Model([x, c], y)
+      model.set_weights(weights)
+      y_np_2 = model.predict([x_np, c_np])
+      self.assertAllClose(y_np, y_np_2, atol=1e-4)
+
+      # Test flat list inputs
+      with keras.utils.CustomObjectScope(custom_objects):
+        layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
+      y = layer([x, c])
+      model = keras.Model([x, c], y)
+      model.set_weights(weights)
+      y_np_3 = model.predict([x_np, c_np])
+      self.assertAllClose(y_np, y_np_3, atol=1e-4)
+
+  def test_Bidirectional_with_constants_layer_passing_initial_state(self):
+    with self.test_session():
+      # Test basic case.
+      x = keras.Input((5, 5))
+      c = keras.Input((3,))
+      s_for = keras.Input((32,))
+      s_bac = keras.Input((32,))
+      cell = _RNNCellWithConstants(32)
+      custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
+      with keras.utils.CustomObjectScope(custom_objects):
+        layer = keras.layers.Bidirectional(keras.layers.RNN(cell))
+      y = layer(x, initial_state=[s_for, s_bac], constants=c)
+      model = keras.Model([x, s_for, s_bac, c], y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          [np.zeros((6, 5, 5)),
+           np.zeros((6, 32)),
+           np.zeros((6, 32)),
+           np.zeros((6, 3))],
+          np.zeros((6, 64))
+      )
+
+      # Test basic case serialization.
+      x_np = np.random.random((6, 5, 5))
+      s_fw_np = np.random.random((6, 32))
+      s_bk_np = np.random.random((6, 32))
+      c_np = np.random.random((6, 3))
+      y_np = model.predict([x_np, s_fw_np, s_bk_np, c_np])
+      weights = model.get_weights()
+      config = layer.get_config()
+
+      with keras.utils.CustomObjectScope(custom_objects):
+        layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
+      y = layer(x, initial_state=[s_for, s_bac], constants=c)
+      model = keras.Model([x, s_for, s_bac, c], y)
+      model.set_weights(weights)
+      y_np_2 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
+      self.assertAllClose(y_np, y_np_2, atol=1e-4)
+
+      # Verify that state is used
+      y_np_2_different_s = model.predict(
+          [x_np, s_fw_np + 10., s_bk_np + 10., c_np])
+      assert np.mean(y_np - y_np_2_different_s) != 0
+
+      # Test flat list inputs
+      with keras.utils.CustomObjectScope(custom_objects):
+        layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
+      y = layer([x, s_for, s_bac, c])
+      model = keras.Model([x, s_for, s_bac, c], y)
+      model.set_weights(weights)
+      y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
+      self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
 
 def _to_list(ls):

@@ -112,6 +112,22 @@ cuda_py_test(
     tags = ["no_windows"],
 )
 
+cuda_py_test(
+    name = "reduce_benchmark_test",
+    srcs = ["reduce_benchmark_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_benchmark",
+    ],
+)
+
 tf_py_test(
     name = "bincount_op_test",
     size = "small",
@@ -726,6 +742,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "regex_full_match_op_test",
+    size = "small",
+    srcs = ["regex_full_match_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
     name = "save_restore_ops_test",
     size = "small",
     srcs = ["save_restore_ops_test.py"],
@@ -1206,6 +1234,7 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "noasan",  # times out
+        "optonly",  # times out
     ],
 )
 
@@ -2346,6 +2375,9 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+    ],
+    tags = [
+        "optonly",  # flaky timeouts unless optimized
     ],
 )
 

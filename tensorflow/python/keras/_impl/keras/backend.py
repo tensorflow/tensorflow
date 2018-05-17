@@ -74,12 +74,6 @@ _SESSION = None
 # either train mode (learning_phase == 1) or test mode (learning_phase == 0).
 _GRAPH_LEARNING_PHASES = {}
 
-# This dictionary holds a mapping {graph: UID_DICT}.
-# each UID_DICT is a dictionary mapping name prefixes to a current index,
-# used for generating graph-specific string UIDs
-# for various names (e.g. layer names).
-_GRAPH_UID_DICTS = {}
-
 # This boolean flag can be set to True to leave variable initialization
 # up to the user.
 # Change its value via `manual_variable_initialization(value)`.
@@ -298,6 +292,8 @@ def get_uid(prefix=''):
 
 @tf_export('keras.backend.reset_uids')
 def reset_uids():
+  """Resets graph identifiers.
+  """
   per_graph_layer_name_uids = PER_GRAPH_LAYER_NAME_UIDS
   keys = list(per_graph_layer_name_uids.keys())
   for key in keys:
@@ -1421,6 +1417,9 @@ def batch_dot(x, y, axes=None):
     axes = (axes, axes)
   x_ndim = ndim(x)
   y_ndim = ndim(y)
+  if axes is None:
+    # behaves like tf.batch_matmul as default
+    axes = [x_ndim - 1, y_ndim - 2]
   if x_ndim > y_ndim:
     diff = x_ndim - y_ndim
     y = array_ops.reshape(y,
@@ -2927,7 +2926,7 @@ def function(inputs, outputs, updates=None, **kwargs):
 
 @tf_export('keras.backend.gradients')
 def gradients(loss, variables):
-  """Returns the gradients of `variables` w.r.t. `loss`.
+  """Returns the gradients of `loss` w.r.t. `variables`.
 
   Arguments:
       loss: Scalar tensor to minimize.
@@ -2998,7 +2997,7 @@ def rnn(step_function,
       constants: a list of constant values passed at each step.
       unroll: whether to unroll the RNN or to use a symbolic loop
           (`while_loop` or `scan` depending on backend).
-      input_length: Unused; exists for API compatibility.
+      input_length: If specified, assume time dimension is of this length.
 
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
@@ -3016,7 +3015,6 @@ def rnn(step_function,
       ValueError: if `mask` is provided (not `None`) but states is not provided
           (`len(states)` == 0).
   """
-  del input_length
   ndim = len(inputs.get_shape())
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
@@ -3194,6 +3192,7 @@ def rnn(step_function,
         cond=lambda time, *_: time < time_steps,
         body=_step,
         loop_vars=(time, output_ta) + states,
+        maximum_iterations=input_length,
         parallel_iterations=32,
         swap_memory=True)
     last_time = final_outputs[0]
@@ -3395,16 +3394,18 @@ def elu(x, alpha=1.):
 
 
 @tf_export('keras.backend.softmax')
-def softmax(x):
+def softmax(x, axis=-1):
   """Softmax of a tensor.
 
   Arguments:
       x: A tensor or variable.
+      axis: The dimension softmax would be performed on.
+          The default is -1 which indicates the last dimension.
 
   Returns:
       A tensor.
   """
-  return nn.softmax(x)
+  return nn.softmax(x, axis=axis)
 
 
 @tf_export('keras.backend.softplus')
@@ -4588,8 +4589,8 @@ def ctc_batch_cost(y_true, y_pred, input_length, label_length):
       Tensor with shape (samples,1) containing the
           CTC loss of each element.
   """
-  label_length = math_ops.to_int32(array_ops.squeeze(label_length))
-  input_length = math_ops.to_int32(array_ops.squeeze(input_length))
+  label_length = math_ops.to_int32(array_ops.squeeze(label_length, axis=-1))
+  input_length = math_ops.to_int32(array_ops.squeeze(input_length, axis=-1))
   sparse_labels = math_ops.to_int32(
       ctc_label_dense_to_sparse(y_true, label_length))
 

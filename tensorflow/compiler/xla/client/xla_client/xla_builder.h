@@ -55,8 +55,6 @@ class XlaOp {
   XlaOp() : handle_(0), builder_(nullptr) {}
   ~XlaOp() {}
 
-  StatusOr<Shape> GetShape() const;
-
   const XlaBuilder* builder() const { return builder_; }
 
   bool operator==(const XlaOp& rhs) const {
@@ -139,7 +137,7 @@ class XlaBuilder {
 
   // Enqueues a constant with the value of the given literal onto the
   // computation.
-  XlaOp ConstantLiteral(const Literal& literal);
+  XlaOp ConstantLiteral(const LiteralSlice& literal);
 
   // Enqueues a constant onto the computation. Methods are templated on the
   // native host type (NativeT) which corresponds to a specific XLA
@@ -571,6 +569,9 @@ class XlaBuilder {
   // Enqueues an exp instruction onto the computation.
   XlaOp Exp(const XlaOp& operand);
 
+  // Enqueues an expm1 instruction onto the computation.
+  XlaOp Expm1(const XlaOp& operand);
+
   // Enqueues a floor instruction onto the computation.
   XlaOp Floor(const XlaOp& operand);
 
@@ -583,6 +584,9 @@ class XlaBuilder {
 
   // Enqueues an log instruction (natural logarithm) onto the computation.
   XlaOp Log(const XlaOp& operand);
+
+  // Enqueues an log1p instruction (log(x+1)) onto the computation.
+  XlaOp Log1p(const XlaOp& operand);
 
   // Enqueues a sign instruction onto the computation.
   XlaOp Sign(const XlaOp& operand);
@@ -846,6 +850,10 @@ class XlaBuilder {
   // Returns the (inferred) result for the program shape for the current
   // computation and fills the root_id in the pointer.
   StatusOr<ProgramShape> GetProgramShape(int64* root_id) const;
+
+  // Returns shapes for the operands.
+  StatusOr<std::vector<Shape>> GetOperandShapes(
+      tensorflow::gtl::ArraySlice<XlaOp> operands) const;
 
   // A visitor which checks whether an operation is a compile-time constant,
   // meaning that it doesn't depend on any parameters, or on any stateful

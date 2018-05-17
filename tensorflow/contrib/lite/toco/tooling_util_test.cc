@@ -93,4 +93,85 @@ TEST_P(ShapeTest, Agrees) {
 INSTANTIATE_TEST_CASE_P(AgreeBroadcast, ShapeTest,
                         ::testing::ValuesIn(CreateShapePairs()));
 
+static const char kNegativeValuesMessage[] =
+    "Tensor shape should not include negative values";
+static const char kLargeTensorMessage[] = "Tensor shape is too large";
+
+TEST(NumElementsTest, Int) {
+  int count;
+  port::Status status = port::Status::OK();
+
+  status = NumElements(std::vector<int>{1024, 1024, 2047}, &count);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(count, 2146435072);
+
+  status = NumElements(std::vector<int>{1, 2, -3}, &count);
+  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+
+  status = NumElements(std::vector<int>{1024, 1024, 2048}, &count);
+  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+}
+
+TEST(NumElementsTest, Int32) {
+  int32_t count;
+  port::Status status = port::Status::OK();
+
+  status = NumElements(std::vector<int32_t>{1024, 1024, 2047}, &count);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(count, 2146435072);
+
+  status = NumElements(std::vector<int32_t>{1, 2, -3}, &count);
+  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+
+  status = NumElements(std::vector<int32_t>{1024, 1024, 2048}, &count);
+  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+}
+
+TEST(NumElementsTest, Int64) {
+  int64_t count;
+  port::Status status = port::Status::OK();
+
+  status = NumElements(std::vector<int64_t>{16777216, 16777216, 32767}, &count);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(count, 9223090561878065152LL);
+
+  status = NumElements(std::vector<int64_t>{1, 2, -3}, &count);
+  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+
+  status = NumElements(std::vector<int64_t>{16777216, 16777216, 32768}, &count);
+  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+}
+
+TEST(NumElementsTest, UnsignedInt32) {
+  uint32_t count;
+  port::Status status = port::Status::OK();
+
+  status = NumElements(std::vector<uint32_t>{1024, 2048, 2047}, &count);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(count, 4292870144);
+
+  status = NumElements(std::vector<int>{1, 2, -3}, &count);
+  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+
+  status = NumElements(std::vector<uint32_t>{1024, 2048, 2048}, &count);
+  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+}
+
+TEST(NumElementsTest, UnsignedInt64) {
+  uint64_t count;
+  port::Status status = port::Status::OK();
+
+  status =
+      NumElements(std::vector<uint64_t>{16777216, 16777216, 65535}, &count);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(count, 18446462598732840960ULL);
+
+  status = NumElements(std::vector<int>{1, 2, -3}, &count);
+  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+
+  status =
+      NumElements(std::vector<uint64_t>{16777216, 16777216, 65536}, &count);
+  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+}
+
 }  // namespace toco

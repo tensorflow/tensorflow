@@ -489,7 +489,8 @@ class ElementWiseFusionTest(test.TestCase):
   def testElementWiseClustering(self):
     arg0 = np.random.rand(2, 2).astype(np.float32)
     arg1 = np.random.rand(2, 2).astype(np.float32)
-    os.environ["TF_XLA_FLAGS"] = "--tf_xla_fusion_only=true"
+    os.environ["TF_XLA_FLAGS"] = ("--tf_xla_fusion_only=true "
+                                  "--tf_xla_cpu_global_jit")
     tf_op, tf_count = self.simpleTest(arg0, arg1,
                                       config_pb2.OptimizerOptions.OFF)
     self.assertEqual(0, tf_count)

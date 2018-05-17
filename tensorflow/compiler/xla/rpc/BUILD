@@ -55,7 +55,7 @@ tf_cc_test(
     deps = [
         ":grpc_stub",
         "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

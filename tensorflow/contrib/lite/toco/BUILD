@@ -273,6 +273,7 @@ cc_library(
         "graph_transformations/resolve_constant_range.cc",
         "graph_transformations/resolve_constant_reshape.cc",
         "graph_transformations/resolve_constant_shape_or_rank.cc",
+        "graph_transformations/resolve_constant_slice.cc",
         "graph_transformations/resolve_constant_stack.cc",
         "graph_transformations/resolve_constant_strided_slice.cc",
         "graph_transformations/resolve_constant_transpose.cc",
@@ -280,6 +281,7 @@ cc_library(
         "graph_transformations/resolve_mean_attributes.cc",
         "graph_transformations/resolve_multiply_by_zero.cc",
         "graph_transformations/resolve_pad_attributes.cc",
+        "graph_transformations/resolve_padv2_attributes.cc",
         "graph_transformations/resolve_reorder_axes.cc",
         "graph_transformations/resolve_reshape_attributes.cc",
         "graph_transformations/resolve_slice_attributes.cc",
@@ -308,6 +310,7 @@ cc_library(
         ":toco_port",
         ":tooling_util",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
+        "//tensorflow/contrib/lite/kernels/internal:strided_slice_logic",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -363,6 +366,18 @@ cc_library(
     }),
 )
 
+tf_cc_test(
+    name = "import_tensorflow_test",
+    srcs = ["import_tensorflow_test.cc"],
+    deps = [
+        ":toco_tooling",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tooling_util",
     srcs = [
@@ -384,6 +399,7 @@ cc_library(
         ":types_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_googlesource_code_re2//:re2",
         "@protobuf_archive//:protobuf_headers",
     ],
 )

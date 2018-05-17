@@ -25,7 +25,7 @@ namespace xla {
 
 // Creates an HloPassPipeline containing multiple HloPasses that can
 // despecialize an optimized HloModule. This is useful to run an HloModule
-// optimized for one specfic platform on a different platform (undoing platform
+// optimized for one specific platform on a different platform (undoing platform
 // specific passes) with matching numerics for comparison.
 //
 // Current despecialization passes are Defuser, ImplicitBroadcastRemover,

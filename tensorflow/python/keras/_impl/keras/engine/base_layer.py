@@ -25,10 +25,10 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras._impl.keras import backend
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
@@ -42,7 +42,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -145,7 +146,7 @@ class Layer(checkpointable.CheckpointableBase):
     # return tensors. When using graph execution, _losses is a list of ops.
     self._losses = []
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
-    self._call_fn_args = estimator_util.fn_args(self.call)
+    self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
                                    hasattr(self, 'compute_mask'))
     self._uses_inputs_arg = True
@@ -390,6 +391,8 @@ class Layer(checkpointable.CheckpointableBase):
       raise RuntimeError('Layer.add_loss not supported in Eager mode.')
 
     losses = generic_utils.to_list(losses)
+    losses = [ops.convert_to_tensor(loss, dtype=backend.floatx())
+              if not tensor_util.is_tensor(loss) else loss for loss in losses]
     self._losses += losses
     if inputs is None:
       for loss in losses:
@@ -481,8 +484,7 @@ class Layer(checkpointable.CheckpointableBase):
     """
     if dtype is None:
       dtype = self.dtype or backend.floatx()
-    else:
-      dtype = dtypes.as_dtype(dtype)
+    dtype = dtypes.as_dtype(dtype)
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -510,7 +512,7 @@ class Layer(checkpointable.CheckpointableBase):
         # Manage errors in Layer rather than Checkpointable.
         overwrite=True,
         initializer=initializer,
-        dtype=dtypes.as_dtype(dtype),
+        dtype=dtype,
         constraint=constraint,
         trainable=trainable and self.trainable,
         partitioner=partitioner,
@@ -641,7 +643,7 @@ class Layer(checkpointable.CheckpointableBase):
         self._compute_previous_mask):
       previous_mask = collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
-        self._call_fn_args = estimator_util.fn_args(self.call)
+        self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly pass
@@ -1655,7 +1657,7 @@ class DeferredTensor(object):
   """Tensor-like object used to build graphs of layers in Eager mode.
 
   When calling a layer on a DeferredTensor, the layer will not perform any
-  computation and will simply perfom shape inference to return new
+  computation and will simply perform shape inference to return new
   DeferredTensors with appropriate shape information. Thus DeferredTensor
   behaves like a graph-mode Tensor when manipulated by layers.
   """

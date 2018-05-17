@@ -335,6 +335,8 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
         name = cc_name,
         deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] +
                if_static([name + "_cc_impl"]),
+        testonly = testonly,
+        visibility = visibility,
     )
     native.cc_library(
         name = cc_name + "_impl",
@@ -378,8 +380,10 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
     )
     native.py_library(
         name = py_name,
-        deps = py_deps + ["@protobuf_archive//:protobuf_python"])
-
+        deps = py_deps + ["@protobuf_archive//:protobuf_python"],
+        testonly = testonly,
+        visibility = visibility,
+    )
     return
 
   py_proto_library(
@@ -432,6 +436,33 @@ def tf_proto_library(name, srcs = [], has_services = None,
       visibility = visibility,
       use_grpc_plugin = has_services,
   )
+
+# A list of all files under platform matching the pattern in 'files'. In
+# contrast with 'tf_platform_srcs' below, which seletive collects files that
+# must be compiled in the 'default' platform, this is a list of all headers
+# mentioned in the platform/* files.
+def tf_platform_hdrs(files):
+  return native.glob(["platform/*/" + f for f in files])
+
+def tf_platform_srcs(files):
+  base_set = ["platform/default/" + f for f in files]
+  windows_set = base_set + ["platform/windows/" + f for f in files]
+  posix_set = base_set + ["platform/posix/" + f for f in files]
+
+  # Handle cases where we must also bring the posix file in. Usually, the list
+  # of files to build on windows builds is just all the stuff in the
+  # windows_set. However, in some cases the implementations in 'posix/' are
+  # just what is necessary and historically we choose to simply use the posix
+  # file instead of making a copy in 'windows'.
+  for f in files:
+    if f == "error.cc":
+      windows_set.append("platform/posix/" + f)
+
+  return select({
+    "//tensorflow:windows" : native.glob(windows_set),
+    "//tensorflow:windows_msvc" : native.glob(windows_set),
+    "//conditions:default" : native.glob(posix_set),
+  })
 
 def tf_additional_lib_hdrs(exclude = []):
   windows_hdrs = native.glob([
@@ -488,7 +519,6 @@ def tf_additional_proto_hdrs():
 
 def tf_additional_proto_srcs():
   return [
-      "platform/default/logging.cc",
       "platform/default/protobuf.cc",
   ]
 
@@ -510,25 +540,6 @@ def tf_protos_grappler():
   return if_static(
       extra_deps=tf_protos_grappler_impl(),
       otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
-
-def tf_env_time_hdrs():
-  return [
-      "platform/env_time.h",
-  ]
-
-def tf_env_time_srcs():
-  win_env_time = native.glob([
-    "platform/windows/env_time.cc",
-    "platform/env_time.cc",
-  ], exclude = [])
-  return select({
-    "//tensorflow:windows" : win_env_time,
-    "//tensorflow:windows_msvc" : win_env_time,
-    "//conditions:default" : native.glob([
-        "platform/posix/env_time.cc",
-        "platform/env_time.cc",
-      ], exclude = []),
-  })
 
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]

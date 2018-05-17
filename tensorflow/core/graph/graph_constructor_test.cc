@@ -157,7 +157,7 @@ class GraphConstructorTest : public ::testing::Test {
     }
     StringPiece loc(value[0]);
     return str_util::ConsumePrefix(&loc, kColocationGroupPrefix)
-               ? loc.ToString()
+               ? std::string(loc)
                : "";
   }
 
@@ -3158,6 +3158,21 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
   options.validate_colocation_constraints = false;
   TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
+  const string pb_ascii = "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
+  // Try load twice to check for two parts of the error message. We cannot check
+  // for the whole thing in one go because the message includes the hostname.
+  ExpectError(pb_ascii, {"Op type not registered 'OpFromContrib'"});
+  ExpectError(
+      pb_ascii,
+      {"Make sure the Op and Kernel are registered in the "
+       "binary running in this process. Note that if you "
+       "are loading a saved graph which used ops from "
+       "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done"
+       "before importing the graph, as contrib ops are lazily registered "
+       "when the module is first accessed."});
 }
 
 }  // namespace

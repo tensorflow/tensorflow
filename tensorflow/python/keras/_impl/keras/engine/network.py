@@ -40,8 +40,8 @@ from tensorflow.python.keras._impl.keras.utils import tf_utils
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary as print_layer_summary
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
-from tensorflow.python.training import checkpointable_utils
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -115,7 +115,7 @@ class Network(base_layer.Layer):
     # Entries are unique. Includes input and output layers.
     self._layers = []
 
-    # Used in symbolic mode only, only in conjonction with graph-networks
+    # Used in symbolic mode only, only in conjunction with graph-networks
     self._outbound_nodes = []
     self._inbound_nodes = []
 
@@ -318,6 +318,9 @@ class Network(base_layer.Layer):
           layer, name='layer-%d' % layer_index, overwrite=True)
 
   def __setattr__(self, name, value):
+    no_dependency = isinstance(value, checkpointable.NoDependency)
+    if no_dependency:
+      value = value.value
     if isinstance(value, (base_layer.Layer, Network)):
       try:
         is_graph_network = self._is_graph_network
@@ -332,7 +335,8 @@ class Network(base_layer.Layer):
             # In subclassed models, legacy layers (tf.layers) must always use
             # resource variables.
             value._use_resource_variables = True
-    if isinstance(value, checkpointable.CheckpointableBase):
+    if (not no_dependency
+        and isinstance(value, checkpointable.CheckpointableBase)):
       # Layer (and therefore Network/Model) inherit from CheckpointableBase
       # rather than Checkpointable, which means there is no Checkpointable
       # __setattr__ override (it would be a performance issue for functional
@@ -835,10 +839,14 @@ class Network(base_layer.Layer):
               output_tensors = nest.flatten(
                   layer.call(computed_tensor, **kwargs))
               if hasattr(layer, 'compute_mask'):
-                output_masks = nest.flatten(
-                    layer.compute_mask(computed_tensor, computed_mask))
+                output_masks = layer.compute_mask(computed_tensor,
+                                                  computed_mask)
+                if output_masks is None:
+                  output_masks = [None for _ in output_tensors]
+                else:
+                  output_masks = nest.flatten(output_masks)
               else:
-                output_masks = [None for _ in range(len(output_tensors))]
+                output_masks = [None for _ in output_tensors]
               computed_tensors = [computed_tensor]
               computed_masks = [computed_mask]
             else:
@@ -851,11 +859,16 @@ class Network(base_layer.Layer):
 
               output_tensors = nest.flatten(
                   layer.call(computed_tensors, **kwargs))
+
               if hasattr(layer, 'compute_mask'):
-                output_masks = nest.flatten(
-                    layer.compute_mask(computed_tensors, computed_masks))
+                output_masks = layer.compute_mask(computed_tensors,
+                                                  computed_masks)
+                if output_masks is None:
+                  output_masks = [None for _ in output_tensors]
+                else:
+                  output_masks = nest.flatten(output_masks)
               else:
-                output_masks = [None for _ in range(len(output_tensors))]
+                output_masks = [None for _ in output_tensors]
 
             if not context.executing_eagerly():
               if layer.activity_regularizer is not None:
@@ -1198,7 +1211,7 @@ class Network(base_layer.Layer):
             format.
         ValueError: For invalid/unknown format arguments.
     """
-    filepath_is_h5 = filepath.endswith('.h5') or filepath.endswith('.keras')
+    filepath_is_h5 = _is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
         save_format = 'h5'
@@ -1280,12 +1293,15 @@ class Network(base_layer.Layer):
         ImportError: If h5py is not available and the weight file is in HDF5
             format.
     """
-    try:
-      pywrap_tensorflow.NewCheckpointReader(filepath)
-      save_format = 'tf'
-    except errors_impl.DataLossError:
-      # The checkpoint is not readable in TensorFlow format. Try HDF5.
+    if _is_hdf5_filepath(filepath):
       save_format = 'h5'
+    else:
+      try:
+        pywrap_tensorflow.NewCheckpointReader(filepath)
+        save_format = 'tf'
+      except errors_impl.DataLossError:
+        # The checkpoint is not readable in TensorFlow format. Try HDF5.
+        save_format = 'h5'
     if save_format == 'tf':
       status = self._checkpointable_saver.restore(filepath)
       if by_name:
@@ -1454,6 +1470,10 @@ def get_source_inputs(tensor, layer=None, node_index=None):
           if x not in source_tensors:
             source_tensors.append(x)
       return source_tensors
+
+
+def _is_hdf5_filepath(filepath):
+  return filepath.endswith('.h5') or filepath.endswith('.keras')
 
 
 def _make_node_key(layer_name, node_index):

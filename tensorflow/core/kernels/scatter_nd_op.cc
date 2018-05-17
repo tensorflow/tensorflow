@@ -62,13 +62,56 @@ class ScatterNdOp : public OpKernel {
     const Tensor& updates = c->input(1);
     const Tensor& shape_input = c->input(2);
 
-    OP_REQUIRES(c, shape_input.dims() == 1,
-                errors::InvalidArgument("Shape must be a vector"));
+    OP_REQUIRES(c, indices.shape().dims() >= 1,
+                errors::InvalidArgument(
+                    "Indices shape must have rank at least one. Found:",
+                    indices.shape().DebugString()));
+    OP_REQUIRES(c, updates.shape().dims() >= 1,
+                errors::InvalidArgument(
+                    "Updates shape must have rank at least one. Found:",
+                    updates.shape().DebugString()));
 
     auto vec = shape_input.flat<Index>();
     TensorShape shape;
     OP_REQUIRES_OK(c,
                    TensorShapeUtils::MakeShape(vec.data(), vec.size(), &shape));
+
+    OP_REQUIRES(
+        c,
+        (shape.num_elements() > 0 || (indices.shape().num_elements() == 0 &&
+                                      updates.shape().num_elements() == 0)),
+        errors::InvalidArgument(
+            "Indices and updates specified for empty output shape"));
+
+    const int64 outer_dims = indices.shape().dims() - 1;
+
+    for (int i = 0; i < outer_dims; ++i) {
+      OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
+                  errors::InvalidArgument(
+                      "Outer dimensions of indices and update must match. "
+                      "Indices shape: ",
+                      indices.shape().DebugString(),
+                      ", updates shape:", updates.shape().DebugString()));
+    }
+
+    const int64 ix = indices.shape().dim_size(outer_dims);
+    OP_REQUIRES(
+        c, updates.shape().dims() - outer_dims == shape.dims() - ix,
+        errors::InvalidArgument("Inner dimensions of output shape must match "
+                                "inner dimensions of updates shape. Output: ",
+                                shape.DebugString(),
+                                " updates: ", updates.shape().DebugString()));
+    for (int i = 0; i + outer_dims < updates.shape().dims(); ++i) {
+      OP_REQUIRES(
+          c, updates.shape().dim_size(i + outer_dims) == shape.dim_size(ix + i),
+          errors::InvalidArgument(
+              "The inner ", shape.dims() - ix,
+              " dimensions of output.shape=", shape.DebugString(),
+              " must match the inner ", updates.shape().dims() - outer_dims,
+              " dimensions of updates.shape=", updates.shape().DebugString()));
+    }
+    OP_REQUIRES(c, shape_input.dims() == 1,
+                errors::InvalidArgument("Shape must be a vector"));
 
     Tensor out;
     OP_REQUIRES_OK(

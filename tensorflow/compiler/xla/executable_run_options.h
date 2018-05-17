@@ -65,12 +65,6 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_stream(stream_executor::Stream* stream);
   stream_executor::Stream* stream() const;
 
-  // Sets the thread pool on which to run parallel CPU backend
-  // computations. Does not take ownership.
-  ExecutableRunOptions& set_inter_op_thread_pool(
-      tensorflow::thread::ThreadPool* inter_op_thread_pool);
-  tensorflow::thread::ThreadPool* inter_op_thread_pool() const;
-
   // Sets the thread pool device on which to run Eigen subcomputations.
   // Does not take ownership.
   ExecutableRunOptions& set_intra_op_thread_pool(
@@ -93,7 +87,6 @@ class ExecutableRunOptions {
   int device_ordinal_ = -1;
   DeviceAssignment* device_assignment_ = nullptr;
   stream_executor::Stream* stream_ = nullptr;
-  tensorflow::thread::ThreadPool* inter_op_thread_pool_ = nullptr;
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;

@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
+from tensorflow.contrib.estimator.python.estimator.baseline import *
 from tensorflow.contrib.estimator.python.estimator.boosted_trees import *
 from tensorflow.contrib.estimator.python.estimator.dnn import *
 from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
+from tensorflow.contrib.estimator.python.estimator.export import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
 from tensorflow.contrib.estimator.python.estimator.head import *
 from tensorflow.contrib.estimator.python.estimator.linear import *
@@ -38,11 +40,13 @@ _allowed_symbols = [
     'binary_classification_head',
     'clip_gradients_by_norm',
     'forward_features',
+    'logistic_regression_head',
     'multi_class_head',
     'multi_head',
     'multi_label_head',
     'poisson_regression_head',
     'regression_head',
+    'BaselineEstimator',
     'DNNEstimator',
     'DNNLinearCombinedEstimator',
     'LinearEstimator',
@@ -54,6 +58,9 @@ _allowed_symbols = [
     'replicate_model_fn',
     'TowerOptimizer',
     'RNNClassifier',
+    'RNNEstimator',
+    'export_saved_model_for_mode',
+    'export_all_saved_models',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

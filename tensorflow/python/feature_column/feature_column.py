@@ -48,7 +48,7 @@ should choose depends on (1) the feature type and (2) the model type.
 
       embedded_dept_column = embedding_column(
           categorical_column_with_vocabulary_list(
-              "department", ["math", "philosphy", ...]), dimension=10)
+              "department", ["math", "philosophy", ...]), dimension=10)
 
   * Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
 
@@ -280,7 +280,7 @@ def input_layer(features,
 # TODO(akshayka): InputLayer should be a subclass of Layer, and it
 # should implement the logic in input_layer using Layer's build-and-call
 # paradigm; input_layer should create an instance of InputLayer and
-# return the result of inovking its apply method, just as functional layers do.
+# return the result of invoking its apply method, just as functional layers do.
 class InputLayer(object):
   """An object-oriented version of `input_layer` that reuses variables."""
 
@@ -834,7 +834,7 @@ def shared_embedding_columns(
     tensor_name_in_ckpt=None, max_norm=None, trainable=True):
   """List of dense columns that convert from sparse, categorical input.
 
-  This is similar to `embedding_column`, except that that it produces a list of
+  This is similar to `embedding_column`, except that it produces a list of
   embedding columns that share the same embedding weights.
 
   Use this when your inputs are sparse and of the same type (e.g. watched and
@@ -1068,6 +1068,7 @@ def numeric_column(key,
     raise TypeError(
         'normalizer_fn must be a callable. Given: {}'.format(normalizer_fn))
 
+  _assert_key_is_string(key)
   return _NumericColumn(
       key,
       shape=shape,
@@ -1166,6 +1167,13 @@ def _assert_string_or_int(dtype, prefix):
         '{} dtype must be string or integer. dtype: {}.'.format(prefix, dtype))
 
 
+def _assert_key_is_string(key):
+  if not isinstance(key, six.string_types):
+    raise ValueError(
+        'key must be a string. Got: type {}. Given key: {}.'.format(
+            type(key), key))
+
+
 @tf_export('feature_column.categorical_column_with_hash_bucket')
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
@@ -1218,6 +1226,7 @@ def categorical_column_with_hash_bucket(key,
                      'hash_bucket_size: {}, key: {}'.format(
                          hash_bucket_size, key))
 
+  _assert_key_is_string(key)
   _assert_string_or_int(dtype, prefix='column_name: {}'.format(key))
 
   return _HashedCategoricalColumn(key, hash_bucket_size, dtype)
@@ -1334,6 +1343,7 @@ def categorical_column_with_vocabulary_file(key,
       raise ValueError('Invalid num_oov_buckets {} in {}.'.format(
           num_oov_buckets, key))
   _assert_string_or_int(dtype, prefix='column_name: {}'.format(key))
+  _assert_key_is_string(key)
   return _VocabularyFileCategoricalColumn(
       key=key,
       vocabulary_file=vocabulary_file,
@@ -1448,6 +1458,7 @@ def categorical_column_with_vocabulary_list(
         'dtype {} and vocabulary dtype {} do not match, column_name: {}'.format(
             dtype, vocabulary_dtype, key))
   _assert_string_or_int(dtype, prefix='column_name: {}'.format(key))
+  _assert_key_is_string(key)
 
   return _VocabularyListCategoricalColumn(
       key=key, vocabulary_list=tuple(vocabulary_list), dtype=dtype,
@@ -1518,6 +1529,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
     raise ValueError(
         'default_value {} not in range [0, {}), column_name {}'.format(
             default_value, num_buckets, key))
+  _assert_key_is_string(key)
   return _IdentityCategoricalColumn(
       key=key, num_buckets=num_buckets, default_value=default_value)
 
@@ -3032,7 +3044,7 @@ class _CrossedColumn(
         feature_tensors.append(ids_and_weights.id_tensor)
       else:
         raise ValueError('Unsupported column type. Given: {}'.format(key))
-    return sparse_ops._sparse_cross_hashed(  # pylint: disable=protected-access
+    return sparse_ops.sparse_cross_hashed(
         inputs=feature_tensors,
         num_buckets=self.hash_bucket_size,
         hash_key=self.hash_key)

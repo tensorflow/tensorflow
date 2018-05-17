@@ -44,7 +44,7 @@ namespace {
 
 // Compiles the XLA computation into executable code.
 Status CompileXla(xla::CompileOnlyClient* client,
-                  const xla::Computation& computation,
+                  const xla::XlaComputation& computation,
                   const xla::cpu::CpuAotCompilationOptions& aot_opts,
                   CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
@@ -62,7 +62,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   for (int i = 0; i < pshape->parameters_size(); ++i) {
     arg_layouts.push_back(pshape->mutable_parameters(i));
   }
-  xla::CompileOnlyClient::AotComputationInstance instance;
+  xla::CompileOnlyClient::AotXlaComputationInstance instance;
   instance.computation = &computation;
   instance.argument_layouts = std::move(arg_layouts);
   instance.result_layout = &pshape->result();
@@ -93,14 +93,14 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   xla::CompileOnlyClient* client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
           .ValueOrDie();
-  xla::Computation computation;
+  xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToXla(graph_def, config, client, &computation));
   if (!flags.out_session_module.empty()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::SessionModule> module,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
                         computation.Snapshot());
-    // Serialize the SessionModule deterministically so that all the outputs of
-    // a tf_library genrule are deterministic.
+    // Serialize the HloSnapshot deterministically so that all the outputs of a
+    // tf_library genrule are deterministic.
     string proto;
     TF_RET_CHECK(SerializeToStringDeterministic(*module, &proto));
     TF_RETURN_IF_ERROR(
@@ -110,6 +110,7 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
+
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 

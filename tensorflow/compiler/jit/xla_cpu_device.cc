@@ -50,10 +50,11 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Host", DEVICE_XLA_CPU, 0,
-                                       DEVICE_CPU_XLA_JIT, options, name_prefix,
-                                       registration,
-                                       /*transfer_as_literal=*/false, &device));
+  TF_RETURN_IF_ERROR(
+      XlaDevice::Create("Host", DEVICE_XLA_CPU, 0, DEVICE_CPU_XLA_JIT, options,
+                        name_prefix, registration,
+                        /*transfer_as_literal=*/false,
+                        /*shape_representation_fn=*/{}, &device));
   devices->push_back(device.release());
   return Status::OK();
 }
