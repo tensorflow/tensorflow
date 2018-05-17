@@ -705,7 +705,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     # TODO(gunan) Reenable after this issue is fixed:
     # https://github.com/google/protobuf/issues/2812
     if sys.version_info >= (3, 5):
-      self.skipTest("Skipped test for Python 3.5+")
+      self.skipTest("Skipped test for Python 3")
 
     # Smaller than the threshold: no warning.
     c_sparse = ops.IndexedSlices(
@@ -713,6 +713,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
     with warnings.catch_warnings(record=True) as w:
       math_ops.multiply(c_sparse, 1.0)
+    if w:
+      raise RuntimeError(str(w[-1].message))
     self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
