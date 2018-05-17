@@ -533,12 +533,6 @@ Add this path to the `LD_LIBRARY_PATH` environmental variable:
   <code class="devsite-terminal">export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</code>
 </pre>
 
-For CUDA Toolkit <= 7.5 use:
-
-<pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">sudo apt-get install libcupti-dev</code>
-</pre>
-
 * *OPTIONAL*:  For optimized performance during inference, install
   *NVIDIA&nbsp;TensorRT&nbsp;3.0*. To install the minimal amount of TensorRT
   runtime components required to use with the pre-built `tensorflow-gpu` package:
