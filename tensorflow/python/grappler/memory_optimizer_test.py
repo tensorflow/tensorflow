@@ -25,7 +25,6 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -35,7 +34,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import training as train
 
 
-@test_util.with_c_api
 class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
@@ -96,7 +94,6 @@ class MemoryOptimizerSwapTest(test.TestCase):
         self.assertEqual('c', node.input[1])
 
 
-@test_util.with_c_api
 class MemoryOptimizerRecomputeTest(test.TestCase):
   """Tests the Python interface to recomputation rewrites.
 

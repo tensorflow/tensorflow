@@ -1284,7 +1284,6 @@ def get_keras_linear_model_predictions(features,
   return retval
 
 
-@test_util.with_c_api
 class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -1560,16 +1559,10 @@ class LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          predictions = fc.linear_model(features, [price])
-      else:
-        predictions = fc.linear_model(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            predictions.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        fc.linear_model(features, [price])
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -1933,7 +1926,6 @@ class LinearModelTest(test.TestCase):
         sess.run(net, feed_dict={features['price']: np.array(1)})
 
 
-@test_util.with_c_api
 class _LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -2198,16 +2190,10 @@ class _LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          predictions = get_keras_linear_model_predictions(features, [price])
-      else:
-        predictions = get_keras_linear_model_predictions(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            predictions.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        get_keras_linear_model_predictions(features, [price])
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -2694,7 +2680,6 @@ class InputLayerTest(test.TestCase):
       self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
 
 
-@test_util.with_c_api
 class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -2759,16 +2744,10 @@ class FunctionalInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          net = fc.input_layer(features, [price])
-      else:
-        net = fc.input_layer(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            net.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        fc.input_layer(features, [price])
 
   def test_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
