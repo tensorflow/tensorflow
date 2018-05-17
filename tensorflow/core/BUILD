@@ -1661,13 +1661,6 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "platform/**/cuda.h",
         "platform/**/stream_executor.h",
     ],
-) + tf_additional_lib_srcs(
-    exclude = [
-        "**/*.cc",
-        "**/*test*",
-        "platform/**/cuda.h",
-        "platform/**/stream_executor.h",
-    ],
 )
 
 LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
