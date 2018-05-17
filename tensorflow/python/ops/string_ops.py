@@ -103,7 +103,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    if x.get_shape().ndims is not None:
       return constant_op.constant(
           np.arange(x.get_shape().ndims - 1, -1, -1), dtype=dtypes.int32)
 
@@ -117,10 +117,11 @@ def reduce_join(inputs, axis=None,
                 separator="",
                 name=None,
                 reduction_indices=None):
+  inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
-      inputs, axis, reduction_indices)
+      inputs_t, axis, reduction_indices)
   return gen_string_ops.reduce_join(
-      inputs=inputs,
+      inputs=inputs_t,
       reduction_indices=reduction_indices,
       keep_dims=keep_dims,
       separator=separator,

@@ -152,6 +152,28 @@ class ProdGradientTest(test.TestCase):
           outputs, outputs.get_shape().as_list())
       self.assertLess(error, 1e-4)
 
+  def testProdGradientComplex(self):
+    for dtype in dtypes.complex64, dtypes.complex128:
+      inputs = constant_op.constant([[1 + 3j, 2 - 1j], [3j, 4]],
+                                    dtype=dtype)
+      outputs = math_ops.reduce_prod(inputs)
+      with self.test_session():
+        error = gradient_checker.compute_gradient_error(
+            inputs, inputs.get_shape().as_list(),
+            outputs, outputs.get_shape().as_list())
+        self.assertLess(error, 1e-4)
+
+  def testProdGradientForNegativeAxisComplex(self):
+    for dtype in dtypes.complex64, dtypes.complex128:
+      inputs = constant_op.constant([[1 + 3j, 2 - 1j], [3j, 4]],
+                                    dtype=dtype)
+      outputs = math_ops.reduce_prod(inputs, -1)
+      with self.test_session():
+        error = gradient_checker.compute_gradient_error(
+            inputs, inputs.get_shape().as_list(),
+            outputs, outputs.get_shape().as_list())
+        self.assertLess(error, 1e-4)
+
 
 class SegmentMinOrMaxGradientTest(test.TestCase):
 

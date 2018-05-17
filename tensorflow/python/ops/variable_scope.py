@@ -1365,7 +1365,9 @@ Args:
   name: The name of the new or existing variable.
   shape: Shape of the new or existing variable.
   dtype: Type of the new or existing variable (defaults to `DT_FLOAT`).
-  initializer: Initializer for the variable if one is created.
+  initializer: Initializer for the variable if one is created. Can either be
+    an initializer object or a Tensor. If it's a Tensor, its shape must be known
+    unless validate_shape is False.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
     @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
@@ -1381,7 +1383,8 @@ Args:
     partitions for each axis (currently only one axis can be partitioned).
   validate_shape: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
-      must be known.
+      must be known. For this to be used the initializer must be a Tensor and
+      not an initializer object.
   use_resource: If False, creates a regular Variable. If true, creates an
     experimental ResourceVariable instead with well-defined semantics.
     Defaults to False (will later change to True). When eager execution is

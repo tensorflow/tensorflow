@@ -32,9 +32,12 @@ from tensorflow.python.platform import test
 
 class DatasetConstructorTest(test.TestCase):
 
-  def _testFromGenerator(self, generator, elem_sequence, num_repeats):
+  def _testFromGenerator(self, generator, elem_sequence, num_repeats,
+                         output_types=None):
+    if output_types is None:
+      output_types = dtypes.int64
     iterator = (
-        dataset_ops.Dataset.from_generator(generator, output_types=dtypes.int64)
+        dataset_ops.Dataset.from_generator(generator, output_types=output_types)
         .repeat(num_repeats)
         .prefetch(5)
         .make_initializable_iterator())
@@ -84,8 +87,8 @@ class DatasetConstructorTest(test.TestCase):
   def testFromGeneratorUsingNdarray(self):
     generator = lambda: np.arange(100, dtype=np.int64)
     elem_sequence = list(generator())
-    self._testFromGenerator(generator, elem_sequence, 1)
-    self._testFromGenerator(generator, elem_sequence, 5)
+    self._testFromGenerator(generator, elem_sequence, 1, output_types=np.int64)
+    self._testFromGenerator(generator, elem_sequence, 5, output_types=np.int64)
 
   def testFromGeneratorUsingGeneratorExpression(self):
     # NOTE(mrry): Generator *expressions* are not repeatable (or in

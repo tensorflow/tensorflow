@@ -74,7 +74,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ASSERT_EQ(input->dims->data[1], weights_feature->dims->data[1]);
   TF_LITE_ASSERT_EQ(weights_time->dims->data[0], num_filters);
 
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   if (bias) {
     TF_LITE_ASSERT_EQ(bias->dims->data[0], num_units);
   }
@@ -134,7 +134,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
 
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];

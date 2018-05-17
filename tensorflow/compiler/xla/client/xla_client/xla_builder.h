@@ -55,8 +55,6 @@ class XlaOp {
   XlaOp() : handle_(0), builder_(nullptr) {}
   ~XlaOp() {}
 
-  StatusOr<Shape> GetShape() const;
-
   const XlaBuilder* builder() const { return builder_; }
 
   bool operator==(const XlaOp& rhs) const {
@@ -852,6 +850,10 @@ class XlaBuilder {
   // Returns the (inferred) result for the program shape for the current
   // computation and fills the root_id in the pointer.
   StatusOr<ProgramShape> GetProgramShape(int64* root_id) const;
+
+  // Returns shapes for the operands.
+  StatusOr<std::vector<Shape>> GetOperandShapes(
+      tensorflow::gtl::ArraySlice<XlaOp> operands) const;
 
   // A visitor which checks whether an operation is a compile-time constant,
   // meaning that it doesn't depend on any parameters, or on any stateful

@@ -414,12 +414,9 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   return changed;
 }
 
-HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
-                                        HloInstruction* consumer) {
+HloInstruction* InstructionFusion::AddFusionInstruction(
+    HloInstruction* producer, HloInstruction* consumer) {
   HloInstruction* fusion_instruction;
-
-  VLOG(2) << "Fusing " << producer->ToString() << " into "
-          << consumer->ToString();
   auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {
     fusion_instruction = consumer;
@@ -431,8 +428,24 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
   }
+  return fusion_instruction;
+}
 
+HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
+                                        HloInstruction* consumer) {
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
   fusion_instruction->FuseInstruction(producer);
+  return fusion_instruction;
+}
+
+HloInstruction* InstructionFusion::FuseIntoMultiOutput(
+    HloInstruction* producer, HloInstruction* consumer) {
+  VLOG(2) << "Multi-output fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  fusion_instruction->FuseInstructionIntoMultiOutput(producer);
   return fusion_instruction;
 }
 

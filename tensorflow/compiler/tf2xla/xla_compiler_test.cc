@@ -25,12 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -358,6 +360,76 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         xla::Literal::MakeTuple({expected0.get(), expected1.get()});
     EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected, *actual_literal));
   }
+}
+
+TEST_F(XlaCompilerTest, ConstantOutputsOfFunctionalNode) {
+  // Define a function with one compile-time constant output and one
+  // data-dependent output.
+  // @function.Defun(noinline=True)
+  // foo(a) {b=7; return b, a; }
+  const Tensor seven = test::AsScalar<int>(7);
+  FunctionDef fdef = FunctionDefHelper::Create(
+      "foo", {"a_0:int32"}, {"const:int32", "a:int32"}, {},
+      {
+          {{"Const"}, "Const", {}, {{"dtype", DT_INT32}, {"value", seven}}},
+      },
+      {{"a", "a_0"}, {"const", "Const:output:0"}});
+  (*fdef.mutable_attr())["_noinline"].set_b(true);
+  FunctionDefLibrary fdef_lib;
+  *(fdef_lib.add_function()) = fdef;
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(fdef_lib));
+    auto arg = ops::_Arg(scope.WithOpName("input_arg"), DT_INT32, 0);
+    NodeDef foo;
+    foo.set_name("foo");
+    foo.set_op("foo");
+    *foo.add_input() = "input_arg";
+    Status status;
+    scope.graph()->AddNode(foo, &status);
+    TF_ASSERT_OK(status);
+    NodeDef retval_1;
+    retval_1.set_name("retval_0");
+    retval_1.set_op(FunctionLibraryDefinition::kRetOp);
+    *retval_1.add_input() = "foo";
+    (*retval_1.mutable_attr())["T"].set_type(DT_INT32);
+    (*retval_1.mutable_attr())["index"].set_i(0);
+    scope.graph()->AddNode(retval_1, &status);
+    TF_ASSERT_OK(status);
+    NodeDef retval_2;
+    retval_2.set_name("retval_1");
+    retval_2.set_op(FunctionLibraryDefinition::kRetOp);
+    *retval_2.add_input() = "foo:1";
+    (*retval_2.mutable_attr())["T"].set_type(DT_INT32);
+    (*retval_2.mutable_attr())["index"].set_i(1);
+    scope.graph()->AddNode(retval_2, &status);
+    TF_ASSERT_OK(status);
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+  }
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1});
+
+  XlaCompiler::Options options = DefaultOptions();
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
+  options.flib_def = &flib_def;
+  XlaCompiler compiler(options);
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.resolve_compile_time_constants = true;
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                     std::move(graph), args, &result));
+
+  ASSERT_EQ(2, result.outputs.size());
+  EXPECT_TRUE(result.outputs[0].is_constant);
+  test::ExpectTensorEqual<int32>(result.outputs[0].constant_value,
+                                 test::AsScalar(7));
+  EXPECT_FALSE(result.outputs[1].is_constant);
 }
 
 // Tests compilation and execution of a graph that adds two tensors.
@@ -750,10 +822,7 @@ TEST_F(XlaCompilerTest, Variables) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
 }
 
-// Tests a simple graph that reads and writes a variable, with a
-// variable_representation_shape_fn passed to the compiler that flattens all
-// variable tensors to vectors.
-TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
+xla::StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
@@ -764,7 +833,15 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
   auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
   auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+  TF_RETURN_IF_ERROR(scope.ToGraph(graph.get()));
+  return std::move(graph);
+}
+
+// Tests a simple graph that reads and writes a variable, with a
+// shape_representation_fn passed to the compiler that flattens all
+// variable tensors to vectors.
+TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> graph, BuildTestGraph());
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(2);
@@ -779,15 +856,33 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
 
   // Compiles the graph.
   XlaCompiler::Options options = DefaultOptions();
-  options.variable_representation_shape_fn = [](const TensorShape& shape,
-                                                DataType type) {
+  options.shape_representation_fn = [](const TensorShape& shape,
+                                       DataType type) {
     return TensorShape({shape.num_elements()});
   };
   XlaCompiler compiler(options);
 
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = false;  // Only reshape variables.
+
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                     args, &result));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::ProgramShape> program_shape,
+                          client_->GetComputationShape(*result.computation));
+
+  ASSERT_EQ(program_shape->parameters_size(), 2);
+  EXPECT_TRUE(
+      xla::ShapeUtil::Compatible(program_shape->parameters(0),
+                                 xla::ShapeUtil::MakeShape(xla::S32, {2, 2})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->parameters(1), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->result(),
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::S32, {2, 2}),
+           xla::ShapeUtil::MakeShape(xla::S32, {4})})));
 
   // Tests that the generated computation works.
   std::unique_ptr<xla::Literal> param0_literal =
@@ -808,6 +903,75 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
 
   std::unique_ptr<xla::Literal> expected0 =
       xla::Literal::CreateR2<int32>({{27, 67}, {35, 402}});
+  std::unique_ptr<xla::Literal> expected1 =
+      xla::Literal::CreateR1<int32>({26, 66, 34, 401});
+  std::unique_ptr<xla::Literal> expected_literal =
+      xla::Literal::MakeTuple({expected0.get(), expected1.get()});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+}
+
+TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> graph, BuildTestGraph());
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 2});
+  args[1].kind = XlaCompiler::Argument::kResource;
+  args[1].resource_kind = XlaResource::kVariable;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2, 2});
+
+  // Compiles the graph.
+  XlaCompiler::Options options = DefaultOptions();
+  options.shape_representation_fn = [](const TensorShape& shape,
+                                       DataType type) {
+    return TensorShape({shape.num_elements()});
+  };
+  XlaCompiler compiler(options);
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;  // Reshape args and retvals.
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                     args, &result));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::ProgramShape> program_shape,
+                          client_->GetComputationShape(*result.computation));
+
+  ASSERT_EQ(program_shape->parameters_size(), 2);
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->parameters(0), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->parameters(1), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->result(),
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::S32, {4}),
+           xla::ShapeUtil::MakeShape(xla::S32, {4})})));
+
+  // Tests that the generated computation works.
+  std::unique_ptr<xla::Literal> param0_literal =
+      xla::Literal::CreateR1<int32>({4, 55, 1, -3});
+  std::unique_ptr<xla::Literal> param1_literal =
+      xla::Literal::CreateR1<int32>({22, 11, 33, 404});
+  std::unique_ptr<xla::GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+  std::unique_ptr<xla::GlobalData> param1_data =
+      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::GlobalData> actual =
+      client_
+          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+          .ConsumeValueOrDie();
+  std::unique_ptr<xla::Literal> actual_literal =
+      client_->Transfer(*actual).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::Literal> expected0 =
+      xla::Literal::CreateR1<int32>({27, 67, 35, 402});
   std::unique_ptr<xla::Literal> expected1 =
       xla::Literal::CreateR1<int32>({26, 66, 34, 401});
   std::unique_ptr<xla::Literal> expected_literal =

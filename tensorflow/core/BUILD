@@ -268,6 +268,12 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
+closure_proto_library(
+    name = "example_protos_closure",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
+)
+
 exports_files([
     "framework/types.proto",
 ])
@@ -338,6 +344,8 @@ cc_library(
     ],
     hdrs = PLATFORM_BASE_HDRS,
     copts = tf_copts(),
+    # TODO(ahentz): remove use of this library so we can move it into 'platform'
+    tags = ["avoid_dep"],
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
@@ -1657,13 +1665,6 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "lib/jpeg/**/*",
         "platform/gif.h",
         "platform/jpeg.h",
-        "platform/**/cuda.h",
-        "platform/**/stream_executor.h",
-    ],
-) + tf_additional_lib_srcs(
-    exclude = [
-        "**/*.cc",
-        "**/*test*",
         "platform/**/cuda.h",
         "platform/**/stream_executor.h",
     ],
@@ -4193,10 +4194,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-closure_proto_library(
-    name = "example_protos_closure",
-    visibility = ["//visibility:public"],
-    deps = [":example_protos"],
 )

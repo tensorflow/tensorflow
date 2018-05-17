@@ -112,6 +112,7 @@ genrule(
         "api/saved_model/tag_constants/__init__.py",
         "api/saved_model/utils/__init__.py",
         "api/sets/__init__.py",
+        "api/sparse/__init__.py",
         "api/spectral/__init__.py",
         "api/summary/__init__.py",
         "api/sysconfig/__init__.py",

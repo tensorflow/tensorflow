@@ -813,17 +813,11 @@ class FunctionTest(test.TestCase):
     def Foo(x, y, z):
       return math_ops.tanh(math_ops.matmul(x, y) + z)
 
-    # We added more randomness to function names in C API.
-    # TODO(iga): Remove this if statement when we switch to C API.
-    if ops._USE_C_API:  # pylint: disable=protected-access
-      if sys.byteorder == "big":
-        self.assertEqual("Foo_kEdkAG8SJvg",
-                         Foo.instantiate([dtypes.float32] * 3).name)
-      else:
-        self.assertEqual("Foo_aCYSbwBkR5A",
-                         Foo.instantiate([dtypes.float32] * 3).name)
+    if sys.byteorder == "big":
+      self.assertEqual("Foo_kEdkAG8SJvg",
+                       Foo.instantiate([dtypes.float32] * 3).name)
     else:
-      self.assertEqual("Foo_d643acf7",
+      self.assertEqual("Foo_aCYSbwBkR5A",
                        Foo.instantiate([dtypes.float32] * 3).name)
 
   def testSignatureHash(self):
