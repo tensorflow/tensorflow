@@ -107,6 +107,9 @@ static bool OkToStream(const Shape& shape) {
   if (ShapeUtil::IsTuple(shape)) {
     return false;
   }
+  if (ShapeUtil::ElementsIn(shape) == 0) {
+    return false;
+  }
   if (ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) > 4) {
     return false;
   }
