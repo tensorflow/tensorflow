@@ -1516,10 +1516,7 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
     GraphDef* graph) {
   // If the graph contains no ops that mutate their inputs, we can
   // use Identity insted of Snapshot.
-
-  // TODO(rmlarsen): Enable in regular mode after May 15, 2018.
-  if (opt_level_ == RewriterConfig::AGGRESSIVE &&
-      !graph_contains_assign_or_inplace_op_) {
+  if (!graph_contains_assign_or_inplace_op_) {
     ReplaceOperationWithIdentity(input_to_forward, properties, node, graph);
     return;
   }
@@ -2571,13 +2568,10 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   graph_contains_assign_or_inplace_op_ = false;
-  // TODO(rmlarsen): Enable in regular mode after May 15, 2018.
-  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-    for (const NodeDef& node : item.graph.node()) {
-      if (ModifiesInputsInPlace(node) || MaybeHasRefInput(node)) {
-        graph_contains_assign_or_inplace_op_ = true;
-        break;
-      }
+  for (const NodeDef& node : item.graph.node()) {
+    if (ModifiesInputsInPlace(node) || MaybeHasRefInput(node)) {
+      graph_contains_assign_or_inplace_op_ = true;
+      break;
     }
   }
 
