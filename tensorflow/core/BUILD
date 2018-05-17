@@ -1966,6 +1966,7 @@ tf_proto_library(
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
+    provide_cc_alias = True,
 )
 
 tf_generate_proto_text_sources(
