@@ -495,7 +495,7 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
   auto sum = Literal::CreateR2<complex64>({{{111, 222}, {331, 442}},
                                            {{1011, 2022}, {3031, 4042}},
                                            {{10011, 20022}, {30031, 40042}}});
-  auto prod = Literal::CreateFromShape(sum->shape());
+  auto prod = MakeUnique<Literal>(sum->shape());
   ASSERT_TRUE(prod->Populate<complex64>(
                       [&sum](tensorflow::gtl::ArraySlice<int64> indexes) {
                         return sum->Get<complex64>(indexes) *
