@@ -147,6 +147,7 @@ class NdtriTest(test.TestCase):
     self._baseNdtriFiniteGradientTest(np.float64)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class NdtrTest(test.TestCase):
   _use_log = False
   # Grid min/max chosen to ensure 0 < cdf(x) < 1.

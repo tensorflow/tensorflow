@@ -639,6 +639,14 @@ def assert_no_garbage_created(f):
   return decorator
 
 
+def run_all_in_graph_and_eager_modes(cls):
+  base_decorator = run_in_graph_and_eager_modes()
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name, base_decorator(value))
+  return cls
+
+
 def run_in_graph_and_eager_modes(__unused__=None,
                                  config=None,
                                  use_gpu=True,
