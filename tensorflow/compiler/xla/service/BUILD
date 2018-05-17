@@ -2898,3 +2898,30 @@ cc_library(
         "//tensorflow/core:lib",
     ],
 )
+
+cc_library(
+    name = "indexed_array_analysis",
+    srcs = ["indexed_array_analysis.cc"],
+    hdrs = ["indexed_array_analysis.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
+    ],
+)
+
+tf_cc_test(
+    name = "indexed_array_analysis_test",
+    srcs = ["indexed_array_analysis_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":indexed_array_analysis",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+        "//tensorflow/core:test",
+    ],
+)
