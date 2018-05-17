@@ -40,7 +40,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:session_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:lib",
     ],
 )
@@ -65,8 +65,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
 )
@@ -89,7 +89,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -169,8 +168,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:computation_tracker",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
 )
@@ -188,8 +187,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
 )
@@ -207,8 +206,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],
 )

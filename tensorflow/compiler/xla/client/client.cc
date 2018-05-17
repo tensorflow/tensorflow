@@ -221,20 +221,6 @@ StatusOr<std::unique_ptr<Literal>> Client::ComputeConstant(
   return Literal::CreateFromProto(response.literal());
 }
 
-StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
-  LoadComputationSnapshotRequest request;
-  *request.mutable_module() = module;
-  LoadComputationSnapshotResponse response;
-
-  Status s = stub_->LoadComputationSnapshot(&request, &response);
-  if (!s.ok()) {
-    return s;
-  }
-
-  VLOG(1) << "load snapshot response: " << response.ShortDebugString();
-  return Computation(stub_, response.computation());
-}
-
 StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
   TF_RET_CHECK(module.has_hlo() && module.hlo().has_hlo_module());
   return XlaComputation(module.hlo().hlo_module());

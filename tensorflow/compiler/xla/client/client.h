@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -253,9 +253,6 @@ class Client {
   // two computations via a pair of Send and Recv instructions.
   StatusOr<ChannelHandle> CreateChannelHandle();
 
-  StatusOr<Computation> LoadSnapshot(const SessionModule& module);
-
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<XlaComputation> LoadSnapshot(const HloSnapshot& module);
 
   ServiceInterface* stub() { return stub_; }
