@@ -1009,6 +1009,14 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent) {
   return reinterpret_cast<PyObject*>(tape);
 }
 
+void TFE_Py_TapeSetAdd(PyObject* tape) {
+  Py_INCREF(tape);
+  if (!GetTapeSet()->insert(reinterpret_cast<TFE_Py_Tape*>(tape)).second) {
+    // Already exists in the tape set.
+    Py_DECREF(tape);
+  }
+}
+
 PyObject* TFE_Py_TapeSetIsEmpty() {
   if (*ThreadTapeIsStopped() || GetTapeSet()->empty()) {
     Py_RETURN_TRUE;

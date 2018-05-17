@@ -42,6 +42,7 @@ limitations under the License.
 %rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
 %rename("%s") TFE_Py_TapeSetNew;
+%rename("%s") TFE_Py_TapeSetAdd;
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
