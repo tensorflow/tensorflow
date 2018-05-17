@@ -42,7 +42,6 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
-@test_util.with_c_api
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):

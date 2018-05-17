@@ -203,7 +203,7 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       self._tag_order = tensors
       tensors = {item: item for item in tensors}
     else:
-      self._tag_order = tensors.keys()
+      self._tag_order = sorted(tensors.keys())
     self._tensors = tensors
     self._formatter = formatter
     self._timer = (

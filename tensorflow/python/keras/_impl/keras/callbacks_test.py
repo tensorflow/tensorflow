@@ -940,7 +940,7 @@ class KerasCallbacksTest(test.TestCase):
       assert os.path.exists(temp_dir)
 
   def test_RemoteMonitorWithJsonPayload(self):
-    if h5py is None:
+    if requests is None:
       self.skipTest('`requests` required to run this test')
     with self.test_session():
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(

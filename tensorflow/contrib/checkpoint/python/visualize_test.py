@@ -28,7 +28,7 @@ from tensorflow.python.keras._impl.keras.engine import training
 from tensorflow.python.keras._impl.keras.layers import core
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import adam
-from tensorflow.python.training import checkpointable_utils
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 try:
   import pydot  # pylint: disable=g-import-not-at-top

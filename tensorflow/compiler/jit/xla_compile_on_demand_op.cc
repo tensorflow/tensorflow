@@ -156,11 +156,14 @@ Status XlaCompileOnDemandOp::Compile(
   options.client = metadata.client();
   options.flib_def =
       new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
+  options.shape_representation_fn = metadata.shape_representation_fn();
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable,
-                                /*compile_options=*/nullptr);
+                                result, executable, &compile_options);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

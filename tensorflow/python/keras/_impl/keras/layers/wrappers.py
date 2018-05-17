@@ -202,7 +202,7 @@ class TimeDistributed(Wrapper):
           step,
           inputs,
           initial_states=[],
-          input_length=input_shape[0],
+          input_length=input_shape[1],
           unroll=False)
       y = outputs
     else:

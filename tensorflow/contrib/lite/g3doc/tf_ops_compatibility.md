@@ -221,6 +221,23 @@ Options {
 }
 ```
 
+**CONV_2D_TRANSPOSE**
+
+```
+Inputs {
+  0: output_shape
+  1: filter
+  2: 4D tensor
+}
+Outputs {
+  0: the transpose (gradient) of conv2d
+}
+Options {
+  padding: SAME|VALID
+  stride_w,stride_h: stride of the filter window
+}
+```
+
 **DEPTHWISE_CONV_2D**
 
 ```

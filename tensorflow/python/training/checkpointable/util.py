@@ -36,10 +36,10 @@ from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import checkpointable as checkpointable_lib
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.checkpointable import base as checkpointable_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 

@@ -579,7 +579,16 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
   if (env) {
     auto session_mgr = env->session_mgr;
     if (session_mgr) {
-      session_mgr->SetLogging(request->rpc_logging());
+      if (request->enable_rpc_logging()) {
+        session_mgr->SetLogging(true);
+      }
+      // NOTE(mrry): Handle old masters that disable RPC logging by setting
+      // `request->enable_rpc_logging` to `false`.
+      if (request->disable_rpc_logging() ||
+          (!request->enable_rpc_logging() &&
+           request->fetch_step_id_size() == 0)) {
+        session_mgr->SetLogging(false);
+      }
       for (const auto& step_id : request->fetch_step_id()) {
         session_mgr->RetrieveLogs(step_id, response);
       }

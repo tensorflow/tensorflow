@@ -26,7 +26,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
