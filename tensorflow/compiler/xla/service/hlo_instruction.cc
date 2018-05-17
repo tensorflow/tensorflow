@@ -1114,7 +1114,7 @@ RandomDistribution HloInstruction::random_distribution() const {
   return distribution_;
 }
 
-bool HloInstruction::HasSideEffect() const {
+bool HloInstruction::HasSideEffectNoRecurse() const {
   switch (opcode_) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -1126,16 +1126,22 @@ bool HloInstruction::HasSideEffect() const {
     case HloOpcode::kTrace:
     case HloOpcode::kHostCompute:
       return true;
-    default: {
-      // Check if any of the called computations has a side effect.
-      for (const auto& computation : called_computations()) {
-        if (computation->HasSideEffect()) {
-          return true;
-        }
-      }
+    default:
       return false;
+  }
+}
+
+bool HloInstruction::HasSideEffect() const {
+  if (HasSideEffectNoRecurse()) {
+    return true;
+  }
+  // Check if any of the called computations has a side effect.
+  for (const auto& computation : called_computations()) {
+    if (computation->HasSideEffect()) {
+      return true;
     }
   }
+  return false;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCall(
