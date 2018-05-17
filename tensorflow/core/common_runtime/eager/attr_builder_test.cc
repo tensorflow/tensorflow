@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/eager/runtime.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 
 #include <memory>
 #include <vector>

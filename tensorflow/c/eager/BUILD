@@ -24,10 +24,10 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":runtime",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
+            "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -70,7 +70,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
-        ":runtime",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:core_cpu",
@@ -80,6 +79,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
@@ -115,47 +115,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
-    ],
-)
-
-tf_cuda_library(
-    name = "runtime",
-    srcs = ["runtime.cc"],
-    hdrs = ["runtime.h"],
-    copts = tf_copts(),
-    visibility = ["//tensorflow:internal"],
-    deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/c:c_api",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core/common_runtime/eager:kernel_and_device",
-            "//tensorflow/core:core_cpu_internal",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
-        ],
-    }),
-)
-
-tf_cc_test(
-    name = "runtime_test",
-    srcs = ["runtime_test.cc"],
-    deps = [
-        ":runtime",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
