@@ -516,8 +516,7 @@ class CountCollector {
 // the user requests it.
 class DenseCollector {
  public:
-  // Default constructor allows the collector to be a vector element.
-  DenseCollector() = default;
+  DenseCollector() = delete;
 
   // A DenseCollector applies to one field of a serialized message.
   // Note that default_value.dtype is the type of the output tensor.
