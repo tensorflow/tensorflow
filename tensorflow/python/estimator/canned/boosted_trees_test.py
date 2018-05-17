@@ -35,6 +35,7 @@ from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import session_run_hook
 
 NUM_FEATURES = 3
 
@@ -120,6 +121,39 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
                      ensemble_proto.growing_metadata.num_layers_attempted)
 
     return ensemble_proto
+
+  def testFirstCheckpointWorksFine(self):
+    """Tests that eval/pred doesn't crash with the very first checkpoint.
+
+    The step-0 checkpoint will have only an empty ensemble, and a separate eval
+    job might read from it and crash.
+    This test ensures that prediction/evaluation works fine with it.
+    """
+    input_fn = _make_train_input_fn(is_classification=True)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    class BailOutWithoutTraining(session_run_hook.SessionRunHook):
+
+      def before_run(self, run_context):
+        raise StopIteration('to bail out.')
+
+    est.train(input_fn, steps=100,  # must stop at 0 anyway.
+              hooks=[BailOutWithoutTraining()])
+    self._assert_checkpoint(
+        est.model_dir, global_step=0, finalized_trees=0, attempted_layers=0)
+    # Empty ensemble returns 0 logits, so that all output labels are 0.
+    eval_res = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 0.6)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose([[0], [0], [0], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
 
   def testTrainAndEvaluateBinaryClassifier(self):
     input_fn = _make_train_input_fn(is_classification=True)
