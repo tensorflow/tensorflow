@@ -260,15 +260,26 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     ConversionFn output_convertor;
     char data[0];
   };
-  using InputPair = std::pair<TensorControl *, ConversionFn>;
-  using InputPairList = std::vector<InputPair>;
-  using ArgsHandleMap = std::map<std::string, InputPair>;
+  struct InputDef {
+    TensorControl *tc;
+    ConversionFn fn;
+    bool streamed;
+
+    InputDef() {}
+    InputDef(TensorControl* tc, ConversionFn fn, bool streamed) :
+        tc(tc), fn(fn), streamed(streamed) {}
+    InputDef(const InputDef& other) :
+        tc(other.tc), fn(other.fn), streamed(other.streamed) {}
+  };
+  using InputPairList = std::vector<InputDef>;
+  using ArgsHandleMap = std::map<std::string, InputDef>;
 
   static void FlattenedDeviceMemoryList(InputPairList &, const xla::Shape &,
-                                        void *);
+                                        void *, bool);
 
   static void CreateArgsHandleMap(ArgsHandleMap &, const Args &,
-                                  const std::vector<xla::Shape> &);
+                                  const std::vector<xla::Shape> &,
+                                  const std::vector<bool> &);
 
   std::tuple<se::DeviceMemoryBase, int64> AllocateSingleOutput(
       xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,

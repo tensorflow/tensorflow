@@ -340,7 +340,7 @@ Status PoplarExecutor::GetCompilerEvents(
 
 void PoplarExecutor::FlattenedDeviceMemoryList(InputPairList& list,
                                                const xla::Shape& shape,
-                                               void* base) {
+                                               void* base, bool streamed) {
   TensorControl* tc = static_cast<TensorControl*>(base);
   if (xla::ShapeUtil::IsTuple(shape)) {
     void** ptrs = reinterpret_cast<void**>(tc->data);
@@ -348,20 +348,22 @@ void PoplarExecutor::FlattenedDeviceMemoryList(InputPairList& list,
          t++) {
       void* ptr = ptrs[t];
       FlattenedDeviceMemoryList(
-          list, xla::ShapeUtil::GetTupleElementShape(shape, t), ptr);
+          list, xla::ShapeUtil::GetTupleElementShape(shape, t), ptr, streamed);
     }
   } else {
-    list.push_back(std::make_pair(tc, GetInputConversionFunction(shape)));
+    list.push_back(InputDef(tc, GetInputConversionFunction(shape), streamed));
   }
 }
 
 void PoplarExecutor::CreateArgsHandleMap(
     ArgsHandleMap& arg_map, const Args& args,
-    const std::vector<xla::Shape>& shapes) {
+    const std::vector<xla::Shape>& shapes,
+    const std::vector<bool>& streamed) {
   for (unsigned int a = 0; a < args.size(); a++) {
     InputPairList bufs;
     FlattenedDeviceMemoryList(bufs, shapes[a],
-                              const_cast<void*>(args[a].opaque()));
+                              const_cast<void*>(args[a].opaque()),
+                              streamed[a]);
     for (unsigned i = 0; i < bufs.size(); i++) {
       arg_map[GetInputCopyHandle(a, i)] = bufs[i];
     }
@@ -498,7 +500,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           RemapArgs(output_shape, 0, output_map, args);
     } else {
       ArgsHandleMap arg_map;
-      CreateArgsHandleMap(arg_map, args, executable.ParameterShapes());
+      CreateArgsHandleMap(arg_map, args, executable.ParameterShapes(),
+                          executable.ParameterStreamed());
 
       std::string name("");
       if (executable.has_module()) {
@@ -506,9 +509,10 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       // Pull previous execution output back from device if:
-      // a) the engine is changing
-      // b) output buffer isn't an input to the current engine
-      // c) output buffer isn't currently in the right place for the new input
+      // a) it is on the device _and_
+      // b)   the engine is changing _or_
+      // c)   output buffer isn't an input to the current engine _or_
+      // d)   output buffer isn't currently in the right place for the new input
       for (const auto& tc : allocations_) {
         if (tc->on_device == true) {
           if (!tc->output_handle.empty()) {
@@ -517,12 +521,12 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
             } else if (tc->input_handle.empty()) {
               TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
             } else if (arg_map.count(tc->input_handle) > 0 &&
-                       tc != arg_map[tc->input_handle].first) {
+                       tc != arg_map.at(tc->input_handle).tc) {
               TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
             }
           } else {
             if (arg_map.count(tc->input_handle) > 0 &&
-                tc != arg_map[tc->input_handle].first) {
+                tc != arg_map.at(tc->input_handle).tc) {
               // Mark any old inputs as invalid
               tc->input_handle.clear();
               tc->on_device = false;
@@ -546,29 +550,34 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       // b) it is not on the device
       // c) it is on the device, but in the wrong place
       for (auto mem : arg_map) {
-        TensorControl* tc = mem.second.first;
-        if (tc->on_device == false || tc->input_handle != mem.first ||
-            engine_changed) {
-          void* buf(static_cast<void*>(tc->data));
-          ConversionFn fn = mem.second.second;
-          if (fn != nullptr) {
-            std::vector<char> converted = fn(buf, tc->size, 0);
-            current_engine_->writeTensor(mem.first, converted.data());
-          } else {
-            current_engine_->writeTensor(mem.first, buf);
-          }
-          tc->on_device = true;
-          tc->input_handle = mem.first;
-          if (profile_io_) {
-            AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
-                           "", mem.first, 0);
+        TensorControl* tc = mem.second.tc;
+        void* buf(static_cast<void*>(tc->data));
+        if (mem.second.streamed) {
+          current_engine_->connectStream(mem.first, buf);
+        } else {
+          if (tc->on_device == false || tc->input_handle != mem.first ||
+              engine_changed) {
+            ConversionFn fn = mem.second.fn;
+            if (fn != nullptr) {
+              std::vector<char> converted = fn(buf, tc->size, 0);
+              current_engine_->writeTensor(mem.first, converted.data());
+            } else {
+              current_engine_->writeTensor(mem.first, buf);
+            }
+            tc->on_device = true;
+            tc->input_handle = mem.first;
+            if (profile_io_) {
+              AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
+                             "", mem.first, 0);
+            }
           }
         }
       }
 
       std::tie(retbuf, tensor_count) =
           AllocateOutputBuffer(allocator, output_shape, 0, output_map, args);
-      engine->run(0);
+
+      current_engine_->run(0);
 
       try {
         if (profile_execution_) {
@@ -577,10 +586,10 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
           std::stringstream stream;
           if (executable.DumpReport()) {
-            auto rep = engine->getExecutionReport(opts);
+            auto rep = current_engine_->getExecutionReport(opts);
             rep.printSummary(stream);
 
-            engine->reportIntervals(stream);
+            current_engine_->reportIntervals(stream);
           }
 
           AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE, "", stream.str(),

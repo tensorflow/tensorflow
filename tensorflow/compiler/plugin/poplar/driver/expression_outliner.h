@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 
+#include <set>
+
 namespace xla {
 
 class HloModule;
@@ -28,7 +30,7 @@ namespace poplarplugin {
 
 class ExpressionOutliner : public HloMatcher {
  public:
-  ExpressionOutliner();
+  ExpressionOutliner(const std::set<const HloInstruction*>&);
 
   ~ExpressionOutliner() override = default;
 
@@ -37,7 +39,9 @@ class ExpressionOutliner : public HloMatcher {
   StatusOr<bool> Run(HloModule *module) override;
 
  private:
-  ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched &) override;
+  ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched&) override;
+
+  const std::set<const HloInstruction*>& inplace_instructions;
 };
 
 }  // namespace poplarplugin

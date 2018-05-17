@@ -27,12 +27,16 @@ PoplarExecutable::PoplarExecutable(
     std::unique_ptr<HloProfileIndexMap> profile_index_map,
     std::shared_ptr<poplar::Engine> engine,
     const ::xla::poplarplugin::OutputMap& output_map,
-    const std::vector<Shape>& parameter_shapes)
+    const std::vector<Shape>& parameter_shapes,
+    const std::vector<bool>& parameter_streamed,
+    const std::vector<bool>& output_streamed)
     : Executable(std::move(hlo_module), std::move(profile_printer),
                  std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
       output_map_(std::move(output_map)),
       parameter_shapes_(std::move(parameter_shapes)),
+      parameter_streamed_(std::move(parameter_streamed)),
+      output_streamed_(std::move(output_streamed)),
       first_execution_(true) {}
 
 PoplarExecutable::~PoplarExecutable() {}

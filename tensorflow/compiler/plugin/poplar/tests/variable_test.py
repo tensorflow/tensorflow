@@ -116,7 +116,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
         w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
                             initializer=tf.constant_initializer(
-                              np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)))
+                              np.array([[1, 2], [3, 4], [5, 6], [7, 8]],
+                                       dtype=np.float32)))
         b = tf.get_variable("b", shape=[2], dtype=tf.float32,
                             initializer=tf.constant_initializer(
                               np.array([2, 3], dtype=np.float32)))
@@ -244,7 +245,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
         w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
                             initializer=tf.constant_initializer(
-                              np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)))
+                              np.array([[1, 2], [3, 4], [5, 6], [7, 8]],
+                                       dtype=np.float32)))
         b = tf.get_variable("b", shape=[2], dtype=tf.float32,
                             initializer=tf.constant_initializer(
                               np.array([2, 3], dtype=np.float32)))
@@ -264,12 +266,41 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       sess.run(report)
 
-      sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
-      sess.run(train, {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
-      sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
-      sess.run(train, {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
-      sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
+      sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
 
+      d_dl = "0.0"
+      d_ul = "0"
+      w_dl = "1.0"
+      w_ul = "1"
+      b_dl = "2.0"
+      b_ul = "2"
+
+      rep = sess.run(report)
+      io_evts = tu.extract_all_io_events(rep)
+
+      # Discard the first 2 - they are the fetching of the weights from the
+      # initialization graph
+      io_evts = io_evts[2:]
+
+      host_to_device = filter(lambda x:x[0]==1, io_evts)
+      device_to_host = filter(lambda x:x[0]==2, io_evts)
+
+      # Weights/biases should be downloaded once, and the input no times
+      # because it is streamed
+      self.assertEqual(len(filter(lambda x:x[1]==d_dl, host_to_device)), 0)
+      self.assertEqual(len(filter(lambda x:x[1]==w_dl, host_to_device)), 1)
+      self.assertEqual(len(filter(lambda x:x[1]==b_dl, host_to_device)), 1)
+
+      # Weights/biases should not be uploaded, and the loss is uploaded 5 times
+      self.assertEqual(len(filter(lambda x:x[1]==d_ul, device_to_host)), 5)
+      self.assertEqual(len(filter(lambda x:x[1]==w_ul, device_to_host)), 0)
+      self.assertEqual(len(filter(lambda x:x[1]==b_ul, device_to_host)), 0)
+
+      # Explicitly fetch the weights
       vw, vb = sess.run([w, b])
 
       self.assertAllClose(
@@ -280,8 +311,20 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np.array([1.5, 2.5], dtype=np.float32), vb, rtol=1e-4)
 
       rep = sess.run(report)
-      evt_types = tu.extract_all_io_events(rep)
-      print("====> " + str(evt_types))
+      io_evts = tu.extract_all_io_events(rep)
+
+      host_to_device = filter(lambda x:x[0]==1, io_evts)
+      device_to_host = filter(lambda x:x[0]==2, io_evts)
+
+      # Weights/biases/inputs should not be downloaded at all
+      self.assertEqual(len(filter(lambda x:x[1]==d_dl, host_to_device)), 0)
+      self.assertEqual(len(filter(lambda x:x[1]==w_dl, host_to_device)), 0)
+      self.assertEqual(len(filter(lambda x:x[1]==b_dl, host_to_device)), 0)
+
+      # Weights/biases should be uploaded once (explicitly fetched)
+      self.assertEqual(len(filter(lambda x:x[1]==d_ul, device_to_host)), 0)
+      self.assertEqual(len(filter(lambda x:x[1]==w_ul, device_to_host)), 1)
+      self.assertEqual(len(filter(lambda x:x[1]==b_ul, device_to_host)), 1)
 
 if __name__ == "__main__":
     googletest.main()

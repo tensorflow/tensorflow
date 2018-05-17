@@ -103,18 +103,36 @@ static std::string GetPathToGraphProgFile() {
   return "";
 }
 
+static bool OkToStream(const Shape& shape) {
+  if (ShapeUtil::IsTuple(shape)) {
+    return false;
+  }
+  if (ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) > 4) {
+    return false;
+  }
+  return true;
+}
+
 class EntryVisitor : public FullVisitor {
  public:
   EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
                uint64 num_parameters)
       : FullVisitor(graph, resources),
         parameter_shapes(num_parameters),
+        parameter_streamed(num_parameters),
+        output_streamed(num_parameters),
         all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
     VLOG(1) << "Processing " << inst->name();
 
     parameter_shapes[inst->parameter_number()] = inst->shape();
+
+    auto num_streaming =
+        inst->parent()->num_parameters() - resources_.num_resource_variables;
+
+    parameter_streamed[inst->parameter_number()] =
+        (inst->parameter_number() < num_streaming) && OkToStream(inst->shape());
 
     std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
     std::vector<Shape> module_shapes;
@@ -144,8 +162,17 @@ class EntryVisitor : public FullVisitor {
         }
       }
 
-      graph_.createHostWrite(GetInputCopyHandle(inst->parameter_number(), i),
-                             out, opt);
+      if (parameter_streamed[inst->parameter_number()]) {
+        auto fifo = graph_.addHostToDeviceFIFO(
+            GetInputCopyHandle(inst->parameter_number(), i),
+            out.elementType(), out.numElements(), opt);
+
+        sequence.add(poplar::program::Copy(fifo, out));
+
+      } else {
+        graph_.createHostWrite(GetInputCopyHandle(inst->parameter_number(), i),
+                               out, opt);
+      }
     }
     return Status::OK();
   }
@@ -197,8 +224,13 @@ class EntryVisitor : public FullVisitor {
 
   OutputMap output_map;
   std::vector<Shape> parameter_shapes;
+  std::vector<bool> parameter_streamed;
+
+  std::vector<bool> output_streamed;
 
   bool all_outputs_are_parameters;
+
+ private:
   std::set<HloInstruction*> non_standard_parameter_layout;
 };
 
@@ -275,7 +307,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<FuseOps>();
     pipeline.AddPass<Outliner>();
     pipeline.AddPass<InplaceFinder>(resources.inplace_instructions);
-    pipeline.AddPass<ExpressionOutliner>();
+    pipeline.AddPass<ExpressionOutliner>(resources.inplace_instructions);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<AllocationFinder>(resources.tensor_allocation_map);
@@ -355,7 +387,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   executable.reset(new PoplarExecutable(
       std::move(module), std::move(profile_printer),
       std::move(profile_index_map), std::move(engine),
-      std::move(visitor.output_map), std::move(visitor.parameter_shapes)));
+      std::move(visitor.output_map), std::move(visitor.parameter_shapes),
+      std::move(visitor.parameter_streamed),
+      std::move(visitor.output_streamed)));
 
   return std::move(executable);
 }

@@ -21,6 +21,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+using InplaceSet = std::set<const HloInstruction*>;
+
 namespace {
 
 bool IsPopopsElementwise(const HloInstruction* inst) {
@@ -79,7 +81,9 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 
 }  // namespace
 
-ExpressionOutliner::ExpressionOutliner() : HloMatcher({}, true) {}
+ExpressionOutliner::ExpressionOutliner(const InplaceSet& inplace) :
+    HloMatcher({}, true),
+    inplace_instructions(inplace) {}
 
 ReplacedInstructions ExpressionOutliner::ReplaceNodes(
     int, const HloMatcherMatched&) {
@@ -92,7 +96,9 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   std::list<HloInstruction*> all_ops;
   for (auto* inst : comp->MakeInstructionPostOrder()) {
     if (IsPopopsElementwise(inst)) {
-      all_ops.push_front(inst);
+      if (inplace_instructions.count(inst) == 0) {
+        all_ops.push_front(inst);
+      }
     }
   }
 
@@ -127,6 +133,10 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
       for (auto* op : inst->operands()) {
         bool ok_to_outline =
             (std::find(all_ops.begin(), all_ops.end(), op) != all_ops.end());
+
+        if (inplace_instructions.count(op) > 0) {
+          ok_to_outline = false;
+        }
 
         bool all_users_ok = true;
         for (auto* user : op->users()) {

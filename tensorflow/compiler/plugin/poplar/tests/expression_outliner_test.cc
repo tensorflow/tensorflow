@@ -36,23 +36,23 @@ using ExpressionOutlinerTest = HloTestBase;
 //     c
 //     |
 TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto in3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, image_shape, "input3"));
+      HloInstruction::CreateParameter(2, shape, "input3"));
   auto in4 = builder.AddInstruction(
-      HloInstruction::CreateParameter(3, image_shape, "input4"));
+      HloInstruction::CreateParameter(3, shape, "input4"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, in3, in4));
+      shape, HloOpcode::kSubtract, in3, in4));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kMultiply, add, sub));
+      shape, HloOpcode::kMultiply, add, sub));
   builder.AddInstruction(HloInstruction::CreateTuple({mul}));
 
   auto computation = builder.Build();
@@ -60,7 +60,9 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -80,21 +82,21 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
 //     c
 //     |
 TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto in3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, image_shape, "input3"));
+      HloInstruction::CreateParameter(2, shape, "input3"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, in1, in3));
+      shape, HloOpcode::kSubtract, in1, in3));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kMultiply, add, sub));
+      shape, HloOpcode::kMultiply, add, sub));
   builder.AddInstruction(HloInstruction::CreateTuple({mul}));
 
   auto computation = builder.Build();
@@ -102,7 +104,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -115,15 +119,15 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
 
 // Don't outline a single operation
 TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   builder.AddInstruction(HloInstruction::CreateTuple({add}));
 
   auto computation = builder.Build();
@@ -131,7 +135,9 @@ TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -152,21 +158,21 @@ TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
 //  d
 //  |
 TEST_F(ExpressionOutlinerTest, OutlineTwoPaths) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kSin, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
   auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kCos, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, cos, sin));
+      shape, HloOpcode::kSubtract, cos, sin));
   builder.AddInstruction(HloInstruction::CreateTuple({sub}));
 
   auto computation = builder.Build();
@@ -174,7 +180,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPaths) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -194,21 +202,21 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPaths) {
 // X   d
 // |   |
 TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kSin, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
   auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kCos, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, cos, sin));
+      shape, HloOpcode::kSubtract, cos, sin));
   builder.AddInstruction(HloInstruction::CreateTuple({sub, cos}));
 
   auto computation = builder.Build();
@@ -216,7 +224,9 @@ TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -231,21 +241,21 @@ TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
 
 // Do two independent outlines
 TEST_F(ExpressionOutlinerTest, OutlineTwoSubgraphs) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, in1, in2));
+      shape, HloOpcode::kSubtract, in1, in2));
   auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kSin, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
   auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kCos, sub));
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, sub));
   builder.AddInstruction(HloInstruction::CreateTuple({sin, cos}));
 
   auto computation = builder.Build();
@@ -253,7 +263,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoSubgraphs) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -280,25 +292,25 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoSubgraphs) {
 //  e
 //  |
 TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength1) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kSin, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
   auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kCos, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
   auto neg = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kNegate, cos));
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, cos));
   auto abs = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kAbs, neg));
+      HloInstruction::CreateUnary(shape, HloOpcode::kAbs, neg));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, sin, abs));
+      shape, HloOpcode::kSubtract, sin, abs));
   builder.AddInstruction(HloInstruction::CreateTuple({sub}));
 
   auto computation = builder.Build();
@@ -306,7 +318,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength1) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -330,25 +344,25 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength1) {
 //  e
 //  |
 TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength2) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kSin, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
   auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kCos, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
   auto neg = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kNegate, cos));
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, cos));
   auto abs = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kAbs, neg));
+      HloInstruction::CreateUnary(shape, HloOpcode::kAbs, neg));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, abs, sin));
+      shape, HloOpcode::kSubtract, abs, sin));
   builder.AddInstruction(HloInstruction::CreateTuple({sub}));
 
   auto computation = builder.Build();
@@ -356,7 +370,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength2) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -380,25 +396,25 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoPathUnevenLength2) {
 //   f
 //   |
 TEST_F(ExpressionOutlinerTest, OutlineThreePaths) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kSin, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
   auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kCos, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
   auto neg = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kNegate, cos));
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, cos));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kMultiply, sin, cos));
+      shape, HloOpcode::kMultiply, sin, cos));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, mul, neg));
+      shape, HloOpcode::kSubtract, mul, neg));
   builder.AddInstruction(HloInstruction::CreateTuple({sub}));
 
   auto computation = builder.Build();
@@ -406,7 +422,9 @@ TEST_F(ExpressionOutlinerTest, OutlineThreePaths) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -430,27 +448,27 @@ TEST_F(ExpressionOutlinerTest, OutlineThreePaths) {
 //  f    g
 //  |    |
 TEST_F(ExpressionOutlinerTest, OutlineThreePathsEarlyExit) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
 
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
   auto sin = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kSin, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
   auto cos = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kCos, add));
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
   auto neg = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kNegate, cos));
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, cos));
   auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(image_shape, HloOpcode::kExp, neg));
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, neg));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kMultiply, sin, cos));
+      shape, HloOpcode::kMultiply, sin, cos));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
-      image_shape, HloOpcode::kSubtract, mul, sin));
+      shape, HloOpcode::kSubtract, mul, sin));
   builder.AddInstruction(HloInstruction::CreateTuple({sub, exp}));
 
   auto computation = builder.Build();
@@ -458,7 +476,9 @@ TEST_F(ExpressionOutlinerTest, OutlineThreePathsEarlyExit) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  ExpressionOutliner eo;
+  std::set<const HloInstruction*> inplace;
+
+  ExpressionOutliner eo(inplace);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -476,6 +496,58 @@ TEST_F(ExpressionOutlinerTest, OutlineThreePathsEarlyExit) {
 }
 
 // Does the right thing with in-place ops
+//
+//  i i i
+//  \ / |
+//   a  |
+//  / \ |
+// b  c |
+// \  / /
+//  d  /
+//  \ /
+//   e  <- inplace-op
+TEST_F(ExpressionOutlinerTest, OutlineWithInplace) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto in1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "input1"));
+  auto in2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "input2"));
+  auto in3 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, shape, "input3"));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in1, in2));
+  auto sin = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kSin, add));
+  auto cos = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, add));
+  auto mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, cos, sin));
+  auto sub = builder.AddInstruction(
+    HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, in3, mul));
+  builder.AddInstruction(
+      HloInstruction::CreateTuple({sub}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  std::set<const HloInstruction*> inplace;
+  inplace.insert(sub);
+
+  ExpressionOutliner eo(inplace);
+  EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
+
+  auto* comp = hlo_module->entry_computation();
+  auto* inst = comp->root_instruction();
+
+  EXPECT_THAT(comp->instruction_count(), 6);
+  EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kSubtract);
+  EXPECT_THAT(inst->operand(0)->operand(1)->opcode(), HloOpcode::kCall);
+  EXPECT_THAT(inst->operand(0)->operand(1)->operand_count(), 2);
+}
 
 }  // namespace
 }  // namespace poplarplugin
