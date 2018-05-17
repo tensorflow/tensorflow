@@ -106,8 +106,6 @@ REGISTER_MODULE_INITIALIZER(
     interpreter_platform,
     stream_executor::interpreter::InitializeXlaInterpreterPlatform());
 
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
-
 // Note that module initialization sequencing is not supported in the
 // open-source project, so this will be a no-op there.
 REGISTER_MODULE_INITIALIZER_SEQUENCE(interpreter_platform,
