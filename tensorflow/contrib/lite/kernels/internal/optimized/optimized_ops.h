@@ -2288,7 +2288,7 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
   for (int i = 0; i < outer_size; ++i) {
     float squared_l2_norm = 0;
     for (int c = 0; c < depth; ++c) {
-      const float val = input_data[depth * i + c];
+      const float val = input_data[c];
       squared_l2_norm += val * val;
     }
     const float l2_norm = std::sqrt(squared_l2_norm);
