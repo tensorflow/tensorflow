@@ -48,6 +48,7 @@ INPUT_FEATURES = np.array(
     dtype=np.float32)
 
 CLASSIFICATION_LABELS = [[0.], [1.], [1.], [0.], [0.]]
+CLASSIFICATION_LABELS_INTEGER = [[0], [1], [1], [0], [0]]
 REGRESSION_LABELS = [[1.5], [0.3], [0.2], [2.], [5.]]
 FEATURES_DICT = {'f_%d' % i: INPUT_FEATURES[i] for i in range(NUM_FEATURES)}
 
@@ -55,26 +56,38 @@ FEATURES_DICT = {'f_%d' % i: INPUT_FEATURES[i] for i in range(NUM_FEATURES)}
 EXAMPLE_IDS = np.array([0, 1, 2, 3, 4], dtype=np.int64)
 EXAMPLE_ID_COLUMN = '__example_id__'
 
+def _get_labels(is_classification, integer_labels):
+  """Returns the appropriate labels based on problem type."""
 
-def _make_train_input_fn(is_classification):
+  if is_classification:
+    if integer_labels:
+      labels = CLASSIFICATION_LABELS_INTEGER
+    else:
+      labels = CLASSIFICATION_LABELS
+  else:
+    labels = REGRESSION_LABELS
+
+  return labels
+
+def _make_train_input_fn(is_classification, integer_labels=False):
   """Makes train input_fn for classification/regression."""
 
   def _input_fn():
     features_dict = dict(FEATURES_DICT)
     features_dict[EXAMPLE_ID_COLUMN] = constant_op.constant(EXAMPLE_IDS)
-    labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
+    labels = _get_labels(is_classification, integer_labels)
     return features_dict, labels
 
   return _input_fn
 
 
-def _make_train_input_fn_dataset(is_classification, batch=None, repeat=None):
+def _make_train_input_fn_dataset(is_classification, batch=None, repeat=None, integer_labels=False):
   """Makes input_fn using Dataset."""
 
   def _input_fn():
     features_dict = dict(FEATURES_DICT)
     features_dict[EXAMPLE_ID_COLUMN] = constant_op.constant(EXAMPLE_IDS)
-    labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
+    labels = _get_labels(is_classification, integer_labels)
     if batch:
       ds = dataset_ops.Dataset.zip(
           (dataset_ops.Dataset.from_tensor_slices(features_dict),
@@ -139,6 +152,24 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     eval_res = est.evaluate(input_fn=input_fn, steps=1)
     self.assertAllClose(eval_res['accuracy'], 1.0)
 
+  def testTrainAndEvaluateBinaryClassifierIntegerLabels(self):
+    input_fn = _make_train_input_fn(is_classification=True, integer_labels=True)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    # It will stop after 5 steps because of the max depth and num trees.
+    num_steps = 100
+    # Train for a few steps, and validate final checkpoint.
+    est.train(input_fn, steps=num_steps)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+
   def testInferBinaryClassifier(self):
     train_input_fn = _make_train_input_fn(is_classification=True)
     predict_input_fn = numpy_io.numpy_input_fn(
@@ -160,8 +191,48 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[0], [1], [1], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
 
+  def testInferBinaryClassifierIntegerLabels(self):
+    train_input_fn = _make_train_input_fn(is_classification=True, integer_labels=True)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    # It will stop after 5 steps because of the max depth and num trees.
+    num_steps = 100
+    # Train for a few steps, and validate final checkpoint.
+    est.train(train_input_fn, steps=num_steps)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
+
   def testTrainClassifierWithDataset(self):
     train_input_fn = _make_train_input_fn_dataset(is_classification=True)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+    est.train(train_input_fn, steps=100)  # will stop after 5 steps anyway.
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+    self.assertAllClose([[0], [1], [1], [0], [0]],
+                        [pred['class_ids'] for pred in predictions])
+
+  def testTrainClassifierWithDatasetIntegerLabels(self):
+    train_input_fn = _make_train_input_fn_dataset(is_classification=True, integer_labels=True)
     predict_input_fn = numpy_io.numpy_input_fn(
         x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
 

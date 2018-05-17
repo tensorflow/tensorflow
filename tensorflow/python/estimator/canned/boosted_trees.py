@@ -675,7 +675,7 @@ def _create_classification_head_and_closed_form(n_classes, weight_column,
       predictions = math_ops.reciprocal(math_ops.exp(-logits) + 1.0)
       normalizer = math_ops.reciprocal(
           math_ops.cast(array_ops.size(predictions), dtypes.float32))
-      gradients = (predictions - labels) * normalizer
+      gradients = (predictions - math_ops.cast(labels, dtypes.float32)) * normalizer
       hessians = predictions * (1.0 - predictions) * normalizer
       return gradients, hessians
 
