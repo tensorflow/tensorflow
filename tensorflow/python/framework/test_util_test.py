@@ -44,7 +44,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-@test_util.with_c_api
 class TestUtilTest(test_util.TensorFlowTestCase):
 
   def test_assert_ops_in_graph(self):
@@ -597,7 +596,6 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
 
 
-@test_util.with_c_api
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
   def test_no_reference_cycle_decorator(self):

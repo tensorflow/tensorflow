@@ -1042,7 +1042,6 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
         self.evaluate(array_ops.size(tensor, out_type=dtypes.int64)).dtype)
 
 
-@test_util.with_c_api
 class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
@@ -1065,10 +1064,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       # test dtype and default maxlen:
       res = array_ops.sequence_mask(constant_op.constant([0, 1, 4]),
                                     dtype=dtypes.float32)
-      if ops._USE_C_API:
-        self.assertAllEqual(res.get_shape().as_list(), [3, 4])
-      else:
-        self.assertAllEqual(res.get_shape().as_list(), [3, None])
+      self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
           res.eval(),
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
@@ -1078,10 +1074,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     with self.test_session():
       res = array_ops.sequence_mask(
           constant_op.constant([0, 1, 4]))
-      if ops._USE_C_API:
-        self.assertAllEqual(res.get_shape().as_list(), [3, 4])
-      else:
-        self.assertAllEqual(res.get_shape().as_list(), [3, None])
+      self.assertAllEqual(res.get_shape().as_list(), [3, 4])
       self.assertAllEqual(
           res.eval(),
           [[False, False, False, False],
@@ -1100,10 +1093,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       # test dtype and default maxlen:
       res = array_ops.sequence_mask(
           constant_op.constant([[0, 1, 4], [1, 2, 3]]), dtype=dtypes.float32)
-      if ops._USE_C_API:
-        self.assertAllEqual(res.get_shape().as_list(), [2, 3, 4])
-      else:
-        self.assertAllEqual(res.get_shape().as_list(), [2, 3, None])
+      self.assertAllEqual(res.get_shape().as_list(), [2, 3, 4])
       self.assertAllEqual(
           res.eval(),
           [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]],
