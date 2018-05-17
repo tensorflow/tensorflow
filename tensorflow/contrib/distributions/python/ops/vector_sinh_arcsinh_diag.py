@@ -163,7 +163,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
     Raises:
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
 
     with ops.name_scope(
         name,

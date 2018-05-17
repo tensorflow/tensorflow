@@ -14,6 +14,7 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":baseline",
         ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
@@ -26,6 +27,49 @@ py_library(
         ":replicate_model_fn",
         ":rnn",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "baseline",
+    srcs = ["python/estimator/baseline.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:baseline",
+    ],
+)
+
+py_test(
+    name = "baseline_test",
+    size = "small",
+    srcs = ["python/estimator/baseline_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":baseline",
+        ":head",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:metric_keys",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -322,9 +366,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/estimator:dnn",
         "//tensorflow/python/estimator:linear",
-        "//tensorflow/python/estimator:util",
     ],
 )
 

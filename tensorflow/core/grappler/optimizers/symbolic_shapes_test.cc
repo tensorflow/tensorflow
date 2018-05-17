@@ -90,6 +90,33 @@ TEST_F(SymbolicShapesTest, CompareSymbolicallyShapedTensorSizes) {
   EXPECT_FALSE(MakeShape({-1, -1, 32}) < MakeShape({1, -1, 32}));
 }
 
+TEST_F(SymbolicShapesTest, RankAndNumCoeff) {
+  EXPECT_EQ(2, Rank(MakeShape({32, 32})));
+  EXPECT_EQ(32 * 32, NumCoefficients(MakeShape({32, 32})));
+  EXPECT_EQ(2, Rank(MakeShape({-2, 32})));
+  EXPECT_EQ(-1, NumCoefficients(MakeShape({-2, 32})));
+  TensorShapeProto shape;
+  shape.set_unknown_rank(true);
+  EXPECT_EQ(-1, Rank(shape));
+  EXPECT_EQ(-1, NumCoefficients(shape));
+}
+
+TEST_F(SymbolicShapesTest, SizeRatio) {
+  EXPECT_EQ(16, ComputeSizeRatio(MakeShape({32, 32}), MakeShape({32, 2})));
+  EXPECT_EQ(16, ComputeSizeRatio(MakeShape({-2, 32}), MakeShape({-2, 2})));
+  EXPECT_EQ(16,
+            ComputeSizeRatio(MakeShape({-2, -2, 32}), MakeShape({-2, 2, -2})));
+  EXPECT_EQ(-1,
+            ComputeSizeRatio(MakeShape({-2, -2, 32}), MakeShape({-2, 2, 2})));
+  EXPECT_EQ(-1,
+            ComputeSizeRatio(MakeShape({-2, 2, 32}), MakeShape({-2, 2, -2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-2, -2}), MakeShape({-2, 2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-2, 32}), MakeShape({-2, -2})));
+  EXPECT_EQ(1, ComputeSizeRatio(MakeShape({-2, -3}), MakeShape({-3, -2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-1, 32}), MakeShape({-2, 2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-1, 32}), MakeShape({-2, 0})));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

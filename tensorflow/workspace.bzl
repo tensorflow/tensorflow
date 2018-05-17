@@ -191,11 +191,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "highwayhash",
       urls = [
-          "https://mirror.bazel.build/github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
-          "https://github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
+          "http://mirror.bazel.build/github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
+          "https://github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
       ],
-      sha256 = "0f30a15b1566d93f146c8d149878a06e91d9bb7ec2cfd76906df62a82be4aac9",
-      strip_prefix = "highwayhash-dfcb97ca4fe9277bf9dc1802dd979b071896453b",
+      sha256 = "9c3e0e87d581feeb0c18d814d98f170ff23e62967a2bd6855847f0b2fe598a37",
+      strip_prefix = "highwayhash-fd3d9af80465e4383162e4a7c5e2f406e82dd968",
       build_file = clean_dep("//third_party:highwayhash.BUILD"),
   )
 
@@ -455,11 +455,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/7b8a8728fbd27086efbf3c57cf2bb35a557108c9.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/7b8a8728fbd27086efbf3c57cf2bb35a557108c9.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f.tar.gz",
       ],
-      sha256 = "c620859c3ae5818f316de4837f340b3bba1646f8add0a28e6d4da34ce47e3969",
-      strip_prefix = "llvm-7b8a8728fbd27086efbf3c57cf2bb35a557108c9",
+      sha256 = "1b75cb65517e41aaa70a95af55e45d08f37d0d44a192669b10d7b14b976dcc2a",
+      strip_prefix = "llvm-e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 

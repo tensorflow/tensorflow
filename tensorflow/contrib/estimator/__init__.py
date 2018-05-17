@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
+from tensorflow.contrib.estimator.python.estimator.baseline import *
 from tensorflow.contrib.estimator.python.estimator.boosted_trees import *
 from tensorflow.contrib.estimator.python.estimator.dnn import *
 from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
@@ -45,6 +46,7 @@ _allowed_symbols = [
     'multi_label_head',
     'poisson_regression_head',
     'regression_head',
+    'BaselineEstimator',
     'DNNEstimator',
     'DNNLinearCombinedEstimator',
     'LinearEstimator',

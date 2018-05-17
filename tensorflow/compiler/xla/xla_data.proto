@@ -814,6 +814,12 @@ enum UnaryOperation {
 
   // Elementwise, computes clz(x).
   UNOP_CLZ = 17;
+
+  // Elementwise, computes exp(x)-1.
+  UNOP_EXPM1 = 18;
+
+  // Elementwise, computes log(x+1).
+  UNOP_LOG1P = 19;
 }
 
 message UnaryOpRequest {

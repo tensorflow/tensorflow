@@ -519,9 +519,10 @@ class RNN(Layer):
       return [K.tile(initial_state, [1, self.cell.state_size])]
 
   def __call__(self, inputs, initial_state=None, constants=None, **kwargs):
-    inputs, initial_state, constants = self._standardize_args(
-        inputs, initial_state, constants)
-
+    inputs, initial_state, constants = _standardize_args(inputs,
+                                                         initial_state,
+                                                         constants,
+                                                         self._num_constants)
     if initial_state is None and constants is None:
       return super(RNN, self).__call__(inputs, **kwargs)
 
@@ -660,46 +661,6 @@ class RNN(Layer):
       return [output] + states
     else:
       return output
-
-  def _standardize_args(self, inputs, initial_state, constants):
-    """Standardize `__call__` to a single list of tensor inputs.
-
-    When running a model loaded from file, the input tensors
-    `initial_state` and `constants` can be passed to `RNN.__call__` as part
-    of `inputs` instead of by the dedicated keyword arguments. This method
-    makes sure the arguments are separated and that `initial_state` and
-    `constants` are lists of tensors (or None).
-
-    Arguments:
-        inputs: tensor or list/tuple of tensors
-        initial_state: tensor or list of tensors or None
-        constants: tensor or list of tensors or None
-
-    Returns:
-        inputs: tensor
-        initial_state: list of tensors or None
-        constants: list of tensors or None
-    """
-    if isinstance(inputs, list):
-      assert initial_state is None and constants is None
-      if self._num_constants is not None:
-        constants = inputs[-self._num_constants:]  # pylint: disable=invalid-unary-operand-type
-        inputs = inputs[:-self._num_constants]  # pylint: disable=invalid-unary-operand-type
-      if len(inputs) > 1:
-        initial_state = inputs[1:]
-      inputs = inputs[0]
-
-    def to_list_or_none(x):
-      if x is None or isinstance(x, list):
-        return x
-      if isinstance(x, tuple):
-        return list(x)
-      return [x]
-
-    initial_state = to_list_or_none(initial_state)
-    constants = to_list_or_none(constants)
-
-    return inputs, initial_state, constants
 
   def reset_states(self, states=None):
     if not self.stateful:
@@ -914,13 +875,13 @@ class SimpleRNNCell(Layer):
     prev_output = states[0]
     if 0 < self.dropout < 1 and self._dropout_mask is None:
       self._dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs, array_ops.shape(inputs)[-1]),
+          array_ops.ones_like(inputs),
           self.dropout,
           training=training)
     if (0 < self.recurrent_dropout < 1 and
         self._recurrent_dropout_mask is None):
       self._recurrent_dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs, self.units),
+          array_ops.ones_like(prev_output),
           self.recurrent_dropout,
           training=training)
 
@@ -1333,14 +1294,14 @@ class GRUCell(Layer):
 
     if 0 < self.dropout < 1 and self._dropout_mask is None:
       self._dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs, array_ops.shape(inputs)[-1]),
+          array_ops.ones_like(inputs),
           self.dropout,
           training=training,
           count=3)
     if (0 < self.recurrent_dropout < 1 and
         self._recurrent_dropout_mask is None):
       self._recurrent_dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs, self.units),
+          array_ops.ones_like(h_tm1),
           self.recurrent_dropout,
           training=training,
           count=3)
@@ -1873,14 +1834,14 @@ class LSTMCell(Layer):
   def call(self, inputs, states, training=None):
     if 0 < self.dropout < 1 and self._dropout_mask is None:
       self._dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs, array_ops.shape(inputs)[-1]),
+          array_ops.ones_like(inputs),
           self.dropout,
           training=training,
           count=4)
     if (0 < self.recurrent_dropout < 1 and
         self._recurrent_dropout_mask is None):
       self._recurrent_dropout_mask = _generate_dropout_mask(
-          _generate_dropout_ones(inputs, self.units),
+          array_ops.ones_like(states[0]),
           self.recurrent_dropout,
           training=training,
           count=4)
@@ -2254,12 +2215,7 @@ class LSTM(RNN):
     return cls(**config)
 
 
-def _generate_dropout_ones(inputs, dims):
-  return K.ones((array_ops.shape(inputs)[0], dims))
-
-
 def _generate_dropout_mask(ones, rate, training=None, count=1):
-
   def dropped_inputs():
     return K.dropout(ones, rate)
 
@@ -2605,3 +2561,47 @@ class Recurrent(Layer):
     }
     base_config = super(Recurrent, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+
+def _standardize_args(inputs, initial_state, constants, num_constants):
+  """Standardizes `__call__` to a single list of tensor inputs.
+
+  When running a model loaded from a file, the input tensors
+  `initial_state` and `constants` can be passed to `RNN.__call__()` as part
+  of `inputs` instead of by the dedicated keyword arguments. This method
+  makes sure the arguments are separated and that `initial_state` and
+  `constants` are lists of tensors (or None).
+
+  Arguments:
+      inputs: Tensor or list/tuple of tensors. which may include constants
+        and initial states. In that case `num_constant` must be specified.
+      initial_state: Tensor or list of tensors or None, initial states.
+      constants: Tensor or list of tensors or None, constant tensors.
+      num_constants: Expected number of constants (if constants are passed as
+        part of the `inputs` list.
+
+  Returns:
+      inputs: Single tensor.
+      initial_state: List of tensors or None.
+      constants: List of tensors or None.
+  """
+  if isinstance(inputs, list):
+    assert initial_state is None and constants is None
+    if num_constants is not None:
+      constants = inputs[-num_constants:]
+      inputs = inputs[:-num_constants]
+    if len(inputs) > 1:
+      initial_state = inputs[1:]
+    inputs = inputs[0]
+
+  def to_list_or_none(x):
+    if x is None or isinstance(x, list):
+      return x
+    if isinstance(x, tuple):
+      return list(x)
+    return [x]
+
+  initial_state = to_list_or_none(initial_state)
+  constants = to_list_or_none(constants)
+
+  return inputs, initial_state, constants

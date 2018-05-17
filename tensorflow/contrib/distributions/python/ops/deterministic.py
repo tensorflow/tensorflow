@@ -32,6 +32,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 __all__ = [
     "Deterministic",
@@ -86,7 +87,7 @@ class _BaseDeterministic(distribution.Distribution):
     Raises:
       ValueError:  If `loc` is a scalar.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     with ops.name_scope(name, values=[loc, atol, rtol]) as name:
       loc = ops.convert_to_tensor(loc, name="loc")
       if is_vector and validate_args:

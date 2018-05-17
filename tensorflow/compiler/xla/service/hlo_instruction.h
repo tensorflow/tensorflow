@@ -60,28 +60,49 @@ class HloModule;
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
  public:
+  enum class PrintSubcomputationMode {
+    kOff,         // Do not print anything about subcomputations.
+    kNameOnly,    // Only print the name of subcomputations.
+    kFullBodies,  // Print the full bodies of subcomputations.
+  };
+
   // Constructs the default print options: don't print large constants, don't
   // compact operands, no indentation.
   HloPrintOptions()
       : print_large_constants_(false),
-        print_subcomputation_references_(true),
+        print_subcomputation_mode_(PrintSubcomputationMode::kNameOnly),
         print_metadata_(true),
         print_backend_config_(true),
         compact_operands_(false),
         print_operand_shape_(true),
         print_program_shape_(true),
         print_percent_(true),
-        indent_amount_(0) {}
+        canonicalize_instruction_names_(false),
+        indent_amount_(0),
+        is_in_nested_computation_(false) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
         .set_print_large_constants(true)
-        .set_print_subcomputation_references(true)
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kNameOnly)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_operand_shape(false)
         .set_print_program_shape(false)
         .set_print_percent(false);
+  }
+
+  // Options to produce the canonical string representing an isomorphic
+  // computation graph.
+  static HloPrintOptions Canonical() {
+    return HloPrintOptions()
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
+        .set_print_metadata(false)
+        .set_compact_operands(true)
+        .set_print_operand_shape(true)
+        .set_print_program_shape(false)
+        .set_print_percent(false)
+        .set_canonicalize_instruction_names(true);
   }
 
   // If true, large constants will be printed out.
@@ -90,14 +111,9 @@ class HloPrintOptions {
     return *this;
   }
 
-  // If true, the names of subcomputations (e.g. a fusion node's fused
-  // computation) won't be printed.  This makes the resulting text not parsable.
-  //
-  // A CustomCall's call target is printed even if
-  // print_subcomputation_references is false, because the call target isn't an
-  // HloComputation.
-  HloPrintOptions& set_print_subcomputation_references(bool value) {
-    print_subcomputation_references_ = value;
+  HloPrintOptions& set_print_subcomputation_mode(
+      PrintSubcomputationMode value) {
+    print_subcomputation_mode_ = value;
     return *this;
   }
 
@@ -138,15 +154,29 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, canonicalizes instructions' name. Instead of using "%foo.1" as
+  // the name of an instruction, we use "%tmp_1", "%tmp_2" etc.
+  HloPrintOptions& set_canonicalize_instruction_names(bool value) {
+    canonicalize_instruction_names_ = value;
+    return *this;
+  }
+
   // The indent of the hlo text block.
   HloPrintOptions& set_indent_amount(int value) {
     indent_amount_ = value;
     return *this;
   }
 
+  // If true, indicates the instruction being printed is inside a nested
+  // computation.
+  HloPrintOptions& set_is_in_nested_computation(bool value) {
+    is_in_nested_computation_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
-  bool print_subcomputation_references() const {
-    return print_subcomputation_references_;
+  PrintSubcomputationMode print_subcomputation_mode() const {
+    return print_subcomputation_mode_;
   }
   bool print_metadata() const { return print_metadata_; }
   bool print_backend_config() const { return print_metadata_; }
@@ -154,39 +184,145 @@ class HloPrintOptions {
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
+  bool canonicalize_instruction_names() const {
+    return canonicalize_instruction_names_;
+  }
   int indent_amount() const { return indent_amount_; }
+  int is_in_nested_computation() const { return is_in_nested_computation_; }
 
  private:
   bool print_large_constants_;
-  bool print_subcomputation_references_;
+  PrintSubcomputationMode print_subcomputation_mode_;
   bool print_metadata_;
   bool print_backend_config_;
   bool compact_operands_;
   bool print_operand_shape_;
   bool print_program_shape_;
   bool print_percent_;
+  bool canonicalize_instruction_names_;
   int indent_amount_;
+  bool is_in_nested_computation_;
 };
 
-// HLO instructions are the IR used by the high-level compiler.
+// For canonical string output, we need to have a canonical way to rename
+// each instruction and its operands. Each operand is renamed as "tmp_<xxx>",
+// where <xxx> is an index starting from 0.
+class CanonicalNameMap {
+ public:
+  CanonicalNameMap() : index(0) {}
+
+  string LookupOrInsert(const string& old_name) {
+    auto iter = canonical_name_map.find(old_name);
+    if (iter != canonical_name_map.end()) {
+      return iter->second;
+    }
+
+    string new_name = tensorflow::strings::StrCat("tmp_", index++);
+    canonical_name_map[old_name] = new_name;
+    return new_name;
+  }
+  void Clear() {
+    canonical_name_map.clear();
+    index = 0;
+  }
+
+ private:
+  int64 index;
+  tensorflow::gtl::FlatMap<string, string> canonical_name_map;
+};
+
+// HLO instructions are the atomic unit of the high-level compiler's IR.
+//
+// HloInstructions live inside of an HloComputation, which is analogous to a
+// function in other programming languages.  Nodes have no total order within
+// their computation.  Instead, they have a partial ordering determined by their
+// data and control dependencies.
+//
+// HLO does not have basic blocks or explicit "branch" instructions.  Instead,
+// certain HloInstructions -- namely, kWhile, kConditional, and kCall -- encode
+// control flow.  For example, the kConditional HLO executes one of two possible
+// computations, depending on the runtime value of a predicate.
+//
+// HLO is pure (mostly).  It has no concept of mutable state.  Instead, data
+// values are produced by one HLO and flow into consumers across dependency
+// edges.
 class HloInstruction {
  public:
+  // A fusion node computes the same value a call to its fusion computation
+  // would compute.  However, the choice of fusion kind dictates codegen
+  // strategy for the backend.
+  //
+  // To generate code for a kFusion HloInstruction, most backends do something
+  // like the following:
+  //
+  // 1) Identify the "primary" HloInstruction of the fused computation.
+  // 2) Emit code that does the work of the primary node, creating its inputs
+  //    and transforming its outputs as specified by the fused computation.
+  //
+  // In step (2), the code emitted is usually similar to the code that would be
+  // emitted for an *unfused* version of the primary node, except that
+  //
+  //  - when the primary node reads an element of one of its operands, instead
+  //    of loading the value from memory, it *computes* the value based on the
+  //    contents of the fused computation.
+  //  - when the primary node outputs a value, instead of storing it to memory,
+  //    it forwards the value to its users, which then perform additional
+  //    computations before the value is finally stored to memory at the root of
+  //    the fusion node.
+  //
+  // An HloInstruction's FusionKind helps us find the kFusion instruction's
+  // primary node, and can also affect how we generate code in step (2).
+  //
+  //  - kInput: The primary node is the root of the fused instruction.
+  //
+  //  - kOutput: The primary node is not the root of the fused instruction.
+  //    This fusion kind requires that one operand buffer of the fusion
+  //    instruction be able to alias the output buffer.  This constraint is
+  //    usually enough to let backends find the primary node unambiguously.
+  //
+  //  - kLoop: The primary node is the root of the fused computation, but,
+  //    unlike in input fusion, we prescribe a specific implementation for
+  //    codegen.  Rather than generating code that looks like the code we'd emit
+  //    for an unfused version of the primary/root node, we emit code that
+  //    generates one element of the root at a time.
+  //
+  //  - kCustom: Custom category for backend-specific fusions that don't fit
+  //    into the above patterns.
+  //
+  // Not all backends support all fusion kinds, and given a particular fused
+  // computation, it's not in general safe to change its fusion kind.  Creation
+  // of fusion nodes is always backend-specific.
+  //
+  // For elementwise ops (e.g. kAdd), most backends would emit a
+  // one-element-at-a-time implementation for the unfused version, so loop
+  // fusion and input fusion are probably equivalent if the root node is
+  // elementwise.  They're not necessarily equivalent e.g. for kReduce, where an
+  // implementation might emit something more sophisticated for an unfused or
+  // input-fusion reduce, but will emit the naive code that reduces one element
+  // at a time for loop fusion with a reduce as the root.
+  //
+  // Another way to think of loop fusion is that it's equivalent to input
+  // fusion, but where the root node is an implicit identity node, whose
+  // unfused implementation is "read one element, write one element".
+  //
+  // TODO(b/79869434): This categorization scheme is not great.  For one thing,
+  // input and loop fusion are basically the same thing: There is no reason for
+  // the HLO to encode backend-specific decisions about how e.g. a reduce that's
+  // the root of a fusion should be lowered.  In addition, this scheme as
+  // written doesn't work for multi-output fusion, where the primary node is
+  // never actually the root (which is a kTuple instruction that gathers the
+  // multiple outputs of the fusion).
   enum class FusionKind {
-    kLoop,          // Fused into a loop.
-    kInput,         // Op's input is fused into the op itself.
-    kOutput,        // Op's output is fused into the op itself.
-                    // REQUIRES: At least one operand buffer must be able
-                    // to alias the output buffer.
-    kCustom,        // Custom category for backend-specific fusions that
-                    // do not match any of the more specific ones.
+    kLoop,
+    kInput,
+    kOutput,
+    kCustom,
   };
 
   ~HloInstruction();
 
   // Creates an instruction from the given proto. Arguments:
   //
-  //   module: the module which will contain the instruction. The newly created
-  //     instruction is *not* added to the module or any computation, however.
   //   proto: the proto to convert from.
   //   instruction_map: a map from instruction id to HloInstruction*. This map
   //     must contain all operands of the newly constructed instruction.
@@ -194,7 +330,7 @@ class HloInstruction {
   //     must contain all computations which the newly constructed instruction
   //     calls.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
-      HloModule* module, const HloInstructionProto& proto,
+      const HloInstructionProto& proto,
       const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
       const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
@@ -705,6 +841,9 @@ class HloInstruction {
   //
   // Note: only constant and parameter opcodes have an associated literal.
   const Literal& literal() const;
+
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const;
 
   // Returns the parameter number associated with this instruction.
   //
@@ -1330,6 +1469,24 @@ class HloInstruction {
                         const ShapeIndex& shape_index = {});
 
  private:
+  // Prints an instruction to a string.
+  //
+  // The canonical string representation needs to name operands and instruction
+  // names in a consistent way. This is implemented through the
+  // canonical_name_map.
+  string ToStringWithCanonicalNameMap(
+      const HloPrintOptions& options,
+      CanonicalNameMap* canonical_name_map) const;
+
+  // Prints an operand to a string.
+  string OperandsToStringWithCanonicalNameMap(
+      const HloPrintOptions& options,
+      CanonicalNameMap* canonical_name_map) const;
+
+  // Allow HloInstruction to access the ToStringWithCanonicalNameMap() and
+  // OperandsToStringWithCanonicalNameMap() functions.
+  friend class HloComputation;
+
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
 
   // Helper class for computing OperandElementUse for kFusion.
@@ -1576,13 +1733,20 @@ std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 // an HloInstruction* or a const HloInstruction*.
 // To make the iteration order over the map deterministic, the comparator
 // should not be using the pointer values, but rather an intrinsic property of
-// the hlo.
+// the hlo. Exception: null pointer values compare less than non-null.
 //
 // Note that this cannot be used for HLO instructions across multiple modules
 // since the id of HLO instructions are only unique within each HLO module.
 struct HloPtrComparator {
   bool operator()(const HloInstruction* const& lhs,
                   const HloInstruction* const& rhs) const {
+    if (rhs == nullptr) {
+      // Nothing compares less than nullptr.
+      return false;
+    }
+    if (lhs == nullptr) {
+      return true;
+    }
     return lhs->unique_id() < rhs->unique_id();
   }
 };

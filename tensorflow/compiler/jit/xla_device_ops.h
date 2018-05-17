@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/kernels/control_flow_ops.h"
+#include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/sendrecv_ops.h"
@@ -63,6 +64,9 @@ class XlaDeviceDummyOp : public OpKernel {
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("IdentityN").Device(DEVICE).TypeConstraint("T", TYPES),             \
+      IdentityNOp);                                                            \
   REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
                           PlaceholderOp);                                      \

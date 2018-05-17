@@ -124,9 +124,9 @@ port::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
     }
   }
 
-  return port::Status{
+  return port::Status(
       port::error::NOT_FOUND,
-      port::Printf("Executor for bus %d not found.", bus_ordinal)};
+      port::Printf("Executor for bus %d not found.", bus_ordinal));
 }
 
 Platform::Id CudaPlatform::id() const { return kCudaPlatformId; }
@@ -172,11 +172,11 @@ CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
       this, MakeUnique<CUDAExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str())};
+            config.ordinal, init_status.ToString().c_str()));
   }
 
   return std::move(executor);

@@ -27,7 +27,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras.engine import training_utils
-from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
 from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
@@ -180,9 +179,8 @@ def fit_loop(model,
 
   for epoch in range(initial_epoch, epochs):
     # Reset stateful metrics
-    for m in model.metrics:
-      if isinstance(m, Layer):
-        m.reset_states()
+    for m in model.stateful_metric_functions:
+      m.reset_states()
     # Update callbacks
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
@@ -413,9 +411,8 @@ def test_loop(model, inputs, targets,
     ins = inputs + targets + sample_weights
 
   if hasattr(model, 'metrics'):
-    for m in model.metrics:
-      if isinstance(m, Layer):
-        m.reset_states()
+    for m in model.stateful_metric_functions:
+      m.reset_states()
     stateful_metric_indices = [
         i for i, name in enumerate(model.metrics_names)
         if str(name) in model.stateful_metric_names

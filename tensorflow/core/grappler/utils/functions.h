@@ -176,9 +176,6 @@ class GrapplerFunctionItem : public GrapplerItem {
   bool is_stateful_;
 };
 
-// Return all output tensors referenced by item output args.
-std::vector<string> OutputTensors(const GrapplerFunctionItem& item);
-
 // Check if function input/output types are fully defined only at instantiation
 // time (parametrized by it's instantiation node).
 bool HasParametrizedType(const FunctionDef& func);

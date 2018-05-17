@@ -501,11 +501,11 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
     if verbose == 1:
       progbar.update(step_index + 1)
 
-    for i in range(len(outs)):
-      outs[i] /= num_samples
-    if len(outs) == 1:
-      return outs[0]
-    return outs
+  for i in range(len(outs)):
+    outs[i] /= num_samples
+  if len(outs) == 1:
+    return outs[0]
+  return outs
 
 
 def batch_test_loop(model,

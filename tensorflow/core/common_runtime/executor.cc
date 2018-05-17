@@ -1674,7 +1674,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
 
     if (vlog_) {
       VLOG(1) << "Process node: " << id << " step " << params.step_id << " "
-              << SummarizeNode(*node) << " is dead: " << tagged_node.is_dead;
+              << SummarizeNode(*node) << " is dead: " << tagged_node.is_dead
+              << " device: " << device->name();
     }
 
     Entry* input_tensors = GetInputTensors(input_frame, input_iter);
@@ -1735,7 +1736,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
             VLOG(2) << "Async kernel done: " << state->item->node->id()
                     << " step " << step_id_ << " "
                     << SummarizeNode(*state->item->node)
-                    << " is dead: " << state->tagged_node.is_dead;
+                    << " is dead: " << state->tagged_node.is_dead
+                    << " device: " << device->name();
           }
 
           // Clears inputs.
@@ -1788,7 +1790,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       if (vlog_) {
         VLOG(2) << "Synchronous kernel done: " << id << " step "
                 << params.step_id << " " << SummarizeNode(*node)
-                << " is dead: " << tagged_node.is_dead;
+                << " is dead: " << tagged_node.is_dead
+                << " device: " << device->name();
       }
 
       // Clears inputs.

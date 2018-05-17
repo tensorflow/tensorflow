@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include <algorithm>
 #include <list>
@@ -240,10 +241,18 @@ class TFAttrs {
     return attrs_.at(key);
   }
   template <typename T>
-  T get(string key) const;
+  T get(const string& key) const;
   template <typename T>
-  T get(string key, const T& default_value) const {
+  T get(const string& key, const T& default_value) const {
     return attrs_.count(key) ? this->get<T>(key) : default_value;
+  }
+
+  std::vector<string> GetAllAttrKey() {
+    std::vector<string> attr_list;
+    for (const auto& attr_item : attrs_) {
+      attr_list.emplace_back(attr_item.first);
+    }
+    return attr_list;
   }
 
  private:
@@ -252,23 +261,29 @@ class TFAttrs {
 };
 
 template <>
-string TFAttrs::get<string>(string key) const {
+string TFAttrs::get<string>(const string& key) const {
   return this->at(key)->s();
 }
 
 template <>
-std::vector<int> TFAttrs::get<std::vector<int>>(string key) const {
+std::vector<int> TFAttrs::get<std::vector<int>>(const string& key) const {
   auto attr = this->at(key)->list().i();
   return std::vector<int>(attr.begin(), attr.end());
 }
 
 template <>
-std::vector<string> TFAttrs::get<std::vector<string>>(string key) const {
+std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
+  auto attr = this->at(key)->list().f();
+  return std::vector<float>(attr.begin(), attr.end());
+}
+
+template <>
+std::vector<string> TFAttrs::get<std::vector<string>>(const string& key) const {
   auto attr = this->at(key)->list().s();
   return std::vector<string>(attr.begin(), attr.end());
 }
 template <>
-nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(string key) const {
+nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(const string& key) const {
   auto values = this->get<std::vector<int>>(key);
   nvinfer1::Dims dims;
   dims.nbDims = values.size();
@@ -278,24 +293,25 @@ nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(string key) const {
 }
 
 template <>
-nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(string key) const {
+nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
   nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
   TF_CHECK_OK(ConvertDType(this->at(key)->type(), &trt_dtype));
   return trt_dtype;
 }
 
 template <>
-tensorflow::DataType TFAttrs::get<tensorflow::DataType>(string key) const {
+tensorflow::DataType TFAttrs::get<tensorflow::DataType>(
+    const string& key) const {
   return this->at(key)->type();
 }
 
 template <>
-float TFAttrs::get<float>(string key) const {
+float TFAttrs::get<float>(const string& key) const {
   return this->at(key)->f();
 }
 
 template <>
-bool TFAttrs::get<bool>(string key) const {
+bool TFAttrs::get<bool>(const string& key) const {
   return this->at(key)->b();
 }
 
@@ -424,6 +440,7 @@ using OpConverter =
 class Converter {
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
   std::unordered_map<string, OpConverter> op_registry_;
+  OpConverter plugin_converter_;
   nvinfer1::INetworkDefinition* trt_network_;
   std::list<std::vector<uint8_t>> temp_bufs_;
   tensorflow::tensorrt::TRTWeightStore* weight_store_;
@@ -490,13 +507,17 @@ class Converter {
     std::vector<TRT_TensorOrWeights> inputs;
     TF_RETURN_IF_ERROR(this->get_inputs(node_def, &inputs));
     string op = node_def.op();
-    if (!op_registry_.count(op)) {
-      return tensorflow::errors::Unimplemented(
-          "No converter registered for op: " + op);
-    }
-    OpConverter op_converter = op_registry_.at(op);
     std::vector<TRT_TensorOrWeights> outputs;
-    TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+    if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
+      TF_RETURN_IF_ERROR(plugin_converter_(*this, node_def, inputs, &outputs));
+    } else {
+      if (!op_registry_.count(op)) {
+        return tensorflow::errors::Unimplemented(
+            "No converter registered for op: " + op);
+      }
+      OpConverter op_converter = op_registry_.at(op);
+      TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+    }
     for (size_t i = 0; i < outputs.size(); ++i) {
       TRT_TensorOrWeights output = outputs.at(i);
       // TODO(jie): tf protobuf seems to be omitting the :0 suffix
@@ -1170,6 +1191,45 @@ tensorflow::Status BinaryTensorOpTensor(
 
   // pass the output
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertPlugin(Converter& ctx,
+                                 const tensorflow::NodeDef& node_def,
+                                 const std::vector<TRT_TensorOrWeights>& inputs,
+                                 std::vector<TRT_TensorOrWeights>* outputs) {
+  // prepare input
+  std::vector<nvinfer1::ITensor*> all_inputs;
+  for (auto input : inputs) {
+    all_inputs.emplace_back(const_cast<nvinfer1::ITensor*>(input.tensor()));
+  }
+
+  // plugin is owned by PluginFactory
+  // TODO(jie): destroy plugins later (resource management)
+  PluginTensorRT* plugin =
+      PluginFactoryTensorRT::GetInstance()->CreatePlugin(node_def.op());
+
+  // passing attributes
+  // TODO(jie): support more general attribute
+  TFAttrs attrs(node_def);
+  auto attr_key_vector = attrs.GetAllAttrKey();
+  for (auto attr_key : attr_key_vector) {
+    // TODO(jie): support only list of float for toy example here.
+    auto data = attrs.get<std::vector<float>>(attr_key);
+    size_t size_data = data.size() * sizeof(float);
+    if (!plugin->SetAttribute(attr_key, static_cast<void*>(data.data()),
+                              size_data)) {
+      return tensorflow::errors::InvalidArgument("plugin SetAttribute failed");
+    }
+  }
+
+  nvinfer1::IPluginLayer* layer = ctx.network()->addPlugin(
+      &all_inputs[0], static_cast<int>(inputs.size()), *plugin);
+
+  for (int i = 0; i < layer->getNbOutputs(); i++) {
+    nvinfer1::ITensor* output_tensor = layer->getOutput(i);
+    outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  }
   return tensorflow::Status::OK();
 }
 
@@ -2073,6 +2133,8 @@ void Converter::register_op_converters() {
   op_registry_["Reshape"] = ConvertReshape;
   op_registry_["FusedBatchNorm"] = ConvertFusedBatchNorm;
   op_registry_["FusedBatchNormV2"] = ConvertFusedBatchNorm;
+
+  plugin_converter_ = ConvertPlugin;
 }
 
 }  // namespace

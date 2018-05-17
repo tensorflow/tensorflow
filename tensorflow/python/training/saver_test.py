@@ -71,18 +71,17 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.training import adam
-from tensorflow.python.training import checkpointable
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import compat
 
 
-@test_util.with_c_api
 class SaverTest(test.TestCase):
 
   def basicSaveRestore(self, variable_op):
@@ -769,7 +768,6 @@ class SaverTest(test.TestCase):
       save.save(sess, save_path)
 
 
-@test_util.with_c_api
 class SaveRestoreShardedTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
@@ -1044,12 +1042,10 @@ class SaveRestoreShardedTest(test.TestCase):
     self._testPartitionedVariables(use_resource=True)
 
 
-@test_util.with_c_api
 class SaveRestoreShardedTestV2(SaveRestoreShardedTest):
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
-@test_util.with_c_api
 class MaxToKeepTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1390,7 +1386,6 @@ class MaxToKeepTest(test.TestCase):
       self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
 
 
-@test_util.with_c_api
 class KeepCheckpointEveryNHoursTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1450,7 +1445,6 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
       self.assertTrue(saver_module.checkpoint_exists(s4))
 
 
-@test_util.with_c_api
 class SaveRestoreWithVariableNameMap(test.TestCase):
 
   def _testNonReshape(self, variable_op):
@@ -1527,7 +1521,6 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
     self._testNonReshape(variables.Variable)
 
 
-@test_util.with_c_api
 class LatestCheckpointWithRelativePaths(test.TestCase):
 
   @staticmethod
@@ -1629,7 +1622,6 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           self.assertEqual(v0.eval(), 2.0)
 
 
-@test_util.with_c_api
 class CheckpointStateTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1744,7 +1736,6 @@ class CheckpointStateTest(test.TestCase):
                      os.path.join(save_dir, "./model.ckpt-687529"))
 
 
-@test_util.with_c_api
 class MetaGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2464,7 +2455,6 @@ class MetaGraphTest(test.TestCase):
           sess.run("new_model/output:0")
 
 
-@test_util.with_c_api
 class CheckpointReaderTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
@@ -2517,12 +2507,10 @@ class CheckpointReaderTest(test.TestCase):
       pywrap_tensorflow.NewCheckpointReader("non-existent")
 
 
-@test_util.with_c_api
 class CheckpointReaderForV2Test(CheckpointReaderTest):
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
-@test_util.with_c_api
 class WriteGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2550,7 +2538,6 @@ class WriteGraphTest(test.TestCase):
     self.assertTrue(os.path.exists(path))
 
 
-@test_util.with_c_api
 class SaverUtilsTest(test.TestCase):
 
   def setUp(self):
@@ -2593,7 +2580,6 @@ class SaverUtilsTest(test.TestCase):
     self.assertTrue(mtimes[1] >= mtimes[0])
 
 
-@test_util.with_c_api
 class ScopedGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2976,7 +2962,6 @@ class MyModel(training.Model):
     return ret
 
 
-@test_util.with_c_api
 class CheckpointableCompatibilityTests(test.TestCase):
 
   # TODO(allenl): Track down python3 reference cycles in these tests.

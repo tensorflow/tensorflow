@@ -182,6 +182,10 @@ class NumericColumnTest(test.TestCase):
     self.assertEqual(dtypes.float32, a.dtype)
     self.assertIsNone(a.normalizer_fn)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.numeric_column(key=('aaa',))
+
   def test_shape_saved_as_tuple(self):
     a = fc.numeric_column('aaa', shape=[1, 2], default_value=[[3, 2.]])
     self.assertEqual((1, 2), a.shape)
@@ -644,6 +648,10 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertEqual('aaa', a.key)
     self.assertEqual(10, a.hash_bucket_size)
     self.assertEqual(dtypes.string, a.dtype)
+
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_hash_bucket(('key',), 10)
 
   def test_bucket_size_should_be_given(self):
     with self.assertRaisesRegexp(ValueError, 'hash_bucket_size must be set.'):
@@ -1276,7 +1284,6 @@ def get_keras_linear_model_predictions(features,
   return retval
 
 
-@test_util.with_c_api
 class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -1552,16 +1559,10 @@ class LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          predictions = fc.linear_model(features, [price])
-      else:
-        predictions = fc.linear_model(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            predictions.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        fc.linear_model(features, [price])
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -1925,7 +1926,6 @@ class LinearModelTest(test.TestCase):
         sess.run(net, feed_dict={features['price']: np.array(1)})
 
 
-@test_util.with_c_api
 class _LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -2190,16 +2190,10 @@ class _LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          predictions = get_keras_linear_model_predictions(features, [price])
-      else:
-        predictions = get_keras_linear_model_predictions(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            predictions.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        get_keras_linear_model_predictions(features, [price])
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -2686,7 +2680,6 @@ class InputLayerTest(test.TestCase):
       self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
 
 
-@test_util.with_c_api
 class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -2751,16 +2744,10 @@ class FunctionalInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          net = fc.input_layer(features, [price])
-      else:
-        net = fc.input_layer(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            net.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        fc.input_layer(features, [price])
 
   def test_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -3327,6 +3314,11 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column._parse_example_spec)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_vocabulary_file(
+          key=('aaa',), vocabulary_file='path_to_file', vocabulary_size=3)
+
   def test_all_constructor_args(self):
     column = fc.categorical_column_with_vocabulary_file(
         key='aaa', vocabulary_file='path_to_file', vocabulary_size=3,
@@ -3752,6 +3744,11 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column._parse_example_spec)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_vocabulary_list(
+          key=('aaa',), vocabulary_list=('omar', 'stringer', 'marlo'))
+
   def test_defaults_int(self):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa', vocabulary_list=(12, 24, 36))
@@ -4142,6 +4139,10 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, column._parse_example_spec)
+
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_identity(key=('aaa',), num_buckets=3)
 
   def test_deep_copy(self):
     original = fc.categorical_column_with_identity(key='aaa', num_buckets=3)

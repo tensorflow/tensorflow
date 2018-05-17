@@ -450,7 +450,7 @@ tf_module {
   }
   member_method {
     name: "softmax"
-    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
     name: "softplus"
