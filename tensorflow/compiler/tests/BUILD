@@ -853,9 +853,21 @@ cuda_py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:gradients",
-        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "dense_layer_test",
+    size = "small",
+    srcs = ["dense_layer_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
 )
