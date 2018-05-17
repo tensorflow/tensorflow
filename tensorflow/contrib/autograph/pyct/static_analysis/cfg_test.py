@@ -247,6 +247,47 @@ class CFGTest(test.TestCase):
         anno.getanno(body[2], 'defined_in'),
         frozenset(map(qual_names.QN, ('x', 'g'))))
 
+  def test_loop_else(self):
+
+    # Disabling useless-else-on-loop error, because 'break' and 'continue'
+    # canonicalization are a separate analysis pass, and here we test
+    # the CFG analysis in isolation.
+    def for_orelse(x):
+      y = 0
+      for i in range(len(x)):
+        x += i
+      else:  # pylint: disable=useless-else-on-loop
+        y = 1
+      return x, y
+
+    def while_orelse(x, i):
+      y = 0
+      while x < 10:
+        x += i
+      else:  # pylint: disable=useless-else-on-loop
+        y = 1
+      return x, y
+
+    for f in (for_orelse, while_orelse):
+      node, ctx = self._parse_and_analyze(f, {})
+      cfg.run_analyses(node, cfg.ReachingDefinitions(ctx))
+      body = node.body[0].body
+      return_node = body[-1]
+      reaching_defs = anno.getanno(return_node, 'definitions_in')
+
+      # Y could be defined by Assign(Num(0)) or Assign(Num(1))
+      # X could be defined as an argument or an AugAssign.
+      y_defs = [node for var, node in reaching_defs if str(var) == 'y']
+      x_defs = [node for var, node in reaching_defs if str(var) == 'x']
+
+      self.assertEqual(set((gast.Assign,)), set(type(def_) for def_ in y_defs))
+      self.assertEqual(set((0, 1)), set(def_.value.n for def_ in y_defs))
+      self.assertEqual(len(y_defs), 2)
+      self.assertEqual(
+          set((gast.arguments, gast.AugAssign)),
+          set(type(def_) for def_ in x_defs))
+      self.assertEqual(len(x_defs), 2)
+
 
 if __name__ == '__main__':
   test.main()

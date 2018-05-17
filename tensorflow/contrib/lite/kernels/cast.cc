@@ -32,7 +32,7 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // TODO(ahentz): these two checks would make the new implementation
@@ -77,7 +77,7 @@ TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const int num_elements = NumElements(input);
   TF_LITE_ENSURE_EQ(context, num_elements, NumElements(output));

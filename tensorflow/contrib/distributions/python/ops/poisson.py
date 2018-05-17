@@ -93,7 +93,7 @@ class Poisson(distribution.Distribution):
       TypeError: if `rate` is not a float-type.
       TypeError: if `log_rate` is not a float-type.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     with ops.name_scope(name, values=[rate]) as name:
       if (rate is None) == (log_rate is None):
         raise ValueError("Must specify exactly one of `rate` and `log_rate`.")

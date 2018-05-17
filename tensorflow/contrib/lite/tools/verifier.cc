@@ -246,15 +246,16 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
     }
 
     if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
-      if (!resolver.FindOp(opcode->custom_code()->c_str())) {
-        ReportError(error_reporter, "Unsupported custom op: %s",
-                    opcode->custom_code()->c_str());
+      if (!resolver.FindOp(opcode->custom_code()->c_str(), opcode->version())) {
+        ReportError(error_reporter, "Unsupported custom op: %s, version: %d",
+                    opcode->custom_code()->c_str(), opcode->version());
         return false;
       }
     } else {
-      if (!resolver.FindOp(opcode->builtin_code())) {
-        ReportError(error_reporter, "Unsupported builtin op: %s",
-                    EnumNameBuiltinOperator(opcode->builtin_code()));
+      if (!resolver.FindOp(opcode->builtin_code(), opcode->version())) {
+        ReportError(error_reporter, "Unsupported builtin op: %s, version: %d",
+                    EnumNameBuiltinOperator(opcode->builtin_code()),
+                    opcode->version());
         return false;
       }
     }

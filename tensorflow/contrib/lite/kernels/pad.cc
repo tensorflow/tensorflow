@@ -45,9 +45,9 @@ struct PadContext {
     output = GetOutput(context, node, 0);
     dims = NumDimensions(input);
   }
-  TfLiteTensor* constant_values;
-  TfLiteTensor* input;
-  TfLiteTensor* paddings;
+  const TfLiteTensor* constant_values;
+  const TfLiteTensor* input;
+  const TfLiteTensor* paddings;
   TfLiteTensor* output;
   int dims;
 };

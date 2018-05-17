@@ -314,11 +314,11 @@ class BroadcasterTest : public ::testing::Test {
 
   typedef std::function<void(Tensor*)> InitFunc;
 
-  void Broadcast() {
+  void Broadcast(bool forward_input) {
     std::atomic<int> done(0);
     for (auto di : instances_) {
-      SchedClosure([di, &done] {
-        di->DoBroadcast();
+      SchedClosure([di, forward_input, &done] {
+        di->DoBroadcast(forward_input);
         ++done;
       });
     }
@@ -380,7 +380,8 @@ class BroadcasterTest : public ::testing::Test {
 
   template <typename T>
   void RunTest(DataType dtype, const DeviceType& device_type, int num_workers,
-               int num_devices, int tensor_len, int fail_after) {
+               int num_devices, int tensor_len, int fail_after,
+               bool forward_input) {
     Init(num_workers, num_devices, dtype, device_type, fail_after);
 
     // Initialize each instance tensor with distinct values.
@@ -423,7 +424,7 @@ class BroadcasterTest : public ::testing::Test {
       expected[i] = t->flat<T>()(i);
     }
 
-    Broadcast();
+    Broadcast(forward_input);
 
     // At this point all of the ops have terminated.
     for (int di = 0; di < instances_.size(); ++di) {
@@ -573,7 +574,7 @@ class BroadcasterTest : public ::testing::Test {
       }
     }
 
-    void DoBroadcast() {
+    void DoBroadcast(bool forward_input) {
       // Prepare an OpKernelContext.
       OpKernelContext::Params op_params;
       op_params.step_id = parent_->step_id_;
@@ -596,7 +597,8 @@ class BroadcasterTest : public ::testing::Test {
       input_dc.push_back(dev_ctx);
       op_params.input_device_contexts = &input_dc;
       op_params.op_device_context = dev_ctx;
-      int forward_from[] = {0};
+      int forward_from[] = {OpKernelContext::Params::kNeverForward};
+      if (forward_input) forward_from[0] = 0;
       if (col_params_.is_source) {
         op_params.forward_from_array = &forward_from[0];
       }
@@ -680,61 +682,61 @@ class BroadcasterTest : public ::testing::Test {
 // D = number of devices per worker
 // L = tensor length
 // A = abort after count
-#define DEF_TEST(B, T, W, D, L, A)                                 \
-  TEST_F(BroadcasterTest,                                          \
-         DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Len##L##_Abt##A) { \
-    DataType dtype = DT_##B;                                       \
-    switch (dtype) {                                               \
-      case DT_FLOAT: {                                             \
-        RunTest<float>(dtype, DEVICE_##T, W, D, L, A);             \
-      } break;                                                     \
-      case DT_DOUBLE: {                                            \
-        RunTest<double>(dtype, DEVICE_##T, W, D, L, A);            \
-      } break;                                                     \
-      case DT_INT32: {                                             \
-        RunTest<int32>(dtype, DEVICE_##T, W, D, L, A);             \
-      } break;                                                     \
-      case DT_INT64: {                                             \
-        RunTest<int64>(dtype, DEVICE_##T, W, D, L, A);             \
-      } break;                                                     \
-      default:                                                     \
-        LOG(FATAL) << "Unimplemented";                             \
-    }                                                              \
+#define DEF_TEST(B, T, W, D, L, A, F)                                      \
+  TEST_F(BroadcasterTest,                                                  \
+         DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Len##L##_Abt##A##_Fw##F) { \
+    DataType dtype = DT_##B;                                               \
+    switch (dtype) {                                                       \
+      case DT_FLOAT: {                                                     \
+        RunTest<float>(dtype, DEVICE_##T, W, D, L, A, F);                  \
+      } break;                                                             \
+      case DT_DOUBLE: {                                                    \
+        RunTest<double>(dtype, DEVICE_##T, W, D, L, A, F);                 \
+      } break;                                                             \
+      case DT_INT32: {                                                     \
+        RunTest<int32>(dtype, DEVICE_##T, W, D, L, A, F);                  \
+      } break;                                                             \
+      case DT_INT64: {                                                     \
+        RunTest<int64>(dtype, DEVICE_##T, W, D, L, A, F);                  \
+      } break;                                                             \
+      default:                                                             \
+        LOG(FATAL) << "Unimplemented";                                     \
+    }                                                                      \
   }
 
 #ifndef GOOGLE_CUDA
-//       B      T    W  D  L  A
-DEF_TEST(FLOAT, CPU, 1, 2, 1, 0)
-DEF_TEST(FLOAT, CPU, 1, 2, 1001, 0)
-DEF_TEST(FLOAT, CPU, 2, 1, 128, 0)
-DEF_TEST(FLOAT, CPU, 2, 4, 128, 0)
-DEF_TEST(FLOAT, CPU, 2, 8, 4095, 0)
-DEF_TEST(FLOAT, CPU, 4, 4, 1045991, 0)
+//       B      T    W  D  L  A  F
+DEF_TEST(FLOAT, CPU, 1, 2, 1, 0, false)
+DEF_TEST(FLOAT, CPU, 1, 2, 1001, 0, true)
+DEF_TEST(FLOAT, CPU, 2, 1, 128, 0, false)
+DEF_TEST(FLOAT, CPU, 2, 4, 128, 0, true)
+DEF_TEST(FLOAT, CPU, 2, 8, 4095, 0, false)
+DEF_TEST(FLOAT, CPU, 4, 4, 1045991, 0, true)
 
-DEF_TEST(DOUBLE, CPU, 2, 4, 128, 0)
-DEF_TEST(INT32, CPU, 2, 4, 128, 0)
-DEF_TEST(INT64, CPU, 2, 4, 128, 0)
+DEF_TEST(DOUBLE, CPU, 2, 4, 128, 0, false)
+DEF_TEST(INT32, CPU, 2, 4, 128, 0, true)
+DEF_TEST(INT64, CPU, 2, 4, 128, 0, false)
 
 // Failure cases
-DEF_TEST(FLOAT, CPU, 2, 4, 128, 1)
-DEF_TEST(FLOAT, CPU, 2, 4, 128, 5)
+DEF_TEST(FLOAT, CPU, 2, 4, 128, 1, true)
+DEF_TEST(FLOAT, CPU, 2, 4, 128, 5, false)
 #endif
 
 #ifdef GOOGLE_CUDA
 // Can only set W=1 for GPU tests.
-//       B      T    W  D  L  A
-DEF_TEST(FLOAT, GPU, 1, 2, 1, 0)
-DEF_TEST(FLOAT, GPU, 1, 2, 33, 0)
-DEF_TEST(FLOAT, GPU, 1, 3, 64, 0)
-DEF_TEST(FLOAT, GPU, 1, 8, 1001, 0)
-DEF_TEST(FLOAT, GPU, 1, 8, 4095, 0)
-DEF_TEST(FLOAT, GPU, 1, 8, 1045991, 0)
+//       B      T    W  D  L  A  F
+DEF_TEST(FLOAT, GPU, 1, 2, 1, 0, true)
+DEF_TEST(FLOAT, GPU, 1, 2, 33, 0, false)
+DEF_TEST(FLOAT, GPU, 1, 3, 64, 0, true)
+DEF_TEST(FLOAT, GPU, 1, 8, 1001, 0, false)
+DEF_TEST(FLOAT, GPU, 1, 8, 4095, 0, true)
+DEF_TEST(FLOAT, GPU, 1, 8, 1045991, 0, false)
 
-DEF_TEST(DOUBLE, GPU, 1, 8, 1001, 0)
-DEF_TEST(INT64, GPU, 1, 8, 1001, 0)
+DEF_TEST(DOUBLE, GPU, 1, 8, 1001, 0, true)
+DEF_TEST(INT64, GPU, 1, 8, 1001, 0, false)
 
 // Failure cases
-DEF_TEST(FLOAT, GPU, 1, 8, 128, 6)
+DEF_TEST(FLOAT, GPU, 1, 8, 128, 6, true)
 #endif
 
 }  // namespace

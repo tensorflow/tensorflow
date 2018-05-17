@@ -273,6 +273,7 @@ cc_library(
         "graph_transformations/resolve_constant_range.cc",
         "graph_transformations/resolve_constant_reshape.cc",
         "graph_transformations/resolve_constant_shape_or_rank.cc",
+        "graph_transformations/resolve_constant_slice.cc",
         "graph_transformations/resolve_constant_stack.cc",
         "graph_transformations/resolve_constant_strided_slice.cc",
         "graph_transformations/resolve_constant_transpose.cc",

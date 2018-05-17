@@ -31,7 +31,6 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-@test_util.with_c_api
 class ScalarTest(test.TestCase):
 
   def check(self, op, args, error, correct=None):

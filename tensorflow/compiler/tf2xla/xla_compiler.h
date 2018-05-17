@@ -67,6 +67,15 @@ class XlaContext;
 // _Retval values are ordered by _Retval index, whereas kResource values are
 // ordered by the original _Arg position of the variable.
 //
+// If a shape representation function is provided as part of
+// XlaCompiler::CompileOptions, kParameter arguments and return values to an
+// entry computation will be reshaped in accordance to the shape function.
+// Arguments and return values to a non-entry computation are not reshaped.
+// Variable resource arguments are passed and returned in reshaped form, even
+// for non-entry computations. This feature allows TensorFlow to keep on-device
+// tensors with a different shape to their representation inside the XLA
+// computation.
+//
 // In both inputs and outputs, kResource values are placed the end. When
 // emitting While loop bodies, we must ensure that the loop body has
 // identical input and output signatures. By moving variable values
@@ -171,7 +180,7 @@ class XlaCompiler {
   };
 
   struct OutputDescription {
-    // Type and shape of the output.
+    // Type and shape of the output. The shape is the unflattened shape.
     DataType type;
     TensorShape shape;
 
@@ -206,10 +215,12 @@ class XlaCompiler {
     // original arguments, and are not necessarily in the same order.)
     std::vector<int> input_mapping;
 
-    // Input shapes of the computation.
+    // Input shapes of the computation. If we are flattening inputs, these are
+    // the flattened shapes.
     std::vector<xla::Shape> xla_input_shapes;
 
-    // Output shape in XLA format. The output shape is always a tuple.
+    // Output shape in XLA format. The output shape is always a tuple. If we
+    // are flattening outputs, these are the flattened shapes.
     xla::Shape xla_output_shape;
 
     // TensorFlow shapes of outputs, together with the values of any
@@ -230,6 +241,8 @@ class XlaCompiler {
     std::shared_ptr<xla::XlaComputation> computation;
   };
 
+  typedef std::function<TensorShape(const TensorShape&, DataType)>
+      ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. Needs to be live only during
     // XlaCompiler's constructor.
@@ -250,8 +263,7 @@ class XlaCompiler {
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.
-    std::function<TensorShape(const TensorShape&, DataType)>
-        variable_representation_shape_fn;
+    ShapeRepresentationFn shape_representation_fn;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
@@ -300,7 +312,8 @@ class XlaCompiler {
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
-  Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
+  Status XLAShapeForArgument(const Argument& arg, bool is_entry_computation,
+                             xla::Shape* xla_shape);
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.

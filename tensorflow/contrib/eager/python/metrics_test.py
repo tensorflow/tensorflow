@@ -30,8 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class MetricsTest(test.TestCase):

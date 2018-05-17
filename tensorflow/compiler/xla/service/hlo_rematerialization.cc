@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -274,9 +273,8 @@ ItemList GetUsers(const InstructionList& instruction_list,
   for (const BufferAlias& buffer_alias :
        points_to_analysis.GetBufferAliases(*logical_buffer)) {
     for (const HloInstruction* user : buffer_alias.instruction()->users()) {
-      if (DoesNotUseOperandBuffer(buffer_alias.instruction(),
-                                  buffer_alias.index(), user,
-                                  points_to_analysis)) {
+      if (points_to_analysis.DoesNotUseOperandBuffer(
+              buffer_alias.instruction(), buffer_alias.index(), user)) {
         // The alias may be an operand of 'user', but the LogicalBuffer cannot
         // possibly be used by the instruction so ignore 'user'. This is the
         // case, for example, for the tuple element buffers in a GetTupleElement

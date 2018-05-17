@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -72,7 +73,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = Literal::CreateR0<float>(84.0);
-  LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(1e-4)));
 }
 
 TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
@@ -104,7 +105,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = Literal::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-  LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(1e-4)));
 }
 
 TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
@@ -134,7 +135,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = Literal::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-  LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(1e-4)));
 }
 
 TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
@@ -467,6 +468,37 @@ TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   EXPECT_EQ(4, computation->instruction_count());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(op::Map(op::Constant()), op::Map(op::Constant())));
+}
+
+TEST_F(HloCseTest, CompareComputations) {
+  auto module = tools::Parse(R"(
+    HloModule m
+
+    add_computation {
+      add_lhs = f32[] parameter(0)
+      add_rhs = f32[] parameter(1)
+      ROOT add_root = f32[] add(add_lhs, add_rhs)
+    }
+
+    add_computation2 {
+      add_lhs2 = f32[] parameter(0)
+      add_rhs2 = f32[] parameter(1)
+      ROOT add_root2 = f32[] add(add_lhs2, add_rhs2)
+    }
+
+    ENTRY entry {
+      p = f32[10]{0} parameter(0)
+      c = f32[] constant(0)
+      r1 = f32[] reduce(p, c), dimensions={0}, to_apply=add_computation
+      r2 = f32[] reduce(p, c), dimensions={0}, to_apply=add_computation2
+      ROOT f2 = (f32[],f32[]) tuple(r1, r2)
+    })")
+                    .ValueOrDie();
+
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0), root->operand(1));
 }
 
 }  // namespace

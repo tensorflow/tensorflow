@@ -94,7 +94,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "distribution_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/distribution_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -337,7 +337,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "mvn_tril_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/mvn_tril_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -710,6 +710,7 @@ cuda_py_test(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
     tags = ["noasan"],  # times out, http://b/78588814
 )
 

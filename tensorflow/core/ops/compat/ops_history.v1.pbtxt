@@ -14642,6 +14642,66 @@ op {
   }
 }
 op {
+  name: "CropAndResize"
+  input_arg {
+    name: "image"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "box_ind"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "crop_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "crops"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "method"
+    type: "string"
+    default_value {
+      s: "bilinear"
+    }
+    allowed_values {
+      list {
+        s: "bilinear"
+        s: "nearest"
+      }
+    }
+  }
+  attr {
+    name: "extrapolation_value"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+}
+op {
   name: "CropAndResizeGradBoxes"
   input_arg {
     name: "grads"
@@ -14786,6 +14846,53 @@ op {
     allowed_values {
       list {
         s: "bilinear"
+      }
+    }
+  }
+}
+op {
+  name: "CropAndResizeGradImage"
+  input_arg {
+    name: "grads"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "box_ind"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "image_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "method"
+    type: "string"
+    default_value {
+      s: "bilinear"
+    }
+    allowed_values {
+      list {
+        s: "bilinear"
+        s: "nearest"
       }
     }
   }
@@ -34449,6 +34556,33 @@ op {
   }
   input_arg {
     name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+}
+op {
+  name: "NonMaxSuppressionV3"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
     type: DT_FLOAT
   }
   output_arg {

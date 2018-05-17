@@ -55,6 +55,8 @@ gen_zipped_test_files(
         "reshape.zip",
         "resize_bilinear.zip",
         "sigmoid.zip",
+        "sin.zip",
+        "slice.zip",
         "softmax.zip",
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
@@ -64,6 +66,7 @@ gen_zipped_test_files(
         "sub.zip",
         "topk.zip",
         "transpose.zip",
+        "transpose_conv.zip",
         "where.zip",
     ],
 )
@@ -290,13 +293,9 @@ cc_library(
     deps = [
         ":generate_testspec",
         ":parse_testdata_lib",
-        ":split",
         ":tflite_driver",
-        ":util",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
 
