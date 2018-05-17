@@ -1689,24 +1689,27 @@ bool HloInstruction::HasConstantOperand() const {
 bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations,
-    const std::function<bool(const Shape&, const Shape&)>& eq_shapes) const {
+        eq_computations) const {
   // Perform opcode specific checks.
   switch (opcode()) {
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
     case HloOpcode::kAtan2:
-    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
     case HloOpcode::kComplex:
+    case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kDivide:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kEq:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -1730,6 +1733,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
+    case HloOpcode::kReshape:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -1740,6 +1745,12 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
       return true;
+
+    // Broadcast, Concatenate, and Transpose need the same dimensions field.
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kTranspose:
+      return dimensions() == other.dimensions();
 
     case HloOpcode::kFusion:
       return fusion_kind() == other.fusion_kind() &&
@@ -1753,10 +1764,7 @@ bool HloInstruction::IdenticalSlowPath(
       return false;
 
     case HloOpcode::kParameter:
-      return parameter_number() == other.parameter_number() &&
-             // Check the shape too because `this` and `other` may be in
-             // different HloComputations.
-             eq_shapes(shape(), other.shape());
+      return parameter_number() == other.parameter_number();
 
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
@@ -1767,12 +1775,6 @@ bool HloInstruction::IdenticalSlowPath(
     // A constant is defined by the value in the literal.
     case HloOpcode::kConstant:
       return literal() == other.literal();
-
-    // A convert result is determined by the primitive type that the operand is
-    // converted into.
-    case HloOpcode::kConvert:
-    case HloOpcode::kBitcastConvert:
-      return shape().element_type() == other.shape().element_type();
 
     // A reduce-precision operation is determined by the bit sizes.
     case HloOpcode::kReducePrecision:
@@ -1816,22 +1818,8 @@ bool HloInstruction::IdenticalSlowPath(
              eq_computations(scatter(), other.scatter()) &&
              protobuf_util::ProtobufEquals(window(), other.window());
 
-    case HloOpcode::kReshape:
-      return eq_shapes(shape(), other.shape());
-
-    // Transpose result is determined by the final shape and the permutation.
-    case HloOpcode::kTranspose:
-      return eq_shapes(shape(), other.shape()) &&
-             dimensions() == other.dimensions();
 
     // Remaining instructions with special values.
-    case HloOpcode::kBitcast:
-      return eq_shapes(shape(), other.shape());
-    case HloOpcode::kBroadcast:
-      return eq_shapes(shape(), other.shape()) &&
-             dimensions() == other.dimensions();
-    case HloOpcode::kConcatenate:
-      return dimensions() == other.dimensions();
     case HloOpcode::kGetTupleElement:
       return tuple_index() == other.tuple_index();
     case HloOpcode::kPad:
@@ -1841,11 +1829,6 @@ bool HloInstruction::IdenticalSlowPath(
       return slice_starts_ == other.slice_starts_ &&
              slice_limits_ == other.slice_limits_ &&
              slice_strides_ == other.slice_strides_;
-    case HloOpcode::kDynamicSlice:
-      return eq_shapes(shape(), other.shape()) &&
-             dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
-    case HloOpcode::kDynamicUpdateSlice:
-      return eq_shapes(shape(), other.shape());
     case HloOpcode::kCall:
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
