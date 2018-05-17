@@ -153,9 +153,12 @@ limitations under the License.
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
       } else {
-        SWIG_exception_fail(SWIG_TypeError,
-                            "provided list of inputs contains objects other "
-                            "than 'EagerTensor'");
+        SWIG_exception_fail(
+            SWIG_TypeError,
+            tensorflow::strings::StrCat(
+                "provided list of inputs contains objects other "
+                "than 'EagerTensor'. Item ",
+                i, " is ", elem->ob_type->tp_name).c_str());
       }
     }
   }

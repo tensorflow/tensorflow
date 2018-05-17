@@ -174,6 +174,8 @@ bool IsInteger(PyObject* py_value) {
 #endif
 }
 
+// This function considers a Dimension._value of None to be valid, and sets the
+// value to be -1 in that case.
 bool ParseDimensionValue(const string& key, PyObject* py_value,
                          TF_Status* status, int64_t* value) {
   if (IsInteger(py_value)) {
@@ -189,6 +191,11 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
                                     ", got ", py_value->ob_type->tp_name)
             .c_str());
     return false;
+  }
+
+  if (dimension_value.get() == Py_None) {
+    *value = -1;
+    return true;
   }
 
   return ParseInt64Value(key, dimension_value.get(), status, value);
