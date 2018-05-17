@@ -312,12 +312,14 @@ void Export(const Model& model, bool allow_custom_ops,
     error_summary.erase(fake_quant_operation_name);
   }
   if (!allow_custom_ops && !error_summary.empty()) {
-    LOG(QFATAL) << "Some of the operators in the model are not supported by "
-                   "the standard TensorFlow Lite runtime. If you have a custom "
-                   "implementation for them you can disable this error with "
-                   "--allow_custom_ops. Here is a list of operators for which "
-                   "you will need custom implementations: "
-                << absl::StrJoin(error_summary, ", ") << ".";
+    LOG(QFATAL)
+        << "Some of the operators in the model are not supported by "
+           "the standard TensorFlow Lite runtime. If you have a custom "
+           "implementation for them you can disable this error with "
+           "--allow_custom_ops, or by setting allow_custom_ops=True "
+           "when calling tf.contrib.lite.toco_convert(). Here is a list "
+           "of operators for which  you will need custom implementations: "
+        << absl::StrJoin(error_summary, ", ") << ".";
   }
 
   auto ops =
