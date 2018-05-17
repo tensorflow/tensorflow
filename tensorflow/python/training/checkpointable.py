@@ -377,6 +377,21 @@ class CheckpointableBase(object):
           "Internal error: the object had an update UID set before its "
           "initialization code was run.")
     self._update_uid = -1
+    # When executing eagerly, holds a collection of _NameBasedRestoreCoordinator
+    # instances, which should be checked when creating variables or other
+    # saveables. These are passed on recursively to all dependencies, since
+    # unlike object-based checkpoint restores we don't know which subgraph is
+    # being restored in advance. This mechanism is only necessary for
+    # restore-on-create when executing eagerly, and so is unused when graph
+    # building.
+    self._name_based_restores = set()
+
+  def _name_based_attribute_restore(self, checkpoint):
+    """Restore the object's attributes from a name-based checkpoint."""
+    self._name_based_restores.add(checkpoint)
+    if self._update_uid < checkpoint.restore_uid:
+      checkpoint.eager_restore(self)
+      self._update_uid = checkpoint.restore_uid
 
   @property
   def _checkpoint_dependencies(self):
@@ -607,12 +622,20 @@ class CheckpointableBase(object):
         `CheckpointableBase`).
     """
     self._maybe_initialize_checkpointable()
+    checkpointable._maybe_initialize_checkpointable()  # pylint: disable=protected-access
     deferred_dependencies_list = self._deferred_dependencies.pop(name, ())
     for checkpoint_position in sorted(
         deferred_dependencies_list,
         key=lambda restore: restore.checkpoint.restore_uid,
         reverse=True):
       checkpoint_position.restore(checkpointable)
+
+    # Pass on any name-based restores queued in this object.
+    for name_based_restore in sorted(
+        self._name_based_restores,
+        key=lambda checkpoint: checkpoint.restore_uid,
+        reverse=True):
+      checkpointable._name_based_attribute_restore(name_based_restore)  # pylint: disable=protected-access
 
   def _restore_from_checkpoint_position(self, checkpoint_position):
     """Restore this object and its dependencies (may be deferred)."""

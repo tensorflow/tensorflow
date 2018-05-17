@@ -84,7 +84,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
 #define TF_LITE_ARG_MAX(data_type, axis_type, output_type)                     \
-  TF_LITE_ENSURE_EQ(context, GetTensorData<axis_type>(axis)[0], 3);            \
   optimized_ops::ArgMax(GetTensorData<axis_type>(axis),                        \
                         GetTensorData<data_type>(input), GetTensorDims(input), \
                         GetTensorData<output_type>(output),                    \

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -1428,6 +1429,45 @@ TEST_F(LiteralUtilTest, LiteralSliceOfALiteralSlice) {
   const auto tuple_view = LiteralSlice(nested_tuple_view, /*view_root=*/{0});
   const auto matrix_view = LiteralSlice(tuple_view, /*view_root=*/{1});
   EXPECT_EQ(matrix_view, *Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
+}
+
+TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtrTest) {
+  std::vector<int64> int64_values = {1, 2, 3};
+  const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
+
+  BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values.data()),
+                           literal_shape);
+
+  EXPECT_EQ(literal.Get<int64>({0}), 1);
+  EXPECT_EQ(literal.Get<int64>({1}), 2);
+  EXPECT_EQ(literal.Get<int64>({2}), 3);
+}
+
+TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrsTest) {
+  std::vector<int64> one_two_three = {1, 2, 3};
+  const Shape one_two_three_shape = ShapeUtil::MakeShape(S64, {3});
+
+  std::vector<int64> hundred = {100};
+  const Shape hundred_shape = ShapeUtil::MakeShape(S64, {1});
+
+  std::vector<const char*> src_buf_ptrs;
+  src_buf_ptrs.emplace_back(
+      reinterpret_cast<const char*>(one_two_three.data()));
+  src_buf_ptrs.emplace_back(reinterpret_cast<const char*>(hundred.data()));
+  auto literal_tuple = BorrowingLiteral(
+      src_buf_ptrs,
+      ShapeUtil::MakeTupleShape({one_two_three_shape, hundred_shape}));
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{0}),
+            1);
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{1}),
+            100);
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{1}, /*shape_index=*/{0}),
+            2);
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{2}, /*shape_index=*/{0}),
+            3);
 }
 
 TEST_F(LiteralUtilTest, LiteralMove) {

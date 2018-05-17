@@ -42,7 +42,6 @@ tf_cc_binary(
         "//conditions:default": [],
     }),
     deps = [
-        ":mutable_op_resolver",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
@@ -88,13 +87,6 @@ cc_test(
 )
 
 cc_library(
-    name = "mutable_op_resolver",
-    srcs = ["mutable_op_resolver.cc"],
-    hdrs = ["mutable_op_resolver.h"],
-    deps = ["//tensorflow/contrib/lite:framework"],
-)
-
-cc_library(
     name = "verifier",
     srcs = ["verifier.cc"],
     hdrs = ["verifier.h"],
@@ -115,7 +107,6 @@ cc_test(
         "tflite_not_portable",
     ],
     deps = [
-        ":mutable_op_resolver",
         ":verifier",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:schema_fbs_version",

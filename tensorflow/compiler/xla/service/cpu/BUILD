@@ -419,7 +419,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:analysis",
         "@llvm//:core",
-        "@llvm//:execution_engine",
         "@llvm//:ipo",
         "@llvm//:mc",
         "@llvm//:object",

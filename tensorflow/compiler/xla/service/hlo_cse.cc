@@ -110,7 +110,8 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
   const std::function<bool(const HloInstruction*, const HloInstruction*)>
       eq_instructions = std::equal_to<const HloInstruction*>();
   const std::function<bool(const HloComputation*, const HloComputation*)>
-      eq_computations = std::equal_to<const HloComputation*>();
+      eq_computations = [](const HloComputation* lhs,
+                           const HloComputation* rhs) { return *lhs == *rhs; };
 
   auto cse_equal = [&](const HloInstruction* lhs, const HloInstruction* rhs) {
     return lhs->Identical(*rhs, eq_instructions, eq_computations,
