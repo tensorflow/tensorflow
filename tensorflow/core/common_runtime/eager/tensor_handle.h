@@ -45,7 +45,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Associates a Tensor and a Device, used in the eager runtime. Internal version
-// executor_of the TFE_TensorHandle struct and the python EagerTensor class
+// of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
 class TensorHandle : public core::RefCounted {
  public:
