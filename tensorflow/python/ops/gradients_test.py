@@ -714,7 +714,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     with warnings.catch_warnings(record=True) as w:
       math_ops.multiply(c_sparse, 1.0)
     if w:
-      raise RuntimeError(w)
+      raise RuntimeError(str(w[-1].message))
     self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
