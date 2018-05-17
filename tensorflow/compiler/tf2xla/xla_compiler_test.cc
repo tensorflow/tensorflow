@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -359,6 +360,76 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         xla::Literal::MakeTuple({expected0.get(), expected1.get()});
     EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected, *actual_literal));
   }
+}
+
+TEST_F(XlaCompilerTest, ConstantOutputsOfFunctionalNode) {
+  // Define a function with one compile-time constant output and one
+  // data-dependent output.
+  // @function.Defun(noinline=True)
+  // foo(a) {b=7; return b, a; }
+  const Tensor seven = test::AsScalar<int>(7);
+  FunctionDef fdef = FunctionDefHelper::Create(
+      "foo", {"a_0:int32"}, {"const:int32", "a:int32"}, {},
+      {
+          {{"Const"}, "Const", {}, {{"dtype", DT_INT32}, {"value", seven}}},
+      },
+      {{"a", "a_0"}, {"const", "Const:output:0"}});
+  (*fdef.mutable_attr())["_noinline"].set_b(true);
+  FunctionDefLibrary fdef_lib;
+  *(fdef_lib.add_function()) = fdef;
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(fdef_lib));
+    auto arg = ops::_Arg(scope.WithOpName("input_arg"), DT_INT32, 0);
+    NodeDef foo;
+    foo.set_name("foo");
+    foo.set_op("foo");
+    *foo.add_input() = "input_arg";
+    Status status;
+    scope.graph()->AddNode(foo, &status);
+    TF_ASSERT_OK(status);
+    NodeDef retval_1;
+    retval_1.set_name("retval_0");
+    retval_1.set_op(FunctionLibraryDefinition::kRetOp);
+    *retval_1.add_input() = "foo";
+    (*retval_1.mutable_attr())["T"].set_type(DT_INT32);
+    (*retval_1.mutable_attr())["index"].set_i(0);
+    scope.graph()->AddNode(retval_1, &status);
+    TF_ASSERT_OK(status);
+    NodeDef retval_2;
+    retval_2.set_name("retval_1");
+    retval_2.set_op(FunctionLibraryDefinition::kRetOp);
+    *retval_2.add_input() = "foo:1";
+    (*retval_2.mutable_attr())["T"].set_type(DT_INT32);
+    (*retval_2.mutable_attr())["index"].set_i(1);
+    scope.graph()->AddNode(retval_2, &status);
+    TF_ASSERT_OK(status);
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+  }
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1});
+
+  XlaCompiler::Options options = DefaultOptions();
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
+  options.flib_def = &flib_def;
+  XlaCompiler compiler(options);
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.resolve_compile_time_constants = true;
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                     std::move(graph), args, &result));
+
+  ASSERT_EQ(2, result.outputs.size());
+  EXPECT_TRUE(result.outputs[0].is_constant);
+  test::ExpectTensorEqual<int32>(result.outputs[0].constant_value,
+                                 test::AsScalar(7));
+  EXPECT_FALSE(result.outputs[1].is_constant);
 }
 
 // Tests compilation and execution of a graph that adds two tensors.

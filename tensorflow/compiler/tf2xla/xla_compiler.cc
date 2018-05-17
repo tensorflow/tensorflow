@@ -678,7 +678,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   // Converts Tensorflow's graph control-flow constructs into functional
   // control-flow that can be compiled into XLA code.
   TF_RETURN_IF_ERROR(
-      FunctionalizeControlFlow(graph.get(), local_flib_def_.get()));
+      FunctionalizeControlFlow(flib_runtime_->GetFunctionLibraryDefinition(),
+                               graph.get(), local_flib_def_.get()));
 
   xla::XlaBuilder builder(name);
   XlaContext* context = new XlaContext(

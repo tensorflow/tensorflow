@@ -230,11 +230,14 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   auto output_handle = b->Call(*result.computation, handles);
   // The output handle of `Call` computation is a tuple type. Unzip it so
   // that it can fit into future computations.
+  int computation_output = 0;
   for (int64 i = 0; i < n->num_outputs(); ++i) {
     if (result.outputs[i].is_constant) {
       xla_op_context.SetConstantOutput(i, result.outputs[i].constant_value);
     } else {
-      xla_op_context.SetOutput(i, b->GetTupleElement(output_handle, i));
+      xla_op_context.SetOutput(
+          i, b->GetTupleElement(output_handle, computation_output));
+      ++computation_output;
     }
   }
   return b->first_error();
