@@ -68,7 +68,9 @@ def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
 
 
 def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
-  fast_tensor_util.AppendBFloat16ArrayToTensorProto(tensor_proto, np.asarray(proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
+  fast_tensor_util.AppendBFloat16ArrayToTensorProto(
+      tensor_proto, np.asarray(
+          proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
 
 
 if _FAST_TENSOR_UTIL_AVAILABLE:
