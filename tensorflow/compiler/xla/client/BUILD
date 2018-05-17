@@ -63,7 +63,6 @@ cc_library(
     srcs = ["client.cc"],
     hdrs = ["client.h"],
     deps = [
-        ":computation",
         ":global_data",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -99,7 +98,6 @@ cc_library(
     hdrs = ["local_client.h"],
     deps = [
         ":client",
-        ":computation",
         ":executable_build_options",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:status_macros",
@@ -126,7 +124,6 @@ cc_library(
     hdrs = ["compile_only_client.h"],
     deps = [
         ":client",
-        ":computation",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -159,22 +156,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
-    ],
-)
-
-cc_library(
-    name = "computation",
-    srcs = ["computation.cc"],
-    hdrs = ["computation.h"],
-    deps = [
-        "//tensorflow/compiler/xla:service_interface",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/compiler/xla/service:session_proto",
-        "//tensorflow/core:lib",
     ],
 )
 
