@@ -90,6 +90,7 @@ def generate(combinations):
     """The decorator to be returned."""
 
     # Generate good test names that can be used with --test_filter.
+    named_combinations = []
     for combination in combinations:
       # We use OrderedDicts in `combine()` and `times()` to ensure stable
       # order of keys in each dictionary.
@@ -100,9 +101,12 @@ def generate(combinations):
               "".join(filter(str.isalnum, str(value))))
           for key, value in combination.items()
       ])
-      combination.update({"testcase_name": "_test{}".format(name)})
+      named_combinations.append(
+          OrderedDict(
+              list(combination.items()) + [("testcase_name",
+                                            "_test{}".format(name))]))
 
-    @parameterized.named_parameters(*combinations)
+    @parameterized.named_parameters(*named_combinations)
     def decorated(self, **kwargs):
       """A wrapped test method that sets up `test_function`."""
       assert "mode" in kwargs
