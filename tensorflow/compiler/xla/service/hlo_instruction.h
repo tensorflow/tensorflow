@@ -231,7 +231,21 @@ class CanonicalNameMap {
   tensorflow::gtl::FlatMap<string, string> canonical_name_map;
 };
 
-// HLO instructions are the IR used by the high-level compiler.
+// HLO instructions are the atomic unit of the high-level compiler's IR.
+//
+// HloInstructions live inside of an HloComputation, which is analogous to a
+// function in other programming languages.  Nodes have no total order within
+// their computation.  Instead, they have a partial ordering determined by their
+// data and control dependencies.
+//
+// HLO does not have basic blocks or explicit "branch" instructions.  Instead,
+// certain HloInstructions -- namely, kWhile, kConditional, and kCall -- encode
+// control flow.  For example, the kConditional HLO executes one of two possible
+// computations, depending on the runtime value of a predicate.
+//
+// HLO is pure (mostly).  It has no concept of mutable state.  Instead, data
+// values are produced by one HLO and flow into consumers across dependency
+// edges.
 class HloInstruction {
  public:
   // A fusion node computes the same value a call to its fusion computation
