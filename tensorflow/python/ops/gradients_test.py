@@ -713,6 +713,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
     with warnings.catch_warnings(record=True) as w:
       math_ops.multiply(c_sparse, 1.0)
+    if w:
+      raise RuntimeError(w)
     self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
