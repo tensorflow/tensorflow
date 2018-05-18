@@ -2817,6 +2817,8 @@ cc_library(
         # we now need at least "str_util".
         ":lib",
         ":lib_platform",
+        ":stacktrace_handler",
+        ":test_lite",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
