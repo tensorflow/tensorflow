@@ -10,9 +10,6 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 
-# TODO: Use tf_gen_op_wrapper_py to generate the code which should
-# have already been generated in python/avro_record_dataset.py
-
 tf_custom_op_py_library(
     name = "avro",
     srcs = glob(["python/*.py"]),
@@ -32,10 +29,10 @@ tf_custom_op_py_library(
     visibility = ["//visibility:public"],
 )
 
-# HACK: tensorflow will link to libavro.so correctly, but it will
-# leave it an external bazel directory, which won't exist in the
-# generated pip package. Therefore, we copy the libavro.so file to the
-# same directory as these files.
+# Tensorflow will link to libavro.so correctly, but it will leave it an external bazel
+# directory, which won't exist in the generated pip package. Therefore, we copy libavro.so
+# into the same directory -- of the pip package.
+# TODO(fraudies): Remove this copy rule;
 genrule(
     name = "copy_libavro.so",
     srcs = ["@avro_c//:libavro_so"],
@@ -88,6 +85,32 @@ tf_gen_op_wrapper_py(
     ],
 )
 
+py_test(
+    name = "avro_record_dataset_test",
+    size = "small",
+    srcs = ["python/tests/avro_record_dataset_test.py"],
+    deps = [
+        ":avro",
+        "//tensorflow/contrib/avro/python/utils:avro_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+    ],
+)
+
+py_test(
+    name = "parse_avro_record_test",
+    size = "small",
+    srcs = ["python/tests/parse_avro_record_test.py"],
+    deps = [
+        ":avro",
+        "//tensorflow/contrib/avro/python/utils:avro_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:parsing_ops",
+    ],
+)
 
 filegroup(
     name = "all_files",

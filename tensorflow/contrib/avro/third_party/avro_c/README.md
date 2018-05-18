@@ -13,4 +13,4 @@ means, don't worry about it.
 
 Since this library has minimal dependencies (zlib and snappy), I will
 experimentally try to just provide these binaries with tensorflow and
-seeif that works.
+see if that works.

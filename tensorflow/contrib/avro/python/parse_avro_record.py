@@ -2,14 +2,13 @@ import collections
 import os
 import re
 
-import tensorflow as tf
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 
+from tensorflow.python.framework import load_library
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.parsing_ops import _features_to_raw_params, \
     _prepend_none_dimension, VarLenFeature, SparseFeature, FixedLenFeature, \
@@ -17,9 +16,11 @@ from tensorflow.python.ops.parsing_ops import _features_to_raw_params, \
 from tensorflow.contrib.avro.ops.gen_parse_avro_record import \
     parse_avro_record as _parse_avro_record
 
-this_dir_ = os.path.dirname(os.path.abspath(__file__))
-lib_name_ = os.path.join(this_dir_, '_parse_avro_record.so')
-tf.load_op_library(lib_name_)
+# Load the shared library
+this_dir = os.path.dirname(os.path.abspath(__file__))
+lib_name = os.path.join(this_dir, '_parse_avro_record.so')  # Display the operators with lib_name.OP_LIST
+parse_module = load_library.load_op_library(lib_name)  # Load the library with dependent so's in '.'
+
 
 def parse_avro_record(serialized, schema, features):
     """
