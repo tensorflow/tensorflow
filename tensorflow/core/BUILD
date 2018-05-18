@@ -462,7 +462,9 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
+        ":abi",
         ":lib_platform",
+        ":stacktrace",
     ],
 )
 
