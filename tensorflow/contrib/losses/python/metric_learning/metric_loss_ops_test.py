@@ -57,6 +57,18 @@ def pairwise_distance_np(feature, squared=False):
       pairwise_distances.diagonal())
   return pairwise_distances
 
+class PairwiseCosineTest(tf.test.TestCase):
+
+  def testPairwiseCosine(self):
+    with self.test_session():
+      num_data = 10
+      feat_dim = 6
+
+      embedding = np.random.rand(num_data, feat_dim).astype(np.float32)
+      sklearn_result = 1 - metric.pairwise.cosine_similarity(embedding)
+      dist_matrix = metric_loss_ops.pairwise_distances_cosine(embedding)
+      self.assertAllClose(dist_matrix.eval(), sklearn_result, rtol=1e-06)
+
 
 class ContrastiveLossTest(test.TestCase):
 
