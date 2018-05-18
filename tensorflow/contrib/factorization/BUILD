@@ -224,8 +224,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
-        "notsan",
-    ],  # b/67512932
+        "notsan",  # b/67512932
+    ],
     deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
