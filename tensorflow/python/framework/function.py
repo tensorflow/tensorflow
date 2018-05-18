@@ -68,9 +68,10 @@ class Defun(object):
   during the first call to the function. Subsequent function calls will refer to
   the same set of variables.
 
-  Definitions of functions are frozen in a graph as soon as the graph is used to
-  create a session. Therefore, nodes using the function must be created in the
-  graph before the corresponding session is created.
+  Definitions of functions in a graph are frozen as soon as the graph is used to
+  create a session. However, new functions and new calls to existing functions
+  may be added to the graph, with the new functions themselves becoming
+  immediately frozen.
 
   Example, but also see the [How To on functions](link_needed).
 
