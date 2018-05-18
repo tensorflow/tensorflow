@@ -1328,11 +1328,11 @@ class TensorFlowTestCase(googletest.TestCase):
             b,
             rtol=rtol,
             atol=atol,
-            msg=("Mismatched value: a%s is different from b%s. %s" %
-                 (path_str, path_str, msg)))
+            msg="Mismatched value: a%s is different from b%s." % (path_str,
+                                                                  path_str))
       except TypeError as e:
-        msg = ("Error: a%s has %s, but b%s has %s. %s" %
-               (path_str, type(a), path_str, type(b), msg))
+        msg = "Error: a%s has %s, but b%s has %s" % (path_str, type(a),
+                                                     path_str, type(b))
         e.args = ((e.args[0] + " : " + msg,) + e.args[1:])
         raise
 
