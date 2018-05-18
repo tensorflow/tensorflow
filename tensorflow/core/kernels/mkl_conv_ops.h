@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -349,6 +350,7 @@ class MklDnnConvUtil {
   }
 };
 
+
 /////////////////////////////////////////////////////////////////////
 ///  Common class that implements Conv2DBackpropFilter and Input
 /////////////////////////////////////////////////////////////////////
@@ -388,226 +390,16 @@ class MklConv2DBackpropCommonOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
-  void Compute(OpKernelContext* context) override {
-    try {
-      auto cpu_engine = engine(engine::cpu, 0);
-
-      // Prepare common tensors for Conv2DBackpropInput and
-      // Conv2DBackpropFilter.
-      MklDnnData<T> input(&cpu_engine);
-      MklDnnData<T> filter(&cpu_engine);
-      MklDnnData<T> outbackprop(&cpu_engine);
-      MklDnnData<T> output(&cpu_engine);
-
-      // Input tensors
-      const int kInputIdx = 0, kFilterIdx = 1, kOutbpropIdx = 2;
-      const Tensor& input_tensor = MklGetInput(context, kInputIdx);
-      const Tensor& filter_tensor = MklGetInput(context, kFilterIdx);
-      const Tensor& outbprop_tensor = MklGetInput(context, kOutbpropIdx);
-
-      MklDnnShape input_mkl_shape, filter_mkl_shape, outbprop_mkl_shape;
-      GetMklShape(context, kInputIdx, &input_mkl_shape);
-      GetMklShape(context, kFilterIdx, &filter_mkl_shape);
-      GetMklShape(context, kOutbpropIdx, &outbprop_mkl_shape);
-      // Allow operator-specific sanity checking of shapes.
-      ValidateMklShapes(input_mkl_shape, filter_mkl_shape, outbprop_mkl_shape);
-
-      // Allow operator-specific generation of shapes.
-      // E.g., Conv2DBackpropFilter gets filter as filter_sizes. It is a
-      // tensor containing shape of filter. So filter.shape() is not
-      // a correct way to get filter shape. These operator-specific calls
-      // allow this class to handle this case.
-      TensorShape input_tf_shape = MakeInputTfShape(context, input_tensor);
-      TensorShape filter_tf_shape = MakeFilterTfShape(context, filter_tensor);
-      TensorShape outbprop_tf_shape = GetTfShape(context, kOutbpropIdx);
-
-      // Corner cases: output with 0 elements and 0 batch size.
-      Tensor* output_tensor = nullptr;
-      if (input_tf_shape.num_elements() == 0 ||
-          filter_tf_shape.num_elements() == 0 ||
-          outbprop_tf_shape.num_elements() == 0) {
-        MklDnnShape output_mkl_shape;
-        output_mkl_shape.SetMklTensor(false);
-        TensorShape output_tf_shape = GetOutputTfShape(
-            input_tf_shape, filter_tf_shape, outbprop_tf_shape);
-        const int kOutputIdx = 0;
-        AllocateOutputSetMklShape(context, kOutputIdx, &output_tensor,
-                                  output_tf_shape, output_mkl_shape);
-        CHECK_NOTNULL(output_tensor);
-
-        // if output tensor has more than 0 elements, we need to 0 them out.
-        for (size_t i = 0; i < output_tf_shape.num_elements(); ++i) {
-          output_tensor->flat<T>().data()[i] = 0;
-        }
-
-        return;
-      }
-
-      // By default, all dims are in MKL order. Only dims in TF order
-      // are those with prefix tf_order.
-      memory::dims outbprop_dims, fwd_input_dims, fwd_filter_dims;
-      memory::dims padding_l, padding_r, dilations, strides, fwd_output_dims;
-      memory::dims fwd_output_dims_tf_order;
-
-      // Get forward convolution parameters.
-      MklDnnConvUtil conv_utl(context, strides_, padding_, data_format_,
-                             dilations_);
-      conv_utl.GetConvFwdSizesInMklOrder(
-          input_tf_shape, filter_tf_shape, &fwd_input_dims, &fwd_filter_dims,
-          &strides, &dilations, &fwd_output_dims_tf_order, &fwd_output_dims,
-          &padding_l, &padding_r);
-      if (!context->status().ok()) return;
-
-      // Create Convolution forward descriptor since Convolution backward
-      // API needs it. For that, we first need to create input, filter
-      // and output memory descriptors.
-      auto tf_fmt = TFDataFormatToMklDnnDataFormat(data_format_);
-      // If input is in MKL layout, then simply grab input layout; otherwise,
-      // construct input TF layout. For TF layout, although input shape
-      // required is in MKL-DNN order, the layout is Tensorflow's layout
-      // (NHWC or NCHW depending on data format).
-      auto fwd_input_md =
-          input_mkl_shape.IsMklTensor()
-              ? input_mkl_shape.GetMklLayout()
-              : memory::desc(fwd_input_dims, MklDnnType<T>(), tf_fmt);
-      // If filter is in MKL layout, then simply grab filter layout; otherwise
-      // construct filter in TF layout. For TF layout, filter is in HWIO format.
-      auto fwd_filter_md = filter_mkl_shape.IsMklTensor()
-                               ? filter_mkl_shape.GetMklLayout()
-                               : memory::desc(fwd_filter_dims, MklDnnType<T>(),
-                                              memory::format::hwio);
-      // Tensorflow Output of Conv2D is in data_format order.
-      auto fwd_out_md = memory::desc(fwd_output_dims, MklDnnType<T>(), tf_fmt);
-
-      const int kDilationH = 0, kDilationW = 1;
-      dilations[kDilationH] -= 1;
-      dilations[kDilationW] -= 1;
-      auto fwd_desc = (dilations[kDilationH] > 0 || dilations[kDilationW] > 0)?
-              convolution_forward::desc(prop_kind::forward,
-                     convolution_direct, fwd_input_md,
-                     fwd_filter_md, fwd_out_md,
-                     strides, dilations, padding_l, padding_r,
-                     TFPaddingToMklDnnPadding(padding_)) :
-              convolution_forward::desc(prop_kind::forward,
-                     convolution_direct, fwd_input_md,
-                     fwd_filter_md, fwd_out_md,
-                     strides, padding_l, padding_r,
-                     TFPaddingToMklDnnPadding(padding_));
-      auto fwd_pd = convolution_forward::primitive_desc(fwd_desc, cpu_engine);
-
-      // Create memory for user data. Describe how the inputs and outputs of
-      // Convolution look like. Also specify buffers containing actual input
-      // and output data.
-
-      // Since this is a common class for both Conv2DBackpropFilter and
-      // Conv2DBackpropInput, we skip SetUsrMem call for input tensor (for
-      // Conv2DBackpropInput) and for filter tensor (for
-      // conv2DBackpropFilter) depending on which tensor is int32 type.
-      size_t input_with_sizes = GetInputTensorIndexWithSizes();
-      if (input_with_sizes != kInputIdx) {
-        // Shape of Conv2DBackpropFilter's input is same as Conv2D input.
-        input.SetUsrMem(fwd_input_md, &input_tensor);
-      } else if (input_with_sizes != kFilterIdx) {
-        // Shape of Conv2DBackpropInput's filter is same as Conv2D filter.
-        filter.SetUsrMem(fwd_filter_md, &filter_tensor);
-      }
-
-      conv_utl.GetInputSizeInMklOrder(outbprop_tf_shape, &outbprop_dims);
-      if (!context->status().ok()) return;
-      if (outbprop_mkl_shape.IsMklTensor()) {
-        // If outbackprop is in Mkl layout, then simply grab it.
-        auto outbprop_md = outbprop_mkl_shape.GetMklLayout();
-        outbackprop.SetUsrMem(outbprop_md, &outbprop_tensor);
-      } else {
-        // If outbackprop is in TensorFlow layout, then we need to create memory
-        // descriptor for it. Outbackprop shape is data format order.
-        outbackprop.SetUsrMem(outbprop_dims, tf_fmt, &outbprop_tensor);
-      }
-
-      // Operator specific call to get output shape and data_format.
-      auto bwd_output_dims = GetOutputDims(fwd_input_dims, fwd_filter_dims);
-      auto bwd_output_format = GetOutputFormat(tf_fmt);
-      output.SetUsrMem(bwd_output_dims, bwd_output_format);
-
-      // Create memory descriptors for convolution data w/ no specified format.
-      input.SetOpMemDesc(fwd_input_dims, memory::format::any);
-      filter.SetOpMemDesc(fwd_filter_dims, memory::format::any);
-      outbackprop.SetOpMemDesc(outbprop_dims, memory::format::any);
-      output.SetOpMemDesc(bwd_output_dims, memory::format::any);
-
-      // Operator-specific call to create and execute primitive.
-      CreatePrimitive(context, cpu_engine, fwd_pd, &input, &filter,
-                      &outbackprop, &output, &output_tensor,
-                      strides, dilations, padding_l, padding_r,
-                      TFPaddingToMklDnnPadding(padding_),
-                      bwd_output_dims, bwd_output_format);
-    } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
-    }
-  }
-
-  /// Pure virtual function to allow operator to check for validity of input
-  /// shapes. Function asserts that input shapes are valid.
-  virtual void ValidateMklShapes(const MklDnnShape& input_mkl_shape,
-                                 const MklDnnShape& filter_mkl_shape,
-                                 const MklDnnShape& outbprop_mkl_shape) = 0;
-
-  /// Operator-specific function that returns index of input that is
-  /// representing input sizes. For Conv2DBackpropFilter it returns 1 since
-  /// filter for this operator is filter shape. For Conv2DBackpropInput it
-  /// returns 0 (for input).
-  virtual size_t GetInputTensorIndexWithSizes() = 0;
-
-  /// Get TensorFlow shape of input tensor.
-  virtual TensorShape MakeInputTfShape(OpKernelContext* context,
-                                       const Tensor& input_tensor) = 0;
-
-  /// Get TensorFlow shape of filter tensor.
-  virtual TensorShape MakeFilterTfShape(OpKernelContext* context,
-                                        const Tensor& filter_tensor) = 0;
-
-  /// Get the TensorFlow shape of output tensor.
-  virtual TensorShape GetOutputTfShape(const TensorShape& input_shape,
-                                       const TensorShape& filter_shape,
-                                       const TensorShape& outbprop_shape) = 0;
-
-  /// Get shape of output in MKL-DNN order. Computes shape of output from
-  /// input shape (fwd_input_dims) and filter shape (fwd_filter_dims).
-  virtual const memory::dims& GetOutputDims(
-      const memory::dims& fwd_input_dims,
-      const memory::dims& fwd_filter_dims) = 0;
-
-  /// Get data_format of output in MKL-DNN order. If output data format is
-  /// same as input data format, then it simply returns value of data_format
-  /// parameter as it is.
-  virtual memory::format GetOutputFormat(const memory::format data_format) = 0;
-
-  /// Create and execute the primitive storing output in the output_tensor.
-  virtual void CreatePrimitive(OpKernelContext* context,
-    const engine& cpu_engine,
-    const convolution_forward::primitive_desc& conv_fwd_pd,
-    MklDnnData<T>* input, MklDnnData<T>* filter, MklDnnData<T>* outbackprop,
-    MklDnnData<T>* output, Tensor** output_tensor, const memory::dims& strides,
-    const memory::dims& dilations, const memory::dims& padding_l,
-    const memory::dims& padding_r, padding_kind padding,
-    const memory::dims& bwd_output_dims,
-    memory::format bwd_output_format) = 0;
-
-  // Get the data_format {NCHW, NHWC}
-  TensorFormat GetTFDataFormat() { return data_format_; }
-
- private:
+ protected:
+  // data members accessible to derived classes.
   std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
-  TensorFormat data_format_;
+  TensorFormat data_format_;  // NCHW or NHWC
 };
+
 #endif  // INTEL_MKL_ML
+
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate
