@@ -2151,9 +2151,12 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
-    if ((!ShapeUtil::IsTuple(shape()) &&
-         ShapeUtil::ElementsIn(shape()) <= 10) ||
-        options.print_large_constants()) {
+    //
+    // In HloInstruction, sometimes a constant literal is not constructed due
+    // to its size. Skip the printing in this case.
+    if (HasLiteral() && ((!ShapeUtil::IsTuple(shape()) &&
+                          ShapeUtil::ElementsIn(shape()) <= 10) ||
+                         options.print_large_constants())) {
       // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
       string tmp = literal().ToString();
