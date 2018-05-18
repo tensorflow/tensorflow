@@ -421,8 +421,9 @@ class ClipTest(test.TestCase):
     # Test case for GitHub issue 19337
     z = array_ops.placeholder(dtype=dtypes.float32, shape=None)
     x = clip_ops.clip_by_value(z, z, 1)
+    y = clip_ops.clip_by_value(z, 1, z)
     with self.test_session(use_gpu=True) as sess:
-      sess.run(x, feed_dict={z: np.zeros((7, 0))})
+      sess.run([x, y], feed_dict={z: np.zeros((7, 0))})
 
 
 if __name__ == '__main__':
