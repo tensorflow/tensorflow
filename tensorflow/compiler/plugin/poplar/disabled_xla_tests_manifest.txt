@@ -249,4 +249,4 @@ DotOperationTest.DotOfGatherOptimizationWithConstLHSCols POPLAR
 DotOperationTest.DotOfGatherOptimizationWithConstRHSCols POPLAR
 DotOperationTest.DotOfGatherOptimizationWithConstRHSRows POPLAR
 
-
+MultiOutputFusionTest.MultiOutputLoopFeedingMap POPLAR // Don't support fusion
