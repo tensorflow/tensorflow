@@ -114,6 +114,22 @@ class PandasIoTest(test.TestCase):
       self.assertAllEqual(targets['a_target'], [10, 11])
       self.assertAllEqual(targets['b_target'], [50, 51])
 
+  def testPandasInputFnWhenYIsDataFrame_HandlesOverlappingColumnNames(self):
+    if not HAS_PANDAS:
+      return
+    with self.test_session() as session:
+      x, y = self.makeTestDataFrameWithYAsDataFrame()
+      y = y.rename(columns={'a_target': 'a', 'b_target': 'b'})
+      input_fn = pandas_io.pandas_input_fn(
+        x, y, batch_size=2, shuffle=False, num_epochs=1)
+
+      features, targets = self.callInputFnOnce(input_fn, session)
+
+      self.assertAllEqual(features['a'], [0, 1])
+      self.assertAllEqual(features['b'], [32, 33])
+      self.assertAllEqual(targets['a'], [10, 11])
+      self.assertAllEqual(targets['b'], [50, 51])
+
   def testPandasInputFn_ProducesOutputsForLargeBatchAndMultipleEpochs(self):
     if not HAS_PANDAS:
       return

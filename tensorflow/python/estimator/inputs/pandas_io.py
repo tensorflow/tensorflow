@@ -35,6 +35,22 @@ except ImportError:
   HAS_PANDAS = False
 
 
+def _get_unique_target_key(features, target_column_name):
+  """Returns a key that does not exist in the input DataFrame `features`.
+
+  Args:
+    features: DataFrame
+    target_column_name: Name of the target column as a `str`
+
+  Returns:
+    A unique key that can be used to insert the target into
+      features.
+  """
+  while target_column_name in features:
+    target_column_name += '_n'
+  return target_column_name
+
+
 @tf_export('estimator.inputs.pandas_input_fn')
 def pandas_input_fn(x,
                     y=None,
@@ -88,10 +104,9 @@ def pandas_input_fn(x,
       raise ValueError('Index for x and y are mismatched.\nIndex for x: %s\n'
                        'Index for y: %s\n' % (x.index, y.index))
     if isinstance(y, pd.DataFrame):
-      target_column = list(y)
-      print(target_column)
+      y_columns = [(column, _get_unique_target_key(x, column)) for column in list(y)]
+      target_column = [v for _, v in y_columns]
       x[target_column] = y
-      print(x)
     else:
       x[target_column] = y
 
@@ -124,7 +139,9 @@ def pandas_input_fn(x,
     features = dict(zip(list(x.columns), features))
     if y is not None:
       if isinstance(target_column, list):
-        target = {column: features.pop(column) for column in target_column}
+        keys = [k for k, _ in y_columns]
+        values = [features.pop(column) for column in target_column]
+        target = {k: v for k, v in zip(keys, values)}
       else:
         target = features.pop(target_column)
       return features, target
