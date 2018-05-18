@@ -69,7 +69,8 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   // Create executable from only the Hlo module.
   std::unique_ptr<Executable> executable =
-      xla::MakeUnique<InterpreterExecutable>(std::move(hlo_module));
+      xla::MakeUnique<InterpreterExecutable>(std::move(hlo_module),
+                                             xla::MakeUnique<HloEvaluator>());
 
   return std::move(executable);
 }
@@ -99,17 +100,14 @@ HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
   return InterpreterExecutable::ShapeSizeBytes;
 }
 
-static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
-  return xla::MakeUnique<xla::ComputationPlacer>();
-}
-
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       se::interpreter::kXlaInterpreterPlatformId, []() {
         return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
       });
   xla::ComputationPlacer::RegisterComputationPlacer(
-      se::interpreter::kXlaInterpreterPlatformId, &CreateComputationPlacer);
+      se::interpreter::kXlaInterpreterPlatformId,
+      []() { return xla::MakeUnique<xla::ComputationPlacer>(); });
   return true;
 }
 
