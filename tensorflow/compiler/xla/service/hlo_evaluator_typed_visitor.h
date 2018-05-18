@@ -1986,17 +1986,24 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     std::vector<int64> start(start_indices_typed.begin(),
                              start_indices_typed.end());
 
-    std::vector<int64> operand_indices(start.size());
+    // Clamp the start indices so the slice is in-bounds w.r.t the operand.
 
+    // TODO(b/74360564): This is implementation defined behavior, but is
+    // currently respected by all implementations. Change this if we ever decide
+    // to oficially document different behavior.
+    for (int64 i = 0; i < start.size(); ++i) {
+      start[i] = std::min<int64>(
+          std::max(0LL, start[i]),
+          operand_literal.shape().dimensions(i) - result_shape.dimensions(i));
+    }
+
+    std::vector<int64> operand_indices(start.size());
     auto result = MakeUnique<Literal>(result_shape);
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           for (int64 i = 0; i < operand_indices.size(); ++i) {
             CHECK_GE(multi_index[i] + start[i], 0);
-            // Mod is only used here to be consistent with the existing
-            // backends' behavior.
-            operand_indices[i] = (multi_index[i] + start[i]) %
-                                 operand_literal.shape().dimensions(i);
+            operand_indices[i] = multi_index[i] + start[i];
           }
 
           auto result = operand_literal.Get<ReturnT>(operand_indices);
@@ -2013,23 +2020,24 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto result = operand_literal.CloneToUnique();
     auto start_indices_typed = start_indices_literal.data<IndexT>();
     const auto rank = ShapeUtil::Rank(result->shape());
-    std::vector<int64> start(rank, 0);
+    std::vector<int64> start(start_indices_typed.begin(),
+                             start_indices_typed.end());
+    // Clamp the update start indices so the slice is in-bounds w.r.t the
+    // operand.
+
+    // TODO(b/74360564): This is implementation defined behavior, but is
+    // currently respected by all implementations. Change this if we ever decide
+    // to oficially document different behavior.
     for (int64 i = 0; i < rank; ++i) {
-      // All other implementations currently wrap-around the index, so this
-      // should do so as well.
-      start[i] = (start_indices_typed[i] % result->shape().dimensions(i));
-      start[i] += (start[i] < 0) * result->shape().dimensions(i);
+      start[i] = std::min<int64>(
+          std::max<int64>(0, start[i]),
+          result->shape().dimensions(i) - update_literal.shape().dimensions(i));
     }
     std::vector<int64> result_index(rank, 0);
 
     auto func = [&](tensorflow::gtl::ArraySlice<int64> update_index) {
       std::transform(update_index.begin(), update_index.end(), start.begin(),
                      result_index.begin(), std::plus<int64>());
-      // Same as above, wrap-around only to match other implementations'
-      // semantics.
-      std::transform(result_index.begin(), result_index.end(),
-                     result->shape().dimensions().begin(), result_index.begin(),
-                     std::modulus<int64>());
       result->Set<ReturnT>(result_index,
                            update_literal.Get<ReturnT>(update_index));
       return true;
