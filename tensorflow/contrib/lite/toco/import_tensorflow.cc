@@ -1362,6 +1362,9 @@ void ConvertUnsupportedOperator(const NodeDef& node,
     for (int i = 0; i < output_types.type_size(); ++i) {
       op->output_data_types.push_back(ConvertDataType(output_types.type(i)));
     }
+  } else if (HasAttr(node, "Tout")) {
+    const auto& output_type = GetDataTypeAttr(node, "Tout");
+    op->output_data_types.push_back(ConvertDataType(output_type));
   }
 }
 
