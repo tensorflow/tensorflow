@@ -38,7 +38,7 @@ class XlaContext;
 // It does a symbolic execution of the graph starting from specific input
 // shapes, using a JIT device to convert operators into XLA computations.
 //
-// XlaCompiler is typically invoked from an `_XlaLaunch` operator once the
+// XlaCompiler is typically invoked from an `XlaLaunch` operator once the
 // shapes of all input parameters to the computation are known. This is
 // because the symbolic execution requires known shapes for all operations.
 //

@@ -46,8 +46,8 @@ def InLabels(labels, substr):
 
 
 def XlaLaunchOpCount(labels):
-  """Count how many _XlaLaunch labels are present."""
-  return sum("_XlaLaunch(" in x for x in labels)
+  """Count how many XlaLaunch labels are present."""
+  return sum("XlaLaunch(" in x for x in labels)
 
 
 class DenseLayerTest(test.TestCase):
@@ -55,7 +55,7 @@ class DenseLayerTest(test.TestCase):
   def testDenseLayerAutoJit(self):
     """Tests dense layer compilation in auto-jit mode.
 
-    Dense layer should be compiled into a single _XlaLaunch op in auto-jit mode.
+    Dense layer should be compiled into a single XlaLaunch op in auto-jit mode.
     """
 
     os.environ["TF_XLA_FLAGS"] = ("--tf_xla_cpu_global_jit")
@@ -83,7 +83,7 @@ class DenseLayerTest(test.TestCase):
     """Tests that the dense layer node is properly compiled in jit scope.
 
     Dense layer with static shape input tensor should be compiled into a single
-    _XlaLaunch op by XLA.
+    XlaLaunch op by XLA.
     """
 
     with self.test_session() as sess:
@@ -110,7 +110,7 @@ class DenseLayerTest(test.TestCase):
     Dense layer uses shape op to get shape of input tensor if its shape is not
     fully defined. XLA does not cluster shape op with other operators. But in
     experimental_jit_scope, XLA is forced to compile shape op into its own
-    cluster, causing dense layer to be split into TWO _XlaLaunch ops.
+    cluster, causing dense layer to be split into TWO XlaLaunch ops.
     """
 
     with self.test_session() as sess:
