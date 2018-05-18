@@ -24,12 +24,15 @@ bazel run //tensorflow/contrib/lite/testing:generate_examples
 To more easily debug failures use (or override) the --save_graphdefs flag to
 place text proto graphdefs into the generated zip files.
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import argparse
+import functools
 import itertools
+import operator
 import os
 import random
 import re
@@ -325,6 +328,11 @@ def normalize_output_name(output_name):
       ":0") else output_name
 
 
+# How many test cases we may have in a zip file. Too many test cases will
+# slow down the test data generation process.
+_MAX_TESTS_PER_ZIP = 500
+
+
 def make_zip_of_tests(zip_path,
                       test_parameters,
                       make_graph,
@@ -354,12 +362,26 @@ def make_zip_of_tests(zip_path,
   Raises:
     RuntimeError: if there are toco errors that can't be ignored.
   """
+  parameter_count = 0
+  for parameters in test_parameters:
+    parameter_count += functools.reduce(
+        operator.mul, [len(values) for values in parameters.values()])
+
+  if parameter_count > _MAX_TESTS_PER_ZIP:
+    raise RuntimeError(
+        "Too many parameter combinations for generating '%s'.\n"
+        "There are %d combinations while the upper limit is %d.\n"
+        "Having too many combinations will slow down the tests.\n"
+        "Please consider splitting the test into multiple functions.\n"
+        % (zip_path, parameter_count, _MAX_TESTS_PER_ZIP))
 
   # TODO(aselle): Make this allow multiple inputs outputs.
   archive = zipfile.PyZipFile(zip_path, "w")
   zip_manifest = []
   convert_report = []
   toco_errors = 0
+
+  processed_labels = set()
   for parameters in test_parameters:
     keys = parameters.keys()
     for curr in itertools.product(*parameters.values()):
@@ -367,6 +389,12 @@ def make_zip_of_tests(zip_path,
           "%s=%r" % z for z in sorted(zip(keys, curr))).replace(" ", ""))
       if label[0] == "/":
         label = label[1:]
+      if label in processed_labels:
+        # Do not populate data for the same label more than once. It will cause
+        # errors when unzipping.
+        continue
+      processed_labels.add(label)
+
       param_dict = dict(zip(keys, curr))
 
       def build_example(label, param_dict_real):
@@ -465,6 +493,7 @@ def make_zip_of_tests(zip_path,
                 report["toco_log"])
 
       convert_report.append((param_dict, report))
+
   report_io = StringIO()
   report_lib.make_report_table(report_io, zip_path, convert_report)
   archive.writestr("report.html", report_io.getvalue())
@@ -715,8 +744,8 @@ def make_mean_tests(zip_path):
       "const_axis": [True, False],
       "keepdims": [True, False],
   }, {
-      "input_dtype": [tf.float32, tf.int32, tf.int64],
-      "input_shape": [[1, 224, 224, 3]],
+      "input_dtype": [tf.float32],
+      "input_shape": [[1, 8, 8, 3]],
       "axis": [
           None, 0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
           [3, 2, 1, 0], [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2,
@@ -1313,10 +1342,10 @@ def make_local_response_norm_tests(zip_path):
   # Chose a set of parameters
   test_parameters = [{
       "input_shape": [[1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
-      "depth_radius": [None, 0, 1, 3, 4, 5],
-      "bias": [None, 0.1, 0.3, -0.1],
-      "alpha": [None, 1, 2, -3],
-      "beta": [None, 0.5, 0.25, 2],
+      "depth_radius": [None, 0, 1, 3, 5],
+      "bias": [None, 0.3, -0.1],
+      "alpha": [None, 2, -3],
+      "beta": [None, 0.25, 2],
   }]
 
   def build_graph(parameters):
@@ -1791,77 +1820,8 @@ def make_squeeze_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_strided_slice_tests(zip_path):
-  """Make a set of tests to do strided_slice."""
-
-  # TODO(soroosh): add test/support for uint8.
-  test_parameters = [
-      # 4-D
-      {
-          "dtype": [tf.float32, tf.int32, tf.int64],
-          "index_type": [tf.int32],
-          "input_shape": [[12, 2, 2, 5]],
-          "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
-          "end": [[8, 2, 2, 3], [12, 2, 2, 5]],
-          "strides": [None, [2, 1, 3, 1]],
-          "begin_mask": [None, 1, 8],
-          "end_mask": [None, 1, 8],
-          "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
-          "constant_indices": [False, True],
-      },
-      # Begin, end, strides dim are different from input shape
-      {
-          "dtype": [tf.float32],
-          "index_type": [tf.int32],
-          "input_shape": [[12, 2, 2, 5]],
-          "begin": [[0]],
-          "end": [[1]],
-          "strides": [None, [1]],
-          "begin_mask": [0],
-          "end_mask": [0],
-          "shrink_axis_mask": [1],
-          "constant_indices": [True],
-      },
-      # 2-D
-      {
-          "dtype": [tf.float32, tf.int32, tf.int64],
-          "index_type": [tf.int32],
-          "input_shape": [[2, 3]],
-          "begin": [[0, 0], [1, 0]],
-          "end": [[2, 3], [2, 2]],
-          "strides": [None, [2, 2]],
-          "begin_mask": [None, 1, 2],
-          "end_mask": [None, 1, 2],
-          "shrink_axis_mask": [None, 1, 2, 3, -1],
-          "constant_indices": [False, True],
-      },
-      # 1-D Exhaustive
-      {
-          "dtype": [tf.float32],
-          "index_type": [tf.int32],
-          "input_shape": [[4]],
-          "begin": [[-100], [-3], [-2], [-1], [0], [1], [2], [3], [100]],
-          "end": [[-100], [-3], [-2], [-1], [0], [1], [2], [3], [100]],
-          "strides": [-2, -1, 1, 2],
-          "begin_mask": [0, 1],
-          "end_mask": [0, 1],
-          "shrink_axis_mask": [0],
-          "constant_indices": [False],
-      },
-      # Negative strides
-      {
-          "dtype": [tf.float32],
-          "index_type": [tf.int32],
-          "input_shape": [[2, 3]],
-          "begin": [[0, -1]],
-          "end": [[2, -3]],
-          "strides": [[1, -1]],
-          "begin_mask": [None, 1, 2],
-          "end_mask": [None, 1, 2],
-          "shrink_axis_mask": [None, 1, 2, 3, -1],
-          "constant_indices": [False],
-      },
-  ]
+def _make_strided_slice_tests(zip_path, test_parameters):
+  """Utility function to make strided_slice_tests based on parameters."""
 
   def build_graph(parameters):
     """Build graph for stride_slice test."""
@@ -1921,6 +1881,100 @@ def make_strided_slice_tests(zip_path):
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_strided_slice_tests(zip_path):
+  """Make a set of tests to do strided_slice."""
+
+  # TODO(soroosh): add test/support for uint8.
+  test_parameters = [
+      # 4-D (basic cases with const/non-const indices).
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "strides": [None, [2, 1, 3, 1]],
+          "begin": [[0, 0, 0, 0]],
+          "end": [[12, 2, 2, 5]],
+          "begin_mask": [None],
+          "end_mask": [None],
+          "shrink_axis_mask": [None],
+          "constant_indices": [False, True],
+      },
+      # 4-D with non-trivial begin & end.
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
+          "end": [[8, 2, 2, 3], [12, 2, 2, 5]],
+          "strides": [None, [2, 1, 3, 1]],
+          "begin_mask": [None, 8],
+          "end_mask": [None, 3],
+          "shrink_axis_mask": [None, 15, -1],
+          "constant_indices": [True],
+      },
+      # Begin, end, strides dim are different from input shape
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0]],
+          "end": [[1]],
+          "strides": [None, [1]],
+          "begin_mask": [0],
+          "end_mask": [0],
+          "shrink_axis_mask": [1],
+          "constant_indices": [True],
+      },
+      # 2-D
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[2, 3]],
+          "begin": [[0, 0]],
+          "end": [[2, 2]],
+          "strides": [None, [2, 2]],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
+          "constant_indices": [False, True],
+      },
+      # Negative strides
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[2, 3]],
+          "begin": [[0, -1]],
+          "end": [[2, -3]],
+          "strides": [[1, -1]],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
+          "constant_indices": [False],
+      },
+  ]
+  _make_strided_slice_tests(zip_path, test_parameters)
+
+
+def make_strided_slice_1d_exhaustive_tests(zip_path):
+  """Make a set of exhaustive tests for 1D strided_slice."""
+  test_parameters = [
+      # 1-D Exhaustive
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[3]],
+          "begin": [[-2], [-1], [0], [1], [2]],
+          "end": [[-2], [-1], [0], [1], [2]],
+          "strides": [[-2], [-1], [1], [2]],
+          "begin_mask": [0, 1],
+          "end_mask": [0, 1],
+          "shrink_axis_mask": [0],
+          "constant_indices": [False],
+      },
+  ]
+  _make_strided_slice_tests(zip_path, test_parameters)
 
 
 def make_lstm_tests(zip_path):
