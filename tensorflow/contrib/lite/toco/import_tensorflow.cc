@@ -203,9 +203,13 @@ Status ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_float_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor float_val have the right "
-                  "dimensions for this float tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(float),
+                     ") nor float_val (", input_tensor.float_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this float tensor"));
   }
   return Status::OK();
 }
@@ -232,9 +236,13 @@ Status ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor int_val have the right dimensions "
-                  "for this uint8 tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(uint8_t),
+                     ") nor int_val (", input_tensor.int_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this uint8 tensor"));
   }
   return Status::OK();
 }
@@ -261,9 +269,13 @@ Status ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor int_val have the right dimensions "
-                  "for this int32 tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(int32),
+                     ") nor int_val (", input_tensor.int_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this int32 tensor"));
   }
   return Status::OK();
 }
@@ -290,9 +302,13 @@ Status ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor int64_val have the right "
-                  "dimensions for this int64 tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(int64),
+                     ") nor int64_val (", input_tensor.int64_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this int64 tensor"));
   }
   return Status::OK();
 }
@@ -327,9 +343,12 @@ Status ImportBoolArray(const TensorProto& input_tensor, Array* output_array) {
     // So far only encountered that in an array with 1 entry, let's
     // require that until we encounter a graph where that's not the case.
     if (output_bool_data.size() != 1) {
-      return Status(false,
-                    "Neither input_content nor bool_val have the right "
-                    "dimensions for this bool tensor");
+      return Status(
+          false, absl::StrCat("Neither input_content (",
+                              input_tensor.tensor_content().size(),
+                              ") nor bool_val (", input_tensor.bool_val_size(),
+                              ") have the right dimensions (", input_flat_size,
+                              ") for this bool tensor"));
     }
     output_bool_data[0] = false;
   }
