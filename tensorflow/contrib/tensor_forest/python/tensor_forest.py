@@ -335,7 +335,8 @@ class ForestVariables(object):
   """
 
   def __init__(self, params, device_assigner, training=True,
-               tree_variables_class=TreeVariables, tree_configs=None, tree_stats=None):
+               tree_variables_class=TreeVariables,
+               tree_configs=None, tree_stats=None):
     self.variables = []
     # Set up some scalar variables to run through the device assigner, then
     # we can use those to colocate everything related to a tree.
@@ -349,10 +350,11 @@ class ForestVariables(object):
       with ops.device(self.device_dummies[i].device):
         kwargs = {}
         if tree_configs is not None:
-            kwargs.update(dict(tree_config=tree_configs[i]))
+          kwargs.update(dict(tree_config=tree_configs[i]))
         if tree_stats is not None:
-            kwargs.update(dict(tree_stat=tree_stats[i]))
-        self.variables.append(tree_variables_class(params, i, training, **kwargs))
+          kwargs.update(dict(tree_stat=tree_stats[i]))
+        self.variables.append(tree_variables_class(
+                params, i, training, **kwargs))
 
   def __setitem__(self, t, val):
     self.variables[t] = val
@@ -380,7 +382,8 @@ class RandomForestGraphs(object):
     logging.info(self.params.__dict__)
     self.variables = variables or ForestVariables(
         self.params, device_assigner=self.device_assigner, training=training,
-        tree_variables_class=tree_variables_class, tree_configs=tree_configs, tree_stats=tree_stats)
+        tree_variables_class=tree_variables_class,
+        tree_configs=tree_configs, tree_stats=tree_stats)
     tree_graph_class = tree_graphs or RandomTreeGraphs
     self.trees = [
         tree_graph_class(self.variables[i], self.params, i)
