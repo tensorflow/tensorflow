@@ -44,7 +44,7 @@ class IpuDevice : public XlaDevice {
             int device_ordinal, const DeviceType& jit_device_name,
             se::Platform* platform, bool transfer_as_literal)
       : XlaDevice(options, attrs, device_ordinal, jit_device_name, platform,
-                  transfer_as_literal),
+                  transfer_as_literal, {}),
         ordinal_(device_ordinal),
         poplar_platform_(static_cast<xp::PoplarPlatform*>(platform)) {}
 

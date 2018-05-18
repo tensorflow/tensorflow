@@ -389,7 +389,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateSingleOutput(
   } else {
     // The output is not one of the inputs
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(0, size, false).ConsumeValueOrDie();
+        allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
     tc->size = size;
     tc->on_device = true;
@@ -409,7 +409,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateOutputBuffer(
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(0, size, false).ConsumeValueOrDie();
+        allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
 
     void** buf = reinterpret_cast<void**>(tc->data);
