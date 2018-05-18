@@ -39,6 +39,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.tools import optimize_for_inference_lib
 from tensorflow.python.layers import core
 
+from tensorflow.python.ops import variable_scope as vs
 
 class OptimizeForInferenceTest(test.TestCase):
 
@@ -115,6 +116,9 @@ class OptimizeForInferenceTest(test.TestCase):
     self.set_attr_dtype(unused_output_add_node, "T", dtypes.float32)
     graph_def.node.extend([unused_output_add_node])
 
+    for n in graph_def.node:
+       print(" GRAPH: ", n.name)
+
     expected_output = graph_pb2.GraphDef()
     a_constant = self.create_constant_node_def(
         a_constant_name, value=1, dtype=dtypes.float32, shape=[])
@@ -133,6 +137,121 @@ class OptimizeForInferenceTest(test.TestCase):
     self.assertProtoEquals(expected_output, output)
 
 
+  def testRemoveSimpleDropout(self):
+    self.setUp()
+    optimized_graph_def = None
+    with self.test_session() as sess:
+      input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+      n = nn_ops.relu(input_node)
+      n = nn_ops.dropout(n, keep_prob=0.07)
+      n = nn_ops.relu(n)
+      optimized_graph_def = optimize_for_inference_lib.remove_dropout_nodes(
+          sess.graph_def)
+      for node in optimized_graph_def.node:
+        print (" : ", node.name)
+        self.assertTrue(not node.name.lower().startswith("dropout"))
+    self.tearDown() 	
+    optimized_graph_def = None
+    with self.test_session() as sess:
+      with vs.variable_scope('prefix'):
+        input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+        n = nn_ops.relu(input_node)
+        n = nn_ops.dropout(n, keep_prob=0.07)
+        n = nn_ops.relu(n)
+        optimized_graph_def = optimize_for_inference_lib.remove_dropout_nodes(
+          sess.graph_def)
+        for node in optimized_graph_def.node:
+          print("XXXXXXXXX 164", node.name)
+          self.assertTrue(not node.name.lower().startswith("prefix/dropout"))
+
+  def testRemoveConditionalDropouts(self):
+    self.setUp()
+    optimized_graph_def = None
+    with self.test_session() as sess:
+      is_training = array_ops.placeholder(dtypes.bool, shape=())
+      input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+      n = nn_ops.relu(input_node)
+      n = core.dropout(n, training=is_training)
+      n = nn_ops.relu(n)
+      optimized_graph_def = optimize_for_inference_lib.remove_dropout_nodes(
+          sess.graph_def)
+      for node in optimized_graph_def.node:
+        print (" : ", node.name)
+        self.assertTrue(not node.name.lower().startswith("dropout"))
+    self.tearDown() 	
+    optimized_graph_def = None
+    with self.test_session() as sess:
+      with vs.variable_scope('prefix'):
+        input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+        n = nn_ops.softmax(input_node)
+        n = core.dropout(n, training=is_training)
+
+        optimized_graph_def = optimize_for_inference_lib.remove_dropout_nodes(
+          sess.graph_def)
+        for node in optimized_graph_def.node:
+          print ("a : ", node.name)
+          self.assertTrue(not node.name.lower().startswith("prefix/dropout"))
+   
+  
+
+  def testRemoveNamespaceDropouts(self):
+    self.setUp()
+    optimized_graph_def = None
+    with self.test_session() as sess:
+      with vs.variable_scope('prefix'):
+        is_training = array_ops.placeholder(dtypes.bool, shape=())
+        input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+
+        # using softmax layers as separators between dropouts
+        n = nn_ops.softmax(input_node)
+        n = nn_ops.dropout(n, keep_prob=0.07)
+        n = nn_ops.softmax(n)
+        # including corner cases, like one dropout after another
+        n = nn_ops.dropout(n, keep_prob=0.07)
+        n = nn_ops.dropout(n, keep_prob=0.07)
+        n = nn_ops.softmax(n)
+        n = nn_ops.dropout(n, keep_prob=0.07)
+        n = nn_ops.softmax(n)
+        n = core.dropout(n, training=True)
+        n = core.dropout(n, training=True)
+        n = nn_ops.softmax(n)
+        n = core.dropout(n, training=False)
+        n = nn_ops.softmax(n)
+        n = core.dropout(n, training=is_training)
+        n = core.dropout(n, training=is_training)
+        n = nn_ops.softmax(n)
+        n = core.dropout(n, training=is_training)
+        output_node = nn_ops.softmax(n)
+
+        optimized_graph_def = optimize_for_inference_lib.remove_dropout_nodes(
+          sess.graph_def)
+
+      for node in optimized_graph_def.node:
+        self.assertTrue(not node.name.lower().startswith("dropout"))
+
+    self.tearDown()
+
+    # recreate the same graph topology without dropouts
+    self.setUp()
+    with self.test_session() as sess:  
+
+      with vs.variable_scope('prefixAA'):
+        is_training = array_ops.placeholder(dtypes.bool, shape=())
+        input_node = array_ops.placeholder(dtypes.float32, shape=(1))
+        n = nn_ops.softmax(input_node)
+        n = nn_ops.softmax(n)
+        n = nn_ops.softmax(n)
+        n = nn_ops.softmax(n)
+        n = nn_ops.softmax(n)
+        n = nn_ops.softmax(n)
+        n = nn_ops.softmax(n)
+        output_node = nn_ops.softmax(n)         
+        no_dropout_graph_def = sess.graph_def
+
+        # ensure the graph with removed dropouts is equal to graph without added dropouts
+        self.assertEqual(optimized_graph_def.node, no_dropout_graph_def.node)
+          
+
   def testRemoveDropouts(self):
 
     optimized_graph_def = None
@@ -146,7 +265,19 @@ class OptimizeForInferenceTest(test.TestCase):
       n = nn_ops.softmax(input_node)
       n = nn_ops.dropout(n, keep_prob=0.07)
       n = nn_ops.softmax(n)
+      # including corner cases, like one dropout after another
+      n = nn_ops.dropout(n, keep_prob=0.07)
+      n = nn_ops.dropout(n, keep_prob=0.07)
+      n = nn_ops.softmax(n)
+      n = nn_ops.dropout(n, keep_prob=0.07)
+      n = nn_ops.softmax(n)
       n = core.dropout(n, training=True)
+      n = core.dropout(n, training=True)
+      n = nn_ops.softmax(n)
+      n = core.dropout(n, training=False)
+      n = nn_ops.softmax(n)
+      n = core.dropout(n, training=is_training)
+      n = core.dropout(n, training=is_training)
       n = nn_ops.softmax(n)
       n = core.dropout(n, training=is_training)
       output_node = nn_ops.softmax(n)
@@ -166,12 +297,15 @@ class OptimizeForInferenceTest(test.TestCase):
       n = nn_ops.softmax(input_node)
       n = nn_ops.softmax(n)
       n = nn_ops.softmax(n)
+      n = nn_ops.softmax(n)
+      n = nn_ops.softmax(n)
+      n = nn_ops.softmax(n)
+      n = nn_ops.softmax(n)
       output_node = nn_ops.softmax(n)         
 
       no_dropout_graph_def = sess.graph_def
 
     # ensure the graph with removed dropouts is equal to graph without added dropouts
-
     self.assertEqual(optimized_graph_def.node, no_dropout_graph_def.node)
           
 
