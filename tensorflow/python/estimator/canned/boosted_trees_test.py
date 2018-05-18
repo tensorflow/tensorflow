@@ -61,7 +61,7 @@ def _make_train_input_fn(is_classification):
   """Makes train input_fn for classification/regression."""
 
   def _input_fn():
-    features_dict = dict(FEATURES_DICT)
+    features_dict = dict(FEATURES_DICT)  # copies the dict to add an entry.
     features_dict[EXAMPLE_ID_COLUMN] = constant_op.constant(EXAMPLE_IDS)
     labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
     return features_dict, labels
@@ -73,7 +73,7 @@ def _make_train_input_fn_dataset(is_classification, batch=None, repeat=None):
   """Makes input_fn using Dataset."""
 
   def _input_fn():
-    features_dict = dict(FEATURES_DICT)
+    features_dict = dict(FEATURES_DICT)  # copies the dict to add an entry.
     features_dict[EXAMPLE_ID_COLUMN] = constant_op.constant(EXAMPLE_IDS)
     labels = CLASSIFICATION_LABELS if is_classification else REGRESSION_LABELS
     if batch:
@@ -194,6 +194,26 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllClose([[0], [1], [1], [0], [0]],
                         [pred['class_ids'] for pred in predictions])
 
+  def testTrainClassifierWithRankOneLabel(self):
+    """Tests that label with rank-1 tensor is also accepted by classifier."""
+    def _input_fn_with_rank_one_label():
+      return FEATURES_DICT, [0., 1., 1., 0., 0.]
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    # It will stop after 5 steps because of the max depth and num trees.
+    num_steps = 100
+    # Train for a few steps, and validate final checkpoint.
+    est.train(_input_fn_with_rank_one_label, steps=num_steps)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=_input_fn_with_rank_one_label, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+
   def testTrainClassifierWithLabelVocabulary(self):
     apple, banana = 'apple', 'banana'
     def _input_fn_with_label_vocab():
@@ -295,6 +315,26 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertAllClose(
         [[0.571619], [0.262821], [0.124549], [0.956801], [1.769801]],
         [pred['predictions'] for pred in predictions])
+
+  def testTrainRegressorWithRankOneLabel(self):
+    """Tests that label with rank-1 tensor is also accepted by regressor."""
+    def _input_fn_with_rank_one_label():
+      return FEATURES_DICT, [1.5, 0.3, 0.2, 2., 5.]
+
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5)
+
+    # It will stop after 5 steps because of the max depth and num trees.
+    num_steps = 100
+    # Train for a few steps, and validate final checkpoint.
+    est.train(_input_fn_with_rank_one_label, steps=num_steps)
+    self._assert_checkpoint(
+        est.model_dir, global_step=5, finalized_trees=1, attempted_layers=5)
+    eval_res = est.evaluate(input_fn=_input_fn_with_rank_one_label, steps=1)
+    self.assertAllClose(eval_res['average_loss'], 2.478283)
 
   def testTrainRegressorWithDataset(self):
     train_input_fn = _make_train_input_fn_dataset(is_classification=False)
