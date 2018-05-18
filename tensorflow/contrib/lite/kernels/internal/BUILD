@@ -302,6 +302,8 @@ cc_library(
     name = "neon_tensor_utils",
     srcs = [
         "optimized/neon_tensor_utils.cc",
+        "reference/portable_tensor_utils.cc",
+        "reference/portable_tensor_utils.h",
     ],
     hdrs = [
         "common.h",
@@ -313,11 +315,11 @@ cc_library(
     copts = NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
-        ":portable_tensor_utils",
         ":round",
         ":types",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
+        "//tensorflow/contrib/lite/kernels:op_macros",
         "@arm_neon_2_x86_sse",
         "@gemmlowp",
     ],
