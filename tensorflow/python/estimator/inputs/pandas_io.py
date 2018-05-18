@@ -50,7 +50,7 @@ def pandas_input_fn(x,
 
   Args:
     x: pandas `DataFrame` object.
-    y: pandas `Series` object. `None` if absent.
+    y: pandas `Series` object or `DataFrame`. `None` if absent.
     batch_size: int, size of batches to return.
     num_epochs: int, number of epochs to iterate over data. If not `None`,
       read attempts that would exceed this value will raise `OutOfRangeError`.
@@ -87,7 +87,13 @@ def pandas_input_fn(x,
     if not np.array_equal(x.index, y.index):
       raise ValueError('Index for x and y are mismatched.\nIndex for x: %s\n'
                        'Index for y: %s\n' % (x.index, y.index))
-    x[target_column] = y
+    if isinstance(y, pd.DataFrame):
+      target_column = list(y)
+      print(target_column)
+      x[target_column] = y
+      print(x)
+    else:
+      x[target_column] = y
 
   # TODO(mdan): These are memory copies. We probably don't need 4x slack space.
   # The sizes below are consistent with what I've seen elsewhere.
@@ -117,7 +123,10 @@ def pandas_input_fn(x,
     features = features[1:]
     features = dict(zip(list(x.columns), features))
     if y is not None:
-      target = features.pop(target_column)
+      if isinstance(target_column, list):
+        target = {column: features.pop(column) for column in target_column}
+      else:
+        target = features.pop(target_column)
       return features, target
     return features
   return input_fn
