@@ -18,18 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.batching.ops import gen_batch_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_batch_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.contrib.batching.ops.gen_batch_ops import *
+from tensorflow.python.ops.gen_batch_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
-
-
-_batch_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_batch_ops.so"))
 
 
 @ops.RegisterGradient("Batch")
@@ -59,15 +53,18 @@ def _UnbatchGrad(op, grad):   # pylint: disable=invalid-name
   ]
 
 
-def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
+def batch_function(num_batch_threads,
+                   max_batch_size,
+                   batch_timeout_micros,
                    allowed_batch_sizes=None,
                    grad_timeout_micros=60 * 1000 * 1000,
-                   unbatch_timeout_micros=60 * 1000 * 1000):
+                   unbatch_timeout_micros=60 * 1000 * 1000,
+                   max_enqueued_batches=10):
   """Batches the computation done by the decorated function.
 
   So, for example, in the following code
 
-  ```
+  ```python
   @batch_function(1, 2, 3)
   def layer(a):
     return tf.matmul(a, a)
@@ -100,6 +97,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
      documentation of the unbatch op for more details. Defaults to 60s.
     unbatch_timeout_micros: The timeout to use for unbatching. See the
      documentation of the unbatch op for more details. Defaults to 60s.
+    max_enqueued_batches: The maximum depth of the batch queue. Defaults to 10.
 
   Returns:
     The decorated function will return the unbatched computation output Tensors.
@@ -117,6 +115,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
             num_batch_threads=num_batch_threads,
             max_batch_size=max_batch_size,
             batch_timeout_micros=batch_timeout_micros,
+            max_enqueued_batches=max_enqueued_batches,
             allowed_batch_sizes=allowed_batch_sizes,
             grad_timeout_micros=grad_timeout_micros,
             shared_name=name)
@@ -129,7 +128,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
           unbatched = [
               gen_batch_ops.unbatch(t, batch_index, id_t,
                                     timeout_micros=unbatch_timeout_micros,
-                                    shared_name=unbatch_name)
+                                    shared_name=unbatch_name + "/" + t.name)
               for t in outputs_list]
         if isinstance(outputs, ops.Tensor):
           return unbatched[0]

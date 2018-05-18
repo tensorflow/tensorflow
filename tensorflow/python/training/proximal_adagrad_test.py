@@ -59,6 +59,10 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       v0_val, v1_val = sess.run([var0, var1])
       self.assertAllClose(np.array([-2.60260963, -4.29698515]), v0_val)
       self.assertAllClose(np.array([-0.28432083, -0.56694895]), v1_val)
+      opt_vars = opt.variables()
+      self.assertStartsWith(opt_vars[0].name, var0._shared_name)
+      self.assertStartsWith(opt_vars[1].name, var1._shared_name)
+      self.assertEqual(2, len(opt_vars))
 
   def testProximalAdagradwithoutRegularization(self):
     self.doTestProximalAdagradwithoutRegularization(use_resource=False)

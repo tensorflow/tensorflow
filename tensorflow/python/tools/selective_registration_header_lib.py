@@ -54,7 +54,7 @@ def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
       kernel_class = pywrap_tensorflow.TryFindKernelClass(
           node_def.SerializeToString())
       if kernel_class:
-        op_and_kernel = (str(node_def.op), kernel_class.decode('utf-8'))
+        op_and_kernel = (str(node_def.op), str(kernel_class.decode('utf-8')))
         if op_and_kernel not in ops:
           ops.add(op_and_kernel)
       else:
@@ -100,15 +100,6 @@ def get_header_from_ops_and_kernels(ops_and_kernels,
     append('#define SHOULD_REGISTER_OP_KERNEL(clz) true')
     append('#define SHOULD_REGISTER_OP_GRADIENT true')
   else:
-    append('constexpr inline bool ShouldRegisterOp(const char op[]) {')
-    append('  return false')
-    for op in sorted(ops):
-      append('     || (strcmp(op, "%s") == 0)' % op)
-    append('  ;')
-    append('}')
-    append('#define SHOULD_REGISTER_OP(op) ShouldRegisterOp(op)')
-    append('')
-
     line = '''
     namespace {
       constexpr const char* skip(const char* x) {
@@ -145,6 +136,15 @@ def get_header_from_ops_and_kernels(ops_and_kernels,
            '(find_in<sizeof(kNecessaryOpKernelClasses) '
            '/ sizeof(*kNecessaryOpKernelClasses)>::f(clz, '
            'kNecessaryOpKernelClasses))')
+    append('')
+
+    append('constexpr inline bool ShouldRegisterOp(const char op[]) {')
+    append('  return false')
+    for op in sorted(ops):
+      append('     || isequal(op, "%s")' % op)
+    append('  ;')
+    append('}')
+    append('#define SHOULD_REGISTER_OP(op) ShouldRegisterOp(op)')
     append('')
 
     append('#define SHOULD_REGISTER_OP_GRADIENT ' + (

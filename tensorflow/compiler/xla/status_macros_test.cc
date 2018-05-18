@@ -63,7 +63,7 @@ StatusOr<int> CreateIntUnsuccessfully() {
 }
 
 TEST(StatusMacros, AssignOrAssertOnOK) {
-  TF_ASSIGN_OR_ASSERT_OK(int result, CreateIntSuccessfully());
+  TF_ASSERT_OK_AND_ASSIGN(int result, CreateIntSuccessfully());
   EXPECT_EQ(42, result);
 }
 

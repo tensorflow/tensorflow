@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <iostream>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -67,7 +68,7 @@ void FillIdentityEigenImpl(const Device& d, OUT_T out, const Reducer& reducer) {
 template <typename Device, typename Reducer>
 struct ReduceFunctor {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const Device& d, OUT_T out, IN_T in,
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer);
 

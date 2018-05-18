@@ -15,6 +15,6 @@ limitations under the License.
 */
 
 //go:generate go generate ../genop
-//go:generate go run ../genop/main.go -outfile wrappers.go
+//go:generate go run ../genop/main.go -outfile wrappers.go -api_def_dirs ../../core/api_def/base_api/
 
 package op

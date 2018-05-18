@@ -25,7 +25,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
@@ -201,7 +201,7 @@ struct Add7Functor<SYCLDevice, T> {
                   typename TTypes<T>::ConstFlat in6,
                   typename TTypes<T>::ConstFlat in7) {
     Add7EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                         in7);
+                                          in7);
   }
 };
 
@@ -214,7 +214,7 @@ struct Add8Functor<SYCLDevice, T> {
       typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
       typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8) {
     Add8EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                         in7, in8);
+                                          in7, in8);
   }
 };
 
@@ -227,7 +227,7 @@ struct Add8pFunctor<SYCLDevice, T> {
       typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
       typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8) {
     Add8pEigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                          in7, in8);
+                                           in7, in8);
   }
 };
 
@@ -241,10 +241,10 @@ struct Add9Functor<SYCLDevice, T> {
       typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8,
       typename TTypes<T>::ConstFlat in9) {
     Add9EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                         in7, in8, in9);
+                                          in7, in8, in9);
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 

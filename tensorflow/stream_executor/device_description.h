@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 class DeviceDescriptionBuilder;
 }  // namespace internal
@@ -82,7 +81,7 @@ class DeviceDescription {
 
   // Returns the limit on the number of simultaneously resident blocks
   // on a multiprocessor.
-  const uint64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
+  uint64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
 
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
@@ -140,8 +139,13 @@ class DeviceDescription {
   // Returns the device memory size in bytes.
   uint64 device_memory_size() const { return device_memory_size_; }
 
+  // Returns the device's memory bandwidth in bytes/sec.  (This is for
+  // reads/writes to/from the device's own memory, not for transfers between the
+  // host and device.)
+  uint64 memory_bandwidth() const { return memory_bandwidth_; }
+
   // Returns the device's core clock rate in GHz.
-  const float clock_rate_ghz() const { return clock_rate_ghz_; }
+  float clock_rate_ghz() const { return clock_rate_ghz_; }
 
   // Returns whether ECC is enabled.
   bool ecc_enabled() const { return ecc_enabled_; }
@@ -212,6 +216,7 @@ class DeviceDescription {
 
   uint64 device_address_bits_;
   uint64 device_memory_size_;
+  uint64 memory_bandwidth_;
 
   // Shared memory limits on a given device.
   uint64 shared_memory_per_core_;
@@ -305,6 +310,9 @@ class DeviceDescriptionBuilder {
   void set_device_memory_size(uint64 value) {
     device_description_->device_memory_size_ = value;
   }
+  void set_memory_bandwidth(uint64 value) {
+    device_description_->memory_bandwidth_ = value;
+  }
 
   void set_shared_memory_per_core(int64 value) {
     device_description_->shared_memory_per_core_ = value;
@@ -379,7 +387,6 @@ uint64 CalculateRegisterLimitForTargetOccupancy(
     const DeviceDescription &device_description, uint64 shared_memory_per_block,
     const ThreadDim &thread_dims, uint64 target_blocks_per_core);
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_

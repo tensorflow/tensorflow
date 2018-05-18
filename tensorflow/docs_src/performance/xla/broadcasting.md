@@ -33,11 +33,11 @@ In Numpy, this is called [broadcasting]
 
 ## Principles
 
-XLA is a low-level infrastructure with a XLA language this is as strict and
-explicit as possible, avoiding implicit and "magical" features that may make
-some computations slightly easier to define, at the cost of more assumptions
-baked into user code that will be difficult to change in the long term. If
-necessary, implicit and magical features can be added in client-level wrappers.
+The XLA language is as strict and explicit as possible, avoiding implicit and
+"magical" features. Such features may make some computations slightly easier to
+define, at the cost of more assumptions baked into user code that will be
+difficult to change in the long term. If necessary, implicit and magical
+features can be added in client-level wrappers.
 
 In regards to broadcasting, explicit broadcasting specifications on operations
 between arrays of different ranks is required. This is different from Numpy,
@@ -97,9 +97,9 @@ shape is broadcast into a larger rank shape. For example, given a 2x3x4 cuboid
 and a 3x4 matrix, a broadcasting tuple (1,2) means matching the matrix to
 dimensions 1 and 2 of the cuboid.
 
-This type of broadcast is used in the binary ops in `ComputationBuilder`, if the
+This type of broadcast is used in the binary ops in `XlaBuilder`, if the
 `broadcast_dimensions` argument is given. For example, see
-[ComputationBuilder::Add](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.cc).
+[XlaBuilder::Add](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.cc).
 In the XLA source code, this type of broadcasting is sometimes called "InDim"
 broadcasting.
 

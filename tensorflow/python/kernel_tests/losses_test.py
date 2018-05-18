@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -32,14 +33,29 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.ops.losses import util
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
 
+safe_div = losses_impl._safe_div  # pylint: disable=protected-access
+
+
+class SafeDivTest(test.TestCase):
+
+  def testEager(self):
+    with context.eager_mode():
+      self.assertAllEqual(safe_div(constant_op.constant(1.0),
+                                   constant_op.constant(0.0)), 0.0)
+      self.assertAllEqual(safe_div(constant_op.constant(1.0),
+                                   0.0), 0.0)
+
+
 class AbsoluteDifferenceLossTest(test.TestCase):
 
   def setUp(self):
+    super(AbsoluteDifferenceLossTest, self).setUp()
     self._predictions = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
     self._labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
@@ -608,6 +624,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
 class LogLossTest(test.TestCase):
 
   def setUp(self):
+    super(LogLossTest, self).setUp()
     predictions = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
     labels = np.asarray([1.0, 0.0, 1.0, 1.0, 0.0, 0.0]).reshape((2, 3))
 
@@ -845,10 +862,30 @@ class HuberLossTest(test.TestCase):
       expected_loss = (quadratic + linear) / 2.
       self.assertAllClose(loss.eval(), expected_loss, atol=1e-5)
 
+  def testAllQuadraticDelta(self):
+    with self.test_session():
+      delta = 0.5
+      predictions = constant_op.constant([1.5, -1.4, -0.5, 0.0])
+      labels = constant_op.constant([1.0, -1.0, 0.0, 0.5])
+      expected = 0.5 * np.array([0.5**2, 0.4**2, 0.5**2, 0.5**2]).mean()
+      loss = losses.huber_loss(labels, predictions, delta=delta)
+      self.assertAllClose(expected, loss.eval(), atol=1e-5)
+
+  def testAllLinearDelta(self):
+    delta = 0.5
+    predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
+    labels = constant_op.constant([0.0, 1.0, 0.0, 1.5])
+    expected = delta * np.array([1.5, 2.4, 1.0, 1.5]).mean()
+    expected -= 0.5 * delta**2
+    loss = losses.huber_loss(labels, predictions, delta=delta)
+    with self.test_session():
+      self.assertAllClose(expected, loss.eval(), atol=1e-5)
+
 
 class MeanSquaredErrorTest(test.TestCase):
 
   def setUp(self):
+    super(MeanSquaredErrorTest, self).setUp()
     self._predictions = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
     self._labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
@@ -922,6 +959,7 @@ class MeanSquaredErrorTest(test.TestCase):
 class MeanPairwiseSquaredErrorTest(test.TestCase):
 
   def setUp(self):
+    super(MeanPairwiseSquaredErrorTest, self).setUp()
     self._predictions = np.array([[4, 8, 12], [8, 1, 3]])
     self._labels = np.array([[1, 9, 2], [-5, -5, 7]])
 
@@ -930,14 +968,14 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     # Compute the expected loss 'manually'.
     total = np.zeros((batch_size,))
     for b in range(batch_size):
-      for i in range(dims):
-        for j in range(dims):
+      for i in range(dims - 1):
+        for j in range(i + 1, dims):
           x = self._predictions[b, i].item() - self._predictions[b, j].item()
           y = self._labels[b, i].item() - self._labels[b, j].item()
           diff = (x - y)
           total[b] += (diff * diff)
 
-    self._expected_losses = np.divide(total, 9.0)
+    self._expected_losses = np.divide(total, 3.0)
 
   def testValueErrorThrownWhenWeightIsNone(self):
     with self.test_session():
@@ -1036,8 +1074,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
         [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
     ])
-    self._test_valid_weights(
-        labels, predictions, expected_loss=122.22222)
+    self._test_valid_weights(labels, predictions, expected_loss=137.5)
 
   def test3dWeightedScalar(self):
     labels = np.array([
@@ -1050,8 +1087,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     weight = 3.0
     self._test_valid_weights(
-        labels, predictions, expected_loss=weight * 122.22222,
-        weights=weight)
+        labels, predictions, expected_loss=weight * 137.5, weights=weight)
 
   def _test_invalid_weights(
       self, labels, predictions, weights=1.0):
@@ -1101,7 +1137,9 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     self._test_valid_weights(
         # TODO(ptucker): This doesn't look right.
-        labels, predictions, expected_loss=9 * 122.22222,
+        labels,
+        predictions,
+        expected_loss=9 * 137.5,
         weights=np.ones((2, 3, 3)))
 
   def testLossWithAllZeroBatchSpecificWeights(self):
@@ -1148,6 +1186,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
 class CosineDistanceLossTest(test.TestCase):
 
   def setUp(self):
+    super(CosineDistanceLossTest, self).setUp()
     self._predictions = np.asarray([
         [1, 0, 0],  # Batch 1
         [0, 0, -1],
@@ -1271,6 +1310,7 @@ class AddLossTest(test.TestCase):
 class ComputeWeightedLossTest(test.TestCase):
 
   def setUp(self):
+    super(ComputeWeightedLossTest, self).setUp()
     self._shape = (3, 2, 4)
     raw_losses = np.zeros(self._shape)
     next_loss = 0.0
@@ -1315,10 +1355,38 @@ class ComputeWeightedLossTest(test.TestCase):
               self.assertAllClose(
                   np.sum(self._raw_losses), unweighted_loss.eval())
             else:
-              # reduction one of losses.Reduction.MEAN and
-              # losses.Reduction.SUM_BY_NONZERO_WEIGHTS.
+              # reduction one of MEAN, SUM_OVER_NONZERO_WEIGHTS,
+              # SUM_BY_NONZERO_WEIGHTS or SUM_OVER_BATCH_SIZE.
               self.assertAllClose(
                   np.mean(self._raw_losses), unweighted_loss.eval())
+
+  def testUnweightedFromPlaceholder(self):
+    for reduction in losses.Reduction.all():
+      with ops.Graph().as_default() as g:
+        self.assertEqual(0, len(util.get_losses()))
+        raw_losses = array_ops.placeholder(dtype=dtypes.float32)
+        feed_dict = {raw_losses: self._raw_losses}
+        unweighted_losses = (
+            losses.compute_weighted_loss(raw_losses, reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 1, 1)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 1, 4)), reduction=reduction),
+        )
+        self.assertEqual(3, len(util.get_losses()))
+        with self.test_session(g):
+          for unweighted_loss in unweighted_losses:
+            if reduction == losses.Reduction.NONE:
+              self.assertAllClose(
+                  self._raw_losses, unweighted_loss.eval(feed_dict))
+            elif reduction == losses.Reduction.SUM:
+              self.assertAllClose(
+                  np.sum(self._raw_losses), unweighted_loss.eval(feed_dict))
+            else:
+              # reduction one of MEAN, SUM_OVER_NONZERO_WEIGHTS,
+              # SUM_BY_NONZERO_WEIGHTS or SUM_OVER_BATCH_SIZE.
+              self.assertAllClose(
+                  np.mean(self._raw_losses), unweighted_loss.eval(feed_dict))
 
   def testScalarWeight(self):
     with ops.Graph().as_default():
@@ -1410,9 +1478,14 @@ class ComputeWeightedLossTest(test.TestCase):
               self.assertAllClose(
                   weighted_sum / np.sum(broadcast_weights),
                   weighted_loss.eval())
-            elif reduction == losses.Reduction.SUM_BY_NONZERO_WEIGHTS:
+            elif (reduction == losses.Reduction.SUM_OVER_NONZERO_WEIGHTS or
+                  reduction == losses.Reduction.SUM_BY_NONZERO_WEIGHTS):
               self.assertAllClose(
                   weighted_sum / np.count_nonzero(broadcast_weights),
+                  weighted_loss.eval())
+            elif reduction == losses.Reduction.SUM_OVER_BATCH_SIZE:
+              self.assertAllClose(
+                  weighted_sum / self._raw_losses.size,
                   weighted_loss.eval())
 
   def test1x1x1Weight(self):

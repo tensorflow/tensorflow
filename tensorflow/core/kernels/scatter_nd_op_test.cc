@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -184,8 +184,8 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Invalid indices: [2,0] = [99] is not in [0, 5)"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(), "Invalid indices: [2,0] = [99] does not index into [5,3]"))
       << s;
 }
 
@@ -198,10 +198,10 @@ TEST_F(ScatterNdUpdateOpTest, Error_WrongDimsIndices) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("The outermost dimension of updates and indices "
-                            "must match. Got indices.shape [1,3,1], "
-                            "updates.shape [3,3]"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(),
+      "The outermost dimension of updates and indices must match. Got "
+      "indices.shape [1,3,1], updates.shape [3,3]"))
       << s;
 }
 
@@ -216,10 +216,8 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
       TensorShape({3, 4}),
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      StringPiece(s.ToString())
-          .contains("Must have updates.shape = indices.shape[:batch_dim]"))
-
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(), "Must have updates.shape = indices.shape[:batch_dim]"))
       << s;
 }
 
@@ -233,16 +231,15 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   AddInputFromArray<float>(TensorShape({2, 3}),
                            {100, 101, 102, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      StringPiece(s.ToString())
-          .contains(
-              "The outermost dimension of updates and indices must match."))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(),
+      "The outermost dimension of updates and indices must match."))
       << s;
 }
 
 class ScatterNdUpdateBM : public ScatterNdUpdateOpTest {
  public:
-  virtual void TestBody() {}
+  void TestBody() override {}
   void MakeBenchmarkOp(const char* op, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", op)
                      .Input(FakeInput(DT_FLOAT_REF))

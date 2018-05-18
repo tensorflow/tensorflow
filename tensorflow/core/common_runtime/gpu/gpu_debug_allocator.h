@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -32,7 +33,8 @@ namespace tensorflow {
 // allocated memory.
 class GPUDebugAllocator : public VisitableAllocator {
  public:
-  explicit GPUDebugAllocator(VisitableAllocator* allocator, int device_id);
+  explicit GPUDebugAllocator(VisitableAllocator* allocator,
+                             CudaGpuId cuda_gpu_id);
   ~GPUDebugAllocator() override;
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
@@ -40,10 +42,11 @@ class GPUDebugAllocator : public VisitableAllocator {
   void AddAllocVisitor(Visitor visitor) override;
   void AddFreeVisitor(Visitor visitor) override;
   bool TracksAllocationSizes() override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
-  int64 AllocationId(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
 
   // For testing.
   bool CheckHeader(void* ptr);
@@ -52,7 +55,7 @@ class GPUDebugAllocator : public VisitableAllocator {
  private:
   VisitableAllocator* base_allocator_ = nullptr;  // owned
 
-  perftools::gputools::StreamExecutor* stream_exec_;  // Not owned.
+  se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUDebugAllocator);
 };
@@ -62,21 +65,23 @@ class GPUDebugAllocator : public VisitableAllocator {
 // user forgets to initialize the memory.
 class GPUNanResetAllocator : public VisitableAllocator {
  public:
-  explicit GPUNanResetAllocator(VisitableAllocator* allocator, int device_id);
+  explicit GPUNanResetAllocator(VisitableAllocator* allocator,
+                                CudaGpuId cuda_gpu_id);
   ~GPUNanResetAllocator() override;
   string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   void AddAllocVisitor(Visitor visitor) override;
   void AddFreeVisitor(Visitor visitor) override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
 
  private:
   VisitableAllocator* base_allocator_ = nullptr;  // owned
 
-  perftools::gputools::StreamExecutor* stream_exec_;  // Not owned.
+  se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUNanResetAllocator);
 };

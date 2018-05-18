@@ -80,3 +80,36 @@ message TaggedRunMetadata {
   // deserialization.
   bytes run_metadata = 2;
 }
+
+// Worker heartbeat messages.  Support for these operations is currently
+// internal and expected to change.
+
+// Current health status of a worker.
+enum WorkerHealth {
+  OK = 0;  // By default a worker is healthy.
+  RECEIVED_SHUTDOWN_SIGNAL = 1;
+  INTERNAL_ERROR = 2;
+}
+
+// Indicates the behavior of the worker when an internal error or shutdown
+// signal is received.
+enum WorkerShutdownMode {
+  DEFAULT = 0;
+  SHUTDOWN_IMMEDIATELY = 1;
+  WAIT_FOR_COORDINATOR = 2;
+}
+
+message WatchdogConfig {
+  int64 timeout_ms = 1;
+}
+
+message WorkerHeartbeatRequest {
+  WorkerShutdownMode shutdown_mode = 1;
+  WatchdogConfig watchdog_config = 2;
+}
+
+message WorkerHeartbeatResponse {
+  WorkerHealth health_status = 1;
+  repeated Event worker_log = 2;
+  string hostname = 3;
+}

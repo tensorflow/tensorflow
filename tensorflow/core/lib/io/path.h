@@ -16,14 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_PATH_H_
 #define TENSORFLOW_LIB_IO_PATH_H_
 
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
-class StringPiece;
 namespace io {
 namespace internal {
-string JoinPathImpl(std::initializer_list<StringPiece> paths);
+string JoinPathImpl(std::initializer_list<tensorflow::StringPiece> paths);
 }
 
 // Utility routines for processing filenames
@@ -50,20 +48,20 @@ string JoinPath(const T&... args) {
 #endif /* SWIG */
 
 // Return true if path is absolute.
-bool IsAbsolutePath(StringPiece path);
+bool IsAbsolutePath(tensorflow::StringPiece path);
 
 // Returns the part of the path before the final "/".  If there is a single
 // leading "/" in the path, the result will be the leading "/".  If there is
 // no "/" in the path, the result is the empty prefix of the input.
-StringPiece Dirname(StringPiece path);
+tensorflow::StringPiece Dirname(tensorflow::StringPiece path);
 
 // Returns the part of the path after the final "/".  If there is no
 // "/" in the path, the result is the same as the input.
-StringPiece Basename(StringPiece path);
+tensorflow::StringPiece Basename(tensorflow::StringPiece path);
 
 // Returns the part of the basename of path after the final ".".  If
 // there is no "." in the basename, the result is empty.
-StringPiece Extension(StringPiece path);
+tensorflow::StringPiece Extension(tensorflow::StringPiece path);
 
 // Collapse duplicate "/"s, resolve ".." and "." path elements, remove
 // trailing "/".
@@ -72,7 +70,7 @@ StringPiece Extension(StringPiece path);
 // invoke any system calls (getcwd(2)) in order to resolve relative
 // paths with respect to the actual working directory.  That is, this is purely
 // string manipulation, completely independent of process state.
-string CleanPath(StringPiece path);
+string CleanPath(tensorflow::StringPiece path);
 
 // Populates the scheme, host, and path from a URI. scheme, host, and path are
 // guaranteed by this function to point into the contents of uri, even if
@@ -82,12 +80,16 @@ string CleanPath(StringPiece path);
 // - If the URI is invalid, scheme and host are set to empty strings and the
 //   passed string is assumed to be a path
 // - If the URI omits the path (e.g. file://host), then the path is left empty.
-void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
-              StringPiece* path);
+void ParseURI(tensorflow::StringPiece uri, tensorflow::StringPiece* scheme,
+              tensorflow::StringPiece* host, tensorflow::StringPiece* path);
 
 // Creates a URI from a scheme, host, and path. If the scheme is empty, we just
 // return the path.
-string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
+string CreateURI(tensorflow::StringPiece scheme, tensorflow::StringPiece host,
+                 tensorflow::StringPiece path);
+
+// Creates a temporary file name with an extension.
+string GetTempFilename(const string& extension);
 
 }  // namespace io
 }  // namespace tensorflow

@@ -88,7 +88,8 @@ __global__ void concat_variable_kernel(
   // do an initial binary search and then scan linearly from there
   // works well when there are many small segments and when the
   // segments are much longer
-  IntType segment = gpu::upper_bound<IntType>(col_scan, num_inputs, gidx) - 1;
+  IntType segment =
+      cuda_helper::upper_bound<IntType>(col_scan, num_inputs, gidx) - 1;
 
   IntType curr_offset = col_scan[segment];
   IntType curr_segment = segment;
@@ -142,10 +143,10 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
                                       output->dimension(0), gpu_device);
 
   if (fixed_size) {
-    concat_fixed_kernel<T, IntType><<<
-        config.block_count, config.thread_per_block, 0, gpu_device.stream()>>>(
-        input_ptrs, split_size, output->dimension(0), output->dimension(1),
-        output->data());
+    concat_fixed_kernel<T, IntType>
+        <<<config.block_count, config.thread_per_block, 0,
+           gpu_device.stream()>>>(input_ptrs, split_size, output->dimension(0),
+                                  output->dimension(1), output->data());
   } else {
     IntType smem_max = gpu_device.sharedMemPerBlock();
     IntType smem_usage = output_scan.size * sizeof(IntType);
@@ -155,17 +156,17 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance)
-      concat_variable_kernel<
-          T, IntType, true><<<config.block_count, config.thread_per_block,
-                              smem_usage, gpu_device.stream()>>>(
-          input_ptrs, output_scan, output->dimension(0), output->dimension(1),
-          output->data());
+      concat_variable_kernel<T, IntType, true>
+          <<<config.block_count, config.thread_per_block, smem_usage,
+             gpu_device.stream()>>>(input_ptrs, output_scan,
+                                    output->dimension(0), output->dimension(1),
+                                    output->data());
     else
-      concat_variable_kernel<
-          T, IntType, false><<<config.block_count, config.thread_per_block, 0,
-                               gpu_device.stream()>>>(
-          input_ptrs, output_scan, output->dimension(0), output->dimension(1),
-          output->data());
+      concat_variable_kernel<T, IntType, false>
+          <<<config.block_count, config.thread_per_block, 0,
+             gpu_device.stream()>>>(input_ptrs, output_scan,
+                                    output->dimension(0), output->dimension(1),
+                                    output->data());
   }
 }
 
@@ -200,22 +201,34 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPUCONCAT32);
 TF_CALL_complex64(REGISTER_GPUCONCAT32);
 TF_CALL_complex128(REGISTER_GPUCONCAT32);
+TF_CALL_int64(REGISTER_GPUCONCAT32);
+TF_CALL_uint8(REGISTER_GPUCONCAT32);
 REGISTER_GPUCONCAT32(bfloat16);
+REGISTER_GPUCONCAT32(bool);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPUCONCAT64);
 TF_CALL_complex64(REGISTER_GPUCONCAT64);
 TF_CALL_complex128(REGISTER_GPUCONCAT64);
+TF_CALL_int64(REGISTER_GPUCONCAT64);
+TF_CALL_uint8(REGISTER_GPUCONCAT64);
 REGISTER_GPUCONCAT64(bfloat16);
+REGISTER_GPUCONCAT64(bool);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU32);
 TF_CALL_complex64(REGISTER_GPU32);
 TF_CALL_complex128(REGISTER_GPU32);
+TF_CALL_int64(REGISTER_GPU32);
+TF_CALL_uint8(REGISTER_GPU32);
 REGISTER_GPU32(bfloat16);
+REGISTER_GPU32(bool);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU64);
 TF_CALL_complex64(REGISTER_GPU64);
 TF_CALL_complex128(REGISTER_GPU64);
+TF_CALL_int64(REGISTER_GPU64);
+TF_CALL_uint8(REGISTER_GPU64);
 REGISTER_GPU64(bfloat16);
+REGISTER_GPU64(bool);
 
 #undef REGISTER_GPUCONCAT32
 #undef REGISTER_GPUCONCAT64

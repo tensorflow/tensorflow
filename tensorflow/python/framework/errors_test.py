@@ -18,15 +18,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 class ErrorsTest(test.TestCase):
+
+  def _CountReferences(self, typeof):
+    """Count number of references to objects of type |typeof|."""
+    objs = gc.get_objects()
+    ref_count = 0
+    for o in objs:
+      try:
+        if isinstance(o, typeof):
+          ref_count += 1
+      # Certain versions of python keeps a weakref to deleted objects.
+      except ReferenceError:
+        pass
+    return ref_count
 
   def testUniqueClassForEachErrorCode(self):
     for error_code, exc_type in [
@@ -79,6 +96,16 @@ class ErrorsTest(test.TestCase):
     self.assertEqual(1, len(w))
     self.assertTrue("Unknown error code: 37" in str(w[0].message))
     self.assertTrue(isinstance(exc, errors_impl.OpError))
+
+  def testStatusDoesNotLeak(self):
+    try:
+      with errors.raise_exception_on_not_ok_status() as status:
+        pywrap_tensorflow.DeleteFile(
+            compat.as_bytes("/DOES_NOT_EXIST/"), status)
+    except:
+      pass
+    gc.collect()
+    self.assertEqual(0, self._CountReferences(c_api_util.ScopedTFStatus))
 
 
 if __name__ == "__main__":

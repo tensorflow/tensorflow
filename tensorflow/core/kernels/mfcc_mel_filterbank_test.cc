@@ -29,15 +29,14 @@ TEST(MfccMelFilterbankTest, AgreesWithPythonGoldenValues) {
 
   std::vector<double> input;
   const int kSampleCount = 513;
+  input.reserve(kSampleCount);
   for (int i = 0; i < kSampleCount; ++i) {
     input.push_back(i + 1);
   }
   const int kChannelCount = 20;
-  filterbank.Initialize(input.size(),
-                        22050 /* sample rate */,
-                        kChannelCount /* channels */,
-                        20.0 /*  lower frequency limit */,
-                        4000.0 /* upper frequency limit */);
+  filterbank.Initialize(
+      input.size(), 22050 /* sample rate */, kChannelCount /* channels */,
+      20.0 /*  lower frequency limit */, 4000.0 /* upper frequency limit */);
 
   std::vector<double> output;
   filterbank.Compute(input, &output);
@@ -64,12 +63,9 @@ TEST(MfccMelFilterbankTest, IgnoresExistingContentOfOutputVector) {
   std::vector<double> input;
   std::vector<double> output;
 
-  filterbank.Initialize(kSampleCount,
-                        22050 /* sample rate */,
-                        20 /* channels */,
-                        20.0 /*  lower frequency limit */,
+  filterbank.Initialize(kSampleCount, 22050 /* sample rate */,
+                        20 /* channels */, 20.0 /*  lower frequency limit */,
                         4000.0 /* upper frequency limit */);
-
 
   // First call with nonzero input value, and an empty output vector,
   // will resize the output and fill it with the correct, nonzero outputs.

@@ -25,28 +25,29 @@ namespace tensorflow {
 namespace functor {
 
 // Functor used by PadOp to do the computations.
-template <typename Device, typename T, int Dims>
+template <typename Device, typename T, typename Tpadding, int Dims>
 struct Pad {
-  // Pad "input" into "output", as specified by "paddings".  See pad_op.cc for
-  // details.
+  // Pad "input" into "output", as specified by "paddings" and "pad_value".
+  // See pad_op.cc for details.
   void operator()(const Device& d, typename TTypes<T, Dims>::Tensor output,
                   typename TTypes<T, Dims>::ConstTensor input,
-                  Eigen::array<std::pair<int32, int32>, Dims> paddings) {
+                  Eigen::array<Eigen::IndexPair<Tpadding>, Dims> paddings,
+                  T pad_value) {
     if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value &&
         (output.size() <= std::numeric_limits<int32>::max())) {
-      To32Bit(output).device(d) = To32Bit(input).pad(paddings);
+      To32Bit(output).device(d) = To32Bit(input).pad(paddings, pad_value);
     } else {
-      output.device(d) = input.pad(paddings);
+      output.device(d) = input.pad(paddings, pad_value);
     }
   }
 };
 
-template <typename Device, typename T>
-struct Pad<Device, T, 0> {
+template <typename Device, typename T, typename Tpadding>
+struct Pad<Device, T, Tpadding, 0> {
   // In the scalar case we simply copy the input.
   void operator()(const Device& d, typename TTypes<T, 0>::Tensor output,
                   typename TTypes<T, 0>::ConstTensor input,
-                  Eigen::array<std::pair<int32, int32>, 0>) {
+                  Eigen::array<Eigen::IndexPair<Tpadding>, 0>, T) {
     output.device(d) = input;
   }
 };

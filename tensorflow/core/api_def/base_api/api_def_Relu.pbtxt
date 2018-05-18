@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Relu"
+  summary: "Computes rectified linear: `max(features, 0)`."
+}

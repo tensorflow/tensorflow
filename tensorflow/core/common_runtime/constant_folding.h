@@ -22,13 +22,33 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/env.h"
 
+// TODO(skyewm): can this be combined with EvaluateConstantTensor?
+
 namespace tensorflow {
+
+// This generator type is used to generate a name for the newly folded node
+// based on the node's old name.
+using ConstantFoldNameGenerator =
+    std::function<string(Graph* graph, string old_name)>;
 
 // Options specific to constant folding optimizations.
 struct ConstantFoldingOptions {
   // If "consider" is not a nullptr, then only constant fold a node "n" if
   // consider(n) returns true.
   std::function<bool(const Node*)> consider = nullptr;
+  // If shape_map is not a nullptr, it is a map from node n to a
+  // vector of the (potentially partially-known) shapes of its
+  // outputs.
+  const std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map =
+      nullptr;  // not owned
+  // The maximum size of each constant created during constant folding
+  // optimization.
+  int64 max_constant_size_in_bytes = 10 * 1024 * 1024;
+
+  // A generator for the name suffix of constant folded nodes. A
+  // default id generator that monotonically increases is used if nullptr is
+  // passed.
+  ConstantFoldNameGenerator generate_new_name = nullptr;
 };
 
 // Perform constant folding optimization on "graph".

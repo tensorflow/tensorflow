@@ -24,17 +24,38 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
+
+using tensorflow::str_util::Lowercase;
 
 // Minimum supported CUDA compute capability is 3.5.
 constexpr int kMinCudaComputeCapabilityMajor = 3;
 constexpr int kMinCudaComputeCapabilityMinor = 5;
+
+// The name of the interpreter platform.
+constexpr char kInterpreter[] = "interpreter";
+
+namespace {
+
+string CanonicalPlatformName(const string& name) {
+  string platform_str = Lowercase(name);
+  // "cpu" and "host" mean the same thing.
+  if (platform_str == "cpu") {
+    platform_str = "host";
+  }
+  // "gpu" and "cuda" mean the same thing.
+  if (platform_str == "gpu") {
+    platform_str = "cuda";
+  }
+  return platform_str;
+}
+
+}  // namespace
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
@@ -77,6 +98,23 @@ PlatformUtil::GetSupportedPlatforms() {
   return platforms;
 }
 
+/* static */ StatusOr<se::Platform*> PlatformUtil::GetSolePlatform() {
+  TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
+  if (platforms.empty()) {
+    return NotFound("no platforms found");
+  } else if (platforms.size() == 1) {
+    return platforms[0];
+  }
+
+  // Multiple platforms present and we can't pick a reasonable default.
+  string platforms_string = tensorflow::str_util::Join(
+      platforms, ", ",
+      [](string* out, const se::Platform* p) { out->append(p->Name()); });
+  return InvalidArgument(
+      "must specify platform because more than one platform found: %s",
+      platforms_string.c_str());
+}
+
 /* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
   if (platforms.empty()) {
@@ -84,22 +122,60 @@ PlatformUtil::GetSupportedPlatforms() {
   } else if (platforms.size() == 1) {
     return platforms[0];
   } else if (platforms.size() == 2) {
-    // In the service we always link the cpu backend for ComputeConstant. So if
-    // one of the two platforms is CPU then pick the other (non-cpu) platform as
-    // the default.
-    if (platforms[0]->id() == se::host::kHostPlatformId) {
-      return platforms[1];
-    } else if (platforms[1]->id() == se::host::kHostPlatformId) {
-      return platforms[0];
+    for (int i = 0; i < 2; i++) {
+      if (Lowercase(platforms[i]->Name()) == kInterpreter &&
+          Lowercase(platforms[1 - i]->Name()) != kInterpreter) {
+        return platforms[1 - i];
+      }
     }
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
-  auto l = [](string* out, const se::Platform* p) { out->append(p->Name()); };
-  string platforms_string = tensorflow::str_util::Join(platforms, ", ", l);
+  string platforms_string = tensorflow::str_util::Join(
+      platforms, ", ",
+      [](string* out, const se::Platform* p) { out->append(p->Name()); });
   return InvalidArgument(
-      "must specify platform because more than one platform found: %s",
+      "must specify platform because more than one platform (except for the "
+      "interpreter platform) found: %s",
       platforms_string.c_str());
+}
+
+/*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
+    const string& platform_name) {
+  string platform_str = CanonicalPlatformName(platform_name);
+  TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
+  for (se::Platform* platform : platforms) {
+    if (Lowercase(platform->Name()) == platform_str) {
+      return platform;
+    }
+  }
+  return InvalidArgument("platform %s not found", platform_name.c_str());
+}
+
+/*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatformExceptFor(
+    const string& platform_name) {
+  string platform_str = CanonicalPlatformName(platform_name);
+
+  TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
+  std::vector<se::Platform*> matched;
+  for (se::Platform* platform : platforms) {
+    if (Lowercase(platform->Name()) != platform_name) {
+      matched.push_back(platform);
+    }
+  }
+  if (matched.empty()) {
+    return InvalidArgument("unable to find platform that is not %s",
+                           platform_name.c_str());
+  }
+  if (matched.size() == 1) {
+    return matched[0];
+  }
+  string matched_string = tensorflow::str_util::Join(
+      matched, ", ",
+      [](string* out, const se::Platform* p) { out->append(p->Name()); });
+  return InvalidArgument(
+      "found multiple platforms %s, but expected one platform except for %s",
+      matched_string.c_str(), platform_name.c_str());
 }
 
 // Returns whether the device underlying the given StreamExecutor is supported
@@ -140,21 +216,32 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     device_count = 1;
   }
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
-  for (int i = 0; i < device_count; ++i) {
-    se::StreamExecutorConfig config;
-    config.ordinal = i;
-    auto executor_status = platform->GetExecutor(config);
-    if (executor_status.ok()) {
-      se::StreamExecutor* executor = executor_status.ValueOrDie();
-      if (IsDeviceSupported(executor)) {
-        stream_executors[i] = executor;
-      }
-    } else {
-      LOG(WARNING) << "unable to create StreamExecutor for " << platform->Name()
-                   << ":" << i << ": "
-                   << executor_status.status().error_message();
+  VLOG(1) << "Initializing devices";
+  {
+    tensorflow::thread::ThreadPool thread_pool(
+        tensorflow::Env::Default(), "device_initialization", device_count);
+    for (int i = 0; i < device_count; ++i) {
+      thread_pool.Schedule([platform, i, &stream_executors]() {
+        VLOG(1) << "Started device init " << i;
+        se::StreamExecutorConfig config;
+        config.ordinal = i;
+        auto executor_status = platform->GetExecutor(config);
+        if (executor_status.ok()) {
+          se::StreamExecutor* executor = executor_status.ValueOrDie();
+          if (IsDeviceSupported(executor)) {
+            stream_executors[i] = executor;
+          }
+        } else {
+          LOG(WARNING) << "unable to create StreamExecutor for "
+                       << platform->Name() << ":" << i << ": "
+                       << executor_status.status().error_message();
+        }
+        VLOG(1) << "Finished device init " << i;
+      });
     }
+    // Block here in thread_pool destructor until all devices are initialized.
   }
+  VLOG(1) << "Device initialization complete";
   if (std::all_of(stream_executors.begin(), stream_executors.end(),
                   [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",

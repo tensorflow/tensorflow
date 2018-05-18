@@ -27,7 +27,7 @@ cc_prefix="${CC_PREFIX}"
 usage() {
   echo "Usage: $(basename "$0") [-a:c]"
   echo "-a [Architecture] Architecture of target android [default=armeabi-v7a] \
-(supported archtecture list: \
+(supported architecture list: \
 arm64-v8a armeabi armeabi-v7a armeabi-v7a-hard mips mips64 x86 x86_64)"
   echo "-c Clean before building protobuf for target"
   echo "\"NDK_ROOT\" should be defined as an environment variable."
@@ -71,10 +71,10 @@ then
     exit 1
 fi
 
-GENDIR="$(pwd)/gen/protobuf"
+GENDIR="$(pwd)/gen/protobuf_android"
 HOST_GENDIR="$(pwd)/gen/protobuf-host"
 mkdir -p "${GENDIR}"
-mkdir -p "${HOST_GENDIR}"
+mkdir -p "${GENDIR}/${ARCHITECTURE}"
 
 if [[ ! -f "./downloads/protobuf/autogen.sh" ]]; then
     echo "You need to download dependencies before running this script." 1>&2
@@ -130,7 +130,7 @@ elif [[ ${ARCHITECTURE} == "x86_64" ]]; then
     sysroot_arch="x86_64"
     bin_prefix="x86_64-linux-android"
 else
-    echo "archtecture ${arcitecture} is not supported." 1>&2
+    echo "architecture ${ARCHITECTURE} is not supported." 1>&2
     usage
     exit 1
 fi
@@ -153,7 +153,7 @@ then
   exit 1
 fi
 
-./configure --prefix="${GENDIR}" \
+./configure --prefix="${GENDIR}/${ARCHITECTURE}" \
 --host="${bin_prefix}" \
 --with-sysroot="${SYSROOT}" \
 --disable-shared \

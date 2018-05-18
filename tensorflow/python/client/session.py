@@ -12,20 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A client interface for TensorFlow."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import re
 import threading
+import warnings
 
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -33,6 +35,7 @@ from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class SessionInterface(object):
@@ -60,6 +63,7 @@ class SessionInterface(object):
     """Continues the execution with additional feeds and fetches."""
     raise NotImplementedError('partial_run')
 
+
 def _get_indexed_slices_value_from_fetches(fetched_vals):
   return ops.IndexedSlicesValue(fetched_vals[0], fetched_vals[1],
                                 fetched_vals[2]
@@ -67,8 +71,9 @@ def _get_indexed_slices_value_from_fetches(fetched_vals):
 
 
 def _get_feeds_for_indexed_slices(feed, feed_val):
-  return list(zip([feed.values, feed.indices] if feed.dense_shape is None else
-                  [feed.values, feed.indices, feed.dense_shape], feed_val))
+  return list(
+      zip([feed.values, feed.indices] if feed.dense_shape is None else
+          [feed.values, feed.indices, feed.dense_shape], feed_val))
 
 
 # List of extensions supported to convert run arguments into actual fetches and
@@ -120,10 +125,20 @@ _REGISTERED_EXPANSIONS = [
      lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
      lambda feed, feed_val: [(feed, feed_val)],
      lambda feed: [feed])]
+
 # pylint: enable=g-long-lambda
 
-def register_session_run_conversion_functions(tensor_type, fetch_function,
-    feed_function=None, feed_function_for_partial_run=None):
+
+def _convert_to_numpy_obj(numpy_dtype, obj):
+  """Explicitly convert obj based on numpy type except for string type."""
+  return numpy_dtype(obj) if numpy_dtype is not object else str(obj)
+
+
+def register_session_run_conversion_functions(
+    tensor_type,
+    fetch_function,
+    feed_function=None,
+    feed_function_for_partial_run=None):
   """Register fetch and feed conversion functions for `tf.Session.run()`.
 
   This function registers a triple of conversion functions for fetching and/or
@@ -164,11 +179,11 @@ def register_session_run_conversion_functions(tensor_type, fetch_function,
   """
   for conversion_function in _REGISTERED_EXPANSIONS:
     if issubclass(conversion_function[0], tensor_type):
-      raise ValueError(
-          '%s has already been registered so ignore it.', tensor_type)
+      raise ValueError('%s has already been registered so ignore it.',
+                       tensor_type)
       return
-  _REGISTERED_EXPANSIONS.insert(0,
-    (tensor_type, fetch_function, feed_function, feed_function_for_partial_run))
+  _REGISTERED_EXPANSIONS.insert(0, (tensor_type, fetch_function, feed_function,
+                                    feed_function_for_partial_run))
 
 
 class _FetchMapper(object):
@@ -223,8 +238,8 @@ class _FetchMapper(object):
       An instance of a subclass of `_FetchMapper` that handles the shape.
     """
     if fetch is None:
-      raise TypeError('Fetch argument %r has invalid type %r' %
-                      (fetch, type(fetch)))
+      raise TypeError('Fetch argument %r has invalid type %r' % (fetch,
+                                                                 type(fetch)))
     elif isinstance(fetch, (list, tuple)):
       # NOTE(touts): This is also the code path for namedtuples.
       return _ListFetchMapper(fetch)
@@ -237,8 +252,8 @@ class _FetchMapper(object):
           fetches, contraction_fn = fetch_fn(fetch)
           return _ElementFetchMapper(fetches, contraction_fn)
     # Did not find anything.
-    raise TypeError('Fetch argument %r has invalid type %r' %
-                    (fetch, type(fetch)))
+    raise TypeError('Fetch argument %r has invalid type %r' % (fetch,
+                                                               type(fetch)))
 
 
 class _ElementFetchMapper(_FetchMapper):
@@ -267,8 +282,8 @@ class _ElementFetchMapper(_FetchMapper):
             fetch, allow_tensor=True, allow_operation=True))
       except TypeError as e:
         raise TypeError('Fetch argument %r has invalid type %r, '
-                        'must be a string or Tensor. (%s)'
-                        % (fetch, type(fetch), str(e)))
+                        'must be a string or Tensor. (%s)' %
+                        (fetch, type(fetch), str(e)))
       except ValueError as e:
         raise ValueError('Fetch argument %r cannot be interpreted as a '
                          'Tensor. (%s)' % (fetch, str(e)))
@@ -366,8 +381,9 @@ class _DictFetchMapper(_FetchMapper):
     """
     self._fetch_type = type(fetches)
     self._keys = fetches.keys()
-    self._mappers = [_FetchMapper.for_fetch(fetch)
-                     for fetch in fetches.values()]
+    self._mappers = [
+        _FetchMapper.for_fetch(fetch) for fetch in fetches.values()
+    ]
     self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
 
   def unique_fetches(self):
@@ -391,6 +407,7 @@ class _FetchHandler(object):
   result structure matching the user-provided structure for fetches, but
   containing the corresponding results.
   """
+
   # TODO(touts): Make this class also take care of destructuring the feed
   # dict instead of doing it in the callers.
 
@@ -402,8 +419,8 @@ class _FetchHandler(object):
         and to convert all fetches to tensors or ops as needed.
       fetches: An arbitrary fetch structure: singleton, list, tuple,
         namedtuple, or dict.
-      feeds: A feed dict where keys are fully resolved tensor names.
-      feed_handles: A dict from feed names to TensorHandle objects used as
+      feeds: A feed dict where keys are Tensors.
+      feed_handles: A dict from feed Tensors to TensorHandle objects used as
         direct feeds.
     """
     with graph.as_default():
@@ -415,20 +432,19 @@ class _FetchHandler(object):
     self._ops = []
     self._fetch_handles = {}
     for fetch in self._fetch_mapper.unique_fetches():
-      fetch_name = compat.as_bytes(fetch.name)
       if isinstance(fetch, ops.Operation):
         self._assert_fetchable(graph, fetch)
-        self._targets.append(fetch_name)
+        self._targets.append(fetch)
         self._ops.append(True)
       else:
         self._assert_fetchable(graph, fetch.op)
-        self._fetches.append(fetch_name)
+        self._fetches.append(fetch)
         self._ops.append(False)
       # Remember the fetch if it is for a tensor handle.
       if (isinstance(fetch, ops.Tensor) and
           (fetch.op.type == 'GetSessionHandle' or
            fetch.op.type == 'GetSessionHandleV2')):
-        self._fetch_handles[fetch_name] = fetch.op.inputs[0].dtype
+        self._fetch_handles[fetch] = fetch.op.inputs[0].dtype
     self._final_fetches = [x for x in self._fetches if x not in feeds]
 
   def _assert_fetchable(self, graph, op):
@@ -501,6 +517,54 @@ class _FetchHandler(object):
     return self._fetch_mapper.build_results(full_values)
 
 
+def _name_list(tensor_list):
+  """Utility function for transitioning to the new session API.
+
+  Args:
+    tensor_list: a list of `Tensor`s.
+
+  Returns:
+    A list of each `Tensor`s name (as byte arrays).
+  """
+  return [compat.as_bytes(t.name) for t in tensor_list]
+
+
+class _DeviceAttributes(object):
+  """Struct-like object describing a device's attributes.
+
+  Each device has 3 key properties:
+   - name: the fully-qualified TensorFlow path to the device. For
+        example: /job:worker/replica:0/task:3/device:CPU:0
+   - device_type: the type of the device (e.g. CPU, GPU, TPU, etc.)
+   - memory_limit_bytes: the maximum amount of memory available on the device
+        (in bytes).
+  """
+
+  def __init__(self, name, device_type, memory_limit_bytes):
+    self._name = device.canonical_name(name)
+    self._device_type = device_type
+    self._memory_limit_bytes = memory_limit_bytes
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def device_type(self):
+    return self._device_type
+
+  @property
+  def memory_limit_bytes(self):
+    return self._memory_limit_bytes
+
+  def __repr__(self):
+    return '_DeviceAttributes(%s, %s, %d)' % (
+        self.name,
+        self.device_type,
+        self.memory_limit_bytes,
+    )
+
+
 class BaseSession(SessionInterface):
   """A class for interacting with a TensorFlow computation.
 
@@ -547,21 +611,69 @@ class BaseSession(SessionInterface):
 
     if config is not None:
       if not isinstance(config, config_pb2.ConfigProto):
-        raise TypeError('config must be a tf.ConfigProto, but got %s'
-                        % type(config))
+        raise TypeError(
+            'config must be a tf.ConfigProto, but got %s' % type(config))
       self._config = config
       self._add_shapes = config.graph_options.infer_shapes
     else:
       self._config = None
       self._add_shapes = False
 
+    # pylint: disable=protected-access
+    # We cache _USE_C_API's value because some test cases will create a session
+    # with _USE_C_API = False but set it back to True before calling close().
+    self._created_with_new_api = ops._USE_C_API
+    # pylint: enable=protected-access
+
     self._session = None
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._session = tf_session.TF_NewDeprecatedSession(opts, status)
+      if self._created_with_new_api:
+        # pylint: disable=protected-access
+        self._session = tf_session.TF_NewSession(self._graph._c_graph, opts)
+        # pylint: enable=protected-access
+      else:
+        self._session = tf_session.TF_NewDeprecatedSession(opts)
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
+
+  def list_devices(self):
+    """Lists available devices in this session.
+
+    ```python
+    devices = sess.list_devices()
+    for d in devices:
+      print(d.name)
+    ```
+
+    Each element in the list has the following properties:
+     - `name`: A string with the full name of the device. ex:
+          `/job:worker/replica:0/task:3/device:CPU:0`
+     - `device_type`: The type of the device (e.g. `CPU`, `GPU`, `TPU`.)
+     - `memory_limit`: The maximum amount of memory available on the device.
+          Note: depending on the device, it is possible the usable memory could
+          be substantially less.
+    Raises:
+      tf.errors.OpError: If it encounters an error (e.g. session is in an
+      invalid state, or network errors occur).
+
+    Returns:
+      A list of devices in the session.
+    """
+    if self._created_with_new_api:
+      raw_device_list = tf_session.TF_SessionListDevices(self._session)
+    else:
+      raw_device_list = tf_session.TF_DeprecatedSessionListDevices(
+          self._session)
+    device_list = []
+    size = tf_session.TF_DeviceListCount(raw_device_list)
+    for i in range(size):
+      name = tf_session.TF_DeviceListName(raw_device_list, i)
+      device_type = tf_session.TF_DeviceListType(raw_device_list, i)
+      memory = tf_session.TF_DeviceListMemoryBytes(raw_device_list, i)
+      device_list.append(_DeviceAttributes(name, device_type, memory))
+    tf_session.TF_DeleteDeviceList(raw_device_list)
+    return device_list
 
   def close(self):
     """Closes this session.
@@ -572,11 +684,16 @@ class BaseSession(SessionInterface):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         closing the TensorFlow session.
     """
-    with self._extend_lock:
-      if self._opened and not self._closed:
+    if self._created_with_new_api:
+      if self._session and not self._closed:
         self._closed = True
-        with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_CloseDeprecatedSession(self._session, status)
+        tf_session.TF_CloseSession(self._session)
+
+    else:
+      with self._extend_lock:
+        if self._opened and not self._closed:
+          self._closed = True
+          tf_session.TF_CloseDeprecatedSession(self._session)
 
   def __del__(self):
     # cleanly ignore all exceptions
@@ -585,21 +702,16 @@ class BaseSession(SessionInterface):
     except Exception:  # pylint: disable=broad-except
       pass
     if self._session is not None:
-      # We create `status` outside the `try` block because at shutdown
-      # `tf_session` may have been garbage collected, and the creation
-      # of a status object may fail. In that case, we prefer to ignore
-      # the failure and silently leak the session object, since the
-      # program is about to terminate.
-      status = None
       try:
-        status = tf_session.TF_NewStatus()
-        tf_session.TF_DeleteDeprecatedSession(self._session, status)
+        if self._created_with_new_api:
+          tf_session.TF_DeleteSession(self._session)
+        else:
+          tf_session.TF_DeleteDeprecatedSession(self._session)
       except AttributeError:
-        # 'NoneType' object has no attribute 'TF_NewStatus'
+        # At shutdown, `c_api_util` or `tf_session` may have been garbage
+        # collected, causing the above method calls to fail. In this case,
+        # silently leak since the program is about to terminate anyway.
         pass
-      finally:
-        if status is not None:
-          tf_session.TF_DeleteStatus(status)
       self._session = None
 
   @property
@@ -769,6 +881,8 @@ class BaseSession(SessionInterface):
       Either a single value if `fetches` is a single graph element, or
       a list of values if `fetches` is a list, or a dictionary with the
       same keys as `fetches` if that is a dictionary (described above).
+      Order in which `fetches` operations are evaluated inside the call
+      is undefined.
 
     Raises:
       RuntimeError: If this `Session` is in an invalid state (e.g. has been
@@ -777,12 +891,9 @@ class BaseSession(SessionInterface):
       ValueError: If `fetches` or `feed_dict` keys are invalid or refer to a
         `Tensor` that doesn't exist.
     """
-    run_metadata_ptr = tf_session.TF_NewBuffer()
-    if options:
-      options_ptr = tf_session.TF_NewBufferFromString(
-          compat.as_bytes(options.SerializeToString()))
-    else:
-      options_ptr = None
+    options_ptr = tf_session.TF_NewBufferFromString(
+        compat.as_bytes(options.SerializeToString())) if options else None
+    run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
 
     try:
       result = self._run(None, fetches, feed_dict, options_ptr,
@@ -791,7 +902,8 @@ class BaseSession(SessionInterface):
         proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
         run_metadata.ParseFromString(compat.as_bytes(proto_data))
     finally:
-      tf_session.TF_DeleteBuffer(run_metadata_ptr)
+      if run_metadata_ptr:
+        tf_session.TF_DeleteBuffer(run_metadata_ptr)
       if options:
         tf_session.TF_DeleteBuffer(options_ptr)
     return result
@@ -864,12 +976,13 @@ class BaseSession(SessionInterface):
       TypeError: If `fetches` or `feed_dict` keys are of an inappropriate type.
       tf.errors.OpError: Or one of its subclasses if a TensorFlow error happens.
     """
+
     def _feed_fn(feed):
       for tensor_type, _, _, feed_fn in _REGISTERED_EXPANSIONS:
         if isinstance(feed, tensor_type):
           return feed_fn(feed)
-      raise TypeError('Feed argument %r has invalid type %r'
-                      % (feed, type(feed)))
+      raise TypeError('Feed argument %r has invalid type %r' % (feed,
+                                                                type(feed)))
 
     # Check session.
     if self._closed:
@@ -878,6 +991,8 @@ class BaseSession(SessionInterface):
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
 
+    if feeds is None:
+      feeds = []
     # Create request.
     feed_list = []
 
@@ -888,12 +1003,16 @@ class BaseSession(SessionInterface):
     for feed in feeds:
       for subfeed in _feed_fn(feed):
         try:
-          subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,
-                                                  allow_operation=False)
-          feed_list.append(compat.as_bytes(subfeed_t.name))
+          subfeed_t = self.graph.as_graph_element(
+              subfeed, allow_tensor=True, allow_operation=False)
+          if self._created_with_new_api:
+            # pylint: disable=protected-access
+            feed_list.append(subfeed_t._as_tf_output())
+            # pylint: enable=protected-access
+          else:
+            feed_list.append(compat.as_bytes(subfeed_t.name))
         except Exception as e:
-          e.message = ('Cannot interpret feed_list key as Tensor: '
-                       + e.message)
+          e.message = ('Cannot interpret feed_list key as Tensor: ' + e.message)
           e.args = (e.message,)
           raise e
 
@@ -904,21 +1023,35 @@ class BaseSession(SessionInterface):
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
       self._extend_graph()
-      with errors.raise_exception_on_not_ok_status() as status:
-        return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
-                                       target_list, status)
+      if self._created_with_new_api:
+        return tf_session.TF_SessionPRunSetup_wrapper(
+            session, feed_list, fetch_list, target_list)
+      else:
+        with errors.raise_exception_on_not_ok_status() as status:
+          return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
+                                         target_list, status)
 
-    return self._do_call(_setup_fn, self._session, feed_list,
-                         fetch_handler.fetches(), fetch_handler.targets())
+    if self._created_with_new_api:
+      # pylint: disable=protected-access
+      final_fetches = [t._as_tf_output() for t in fetch_handler.fetches()]
+      final_targets = [op._c_op for op in fetch_handler.targets()]
+      # pylint: enable=protected-access
+    else:
+      final_fetches = _name_list(fetch_handler.fetches())
+      final_targets = _name_list(fetch_handler.targets())
+
+    return self._do_call(_setup_fn, self._session, feed_list, final_fetches,
+                         final_targets)
 
   def _run(self, handle, fetches, feed_dict, options, run_metadata):
     """Perform either run or partial_run, depending the presence of `handle`."""
+
     def _feed_fn(feed, feed_val):
       for tensor_type, _, feed_fn, _ in _REGISTERED_EXPANSIONS:
         if isinstance(feed, tensor_type):
           return feed_fn(feed, feed_val)
-      raise TypeError('Feed argument %r has invalid type %r'
-                      % (feed, type(feed)))
+      raise TypeError('Feed argument %r has invalid type %r' % (feed,
+                                                                type(feed)))
 
     # Check session.
     if self._closed:
@@ -928,7 +1061,7 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Create request.
-    feed_dict_string = {}
+    feed_dict_tensor = {}
     feed_map = {}
 
     # Validate and process feed_dict.
@@ -938,70 +1071,73 @@ class BaseSession(SessionInterface):
       for feed, feed_val in feed_dict.items():
         for subfeed, subfeed_val in _feed_fn(feed, feed_val):
           try:
-            subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,
-                                                    allow_operation=False)
+            subfeed_t = self.graph.as_graph_element(
+                subfeed, allow_tensor=True, allow_operation=False)
           except Exception as e:
-            raise TypeError('Cannot interpret feed_dict key as Tensor: '
-                            + e.args[0])
+            raise TypeError(
+                'Cannot interpret feed_dict key as Tensor: ' + e.args[0])
 
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, numpy ndarrays, or TensorHandles.')
+                            'strings, lists, numpy ndarrays, or TensorHandles.'
+                            'For reference, the tensor object was ' +
+                            str(feed_val) + ' which was passed to the '
+                            'feed with key ' + str(feed) + '.')
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
-          if isinstance(subfeed_val,
-                        int) and subfeed_dtype(subfeed_val) != subfeed_val:
+          if isinstance(subfeed_val, int) and _convert_to_numpy_obj(
+              subfeed_dtype, subfeed_val) != subfeed_val:
             raise TypeError(
-                'Type of feed value ' + str(subfeed_val) + ' is not'
-                ' compatible with Tensor type ' + str(subfeed_dtype) + '.'
-                ' Try explicitly setting the type of the feed tensor'
+                'Type of feed value ' + str(subfeed_val) + ' with type ' + str(
+                    type(subfeed_val)) +
+                ' is not compatible with Tensor type ' + str(subfeed_dtype) +
+                '. Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
           is_tensor_handle_feed = isinstance(subfeed_val,
                                              session_ops.TensorHandle)
-          subfeed_name = compat.as_bytes(subfeed_t.name)
           if is_tensor_handle_feed:
             np_val = subfeed_val.to_numpy_array()
-            feed_handles[subfeed_name] = subfeed_val
+            feed_handles[subfeed_t] = subfeed_val
           else:
             np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
           if (not is_tensor_handle_feed and
               not subfeed_t.get_shape().is_compatible_with(np_val.shape)):
-            raise ValueError(
-                'Cannot feed value of shape %r for Tensor %r, '
-                'which has shape %r'
-                % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
+            raise ValueError('Cannot feed value of shape %r for Tensor %r, '
+                             'which has shape %r' %
+                             (np_val.shape, subfeed_t.name,
+                              str(subfeed_t.get_shape())))
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
 
-          feed_dict_string[subfeed_name] = np_val
-          feed_map[subfeed_name] = (subfeed_t, subfeed_val)
+          feed_dict_tensor[subfeed_t] = np_val
+          feed_map[compat.as_bytes(subfeed_t.name)] = (subfeed_t, subfeed_val)
 
     # Create a fetch handler to take care of the structure of fetches.
     fetch_handler = _FetchHandler(
-        self._graph, fetches, feed_dict_string, feed_handles=feed_handles)
+        self._graph, fetches, feed_dict_tensor, feed_handles=feed_handles)
 
     # Run request and get response.
-    # We need to keep the movers alive for the following _do_run().
+    # We need to keep the returned movers alive for the following _do_run().
     # These movers are no longer needed when _do_run() completes, and
     # are deleted when `movers` goes out of scope when this _run() ends.
     # TODO(yuanbyu, keveman): Revisit whether we should just treat feeding
     # of a handle from a different device as an error.
-    movers = self._update_with_movers(feed_dict_string, feed_map)
+    _ = self._update_with_movers(feed_dict_tensor, feed_map)
     final_fetches = fetch_handler.fetches()
     final_targets = fetch_handler.targets()
     # We only want to really perform the run if fetches or targets are provided,
     # or if the call is a partial run that specifies feeds.
-    if final_fetches or final_targets or (handle and feed_dict_string):
+    if final_fetches or final_targets or (handle and feed_dict_tensor):
       results = self._do_run(handle, final_targets, final_fetches,
-                             feed_dict_string, options, run_metadata)
+                             feed_dict_tensor, options, run_metadata)
     else:
       results = []
     return fetch_handler.build_results(self, results)
 
-  def make_callable(self, fetches, feed_list=None):
+  def make_callable(self, fetches, feed_list=None, accept_options=False):
     """Returns a Python callable that runs a particular step.
 
     The returned callable will take `len(feed_list)` arguments whose types
@@ -1021,6 +1157,12 @@ class BaseSession(SessionInterface):
         for details of the allowable fetch types.
       feed_list: (Optional.) A list of `feed_dict` keys. See
         @{tf.Session.run} for details of the allowable feed key types.
+      accept_options: (Optional.) Iff `True`, the returned `Callable` will be
+        able to accept @{tf.RunOptions} and @{tf.RunMetadata} as optional
+        keyword arguments `options` and `run_metadata`, respectively, with
+        the same syntax and semantics as @{tf.Session.run}, which is useful
+        for certain use cases (profiling and debugging) but will result in
+        measurable slowdown of the `Callable`'s performance. Default: `False`.
 
     Returns:
       A function that when called will execute the step defined by
@@ -1037,10 +1179,13 @@ class BaseSession(SessionInterface):
       # TODO(mrry): Refactor the feed handling logic from
       # `Session._run()` so that we can convert the feeds to a list of
       # strings here.
-      def _generic_run(*feed_args):
-        feed_dict = {feed: feed_val
-                     for feed, feed_val in zip(feed_list, feed_args)}
-        return self.run(fetches, feed_dict=feed_dict)
+      def _generic_run(*feed_args, **kwargs):
+        feed_dict = {
+            feed: feed_val
+            for feed, feed_val in zip(feed_list, feed_args)
+        }
+        return self.run(fetches, feed_dict=feed_dict, **kwargs)
+
       return _generic_run
 
     # Ensure any changes to the graph are reflected in the runtime.
@@ -1051,56 +1196,87 @@ class BaseSession(SessionInterface):
 
     # Create a fetch handler to take care of the structure of fetches.
     fetch_handler = _FetchHandler(self._graph, fetches, {})
-    fetch_list_as_strings = fetch_handler.fetches()
-    target_list_as_strings = fetch_handler.targets()
+    if self._created_with_new_api:
+      # pylint: disable=protected-access
+      fetch_list = [t._as_tf_output() for t in fetch_handler.fetches()]
+      target_list = [op._c_op for op in fetch_handler.targets()]
+      # pylint: enable=protected-access
+    else:
+      fetch_list = _name_list(fetch_handler.fetches())
+      target_list = _name_list(fetch_handler.targets())
 
-    if isinstance(fetches, ops.Operation):
+    def _callable_template_with_options_and_metadata(fetch_list,
+                                                     target_list,
+                                                     fetch_handler,
+                                                     options=None,
+                                                     run_metadata=None):
+      """Template callable that accepts RunOptions and RunMetadata."""
+      options_ptr = tf_session.TF_NewBufferFromString(
+          compat.as_bytes(options.SerializeToString())) if options else None
+      run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
+      try:
+        results = self._call_tf_sessionrun(
+            options_ptr, {}, fetch_list, target_list, run_metadata_ptr)
+        if fetch_handler:
+          results = fetch_handler.build_results(self, results)
+        else:
+          results = results[0] if results else None
+        if run_metadata:
+          proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
+          run_metadata.ParseFromString(compat.as_bytes(proto_data))
+      finally:
+        if run_metadata_ptr:
+          tf_session.TF_DeleteBuffer(run_metadata_ptr)
+        if options:
+          tf_session.TF_DeleteBuffer(options_ptr)
+      return results
+
+    if accept_options:
+      return functools.partial(_callable_template_with_options_and_metadata,
+                               fetch_list, target_list, fetch_handler)
+    elif isinstance(fetches, ops.Operation):
       # Special case for fetching a single operation, because the
       # function will have no return value.
-      assert not fetch_list_as_strings
-      assert len(target_list_as_strings) == 1
+      assert not fetch_list
+      assert len(target_list) == 1
+
       def _single_operation_run():
-        with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_Run(self._session, None, {}, [],
-                            target_list_as_strings, status, None)
+        self._call_tf_sessionrun(None, {}, [], target_list, None)
+
       return _single_operation_run
     elif isinstance(fetches, ops.Tensor):
       # Special case for fetching a single tensor, because the
       # function can return the result of `TF_Run()` directly.
-      assert len(fetch_list_as_strings) == 1
-      assert not target_list_as_strings
+      assert len(fetch_list) == 1
+      assert not target_list
+
       def _single_tensor_run():
-        with errors.raise_exception_on_not_ok_status() as status:
-          results = tf_session.TF_Run(self._session, None, {},
-                                      fetch_list_as_strings, [], status, None)
+        results = self._call_tf_sessionrun(None, {}, fetch_list, [], None)
         return results[0]
+
       return _single_tensor_run
     else:
       # In all other cases, we must use `fetch_handler` to build the
       # results for us.
       def _fetch_handler_run():
-        with errors.raise_exception_on_not_ok_status() as status:
-          results = tf_session.TF_Run(self._session, None, {},
-                                      fetch_list_as_strings,
-                                      target_list_as_strings, status, None)
+        results = self._call_tf_sessionrun(
+            None, {}, fetch_list, target_list, None)
         return fetch_handler.build_results(self, results)
+
       return _fetch_handler_run
 
   # Captures the name of a node in an error status.
   _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')
 
-  def _do_run(self, handle, target_list, fetch_list, feed_dict,
-              options, run_metadata):
+  def _do_run(self, handle, target_list, fetch_list, feed_dict, options,
+              run_metadata):
     """Runs a step based on the given fetches and feeds.
 
     Args:
       handle: a handle for partial_run. None if this is just a call to run().
-      target_list: A list of byte arrays corresponding to names of tensors
-        or operations to be run to, but not fetched.
-      fetch_list: A list of byte arrays corresponding to names of tensors to
-        be fetched and operations to be run.
-      feed_dict: A dictionary that maps tensor names (as byte arrays) to
-        numpy ndarrays.
+      target_list: A list of operations to be run, but not fetched.
+      fetch_list: A list of tensors to be fetched.
+      feed_dict: A dictionary that maps tensors to numpy ndarrays.
       options: A (pointer to a) [`RunOptions`] protocol buffer, or None
       run_metadata: A (pointer to a) [`RunMetadata`] protocol buffer, or None
 
@@ -1113,28 +1289,33 @@ class BaseSession(SessionInterface):
     Raises:
       tf.errors.OpError: Or one of its subclasses on error.
     """
-    def _run_fn(session, feed_dict, fetch_list, target_list, options,
-                run_metadata):
+    if self._created_with_new_api:
+      # pylint: disable=protected-access
+      feeds = dict((t._as_tf_output(), v) for t, v in feed_dict.items())
+      fetches = [t._as_tf_output() for t in fetch_list]
+      targets = [op._c_op for op in target_list]
+      # pylint: enable=protected-access
+    else:
+      feeds = dict((compat.as_bytes(t.name), v) for t, v in feed_dict.items())
+      fetches = _name_list(fetch_list)
+      targets = _name_list(target_list)
+
+    def _run_fn(feed_dict, fetch_list, target_list, options, run_metadata):
       # Ensure any changes to the graph are reflected in the runtime.
       self._extend_graph()
-      with errors.raise_exception_on_not_ok_status() as status:
-        return tf_session.TF_Run(session, options,
-                                 feed_dict, fetch_list, target_list,
-                                 status, run_metadata)
+      return self._call_tf_sessionrun(
+          options, feed_dict, fetch_list, target_list, run_metadata)
 
-    def _prun_fn(session, handle, feed_dict, fetch_list):
+    def _prun_fn(handle, feed_dict, fetch_list):
       if target_list:
         raise RuntimeError('partial_run() requires empty target_list.')
-      with errors.raise_exception_on_not_ok_status() as status:
-        return tf_session.TF_PRun(session, handle, feed_dict, fetch_list,
-                                  status)
+      return self._call_tf_sessionprun(handle, feed_dict, fetch_list)
 
     if handle is None:
-      return self._do_call(_run_fn, self._session, feed_dict, fetch_list,
-                           target_list, options, run_metadata)
+      return self._do_call(_run_fn, feeds, fetches, targets, options,
+                           run_metadata)
     else:
-      return self._do_call(_prun_fn, self._session, handle, feed_dict,
-                           fetch_list)
+      return self._do_call(_prun_fn, handle, feeds, fetches)
 
   def _do_call(self, fn, *args):
     try:
@@ -1154,19 +1335,22 @@ class BaseSession(SessionInterface):
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):
-    # Ensure any changes to the graph are reflected in the runtime.
-    with self._extend_lock:
-      if self._graph.version > self._current_version:
-        # pylint: disable=protected-access
-        graph_def, self._current_version = self._graph._as_graph_def(
-            from_version=self._current_version,
-            add_shapes=self._add_shapes)
-        # pylint: enable=protected-access
+    if self._created_with_new_api:
+      with self._graph._lock:  # pylint: disable=protected-access
+        tf_session.ExtendSession(self._session)
+    else:
+      # Ensure any changes to the graph are reflected in the runtime.
+      with self._extend_lock:
+        if self._graph.version > self._current_version:
+          # pylint: disable=protected-access
+          graph_def, self._current_version = self._graph._as_graph_def(
+              from_version=self._current_version, add_shapes=self._add_shapes)
+          # pylint: enable=protected-access
 
-        with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_ExtendGraph(
-              self._session, graph_def.SerializeToString(), status)
-        self._opened = True
+          with errors.raise_exception_on_not_ok_status() as status:
+            tf_session.TF_ExtendGraph(self._session,
+                                      graph_def.SerializeToString(), status)
+          self._opened = True
 
   # The threshold to run garbage collection to delete dead tensors.
   _DEAD_HANDLES_THRESHOLD = 10
@@ -1185,9 +1369,8 @@ class BaseSession(SessionInterface):
       feeds = {}
       fetches = []
       for deleter_key, tensor_handle in enumerate(tensors_to_delete):
-        holder, deleter = session_ops._get_handle_deleter(self.graph,
-                                                          deleter_key,
-                                                          tensor_handle)
+        holder, deleter = session_ops._get_handle_deleter(
+            self.graph, deleter_key, tensor_handle)
         feeds[holder] = tensor_handle
         fetches.append(deleter)
       self.run(fetches, feed_dict=feeds)
@@ -1213,10 +1396,94 @@ class BaseSession(SessionInterface):
       handles = self.run(fetches, feed_dict=feeds)
       for handle_mover, handle in zip(handle_movers, handles):
         np_val = np.array(handle.handle, dtype=np.object)
-        feed_dict[handle_mover[0]] = np_val
+        feed_name = handle_mover[0]
+        feed_tensor = feed_map[feed_name][0]
+        feed_dict[feed_tensor] = np_val
       return handles
 
+  def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,
+                          run_metadata):
+    if self._created_with_new_api:
+      return tf_session.TF_SessionRun_wrapper(
+          self._session, options, feed_dict, fetch_list, target_list,
+          run_metadata)
+    else:
+      with errors.raise_exception_on_not_ok_status() as status:
+        return tf_session.TF_Run(
+            self._session, options, feed_dict, fetch_list, target_list,
+            status, run_metadata)
 
+  def _call_tf_sessionprun(self, handle, feed_dict, fetch_list):
+    if self._created_with_new_api:
+      return tf_session.TF_SessionPRun_wrapper(
+          self._session, handle, feed_dict, fetch_list)
+    else:
+      with errors.raise_exception_on_not_ok_status() as status:
+        return tf_session.TF_PRun(
+            self._session, handle, feed_dict, fetch_list, status)
+
+  # pylint: disable=protected-access
+  class _Callable(object):
+    """Experimental wrapper for the C++ `Session::MakeCallable()` API."""
+
+    def __init__(self, session, callable_options):
+      self._session = session
+      self._handle = None
+      options_ptr = tf_session.TF_NewBufferFromString(
+          compat.as_bytes(callable_options.SerializeToString()))
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if session._created_with_new_api:
+            self._handle = tf_session.TF_SessionMakeCallable(
+                session._session, options_ptr, status)
+          else:
+            self._handle = tf_session.TF_DeprecatedSessionMakeCallable(
+                session._session, options_ptr, status)
+      finally:
+        tf_session.TF_DeleteBuffer(options_ptr)
+
+    def __call__(self, *args):
+      # TODO(b/74355905): Support argument and return value nested structures,
+      # and tensor-like objects such as SparseTensors.
+      with errors.raise_exception_on_not_ok_status() as status:
+        if self._session._created_with_new_api:
+          return tf_session.TF_SessionRunCallable(
+              self._session._session, self._handle, args, status, None)
+        else:
+          return tf_session.TF_DeprecatedSessionRunCallable(
+              self._session._session, self._handle, args, status, None)
+
+    def __del__(self):
+      # NOTE(mrry): It is possible that `self._session.__del__()` could be
+      # called before this destructor, in which case `self._session._session`
+      # will be `None`.
+      if self._handle is not None and self._session._session is not None:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if self._session._created_with_new_api:
+            tf_session.TF_SessionReleaseCallable(
+                self._session._session, self._handle, status)
+          else:
+            tf_session.TF_DeprecatedSessionReleaseCallable(
+                self._session._session, self._handle, status)
+  # pylint: enable=protected-access
+
+  # TODO(b/74355905): Reimplement `Session.make_callable()` using this method
+  # where possible.
+  def _make_callable_from_options(self, callable_options):
+    """Returns a handle to a "callable" with the given options.
+
+    Args:
+      callable_options: A `CallableOptions` protocol buffer message describing
+        the computation that will be performed by the callable.
+
+    Returns:
+      A handle to the new callable.
+    """
+    self._extend_graph()
+    return BaseSession._Callable(self, callable_options)
+
+
+@tf_export('Session')
 class Session(BaseSession):
   """A class for running TensorFlow operations.
 
@@ -1256,7 +1523,8 @@ class Session(BaseSession):
     sess.run(...)
   ```
 
-  The [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
+  The
+  [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
   protocol buffer exposes various configuration options for a
   session. For example, to create a session that uses soft constraints
   for device placement, and log the resulting placement decisions,
@@ -1287,7 +1555,8 @@ class Session(BaseSession):
         @{$distributed$Distributed TensorFlow}
         for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
-      config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
+      config: (Optional.) A
+        [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
         protocol buffer with configuration options for the session.
 
     """
@@ -1311,8 +1580,22 @@ class Session(BaseSession):
   def __exit__(self, exec_type, exec_value, exec_tb):
     if exec_type is errors.OpError:
       logging.error('Session closing due to OpError: %s', (exec_value,))
-    self._default_session_context_manager.__exit__(
-        exec_type, exec_value, exec_tb)
+    try:
+      self._default_session_context_manager.__exit__(exec_type, exec_value,
+                                                     exec_tb)
+    except RuntimeError as error:
+      if error == exec_value:
+        # NOTE(skyewm): for some reason, in Python3,
+        # _default_session_context_manager.__exit__ will re-raise the "not
+        # re-entrant" exception raised in __enter__ above (note that if we're
+        # here, we're in the outer session context manager, since __exit__ is
+        # not called when __enter__ raises an exception). We still want to
+        # continue cleaning up this context manager before the exception is
+        # further propagated, so we ignore it here (note that it'll continue
+        # being propagated after this method completes).
+        pass
+      else:
+        raise
     self._default_graph_context_manager.__exit__(exec_type, exec_value, exec_tb)
 
     self._default_session_context_manager = None
@@ -1355,6 +1638,7 @@ class Session(BaseSession):
     tf_session.TF_Reset(target, containers, config)
 
 
+@tf_export('InteractiveSession')
 class InteractiveSession(BaseSession):
   """A TensorFlow `Session` for use in interactive contexts, such as a shell.
 
@@ -1394,6 +1678,9 @@ class InteractiveSession(BaseSession):
   ```
   """
 
+  _count_lock = threading.Lock()
+  _active_session_count = 0  # GUARDED_BY(_count_lock)
+
   def __init__(self, target='', graph=None, config=None):
     """Creates a new interactive TensorFlow session.
 
@@ -1422,6 +1709,19 @@ class InteractiveSession(BaseSession):
     config.graph_options.place_pruned_graph = True
 
     super(InteractiveSession, self).__init__(target, graph, config)
+    with InteractiveSession._count_lock:
+      if InteractiveSession._active_session_count > 0:
+        warnings.warn('An interactive session is already active. This can '
+                      'cause out-of-memory errors in some cases. You must '
+                      'explicitly call `InteractiveSession.close()` to release '
+                      'resources held by the other session(s).')
+      InteractiveSession._active_session_count += 1
+    # NOTE(mrry): We do not use `Session._closed` here because it has unhelpful
+    # semantics (in particular, it is not set to true if `Session.close()` is
+    # called on a session that has not been "opened" by running a step) and we
+    # cannot change those semantics without breaking existing code.
+    self._explicitly_closed = False
+
     self._default_session = self.as_default()
     self._default_session.enforce_nesting = False
     self._default_session.__enter__()
@@ -1434,6 +1734,14 @@ class InteractiveSession(BaseSession):
   def close(self):
     """Closes an `InteractiveSession`."""
     super(InteractiveSession, self).close()
+    with InteractiveSession._count_lock:
+      if not self._explicitly_closed:
+        InteractiveSession._active_session_count -= 1
+        self._explicitly_closed = True
+      else:
+        return
     if self._explicit_graph is not None:
       self._default_graph.__exit__(None, None, None)
+      self._default_graph = None
     self._default_session.__exit__(None, None, None)
+    self._default_session = None

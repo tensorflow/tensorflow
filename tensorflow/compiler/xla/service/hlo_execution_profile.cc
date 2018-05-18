@@ -19,132 +19,109 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
+HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
+  size_t current_profile_index = 0;
+  for (xla::HloComputation* computation : module.MakeComputationPostOrder()) {
+    InsertOrDie(&computation_to_profile_idx_, computation,
+                current_profile_index++);
+    for (const HloInstruction* instruction : computation->instructions()) {
+      // For simplicity we track all instructions here, but we could skip
+      // non-executing instructions like constants and parameters.
+      InsertOrDie(&instruction_to_profile_idx_, instruction,
+                  current_profile_index++);
+    }
+  }
+}
 
-void HloExecutionProfile::AddProfileResult(const HloInstruction* hlo,
+std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
+    const HloProfileIndexMap& hlo_profile_index_map,
+    const HloCostAnalysis& cost_analysis) {
+  using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
+  using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
+
+  size_t profile_counters_size = hlo_profile_index_map.total_count();
+
+  std::unique_ptr<HloProfilePrinterData> profile_printer_data =
+      MakeUnique<HloProfilePrinterData>();
+  profile_printer_data->set_profile_counters_size(profile_counters_size);
+  profile_printer_data->mutable_computation_infos()->Reserve(
+      hlo_profile_index_map.computation_count());
+
+  const auto& computation_to_profile_idx_map =
+      hlo_profile_index_map.computation_to_profile_idx();
+
+  // computation_to_profile_idx_map's order is not deterministic so create a
+  // deterministic computation_and_profile_idx_list so that we end up with a
+  // deterministic HloProfilePrinterData protobuf.
+
+  std::vector<std::pair<const HloComputation*, int64>>
+      computation_and_profile_idx_list(computation_to_profile_idx_map.begin(),
+                                       computation_to_profile_idx_map.end());
+
+  // The profile indices were computed deterministically in
+  // HloProfileIndexMap::HloProfileIndexMap.
+  c_sort(computation_and_profile_idx_list,
+         [](const std::pair<const HloComputation*, int64>& left,
+            const std::pair<const HloComputation*, int64>& right) {
+           return left.second < right.second;
+         });
+
+  for (const auto& pair : computation_and_profile_idx_list) {
+    CHECK_LT(pair.second, profile_counters_size);
+    const HloComputation* computation = pair.first;
+    HloComputationInfo* computation_info =
+        profile_printer_data->add_computation_infos();
+
+    computation_info->set_name(computation->name());
+    computation_info->set_profile_index(pair.second);
+    computation_info->mutable_instruction_infos()->Reserve(
+        computation->instruction_count());
+
+    for (const HloInstruction* hlo : computation->instructions()) {
+      HloInstructionInfo* instruction_info =
+          computation_info->add_instruction_infos();
+      instruction_info->set_long_name(hlo->ToString());
+      instruction_info->set_short_name(
+          hlo->ToString(HloPrintOptions().set_compact_operands(true)));
+      instruction_info->set_category(hlo->ToCategory());
+      instruction_info->set_flop_count(cost_analysis.flop_count(*hlo));
+      instruction_info->set_transcendental_count(
+          cost_analysis.transcendental_count(*hlo));
+      instruction_info->set_bytes_accessed(cost_analysis.bytes_accessed(*hlo));
+      instruction_info->set_optimal_seconds(
+          cost_analysis.optimal_seconds(*hlo));
+      instruction_info->set_profile_index(
+          hlo_profile_index_map.GetProfileIndexFor(*hlo));
+    }
+  }
+
+  return profile_printer_data;
+}
+
+HloExecutionProfile::HloExecutionProfile(
+    const HloProfilePrinterData* hlo_profile_printer_data,
+    const HloProfileIndexMap* hlo_profile_index_map)
+    : hlo_profile_printer_data_(*hlo_profile_printer_data),
+      hlo_profile_index_map_(*hlo_profile_index_map),
+      profile_counters_(
+          /*count=*/hlo_profile_index_map_.total_count(),
+          /*value=*/0) {}
+
+void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {
-  hlo_to_cycles_taken_[hlo] = cycles_taken;
-  profiled_computations_.insert(hlo->parent());
+  profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(*hlo)] =
+      cycles_taken;
 }
 
-uint64 HloExecutionProfile::GetProfileResult(const HloInstruction& hlo) const {
-  auto iter = hlo_to_cycles_taken_.find(&hlo);
-  if (iter == hlo_to_cycles_taken_.end()) {
-    return 0;
-  }
-  return iter->second;
-}
-
-string HloExecutionProfile::ToString(
-    const HloComputation& computation,
-    const DeviceDescription& device_description,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size) const {
-  HloCostAnalysis cost_analysis(shape_size);
-  tensorflow::Status analysis_status =
-      computation.root_instruction()->Accept(&cost_analysis);
-  if (!analysis_status.ok()) {
-    return "";
-  }
-
-  using Item = std::pair<const HloInstruction*, uint64>;
-  std::vector<Item> items;
-  for (Item item : hlo_to_cycles_taken_) {
-    // Only include the HLOs which are part of the desired computation.
-    if (item.first->parent() == &computation) {
-      items.push_back(item);
-    }
-  }
-  auto custom_less = [](const Item& lhs, const Item& rhs) {
-    return lhs.second > rhs.second;
-  };
-  std::sort(items.begin(), items.end(), custom_less);
-  string result;
-  const int64 total_cycles = total_cycles_executed(computation);
-  double clock_rate_ghz = device_description.clock_rate_ghz();
-  CHECK_GE(clock_rate_ghz, 1e-9);
-
-  const auto cycles_to_microseconds = [&](double cycles) {
-    return cycles / clock_rate_ghz / 1000.0;
-  };
-
-  auto append_item = [&](int64 cycles, int64 flops, int64 bytes_accessed,
-                         const string& name) {
-    double nsecs = cycles / clock_rate_ghz;
-    string bytes_per_sec;
-    string bytes_per_cycle;
-    if (cycles <= 0 || bytes_accessed < 0) {
-      bytes_per_sec = "<unknown>";
-      bytes_per_cycle = "<unknown>";
-    } else {
-      bytes_per_sec = tensorflow::strings::HumanReadableNumBytes(
-          bytes_accessed / (nsecs / 1e9));
-      bytes_per_cycle =
-          tensorflow::strings::HumanReadableNumBytes(bytes_accessed / cycles);
-    }
-
-    double cycles_percent = 0;
-    if (total_cycles > 0) {
-      cycles_percent = cycles / static_cast<double>(total_cycles) * 100;
-    }
-
-    tensorflow::strings::StrAppend(
-        &result,
-        tensorflow::strings::Printf(
-            "%15lld cycles (%6.2f%%) :: %12.1f usec @ f_nom :: %18s :: %12s/s "
-            ":: "
-            "%12s/cycle :: "
-            "%s",
-            cycles, cycles_percent, cycles_to_microseconds(cycles),
-            flops <= 0 ? "<none>" : HumanReadableNumFlops(flops, nsecs).c_str(),
-            bytes_per_sec.c_str(), bytes_per_cycle.c_str(), name.c_str()));
-  };
-  tensorflow::strings::StrAppend(
-      &result, tensorflow::strings::Printf(
-                   "HLO execution profile for %s: (%s @ f_nom)\n\t",
-                   computation.name().c_str(),
-                   tensorflow::strings::HumanReadableElapsedTime(
-                       total_cycles / clock_rate_ghz / 1e9)
-                       .c_str()));
-
-  append_item(total_cycles, -1, -1, "[total]");
-  for (const auto& item : items) {
-    const HloInstruction* hlo = item.first;
-    tensorflow::strings::StrAppend(&result, "\n\t");
-    const int64 flops = (hlo == nullptr) ? -1 : cost_analysis.flop_count(*hlo);
-    const int64 bytes_accessed =
-        (hlo == nullptr) ? -1 : cost_analysis.bytes_accessed(*hlo);
-    const string display = (hlo == nullptr) ? "<none>" : hlo->ToString();
-    append_item(item.second, flops, bytes_accessed, display);
-  }
-
-  if (total_cycles <= 0) {
-    result += "****** 0 total cycles ******\n";
-  } else {
-    MetricTableReport table;
-    table.SetMetricName("microseconds");
-    table.SetEntryName("ops");
-    table.SetShowCategoryTable();
-    for (const auto& item : items) {
-      MetricTableReport::Entry entry;
-      entry.text = item.first->ToString();
-      entry.short_text = item.first->ToString(/*compact_operands=*/true);
-      entry.category_text = item.first->ToCategory();
-      entry.metric = cycles_to_microseconds(item.second);
-      table.AddEntry(std::move(entry));
-    }
-    result += table.MakeReport(cycles_to_microseconds(total_cycles));
-  }
-
-  return result;
+uint64 HloExecutionProfile::GetCyclesTakenBy(const HloInstruction& hlo) const {
+  return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(hlo)];
 }
 
 }  // namespace xla

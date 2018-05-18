@@ -1,14 +1,32 @@
 index.md
+
+### High Level APIs
+eager.md
+datasets.md
+estimators.md
+
+### Low Level APIs
+low_level_intro.md
+tensors.md
 variables.md
-dims_types.md
-variable_scope.md
-threading_and_queues.md
-reading_data.md
-supervisor.md
+graphs.md
+saved_model.md
+
+### Accelerators
+using_gpu.md
+using_tpu.md
+
+### ML Concepts
+embedding.md
+
+### Debugging
 debugger.md
-tfdbg-tflearn.md
-meta_graph.md
-saved_model_cli.md
-version_semantics.md
-data_versions.md
+
+### TensorBoard
+summaries_and_tensorboard.md: Visualizing Learning
+graph_viz.md: Graphs
+tensorboard_histograms.md: Histograms
+
+### Misc
+version_compat.md
 faq.md

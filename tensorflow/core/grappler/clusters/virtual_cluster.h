@@ -13,34 +13,48 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_CLUSTERS_VIRTUAL_CLUSTER_H_
-#define TENSORFLOW_GRAPPLER_CLUSTERS_VIRTUAL_CLUSTER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_CLUSTERS_VIRTUAL_CLUSTER_H_
+#define TENSORFLOW_CORE_GRAPPLER_CLUSTERS_VIRTUAL_CLUSTER_H_
 
 #include <unordered_map>
+
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+#include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
 // Create a simple cluster that lists the devices (and their properties)
-// available in a TensorFlow session. This cluster doesn't allow running an
-// actual graph. It is useful however when used in conjusction with costs models
-// that aren't based on the execution of the graph.
+// available in a TensorFlow session. This cluster simulates the execution of
+// actual graphs.
 class VirtualCluster : public Cluster {
  public:
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices);
+  VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
+                 OpLevelCostEstimator* node_estimator,
+                 ReadyNodeManager* node_manager);
+  VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
+                 const DeviceSet* device_set);
 
   ~VirtualCluster() override;
+
+  string type() const override { return "virtual"; }
 
   Status Provision() override;
   Status Initialize(const GrapplerItem& item) override;
   Status Run(const GraphDef& item,
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
+
+ private:
+  std::unique_ptr<OpLevelCostEstimator> node_estimator_;
+  std::unique_ptr<ReadyNodeManager> node_manager_;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_CLUSTERS_VIRTUAL_CLUSTER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_CLUSTERS_VIRTUAL_CLUSTER_H_

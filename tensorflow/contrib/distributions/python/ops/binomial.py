@@ -163,8 +163,8 @@ class Binomial(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)
@@ -196,7 +196,7 @@ class Binomial(distribution.Distribution):
 
   @property
   def probs(self):
-    """Probability of of drawing a `1`."""
+    """Probability of drawing a `1`."""
     return self._probs
 
   def _batch_shape_tensor(self):
@@ -272,13 +272,11 @@ class Binomial(distribution.Distribution):
             message="total_count cannot contain fractional components."),
     ], total_count)
 
-  def _maybe_assert_valid_sample(self, counts, check_integer=True):
+  def _maybe_assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
-
-    counts = distribution_util.embed_check_nonnegative_discrete(
-        counts, check_integer=check_integer)
+    counts = distribution_util.embed_check_nonnegative_integer_form(counts)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less_equal(
             counts, self.total_count,

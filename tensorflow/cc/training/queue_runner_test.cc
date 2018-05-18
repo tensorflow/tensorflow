@@ -373,7 +373,7 @@ TEST(QueueRunnerTest, RunMetaDataTest) {
   std::unique_ptr<QueueRunner> qr;
   TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
   RunOptions run_options;
-  TF_CHECK_OK(qr->StartAndCollectCostGraph(session.get(), &run_options));
+  TF_CHECK_OK(qr->StartAndCollectCostGraph(session.get(), run_options));
 
   // Make sure there was at least one element enqueued in q0: this prevents a
   // race condition where we close the queue before it was populated.

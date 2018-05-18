@@ -23,6 +23,9 @@
 
 set -e
 
+# Filter out LOG(INFO)
+export TF_CPP_MIN_LOG_LEVEL=1
+
 IS_VIRTUALENV=0
 PYTHON_BIN_PATH=""
 while true; do
@@ -56,7 +59,7 @@ fi
 
 # Override the default ui_type=curses to allow the test to pass in a tty-less
 # test environment.
-cat << EOF | ${DEBUG_FIBONACCI_BIN} --ui_type=readline
+cat << EOF | ${DEBUG_FIBONACCI_BIN} --tensor_size=2 --ui_type=readline
 run
 exit
 EOF

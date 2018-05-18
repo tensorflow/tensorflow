@@ -26,7 +26,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace {
-enum { QUANTIZE_MODE_MIN_COMBINED, QUANTIZE_MODE_MIN_FIRST };
+enum {
+  QUANTIZE_MODE_MIN_COMBINED,
+  QUANTIZE_MODE_MIN_FIRST,
+  QUANTIZE_MODE_SCALED,
+};
 }  // namespace
 
 namespace tensorflow {
@@ -45,14 +49,17 @@ class DequantizeOp : public OpKernel {
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx,
-                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED' or"
-                                        " 'MIN_FIRST', is '" +
+                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
+                 mode_string == "SCALED"),
+                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
+                                        " 'MIN_FIRST', or 'SCALED', is '" +
                                         mode_string + "'"));
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
       mode_ = QUANTIZE_MODE_MIN_FIRST;
+    } else if (mode_string == "SCALED") {
+      mode_ = QUANTIZE_MODE_SCALED;
     }
   }
 
@@ -87,6 +94,20 @@ class DequantizeOp : public OpKernel {
         QuantizedTensorToFloatInPlaceUsingEigen<T>(
             ctx->template eigen_device<Device>(), input, min_range, max_range,
             output);
+      }
+    } else if (mode_ == QUANTIZE_MODE_SCALED) {
+      // TODO(pauldonnelly): Update QuantizeAndDequantizeV2 and
+      // QuantizeAndDequantizeV3 to match this SCALED mode again.
+      const float scale_factor =
+          std::numeric_limits<T>::min() == 0
+              ? (max_range / std::numeric_limits<T>::max())
+              : std::max(min_range / std::numeric_limits<T>::min(),
+                         max_range / std::numeric_limits<T>::max());
+      float* out_ptr = output->flat<float>().data();
+      const T* in_ptr = input.flat<T>().data();
+      const int64 num_elements = input.NumElements();
+      for (int64 i = 0; i < num_elements; ++i) {
+        out_ptr[i] = static_cast<int>(in_ptr[i]) * scale_factor;
       }
     }
   }

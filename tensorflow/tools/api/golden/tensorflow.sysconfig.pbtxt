@@ -1,11 +1,19 @@
 path: "tensorflow.sysconfig"
 tf_module {
   member_method {
+    name: "get_compile_flags"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_include"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_lib"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_link_flags"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
 }

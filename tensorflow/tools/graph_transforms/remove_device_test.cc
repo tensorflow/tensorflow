@@ -50,7 +50,7 @@ class RemoveDeviceTest : public ::testing::Test {
     add_node2->set_op("Add");
     add_node2->add_input("const_node1");
     add_node2->add_input("const_node2");
-    add_node2->set_device("//gpu:1");
+    add_node2->set_device("//device:GPU:1");
 
     NodeDef* add_node3 = graph_def.add_node();
     add_node3->set_name("add_node3");

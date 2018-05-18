@@ -24,7 +24,9 @@ class IdentityOp : public XlaOpKernel {
   explicit IdentityOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    ctx->SetOutput(0, ctx->Input(0));
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      ctx->SetOutput(i, ctx->Input(i));
+    }
   }
 
  private:
@@ -35,8 +37,11 @@ class IdentityOp : public XlaOpKernel {
 // dummy operator using CompilationOnly().
 REGISTER_XLA_OP(Name("Identity").CompilationOnly(), IdentityOp);
 
+REGISTER_XLA_OP(Name("IdentityN").CompilationOnly(), IdentityOp);
+REGISTER_XLA_OP(Name("PlaceholderWithDefault"), IdentityOp);
 REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);
 REGISTER_XLA_OP(Name("StopGradient"), IdentityOp);
+REGISTER_XLA_OP(Name("Snapshot"), IdentityOp);
 
 }  // namespace
 }  // namespace tensorflow

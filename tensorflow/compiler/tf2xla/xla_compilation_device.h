@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -33,17 +35,18 @@ namespace tensorflow {
 // declared.
 class XlaCompilationAllocator;
 
-// Deliberately don't register the device factory because we *never*
-// want soft placement to put Ops on an JIT device. Tests can include
-// the tla_jit_test_deps target which registers the factory, and when
-// using JIT in practice, the device is created manually not using a
-// factory.
-
 // This is a 'dummy' TensorFlow device that is only used to execute a
 // subgraph of XLA compilation Ops to construct a compiled version
 // of the subgraph's computation. It has a 'dummy' allocator that
 // backs each Tensor with metadata indicating the computation the
 // Tensor represents.
+//
+// We deliberately don't register a device factory because we *never*
+// want placement to put Ops on a compilation device. The device is created
+// manually, not using a factory.
+//
+// XLA compilation is not thread-safe. OpKernels registered on the
+// XlaCompilationDevice must not use threads or concurrency.
 class XlaCompilationDevice : public LocalDevice {
  public:
   XlaCompilationDevice(const SessionOptions& options, DeviceType type);
@@ -66,7 +69,7 @@ class XlaCompilationDevice : public LocalDevice {
 
 // A XlaExpression wraps an XLA computation. Each Tensor on an
 // XlaCompilationDevice contains an XlaExpression, and the shape of the Tensor
-// matches the shape of the subcomputation in the ComputationDataHandle. Each
+// matches the shape of the subcomputation in the XlaOp. Each
 // expression is either a constant, or a function of previously-compiled
 // expressions.
 class XlaExpression {
@@ -75,19 +78,19 @@ class XlaExpression {
 
   // handle() stores the XLA handle of the computation that the
   // expression represents.
-  void set_handle(const xla::ComputationDataHandle& h);
-  const xla::ComputationDataHandle& handle() const { return handle_; }
+  void set_handle(const xla::XlaOp& h);
+  const xla::XlaOp& handle() const { return handle_; }
 
   void set_constant_value(Tensor value);
   bool has_constant_value() const { return has_constant_value_; }
   const Tensor& constant_value() const { return constant_value_; }
 
-  void set_variable_id(int id);
-  int variable_id() const { return variable_id_; }
+  void set_resource(XlaResource* resource) { resource_ = resource; }
+  XlaResource* resource() const { return resource_; }
 
  private:
   // The XLA handle of the expression's computation.
-  xla::ComputationDataHandle handle_;
+  xla::XlaOp handle_;
 
   // If this expression is a constant with a known value, 'constant_value' is a
   // host-memory Tensor containing the value. Used to avoid invoking XLA for
@@ -95,9 +98,7 @@ class XlaExpression {
   bool has_constant_value_ = false;
   Tensor constant_value_;
 
-  int variable_id_ = -1;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
+  XlaResource* resource_ = nullptr;  // Not owned.
 };
 
 }  // namespace tensorflow

@@ -7,14 +7,16 @@ package(
 )
 
 cc_library(
-    name = "xla_local_launch_op",
-    srcs = ["xla_local_launch_op.cc"],
-    hdrs = ["xla_local_launch_op.h"],
+    name = "xla_launch_op",
+    srcs = ["xla_launch_op.cc"],
+    hdrs = ["xla_launch_op.h"],
     deps = [
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_compilation_cache",
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/jit:xla_launch_util",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -22,28 +24,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:tensorflow_opensource",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_device_launch_op",
-    srcs = ["xla_device_launch_op.cc"],
-    hdrs = ["xla_device_launch_op.h"],
-    deps = [
-        "//tensorflow/compiler/jit:common",
-        "//tensorflow/compiler/jit:xla_compilation_cache",
-        "//tensorflow/compiler/jit:xla_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:variable_ops",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -57,18 +40,4 @@ cc_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -30,7 +30,7 @@ class ThreadPool {
   // Constructs a pool that contains "num_threads" threads with specified
   // "name". env->StartThread() is used to create individual threads with the
   // given ThreadOptions. If "low_latency_hint" is true the thread pool
-  // implementation may use it as a hint that lower latency if preferred at the
+  // implementation may use it as a hint that lower latency is preferred at the
   // cost of higher CPU usage, e.g. by letting one or more idle threads spin
   // wait. Conversely, if the threadpool is used to schedule high-latency
   // operations like I/O the hint should be set to false.

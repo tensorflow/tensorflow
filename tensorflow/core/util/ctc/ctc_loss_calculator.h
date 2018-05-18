@@ -30,8 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace ctc {
 
-using strings::StrCat;
-
 class CTCLossCalculator {
   // Connectionist Temporal Classification Loss
   //
@@ -132,13 +130,13 @@ Status CTCLossCalculator::CalculateLoss(
   for (int t = 1; t < num_time_steps; ++t) {
     if (inputs[t].rows() != batch_size) {
       return errors::InvalidArgument("Expected batch size at t: ", t,
-                                     " to be: ", batch_size, " but got: ",
-                                     inputs[t].rows());
+                                     " to be: ", batch_size,
+                                     " but got: ", inputs[t].rows());
     }
     if (inputs[t].cols() != num_classes) {
       return errors::InvalidArgument("Expected class count at t: ", t,
-                                     " to be: ", num_classes, " but got: ",
-                                     inputs[t].cols());
+                                     " to be: ", num_classes,
+                                     " but got: ", inputs[t].cols());
     }
   }
 
@@ -284,8 +282,8 @@ Status CTCLossCalculator::PopulateLPrimes(
     LabelSequences* l_primes) const {
   // labels is a Label array of size batch_size
   if (labels.size() != batch_size) {
-    return errors::InvalidArgument("labels.size() != batch_size: ",
-                                   labels.size(), " vs. ", batch_size);
+    return errors::InvalidArgument(
+        "labels.size() != batch_size: ", labels.size(), " vs. ", batch_size);
   }
 
   *max_u_prime = 0;  // keep track of longest l' modified label sequence.
@@ -327,12 +325,13 @@ Status CTCLossCalculator::PopulateLPrimes(
     for (int l_i : l) {
       if (l_i < 0) {
         return errors::InvalidArgument(
-            "All labels must be nonnegative integers, batch: ", b, " labels: ",
-            str_util::Join(l, ","));
+            "All labels must be nonnegative integers, batch: ", b,
+            " labels: ", str_util::Join(l, ","));
       } else if (l_i >= num_classes) {
         return errors::InvalidArgument(
-            "No label may be greater than num_classes. ", "num_classes: ",
-            num_classes, ", batch: ", b, " labels: ", str_util::Join(l, ","));
+            "No label may be greater than num_classes. ",
+            "num_classes: ", num_classes, ", batch: ", b,
+            " labels: ", str_util::Join(l, ","));
       }
     }
     if (!ignore_longer_outputs_than_inputs) {

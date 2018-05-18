@@ -38,21 +38,25 @@ def _multiplier_helper(shape):
   return multipliers
 
 
-def _ignore_value(dtype):
-  if dtype == dtypes.string:
-    # Exception due to TF strings are converted to numpy objects by default.
-    return ""
-  # NOTE: `as_numpy_dtype` is a property, so with the parentheses this is
-  # constructing a new numpy object of the given type, which yields the
-  # default value for that type.
-  return dtype.as_numpy_dtype()
+def _ignore_value_tensor(dtype, ignore_value=None):
+  """Create `Tensor` from provided `ignore_value` and  `dtype`."""
+  if ignore_value is None:
+    if dtype == dtypes.string:
+      # Exception due to TF strings are converted to numpy objects by default.
+      ignore_value = ""
+    else:
+      # NOTE: `as_numpy_dtype` is a property, so with the parentheses this is
+      # constructing a new numpy object of the given type, which yields the
+      # default value for that type.
+      ignore_value = dtype.as_numpy_dtype()
+  return math_ops.cast(ignore_value, dtype, name="ignore_value")
 
 
 def dense_to_sparse_tensor(dense_tensor, ignore_value=None):
   """Converts dense `Tensor` to `SparseTensor`, dropping `ignore_value` cells.
 
   Args:
-    dense_tensor: A `Tensor`. This must have a statically defined rank.
+    dense_tensor: A `Tensor`.
     ignore_value: Entries in `dense_tensor` equal to this value will be
       absent from the return `SparseTensor`. If `None`, default value of
       `dense_tensor` dtype will be used (e.g. '' for `str`, 0 for `int`).
@@ -64,33 +68,17 @@ def dense_to_sparse_tensor(dense_tensor, ignore_value=None):
     ValueError: when `dense_tensor`'s rank is `None`.
   """
   with ops.name_scope("DenseToSparseTensor"):
-    dense_t = ops.convert_to_tensor(dense_tensor)
-    if dense_t.get_shape().ndims is None:
-      # TODO(b/32318825): Implement dense_to_sparse_tensor for undefined rank.
-      raise ValueError("dense_tensor.get_shape() should be defined, got None.")
-    if ignore_value is None:
-      ignore_value = _ignore_value(dense_t.dtype)
-    dense_shape = math_ops.cast(array_ops.shape(dense_t), dtypes.int64)
+    dense_tensor = ops.convert_to_tensor(dense_tensor)
+    ignore_value = _ignore_value_tensor(dense_tensor.dtype, ignore_value)
     indices = array_ops.where(
-        math_ops.not_equal(dense_t, math_ops.cast(ignore_value, dense_t.dtype)))
-    index_dims = len(dense_t.get_shape())
-    # Flattens the tensor and indices for use with gather.
-    flat_tensor = array_ops.reshape(dense_t, [-1])
-    flat_indices = indices[:, index_dims - 1]
-    # Computes the correct flattened indices for 2d (or higher) tensors.
-    if index_dims > 1:
-      higher_dims = indices[:, :index_dims - 1]
-      shape_multipliers = array_ops.stack(
-          _multiplier_helper(array_ops.unstack(dense_shape)[1:]))
-      offsets = math_ops.reduce_sum(
-          math_ops.multiply(higher_dims, shape_multipliers),
-          reduction_indices=[1])
-      flat_indices = math_ops.add(flat_indices, offsets)
-    values = array_ops.gather(flat_tensor, flat_indices)
-    return sparse_tensor.SparseTensor(indices, values, dense_shape)
+        math_ops.not_equal(dense_tensor, ignore_value), name="indices")
+    return sparse_tensor.SparseTensor(
+        indices=indices,
+        values=array_ops.gather_nd(dense_tensor, indices, name="values"),
+        dense_shape=array_ops.shape(
+            dense_tensor, out_type=dtypes.int64, name="dense_shape"))
 
 
-# TODO(ptucker): Support integer dtype arg, and cast values back to that.
 def indicators_to_sparse_ids(indicators, ignore_value=None, dtype=dtypes.int64):
   """Convert a dense indicator tensor to sparse IDs.
 
@@ -98,31 +86,54 @@ def indicators_to_sparse_ids(indicators, ignore_value=None, dtype=dtypes.int64):
   In the following example, we have an input of shape (2, 2, num_classes),
   where num_classes=4.
 
+  ```python
   indicators = [
-    [[0, 0, 1, 0], [0, 0, 0, 0]],
-    [[1, 0, 1, 1], [0, 0, 1, 0]],
+    [
+      [0, 0, 1, 0],
+      [0, 0, 0, 0]
+    ], [
+      [1, 0, 1, 1],
+      [0, 0, 1, 0]
+    ]
   ]
-  indicator_to_sparse_ids(indicators) => [
-    [[2], []],
-    [[0, 2, 3], [2]],
+  sparse_ids = indicator_to_sparse_ids(indicators)
+  ```
+
+  `sparse_ids` in "jagged" format:
+  [
+    [
+      [2],
+      []
+    ], [
+      [0, 2, 3],
+      [2]
+    ]
   ]
 
+  `sparse_ids` in `SparseTensor` format:
+  ```python
+  {
+    indices: [[0, 0, 1], [1, 0, 0], [1, 0, 1], [1, 0, 2], [1, 1, 0]],
+    values: [2, 0, 2, 3, 2],
+    dense_shape: [2, 2, 3]
+  }
+  ```
+
   Args:
-    indicators: Dense `Tensor` of shape `(d0, ..., dn, num_classes)`. This must
-      have a statically defined rank. `ignore_value` values are ignored. For
-      other values (typically, ones), the index along the last dimension is
-      returned.
+    indicators: Dense `Tensor` of shape `(d0, ..., dn, num_classes)`.
+      `ignore_value` values are ignored. For other values (typically, ones), the
+      index along the last dimension is returned.
     ignore_value: Entries in `indicators` equal to this value will be
       absent from the returned `SparseTensor`. If `None`, default value of
       `indicators` dtype will be used (e.g. '' for `str`, 0 for `int`).
     dtype: Type of result, must be integer type.
 
   Returns:
-    `tf.int64` `SparseTensor` of shape `(d0, ..., dn, max_num_labels)`,
+    `SparseTensor` of type `dtype` and shape `(d0, ..., dn, max_num_labels)`,
       where `max_num_labels` is the maximum number of non-zero values in any
       row (in the example above, row (1, 1) has 3 non-zero values, so the result
       shape is (2, 2, 3)). The values of this `SparseTensor` are in the range
-      `[0, num_classes)` and correspond to the index of non-empty values along
+      `[0, num_classes)` and correspond to the index of non-ignore values along
       the last dimension of `indicators`.
 
   Raises:
@@ -135,10 +146,9 @@ def indicators_to_sparse_ids(indicators, ignore_value=None, dtype=dtypes.int64):
     # Convert indicators to binary ones and zeros. We use int64 since
     # SparseTensor requires int64 indices.
     indicators = ops.convert_to_tensor(indicators, name="indicators")
-    if ignore_value is None:
-      ignore_value = _ignore_value(indicators.dtype)
     missing_indicators = math_ops.equal(
-        indicators, ignore_value, name="missing")
+        indicators, _ignore_value_tensor(indicators.dtype, ignore_value),
+        name="missing")
     zeros_like_indicators = array_ops.zeros_like(
         indicators, dtype=dtypes.int64, name="zeros")
     binary_indicators = array_ops.where(
@@ -149,7 +159,7 @@ def indicators_to_sparse_ids(indicators, ignore_value=None, dtype=dtypes.int64):
     # Use cumsum along the last dimension to generate per-row indexes.
     # Note that these are 1-based (since 0 indicates missing values), so they're
     # off-by-1 from the actual indices. We'll subtract 1 below. Since they're
-    # off-by-one, the max value is the size of last dimension (i.e.,
+    # off-by-one, the max value is the size of the last dimension (i.e.,
     # last_index + 1).
     row_index_indicators = array_ops.where(
         missing_indicators, zeros_like_indicators,
@@ -161,16 +171,17 @@ def indicators_to_sparse_ids(indicators, ignore_value=None, dtype=dtypes.int64):
     # Convert to a SparseTensor. The values of this SparseTensor are the last
     # indices of our result, and the last indices of this SparseTensor (i.e.,
     # the class IDs indicated by `indicators`) are the values of our result, so
-    # we use unstack/stack to swap them.
+    # we use tensor slicing and concat to swap them.
     sparse_row_index_indicators = dense_to_sparse_tensor(
         row_index_indicators, ignore_value=0)
-    index_columns = array_ops.unstack(
-        sparse_row_index_indicators.indices, axis=1)
     return sparse_tensor.SparseTensor(
-        indices=array_ops.stack(
-            index_columns[0:-1] + [sparse_row_index_indicators.values - 1],
-            axis=1, name="indices"),
-        values=math_ops.cast(index_columns[-1], dtype=dtype, name="values"),
+        indices=array_ops.concat((
+            sparse_row_index_indicators.indices[:, :-1],
+            array_ops.reshape(sparse_row_index_indicators.values - 1, (-1, 1))
+        ), axis=1, name="indices"),
+        values=math_ops.cast(
+            sparse_row_index_indicators.indices[:, -1], dtype=dtype,
+            name="values"),
         dense_shape=array_ops.concat(
             (sparse_row_index_indicators.dense_shape[0:-1], result_last_dim),
             axis=0, name="dense_shape"))

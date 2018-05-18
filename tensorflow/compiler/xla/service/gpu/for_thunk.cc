@@ -30,20 +30,20 @@ ForThunk::ForThunk(const int64 loop_limit,
       body_thunk_sequence_(
           MakeUnique<SequentialThunk>(std::move(*body_thunk_sequence), hlo)) {}
 
-tensorflow::Status ForThunk::Initialize(const GpuExecutable& executable) {
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable));
-  return tensorflow::Status::OK();
+Status ForThunk::Initialize(const GpuExecutable& executable,
+                            se::StreamExecutor* executor) {
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
+  return Status::OK();
 }
 
-tensorflow::Status ForThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+Status ForThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                 se::Stream* stream) {
   for (int64 i = 0; i < loop_limit_; ++i) {
     // Invoke loop body thunk sequence.
     TF_RETURN_IF_ERROR(
         body_thunk_sequence_->ExecuteOnStream(buffer_allocations, stream));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

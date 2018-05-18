@@ -22,8 +22,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -319,14 +319,13 @@ class IsResourceInitialized : public OpKernel {
 // specified type. The type will be a part of the generated op name.
 // TODO(apassos): figure out how to get non-cpu-allocated tensors to work
 // through constant folding so this doesn't have to be marked as stateful.
-#define REGISTER_RESOURCE_HANDLE_OP(Type)                   \
-  REGISTER_OP(#Type "HandleOp")                             \
-      .Attr("container: string = ''")                       \
-      .Attr("shared_name: string = ''")                     \
-      .Output("resource: resource")                         \
-      .SetIsStateful()                                      \
-      .SetShapeFn(tensorflow::shape_inference::ScalarShape) \
-      .Doc("Creates a handle to a " #Type)
+#define REGISTER_RESOURCE_HANDLE_OP(Type) \
+  REGISTER_OP(#Type "HandleOp")           \
+      .Attr("container: string = ''")     \
+      .Attr("shared_name: string = ''")   \
+      .Output("resource: resource")       \
+      .SetIsStateful()                    \
+      .SetShapeFn(tensorflow::shape_inference::ScalarShape)
 
 // Utility op kernel to produce a handle to a resource of type T.
 template <typename T>
@@ -339,6 +338,9 @@ class ResourceHandleOp : public OpKernel {
  private:
   string container_;
   string name_;
+  mutex mutex_;
+  Tensor resource_;
+  std::atomic<bool> initialized_{false};
 };
 
 // Registers a kernel for an op which produces a handle to a resource of the
@@ -491,9 +493,16 @@ template <typename T>
 void IsResourceInitialized<T>::Compute(OpKernelContext* ctx) {
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
-  T* unused;
-  output->flat<bool>()(0) =
-      LookupResource(ctx, HandleFromInput(ctx, 0), &unused).ok();
+  T* object;
+  bool found;
+  if (LookupResource(ctx, HandleFromInput(ctx, 0), &object).ok()) {
+    found = true;
+    object->Unref();
+  } else {
+    found = false;
+  }
+
+  output->flat<bool>()(0) = found;
 }
 
 template <typename T>
@@ -505,10 +514,20 @@ ResourceHandleOp<T>::ResourceHandleOp(OpKernelConstruction* context)
 
 template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
-  Tensor* output = nullptr;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-  output->scalar<ResourceHandle>()() =
-      MakeResourceHandle<T>(ctx, container_, name_);
+  if (!initialized_.load()) {
+    mutex_lock ml(mutex_);
+    // Checking again to see if another thread has initialized the resource.
+    if (!initialized_.load()) {
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                             &resource_, attr));
+      resource_.scalar<ResourceHandle>()() =
+          MakeResourceHandle<T>(ctx, container_, name_);
+      initialized_.store(true);
+    }
+  }
+  ctx->set_output(0, resource_);
 }
 
 }  //  end namespace tensorflow

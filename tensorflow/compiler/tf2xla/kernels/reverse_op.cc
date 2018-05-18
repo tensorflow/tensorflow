@@ -16,7 +16,6 @@ limitations under the License.
 // XLA-specific reverse Op.
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -49,11 +48,12 @@ class ReverseOp : public XlaOpKernel {
       ctx->SetOutput(0, ctx->Input(0));
       return;
     }
-    // ComputationBuilder::Rev() requires concrete values for dimensions arg.
+    // XlaBuilder::Rev() requires concrete values for dimensions arg.
     xla::Literal lax;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {x_shape.dims()}, &lax));
     std::vector<bool> revdims(x_shape.dims());
-    std::copy(lax.preds().begin(), lax.preds().end(), revdims.begin());
+    std::copy(lax.data<bool>().begin(), lax.data<bool>().end(),
+              revdims.begin());
     std::vector<int64> dimensions;
 
     for (int d = 0; d < x_shape.dims(); ++d) {
@@ -66,7 +66,7 @@ class ReverseOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Reverse"), ReverseOp);
+REGISTER_XLA_OP(Name("Reverse").CompileTimeConstInput("dims"), ReverseOp);
 
 class ReverseV2Op : public XlaOpKernel {
  public:
@@ -90,7 +90,7 @@ class ReverseV2Op : public XlaOpKernel {
       ctx->SetOutput(0, ctx->Input(0));
       return;
     }
-    // ComputationBuilder::Rev() requires concrete values for dimensions arg.
+    // XlaBuilder::Rev() requires concrete values for dimensions arg.
     std::vector<int64> axes;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &axes));
 
@@ -104,7 +104,7 @@ class ReverseV2Op : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("ReverseV2"), ReverseV2Op);
+REGISTER_XLA_OP(Name("ReverseV2").CompileTimeConstInput("axis"), ReverseV2Op);
 
 }  // namespace
 }  // namespace tensorflow

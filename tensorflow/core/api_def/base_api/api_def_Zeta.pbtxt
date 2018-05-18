@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Zeta"
+  summary: "Compute the Hurwitz zeta function \\\\(\\zeta(x, q)\\\\)."
+  description: <<END
+The Hurwitz zeta function is defined as:
+
+
+\\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
+END
+}

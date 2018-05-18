@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IRReader/IRReader.h"
-#include "external/llvm/include/llvm/Support/SourceMgr.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"

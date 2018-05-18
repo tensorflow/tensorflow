@@ -8,7 +8,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 ## Activation Functions
 
 The activation ops provide different types of nonlinearities for use in neural
-networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
+networks. These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`, `selu`,
 `softplus`, and `softsign`), continuous but not everywhere differentiable
 functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
 (`dropout`).
@@ -20,6 +20,7 @@ shape as the input tensor.
 *   @{tf.nn.relu6}
 *   @{tf.nn.crelu}
 *   @{tf.nn.elu}
+*   @{tf.nn.selu}
 *   @{tf.nn.softplus}
 *   @{tf.nn.softsign}
 *   @{tf.nn.dropout}
@@ -47,27 +48,38 @@ strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
 the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
 filter to every other image patch in each dimension, etc.
 
-Ignoring channels for the moment, and assume that the 4-D `input` has shape
+Ignoring channels for the moment, assume that the 4-D `input` has shape
 `[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
-`[filter_height, filter_width, ...]`, then the spatial semantics of the
-convolution ops are as follows: first, according to the padding scheme chosen
-as `'SAME'` or `'VALID'`, the output size and the padding pixels are computed.
-For the `'SAME'` padding, the output height and width are computed as:
+`[filter_height, filter_width, ...]`. The spatial semantics of the
+convolution ops depend on the padding scheme chosen: `'SAME'` or `'VALID'`.
+Note that the padding values are always zero.
+
+First, consider the `'SAME'` padding scheme. A detailed explanation of the
+reasoning behind it is given in
+[these notes](#Notes_on_SAME_Convolution_Padding). Here, we summarize the
+mechanics of this padding scheme. When using `'SAME'`, the output height and
+width are computed as:
 
     out_height = ceil(float(in_height) / float(strides[1]))
     out_width  = ceil(float(in_width) / float(strides[2]))
 
-and the padding on the top and left are computed as:
+The total padding applied along the height and width is computed as:
 
-    pad_along_height = max((out_height - 1) * strides[1] +
-                        filter_height - in_height, 0)
-    pad_along_width = max((out_width - 1) * strides[2] +
-                       filter_width - in_width, 0)
+    if (in_height % strides[1] == 0):
+      pad_along_height = max(filter_height - strides[1], 0)
+    else:
+      pad_along_height = max(filter_height - (in_height % strides[1]), 0)
+    if (in_width % strides[2] == 0):
+      pad_along_width = max(filter_width - strides[2], 0)
+    else:
+      pad_along_width = max(filter_width - (in_width % strides[2]), 0)
+
+Finally, the padding on the top, bottom, left and right are:
+
     pad_top = pad_along_height // 2
     pad_bottom = pad_along_height - pad_top
     pad_left = pad_along_width // 2
     pad_right = pad_along_width - pad_left
-
 
 Note that the division by 2 means that there might be cases when the padding on
 both sides (top vs bottom, right vs left) are off by one. In this case, the
@@ -77,17 +89,19 @@ bottom. Note that this is different from existing libraries such as cuDNN and
 Caffe, which explicitly specify the number of padded pixels and always pad the
 same number of pixels on both sides.
 
-For the `'VALID`' padding, the output height and width are computed as:
+For the `'VALID'` scheme, the output height and width are computed as:
 
     out_height = ceil(float(in_height - filter_height + 1) / float(strides[1]))
     out_width  = ceil(float(in_width - filter_width + 1) / float(strides[2]))
 
-and the padding values are always zero. The output is then computed as
+and no padding is used.
 
-    output[b, i, j, :] =
-        sum_{di, dj} input[b, strides[1] * i + di - pad_top,
-                           strides[2] * j + dj - pad_left, ...] *
-                     filter[di, dj, ...]
+Given the output size and the padding, the output can be computed as
+
+$$    output[b, i, j, :] =
+        sum_{d_i, d_j} input[b, strides[1] * i + d_i - pad_{top},\
+                           strides[2] * j + d_j - pad_{left}, ...] *
+                     filter[d_i, d_j,\ ...]$$
 
 where any value outside the original input image region are considered zero (
 i.e. we pad zero values around the border of the image).
@@ -147,12 +161,12 @@ Morphological operators are non-linear filters used in image processing.
 ](https://en.wikipedia.org/wiki/Dilation_(morphology))
 is the max-sum counterpart of standard sum-product convolution:
 
-    output[b, y, x, c] =
+$$    output[b, y, x, c] =
         max_{dy, dx} input[b,
                            strides[1] * y + rates[1] * dy,
                            strides[2] * x + rates[2] * dx,
                            c] +
-                     filter[dy, dx, c]
+                     filter[dy, dx, c]$$
 
 The `filter` is usually called structuring function. Max-pooling is a special
 case of greyscale morphological dilation when the filter assumes all-zero
@@ -162,12 +176,12 @@ values (a.k.a. flat structuring function).
 ](https://en.wikipedia.org/wiki/Erosion_(morphology))
 is the min-sum counterpart of standard sum-product convolution:
 
-    output[b, y, x, c] =
+$$    output[b, y, x, c] =
         min_{dy, dx} input[b,
                            strides[1] * y - rates[1] * dy,
                            strides[2] * x - rates[2] * dx,
                            c] -
-                     filter[dy, dx, c]
+                     filter[dy, dx, c]$$
 
 Dilation and erosion are dual to each other. The dilation of the input signal
 `f` by the structuring signal `g` is equal to the negation of the erosion of
@@ -212,6 +226,8 @@ TensorFlow provides several operations that help you perform classification.
 *   @{tf.nn.softmax}
 *   @{tf.nn.log_softmax}
 *   @{tf.nn.softmax_cross_entropy_with_logits}
+*   @{tf.nn.softmax_cross_entropy_with_logits_v2} - identical to the base
+    version, except it allows gradient propagation into the labels.
 *   @{tf.nn.sparse_softmax_cross_entropy_with_logits}
 *   @{tf.nn.weighted_cross_entropy_with_logits}
 
@@ -288,3 +304,115 @@ classes when using one of the sampled loss functions above.
 *   @{tf.nn.quantized_relu_x}
 *   @{tf.nn.quantized_max_pool}
 *   @{tf.nn.quantized_avg_pool}
+
+## Notes on SAME Convolution Padding
+
+In these notes, we provide more background on the use of the `'SAME'` padding
+scheme for convolution operations.
+
+Tensorflow uses the smallest possible padding to achieve the desired output
+size. To understand what is done, consider the \\(1\\)-dimensional case. Denote
+\\(n_i\\) and \\(n_o\\) the input and output sizes, respectively, and denote the
+kernel size \\(k\\) and stride \\(s\\). As discussed in the
+[Convolution section](#Convolution), for `'SAME'`,
+\\(n_o = \left \lceil{\frac{n_i}{s}}\right \rceil\\).
+
+To achieve a desired output size \\(n_o\\), we need to pad the input such that the
+output size after a `'VALID'` convolution is \\(n_o\\). In other words, we need to
+have padding \\(p_i\\) such that:
+
+\begin{equation}
+\left \lceil{\frac{n_i + p_i - k + 1}{s}}\right \rceil = n_o
+\label{eq:tf_pad_1}
+\end{equation}
+
+What is the smallest \\(p_i\\) that we could possibly use? In general, \\(\left
+\lceil{\frac{x}{a}}\right \rceil = b\\) (with \\(a > 0\\)) means that \\(b-1 <
+\frac{x}{a} \leq b\\), and the smallest integer \\(x\\) we can choose to satisfy
+this is \\(x = a\cdot (b-1) + 1\\). The same applies to our problem; we need
+\\(p_i\\) such that:
+
+\begin{equation}
+n_i + p_i - k + 1 = s\cdot (n_o - 1) + 1
+\label{eq:tf_pad_2}
+\end{equation}
+
+which leads to:
+
+\begin{equation}
+p_i = s\cdot (n_o - 1) + k - n_i
+\label{eq:tf_pad_3}
+\end{equation}
+
+Note that this might lead to negative \\(p_i\\), since in some cases we might
+already have more input samples than we actually need. Thus,
+
+\begin{equation}
+p_i = max(s\cdot (n_o - 1) + k - n_i, 0)
+\label{eq:tf_pad_4}
+\end{equation}
+
+Remember that, for `'SAME'` padding,
+\\(n_o = \left \lceil{\frac{n_i}{s}}\right \rceil\\), as mentioned above.
+We need to analyze in detail two cases:
+
+- \\(n_i \text{ mod } s = 0\\)
+
+In this simple case, \\(n_o = \frac{n_i}{s}\\), and the expression for \\(p_i\\)
+becomes:
+
+\begin{equation}
+p_i = max(k - s, 0)
+\label{eq:tf_pad_5}
+\end{equation}
+
+- \\(n_i \text{ mod } s \neq 0\\)
+
+This case is more involved to parse. First, we write:
+
+\begin{equation}
+n_i = s\cdot\left \lceil{\frac{n_i}{s}}\right \rceil
+- s \left(\left \lceil{\frac{n_i}{s}}\right \rceil -
+          \left \lfloor{\frac{n_i}{s}}\right \rfloor\right)
++ (n_i \text{ mod } s)
+\label{eq:tf_pad_6}
+\end{equation}
+
+For the case where \\((n_i \text{ mod } s) \neq 0\\), we have \\(\left
+\lceil{\frac{n_i}{s}}\right \rceil -\left \lfloor{\frac{n_i}{s}}\right \rfloor =
+1\\), leading to:
+
+\begin{equation}
+n_i = s\cdot\left \lceil{\frac{n_i}{s}}\right \rceil
+- s
++ (n_i \text{ mod } s)
+\label{eq:tf_pad_7}
+\end{equation}
+
+We can use this expression to substitute \\(n_o = \left
+\lceil{\frac{n_i}{s}}\right \rceil\\) and get:
+
+$$\begin{align}
+p_i &= max\left(s\cdot \left(\frac{n_i + s - (n_i \text{ mod } s)}{s}
+  - 1\right) + k - n_i, 0\right) \nonumber\\
+&= max(n_i + s - (n_i \text{ mod } s) - s + k - n_i,0) \nonumber \\
+&= max(k - (n_i \text{ mod } s),0)
+\label{eq:tf_pad_8}
+\end{align}$$
+
+### Final expression
+
+Putting all together, the total padding used by tensorflow's convolution with
+`'SAME'` mode is:
+
+$$\begin{align}
+p_i =
+ \begin{cases}
+ max(k - s, 0),  & \text{if $(n_i \text{ mod } s) = 0$} \\
+ max(k - (n_i \text{ mod } s),0), & \text{if $(n_i \text{ mod } s) \neq 0$}
+ \end{cases}
+ \label{eq:tf_pad_9}
+\end{align}$$
+
+This expression is exactly equal to the ones presented for `pad_along_height`
+and `pad_along_width` in the [Convolution section](#Convolution).

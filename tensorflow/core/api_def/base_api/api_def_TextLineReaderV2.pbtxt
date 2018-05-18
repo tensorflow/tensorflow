@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "TextLineReaderV2"
+  endpoint {
+    name: "TextLineReader"
+  }
+  out_arg {
+    name: "reader_handle"
+    description: <<END
+The handle to reference the Reader.
+END
+  }
+  attr {
+    name: "skip_header_lines"
+    description: <<END
+Number of lines to skip from the beginning of every file.
+END
+  }
+  attr {
+    name: "container"
+    description: <<END
+If non-empty, this reader is placed in the given container.
+Otherwise, a default container is used.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+If non-empty, this reader is named in the given bucket
+with this shared_name. Otherwise, the node name is used instead.
+END
+  }
+  summary: "A Reader that outputs the lines of a file delimited by \'\\n\'."
+}

@@ -16,7 +16,6 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,7 +54,7 @@ TEST_F(BatchNormOpTest, Simple) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 6, 2}));
   test::FillValues<float>(
       &expected, {-17.86f, -22.00f, -15.87f, -20.59f, -13.87f, -19.18f, -21.86f,
-                  -33.31f, -23.85f, -34.72f, -25.85f, -36.13f });
+                  -33.31f, -23.85f, -34.72f, -25.85f, -36.13f});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.01);
 }
 

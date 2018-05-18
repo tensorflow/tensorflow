@@ -43,6 +43,19 @@ TEST(CUnescape, Basic) {
   EXPECT_EQ("\320hi\200", ExpectCUnescapeSuccess("\\320hi\\200"));
 }
 
+TEST(CUnescape, HandlesCopyOnWriteStrings) {
+  string dest = "hello";
+  string read = dest;
+  // For std::string, read and dest now share the same buffer.
+
+  string error;
+  StringPiece source = "llohe";
+  // CUnescape is going to write "llohe" to dest, so dest's buffer will be
+  // reallocated, and read's buffer remains untouched.
+  EXPECT_TRUE(str_util::CUnescape(source, &dest, &error));
+  EXPECT_EQ("hello", read);
+}
+
 TEST(StripTrailingWhitespace, Basic) {
   string test;
   test = "hello";
@@ -292,7 +305,7 @@ TEST(SplitAndParseAsInts, Int64) {
   EXPECT_EQ(nums[0], 134);
   EXPECT_EQ(nums[1], 2);
   EXPECT_EQ(nums[2], 13);
-  EXPECT_EQ(nums[3], -4000000000);
+  EXPECT_EQ(nums[3], static_cast<int64>(-4000000000ull));
 
   EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
 
@@ -336,6 +349,38 @@ TEST(Uppercase, Basic) {
   EXPECT_EQ("", str_util::Uppercase(""));
   EXPECT_EQ("HELLO", str_util::Uppercase("hello"));
   EXPECT_EQ("HELLO WORLD", str_util::Uppercase("Hello World"));
+}
+
+TEST(SnakeCase, Basic) {
+  EXPECT_EQ("", str_util::ArgDefCase(""));
+  EXPECT_EQ("", str_util::ArgDefCase("!"));
+  EXPECT_EQ("", str_util::ArgDefCase("5"));
+  EXPECT_EQ("", str_util::ArgDefCase("!:"));
+  EXPECT_EQ("", str_util::ArgDefCase("5-5"));
+  EXPECT_EQ("", str_util::ArgDefCase("_!"));
+  EXPECT_EQ("", str_util::ArgDefCase("_5"));
+  EXPECT_EQ("a", str_util::ArgDefCase("_a"));
+  EXPECT_EQ("a", str_util::ArgDefCase("_A"));
+  EXPECT_EQ("i", str_util::ArgDefCase("I"));
+  EXPECT_EQ("i", str_util::ArgDefCase("i"));
+  EXPECT_EQ("i_", str_util::ArgDefCase("I%"));
+  EXPECT_EQ("i_", str_util::ArgDefCase("i%"));
+  EXPECT_EQ("i", str_util::ArgDefCase("%I"));
+  EXPECT_EQ("i", str_util::ArgDefCase("-i"));
+  EXPECT_EQ("i", str_util::ArgDefCase("3i"));
+  EXPECT_EQ("i", str_util::ArgDefCase("32i"));
+  EXPECT_EQ("i3", str_util::ArgDefCase("i3"));
+  EXPECT_EQ("i_a3", str_util::ArgDefCase("i_A3"));
+  EXPECT_EQ("i_i", str_util::ArgDefCase("II"));
+  EXPECT_EQ("i_i", str_util::ArgDefCase("I_I"));
+  EXPECT_EQ("i__i", str_util::ArgDefCase("I__I"));
+  EXPECT_EQ("i_i_32", str_util::ArgDefCase("II-32"));
+  EXPECT_EQ("ii_32", str_util::ArgDefCase("Ii-32"));
+  EXPECT_EQ("hi_there", str_util::ArgDefCase("HiThere"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("Hi!Hi"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("HiHi"));
+  EXPECT_EQ("hihi", str_util::ArgDefCase("Hihi"));
+  EXPECT_EQ("hi_hi", str_util::ArgDefCase("Hi_Hi"));
 }
 
 TEST(TitlecaseString, Basic) {
@@ -383,6 +428,14 @@ TEST(StringReplace, EmptyStringReplaceFirst) {
 
 TEST(StringReplace, EmptyStringReplaceAll) {
   EXPECT_EQ("", str_util::StringReplace("", "a", "X", /*replace_all=*/true));
+}
+
+TEST(Strnlen, Basic) {
+  EXPECT_EQ(0, str_util::Strnlen("ab", 0));
+  EXPECT_EQ(1, str_util::Strnlen("a", 1));
+  EXPECT_EQ(2, str_util::Strnlen("abcd", 2));
+  EXPECT_EQ(3, str_util::Strnlen("abc", 10));
+  EXPECT_EQ(4, str_util::Strnlen("a \t\n", 10));
 }
 
 }  // namespace tensorflow

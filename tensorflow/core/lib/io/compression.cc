@@ -22,6 +22,6 @@ namespace compression {
 const char kNone[] = "";
 const char kGzip[] = "GZIP";
 
-}
-}
-}
+}  // namespace compression
+}  // namespace io
+}  // namespace tensorflow

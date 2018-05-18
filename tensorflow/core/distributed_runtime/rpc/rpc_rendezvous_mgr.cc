@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -39,7 +40,7 @@ namespace {
 class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   RpcRemoteRendezvous(const WorkerEnv* env, int64 step_id)
-      : BaseRemoteRendezvous(env, step_id, false) {}
+      : BaseRemoteRendezvous(env, step_id) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -67,6 +68,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     done_ = std::move(done);
     req_.set_step_id(step_id);
     req_.set_rendezvous_key(key.data(), key.size());
+    req_.set_request_id(GetUniqueRequestId());
   }
 
   void Reset(WorkerCacheInterface* wc) {
@@ -225,7 +227,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
   Device* dst_device;
   if (s.ok()) {
-    s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+    s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
   }
   if (!s.ok()) {
     if (rwi != nullptr) {

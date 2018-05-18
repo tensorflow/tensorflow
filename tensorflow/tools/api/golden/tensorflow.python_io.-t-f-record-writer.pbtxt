@@ -11,6 +11,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "flush"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "write"
     argspec: "args=[\'self\', \'record\'], varargs=None, keywords=None, defaults=None"
   }

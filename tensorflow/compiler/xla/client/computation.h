@@ -30,6 +30,8 @@ namespace xla {
 // Wraps a ComputationHandle protobuf with a lifetime. Computation is
 // movable and not copyable to capture the same kind of unique
 // ownership that std::unique_ptr represents.
+//
+// TODO(b/74197823): Deprecated. Use XlaComputation instead.
 class Computation {
  public:
   // Creates a null Computation.
@@ -59,6 +61,10 @@ class Computation {
 
   // Returns true if this object is a null Computation.
   bool IsNull() const { return parent_ == nullptr; }
+
+  // Returns the "program shape" (parameter and return shapes) for this
+  // computation.
+  StatusOr<ProgramShape> GetProgramShape() const;
 
  private:
   void ResetWithoutFreeing();

@@ -15,7 +15,7 @@
 include (ExternalProject)
 
 set(gif_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/gif_archive/giflib-5.1.4/)
-set(gif_URL http://ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz)
+set(gif_URL https://mirror.bazel.build/ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz)
 set(gif_HASH SHA256=34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1)
 set(gif_INSTALL ${CMAKE_BINARY_DIR}/gif/install)
 set(gif_BUILD ${CMAKE_BINARY_DIR}/gif/src/gif)
@@ -33,6 +33,7 @@ if(WIN32)
       PREFIX gif
       URL ${gif_URL}
       URL_HASH ${gif_HASH}
+      BUILD_BYPRODUCTS ${gif_STATIC_LIBRARIES}
       PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/patches/gif/CMakeLists.txt ${gif_BUILD}
       INSTALL_DIR ${gif_INSTALL}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
@@ -66,6 +67,7 @@ else()
           ${CMAKE_CURRENT_BINARY_DIR}/gif/src/gif/configure
           --with-pic
           --prefix=${gif_INSTALL}
+          --libdir=${gif_INSTALL}/lib
          --enable-shared=yes
   )
 

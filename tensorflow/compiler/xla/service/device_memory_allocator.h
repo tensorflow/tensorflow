@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -33,30 +34,44 @@ class DeviceMemoryAllocator {
  public:
   // Parameter platform indicates which platform the allocator allocates memory
   // on. Must be non-null.
-  explicit DeviceMemoryAllocator(const perftools::gputools::Platform* platform)
+  explicit DeviceMemoryAllocator(const se::Platform* platform)
       : platform_(platform) {}
   virtual ~DeviceMemoryAllocator() {}
 
+  // Allocates memory on the device.
+  //
+  // If size > 0 and the returned StatusOr is OK, the wrapped OwningDeviceMemory
+  // must not be null.  If size == 0, must return a null OwningDeviceMemory.
+  //
   // 'retry_on_failure': If false, and the first attempt to allocate the memory
-  // fails, the allocation should return immediately without retrying.
-  // An example use case is optional scratch spaces where a failure
-  // has only performance impact.
-  // Allocate() should return a null pointer for a size-0 allocation.
-  // Deallocate() must be a no-op for null pointers.
-  virtual StatusOr<perftools::gputools::DeviceMemoryBase> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure = true) = 0;
-  virtual tensorflow::Status Deallocate(
-      int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) = 0;
+  // fails, the allocation should return immediately without retrying.  An
+  // example use case is optional scratch spaces where a failure has only
+  // performance impact.
+  virtual StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                                bool retry_on_failure) = 0;
+
+  // Two-arg version of Allocate(), which sets retry-on-failure to true.
+  //
+  // (We don't simply use a default argument on the virtual Allocate function
+  // because default args on virtual functions are disallowed by the Google
+  // style guide.)
+  StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size) {
+    return Allocate(device_ordinal, size, /*retry_on_failure=*/true);
+  }
+
+  // Must be a nop for null pointers.
+  virtual Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
-  const perftools::gputools::Platform* platform() const { return platform_; }
+  const se::Platform* platform() const { return platform_; }
 
   // Can we call Deallocate() as soon as a computation has been scheduled on
   // a stream, or do we have to wait for the computation to complete first?
   virtual bool AllowsAsynchronousDeallocation() const = 0;
 
  protected:
-  const perftools::gputools::Platform* platform_;
+  friend class OwningDeviceMemory;
+  const se::Platform* platform_;
 };
 
 // Default memory allocator for a platform which uses
@@ -64,25 +79,26 @@ class DeviceMemoryAllocator {
 class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   StreamExecutorMemoryAllocator(
-      perftools::gputools::Platform* platform,
-      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          stream_executors);
+      const se::Platform* platform,
+      tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure = true) override;
-  tensorflow::Status Deallocate(
-      int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) override;
+  StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                        bool retry_on_failure) override;
+
+  // Pull in two-arg overload that sets retry_on_failure to true.
+  using DeviceMemoryAllocator::Allocate;
+
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   bool AllowsAsynchronousDeallocation() const override;
 
  private:
-  StatusOr<perftools::gputools::StreamExecutor*> GetStreamExecutor(
-      int device_ordinal);
+  StatusOr<se::StreamExecutor*> GetStreamExecutor(int device_ordinal);
 
   // A vector indexed by device ordinal of StreamExecutors for each device of
   // the allocator's platform type. If an element is nullptr, then the device
   // with the respective device ordinal is not supported by XLA.
-  std::vector<perftools::gputools::StreamExecutor*> stream_executors_;
+  std::vector<se::StreamExecutor*> stream_executors_;
 };
 
 }  // namespace xla

@@ -29,14 +29,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bitmap.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -46,474 +49,180 @@ limitations under the License.
 
 namespace xla {
 
-template <typename ReturnT>
-class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
- public:
-  explicit TypedVisitor(HloEvaluator* p) : parent_(p) {}
+namespace {
 
-  Status DefaultAction(HloInstruction* hlo_instruction) override {
-    return Unimplemented("unhandled HLO ops for HloEvaluator: %s.",
-                         HloOpcodeString(hlo_instruction->opcode()).c_str());
-  };
+using tensorflow::gtl::ArraySlice;
 
-  // TODO(b/35950897): many of the stl functions used in the handlers are not
-  // overloaded for every XLA primitive types.
+template <typename OperandT>
+StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
+                                           LiteralSlice lhs_literal,
+                                           LiteralSlice rhs_literal) {
+  std::function<bool(OperandT, OperandT)> compare_op;
+  switch (opcode) {
+    case HloOpcode::kEq:
+      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
+        return lhs_el == rhs_el;
+      };
+      break;
+    case HloOpcode::kNe:
+      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
+        return lhs_el != rhs_el;
+      };
+      break;
+    case HloOpcode::kGe:
+      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
+        return lhs_el >= rhs_el;
+      };
+      break;
+    case HloOpcode::kGt:
+      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
+        return lhs_el > rhs_el;
+      };
+      break;
+    case HloOpcode::kLe:
+      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
+        return lhs_el <= rhs_el;
+      };
+      break;
+    case HloOpcode::kLt:
+      compare_op = [](OperandT lhs_el, OperandT rhs_el) {
+        return lhs_el < rhs_el;
+      };
+      break;
+    default:
+      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
+                 << HloOpcodeString(opcode);
+  }
 
-  template <typename NativeT,
-            typename std::enable_if<std::is_unsigned<NativeT>::value>::type* =
-                nullptr>
-  Status HandleAbs(HloInstruction* abs, HloInstruction* operand) {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[abs],
-                        ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
-                          return elem_operand;
-                        }));
-    return Status::OK();
-  };
+  auto result = Literal::CreateFromShape(shape);
+  TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
+    return compare_op(lhs_literal.Get<OperandT>(multi_index),
+                      rhs_literal.Get<OperandT>(multi_index));
+  }));
 
-  template <
-      typename NativeT,
-      typename std::enable_if<std::is_signed<NativeT>::value>::type* = nullptr>
-  Status HandleAbs(HloInstruction* abs, HloInstruction* operand) {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[abs],
-                        ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
-                          return std::abs(elem_operand);
-                        }));
-    return Status::OK();
-  };
+  return std::move(result);
+}
 
-  Status HandleAbs(HloInstruction* abs, HloInstruction* operand) override {
-    return HandleAbs<ReturnT>(abs, operand);
-  };
+template <>
+StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
+    const Shape& shape, HloOpcode opcode, LiteralSlice lhs_literal,
+    LiteralSlice rhs_literal) {
+  std::function<bool(complex64, complex64)> compare_op;
+  switch (opcode) {
+    case HloOpcode::kEq:
+      compare_op = [](complex64 lhs_el, complex64 rhs_el) {
+        return lhs_el == rhs_el;
+      };
+      break;
+    case HloOpcode::kNe:
+      compare_op = [](complex64 lhs_el, complex64 rhs_el) {
+        return lhs_el != rhs_el;
+      };
+      break;
+    default:
+      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
+                 << HloOpcodeString(opcode);
+  }
 
-  Status HandleCeil(HloInstruction* ceil, HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[ceil],
-                        ElementWiseUnaryOp(ceil, [](ReturnT elem_operand) {
-                          return std::ceil(elem_operand);
-                        }));
-    return Status::OK();
-  };
+  auto result = Literal::CreateFromShape(shape);
+  TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
+    return compare_op(lhs_literal.Get<complex64>(multi_index),
+                      rhs_literal.Get<complex64>(multi_index));
+  }));
 
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[copy],
-                        ElementWiseUnaryOp(copy, [](ReturnT elem_operand) {
-                          return elem_operand;
-                        }));
-    return Status::OK();
-  };
+  return std::move(result);
+}
 
-  Status HandleExp(HloInstruction* exp, HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[exp],
-                        ElementWiseUnaryOp(exp, [](ReturnT elem_operand) {
-                          return std::exp(elem_operand);
-                        }));
-    return Status::OK();
-  };
+}  // namespace
 
-  Status HandleFloor(HloInstruction* floor, HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[floor],
-                        ElementWiseUnaryOp(floor, [](ReturnT elem_operand) {
-                          return std::floor(elem_operand);
-                        }));
-    return Status::OK();
-  };
 
-  Status HandleIsFinite(HloInstruction* is_finite,
-                        HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[is_finite],
-                        ElementWiseUnaryOp(is_finite, [](ReturnT elem_operand) {
-                          return std::isfinite(elem_operand);
-                        }));
-    return Status::OK();
-  };
-
-  Status HandleLog(HloInstruction* log, HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[log],
-                        ElementWiseUnaryOp(log, [](ReturnT elem_operand) {
-                          return std::log(elem_operand);
-                        }));
-    return Status::OK();
-  };
-
-  Status HandleLogicalNot(HloInstruction* logical_not,
-                          HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[logical_not],
-        ElementWiseUnaryOp(logical_not,
-                           [](ReturnT elem_operand) { return !elem_operand; }));
-    return Status::OK();
-  };
-
-  Status HandleNegate(HloInstruction* negate,
-                      HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[negate],
-                        ElementWiseUnaryOp(negate, [](ReturnT elem_operand) {
-                          return -elem_operand;
-                        }));
-    return Status::OK();
-  };
-
-  Status HandleSign(HloInstruction* sign, HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[sign],
-                        ElementWiseUnaryOp(sign, [](ReturnT elem_operand) {
-                          return (ReturnT(0) < elem_operand) -
-                                 (elem_operand < ReturnT(0));
-                        }));
-    return Status::OK();
-  };
-
-  Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[tanh],
-                        ElementWiseUnaryOp(tanh, [](ReturnT elem_operand) {
-                          return std::tanh(elem_operand);
-                        }));
-    return Status::OK();
-  };
-
-  Status HandleMultiply(HloInstruction* multiply, HloInstruction* lhs,
-                        HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[multiply],
-        ElementWiseBinaryOp(multiply, [](ReturnT lhs_elem, ReturnT rhs_elem) {
-          return lhs_elem * rhs_elem;
-        }));
-    return Status::OK();
-  };
-
-  Status HandleSubtract(HloInstruction* subtract, HloInstruction* lhs,
-                        HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[subtract],
-        ElementWiseBinaryOp(subtract, [](ReturnT lhs_elem, ReturnT rhs_elem) {
-          return lhs_elem - rhs_elem;
-        }));
-    return Status::OK();
-  };
-
-  Status HandleAdd(HloInstruction* add, HloInstruction* lhs,
-                   HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[add],
-        ElementWiseBinaryOp(add, [](ReturnT lhs_elem, ReturnT rhs_elem) {
-          return lhs_elem + rhs_elem;
-        }));
-    return Status::OK();
-  };
-
-  Status HandleDivide(HloInstruction* divide, HloInstruction* lhs,
-                      HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[divide],
-        ElementWiseBinaryOp(divide, [](ReturnT lhs_elem, ReturnT rhs_elem) {
-          return lhs_elem / rhs_elem;
-        }));
-    return Status::OK();
-  };
-
-  Status HandleCompare(HloInstruction* compare, HloOpcode opcode,
-                       HloInstruction* lhs, HloInstruction* rhs) override {
-    std::function<bool(ReturnT, ReturnT)> compare_op;
-    switch (opcode) {
-      case HloOpcode::kEq:
-        compare_op = [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el == rhs_el;
-        };
-        break;
-      case HloOpcode::kNe:
-        compare_op = [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el != rhs_el;
-        };
-        break;
-      case HloOpcode::kGe:
-        compare_op = [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el >= rhs_el;
-        };
-        break;
-      case HloOpcode::kGt:
-        compare_op = [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el > rhs_el;
-        };
-        break;
-      case HloOpcode::kLe:
-        compare_op = [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el <= rhs_el;
-        };
-        break;
-      case HloOpcode::kLt:
-        compare_op = [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el < rhs_el;
-        };
-        break;
-      default:
-        LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
-                   << HloOpcodeString(opcode);
-    }
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
-    if (!(ShapeUtil::SameDimensions(compare->shape(), rhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
-      return Unimplemented(
-          "Compare operation with mismatched dimensions, likely due to "
-          "broadcasting is unsupported.");
-    }
-
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-
-    auto result = LiteralUtil::CreateFromShape(compare->shape());
-    std::vector<int64> multi_index(ShapeUtil::Rank(result->shape()), 0);
-    do {
-      LiteralUtil::Set<bool>(
-          result.get(), multi_index,
-          compare_op(LiteralUtil::Get<ReturnT>(lhs_literal, multi_index),
-                     LiteralUtil::Get<ReturnT>(rhs_literal, multi_index)));
-    } while (IndexUtil::BumpIndices(result->shape(), &multi_index));
-
-    parent_->evaluated_[compare] = std::move(result);
-
-    return Status::OK();
-  };
-
-  Status HandleMaximum(HloInstruction* maximum, HloInstruction* lhs,
-                       HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[maximum],
-        ElementWiseBinaryOp(maximum, [](ReturnT lhs, ReturnT rhs) {
-          return std::max(lhs, rhs);
-        }));
-    return Status::OK();
-  };
-
-  Status HandleMinimum(HloInstruction* minimum, HloInstruction* lhs,
-                       HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[minimum],
-        ElementWiseBinaryOp(minimum, [](ReturnT lhs_el, ReturnT rhs_el) {
-          return std::min(lhs_el, rhs_el);
-        }));
-    return Status::OK();
-  };
-
-  Status HandlePower(HloInstruction* power, HloInstruction* lhs,
-                     HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[power],
-        ElementWiseBinaryOp(power, [](ReturnT lhs_el, ReturnT rhs_el) {
-          return std::pow(lhs_el, rhs_el);
-        }));
-    return Status::OK();
-  };
-
-  Status HandleRemainder(HloInstruction* remainder, HloInstruction* lhs,
-                         HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[remainder],
-        ElementWiseBinaryOp(remainder, [](ReturnT lhs_el, ReturnT rhs_el) {
-          return std::remainder(lhs_el, rhs_el);
-        }));
-    return Status::OK();
-  };
-
-  Status HandleLogicalAnd(HloInstruction* logical_and, HloInstruction* lhs,
-                          HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[logical_and],
-        ElementWiseBinaryOp(logical_and, [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el && rhs_el;
-        }));
-    return Status::OK();
-  };
-
-  Status HandleLogicalOr(HloInstruction* logical_or, HloInstruction* lhs,
-                         HloInstruction* rhs) override {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[logical_or],
-        ElementWiseBinaryOp(logical_or, [](ReturnT lhs_el, ReturnT rhs_el) {
-          return lhs_el || rhs_el;
-        }));
-    return Status::OK();
-  };
-
-  Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
-                     HloInstruction* arg, HloInstruction* max) override {
-    std::function<ReturnT(ReturnT, ReturnT, ReturnT)> clamp_op =
-        [](ReturnT low, ReturnT high, ReturnT value) {
-          return std::max(low, std::min(value, high));
-        };
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[clamp],
-                        ElementWiseTernaryOp(clamp, std::move(clamp_op)));
-    return Status::OK();
-  };
-
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override {
-    CHECK(!ShapeUtil::IsTuple(select->shape()));
-    std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
-        [](bool pred, ReturnT on_true, ReturnT on_false) {
-          if (pred) {
-            return on_true;
-          }
-          return on_false;
-        };
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[select],
-                        ElementWiseTernaryOp(select, std::move(select_op)));
-    return Status::OK();
-  };
-
-  Status Preprocess(HloInstruction* hlo) override {
-    VLOG(2) << hlo->ToString();
-    return Status::OK();
-  };
-
- private:
-  StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOp(
-      HloInstruction* instruction,
-      const std::function<ReturnT(ReturnT)>& unary_op) {
-    const auto shape = instruction->shape();
-    const auto* operand = instruction->operand(0);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
-    if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(operand->shape()).c_str());
-    }
-
-    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
-
-    auto result = LiteralUtil::CreateFromShape(shape);
-
-    std::vector<int64> multi_index(ShapeUtil::Rank(result->shape()), 0);
-    do {
-      LiteralUtil::Set<ReturnT>(
-          result.get(), multi_index,
-          unary_op(LiteralUtil::Get<ReturnT>(operand_literal, multi_index)));
-    } while (IndexUtil::BumpIndices(result->shape(), &multi_index));
-
-    return std::move(result);
-  };
-
-  StatusOr<std::unique_ptr<Literal>> ElementWiseBinaryOp(
-      HloInstruction* instruction,
-      const std::function<ReturnT(ReturnT, ReturnT)>& binary_op) {
-    const auto shape = instruction->shape();
-    const auto* lhs = instruction->operand(0);
-    const auto* rhs = instruction->operand(1);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
-    if (!(ShapeUtil::SameDimensions(shape, rhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(lhs->shape()).c_str(),
-          ShapeUtil::HumanString(rhs->shape()).c_str());
-    }
-
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-
-    auto result = LiteralUtil::CreateFromShape(shape);
-    std::vector<int64> multi_index(ShapeUtil::Rank(result->shape()), 0);
-    do {
-      LiteralUtil::Set<ReturnT>(
-          result.get(), multi_index,
-          binary_op(LiteralUtil::Get<ReturnT>(lhs_literal, multi_index),
-                    LiteralUtil::Get<ReturnT>(rhs_literal, multi_index)));
-    } while (IndexUtil::BumpIndices(result->shape(), &multi_index));
-
-    return std::move(result);
-  };
-
-  template <typename LhsType, typename RhsType, typename EhsType>
-  StatusOr<std::unique_ptr<Literal>> ElementWiseTernaryOp(
-      HloInstruction* instruction,
-      const std::function<ReturnT(LhsType, RhsType, EhsType)>& ternary_op) {
-    const auto shape = instruction->shape();
-    const auto* lhs = instruction->operand(0);
-    const auto* rhs = instruction->operand(1);
-    const auto* ehs = instruction->operand(2);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
-    if (!(ShapeUtil::SameDimensions(shape, lhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()) &&
-          ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape).c_str(),
-          ShapeUtil::HumanString(lhs->shape()).c_str(),
-          ShapeUtil::HumanString(rhs->shape()).c_str(),
-          ShapeUtil::HumanString(ehs->shape()).c_str());
-    }
-
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-    const Literal& ehs_literal = parent_->GetEvaluatedLiteralFor(ehs);
-
-    auto result = LiteralUtil::CreateFromShape(shape);
-    std::vector<int64> multi_index(ShapeUtil::Rank(result->shape()), 0);
-    do {
-      LiteralUtil::Set<ReturnT>(
-          result.get(), multi_index,
-          ternary_op(LiteralUtil::Get<LhsType>(lhs_literal, multi_index),
-                     LiteralUtil::Get<RhsType>(rhs_literal, multi_index),
-                     LiteralUtil::Get<EhsType>(ehs_literal, multi_index)));
-    } while (IndexUtil::BumpIndices(result->shape(), &multi_index));
-
-    return std::move(result);
-  };
-
-  HloEvaluator* parent_;
-};
-
-HloEvaluator::HloEvaluator() {
-  typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
-  typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
+HloEvaluator::HloEvaluator(int64 max_loop_iterations)
+    : max_loop_iterations_(max_loop_iterations) {
+  typed_visitors_[PRED] = MakeUnique<HloEvaluatorTypedVisitor<bool>>(this);
+  typed_visitors_[U8] = MakeUnique<HloEvaluatorTypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: U16.");
+    return Unimplemented(
+        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+        "U16.");
   });
-  typed_visitors_[U32] = MakeUnique<TypedVisitor<uint32>>(this);
-  typed_visitors_[U64] = MakeUnique<TypedVisitor<uint64>>(this);
-  typed_visitors_[S8] = MakeUnique<TypedVisitor<int8>>(this);
+  typed_visitors_[U32] = MakeUnique<HloEvaluatorTypedVisitor<uint32>>(this);
+  typed_visitors_[U64] = MakeUnique<HloEvaluatorTypedVisitor<uint64>>(this);
+  typed_visitors_[S8] = MakeUnique<HloEvaluatorTypedVisitor<int8>>(this);
   typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: S16.");
+    return Unimplemented(
+        "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
+        "S16.");
   });
-  typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
-  typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
-  typed_visitors_[F16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: F16.");
+  typed_visitors_[S32] = MakeUnique<HloEvaluatorTypedVisitor<int32>>(this);
+  typed_visitors_[S64] = MakeUnique<HloEvaluatorTypedVisitor<int64>>(this);
+  typed_visitors_[F16] =
+      MakeUnique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
+  typed_visitors_[F32] = MakeUnique<HloEvaluatorTypedVisitor<float>>(this);
+  typed_visitors_[F64] = MakeUnique<HloEvaluatorTypedVisitor<double>>(this);
+  typed_visitors_[C64] = MakeUnique<HloEvaluatorTypedVisitor<complex64>>(this);
+
+  // Most of the evaluator computations we use don't support BF16 (e.g.,
+  // std::ceil, std::tanh). To make evaluator work with BF16, we set all
+  // elementwise computations to be done in F32 and do BF16<->F32 conversion
+  // around the input and the output of the computations.
+  typed_visitors_[BF16] =
+      MakeUnique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
+
+  typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
+    return Unimplemented(
+        "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
   });
-  typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
-  typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
+  typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
+    return Unimplemented(
+        "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
+  });
 }
 
+template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    HloComputation* computation,
-    tensorflow::gtl::ArraySlice<const Literal*> args) {
-  arg_literals_ = args;
-  evaluated_.clear();
+    const HloModule& module, ArraySlice<LiteralPtr> arg_literals) {
+  XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
 
-  TF_RETURN_IF_ERROR(computation->Accept(this));
-  return std::move(FindOrDie(evaluated_, computation->root_instruction()));
+  evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
+  }
+
+  TF_RETURN_IF_ERROR(module.entry_computation()->Accept(this));
+
+  return GetEvaluatedLiteralFor(module.entry_computation()->root_instruction())
+      .CloneToUnique();
 }
 
+template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    HloInstruction* instruction,
-    tensorflow::gtl::ArraySlice<const Literal*> operands) {
-  DCHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
-  Shape shape = instruction->shape();
-  TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
+    const HloComputation& computation, ArraySlice<LiteralPtr> arg_literals) {
+  CHECK(computation.parent() != nullptr);
+  XLA_VLOG_LINES(
+      2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
 
-  arg_literals_ = operands;
   evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
+  }
+
+  TF_RETURN_IF_ERROR(computation.Accept(this));
+  return GetEvaluatedLiteralFor(computation.root_instruction()).CloneToUnique();
+}
+
+template <typename LiteralPtr>
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
+    HloInstruction* instruction, ArraySlice<LiteralPtr> arg_literals) {
+  TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
+
+  evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
+  }
 
   // Evaluate operands of Parameter type against the input literals which
   // caches the evaluated literal results.
@@ -521,37 +230,829 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     if (operand->opcode() == HloOpcode::kParameter) {
       const Literal* input_literal = arg_literals_[operand->parameter_number()];
       VLOG(2) << "Parameter operand evaluated to: "
-              << LiteralUtil::ToString(*input_literal);
+              << input_literal->ToString();
       TF_RET_CHECK(ShapeUtil::Equal(operand->shape(), input_literal->shape()));
 
-      evaluated_[operand] = MakeUnique<Literal>(*input_literal);
-    } else if (operand->opcode() == HloOpcode::kConstant) {
-      evaluated_[operand] = MakeUnique<Literal>(operand->literal());
+      evaluated_[operand] = input_literal->CloneToUnique();
     }
   }
 
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
   TF_RETURN_IF_ERROR(instruction->Visit(this));
-  return std::move(FindOrDie(evaluated_, instruction));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
+  return GetEvaluatedLiteralFor(instruction).CloneToUnique();
+}
+
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
+    HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    return tensorflow::errors::FailedPrecondition(
+        "Cannot evaluate a parameter.");
+  }
+  if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+    return tensorflow::errors::FailedPrecondition(
+        "Not all operands are constants.");
+  }
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
+
+  arg_literals_.clear();
+  evaluated_.clear();
+
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
+  TF_RETURN_IF_ERROR(instruction->Visit(this));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
+  return GetEvaluatedLiteralFor(instruction).CloneToUnique();
+}
+
+std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
+    HloInstruction* instruction) {
+  auto result_or = Evaluate(instruction);
+  if (!result_or.ok()) {
+    VLOG(1) << "TryEvaluate failed:" << result_or.status();
+    return nullptr;
+  }
+
+  return result_or.ConsumeValueOrDie();
+}
+
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
+    const HloInstruction* instruction,
+    const std::unordered_map<const HloInstruction*, const Literal*>&
+        substitutions) {
+  std::vector<std::unique_ptr<HloInstruction>> owned_operands;
+  for (const HloInstruction* operand : instruction->operands()) {
+    auto it = substitutions.find(operand);
+    if (it == substitutions.end()) {
+      owned_operands.push_back(operand->Clone());
+    } else {
+      owned_operands.push_back(
+          HloInstruction::CreateConstant(it->second->CloneToUnique()));
+    }
+  }
+
+  std::vector<HloInstruction*> operands;
+  operands.reserve(owned_operands.size());
+  for (auto& operand : owned_operands) {
+    operands.push_back(operand.get());
+  }
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      instruction->CloneWithNewOperands(instruction->shape(), operands);
+  auto result = Evaluate(cloned_instruction.get());
+
+  // Clean up our cloned instructions before returning.
+  cloned_instruction->DetachFromOperands();
+  for (auto& operand : owned_operands) {
+    operand->DetachFromOperands();
+  }
+
+  return result;
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
-  VLOG(2) << "HandleParameter: " << parameter->ToString();
+  CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
-  VLOG(2) << "Parameter evaluated to: "
-          << LiteralUtil::ToString(*input_literal);
-  DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()));
+  VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
+  DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
+      << "parameter shape is: " << ShapeUtil::HumanString(parameter->shape())
+      << ", but input literal shape is: "
+      << ShapeUtil::HumanString(input_literal->shape());
 
-  evaluated_[parameter] = MakeUnique<Literal>(*input_literal);
+  evaluated_[parameter] = input_literal->CloneToUnique();
   return Status::OK();
 }
 
-Status HloEvaluator::HandleConstant(HloInstruction* constant,
-                                    const Literal& literal) {
-  VLOG(2) << "HandleConstant: " << constant->ToString();
-  DCHECK(ShapeUtil::Equal(constant->shape(), literal.shape()));
+Status HloEvaluator::HandleConstant(HloInstruction*) { return Status::OK(); }
 
-  evaluated_[constant] = MakeUnique<Literal>(literal);
+Status HloEvaluator::HandleReshape(HloInstruction* reshape) {
+  TF_ASSIGN_OR_RETURN(
+      evaluated_[reshape],
+      GetEvaluatedLiteralFor(reshape->operand(0))
+          .Reshape(AsInt64Slice(reshape->shape().dimensions())));
   return Status::OK();
 }
+
+Status HloEvaluator::HandleTranspose(HloInstruction* transpose) {
+  evaluated_[transpose] = GetEvaluatedLiteralFor(transpose->operand(0))
+                              .Transpose(transpose->dimensions());
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
+  ArraySlice<HloInstruction*> operands(concatenate->operands());
+  // The result concatenate dimension is going to be the sum of all
+  // concatenate dimensions of the operands taking part of the operation.
+  const Shape& reference_shape = operands[0]->shape();
+  CHECK(!ShapeUtil::IsTuple(reference_shape));
+  const int64 rank = ShapeUtil::Rank(reference_shape);
+  const int64 concat_dim = concatenate->dimensions()[0];
+  CHECK_GE(concat_dim, 0);
+  CHECK_LT(concat_dim, rank);
+
+  DimensionVector concat_dimensions(reference_shape.dimensions().begin(),
+                                    reference_shape.dimensions().end());
+
+  for (int64 i = 1; i < operands.size(); ++i) {
+    const Shape& operand_shape = operands[i]->shape();
+    CHECK(!ShapeUtil::IsTuple(operand_shape));
+    // Accumulate the concat dimension from all tensors taking part to the
+    // operation.
+    concat_dimensions[concat_dim] +=
+        ShapeUtil::GetDimension(operand_shape, concat_dim);
+  }
+
+  auto result_literal = Literal::CreateFromDimensions(
+      reference_shape.element_type(), concat_dimensions);
+  DimensionVector source_indices(rank, 0);
+  DimensionVector dest_indices(concat_dimensions.size(), 0);
+
+  for (auto operand : operands) {
+    const Shape& operand_shape = operand->shape();
+    TF_RETURN_IF_ERROR(result_literal->CopySliceFrom(
+        GetEvaluatedLiteralFor(operand), source_indices, dest_indices,
+        AsInt64Slice(operand_shape.dimensions())));
+    dest_indices[concat_dim] +=
+        ShapeUtil::GetDimension(operand_shape, concat_dim);
+  }
+
+  evaluated_[concatenate] = std::move(result_literal);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
+  auto operand = is_finite->operand(0);
+  if (!ShapeUtil::ElementIsFloating(operand->shape())) {
+    return InvalidArgument(
+        "expected element type in shape to be float for IsFinite op, got: %s",
+        PrimitiveType_Name(operand->shape().element_type()).c_str());
+  }
+
+  switch (operand->shape().element_type()) {
+    case F16:
+      return Unimplemented("unhandled primitive type: F16.");
+    case F32: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, float>(
+          is_finite,
+          [](float elem_operand) { return std::isfinite(elem_operand); },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case F64: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, double>(
+          is_finite,
+          [](double elem_operand) { return std::isfinite(elem_operand); },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleIsFinite: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(operand->shape().element_type());
+  }
+
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCompare(HloInstruction* compare) {
+  HloOpcode opcode = compare->opcode();
+  auto lhs = compare->operand(0);
+  auto rhs = compare->operand(1);
+  // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
+  // removed.
+  if (!(ShapeUtil::SameDimensions(compare->shape(), rhs->shape()) &&
+        ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
+    return Unimplemented(
+        "Implicit broadcasting is currently unsupported in HLO evaluator "
+        "Shape Mismatch: %s vs %s vs %s",
+        ShapeUtil::HumanString(compare->shape()).c_str(),
+        ShapeUtil::HumanString(lhs->shape()).c_str(),
+        ShapeUtil::HumanString(rhs->shape()).c_str());
+  }
+
+  TF_RET_CHECK(lhs->shape().element_type() == rhs->shape().element_type());
+
+  const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
+  const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
+
+  // Note here we switch on the operand's type.
+  switch (lhs->shape().element_type()) {
+    case PRED: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<bool>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case U8: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<uint8>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case U16:
+      return Unimplemented("unhandled primitive type: U16.");
+    case U32: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<uint32>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case U64: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<uint64>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case S8: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<int8>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case S16:
+      return Unimplemented("unhandled primitive type: S16.");
+    case S32: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<int32>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case S64: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<int64>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case F16:
+      return Unimplemented("unhandled primitive type: F16.");
+    case BF16: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<bfloat16>(compare->shape(), opcode,
+                                            lhs_literal, rhs_literal));
+    } break;
+    case F32: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<float>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case F64: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<double>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case C64: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<complex64>(compare->shape(), opcode,
+                                             lhs_literal, rhs_literal));
+    } break;
+    default:
+      LOG(FATAL) << "HandleCompare: unknown primitive type: "
+                 << PrimitiveType_Name(lhs->shape().element_type());
+  }
+
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
+  std::vector<const Literal*> operand_literals;
+  for (auto operand : tuple->operands()) {
+    operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+  }
+
+  evaluated_[tuple] = Literal::MakeTuple(operand_literals);
+  return Status::OK();
+}
+
+// Returns an ShapeUtil::IndexIterationSpace that iterates over the output
+// gather dimensions while keeping the rest of the output dimensions clamped to
+// 0.
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputGatherIndices(
+    const Shape& output_shape, const GatherDimensionNumbers& dim_numbers) {
+  int64 output_rank = output_shape.dimensions_size();
+  std::vector<int64> index_base(output_rank, 0);
+  std::vector<int64> index_count;
+  index_count.reserve(output_rank);
+  for (int64 i = 0; i < output_rank; i++) {
+    bool is_output_gather_dim =
+        !c_binary_search(dim_numbers.output_window_dims(), i);
+    index_count.push_back(is_output_gather_dim ? output_shape.dimensions(i)
+                                               : 1);
+  }
+
+  return {std::move(index_base), std::move(index_count),
+          std::vector<int64>(output_rank, 1)};
+}
+
+// Return an ShapeUtil::IndexIterationSpace that iterates over the output window
+// dimensions while keeping the rest of the output dimensions clamped to 0.
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputWindowIndices(
+    int64 output_rank, ArraySlice<int64> window_bounds,
+    const GatherDimensionNumbers& dim_numbers) {
+  std::vector<int64> index_base(output_rank, 0);
+  std::vector<int64> index_count(output_rank, 1);
+  int64 window_bounds_idx = 0;
+  for (int64 i = 0; i < output_rank; i++) {
+    bool is_output_window_dim =
+        c_binary_search(dim_numbers.output_window_dims(), i);
+    if (is_output_window_dim) {
+      while (c_binary_search(dim_numbers.elided_window_dims(),
+                             window_bounds_idx)) {
+        window_bounds_idx++;
+      }
+      index_count[i] = window_bounds[window_bounds_idx++];
+    }
+  }
+
+  return {std::move(index_base), std::move(index_count),
+          std::vector<int64>(output_rank, 1)};
+}
+
+// This functor computes the contribution of gather_indices to an input index
+// corresponding to an output index.  That is, given an output index I, it picks
+// out the gather output indices in I and uses them to look up a gather index,
+// G, from the gather indices tensor, and expands G into the input space
+// according to gather_dims_to_operand_dims.
+class OutputGatherIndexToInputIndex {
+ public:
+  // The constructor does some setup work that is amortized across all
+  // iterations.
+  explicit OutputGatherIndexToInputIndex(
+      const GatherDimensionNumbers* dim_numbers, const Shape& input_shape,
+      const Shape& output_shape, const Literal* gather_indices)
+      : dim_numbers_(*dim_numbers), gather_indices_(*gather_indices) {
+    for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
+      output_dim_is_gather_dims_.push_back(
+          !c_binary_search(dim_numbers_.output_window_dims(), i));
+    }
+
+    for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
+      int64 index_of_input_dim_in_index_vector =
+          std::distance(dim_numbers_.gather_dims_to_operand_dims().begin(),
+                        c_find(dim_numbers_.gather_dims_to_operand_dims(), i));
+      if (index_of_input_dim_in_index_vector ==
+          dim_numbers_.gather_dims_to_operand_dims_size()) {
+        input_dim_value_to_index_vector_.push_back(-1);
+      } else {
+        input_dim_value_to_index_vector_.push_back(
+            index_of_input_dim_in_index_vector);
+      }
+    }
+
+    index_vector_index_.resize(gather_indices_.shape().dimensions_size());
+    input_index_.resize(input_shape.dimensions_size());
+    int64 index_vector_size =
+        gather_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
+    index_vector_.resize(index_vector_size);
+  }
+
+  // Returns the contribution of gather_indices to the input index corresponding
+  // to output_index.  See gather_inner_loop_body.
+  //
+  // This is conceptually  a stateless transformation from output_index to the
+  // gather input index, but:
+  //
+  //  - Instead of allocating memory to represent the gather input index on
+  //    every invocation we reuse the same storage for the result
+  //    (input_index_), mutating it in place.
+  //  - Instead of allocating buffers for temporary values like
+  //    index_vector_index_ and index_vector on every invocation, we reuse the
+  //    same storage for all invocations.
+  //
+  // This returns an arrayslice into memory owned by the class.
+  StatusOr<ArraySlice<int64>> operator()(ArraySlice<int64> output_index) {
+    PropagateOutputIndexGatherDimsToIndexVectorIndex(output_index);
+    TF_RETURN_IF_ERROR(FetchIndexVector());
+    PropagateIndexVectorToInputIndex();
+    return ArraySlice<int64>(input_index_);
+  }
+
+ private:
+  // Propagates the gather index dimensions from the output index into
+  // index_vector_index_ by mutating index_vector_index_ in place.  Does not
+  // update the dim_numbers.index_vector_dim() dimension -- that's the dimension
+  // we iterate over in FetchIndexVector.
+  void PropagateOutputIndexGatherDimsToIndexVectorIndex(
+      ArraySlice<int64> output_index) {
+    int64 index_vector_index_i = 0;
+    for (int64 i = 0, e = output_index.size(); i < e; i++) {
+      if (!output_dim_is_gather_dims_[i]) {
+        continue;
+      }
+
+      if (index_vector_index_i == dim_numbers_.index_vector_dim()) {
+        index_vector_index_i++;
+      }
+
+      index_vector_index_[index_vector_index_i++] = output_index[i];
+    }
+  }
+
+  // Populates index_vector_ by iterating over gather_indices_ according to
+  // index_vector_index_.
+  Status FetchIndexVector() {
+    int64 index_vector_dim = dim_numbers_.index_vector_dim();
+    for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
+      index_vector_index_[index_vector_dim] = i;
+      TF_ASSIGN_OR_RETURN(index_vector_[i], gather_indices_.GetIntegralAsS64(
+                                                index_vector_index_));
+    }
+    return Status::OK();
+  }
+
+  // Populates input_index_.
+  void PropagateIndexVectorToInputIndex() {
+    for (int64 i = 0, e = input_index_.size(); i < e; i++) {
+      if (input_dim_value_to_index_vector_[i] != -1) {
+        input_index_[i] = index_vector_[input_dim_value_to_index_vector_[i]];
+      }
+
+      // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
+      // remains 0, as set by the constructor.
+    }
+  }
+
+  // input_dim_value_to_index_vector_[i] tells us how to compute dimension i of
+  // the input index from the index vector.  See
+  // PropagateIndexVectorToInputIndex.
+  std::vector<int64> input_dim_value_to_index_vector_;
+
+  // output_dim_is_gather_dims_[i] is true iff the output index i is a gather
+  // dimension.
+  std::vector<bool> output_dim_is_gather_dims_;
+
+  // The buffer into which we construct an index into gather_indices_ to fetch
+  // the index vector.
+  std::vector<int64> index_vector_index_;
+
+  // The index vector fetched from gather_indices_.
+  std::vector<int64> index_vector_;
+
+  // The result computed by this functor.  operator() returns an ArraySlice into
+  // this vector.
+  std::vector<int64> input_index_;
+
+  const GatherDimensionNumbers& dim_numbers_;
+  const Literal& gather_indices_;
+};
+
+// This functor computes the contribution of the window indices in an output
+// index to an input index.  That is, given an output index I it picks out the
+// output window indices in I and expands it into a window index into the input
+// shape.
+class OutputWindowIndexToInputIndex {
+ public:
+  // The constructor does some setup work that is amortized across all
+  // iterations.
+  explicit OutputWindowIndexToInputIndex(
+      const GatherDimensionNumbers& dim_numbers, const Shape& input_shape,
+      const Shape& output_shape) {
+    std::vector<int64> window_index_to_output_index;
+    int64 output_index_count = 0;
+    for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
+      if (c_binary_search(dim_numbers.output_window_dims(), i)) {
+        window_index_to_output_index.push_back(output_index_count++);
+      } else {
+        output_index_count++;
+      }
+    }
+
+    int64 window_dim_count = 0;
+    for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
+      if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
+        input_dim_value_to_output_index_.push_back(-1);
+      } else {
+        input_dim_value_to_output_index_.push_back(
+            window_index_to_output_index[window_dim_count++]);
+      }
+    }
+
+    input_index_.resize(input_shape.dimensions_size());
+  }
+
+  // Returns the contribution of the window indices to the input index
+  // corresponding to output_index.  See gather_inner_loop_body.
+  //
+  // This is conceptually a stateless transformation from output_index to the
+  // window input index, but instead of allocating memory to represent the
+  // gather input index on every invocation we reuse the same storage for the
+  // result (input_index_), mutating it in place.
+  //
+  // This returns an arrayslice into memory owned by the class.
+  StatusOr<ArraySlice<int64>> operator()(ArraySlice<int64> output_index) {
+    PropagateOutputIndexWindowDimsToInputIndex(output_index);
+    return ArraySlice<int64>(input_index_);
+  }
+
+ private:
+  // Propagates window dimensions from the output index to input_index_ by
+  // mutating input_index_ in place.
+  void PropagateOutputIndexWindowDimsToInputIndex(
+      ArraySlice<int64> output_index) {
+    for (int64 i = 0, e = input_index_.size(); i < e; i++) {
+      if (input_dim_value_to_output_index_[i] != -1) {
+        input_index_[i] = output_index[input_dim_value_to_output_index_[i]];
+      }
+
+      // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
+      // remains 0, as set by the constructor.
+    }
+  }
+
+  // input_dim_value_to_index_vector_[i] tells us how to compute dimension i of
+  // the input index from the output index. See
+  // PropagateOutputIndexToInputIndex.
+  std::vector<int64> input_dim_value_to_output_index_;
+
+  // The result computed by this functor.  operator() returns an ArraySlice into
+  // this vector.
+  std::vector<int64> input_index_;
+};
+
+// Rehapes the gather indices input to have a trailing degenerate `1` dimension
+// if necessary.  Hands over the ownership of the newly created literal (if
+// there is one) to `reshaped_gather_indices`.
+static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
+    int64 index_vector_dim, const Literal& gather_indices,
+    std::unique_ptr<Literal>* reshaped_gather_indices) {
+  if (gather_indices.shape().dimensions_size() != index_vector_dim) {
+    return std::cref(gather_indices);
+  }
+
+  std::vector<int64> new_shape(gather_indices.shape().dimensions().begin(),
+                               gather_indices.shape().dimensions().end());
+  new_shape.push_back(1);
+  TF_ASSIGN_OR_RETURN(*reshaped_gather_indices,
+                      gather_indices.Reshape(new_shape));
+  return std::cref(**reshaped_gather_indices);
+}
+
+Status HloEvaluator::HandleGather(HloInstruction* gather) {
+  std::unique_ptr<Literal> result = Literal::CreateFromShape(gather->shape());
+  const Shape& shape = gather->shape();
+  const GatherDimensionNumbers& dim_numbers =
+      gather->gather_dimension_numbers();
+  const Literal& operand = GetEvaluatedLiteralFor(gather->operand(0));
+  std::unique_ptr<Literal> reshaped_gather_indices;
+  TF_ASSIGN_OR_RETURN(
+      const Literal& gather_indices,
+      ReshapedGatherIndices(dim_numbers.index_vector_dim(),
+                            GetEvaluatedLiteralFor(gather->operand(1)),
+                            &reshaped_gather_indices));
+
+  // We iterate over the gather dimensions in the output shape in an outer loop
+  // nest, and iterate over the window dimensions in the output shape in an
+  // inner loop nest.
+
+  ShapeUtil::IndexIterationSpace gather_indices_iteration_space =
+      IterationSpaceForOutputGatherIndices(shape, dim_numbers);
+  ShapeUtil::IndexIterationSpace window_indices_iteration_space =
+      IterationSpaceForOutputWindowIndices(
+          shape.dimensions_size(), gather->gather_window_bounds(), dim_numbers);
+
+  // Scratch buffers that hold an index in the output shape and the
+  // corresponding index in the input shape.
+  std::vector<int64> input_index(operand.shape().dimensions_size());
+  std::vector<int64> output_index(gather->shape().dimensions_size());
+
+  OutputGatherIndexToInputIndex output_gather_index_to_input_index(
+      &gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
+      /*output_shape=*/shape, &gather_indices);
+  OutputWindowIndexToInputIndex output_window_index_to_input_index(
+      gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
+      /*output_shape=*/shape);
+
+  const Shape& operand_shape = operand.shape();
+
+  auto gather_inner_loop_body =
+      [&](ArraySlice<int64> output_window_index,
+          ArraySlice<int64> input_gather_index,
+          ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(
+        ArraySlice<int64> input_window_index,
+        output_window_index_to_input_index(output_window_index));
+    for (int i = 0, e = output_index.size(); i < e; i++) {
+      output_index[i] = output_gather_index[i] + output_window_index[i];
+      DCHECK_LT(output_index[i], shape.dimensions(i));
+    }
+    for (int i = 0, e = input_index.size(); i < e; i++) {
+      // TODO(b/74360564): We should implement whatever out of bounds behavior
+      // we decide for dynamic-slice here as well.
+      input_index[i] = (input_gather_index[i] + input_window_index[i]) %
+                       operand_shape.dimensions(i);
+      if (input_index[i] < 0) {
+        input_index[i] += operand_shape.dimensions(i);
+      }
+    }
+    TF_RETURN_IF_ERROR(
+        result->CopyElementFrom(operand, input_index, output_index));
+    return true;
+  };
+
+  auto gather_outer_loop_body =
+      [&](ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(
+        ArraySlice<int64> input_gather_index,
+        output_gather_index_to_input_index(output_gather_index));
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+        shape, window_indices_iteration_space,
+        std::bind(gather_inner_loop_body, std::placeholders::_1,
+                  input_gather_index, output_gather_index)));
+    return true;
+  };
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      shape, gather_indices_iteration_space, gather_outer_loop_body));
+  evaluated_[gather] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
+  const auto result_shape = get_tuple_element->shape();
+  const int64 index = get_tuple_element->tuple_index();
+
+  auto operand = get_tuple_element->operand(0);
+  TF_ASSIGN_OR_RETURN(
+      auto inferred_return_shape,
+      ShapeInference::InferGetTupleElementShape(operand->shape(), index));
+  TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+      << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+      << " but is inferred to be: "
+      << ShapeUtil::HumanString(inferred_return_shape);
+
+  const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
+
+  evaluated_[get_tuple_element] = MakeUnique<Literal>(
+      ShapeUtil::GetTupleElementShape(operand->shape(), index));
+  return evaluated_[get_tuple_element]->CopyFrom(operand_tuple_literal,
+                                                 /*dest_shape_index=*/{},
+                                                 /*src_shape_index=*/{index});
+}
+
+Status HloEvaluator::HandleCopy(HloInstruction* copy) {
+  TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
+
+  auto result = GetEvaluatedLiteralFor(copy->operand(0)).CloneToUnique();
+  evaluated_[copy] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCall(HloInstruction* call) {
+  auto* computation = call->to_apply();
+  auto operands = call->operands();
+
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(operands.size());
+  for (auto operand : operands) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result =
+      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals)
+          .ConsumeValueOrDie();
+
+  evaluated_[call] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
+  HloModuleConfig config;
+  // Attach cloned computation to an empty HLO module so the existing ones are
+  // not modified.
+  HloModule empty_hlo_module("EmptyModuleForFusion", config);
+  auto cloned_fused_computation =
+      fusion->fused_instructions_computation()->Clone(
+          /*suffix=*/"clone_with_layout", &empty_hlo_module);
+  for (auto* instruction : cloned_fused_computation->instructions()) {
+    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+  }
+  auto readded_computation =
+      empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
+
+  auto operands = fusion->operands();
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(operands.size());
+  for (auto operand : operands) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result =
+      embedded_evaluator
+          .Evaluate<const Literal*>(*readded_computation, arg_literals)
+          .ConsumeValueOrDie();
+
+  evaluated_[fusion] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
+  const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
+  const auto& true_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(1));
+  const auto& false_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(2));
+
+  auto* true_computation = conditional->true_computation();
+  auto* false_computation = conditional->false_computation();
+
+  auto result = Literal::CreateFromShape(conditional->shape());
+  HloEvaluator embedded_evaluator;
+  if (pred.Get<bool>({})) {
+    result = embedded_evaluator
+                 .Evaluate<const Literal*>(*true_computation,
+                                           {&true_computation_arg})
+                 .ConsumeValueOrDie();
+  } else {
+    result = embedded_evaluator
+                 .Evaluate<const Literal*>(*false_computation,
+                                           {&false_computation_arg})
+                 .ConsumeValueOrDie();
+  }
+
+  evaluated_[conditional] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleSelect(HloInstruction* select) {
+  const auto& pred = GetEvaluatedLiteralFor(select->operand(0));
+  const auto& on_true = GetEvaluatedLiteralFor(select->operand(1));
+  const auto& on_false = GetEvaluatedLiteralFor(select->operand(2));
+
+  // If predicate is of scalar type, no element-wise selection would be needed.
+  // This would also handle output array of tuple types as the DefaultAction
+  // would go through the HloEvaluatorTypedVisitor which doesn't handle tuples.
+  if (ShapeUtil::IsScalar(pred.shape())) {
+    if (pred.Get<bool>({})) {
+      evaluated_[select] = on_true.CloneToUnique();
+    } else {
+      evaluated_[select] = on_false.CloneToUnique();
+    }
+    return Status::OK();
+  }
+
+  return DefaultAction(select);
+}
+
+Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
+  HloComputation* cond_comp = while_hlo->while_condition();
+  HloComputation* body_comp = while_hlo->while_body();
+  // Initialize the loop carried valued with the input to the While instruction.
+  auto lcv = GetEvaluatedLiteralFor(while_hlo->operand(0)).CloneToUnique();
+  bool keep_going = true;
+  int64 iteration_count = 0;
+  HloEvaluator cond_evaluator(max_loop_iterations_);
+  HloEvaluator loop_body_evaluator(max_loop_iterations_);
+  while (keep_going) {
+    if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
+      return InvalidArgument("Loop %s exceeded loop iteration limit (%lld).",
+                             while_hlo->name().c_str(), max_loop_iterations_);
+    }
+    TF_ASSIGN_OR_RETURN(auto cond_val, cond_evaluator.Evaluate<Literal*>(
+                                           *cond_comp, {lcv.get()}));
+    keep_going = cond_val->GetFirstElement<bool>();
+    if (keep_going) {
+      TF_ASSIGN_OR_RETURN(auto body_val, loop_body_evaluator.Evaluate<Literal*>(
+                                             *body_comp, {lcv.get()}));
+      VLOG(3) << "Loop iteration result: " << body_val->ToString();
+      lcv = std::move(body_val);
+      cond_evaluator.ResetVisitStates();
+      loop_body_evaluator.ResetVisitStates();
+    }
+  }
+  evaluated_[while_hlo] = std::move(lcv);
+  return Status::OK();
+}
+
+Status HloEvaluator::Preprocess(HloInstruction* hlo) {
+  VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  return Status::OK();
+}
+
+Status HloEvaluator::Postprocess(HloInstruction* hlo) {
+  VLOG(2) << "Finished visiting " << hlo->ToString()
+          << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
+  return Status::OK();
+}
+
+// Explicit instantiation of templatized Evaluate* methods.
+//
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<const Literal*>(const HloModule& module,
+                                       ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
+    const HloModule& module, ArraySlice<std::unique_ptr<Literal>> arg_literals);
+
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<const Literal*>(const HloComputation& computation,
+                                       ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
+    const HloComputation& computation,
+    ArraySlice<std::unique_ptr<Literal>> arg_literals);
+
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<const Literal*>(HloInstruction* instruction,
+                                       ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
+    HloInstruction* instruction,
+    ArraySlice<std::unique_ptr<Literal>> arg_literals);
 
 }  // namespace xla

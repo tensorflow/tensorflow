@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -101,7 +102,7 @@ void ConcurrentSteps(const Options* opts, int session_index) {
   std::unique_ptr<Session> session(NewSession(options));
   GraphDef def = CreateGraphDef();
   if (options.target.empty()) {
-    graph::SetDefaultDevice(opts->use_gpu ? "/gpu:0" : "/cpu:0", &def);
+    graph::SetDefaultDevice(opts->use_gpu ? "/device:GPU:0" : "/cpu:0", &def);
   }
 
   TF_CHECK_OK(session->Create(def));
@@ -166,7 +167,8 @@ namespace {
 
 bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     int32* dst) {
-  if (arg.Consume(flag) && arg.Consume("=")) {
+  if (tensorflow::str_util::ConsumePrefix(&arg, flag) &&
+      tensorflow::str_util::ConsumePrefix(&arg, "=")) {
     char extra;
     return (sscanf(arg.data(), "%d%c", dst, &extra) == 1);
   }
@@ -176,7 +178,7 @@ bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
 
 bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                    bool* dst) {
-  if (arg.Consume(flag)) {
+  if (tensorflow::str_util::ConsumePrefix(&arg, flag)) {
     if (arg.empty()) {
       *dst = true;
       return true;

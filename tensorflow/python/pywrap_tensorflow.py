@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""pywrap_tensorflow wrapper that exports all symbols with RTLD_GLOBAL."""
+"""A wrapper for TensorFlow SWIG-generated bindings."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,27 +22,49 @@ import ctypes
 import sys
 import traceback
 
+from tensorflow.python.platform import self_check
+
+
+# Perform pre-load sanity checks in order to produce a more actionable error
+# than we get from an error during SWIG import.
+self_check.preload_check()
+
 # pylint: disable=wildcard-import,g-import-not-at-top,unused-import,line-too-long
 
-# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
-# python library that dynamically loads _pywrap_tensorflow.so. The
-# default mode for loading keeps all the symbol private and not
-# visible to other libraries that may be loaded. Setting the mode to
-# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
-# imported using `tf.load_op_library()` can access symbols defined in
-# _pywrap_tensorflow.so.
 try:
-  # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
-  # use `dlopen()` for dynamic loading.
-  _use_rtld_global = hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags')
-  if _use_rtld_global:
-    _default_dlopen_flags = sys.getdlopenflags()
-    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
+  # This import is expected to fail if there is an explicit shared object
+  # dependency (with_framework_lib=true), since we do not need RTLD_GLOBAL.
+  from tensorflow.python import pywrap_dlopen_global_flags
+  _use_dlopen_global_flags = True
+except ImportError:
+  _use_dlopen_global_flags = False
+
+# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
+# python library that dynamically loads _pywrap_tensorflow.so.
+_can_set_rtld_local = (hasattr(sys, 'getdlopenflags')
+                       and hasattr(sys, 'setdlopenflags'))
+if _can_set_rtld_local:
+  _default_dlopen_flags = sys.getdlopenflags()
+
+try:
+  if _use_dlopen_global_flags:
+    pywrap_dlopen_global_flags.set_dlopen_flags()
+  elif _can_set_rtld_local:
+    # Ensure RTLD_LOCAL behavior for platforms where it isn't the default
+    # (macOS). On Linux RTLD_LOCAL is 0, so this does nothing (and would not
+    # override an RTLD_GLOBAL in _default_dlopen_flags).
+    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_LOCAL)
+
   from tensorflow.python.pywrap_tensorflow_internal import *
   from tensorflow.python.pywrap_tensorflow_internal import __version__
   from tensorflow.python.pywrap_tensorflow_internal import __git_version__
   from tensorflow.python.pywrap_tensorflow_internal import __compiler_version__
-  if _use_rtld_global:
+  from tensorflow.python.pywrap_tensorflow_internal import __cxx11_abi_flag__
+  from tensorflow.python.pywrap_tensorflow_internal import __monolithic_build__
+
+  if _use_dlopen_global_flags:
+    pywrap_dlopen_global_flags.reset_dlopen_flags()
+  elif _can_set_rtld_local:
     sys.setdlopenflags(_default_dlopen_flags)
 except ImportError:
   msg = """%s\n\nFailed to load the native TensorFlow runtime.\n

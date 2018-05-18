@@ -113,4 +113,18 @@ BM_Matmul(1, 2000, 2000, true, false);
 BM_Matmul(1, 2000, 2000, false, true);
 BM_Matmul(1, 2000, 2000, true, true);
 
+// Test some rank-one products.
+BM_Matmul(50, 1, 50, false, false);
+BM_Matmul(50, 1, 50, true, false);
+BM_Matmul(50, 1, 50, false, true);
+BM_Matmul(50, 1, 50, true, true);
+BM_Matmul(500, 1, 500, false, false);
+BM_Matmul(500, 1, 500, true, false);
+BM_Matmul(500, 1, 500, false, true);
+BM_Matmul(500, 1, 500, true, true);
+BM_Matmul(2000, 1, 2000, false, false);
+BM_Matmul(2000, 1, 2000, true, false);
+BM_Matmul(2000, 1, 2000, false, true);
+BM_Matmul(2000, 1, 2000, true, true);
+
 }  // end namespace tensorflow

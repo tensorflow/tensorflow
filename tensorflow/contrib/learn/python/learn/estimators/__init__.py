@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""An estimator is a rule for calculating an estimate of a given quantity.
+"""An estimator is a rule for calculating an estimate of a given quantity (deprecated).
+
+These classes are deprecated and replaced with `tf.estimator`.
+
+See [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 # Estimators
 
@@ -303,11 +308,13 @@ from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import
 from tensorflow.contrib.learn.python.learn.estimators.dynamic_rnn_estimator import DynamicRnnEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
+from tensorflow.contrib.learn.python.learn.estimators.estimator import GraphRewriteSpec
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
 from tensorflow.contrib.learn.python.learn.estimators.estimator import SKCompat
 from tensorflow.contrib.learn.python.learn.estimators.head import binary_svm_head
 from tensorflow.contrib.learn.python.learn.estimators.head import Head
+from tensorflow.contrib.learn.python.learn.estimators.head import loss_only_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_class_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_label_head

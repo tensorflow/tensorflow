@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -81,6 +80,17 @@ string Lowercase(StringPiece s);
 // Return upper-cased version of s.
 string Uppercase(StringPiece s);
 
+// Converts "^2ILoveYou!" to "i_love_you_". More specifically:
+// - converts all non-alphanumeric characters to underscores
+// - replaces each occurrence of a capital letter (except the very
+//   first character and if there is already an '_' before it) with '_'
+//   followed by this letter in lower case
+// - Skips leading non-alpha characters
+// This method is useful for producing strings matching "[a-z][a-z0-9_]*"
+// as required by OpDef.ArgDef.name. The resulting string is either empty or
+// matches this regex.
+string ArgDefCase(StringPiece s);
+
 // Capitalize first character of each word in "*s".  "delimiters" is a
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
@@ -129,6 +139,21 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int64>* result);
 bool SplitAndParseAsFloats(StringPiece text, char delim,
                            std::vector<float>* result);
+
+// StartsWith()
+//
+// Returns whether a given string `text` begins with `prefix`.
+bool StartsWith(StringPiece text, StringPiece prefix);
+
+// EndsWith()
+//
+// Returns whether a given string `text` ends with `suffix`.
+bool EndsWith(StringPiece text, StringPiece suffix);
+
+// StrContains()
+//
+// Returns whether a given string `haystack` contains the substring `needle`.
+bool StrContains(StringPiece haystack, StringPiece needle);
 
 // ------------------------------------------------------------------
 // Implementation details below
@@ -180,7 +205,7 @@ std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
       if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
-          result.push_back(token.ToString());
+          result.push_back(std::string(token));
         }
         token_start = i + 1;
       }
@@ -197,6 +222,11 @@ template <typename Predicate>
 std::vector<string> Split(StringPiece text, char delims, Predicate p) {
   return Split(text, StringPiece(&delims, 1), p);
 }
+
+// Returns the length of the given null-terminated byte string 'str'.
+// Returns 'string_max_len' if the null character was not found in the first
+// 'string_max_len' bytes of 'str'.
+size_t Strnlen(const char* str, const size_t string_max_len);
 
 }  // namespace str_util
 }  // namespace tensorflow

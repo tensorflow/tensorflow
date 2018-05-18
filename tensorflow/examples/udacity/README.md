@@ -43,15 +43,15 @@ In addition, you may need to pass `--memory=8g` as an extra argument to
 `docker-machine` is a tool to provision and manage docker hosts, it supports multiple platform (ex. aws, gce, azure, virtualbox, ...). To create a new virtual machine locally with built-in docker engine, you can use
 
     docker-machine create -d virtualbox --virtualbox-memory 8196 tensorflow
-    
+
 `-d` means the driver for the cloud platform, supported drivers listed [here](https://docs.docker.com/machine/drivers/). Here we use virtualbox to create a new virtual machine locally. `tensorflow` means the name of the virtual machine, feel free to use whatever you like. You can use
 
     docker-machine ip tensorflow
-    
+
 to get the ip of the new virtual machine. To switch from default virtual machine to a new one (here we use tensorflow), type
 
     eval $(docker-machine env tensorflow)
-    
+
 Note that `docker-machine env tensorflow` outputs some environment variables such like `DOCKER_HOST`. Then your docker client is now connected to the docker host in virtual machine `tensorflow`
 
 * **I'm getting a TLS connection error.**

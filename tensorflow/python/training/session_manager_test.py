@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -448,8 +449,8 @@ class SessionManagerTest(test.TestCase):
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=None,
           local_init_op=w.initializer)
-    with self.assertRaisesRegexp(errors_impl.FailedPreconditionError,
-                                 "Attempting to use uninitialized value v"):
+    with self.assertRaisesRegexp(errors_impl.DeadlineExceededError,
+                                 "Session was not ready after waiting.*"):
       sm.wait_for_session("", max_wait_secs=3)
 
   def testPrepareSessionWithReadyForLocalInitOp(self):
@@ -460,14 +461,20 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
+      x = variables.Variable(
+          3 * v,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="x")
       with self.test_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variables.is_variable_initialized(x).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=variables.report_uninitialized_variables(
               variables.global_variables()),
-          local_init_op=w.initializer)
+          local_init_op=[w.initializer, x.initializer])
       sess = sm2.prepare_session("", init_op=v.initializer)
       self.assertEqual(
           True,
@@ -477,8 +484,97 @@ class SessionManagerTest(test.TestCase):
           True,
           variables.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
+      self.assertEqual(
+          True,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("x:0")).eval(session=sess))
       self.assertEquals(1, sess.run(v))
       self.assertEquals(1, sess.run(w))
+      self.assertEquals(3, sess.run(x))
+
+  def testPrepareSessionWithPartialInitOp(self):
+    with ops.Graph().as_default():
+      v = variables.Variable(1, name="v")
+      w = variables.Variable(
+          v,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="w")
+      x = variables.Variable(
+          3 * v,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="x")
+      # TODO(b/70206927): Use ResourceVariables once they are handled properly.
+      v_res = variables.Variable(1, name="v_res")
+      w_res = variables.Variable(
+          v_res,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="w_res")
+      x_res = variables.Variable(
+          3 * v_res,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="x_res")
+
+      with self.test_session():
+        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variables.is_variable_initialized(x).eval())
+        self.assertEqual(False, variables.is_variable_initialized(v_res).eval())
+        self.assertEqual(False, variables.is_variable_initialized(w_res).eval())
+        self.assertEqual(False, variables.is_variable_initialized(x_res).eval())
+      sm2 = session_manager.SessionManager(local_init_op=[
+          w.initializer, x.initializer, w_res.initializer, x_res.initializer
+      ])
+      sess = sm2.prepare_session("", init_op=None)
+      self.assertEqual(
+          False,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
+      self.assertEqual(
+          True,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
+      self.assertEqual(
+          True,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("x:0")).eval(session=sess))
+      self.assertEquals(1, sess.run(w))
+      self.assertEquals(3, sess.run(x))
+      self.assertEqual(
+          False,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("v_res:0")).eval(session=sess))
+      self.assertEqual(
+          True,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("w_res:0")).eval(session=sess))
+      self.assertEqual(
+          True,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("x_res:0")).eval(session=sess))
+      self.assertEquals(1, sess.run(w_res))
+      self.assertEquals(3, sess.run(x_res))
+
+  def testPrepareSessionWithCyclicInitializer(self):
+    # Regression test. Previously Variable._build_initializer_expr would enter
+    # into an infinite recursion when the variable's initial_value involved
+    # cyclic dependencies.
+    with ops.Graph().as_default():
+      i = control_flow_ops.while_loop(lambda i: i < 1, lambda i: i + 1, [0])
+      v = variables.Variable(array_ops.identity(i), name="v")
+      with self.test_session():
+        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+      sm = session_manager.SessionManager(
+          ready_op=variables.report_uninitialized_variables())
+      sess = sm.prepare_session("", init_op=v.initializer)
+      self.assertEqual(1, sess.run(v))
+      self.assertEqual(
+          True,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
 
   def testPrepareSessionDidNotInitLocalVariable(self):
     with ops.Graph().as_default():
@@ -493,8 +589,8 @@ class SessionManagerTest(test.TestCase):
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "Init operations did not make model ready"):
+      with self.assertRaisesRegexp(
+          RuntimeError, "Init operations did not make model ready.*"):
         sm2.prepare_session("", init_op=v.initializer)
 
   def testPrepareSessionDidNotInitLocalVariableList(self):
@@ -550,8 +646,8 @@ class SessionManagerTest(test.TestCase):
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=None,
           local_init_op=w.initializer)
-    with self.assertRaisesRegexp(errors_impl.FailedPreconditionError,
-                                 "Attempting to use uninitialized value v"):
+    with self.assertRaisesRegexp(RuntimeError,
+                                 "Init operations did not make model ready.*"):
       sm2.prepare_session("", init_op=None)
 
 

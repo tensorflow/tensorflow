@@ -74,10 +74,13 @@ bool IsInitializationOp(const Node* node) {
 // Returns true iff the node is a transfer node.
 // TODO(tucker): merge with the DetailText function in session.cc
 // in a common location.
-bool SetTimelineLabel(const Node* node, NodeExecStats* node_stats) {
+bool SetTimelineLabel(const Node* node, NodeExecStatsWrapper* stats) {
   bool is_transfer_node = false;
+  if (!stats) {
+    return is_transfer_node;
+  }
   string memory;
-  for (auto& all : node_stats->memory()) {
+  for (auto& all : stats->stats()->memory()) {
     int64 tot = all.total_bytes();
     if (tot >= 0.1 * 1048576.0) {
       int64 peak = all.peak_bytes();
@@ -115,7 +118,7 @@ bool SetTimelineLabel(const Node* node, NodeExecStats* node_stats) {
         strings::StrCat(memory, node->name(), " = ", node->type_string(), "(",
                         str_util::Join(node->requested_inputs(), ", "), ")");
   }
-  node_stats->set_timeline_label(text);
+  stats->stats()->set_timeline_label(text);
   return is_transfer_node;
 }
 
@@ -123,66 +126,67 @@ bool SetTimelineLabel(const Node* node, NodeExecStats* node_stats) {
 namespace nodestats {
 inline int64 NowInUsec() { return Env::Default()->NowMicros(); }
 
-void SetScheduled(NodeExecStats* nt, int64 t) { nt->set_scheduled_micros(t); }
+void SetScheduled(NodeExecStatsWrapper* stats, int64 t) {
+  if (!stats) return;
+  stats->stats()->set_scheduled_micros(t);
+}
 
-void SetAllStart(NodeExecStats* nt) { nt->set_all_start_micros(NowInUsec()); }
+void SetAllStart(NodeExecStatsWrapper* stats) {
+  if (!stats) return;
+  stats->stats()->set_all_start_micros(NowInUsec());
+}
 
-void SetOpStart(NodeExecStats* nt) {
+void SetOpStart(NodeExecStatsWrapper* stats) {
+  if (!stats) return;
+  NodeExecStats* nt = stats->stats();
   DCHECK_NE(nt->all_start_micros(), 0);
   nt->set_op_start_rel_micros(NowInUsec() - nt->all_start_micros());
 }
 
-void SetOpEnd(NodeExecStats* nt) {
+void SetOpEnd(NodeExecStatsWrapper* stats) {
+  if (!stats) return;
+  NodeExecStats* nt = stats->stats();
   DCHECK_NE(nt->all_start_micros(), 0);
   nt->set_op_end_rel_micros(NowInUsec() - nt->all_start_micros());
 }
 
-void SetAllEnd(NodeExecStats* nt) {
+void SetAllEnd(NodeExecStatsWrapper* stats) {
+  if (!stats) return;
+  NodeExecStats* nt = stats->stats();
   DCHECK_NE(nt->all_start_micros(), 0);
   nt->set_all_end_rel_micros(NowInUsec() - nt->all_start_micros());
 }
 
-void SetOutput(NodeExecStats* nt, int slot, const Tensor* v) {
+void SetOutput(NodeExecStatsWrapper* stats, int slot, const Tensor* v) {
+  if (!stats) return;
   DCHECK(v);
-  NodeOutput* no = nt->add_output();
+  NodeOutput* no = stats->stats()->add_output();
   no->set_slot(slot);
   v->FillDescription(no->mutable_tensor_description());
 }
 
-void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
+void SetMemory(NodeExecStatsWrapper* stats, OpKernelContext* ctx) {
+  if (!stats) return;
+
   for (const auto& allocator_pair : ctx->wrapped_allocators()) {
-    AllocatorMemoryUsed* memory = nt->add_memory();
-    // retrieving the sizes from the wrapped allocator removes the
-    // executor's reference to it, so allocator_pair.second must not
-    // be dereferenced again after this statement
-    auto sizes = allocator_pair.second->GetSizesAndUnRef();
-    memory->set_allocator_name(allocator_pair.first->Name());
-    memory->set_total_bytes(std::get<0>(sizes));
-    if (allocator_pair.first->TracksAllocationSizes()) {
-      memory->set_peak_bytes(std::get<1>(sizes));
-      memory->set_live_bytes(std::get<2>(sizes));
-    }
+    stats->AddAllocation(allocator_pair.first, allocator_pair.second);
   }
-  auto* ms = nt->mutable_memory_stats();
-  ms->set_host_temp_memory_size(ctx->host_temp_memory_size());
-  ms->set_device_temp_memory_size(ctx->device_temp_memory_size());
-  for (const auto& alloc_id : ctx->host_persistent_alloc_ids()) {
-    ms->mutable_host_persistent_tensor_alloc_ids()->Add(alloc_id);
+  auto* ms = stats->stats()->mutable_memory_stats();
+  ms->set_temp_memory_size(ctx->temp_memory_allocated());
+  for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
+    ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
   }
-  for (const auto& alloc_id : ctx->device_persistent_alloc_ids()) {
-    ms->mutable_device_persistent_tensor_alloc_ids()->Add(alloc_id);
-  }
-  ms->set_host_persistent_memory_size(ctx->host_persistent_memory_allocated());
-  ms->set_device_persistent_memory_size(
-      ctx->device_persistent_memory_allocated());
+  ms->set_persistent_memory_size(ctx->persistent_memory_allocated());
 }
 
-void SetReferencedTensors(NodeExecStats* nt,
+void SetReferencedTensors(NodeExecStatsWrapper* stats,
                           const TensorReferenceVector& tensors) {
+  if (!stats) return;
   // be careful not to increment the reference count on any tensor
   // while recording the information
   for (size_t i = 0; i < tensors.size(); ++i) {
-    AllocationDescription* description = nt->add_referenced_tensor();
+    AllocationDescription* description =
+        stats->stats()->add_referenced_tensor();
     tensors.at(i).FillDescription(description);
   }
 }
@@ -254,6 +258,13 @@ struct NodeItem {
   // Return array of per-output allocator attributes.
   const AllocatorAttributes* output_attrs() const { return output_attr_base(); }
 
+  // Return array of expected input index from which each output should
+  // be forwarded:
+  // kNeverForward (-2) for DO NOT FORWARD (must allocate).
+  // kNoReservation (-1) for no expected forwarding.
+  // 0... for forward from that input.
+  const int* forward_from() const { return forward_from_base(); }
+
  private:
   friend class GraphView;
 
@@ -261,6 +272,7 @@ struct NodeItem {
   // (uint8 is enough for DataType).
   //   EdgeInfo            out_edges[num_out_edges];
   //   AllocatorAttributes output_attr[num_outputs];
+  //   int                 forward_from[num_outputs];
   //   uint8               input_type[num_inputs];
   //   uint8               output_type[num_outputs];
 
@@ -277,15 +289,20 @@ struct NodeItem {
     return reinterpret_cast<AllocatorAttributes*>(var() + sizeof(EdgeInfo) *
                                                               num_output_edges);
   }
+  int* forward_from_base() const {
+    return reinterpret_cast<int*>(var() + sizeof(EdgeInfo) * num_output_edges +
+                                  sizeof(AllocatorAttributes) * num_outputs);
+  }
   uint8* input_type_base() const {
-    return reinterpret_cast<uint8*>(var() +
-                                    sizeof(EdgeInfo) * num_output_edges +
-                                    sizeof(AllocatorAttributes) * num_outputs);
+    return reinterpret_cast<uint8*>(
+        var() + sizeof(EdgeInfo) * num_output_edges +
+        sizeof(AllocatorAttributes) * num_outputs + sizeof(int) * num_outputs);
   }
   uint8* output_type_base() const {
     return reinterpret_cast<uint8*>(
         var() + sizeof(EdgeInfo) * num_output_edges +
-        sizeof(AllocatorAttributes) * num_outputs + sizeof(uint8) * num_inputs);
+        sizeof(AllocatorAttributes) * num_outputs + sizeof(int) * num_outputs +
+        sizeof(uint8) * num_inputs);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(NodeItem);
@@ -303,6 +320,7 @@ class GraphView {
 
   void Initialize(const Graph* g);
   Status SetAllocAttrs(const Graph* g, const Device* device);
+  void SetScopedAllocatorAttrs(const std::vector<const Node*>& sa_nodes);
 
   NodeItem* node(size_t id) const {
     DCHECK_GE(id, 0);
@@ -328,8 +346,8 @@ class GraphView {
 
 class ExecutorImpl : public Executor {
  public:
-  ExecutorImpl(const LocalExecutorParams& p, const Graph* g)
-      : params_(p), graph_(g), gview_() {
+  ExecutorImpl(const LocalExecutorParams& p, std::unique_ptr<const Graph> g)
+      : params_(p), graph_(std::move(g)), gview_() {
     CHECK(p.create_kernel != nullptr);
     CHECK(p.delete_kernel != nullptr);
   }
@@ -344,7 +362,6 @@ class ExecutorImpl : public Executor {
     for (auto fiter : frame_info_) {
       delete fiter.second;
     }
-    delete graph_;
   }
 
   Status Initialize();
@@ -360,7 +377,7 @@ class ExecutorImpl : public Executor {
   friend class ExecutorState;
 
   struct ControlFlowInfo {
-    gtl::FlatSet<string, HashStr> unique_frame_names;
+    gtl::FlatSet<string> unique_frame_names;
     std::vector<string> frame_names;
   };
 
@@ -408,7 +425,7 @@ class ExecutorImpl : public Executor {
 
   // Owned.
   LocalExecutorParams params_;
-  const Graph* graph_;
+  std::unique_ptr<const Graph> graph_;
   GraphView gview_;
 
   // A cached value of params_
@@ -420,7 +437,7 @@ class ExecutorImpl : public Executor {
   // Mapping from frame name to static information about the frame.
   // TODO(yuanbyu): We could cache it along with the graph so to avoid
   // the overhead of constructing it for each executor instance.
-  gtl::FlatMap<string, FrameInfo*, HashStr> frame_info_;
+  gtl::FlatMap<string, FrameInfo*> frame_info_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ExecutorImpl);
 };
@@ -462,6 +479,7 @@ size_t GraphView::NodeItemBytes(const Node* n) {
       sizeof(NodeItem)                             // Fixed
       + num_output_edges * sizeof(EdgeInfo)        // output_edges[...]
       + num_outputs * sizeof(AllocatorAttributes)  // output_attr[...]
+      + num_outputs * sizeof(int)                  // forward_from[num_outputs]
       + num_inputs * sizeof(uint8)                 // input_type[num_inputs]
       + num_outputs * sizeof(uint8);               // output_type[num_outputs]
   static constexpr size_t kItemAlignment = sizeof(NodeItem*);
@@ -511,7 +529,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   item->num_output_edges = num_output_edges;
 
   // Fill output edges.
-  // Keep track of the last EdgeInfo in the EdngeInfo array that references
+  // Keep track of the last EdgeInfo in the EdgeInfo array that references
   // a given output slot.  For all but the last, we need to do a copy of the
   // Tensor when propagating results downstream in the graph, but for the
   // last one, we can just do a move of the Tensor object to propagate it.
@@ -547,11 +565,46 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
     DCHECK_EQ(item->input_type(i), n->input_type(i));
   }
 
-  uint8* output_types = item->output_type_base();
-  for (int i = 0; i < num_outputs; i++) {
-    output_types[i] = static_cast<uint8>(n->output_type(i));
-    DCHECK_EQ(item->output_type(i), n->output_type(i));
+  // Check ScopedAllocatorAttrs and forward_from.  Also assign output_types.
+  {
+    std::vector<int> forward_input;
+    Status fwd_status =
+        GetNodeAttr(n->attrs(), "_forward_input", &forward_input);
+    std::vector<int> scoped_allocator_attrs;
+    Status sa_status =
+        GetNodeAttr(n->attrs(), "_scoped_allocator", &scoped_allocator_attrs);
+
+    int* forward_from = item->forward_from_base();
+    uint8* output_types = item->output_type_base();
+    for (int i = 0; i < num_outputs; ++i) {
+      output_types[i] = static_cast<uint8>(n->output_type(i));
+      DCHECK_EQ(item->output_type(i), n->output_type(i));
+
+      forward_from[i] = OpKernelContext::Params::kNoReservation;
+      if (sa_status.ok()) {
+        for (int j = 0; j < scoped_allocator_attrs.size(); j += 2) {
+          if (scoped_allocator_attrs[j] == i) {
+            // This output slot must be explicitly allocated from a
+            // ScopedAllocator.
+            forward_from[i] = OpKernelContext::Params::kNeverForward;
+            DCHECK_EQ(output_attrs[i].scope_id, 0);
+            output_attrs[i].scope_id = scoped_allocator_attrs[j + 1];
+          }
+        }
+      }
+      if (fwd_status.ok() && forward_from[i] == -1) {
+        DCHECK_EQ(forward_input.size() % 2, 0);
+        for (int j = 0; j < forward_input.size(); j += 2) {
+          if (forward_input[j + 1] == i) {
+            DCHECK_EQ(forward_from[i], OpKernelContext::Params::kNoReservation);
+            forward_from[i] = forward_input[j];
+            break;
+          }
+        }
+      }
+    }
   }
+
   return ptr;
 }
 
@@ -601,11 +654,11 @@ void GetMaxPendingCounts(const Node* n, size_t* max_pending,
 }
 
 Status ExecutorImpl::Initialize() {
-  gview_.Initialize(graph_);
+  gview_.Initialize(graph_.get());
 
   // Build the information about frames in this subgraph.
   ControlFlowInfo cf_info;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_, &cf_info));
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &cf_info));
 
   // Cache this value so we make this virtual function call once, rather
   // that O(# steps * # nodes per step) times.
@@ -672,27 +725,90 @@ Status ExecutorImpl::Initialize() {
 
   // Initialize PendingCounts only after item->pending_id is initialized for
   // all nodes.
-  InitializePending(graph_, cf_info);
+  InitializePending(graph_.get(), cf_info);
 
-  return gview_.SetAllocAttrs(graph_, params_.device);
+  return gview_.SetAllocAttrs(graph_.get(), params_.device);
+}
+
+// If a Node has been marked to use a ScopedAllocator x for output i, then
+// sc_attr will contain the subsequence (i, x) at an even offset.  This function
+// extracts and transfers that ScopedAllocator id to alloc_attr.  For now, we
+// only allow one ScopedAllocator use per Node.
+bool ExtractScopedAllocatorAttr(const std::vector<int>& sc_attr,
+                                int output_index,
+                                AllocatorAttributes* alloc_attr) {
+  DCHECK_LE(2, sc_attr.size());
+  for (int i = 0; i < sc_attr.size(); i += 2) {
+    if (sc_attr[i] == output_index) {
+      CHECK_EQ(alloc_attr->scope_id, 0);
+      alloc_attr->scope_id = sc_attr[i + 1];
+      return true;
+    }
+  }
+  return false;
+}
+
+void GraphView::SetScopedAllocatorAttrs(
+    const std::vector<const Node*>& sa_nodes) {
+  for (const Node* sa : sa_nodes) {
+    NodeItem* sa_item = node(sa->id());
+    AllocatorAttributes* sa_attrs = sa_item->output_attr_base();
+    // Control edges out of the ScopedAllocator should be use instances, but may
+    // include a few other nodes.
+    for (const auto& e : sa->out_edges()) {
+      if (!e->IsControlEdge()) {
+        continue;
+      }
+      Node* use_node = e->dst();
+      NodeItem* item = node(use_node->id());
+      AllocatorAttributes* use_attrs = item->output_attr_base();
+      std::vector<int> scoped_allocator_attrs;
+      Status s = GetNodeAttr(use_node->attrs(), "_scoped_allocator",
+                             &scoped_allocator_attrs);
+      if (!s.ok()) {
+        VLOG(2) << "Failed to find expected ScopedAllocator attr on "
+                << use_node->name();
+        continue;
+      }
+      // There should be exactly one output using ScopedAllocation.
+      for (const auto& e : use_node->out_edges()) {
+        if (!e->IsControlEdge()) {
+          AllocatorAttributes attr;
+          if (ExtractScopedAllocatorAttr(scoped_allocator_attrs,
+                                         e->src_output(), &attr)) {
+            // Set the scope_id on this use instance node.
+            (use_attrs + e->src_output())->Merge(attr);
+            // Propagate the other attributes of this node back to the SA node.
+            attr = *(use_attrs + e->src_output());
+            attr.scope_id = 0;
+            sa_attrs->Merge(attr);
+          }
+        }
+      }
+    }
+  }
 }
 
 Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
   Status s;
   DeviceNameUtils::ParsedName local_dev_name = device->parsed_name();
 
+  std::vector<const Node*> scoped_allocator_instances;
   for (const Node* n : g->nodes()) {
     NodeItem* item = node(n->id());
     AllocatorAttributes* attrs = item->output_attr_base();
+    if (IsScopedAllocator(n)) {
+      scoped_allocator_instances.push_back(n);
+    }
 
     // Examine the out edges of each node looking for special use
     // cases that may affect memory allocation attributes.
-    for (auto e : n->out_edges()) {
+    for (const auto& e : n->out_edges()) {
       if (!e->IsControlEdge()) {
         AllocatorAttributes attr;
         s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
         if (!s.ok()) return s;
-        if (attr.value != 0) {
+        if (attr.value != 0 || attr.scope_id != 0) {
           attrs[e->src_output()].Merge(attr);
         }
       }
@@ -709,6 +825,7 @@ Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
       }
     }
   }
+  SetScopedAllocatorAttrs(scoped_allocator_instances);
   return s;
 }
 
@@ -734,8 +851,8 @@ Status InferAllocAttr(const Node* n, const Node* dst,
       VLOG(2) << "node " << n->name() << " is the sink of an RPC in";
     } else if ((local_dev_name.type == "CPU" || n->IsHostRecv()) &&
                parsed_src_name.type != "CPU") {
-      // Value is going to be the sink of a local DMA from GPU to CPU (or other
-      // types of accelerators).
+      // Value is going to be the sink of a local DMA from GPU to CPU (or
+      // other types of accelerators).
       attr->set_gpu_compatible(true);
       VLOG(2) << "node " << n->name() << " is the sink of a gpu->cpu copy";
     } else {
@@ -1019,7 +1136,8 @@ class ExecutorState {
     int total_input_tensors = 0;
     std::vector<const Node*>* nodes = nullptr;
 
-    // Lock ordering: ExecutorState.mu_ < mu.
+    // Lock ordering: ExecutorState.mu_ < mu;
+    // during structured traversal: parent_frame->mu < mu.
     mutex mu;
 
     void InitializeFrameInfo(const string& enter_name) {
@@ -1087,7 +1205,8 @@ class ExecutorState {
     void ActivateLoopInvs(const GraphView* gview, int64 iter,
                           TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
-    // Add a new loop invariant and make it available to all active iterations.
+    // Add a new loop invariant and make it available to all active
+    // iterations.
     void AddLoopInv(const NodeItem* item, const Entry& value,
                     TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
@@ -1144,8 +1263,8 @@ class ExecutorState {
         if (front_index_ == ready_.size()) {
           ready_.clear();
         } else {
-          // Lots of unused entries at beginning of vector: move everything down
-          // to start of vector.
+          // Lots of unused entries at beginning of vector: move everything
+          // down to start of vector.
           ready_.erase(ready_.begin(), ready_.begin() + front_index_);
         }
         front_index_ = 0;
@@ -1178,7 +1297,7 @@ class ExecutorState {
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache_;
-  FunctionCallFrame* call_frame_;
+  CallFrameInterface* call_frame_;
   const ExecutorImpl* impl_;
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
@@ -1206,8 +1325,7 @@ class ExecutorState {
   // child frame is composed of the name of the parent frame, the iteration
   // number at which the parent frame is creating the new frame, and the
   // name of the new frame from nodedef.
-  gtl::FlatMap<string, FrameState*, HashStr> outstanding_frames_
-      GUARDED_BY(mu_);
+  gtl::FlatMap<string, FrameState*> outstanding_frames_ GUARDED_BY(mu_);
 
   // The unique name of a frame.
   inline string MakeFrameName(FrameState* frame, int64 iter_id,
@@ -1240,7 +1358,7 @@ class ExecutorState {
 
   // After item->kernel computation is done, processes its outputs.
   Status ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
-                        EntryVector* outputs, NodeExecStats* stats);
+                        EntryVector* outputs, NodeExecStatsWrapper* stats);
 
   // After processing the outputs, propagates the outputs to their dsts.
   // Contents of *outputs are left in an indeterminate state after
@@ -1251,7 +1369,8 @@ class ExecutorState {
   // "node" just finishes. Takes ownership of "stats". Returns true if
   // execution has completed.
   bool NodeDone(const Status& s, const Node* node, const TaggedNodeSeq& ready,
-                NodeExecStats* stats, TaggedNodeReadyQueue* inline_ready);
+                NodeExecStatsWrapper* stats,
+                TaggedNodeReadyQueue* inline_ready);
 
   // Schedule all the expensive nodes in 'ready', and put all the inexpensive
   // nodes in 'ready' into 'inline_ready'.
@@ -1372,7 +1491,7 @@ Status ExecutorImpl::BuildControlFlowInfo(const Graph* g,
 
     for (const Edge* out_edge : curr_node->out_edges()) {
       Node* out = out_edge->dst();
-      int out_id = out->id();
+      const int out_id = out->id();
 
       // Add to ready queue if not visited.
       bool is_visited = visited[out_id];
@@ -1411,12 +1530,13 @@ void ExecutorImpl::InitializePending(const Graph* graph,
 }
 
 void ExecutorState::RunAsync(Executor::DoneCallback done) {
-  const Graph* graph = impl_->graph_;
+  const Graph* graph = impl_->graph_.get();
   TaggedNodeSeq ready;
 
   // Ask the device to fill in the device context map.
   Device* device = impl_->params_.device;
-  Status fill_status = device->FillContextMap(graph, &device_context_map_);
+  const Status fill_status =
+      device->FillContextMap(graph, &device_context_map_);
   if (!fill_status.ok()) {
     done(fill_status);
     return;
@@ -1446,7 +1566,8 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
 // sync kernels because these vectors are kept on the stack.
 struct ExecutorState::AsyncState {
   AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
-             const NodeItem* _item, Entry* _first_input, NodeExecStats* _stats)
+             const NodeItem* _item, Entry* _first_input,
+             NodeExecStatsWrapper* _stats)
       : saved_inputs(*p.inputs),
         saved_input_device_contexts(*p.input_device_contexts),
         saved_input_alloc_attrs(*p.input_alloc_attrs),
@@ -1471,7 +1592,7 @@ struct ExecutorState::AsyncState {
   const NodeItem* item;
   Entry* first_input;
   OpKernelContext ctx;
-  NodeExecStats* stats;
+  NodeExecStatsWrapper* stats;
 
  private:
   OpKernelContext::Params* ParamsButClearingEigenGPUDevice(
@@ -1512,9 +1633,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.input_device_contexts = &input_device_contexts;
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
+  params.stats_collector = stats_collector_;
 
   Status s;
-  NodeExecStats* stats = nullptr;
+  NodeExecStatsWrapper* stats = nullptr;
   EntryVector outputs;
   bool completed = false;
   inline_ready.push_back(tagged_node);
@@ -1523,7 +1645,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     inline_ready.pop_front();
     const Node* node = tagged_node.node;
     FrameState* input_frame = tagged_node.input_frame;
-    int64 input_iter = tagged_node.input_iter;
+    const int64 input_iter = tagged_node.input_iter;
     const int id = node->id();
     const NodeItem& item = *gview.node(id);
 
@@ -1544,15 +1666,16 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     if (stats_collector_ && !tagged_node.is_dead) {
       // track allocations if and only if we are collecting statistics
       params.track_allocations = true;
-      stats = new NodeExecStats;
-      stats->set_node_name(node->name());
+      stats = new NodeExecStatsWrapper;
+      stats->stats()->set_node_name(node->name());
       nodestats::SetScheduled(stats, scheduled_usec);
       nodestats::SetAllStart(stats);
     }
 
     if (vlog_) {
       VLOG(1) << "Process node: " << id << " step " << params.step_id << " "
-              << SummarizeNode(*node) << " is dead: " << tagged_node.is_dead;
+              << SummarizeNode(*node) << " is dead: " << tagged_node.is_dead
+              << " device: " << device->name();
     }
 
     Entry* input_tensors = GetInputTensors(input_frame, input_iter);
@@ -1590,6 +1713,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       params.frame_iter = FrameAndIter(input_frame->frame_id, input_iter);
       params.is_input_dead = is_input_dead;
       params.output_attr_array = item.output_attrs();
+      params.forward_from_array = item.forward_from();
 
       if (item.kernel_is_async) {
         // Asynchronous computes.
@@ -1601,17 +1725,21 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
 
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
-          NodeExecStats* stats = state->stats;      // Shorthand
-          Entry* first_input = state->first_input;  // Shorthand
+          NodeExecStatsWrapper* stats = state->stats;  // Shorthand
+          Entry* first_input = state->first_input;     // Shorthand
 
-          if (vlog_) {
-            VLOG(2) << this << " Async kernel done: "
-                    << SummarizeNode(*state->item->node);
-          }
-          if (stats) nodestats::SetOpEnd(stats);
+          nodestats::SetOpEnd(stats);
           EntryVector outputs;
           Status s = ProcessOutputs(*state->item, &state->ctx, &outputs, stats);
-          if (stats) nodestats::SetMemory(stats, &state->ctx);
+          nodestats::SetMemory(stats, &state->ctx);
+          if (vlog_) {
+            VLOG(2) << "Async kernel done: " << state->item->node->id()
+                    << " step " << step_id_ << " "
+                    << SummarizeNode(*state->item->node)
+                    << " is dead: " << state->tagged_node.is_dead
+                    << " device: " << device->name();
+          }
+
           // Clears inputs.
           const int num_inputs = state->item->num_inputs;
           for (int i = 0; i < num_inputs; ++i) {
@@ -1630,36 +1758,42 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
             // Get the list of all tensors accessed during the execution
             TensorReferenceVector accessed;
             state->ctx.retrieve_accessed_tensors(&accessed);
-            if (stats) nodestats::SetReferencedTensors(stats, accessed);
+            nodestats::SetReferencedTensors(stats, accessed);
             // callee takes ownership of the vector
             device->ConsumeListOfAccessedTensors(state->ctx.op_device_context(),
                                                  accessed);
           }
-          bool completed =
+          const bool completed =
               NodeDone(s, state->item->node, ready, stats, nullptr);
           delete state;
           if (completed) Finish();
         };
-        if (stats) nodestats::SetOpStart(stats);
+        nodestats::SetOpStart(stats);
         device->ComputeAsync(async, &state->ctx, done);
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
-        if (stats) nodestats::SetOpStart(stats);
+        nodestats::SetOpStart(stats);
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
-        if (stats) nodestats::SetOpEnd(stats);
-
+        nodestats::SetOpEnd(stats);
         s = ProcessOutputs(item, &ctx, &outputs, stats);
         if (s.ok() && impl_->device_record_tensor_accesses_) {
           // Get the list of all tensors accessed during the execution
           ctx.retrieve_accessed_tensors(&accessed_tensors);
           device_context = ctx.op_device_context();
         }
-        if (stats) nodestats::SetMemory(stats, &ctx);
+        nodestats::SetMemory(stats, &ctx);
       }
     }
 
     if (!launched_asynchronously) {
+      if (vlog_) {
+        VLOG(2) << "Synchronous kernel done: " << id << " step "
+                << params.step_id << " " << SummarizeNode(*node)
+                << " is dead: " << tagged_node.is_dead
+                << " device: " << device->name();
+      }
+
       // Clears inputs.
       const int num_inputs = item.num_inputs;
       for (int i = 0; i < num_inputs; ++i) {
@@ -1672,7 +1806,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       }
       outputs.clear();
       if (!accessed_tensors.empty()) {
-        if (stats) nodestats::SetReferencedTensors(stats, accessed_tensors);
+        nodestats::SetReferencedTensors(stats, accessed_tensors);
         // device_context is set above in synchronous computes
         device->ConsumeListOfAccessedTensors(device_context, accessed_tensors);
       }
@@ -1717,8 +1851,8 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
     // Only merge and transfer nodes can have no-value inputs.
     if (!entry->has_value) {
       if (!is_merge) {
-        DCHECK(IsTransferNode(node));
-        DCHECK(!entry->val_field_is_set);
+        DCHECK(IsTransferNode(node)) << node->name() << " - input " << i;
+        DCHECK(!entry->val_field_is_set) << node->name() << " - input " << i;
         entry->has_value = true;
         entry->val_field_is_set = true;
         entry->val.Init(*kEmptyTensor);
@@ -1740,7 +1874,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
           return AttachDef(errors::FailedPrecondition(
                                "Attempting to use uninitialized value ",
-                               item.kernel->def().input(i)),
+                               item.kernel->requested_input(i)),
                            item.kernel->def());
         }
       }
@@ -1761,6 +1895,19 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         entry->ref_mu = nullptr;
 
         inp->tensor = entry->val.get();
+        // The dtype of entry->ref could have been changed by another operation
+        // that ran after the operation that "produced" it executed, so
+        // re-validate that the type of the dereferenced tensor matches the
+        // expected input type.
+        if (item.input_type(i) != inp->tensor->dtype()) {
+          return AttachDef(
+              errors::InvalidArgument(
+                  i, "-th input expects type ",
+                  DataTypeString(item.input_type(i)),
+                  " but automatically dereferenced input tensor has type ",
+                  DataTypeString(inp->tensor->dtype())),
+              item.kernel->def());
+        }
       }
     }
   }
@@ -1769,7 +1916,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
 
 Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                      EntryVector* outputs,
-                                     NodeExecStats* stats) {
+                                     NodeExecStatsWrapper* stats) {
   const Node* node = item.node;
   DCHECK_EQ(0, outputs->size());
   outputs->resize(item.num_outputs);
@@ -1782,6 +1929,21 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     if (vlog_ && VLOG_IS_ON(1)) {
       LOG(WARNING) << this << " Compute status: " << s;
       DumpState();
+    }
+    if (s.code() == error::RESOURCE_EXHAUSTED) {
+      if (stats_collector_) {
+        string err = stats_collector_->ReportAllocsOnResourceExhausted(
+            s.error_message());
+        s = Status(s.code(), strings::StrCat(s.error_message(), err));
+      } else {
+        s = Status(
+            s.code(),
+            strings::StrCat(
+                s.error_message(),
+                "\nHint: If you want to see a list of allocated tensors when "
+                "OOM happens, add report_tensor_allocations_upon_oom "
+                "to RunOptions for current allocation info.\n"));
+      }
     }
     return s;
   }
@@ -1801,7 +1963,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   }
 
   for (int i = 0; i < item.num_outputs; ++i) {
-    TensorValue val = ctx->release_output(i);
+    const TensorValue val = ctx->release_output(i);
     if (*ctx->is_output_dead() || val.tensor == nullptr) {
       // Unless it's a Switch or a Recv, the node must produce a
       // tensor value at i-th output.
@@ -1891,7 +2053,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
-  int64 input_iter = tagged_node.input_iter;
+  const int64 input_iter = tagged_node.input_iter;
   const bool is_dead = tagged_node.is_dead;
 
   // Propagates outputs along out edges, and puts newly ready nodes
@@ -1911,7 +2073,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
         &impl_->gview_, input_iter, ready);
   } else if (item->is_enter) {
     bool is_constant;
-    Status s = GetNodeAttr(node->attrs(), "is_constant", &is_constant);
+    const Status s = GetNodeAttr(node->attrs(), "is_constant", &is_constant);
     DCHECK(s.ok()) << s;
     FindOrCreateChildFrame(input_frame, input_iter, node, &output_frame);
     output_iter = 0;
@@ -1981,7 +2143,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
   // completion of this node makes its frame completed.
   if (is_frame_done) {
     FrameState* parent_frame = input_frame->parent_frame;
-    int64 parent_iter = input_frame->parent_iter;
+    const int64 parent_iter = input_frame->parent_iter;
     DeleteFrame(input_frame, ready);
     if (parent_frame != nullptr) {
       // The completion of frame may cause completions in its parent frame.
@@ -1992,16 +2154,16 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
 }
 
 bool ExecutorState::NodeDone(const Status& s, const Node* node,
-                             const TaggedNodeSeq& ready, NodeExecStats* stats,
+                             const TaggedNodeSeq& ready,
+                             NodeExecStatsWrapper* stats,
                              TaggedNodeReadyQueue* inline_ready) {
-  if (stats) {
-    nodestats::SetAllEnd(stats);
-    if (!SetTimelineLabel(node, stats)) {
-      // Only record non-transfer nodes.
-      stats_collector_->Save(impl_->params_.device->name(), stats);
-    } else {
-      delete stats;
-    }
+  nodestats::SetAllEnd(stats);
+  if (stats_collector_ != nullptr && !SetTimelineLabel(node, stats)) {
+    // Only record non-transfer nodes.
+    // Transfers 'stats' ownership to 'stats_collector_'.
+    stats_collector_->Save(impl_->params_.device->name(), stats);
+  } else if (stats) {
+    delete stats;
   }
 
   bool abort_run = false;
@@ -2024,7 +2186,7 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
   }
 
   bool completed = false;
-  size_t ready_size = ready.size();
+  const size_t ready_size = ready.size();
   if (ready_size == 0 || !s.ok()) {
     completed = (num_outstanding_ops_.fetch_sub(1) == 1);
   } else if (ready_size > 1) {
@@ -2164,7 +2326,7 @@ void ExecutorState::DumpIterationState(const FrameState* frame,
   const std::vector<const Node*>* nodes = frame->nodes;
   // Dump any waiting nodes that are holding on to tensors.
   for (const Node* node : *nodes) {
-    int node_id = node->id();
+    const int node_id = node->id();
     PendingCounts::Handle pending_id = impl_->gview_.node(node_id)->pending_id;
     if (iteration->node_state(pending_id) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(pending_id) == PendingCounts::PENDING_READY) {
@@ -2173,14 +2335,14 @@ void ExecutorState::DumpIterationState(const FrameState* frame,
   }
   // Then the active nodes.
   for (const Node* node : *nodes) {
-    int node_id = node->id();
+    const int node_id = node->id();
     PendingCounts::Handle pending_id = impl_->gview_.node(node_id)->pending_id;
     if (iteration->node_state(pending_id) == PendingCounts::STARTED) {
       DumpActiveNodeState(node_id, iteration->input_tensors);
     }
   }
   // Show all input tensors in use.
-  int total_input_tensors = frame->total_input_tensors;
+  const int total_input_tensors = frame->total_input_tensors;
   size_t total_bytes = 0;
   for (int i = 0; i < total_input_tensors; ++i) {
     const Entry& input = iteration->input_tensors[i];
@@ -2289,16 +2451,18 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
 void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
   // First, propagate dead_exits (if any) to the parent frame.
   FrameState* parent_frame = frame->parent_frame;
-  int64 parent_iter = frame->parent_iter;
+  const int64 parent_iter = frame->parent_iter;
   if (parent_frame != nullptr) {
-    mutex_lock paranet_frame_lock(parent_frame->mu);
+    mutex_lock parent_frame_lock(parent_frame->mu);
     // Propagate all the dead exits to the parent frame.
+    mutex_lock this_frame_lock(frame->mu);
     for (const Node* node : frame->dead_exits) {
       auto parent_iter_state = parent_frame->GetIteration(parent_iter);
       for (const Edge* e : node->out_edges()) {
         const Node* dst_node = e->dst();
 
-        auto dst_pending_id = impl_->gview_.node(dst_node->id())->pending_id;
+        const auto dst_pending_id =
+            impl_->gview_.node(dst_node->id())->pending_id;
 
         // TODO(yuanbyu): We don't need this if we require the subgraph
         // given to an executor not to contain a sink node.
@@ -2356,7 +2520,7 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
   }
   if (is_frame_done) {
     FrameState* parent_frame = frame->parent_frame;
-    int64 parent_iter = frame->parent_iter;
+    const int64 parent_iter = frame->parent_iter;
     DeleteFrame(frame, ready);
     if (parent_frame != nullptr) {
       // The completion of frame may cause completions in its parent frame.
@@ -2431,7 +2595,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
         }
       }
     } else {
-      bool increment_dead =
+      const bool increment_dead =
           (is_dead || (!is_control_edge && !(*outputs)[src_slot].has_value));
       int pending, dead;
       iter_state->adjust_for_activation(dst_pending_id, increment_dead,
@@ -2495,7 +2659,7 @@ void ExecutorState::FrameState::AddLoopInv(const NodeItem* item,
   inv_values.push_back({item->node, entry});
 
   // Make this value available to all iterations.
-  bool is_dead = !entry.has_value;
+  const bool is_dead = !entry.has_value;
   for (int i = 0; i <= iteration_count; ++i) {
     EntryVector outputs{entry};
     ActivateNodes(item, is_dead, i, &outputs, ready);
@@ -2520,7 +2684,7 @@ bool ExecutorState::FrameState::IsIterationDone(int64 iter) {
 void ExecutorState::FrameState::IncrementIteration(const GraphView* gview,
                                                    TaggedNodeSeq* ready) {
   iteration_count++;
-  int64 next_iter = iteration_count;
+  const int64 next_iter = iteration_count;
 
   // Initialize the next iteration.
   IterationState* iter_state =
@@ -2560,12 +2724,13 @@ void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
   (new ExecutorState(args, this))->RunAsync(std::move(done));
 }
 
-}  // end namespace
+}  // namespace
 
-Status NewLocalExecutor(const LocalExecutorParams& params, const Graph* graph,
+Status NewLocalExecutor(const LocalExecutorParams& params,
+                        std::unique_ptr<const Graph> graph,
                         Executor** executor) {
-  ExecutorImpl* impl = new ExecutorImpl(params, graph);
-  Status s = impl->Initialize();
+  ExecutorImpl* impl = new ExecutorImpl(params, std::move(graph));
+  const Status s = impl->Initialize();
   if (s.ok()) {
     *executor = impl;
   } else {
@@ -2577,7 +2742,7 @@ Status NewLocalExecutor(const LocalExecutorParams& params, const Graph* graph,
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
                              const NodeDef& ndef, int graph_def_version,
                              OpKernel** kernel) {
-  auto device_type = DeviceType(device->attributes().device_type());
+  const auto device_type = DeviceType(device->attributes().device_type());
   auto allocator = device->GetAllocator(AllocatorAttributes());
   return CreateOpKernel(device_type, device, allocator, flib, ndef,
                         graph_def_version, kernel);
@@ -2585,4 +2750,4 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
 
 void DeleteNonCachedKernel(OpKernel* kernel) { delete kernel; }
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

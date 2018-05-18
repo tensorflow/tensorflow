@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "LogicalNot"
+  summary: "Returns the truth value of NOT x element-wise."
+}

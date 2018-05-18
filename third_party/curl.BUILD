@@ -5,6 +5,29 @@ licenses(["notice"])  # MIT/X derivative license
 
 exports_files(["COPYING"])
 
+CURL_WIN_COPTS = [
+    "/Iexternal/curl/lib",
+    "/DHAVE_CONFIG_H",
+    "/DCURL_DISABLE_FTP",
+    "/DCURL_DISABLE_NTLM",
+    "/DCURL_DISABLE_PROXY",
+    "/DHAVE_LIBZ",
+    "/DHAVE_ZLIB_H",
+    # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
+    # detection of what OS releases we can build on with VC 2012. This
+    # may not be needed (or may have to change) if the WINVER setting
+    # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
+    "/D_USING_V110_SDK71_",
+]
+
+CURL_WIN_SRCS = [
+    "lib/asyn-thread.c",
+    "lib/inet_ntop.c",
+    "lib/system_win32.c",
+    "lib/vtls/schannel.c",
+    "lib/idn_win32.c",
+]
+
 cc_library(
     name = "curl",
     srcs = [
@@ -204,17 +227,14 @@ cc_library(
         "lib/wildcard.h",
         "lib/x509asn1.h",
     ] + select({
-        "@%ws%//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:darwin": [
             "lib/vtls/darwinssl.c",
         ],
-        "@%ws%//tensorflow:ios": [
+        "@org_tensorflow//tensorflow:ios": [
             "lib/vtls/darwinssl.c",
         ],
-        "@%ws%//tensorflow:windows": [
-            "lib/asyn-thread.c",
-            "lib/inet_ntop.c",
-            "lib/system_win32.c",
-        ],
+        "@org_tensorflow//tensorflow:windows": CURL_WIN_SRCS,
+        "@org_tensorflow//tensorflow:windows_msvc": CURL_WIN_SRCS,
         "//conditions:default": [
             "lib/vtls/openssl.c",
         ],
@@ -231,21 +251,10 @@ cc_library(
         "include/curl/typecheck-gcc.h",
     ],
     copts = select({
-        "@%ws%//tensorflow:windows": [
-            "/I%prefix%/curl/lib",
-            "/DHAVE_CONFIG_H",
-            "/DCURL_DISABLE_FTP",
-            "/DCURL_DISABLE_NTLM",
-            "/DHAVE_LIBZ",
-            "/DHAVE_ZLIB_H",
-            # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
-            # detection of what OS releases we can build on with VC 2012. This
-            # may not be needed (or may have to change) if the WINVER setting
-            # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
-            "/D_USING_V110_SDK71_",
-        ],
+        "@org_tensorflow//tensorflow:windows": CURL_WIN_COPTS,
+        "@org_tensorflow//tensorflow:windows_msvc": CURL_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
@@ -255,10 +264,14 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        "@%ws%//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:darwin": [
             "-fno-constant-cfstrings",
         ],
-        "@%ws%//tensorflow:windows": [
+        "@org_tensorflow//tensorflow:windows": [
+            # See curl.h for discussion of write size and Windows
+            "/DCURL_MAX_WRITE_SIZE=16384",
+        ],
+        "@org_tensorflow//tensorflow:windows_msvc": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
@@ -266,20 +279,30 @@ cc_library(
             "-DCURL_MAX_WRITE_SIZE=65536",
         ],
     }),
+    defines = ["CURL_STATICLIB"],
     includes = ["include"],
     linkopts = select({
-        "@%ws%//tensorflow:android": [
+        "@org_tensorflow//tensorflow:android": [
             "-pie",
         ],
-        "@%ws%//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:darwin": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        "@%ws%//tensorflow:ios": [],
-        "@%ws%//tensorflow:windows": [
-            "ws2_32.lib",
+        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow:windows": [
+            "-DEFAULTLIB:ws2_32.lib",
+            "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:Normaliz.lib",
+        ],
+        "@org_tensorflow//tensorflow:windows_msvc": [
+            "-DEFAULTLIB:ws2_32.lib",
+            "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:Normaliz.lib",
         ],
         "//conditions:default": [
             "-lrt",
@@ -289,13 +312,20 @@ cc_library(
     deps = [
         "@zlib_archive//:zlib",
     ] + select({
-        "@%ws%//tensorflow:ios": [],
-        "@%ws%//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "@boringssl//:ssl",
         ],
     }),
 )
+
+CURL_BIN_WIN_COPTS = [
+    "/Iexternal/curl/lib",
+    "/DHAVE_CONFIG_H",
+    "/DCURL_DISABLE_LIBCURL_OPTION",
+]
 
 cc_binary(
     name = "curl_bin",
@@ -386,13 +416,10 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        "@%ws%//tensorflow:windows": [
-            "/I%prefix%/curl/lib",
-            "/DHAVE_CONFIG_H",
-            "/DCURL_DISABLE_LIBCURL_OPTION",
-        ],
+        "@org_tensorflow//tensorflow:windows": CURL_BIN_WIN_COPTS,
+        "@org_tensorflow//tensorflow:windows_msvc": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_LIBCURL_OPTION",
@@ -421,12 +448,22 @@ genrule(
         "#  include \"lib/config-win32.h\"",
         "#  define BUILDING_LIBCURL 1",
         "#  define CURL_DISABLE_CRYPTO_AUTH 1",
+        "#  define CURL_DISABLE_DICT 1",
+        "#  define CURL_DISABLE_FILE 1",
+        "#  define CURL_DISABLE_GOPHER 1",
         "#  define CURL_DISABLE_IMAP 1",
         "#  define CURL_DISABLE_LDAP 1",
         "#  define CURL_DISABLE_LDAPS 1",
         "#  define CURL_DISABLE_POP3 1",
         "#  define CURL_PULL_WS2TCPIP_H 1",
-        "#  define HTTP_ONLY 1",
+        "#  define CURL_DISABLE_SMTP 1",
+        "#  define CURL_DISABLE_TELNET 1",
+        "#  define CURL_DISABLE_TFTP 1",
+        "#  define CURL_PULL_WS2TCPIP_H 1",
+        "#  define USE_WINDOWS_SSPI 1",
+        "#  define USE_WIN32_IDN 1",
+        "#  define USE_SCHANNEL 1",
+        "#  define WANT_IDN_PROTOTYPES 1",
         "#elif defined(__APPLE__)",
         "#  define HAVE_FSETXATTR_6 1",
         "#  define HAVE_SETMODE 1",
@@ -460,7 +497,6 @@ genrule(
         "#  define HAVE_RAND_EGD 1",
         "#  define HAVE_RAND_STATUS 1",
         "#  define HAVE_SSL_GET_SHUTDOWN 1",
-        "#  define HAVE_STROPTS_H 1",
         "#  define HAVE_TERMIOS_H 1",
         "#  define OS \"x86_64-pc-linux-gnu\"",
         "#  define RANDOM_FILE \"/dev/urandom\"",

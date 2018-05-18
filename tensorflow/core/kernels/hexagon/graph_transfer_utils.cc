@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
@@ -45,7 +48,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
       GetTopNFloatResults(data, labels, element_count);
   LOG(INFO) << "=== Dump ranking ===";
   for (int i = 0; i < top_n; ++i) {
-    const std::tuple<float, int, string> &entry = queue.top();
+    const std::tuple<float, int, string>& entry = queue.top();
     LOG(INFO) << i << ": " << std::get<1>(entry) << ", " << std::get<2>(entry)
               << ", " << std::get<0>(entry);
     queue.pop();
@@ -62,7 +65,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
 
   // copy graph
-  execute_info.mutable_remote_graph()->CopyFrom(graph_def);
+  *execute_info.mutable_remote_graph() = graph_def;
 
   for (const std::pair<string, Tensor>& input : inputs) {
     execute_info.add_graph_input_node_name(input.first);
@@ -95,7 +98,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
 }
 
 /* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, GraphDef* original_def) {

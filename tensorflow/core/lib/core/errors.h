@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_CORE_ERRORS_H_
 #define TENSORFLOW_LIB_CORE_ERRORS_H_
 
+#include <sstream>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -25,6 +27,33 @@ namespace tensorflow {
 namespace errors {
 
 typedef ::tensorflow::error::Code Code;
+
+namespace internal {
+
+// The DECLARE_ERROR macro below only supports types that can be converted
+// into StrCat's AlphaNum. For the other types we rely on a slower path
+// through std::stringstream. To add support of a new type, it is enough to
+// make sure there is an operator<<() for it:
+//
+//   std::ostream& operator<<(std::ostream& os, const MyType& foo) {
+//     os << foo.ToString();
+//     return os;
+//   }
+// Eventually absl::strings will have native support for this and we will be
+// able to completely remove PrepareForStrCat().
+template <typename T>
+typename std::enable_if<!std::is_constructible<strings::AlphaNum, T>::value,
+                        string>::type
+PrepareForStrCat(const T& t) {
+  std::stringstream ss;
+  ss << t;
+  return ss.str();
+}
+inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
+  return a;
+}
+
+}  // namespace internal
 
 // Append some context to an error message.  Each time we append
 // context put it on a new line, since it is possible for there
@@ -37,9 +66,9 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 }
 
 // For propagating errors when calling a function.
-#define TF_RETURN_IF_ERROR(expr)                         \
+#define TF_RETURN_IF_ERROR(...)                          \
   do {                                                   \
-    const ::tensorflow::Status _status = (expr);         \
+    const ::tensorflow::Status _status = (__VA_ARGS__);  \
     if (TF_PREDICT_FALSE(!_status.ok())) return _status; \
   } while (0)
 
@@ -61,8 +90,10 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 #define DECLARE_ERROR(FUNC, CONST)                                       \
   template <typename... Args>                                            \
   ::tensorflow::Status FUNC(Args... args) {                              \
-    return ::tensorflow::Status(::tensorflow::error::CONST,              \
-                                ::tensorflow::strings::StrCat(args...)); \
+    return ::tensorflow::Status(                                         \
+        ::tensorflow::error::CONST,                                      \
+        ::tensorflow::strings::StrCat(                                   \
+            ::tensorflow::errors::internal::PrepareForStrCat(args)...)); \
   }                                                                      \
   inline bool Is##FUNC(const ::tensorflow::Status& status) {             \
     return status.code() == ::tensorflow::error::CONST;                  \

@@ -13,6 +13,10 @@ py_library(
     name = "stat_summarizer_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
 )
 
 tf_py_test(
@@ -27,16 +31,5 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = ["no_windows"],
 )

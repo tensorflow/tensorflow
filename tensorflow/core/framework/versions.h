@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_VERSIONS_H_
 #define TENSORFLOW_FRAMEWORK_VERSIONS_H_
 
-#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+class VersionDef;
 
 // Check whether data with the given versions is compatible with the given
 // consumer and min producer.  upper_name and lower_name are used to form

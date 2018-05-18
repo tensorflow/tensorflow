@@ -9,17 +9,6 @@ package(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "stamped_resource",
     hdrs = ["stamped_resource.h"],
@@ -37,7 +26,6 @@ cc_library(
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -49,5 +37,4 @@ cc_library(
         "//tensorflow/contrib/boosted_trees/lib:trees",
         "//tensorflow/core:framework_headers_lib",
     ],
-    alwayslink = 1,
 )

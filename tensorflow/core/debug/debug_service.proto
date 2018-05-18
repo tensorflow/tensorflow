@@ -17,6 +17,9 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/profiler/tfprof_log.proto";
+import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/util/event.proto";
 
 // Reply message from EventListener to the client, i.e., to the source of the
@@ -24,18 +27,57 @@ import "tensorflow/core/util/event.proto";
 // TensorFlow graph being executed.
 message EventReply {
   message DebugOpStateChange {
-    enum Change {
-      DISABLE = 0;
-      ENABLE = 1;
+    enum State {
+      STATE_UNSPECIFIED = 0;
+      DISABLED = 1;
+      READ_ONLY = 2;
+      READ_WRITE = 3;
     }
 
-    Change change = 1;
+    State state = 1;
     string node_name = 2;
     int32 output_slot = 3;
     string debug_op = 4;
   }
 
   repeated DebugOpStateChange debug_op_state_changes = 1;
+
+  // New tensor value to override the current tensor value with.
+  TensorProto tensor = 2;
+  // TODO(cais): Make use of this field to implement overriding of tensor value
+  // during debugging.
+}
+
+// Data on the traceback of a debugged call, e.g., a Session.run() call, or the
+// execution of an eager operation.
+message CallTraceback {
+  enum CallType {
+    UNSPECIFIED = 0;
+    GRAPH_EXECUTION = 1;
+    EAGER_EXECUTION = 2;
+  }
+
+  CallType call_type = 1;
+
+  // A key for the call. For example, for graph execution, this is a key
+  // consisting of the names of the fed and fetched tensors.
+  string call_key = 2;
+
+  // Traceback stack for the origin of the call event.
+  // For graph execution, this is the stack of the Session.run() call.
+  // For eager execution, this is the stack of the Python line that invokes
+  // the execution of the eager op.
+  tfprof.CodeDef origin_stack = 3;
+
+  // Keeps track of the mapping from integer IDs in `origin_stack` to actual
+  // string values (e.g., file paths, function names).
+  map<int64, string> origin_id_to_string = 4;
+
+  // Traceback for the graph (if any) involved in the call.
+  tfprof.OpLogProto graph_traceback = 5;
+
+  // Version of the graph in `graph_traceback` (if any).
+  int64 graph_version = 6;
 }
 
 // EventListener: Receives Event protos, e.g., from debugged TensorFlow
@@ -49,4 +91,10 @@ service EventListener {
   //      ops that get executed immediately after the beginning of the graph
   //      execution.
   rpc SendEvents(stream Event) returns (stream EventReply);
+
+  // Send the tracebacks of a TensorFlow execution call.
+  rpc SendTracebacks(CallTraceback) returns (EventReply);
+
+  // Send a collection of source code files being debugged.
+  rpc SendSourceFiles(DebuggedSourceFiles) returns (EventReply);
 }

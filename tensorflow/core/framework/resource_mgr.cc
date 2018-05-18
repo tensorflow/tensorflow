@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -124,6 +126,7 @@ string ResourceMgr::DebugString() const {
     }
   }
   std::vector<string> text;
+  text.reserve(lines.size());
   for (const Line& line : lines) {
     text.push_back(strings::Printf(
         "%-20s | %-40s | %-40s | %-s", line.container->c_str(),
@@ -154,10 +157,12 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
 Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
                              ResourceBase** resource) const {
-  mutex_lock l(mu_);
+  tf_shared_lock l(mu_);
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
-    return errors::NotFound("Container ", container, " does not exist.");
+    return errors::NotFound("Container ", container,
+                            " does not exist. (Could not find resource: ",
+                            container, "/", name, ")");
   }
   auto r = gtl::FindPtrOrNull(*b, {type.hash_code(), name});
   if (r == nullptr) {

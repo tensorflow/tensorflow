@@ -27,8 +27,7 @@ limitations under the License.
 #include <cxxabi.h>
 #endif
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 // The API reference of abi::__cxa_demangle() can be found in
@@ -37,11 +36,11 @@ namespace port {
 string Demangle(const char *mangled) {
   string demangled;
   int status = 0;
-  char *result = NULL;
+  char *result = nullptr;
 #if HAS_CXA_DEMANGLE
-  result = abi::__cxa_demangle(mangled, NULL, NULL, &status);
+  result = abi::__cxa_demangle(mangled, nullptr, nullptr, &status);
 #endif
-  if (status == 0 && result != NULL) {  // Demangling succeeeded.
+  if (status == 0 && result != nullptr) {  // Demangling succeeded.
     demangled.append(result);
     free(result);
   }
@@ -49,5 +48,4 @@ string Demangle(const char *mangled) {
 }
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

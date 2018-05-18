@@ -29,6 +29,9 @@ from tensorflow.python.platform import googletest
 class RandomOpsTest(XLATestCase):
   """Test cases for random-number generating operators."""
 
+  def _random_types(self):
+    return set(self.numeric_types) - set(self.complex_types)
+
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
     with self.test_session() as sess:
@@ -51,7 +54,8 @@ class RandomOpsTest(XLATestCase):
     def rng(dtype):
       return random_ops.random_uniform(shape=[2], dtype=dtype,
                                        maxval=1000000)
-    for dtype in self.numeric_types:
+
+    for dtype in self._random_types():
       self._testRngIsNotConstant(rng, dtype)
 
   def testRandomNormalIsNotConstant(self):
@@ -63,7 +67,7 @@ class RandomOpsTest(XLATestCase):
     self._testRngIsNotConstant(rng, dtype)
 
   def testRandomUniformIsInRange(self):
-    for dtype in self.numeric_types:
+    for dtype in self._random_types():
       with self.test_session() as sess:
         with self.test_scope():
           x = random_ops.random_uniform(shape=[1000], dtype=dtype, minval=-2,

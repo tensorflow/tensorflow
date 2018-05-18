@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "collections"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "finalized"
     mtype: "<type \'property\'>"
   }
@@ -125,6 +129,10 @@ tf_class {
   member_method {
     name: "prevent_fetching"
     argspec: "args=[\'self\', \'op\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "switch_to_thread_local"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "unique_name"

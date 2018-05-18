@@ -1,4 +1,4 @@
-licenses(["restricted"])
+licenses(["notice"])  # New BSD, Python Software Foundation
 
 package(default_visibility = ["//visibility:public"])
 

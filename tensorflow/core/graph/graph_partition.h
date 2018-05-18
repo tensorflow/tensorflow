@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
@@ -44,6 +45,10 @@ struct PartitionOptions {
   static const uint64 kIllegalIncarnation = 0;
   typedef std::function<uint64(const string&)> GetIncarnationFunc;
   GetIncarnationFunc get_incarnation = nullptr;
+
+  // If specified, flib_def defines a function library that should be
+  // partitioned and replicated into each resulting partition graphs.
+  const FunctionLibraryDefinition* flib_def = nullptr;
 
   // True if all the control flow "code" has already been added. The
   // control flow code needs to be added when we still have the entire

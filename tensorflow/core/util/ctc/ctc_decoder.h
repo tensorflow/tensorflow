@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_DECODER_H_
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_DECODER_H_
 
+#include <memory>
+#include <vector>
+
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"

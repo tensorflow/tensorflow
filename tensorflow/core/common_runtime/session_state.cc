@@ -66,11 +66,11 @@ Status TensorStore::AddTensor(const string& name, const TensorAndKey& tk) {
 Status TensorStore::SaveTensors(const std::vector<string>& output_names,
                                 SessionState* session_state) {
   mutex_lock l(lock_);
-  if (tensors_.size() != 0) {
+  if (!tensors_.empty()) {
     // Save only the tensors in output_names in the session.
     for (const string& name : output_names) {
       TensorId id(ParseTensorName(name));
-      const string& op_name = id.first.ToString();
+      const string& op_name = std::string(id.first);
       auto it = tensors_.find(op_name);
       if (it != tensors_.end()) {
         // Save the tensor to the session state.

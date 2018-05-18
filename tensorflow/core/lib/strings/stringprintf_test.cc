@@ -30,9 +30,9 @@ TEST(PrintfTest, Empty) {
 
 TEST(PrintfTest, Misc) {
 // MSVC does not support $ format specifier.
-#if !defined(COMPILER_MSVC)
+#if !defined(_MSC_VER)
   EXPECT_EQ("123hello w", Printf("%3$d%2$s %1$c", 'w', "hello", 123));
-#endif  // !COMPILER_MSVC
+#endif  // !_MSC_VER
 }
 
 TEST(AppendfTest, Empty) {
@@ -66,7 +66,7 @@ TEST(PrintfTest, Multibyte) {
   // out of memory while trying to determine destination buffer size.
   // see b/4194543.
 
-  char* old_locale = setlocale(LC_CTYPE, NULL);
+  char* old_locale = setlocale(LC_CTYPE, nullptr);
   // Push locale with multibyte mode
   setlocale(LC_CTYPE, "en_US.utf8");
 
@@ -95,7 +95,7 @@ TEST(PrintfTest, Multibyte) {
 
 TEST(PrintfTest, NoMultibyte) {
   // No multibyte handling, but the string contains funny chars.
-  char* old_locale = setlocale(LC_CTYPE, NULL);
+  char* old_locale = setlocale(LC_CTYPE, nullptr);
   setlocale(LC_CTYPE, "POSIX");
   string value = Printf("%.*s", 3, "\375\067s");
   setlocale(LC_CTYPE, old_locale);

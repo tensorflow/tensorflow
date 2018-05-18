@@ -13,18 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
+// Compute a topological ordering for the graph nodes.
+Status ComputeTopologicalOrder(
+    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies);
+
 // Sort a graph in topological order.
-void TopologicalSort(GraphDef* graph);
+Status TopologicalSort(GraphDef* graph);
 
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_

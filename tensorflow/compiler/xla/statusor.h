@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// StatusOr<T> is the union of a Status object and a T
-// object. StatusOr models the concept of an object that is either a
-// usable value, or an error Status explaining why such a value is
-// not present. To this end, StatusOr<T> does not allow its Status
-// value to be Status::OK. Furthermore, the value of a StatusOr<T*>
-// must not be null. This is enforced by a debug check in most cases,
-// but even when it is not, clients must not set the value to null.
+// StatusOr<T> is the union of a Status object and a T object. StatusOr models
+// the concept of an object that is either a value, or an error Status
+// explaining why such a value is not present. To this end, StatusOr<T> does not
+// allow its Status value to be Status::OK.
 //
 // The primary use-case for StatusOr<T> is as the return value of a
 // function which may fail.
@@ -72,216 +69,239 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STATUSOR_H_
 
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor_internals.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
 #if defined(__clang__)
 // Only clang supports warn_unused_result as a type annotation.
-template <typename T, bool CopyConstructible>
+template <typename T>
 class TF_MUST_USE_RESULT StatusOr;
 #endif
 
-template <typename T,
-          bool CopyConstructible = std::is_copy_constructible<T>::value>
-class StatusOr {
-  template <typename U, bool UC>
+template <typename T>
+class StatusOr : private internal_statusor::StatusOrData<T>,
+                 private internal_statusor::TraitsBase<
+                     std::is_copy_constructible<T>::value,
+                     std::is_move_constructible<T>::value> {
+  template <typename U>
   friend class StatusOr;
+
+  typedef internal_statusor::StatusOrData<T> Base;
 
  public:
   typedef T element_type;
 
-  // Construct a new StatusOr with Status::UNKNOWN status
-  StatusOr();
+  // Constructs a new StatusOr with Status::UNKNOWN status.  This is marked
+  // 'explicit' to try to catch cases like 'return {};', where people think
+  // StatusOr<std::vector<int>> will be initialized with an empty vector,
+  // instead of a Status::UNKNOWN status.
+  explicit StatusOr();
 
-  // Construct a new StatusOr with the given non-ok status. After calling
+  // StatusOr<T> will be copy constructible/assignable if T is copy
+  // constructible.
+  StatusOr(const StatusOr&) = default;
+  StatusOr& operator=(const StatusOr&) = default;
+
+  // StatusOr<T> will be move constructible/assignable if T is move
+  // constructible.
+  StatusOr(StatusOr&&) = default;
+  StatusOr& operator=(StatusOr&&) = default;
+
+  // Conversion copy/move constructor, T must be convertible from U.
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
+  StatusOr(const StatusOr<U>& other);
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
+  StatusOr(StatusOr<U>&& other);
+
+  // Conversion copy/move assignment operator, T must be convertible from U.
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
+  StatusOr& operator=(const StatusOr<U>& other);
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
+  StatusOr& operator=(StatusOr<U>&& other);
+
+  // Constructs a new StatusOr with the given value. After calling this
+  // constructor, calls to ValueOrDie() will succeed, and calls to status() will
+  // return OK.
+  //
+  // NOTE: Not explicit - we want to use StatusOr<T> as a return type
+  // so it is convenient and sensible to be able to do 'return T()'
+  // when the return type is StatusOr<T>.
+  //
+  // REQUIRES: T is copy constructible.
+  StatusOr(const T& value);
+
+  // Constructs a new StatusOr with the given non-ok status. After calling
   // this constructor, calls to ValueOrDie() will CHECK-fail.
   //
   // NOTE: Not explicit - we want to use StatusOr<T> as a return
   // value, so it is convenient and sensible to be able to do 'return
   // Status()' when the return type is StatusOr<T>.
   //
-  // REQUIRES: status != Status::OK. This requirement is DCHECKed.
-  // In optimized builds, passing Status::OK here will have the effect
+  // REQUIRES: !status.ok(). This requirement is DCHECKed.
+  // In optimized builds, passing Status::OK() here will have the effect
   // of passing tensorflow::error::INTERNAL as a fallback.
-  StatusOr(Status status);              // NOLINT
+  StatusOr(const Status& status);
+  StatusOr& operator=(const Status& status);
 
-  // Construct a new StatusOr with the given value. If T is a plain pointer,
-  // value must not be NULL. After calling this constructor, calls to
-  // ValueOrDie() will succeed, and calls to status() will return OK.
+  // TODO(b/62186997): Add operator=(T) overloads.
+
+  // Similar to the `const T&` overload.
   //
-  // NOTE: Not explicit - we want to use StatusOr<T> as a return type
-  // so it is convenient and sensible to be able to do 'return T()'
-  // when the return type is StatusOr<T>.
-  //
-  // REQUIRES: if T is a plain pointer, value != NULL. This requirement is
-  // DCHECKed. In optimized builds, passing a NULL pointer here will have
-  // the effect of passing tensorflow::error::INTERNAL as a fallback.
-  StatusOr(const T& value);  // NOLINT
+  // REQUIRES: T is move constructible.
+  StatusOr(T&& value);
 
-  // Copy constructor.
-  StatusOr(const StatusOr& other) = default;
-
-  // Conversion copy constructor, T must be copy constructible from U
-  template <typename U>
-  StatusOr(const StatusOr<U>& other);
-
-  // Assignment operator.
-  StatusOr& operator=(const StatusOr& other) = default;
-
-  // Conversion assignment operator, T must be assignable from U
-  template <typename U>
-  StatusOr& operator=(const StatusOr<U>& other);
-
-  // Move constructor and move-assignment operator.
-  StatusOr(StatusOr&& other) = default;
-  StatusOr& operator=(StatusOr&& other) = default;
-
-  // Rvalue-reference overloads of the other constructors and assignment
-  // operators, to support move-only types and avoid unnecessary copying.
-  //
-  // Implementation note: we could avoid all these rvalue-reference overloads
-  // if the existing lvalue-reference overloads took their arguments by value
-  // instead. I think this would also let us omit the conversion assignment
-  // operator altogether, since we'd get the same functionality for free
-  // from the implicit conversion constructor and ordinary assignment.
-  // However, this could result in extra copy operations unless we use
-  // std::move to avoid them, and we can't use std::move because this code
-  // needs to be portable to C++03.
-  StatusOr(T&& value);  // NOLINT
-  template <typename U>
-  StatusOr(StatusOr<U>&& other);
-
-  // Returns a reference to our status. If this contains a T, then
-  // returns Status::OK.
-  const Status& status() const { return status_; }
+  // RValue versions of the operations declared above.
+  StatusOr(Status&& status);
+  StatusOr& operator=(Status&& status);
 
   // Returns this->status().ok()
-  bool ok() const { return status_.ok(); }
+  bool ok() const { return this->status_.ok(); }
+
+  // Returns a reference to our status. If this contains a T, then
+  // returns Status::OK().
+  const Status& status() const &;
+  Status status() &&;
 
   // Returns a reference to our current value, or CHECK-fails if !this->ok().
-  const T& ValueOrDie() const;
-  T& ValueOrDie();
+  //
+  // Note: for value types that are cheap to copy, prefer simple code:
+  //
+  //   T value = statusor.ValueOrDie();
+  //
+  // Otherwise, if the value type is expensive to copy, but can be left
+  // in the StatusOr, simply assign to a reference:
+  //
+  //   T& value = statusor.ValueOrDie();  // or `const T&`
+  //
+  // Otherwise, if the value type supports an efficient move, it can be
+  // used as follows:
+  //
+  //   T value = std::move(statusor).ValueOrDie();
+  //
+  // The std::move on statusor instead of on the whole expression enables
+  // warnings about possible uses of the statusor object after the move.
+  // C++ style guide waiver for ref-qualified overloads granted in cl/143176389
+  // See go/ref-qualifiers for more details on such overloads.
+  const T& ValueOrDie() const &;
+  T& ValueOrDie() &;
+  const T&& ValueOrDie() const &&;
+  T&& ValueOrDie() &&;
 
-  // Moves our current value out of this object and returns it, or CHECK-fails
-  // if !this->ok().
-  // Use of this method is discouraged; prefer std::move(statusor.ValueOrDie())
-  // instead.
   T ConsumeValueOrDie() { return std::move(ValueOrDie()); }
 
- private:
-  Status status_;
-  T value_;
-};
-
-// Partial specialization for when T is not copy-constructible. This uses all
-// methods from the core implementation, but removes copy assignment and copy
-// construction.
-template <typename T>
-class StatusOr<T, false> : public StatusOr<T, true> {
- public:
-  // Remove copies.
-  StatusOr(const StatusOr& other) = delete;
-  StatusOr& operator=(const StatusOr& other) = delete;
-  template <typename U>
-  StatusOr(const StatusOr<U>& other) = delete;
-  StatusOr(const T& value) = delete;
-
-  // Use the superclass version for other constructors and operators.
-  StatusOr() = default;
-  StatusOr(StatusOr&& other) = default;
-  StatusOr& operator=(StatusOr&& other) = default;
-  StatusOr(T&& value)  // NOLINT
-      : StatusOr<T, true>::StatusOr(std::move(value)) {}
-  StatusOr(Status status)  // NOLINT
-      : StatusOr<T, true>::StatusOr(std::move(status)) {}
-  template <typename U>
-  StatusOr(StatusOr<U>&& other)  // NOLINT
-      : StatusOr<T, true>::StatusOr(std::move(other)) {}
+  // Ignores any errors. This method does nothing except potentially suppress
+  // complaints from any tools that are checking that errors are not dropped on
+  // the floor.
+  void IgnoreError() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation details for StatusOr<T>
 
-namespace internal {
-
-class StatusOrHelper {
- public:
-  // Move type-agnostic error handling to the .cc.
-  static Status HandleInvalidStatusCtorArg();
-  static Status HandleNullObjectCtorArg();
-  static void Crash(const Status& status);
-
-  // Customized behavior for StatusOr<T> vs. StatusOr<T*>
-  template <typename T>
-  struct Specialize;
-};
+template <typename T>
+StatusOr<T>::StatusOr() : Base(Status(tensorflow::error::UNKNOWN, "")) {}
 
 template <typename T>
-struct StatusOrHelper::Specialize {
-  // For non-pointer T, a reference can never be NULL.
-  static inline bool IsValueNull(const T& t) { return false; }
-};
+StatusOr<T>::StatusOr(const T& value) : Base(value) {}
 
 template <typename T>
-struct StatusOrHelper::Specialize<T*> {
-  static inline bool IsValueNull(const T* t) { return t == NULL; }
-};
+StatusOr<T>::StatusOr(const Status& status) : Base(status) {}
 
-}  // namespace internal
-
-template <typename T, bool CopyConstructible>
-inline StatusOr<T, CopyConstructible>::StatusOr()
-    : status_(tensorflow::error::UNKNOWN, "") {}
-
-template <typename T, bool CopyConstructible>
-inline StatusOr<T, CopyConstructible>::StatusOr(Status status)
-    : status_(std::move(status)) {
-  if (status_.ok()) {
-    status_ = internal::StatusOrHelper::HandleInvalidStatusCtorArg();
-  }
+template <typename T>
+StatusOr<T>& StatusOr<T>::operator=(const Status& status) {
+  this->Assign(status);
+  return *this;
 }
 
-template <typename T, bool CopyConstructible>
-inline StatusOr<T, CopyConstructible>::StatusOr(const T& value)
-    : value_(value) {
-  if (internal::StatusOrHelper::Specialize<T>::IsValueNull(value)) {
-    status_ = internal::StatusOrHelper::HandleNullObjectCtorArg();
-  }
+template <typename T>
+StatusOr<T>::StatusOr(T&& value) : Base(std::move(value)) {}
+
+template <typename T>
+StatusOr<T>::StatusOr(Status&& status) : Base(std::move(status)) {}
+
+template <typename T>
+StatusOr<T>& StatusOr<T>::operator=(Status&& status) {
+  this->Assign(std::move(status));
+  return *this;
 }
 
-template <typename T, bool CopyConstructible>
-template <typename U>
-inline StatusOr<T, CopyConstructible>::StatusOr(const StatusOr<U>& other)
-    : status_(other.status_), value_(other.value_) {}
+template <typename T>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
+inline StatusOr<T>::StatusOr(const StatusOr<U>& other)
+    : Base(static_cast<const typename StatusOr<U>::Base&>(other)) {}
 
-template <typename T, bool CopyConstructible>
-inline StatusOr<T, CopyConstructible>::StatusOr(T&& value)
-    : value_(std::move(value)) {
-  if (internal::StatusOrHelper::Specialize<T>::IsValueNull(value_)) {
-    status_ = internal::StatusOrHelper::HandleNullObjectCtorArg();
-  }
+template <typename T>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
+inline StatusOr<T>& StatusOr<T>::operator=(const StatusOr<U>& other) {
+  if (other.ok())
+    this->Assign(other.ValueOrDie());
+  else
+    this->Assign(other.status());
+  return *this;
 }
 
-template <typename T, bool CopyConstructible>
-template <typename U>
-inline StatusOr<T, CopyConstructible>::StatusOr(StatusOr<U>&& other)
-    : status_(std::move(other.status_)), value_(std::move(other.value_)) {}
+template <typename T>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
+inline StatusOr<T>::StatusOr(StatusOr<U>&& other)
+    : Base(static_cast<typename StatusOr<U>::Base&&>(other)) {}
 
-template <typename T, bool CopyConstructible>
-inline const T& StatusOr<T, CopyConstructible>::ValueOrDie() const {
-  if (!ok()) {
-    internal::StatusOrHelper::Crash(status());
+template <typename T>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
+inline StatusOr<T>& StatusOr<T>::operator=(StatusOr<U>&& other) {
+  if (other.ok()) {
+    this->Assign(std::move(other).ValueOrDie());
+  } else {
+    this->Assign(std::move(other).status());
   }
-  return value_;
+  return *this;
 }
 
-template <typename T, bool CopyConstructible>
-inline T& StatusOr<T, CopyConstructible>::ValueOrDie() {
-  if (!status_.ok()) {
-    internal::StatusOrHelper::Crash(status());
-  }
-  return value_;
+template <typename T>
+const Status& StatusOr<T>::status() const & {
+  return this->status_;
+}
+template <typename T>
+Status StatusOr<T>::status() && {
+  return ok() ? Status::OK() : std::move(this->status_);
+}
+
+template <typename T>
+const T& StatusOr<T>::ValueOrDie() const & {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+T& StatusOr<T>::ValueOrDie() & {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+const T&& StatusOr<T>::ValueOrDie() const && {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+T&& StatusOr<T>::ValueOrDie() && {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+void StatusOr<T>::IgnoreError() const {
+  // no-op
 }
 
 }  // namespace xla

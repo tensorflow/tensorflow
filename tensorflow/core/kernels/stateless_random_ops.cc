@@ -27,6 +27,41 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
+Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
+                   random::PhiloxRandom::ResultType* out_counter) {
+  // Grab the two seeds
+  uint64 seed0;
+  uint64 seed1;
+  if (seed.dtype() == DT_INT32) {
+    const auto seed_vals = seed.flat<int32>();
+    seed0 = internal::SubtleMustCopy(seed_vals(0));
+    seed1 = internal::SubtleMustCopy(seed_vals(1));
+  } else if (seed.dtype() == DT_INT64) {
+    const auto seed_vals = seed.flat<int64>();
+    seed0 = internal::SubtleMustCopy(seed_vals(0));
+    seed1 = internal::SubtleMustCopy(seed_vals(1));
+  } else {
+    return errors::InvalidArgument("Invalid seed type: ",
+                                   DataTypeString(seed.dtype()));
+  }
+
+  // Scramble the seeds so that the user doesn't need to worry about which
+  // part of the seed needs to be strong.
+  (*out_key)[0] = 0x3ec8f720;
+  (*out_key)[1] = 0x02461e29;
+  (*out_counter)[0] = static_cast<uint32>(seed0);
+  (*out_counter)[1] = static_cast<uint32>(seed0 >> 32);
+  (*out_counter)[2] = static_cast<uint32>(seed1);
+  (*out_counter)[3] = static_cast<uint32>(seed1 >> 32);
+  const auto mix = random::PhiloxRandom(*out_counter, *out_key)();
+  (*out_key)[0] = mix[0];
+  (*out_key)[1] = mix[1];
+  (*out_counter)[0] = (*out_counter)[1] = 0;
+  (*out_counter)[2] = mix[2];
+  (*out_counter)[3] = mix[3];
+  return Status::OK();
+}
+
 namespace {
 
 class StatelessRandomOpBase : public OpKernel {
@@ -49,27 +84,9 @@ class StatelessRandomOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
     if (shape.num_elements() == 0) return;
 
-    // Grab the two seeds
-    const auto seed = seed_t.flat<int64>();
-    const uint64 seed0 = internal::SubtleMustCopy(seed(0));
-    const uint64 seed1 = internal::SubtleMustCopy(seed(1));
-
-    // Scramble the seeds so that the user doesn't need to worry about which
-    // part of the seed needs to be strong.
     random::PhiloxRandom::Key key;
     random::PhiloxRandom::ResultType counter;
-    key[0] = 0x3ec8f720;
-    key[1] = 0x02461e29;
-    counter[0] = static_cast<uint32>(seed0);
-    counter[1] = static_cast<uint32>(seed0 >> 32);
-    counter[2] = static_cast<uint32>(seed1);
-    counter[3] = static_cast<uint32>(seed1 >> 32);
-    const auto mix = random::PhiloxRandom(counter, key)();
-    key[0] = mix[0];
-    key[1] = mix[1];
-    counter[0] = counter[1] = 0;
-    counter[2] = mix[2];
-    counter[3] = mix[3];
+    OP_REQUIRES_OK(context, GenerateKey(seed_t, &key, &counter));
 
     // Fill in the random numbers
     Fill(context, random::PhiloxRandom(counter, key), output);
@@ -95,8 +112,6 @@ class StatelessRandomOp : public StatelessRandomOpBase {
         flat.size(), Distribution());
   }
 };
-
-}  // namespace
 
 #define REGISTER(TYPE)                                                 \
   REGISTER_KERNEL_BUILDER(                                             \
@@ -137,7 +152,6 @@ TF_CALL_double(REGISTER);
           .Device(DEVICE_GPU)                                          \
           .HostMemory("shape")                                         \
           .HostMemory("seed")                                          \
-          .TypeConstraint<int32>("T")                                  \
           .TypeConstraint<TYPE>("dtype"),                              \
       StatelessRandomOp<GPUDevice, random::UniformDistribution<        \
                                        random::PhiloxRandom, TYPE> >); \
@@ -146,7 +160,6 @@ TF_CALL_double(REGISTER);
           .Device(DEVICE_GPU)                                          \
           .HostMemory("shape")                                         \
           .HostMemory("seed")                                          \
-          .TypeConstraint<int32>("T")                                  \
           .TypeConstraint<TYPE>("dtype"),                              \
       StatelessRandomOp<GPUDevice, random::NormalDistribution<         \
                                        random::PhiloxRandom, TYPE> >); \
@@ -155,7 +168,6 @@ TF_CALL_double(REGISTER);
           .Device(DEVICE_GPU)                                          \
           .HostMemory("shape")                                         \
           .HostMemory("seed")                                          \
-          .TypeConstraint<int32>("T")                                  \
           .TypeConstraint<TYPE>("dtype"),                              \
       StatelessRandomOp<                                               \
           GPUDevice,                                                   \
@@ -169,5 +181,7 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+}  // namespace
 
 }  // namespace tensorflow

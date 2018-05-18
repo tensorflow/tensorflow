@@ -278,11 +278,22 @@ TensorSliceReader::VarToShapeMap TensorSliceReader::GetVariableToShapeMap()
     const {
   VarToShapeMap name_to_shape;
   if (status().ok()) {
-    for (auto e : Tensors()) {
+    for (auto& e : Tensors()) {
       name_to_shape[e.first] = e.second->shape();
     }
   }
   return name_to_shape;
+}
+
+TensorSliceReader::VarToDataTypeMap
+TensorSliceReader::GetVariableToDataTypeMap() const {
+  VarToDataTypeMap name_to_dtype;
+  if (status().ok()) {
+    for (auto& e : Tensors()) {
+      name_to_dtype[e.first] = e.second->type();
+    }
+  }
+  return name_to_dtype;
 }
 
 const string TensorSliceReader::DebugString() const {

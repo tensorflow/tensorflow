@@ -88,7 +88,7 @@ QueueRunner::~QueueRunner() {
 Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
 
 Status QueueRunner::StartAndCollectCostGraph(Session* sess,
-                                             const RunOptions* run_options) {
+                                             const RunOptions& run_options) {
   SetRunArgumentsAndCostGraph(run_options);
   return Start(sess, 0);
 }
@@ -121,7 +121,7 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
 }
 
 Status QueueRunner::StartAndCollectCostGraph(Session* session, int wait_for_ms,
-                                             const RunOptions* run_options) {
+                                             const RunOptions& run_options) {
   SetRunArgumentsAndCostGraph(run_options);
   return Start(session, wait_for_ms);
 }
@@ -214,15 +214,13 @@ Status QueueRunner::ExportCostGraph(CostGraphDef* cost_graph) const {
   return Status::OK();
 }
 
-void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions* run_options) {
+void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions& run_options) {
   cg_mu_.reset(new mutex());
   {
     mutex_lock l(*cg_mu_);
     cost_graph_.reset(new CostGraphDef());
   }
-  if (run_options) {
-    run_options_ = *run_options;
-  }
+  run_options_ = run_options;
 }
 
 Status QueueRunner::RealRun(Session* sess, const string& op,

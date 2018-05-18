@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "cosine_distance"
-    argspec: "args=[\'labels\', \'predictions\', \'dim\', \'weights\', \'scope\', \'loss_collection\', \'reduction\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\'], "
+    argspec: "args=[\'labels\', \'predictions\', \'axis\', \'weights\', \'scope\', \'loss_collection\', \'reduction\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'None\', \'losses\', \'weighted_sum_by_nonzero_weights\', \'None\'], "
   }
   member_method {
     name: "get_losses"

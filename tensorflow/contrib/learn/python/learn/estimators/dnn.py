@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Deep Neural Network estimators."""
+"""Deep Neural Network estimators (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +28,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -57,6 +62,22 @@ def _get_optimizer(optimizer):
     return optimizer
 
 
+_ACTIVATION_FUNCTIONS = {
+    "relu": nn.relu,
+    "tanh": nn.tanh,
+    "sigmoid": nn.sigmoid
+}
+
+
+def _get_activation_fn(activation_fn):
+  if not isinstance(activation_fn, six.string_types):
+    return activation_fn
+  if activation_fn not in _ACTIVATION_FUNCTIONS.keys():
+    raise ValueError("Activation name should be one of [%s], you provided %s." %
+                     (", ".join(_ACTIVATION_FUNCTIONS.keys()), activation_fn))
+  return _ACTIVATION_FUNCTIONS[activation_fn]
+
+
 def _add_hidden_layer_summary(value, tag):
   summary.scalar("%s_fraction_of_zero_values" % tag, nn.zero_fraction(value))
   summary.histogram("%s_activation" % tag, value)
@@ -81,7 +102,9 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
           optimizer to use for training. If `None`, will use the Adagrad
           optimizer with a default learning rate of 0.05.
       * activation_fn: Activation function applied to each layer. If `None`,
-          will use `tf.nn.relu`.
+          will use `tf.nn.relu`. Note that a string containing the unqualified
+          name of the op may also be provided, e.g., "relu", "tanh", or
+          "sigmoid".
       * dropout: When not `None`, the probability we will drop out a given
           coordinate.
       * gradient_clip_norm: A float > 0. If provided, gradients are
@@ -102,7 +125,7 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
   hidden_units = params["hidden_units"]
   feature_columns = params["feature_columns"]
   optimizer = params.get("optimizer") or "Adagrad"
-  activation_fn = params.get("activation_fn")
+  activation_fn = _get_activation_fn(params.get("activation_fn"))
   dropout = params.get("dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
   input_layer_min_slice_size = (
@@ -171,7 +194,7 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
       """Returns the op to optimize the loss."""
       return optimizers.optimize_loss(
           loss=loss,
-          global_step=contrib_variables.get_global_step(),
+          global_step=training_util.get_global_step(),
           learning_rate=_LEARNING_RATE,
           optimizer=_get_optimizer(optimizer),
           gradient_multipliers=(
@@ -193,6 +216,10 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
 
 class DNNClassifier(estimator.Estimator):
   """A classifier for TensorFlow DNN models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Example:
 
@@ -227,7 +254,9 @@ class DNNClassifier(estimator.Estimator):
   def input_fn_eval: # returns x, y (where y represents label's class index).
     pass
   estimator.evaluate(input_fn=input_fn_eval)
+
   def input_fn_predict: # returns x, None
+    pass
   # predict_classes returns class indices.
   estimator.predict_classes(input_fn=input_fn_predict)
   ```
@@ -307,7 +336,8 @@ class DNNClassifier(estimator.Estimator):
       optimizer: An instance of `tf.Optimizer` used to train the model. If
         `None`, will use an Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
-        use `tf.nn.relu`.
+        use tf.nn.relu. Note that a string containing the unqualified
+        name of the op may also be provided, e.g., "relu", "tanh", or "sigmoid".
       dropout: When not `None`, the probability we will drop out a given
         coordinate.
       gradient_clip_norm: A float > 0. If provided, gradients are
@@ -500,6 +530,10 @@ class DNNClassifier(estimator.Estimator):
 class DNNRegressor(estimator.Estimator):
   """A regressor for TensorFlow DNN models.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Example:
 
   ```python
@@ -586,7 +620,8 @@ class DNNRegressor(estimator.Estimator):
       optimizer: An instance of `tf.Optimizer` used to train the model. If
         `None`, will use an Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
-        use `tf.nn.relu`.
+        use `tf.nn.relu`. Note that a string containing the unqualified name of
+        the op may also be provided, e.g., "relu", "tanh", or "sigmoid".
       dropout: When not `None`, the probability we will drop out a given
         coordinate.
       gradient_clip_norm: A `float` > 0. If provided, gradients are clipped
@@ -774,6 +809,10 @@ class DNNRegressor(estimator.Estimator):
 class DNNEstimator(estimator.Estimator):
   """A Estimator for TensorFlow DNN models with user specified _Head.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Example:
 
   ```python
@@ -857,7 +896,8 @@ class DNNEstimator(estimator.Estimator):
       optimizer: An instance of `tf.Optimizer` used to train the model. If
         `None`, will use an Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
-        use `tf.nn.relu`.
+        use `tf.nn.relu`. Note that a string containing the unqualified name of
+        the op may also be provided, e.g., "relu", "tanh", or "sigmoid".
       dropout: When not `None`, the probability we will drop out a given
         coordinate.
       gradient_clip_norm: A float > 0. If provided, gradients are

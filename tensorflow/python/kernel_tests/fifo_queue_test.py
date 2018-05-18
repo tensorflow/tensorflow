@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import random
-import re
 import time
 
 import numpy as np
@@ -1077,6 +1076,9 @@ class FIFOQueueTest(test.TestCase):
         time.sleep(0.01)
       self.assertEqual([50.0], dequeued_t.eval())
       self.assertEqual([60.0], dequeued_t.eval())
+
+      # Make sure the thread finishes before exiting.
+      thread.join()
 
   def testBlockingEnqueueBeforeClose(self):
     with self.test_session() as sess:

@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "QueueSizeV2"
+  endpoint {
+    name: "QueueSize"
+  }
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a queue.
+END
+  }
+  out_arg {
+    name: "size"
+    description: <<END
+The number of elements in the given queue.
+END
+  }
+  summary: "Computes the number of elements in the given queue."
+}

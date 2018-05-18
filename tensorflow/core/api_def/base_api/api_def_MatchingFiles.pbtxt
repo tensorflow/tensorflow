@@ -1,0 +1,21 @@
+op {
+  graph_op_name: "MatchingFiles"
+  in_arg {
+    name: "pattern"
+    description: <<END
+Shell wildcard pattern(s). Scalar or vector of type string.
+END
+  }
+  out_arg {
+    name: "filenames"
+    description: <<END
+A vector of matching filenames.
+END
+  }
+  summary: "Returns the set of files matching one or more glob patterns."
+  description: <<END
+Note that this routine only supports wildcard characters in the
+basename portion of the pattern, not in the directory portion.
+Note also that the order of filenames returned can be non-deterministic.
+END
+}

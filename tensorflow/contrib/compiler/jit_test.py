@@ -137,17 +137,48 @@ class JITTest(test.TestCase):
     self.assertAllClose(v_true_1, v_true_2)
     self.assertAllClose(v_false_1, v_true_1)
 
+  def testDefunNoJitScope(self):
+    with self.test_session(graph=ops.Graph()):
+      @function.Defun(compiled=True, noinline=True)
+      def mulop(x1, x2):
+        return x1 * x2
+      x = constant_op.constant(1.0)
+      r = mulop(x, x)
+
+      # Ensure the forward function is compiled.
+      graph_def = r.graph.as_graph_def()
+      func_attrs = graph_def.library.function[0].attr
+      self.assertTrue(func_attrs["_XlaCompile"].b)
+      # No enclosing jit scope so function sets its own value for _XlaScope.
+      self.assertEqual(b"function_mulop", func_attrs["_XlaScope"].s)
+
+  def testDefunInheritsJitScope(self):
+    with self.test_session(graph=ops.Graph()):
+      with jit.experimental_jit_scope(True):
+        @function.Defun(compiled=True, noinline=True)
+        def mulop(x1, x2):
+          return x1 * x2
+        x = constant_op.constant(1.0)
+        r = mulop(x, x)
+
+      # Ensure the forward function is compiled.
+      graph_def = r.graph.as_graph_def()
+      func_attrs = graph_def.library.function[0].attr
+      self.assertTrue(func_attrs["_XlaCompile"].b)
+      # Ensure _XlaScope is inherited from enclosing context.
+      self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
+
 
 class CompilationEnabledInGradientTest(test.TestCase):
 
   def testCompilationInGradient(self):
     with self.test_session():
-      x = constant_op.constant(3)
-      y_nc = math_ops.add(x, x, name="not_compiled")
+      x = constant_op.constant([[3.]])
+      y_nc = math_ops.matmul(x, x, name="not_compiled")
       with jit.experimental_jit_scope():
-        y_c = math_ops.add(y_nc, y_nc, name="compiled")
+        y_c = math_ops.matmul(y_nc, y_nc, name="compiled")
       x_grads = gradients.gradients([y_c], [x])[0]
-      operations = x_grads.graph.get_operations()
+      operations = x.graph.get_operations()
       c_grad_ops = [
           op for op in operations if "gradients/compiled" in op.name]
       nc_grad_ops = [
@@ -157,22 +188,22 @@ class CompilationEnabledInGradientTest(test.TestCase):
       for cg in c_grad_ops:
         self.assertTrue(cg.get_attr("_XlaCompile"))
       for ncg in nc_grad_ops:
-        with self.assertRaisesRegexp(ValueError, "No attr named"):
+        with self.assertRaisesRegexp(ValueError, "[Nn]o attr named"):
           ncg.get_attr("_XlaCompile")
 
-      # d/dx (4 * x)
-      self.assertAllClose(4, x_grads.eval())
+      # d/dx (x ** 4) = 4 * (x ** 3)
+      self.assertAllClose([[108]], x_grads.eval())
 
   def testCompilationGradientScopeNames(self):
     with self.test_session(graph=ops.Graph()):
       with jit.experimental_jit_scope():
         # XlaScope 0
-        a1 = constant_op.constant(1)
-        a1t = a1 + a1
+        a1 = constant_op.constant([[1.]])
+        a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope():
         # XlaScope 1
-        a2 = constant_op.constant(1)
-        a2t = a2 + a2
+        a2 = constant_op.constant([[1.]])
+        a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))
       self.assertEqual(b"jit_scope_1", a2.op.get_attr("_XlaScope"))
@@ -189,12 +220,12 @@ class CompilationEnabledInGradientTest(test.TestCase):
     with self.test_session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 0
-        a1 = constant_op.constant(1)
-        a1t = a1 + a1
+        a1 = constant_op.constant([[1.]])
+        a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 1
-        a2 = constant_op.constant(1)
-        a2t = a2 + a2
+        a2 = constant_op.constant([[1.]])
+        a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))
       self.assertEqual(b"jit_scope_1", a2.op.get_attr("_XlaScope"))
@@ -211,7 +242,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
 
   def testPlaysNicelyWithDefun(self):
     with self.test_session(graph=ops.Graph()) as sess:
-      with jit.experimental_jit_scope(True):  # This should be ignored
+      with jit.experimental_jit_scope(True):
         @function.Defun(compiled=True, noinline=True)
         def mulop(x1, x2):
           return x1 * x2
@@ -223,20 +254,20 @@ class CompilationEnabledInGradientTest(test.TestCase):
       graph_def = r.graph.as_graph_def()
       func_attrs = graph_def.library.function[0].attr
       self.assertTrue(func_attrs["_XlaCompile"].b)
-      self.assertEqual(b"function_mulop", func_attrs["_XlaScope"].s)
+      self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
       # Ensure the gradient (SymbolicGradient) is compiled, with the same
       # _XlaScope as the function itself.
       grad_op = g_r.op.inputs[0].op
       self.assertTrue(grad_op.get_attr("_XlaCompile"))
-      self.assertEqual(b"function_mulop", grad_op.get_attr("_XlaScope"))
+      self.assertEqual(b"jit_scope_0", grad_op.get_attr("_XlaScope"))
 
       # Ensure the ops run: grad(x1*x1) = 2*x1
       self.assertAllClose([1.0, 1.0, 2.0], sess.run([x, r, g_r]))
 
   def testPlaysNicelyWithDefunSeparateGradientScope(self):
     with self.test_session(graph=ops.Graph()) as sess:
-      with jit.experimental_jit_scope(True):  # This should be ignored
+      with jit.experimental_jit_scope(True):
 
         @function.Defun(
             compiled=True, noinline=True, separate_compiled_gradients=True)
@@ -251,13 +282,13 @@ class CompilationEnabledInGradientTest(test.TestCase):
       graph_def = r.graph.as_graph_def()
       func_attrs = graph_def.library.function[0].attr
       self.assertTrue(func_attrs["_XlaCompile"].b)
-      self.assertEqual(b"function_mulop", func_attrs["_XlaScope"].s)
+      self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
       # Ensure the gradient (SymbolicGradient) is compiled, with a different
       # _XlaScope from the function itself.
       grad_op = g_r.op.inputs[0].op
       self.assertTrue(grad_op.get_attr("_XlaCompile"))
-      self.assertEqual(b"function_mulop_grad_GA",
+      self.assertEqual(b"jit_scope_0_grad_GA",
                        grad_op.get_attr("_XlaScope"))
 
       # Ensure the ops run: grad(x1*x1) = 2*x1

@@ -41,16 +41,16 @@ class DebuggerStateInterface {
   // Args:
   //   global_step: A global step count supplied by the caller of
   //     Session::Run().
-  //   session_run_count: A counter for calls to the Run() method of the
-  //     Session object.
-  //   executor_step_count: A counter for invocations of the executor charged
-  //     to serve this Session::Run() call.
+  //   session_run_index: A chronologically sorted index for calls to the Run()
+  //     method of the Session object.
+  //   executor_step_index: A chronologically sorted index of invocations of the
+  //     executor charged to serve this Session::Run() call.
   //   input_names: Name of the input Tensors (feed keys).
   //   output_names: Names of the fetched Tensors.
   //   target_names: Names of the target nodes.
   virtual Status PublishDebugMetadata(
-      const int64 global_step, const int64 session_run_count,
-      const int64 executor_step_count, const std::vector<string>& input_names,
+      const int64 global_step, const int64 session_run_index,
+      const int64 executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
       const std::vector<string>& target_nodes) = 0;
 };

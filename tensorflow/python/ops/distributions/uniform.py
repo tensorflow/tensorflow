@@ -29,8 +29,11 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("distributions.Uniform")
 class Uniform(distribution.Distribution):
   """Uniform distribution with `low` and `high` parameters.
 
@@ -43,11 +46,12 @@ class Uniform(distribution.Distribution):
   Z = b - a
   ```
 
-  where:
-  * `low = a`,
-  * `high = b`,
-  * `Z` is the normalizing constant, and,
-  * `I[predicate]` is the [indicator function](
+  where
+
+  - `low = a`,
+  - `high = b`,
+  - `Z` is the normalizing constant, and
+  - `I[predicate]` is the [indicator function](
     https://en.wikipedia.org/wiki/Indicator_function) for `predicate`.
 
   The parameters `low` and `high` must be shaped in a way that supports
@@ -99,8 +103,8 @@ class Uniform(distribution.Distribution):
     Raises:
       InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[low, high]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[low, high]) as name:
       with ops.control_dependencies([
           check_ops.assert_less(
               low, high, message="uniform not defined when low >= high.")
@@ -162,11 +166,9 @@ class Uniform(distribution.Distribution):
                                         seed=seed)
     return self.low + self.range() * samples
 
-  def _log_prob(self, x):
-    return math_ops.log(self._prob(x))
-
   def _prob(self, x):
-    broadcasted_x = x * array_ops.ones(self.batch_shape_tensor())
+    broadcasted_x = x * array_ops.ones(
+        self.batch_shape_tensor(), dtype=x.dtype)
     return array_ops.where(
         math_ops.is_nan(broadcasted_x),
         broadcasted_x,
@@ -175,9 +177,6 @@ class Uniform(distribution.Distribution):
                                 broadcasted_x >= self.high),
             array_ops.zeros_like(broadcasted_x),
             array_ops.ones_like(broadcasted_x) / self.range()))
-
-  def _log_cdf(self, x):
-    return math_ops.log(self.cdf(x))
 
   def _cdf(self, x):
     broadcast_shape = array_ops.broadcast_dynamic_shape(

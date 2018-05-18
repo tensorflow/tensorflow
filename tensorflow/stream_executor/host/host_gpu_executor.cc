@@ -26,12 +26,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 
-namespace gpu = ::perftools::gputools;
-
 bool FLAGS_stream_executor_cpu_real_clock_rate = false;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 HostStream *AsHostStream(Stream *stream) {
@@ -164,7 +161,7 @@ void HostExecutor::DeallocateStream(Stream *stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
   AsHostStream(dependent)->EnqueueTask(
-      [other]() { other->BlockHostUntilDone(); });
+      [other]() { SE_CHECK_OK(other->BlockHostUntilDone()); });
   AsHostStream(dependent)->BlockUntilDone();
   return true;
 }
@@ -179,9 +176,9 @@ bool HostExecutor::StopTimer(Stream *stream, Timer *timer) {
   return true;
 }
 
-bool HostExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status HostExecutor::BlockHostUntilDone(Stream *stream) {
   AsHostStream(stream)->BlockUntilDone();
-  return true;
+  return port::Status::OK();
 }
 
 DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
@@ -268,5 +265,4 @@ rng::RngSupport *HostExecutor::CreateRng() {
 }
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -108,7 +108,7 @@ int32 GraphCycles::NewNode() {
   if (rep_->free_nodes_.empty()) {
     Node* n = new Node;
     n->visited = false;
-    n->data = NULL;
+    n->data = nullptr;
     n->rank = rep_->nodes_.size();
     rep_->nodes_.push_back(n);
     return n->rank;
@@ -116,7 +116,7 @@ int32 GraphCycles::NewNode() {
     // Preserve preceding rank since the set of ranks in use must be
     // a permutation of [0,rep_->nodes_.size()-1].
     int32 r = rep_->free_nodes_.back();
-    rep_->nodes_[r]->data = NULL;
+    rep_->nodes_[r]->data = nullptr;
     rep_->free_nodes_.pop_back();
     return r;
   }
@@ -332,7 +332,7 @@ int GraphCycles::FindPath(int32 x, int32 y, int max_path_len,
 }
 
 bool GraphCycles::IsReachable(int32 x, int32 y) const {
-  return FindPath(x, y, 0, NULL) > 0;
+  return FindPath(x, y, 0, nullptr) > 0;
 }
 
 bool GraphCycles::IsReachableNonConst(int32 x, int32 y) {
@@ -352,6 +352,16 @@ bool GraphCycles::IsReachableNonConst(int32 x, int32 y) {
   // Clear any visited markers left by ForwardDFS.
   ClearVisitedBits(r, r->deltaf_);
   return reachable;
+}
+
+bool GraphCycles::CanContractEdge(int32 a, int32 b) {
+  CHECK(HasEdge(a, b)) << "No edge exists from " << a << " to " << b;
+  RemoveEdge(a, b);
+  bool reachable = IsReachableNonConst(a, b);
+  // Restore the graph to its original state.
+  InsertEdge(a, b);
+  // If reachable, then contracting edge will cause cycle.
+  return !reachable;
 }
 
 bool GraphCycles::ContractEdge(int32 a, int32 b) {
@@ -386,6 +396,10 @@ bool GraphCycles::ContractEdge(int32 a, int32 b) {
 
 std::unordered_set<int32> GraphCycles::Successors(int32 node) {
   return rep_->nodes_[node]->out;
+}
+
+std::unordered_set<int32> GraphCycles::Predecessors(int32 node) {
+  return rep_->nodes_[node]->in;
 }
 
 }  // namespace tensorflow

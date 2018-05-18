@@ -22,9 +22,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
-#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
@@ -41,34 +42,30 @@ constexpr float VALUE_TOLERANCE_FLOAT = 1e-8f;
 
 class GraphTransfererTest : public ::testing::Test {
  protected:
-  void SetUp() final {
-  }
+  void SetUp() final {}
 
   GraphTransferer gt_;
 };
 
-static const std::vector<string> OP_TYPES{
-    "INPUT", "OUTPUT", "Conv2D", "MaxPool", "NoOp", "Add", "Const", "Softmax"};
 const RemoteFusedGraphExecuteUtils::TensorShapeMap EMPTY_OUTPUT_TENSOR_MAP;
 
-class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
+class TestGraphTransferOpsDefinitions : public IRemoteFusedGraphOpsDefinitions {
  public:
-  int GetTotalOpsCount() const final { return OP_TYPES.size(); }
+  int GetTotalOpsCount() const final { return op_types_.size(); }
 
-int GetOpIdFor(const string& op_type, const DataTypeVector&) const final {
-  for (int i = 0; i < OP_TYPES.size(); ++i) {
-    if (OP_TYPES[i] == op_type) {
-      return i;
+  int GetOpIdFor(const string& op_type, const DataTypeVector&) const final {
+    for (int i = 0; i < op_types_.size(); ++i) {
+      if (op_types_[i] == op_type) {
+        return i;
+      }
     }
-  }
-  return -1;
-}
-
-GraphTransferInfo::Destination GetTransferDestination() const final {
-  return GraphTransferInfo::NOP;
+    return -1;
   }
 
  private:
+  const std::vector<string> op_types_{"INPUT",   "OUTPUT",  "Conv2D",
+                                      "MaxPool", "NoOp",    "Add",
+                                      "Const",   "Softmax", "Identity"};
 } TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
 
 static Output BuildAddOps(const Scope& scope, const Input& x, const Input& y) {
@@ -194,9 +191,9 @@ static GraphDef CreatePoolGraphDef() {
   return def;
 }
 
-static const GraphTransferInfo::ConstNodeInfo* FindConstNodeInfo(
+static const GraphTransferConstNodeInfo* FindConstNodeInfo(
     const GraphTransferer& gt, const string& name) {
-  for (const GraphTransferInfo::ConstNodeInfo& params :
+  for (const GraphTransferConstNodeInfo& params :
        gt.GetGraphTransferInfo().const_node_info()) {
     if (params.name() == name) {
       return &params;
@@ -205,9 +202,9 @@ static const GraphTransferInfo::ConstNodeInfo* FindConstNodeInfo(
   return nullptr;
 }
 
-static const GraphTransferInfo::NodeInfo* FindNodeInfo(
-    const GraphTransferer& gt, const string& name) {
-  for (const GraphTransferInfo::NodeInfo& params :
+static const GraphTransferNodeInfo* FindNodeInfo(const GraphTransferer& gt,
+                                                 const string& name) {
+  for (const GraphTransferNodeInfo& params :
        gt.GetGraphTransferInfo().node_info()) {
     if (params.name() == name) {
       return &params;
@@ -216,9 +213,9 @@ static const GraphTransferInfo::NodeInfo* FindNodeInfo(
   return nullptr;
 }
 
-static const GraphTransferInfo::NodeInputInfo* FindNodeInputInfo(
+static const GraphTransferNodeInputInfo* FindNodeInputInfo(
     const GraphTransferer& gt, const int node_id) {
-  for (const GraphTransferInfo::NodeInputInfo& params :
+  for (const GraphTransferNodeInputInfo& params :
        gt.GetGraphTransferInfo().node_input_info()) {
     if (params.node_id() == node_id) {
       return &params;
@@ -227,9 +224,9 @@ static const GraphTransferInfo::NodeInputInfo* FindNodeInputInfo(
   return nullptr;
 }
 
-static const GraphTransferInfo::NodeOutputInfo* FindNodeOutputInfo(
+static const GraphTransferNodeOutputInfo* FindNodeOutputInfo(
     const GraphTransferer& gt, const int node_id) {
-  for (const GraphTransferInfo::NodeOutputInfo& params :
+  for (const GraphTransferNodeOutputInfo& params :
        gt.GetGraphTransferInfo().node_output_info()) {
     if (params.node_id() == node_id) {
       return &params;
@@ -239,21 +236,21 @@ static const GraphTransferInfo::NodeOutputInfo* FindNodeOutputInfo(
 }
 
 static void SanityCheckNodes(const GraphTransferer& gt) {
-  for (const GraphTransferInfo::NodeInfo& params :
+  for (const GraphTransferNodeInfo& params :
        gt.GetGraphTransferInfo().node_info()) {
     if (params.input_count() > 0) {
-      const GraphTransferInfo::NodeInputInfo* input_params =
+      const GraphTransferNodeInputInfo* input_params =
           FindNodeInputInfo(gt, params.node_id());
       ASSERT_NE(nullptr, input_params);
       EXPECT_EQ(params.input_count(), input_params->node_input_size());
       EXPECT_EQ(params.node_id(), input_params->node_id());
-      for (const GraphTransferInfo::NodeInput& node_input :
+      for (const GraphTransferNodeInput& node_input :
            input_params->node_input()) {
         EXPECT_GE(node_input.output_port(), 0);
       }
     }
     if (params.output_count() > 0) {
-      const GraphTransferInfo::NodeOutputInfo* output_params =
+      const GraphTransferNodeOutputInfo* output_params =
           FindNodeOutputInfo(gt, params.node_id());
       ASSERT_NE(nullptr, output_params);
       EXPECT_EQ(params.output_count(), output_params->max_byte_size_size());
@@ -276,8 +273,7 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   const int const_node_count =
       gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
-  const GraphTransferInfo::ConstNodeInfo* params_a =
-      FindConstNodeInfo(gt_, NAME_A);
+  const GraphTransferConstNodeInfo* params_a = FindConstNodeInfo(gt_, NAME_A);
   ASSERT_TRUE(params_a != nullptr);
   EXPECT_EQ(NAME_A, params_a->name());
   ASSERT_EQ(4, params_a->shape_size());
@@ -287,8 +283,7 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   EXPECT_EQ(1, params_a->shape(3));
   EXPECT_EQ(4, params_a->data().length());
 
-  const GraphTransferInfo::ConstNodeInfo* params_b =
-      FindConstNodeInfo(gt_, NAME_B);
+  const GraphTransferConstNodeInfo* params_b = FindConstNodeInfo(gt_, NAME_B);
   ASSERT_TRUE(params_b != nullptr);
   ASSERT_EQ(4, params_b->shape_size());
   EXPECT_EQ(1, params_b->shape(0));
@@ -312,7 +307,7 @@ TEST_F(GraphTransfererTest, LoadAddGraphWithOutputTensorMap) {
   const std::vector<string> output_node_names = {NAME_A_PLUS_B};
   status = gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                   inputs, output_node_names, false);
-  ASSERT_TRUE(status.ok());
+  TF_ASSERT_OK(status);
 }
 
 TEST_F(GraphTransfererTest, LoadConvGraph) {
@@ -330,8 +325,8 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
       gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
   const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
-  ASSERT_EQ(3, op_node_count);
-  const GraphTransferInfo::NodeInfo* params_conv = FindNodeInfo(gt_, "conv");
+  ASSERT_EQ(4, op_node_count);
+  const GraphTransferNodeInfo* params_conv = FindNodeInfo(gt_, "conv");
   ASSERT_TRUE(params_conv != nullptr);
   const int id = params_conv->node_id();
   EXPECT_GE(id, 0);
@@ -356,9 +351,8 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
       gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
   const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
-  ASSERT_EQ(3, op_node_count);
-  const GraphTransferInfo::NodeInfo* params_max_pool =
-      FindNodeInfo(gt_, "maxpool");
+  ASSERT_EQ(4, op_node_count);
+  const GraphTransferNodeInfo* params_max_pool = FindNodeInfo(gt_, "maxpool");
   ASSERT_TRUE(params_max_pool != nullptr);
   const int id = params_max_pool->node_id();
   EXPECT_GE(id, 0);
@@ -369,14 +363,14 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
 }
 
 TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
-  const IGraphTransferOpsDefinitions& ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions& ops_definitions =
       HexagonOpsDefinitions::getInstance();
   const int total_ops_count = ops_definitions.GetTotalOpsCount();
   EXPECT_GT(total_ops_count, 0);
 }
 
 TEST(GraphTransferer, LoadGraphFromProtoFile) {
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
   string filename =
       io::JoinPath(testing::TensorFlowSrcRoot(),
@@ -439,7 +433,7 @@ void CompareGraphTransferInfo(const GraphTransferInfo& a,
 }  // anonymous namespace
 
 TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
   string filename =
       io::JoinPath(testing::TensorFlowSrcRoot(),

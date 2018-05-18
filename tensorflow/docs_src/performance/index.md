@@ -12,8 +12,8 @@ deeper with techniques detailed in @{$performance_models$High-Performance Models
     of advanced techniques to build highly scalable models targeting different
     system types and network topologies.
 
-  * @{$benchmarks$Benchmarks}, which contains a collection of benchmark
-    results.
+  * @{$performance/benchmarks$Benchmarks}, which contains a collection of
+    benchmark results.
 
 XLA (Accelerated Linear Algebra) is an experimental compiler for linear
 algebra that optimizes TensorFlow computations. The following guides explore

@@ -3,6 +3,14 @@ tf_class {
   is_instance: "<class \'tensorflow.core.protobuf.meta_graph_pb2.TensorInfo\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
+    name: "COO_SPARSE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "CooSparse"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }

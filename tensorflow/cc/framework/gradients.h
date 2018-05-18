@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
+#define TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -49,4 +49,4 @@ Output NoGradient();
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_

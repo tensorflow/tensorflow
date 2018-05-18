@@ -1,0 +1,170 @@
+op {
+  graph_op_name: "SdcaOptimizer"
+  in_arg {
+    name: "sparse_example_indices"
+    description: <<END
+a list of vectors which contain example indices.
+END
+  }
+  in_arg {
+    name: "sparse_feature_indices"
+    description: <<END
+a list of vectors which contain feature indices.
+END
+  }
+  in_arg {
+    name: "sparse_feature_values"
+    description: <<END
+a list of vectors which contains feature value
+associated with each feature group.
+END
+  }
+  in_arg {
+    name: "dense_features"
+    description: <<END
+a list of matrices which contains the dense feature values.
+END
+  }
+  in_arg {
+    name: "example_weights"
+    description: <<END
+a vector which contains the weight associated with each
+example.
+END
+  }
+  in_arg {
+    name: "example_labels"
+    description: <<END
+a vector which contains the label/target associated with each
+example.
+END
+  }
+  in_arg {
+    name: "sparse_indices"
+    description: <<END
+a list of vectors where each value is the indices which has
+corresponding weights in sparse_weights. This field maybe omitted for the
+dense approach.
+END
+  }
+  in_arg {
+    name: "sparse_weights"
+    description: <<END
+a list of vectors where each value is the weight associated with
+a sparse feature group.
+END
+  }
+  in_arg {
+    name: "dense_weights"
+    description: <<END
+a list of vectors where the values are the weights associated
+with a dense feature group.
+END
+  }
+  in_arg {
+    name: "example_state_data"
+    description: <<END
+a list of vectors containing the example state data.
+END
+  }
+  out_arg {
+    name: "out_example_state_data"
+    description: <<END
+a list of vectors containing the updated example state
+data.
+END
+  }
+  out_arg {
+    name: "out_delta_sparse_weights"
+    description: <<END
+a list of vectors where each value is the delta
+weights associated with a sparse feature group.
+END
+  }
+  out_arg {
+    name: "out_delta_dense_weights"
+    description: <<END
+a list of vectors where the values are the delta
+weights associated with a dense feature group.
+END
+  }
+  attr {
+    name: "loss_type"
+    description: <<END
+Type of the primal loss. Currently SdcaSolver supports logistic,
+squared and hinge losses.
+END
+  }
+  attr {
+    name: "adaptative"
+    default_value {
+      b: True
+    }
+    description: <<END
+Whether to use Adaptive SDCA for the inner loop.
+END
+  }
+  attr {
+    name: "num_sparse_features"
+    description: <<END
+Number of sparse feature groups to train on.
+END
+  }
+  attr {
+    name: "num_sparse_features_with_values"
+    description: <<END
+Number of sparse feature groups with values
+associated with it, otherwise implicitly treats values as 1.0.
+END
+  }
+  attr {
+    name: "num_dense_features"
+    description: <<END
+Number of dense feature groups to train on.
+END
+  }
+  attr {
+    name: "l1"
+    description: <<END
+Symmetric l1 regularization strength.
+END
+  }
+  attr {
+    name: "l2"
+    description: <<END
+Symmetric l2 regularization strength.
+END
+  }
+  attr {
+    name: "num_loss_partitions"
+    description: <<END
+Number of partitions of the global loss function.
+END
+  }
+  attr {
+    name: "num_inner_iterations"
+    description: <<END
+Number of iterations per mini-batch.
+END
+  }
+  summary: "Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for"
+  description: <<END
+linear models with L1 + L2 regularization. As global optimization objective is
+strongly-convex, the optimizer optimizes the dual objective at each step. The
+optimizer applies each update one example at a time. Examples are sampled
+uniformly, and the optimizer is learning rate free and enjoys linear convergence
+rate.
+
+[Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
+Shai Shalev-Shwartz, Tong Zhang. 2012
+
+$$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
+
+[Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
+Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
+Peter Richtarik, Martin Takac. 2015
+
+[Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
+Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
+END
+}

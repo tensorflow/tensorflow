@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from tensorflow.contrib.training.python.training import device_setter as device_setter_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -25,12 +26,46 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import server_lib
 
+_CLUSTER_SPEC = server_lib.ClusterSpec({
+    "ps": ["ps0:2222", "ps1:2222"],
+    "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+})
+
+MockOperation = collections.namedtuple("MockOperation", "name")
+
+
+class RandomStrategyTest(test.TestCase):
+
+  def testBasic(self):
+    ps_strategy = device_setter_lib.RandomStrategy(2, seed=0)
+    with ops.device(
+        device_setter.replica_device_setter(
+            cluster=_CLUSTER_SPEC,
+            ps_strategy=ps_strategy)):
+      u = variables.Variable(array_ops.zeros([2, 2]))
+      v = variables.Variable(array_ops.zeros([2, 1]))
+      w = variables.Variable(array_ops.zeros([2, 2]))
+      x = variables.Variable(array_ops.zeros([1, 3]))
+      a = v + w
+      # Randomly distributed with seed 0.
+      self.assertDeviceEqual("/job:ps/task:1", u.device)
+      self.assertDeviceEqual("/job:ps/task:1", u.initializer.device)
+      self.assertDeviceEqual("/job:ps/task:0", v.device)
+      self.assertDeviceEqual("/job:ps/task:0", v.initializer.device)
+      self.assertDeviceEqual("/job:ps/task:1", w.device)
+      self.assertDeviceEqual("/job:ps/task:1", w.initializer.device)
+      self.assertDeviceEqual("/job:ps/task:1", x.device)
+      self.assertDeviceEqual("/job:ps/task:1", x.initializer.device)
+      self.assertDeviceEqual("/job:worker", a.device)
+
+  def testHandlesUnicode(self):
+    op = MockOperation(u"A unicode \u018e string \xf1")
+    ps_strategy = device_setter_lib.RandomStrategy(2, seed=0)
+    ps_task = ps_strategy(op)
+    self.assertEqual(ps_task, 1)
+
 
 class GreedyLoadBalancingStrategyTest(test.TestCase):
-  _cluster_spec = server_lib.ClusterSpec({
-      "ps": ["ps0:2222", "ps1:2222"],
-      "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
-  })
 
   def testUniformLoadEqualsRoundRobin(self):
 
@@ -39,7 +74,7 @@ class GreedyLoadBalancingStrategyTest(test.TestCase):
 
     with ops.device(
         device_setter.replica_device_setter(
-            cluster=self._cluster_spec,
+            cluster=_CLUSTER_SPEC,
             ps_strategy=device_setter_lib.GreedyLoadBalancingStrategy(
                 2, _load_fn))):
       u = variables.Variable(array_ops.zeros([2, 2]))
@@ -60,7 +95,7 @@ class GreedyLoadBalancingStrategyTest(test.TestCase):
   def testByteSizeLoadFn(self):
     with ops.device(
         device_setter.replica_device_setter(
-            cluster=self._cluster_spec,
+            cluster=_CLUSTER_SPEC,
             ps_strategy=device_setter_lib.GreedyLoadBalancingStrategy(
                 2, device_setter_lib.byte_size_load_fn))):
       u = variables.Variable(array_ops.zeros([2, 2]))
@@ -81,7 +116,7 @@ class GreedyLoadBalancingStrategyTest(test.TestCase):
   def testByteSizeLoadFnWithScalar(self):
     with ops.device(
         device_setter.replica_device_setter(
-            cluster=self._cluster_spec,
+            cluster=_CLUSTER_SPEC,
             ps_strategy=device_setter_lib.GreedyLoadBalancingStrategy(
                 2, device_setter_lib.byte_size_load_fn))):
       # Note: we must test the load function as part of the device function

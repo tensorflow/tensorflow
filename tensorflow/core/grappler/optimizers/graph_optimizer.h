@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -41,7 +41,7 @@ class GraphOptimizer {
                           GraphDef* optimized_graph) = 0;
 
   // Method invoked by the framework so that it can provide feedback
-  // on how well the "optimize_output" (produced as *output from a
+  // on how well the "optimized_graph" (produced as *optimized_graph from a
   // call to Optimize) performed.  Lower "result" scores are better.
   virtual void Feedback(Cluster* cluster, const GrapplerItem& item,
                         const GraphDef& optimized_graph, double result) = 0;
@@ -50,4 +50,4 @@ class GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_

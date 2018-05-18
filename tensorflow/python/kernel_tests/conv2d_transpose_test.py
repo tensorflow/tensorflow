@@ -21,11 +21,15 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.client import device_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -171,7 +175,7 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   def testConv2DTransposeSingleStrideNCHW(self):
-    # `NCHW` data fomat is only supported for CUDA device.
+    # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 1, 1]
@@ -206,7 +210,7 @@ class Conv2DTransposeTest(test.TestCase):
                 self.assertAllClose(target, value[n, k, h, w])
 
   def testConv2DTransposeSameNCHW(self):
-    # `NCHW` data fomat is only supported for CUDA device.
+    # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 2, 2]
@@ -242,7 +246,7 @@ class Conv2DTransposeTest(test.TestCase):
                 self.assertAllClose(target, value[n, k, h, w])
 
   def testConv2DTransposeValidNCHW(self):
-    # `NCHW` data fomat is only supported for CUDA device.
+    # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 2, 2]
@@ -288,6 +292,18 @@ class Conv2DTransposeTest(test.TestCase):
             cache_values[n, k, -1, :] = cache_values[n, k, -2, :]
 
         self.assertAllClose(cache_values, value)
+
+  @test_util.enable_c_shapes
+  def testConv2DTransposeShapeInference(self):
+    # Test case for 8972
+    initializer = random_ops.truncated_normal(
+        [3, 3, 5, 1], mean=0.0, stddev=0.01, dtype=dtypes.float32)
+    x = variables.Variable(random_ops.random_normal([3, 10, 5, 1]))
+    f = variable_scope.get_variable("f", initializer=initializer)
+    f_shape = array_ops.stack([array_ops.shape(x)[0], 10, 5, 5])
+    output = nn_ops.conv2d_transpose(
+        x, f, f_shape, strides=[1, 1, 1, 1], padding="SAME")
+    self.assertEqual(output.get_shape().as_list(), [3, 10, 5, 5])
 
 
 if __name__ == "__main__":

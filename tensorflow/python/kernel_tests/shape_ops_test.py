@@ -258,6 +258,16 @@ class ShapeOpsTest(test.TestCase):
       self.assertAllEqual([True], array_ops.expand_dims(inp, 0).eval())
       self.assertAllEqual([True], array_ops.expand_dims(inp, -1).eval())
 
+  def testExpandDimsDimType(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      x = np.zeros([2])
+      np_ans = np.expand_dims(x, axis=0)
+      with self.test_session(use_gpu=True):
+        tensor = array_ops.expand_dims(x, constant_op.constant(0, dtype))
+        tf_ans = tensor.eval()
+      self.assertShapeEqual(np_ans, tensor)
+      self.assertAllEqual(np_ans, tf_ans)
+
   def _compareSqueeze(self, x, squeeze_dims, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       if squeeze_dims:
@@ -411,14 +421,16 @@ class TileTest(test.TestCase):
       self.assertEqual(7, result)
 
   def testSimple(self):
-    with self.test_session():
-      inp = np.random.rand(4, 1).astype(np.float32)
-      a = constant_op.constant(inp)
-      tiled = array_ops.tile(a, [1, 4])
-      result = tiled.eval()
-    self.assertEqual(result.shape, (4, 4))
-    self.assertEqual([4, 4], tiled.get_shape())
-    self.assertTrue((result == np.tile(inp, (1, 4))).all())
+    # multiples could be int32 or int64
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        inp = np.random.rand(4, 1).astype(np.float32)
+        a = constant_op.constant(inp)
+        tiled = array_ops.tile(a, constant_op.constant([1, 4], dtype=dtype))
+        result = tiled.eval()
+      self.assertEqual(result.shape, (4, 4))
+      self.assertEqual([4, 4], tiled.get_shape())
+      self.assertTrue((result == np.tile(inp, (1, 4))).all())
 
   def testIdentityTileAndGrad(self):
     with self.test_session():
@@ -504,16 +516,16 @@ class TileTest(test.TestCase):
       with self.assertRaises(ValueError):
         array_ops.tile(a, [[2, 3], [3, 4]]).eval()
 
-  def _RunAndVerifyResult(self, use_gpu):
+  def _RunAndVerifyResult(self, rank, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      # Random dims of rank 5
-      input_shape = np.random.randint(1, 4, size=5)
+      # Random dims of given rank
+      input_shape = np.random.randint(1, 4, size=rank)
       inp = np.random.rand(*input_shape).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.ravel(order="C")],
           shape=input_shape,
           dtype=dtypes.float32)
-      multiples = np.random.randint(1, 4, size=5).astype(np.int32)
+      multiples = np.random.randint(1, 4, size=rank).astype(np.int32)
       tiled = array_ops.tile(a, multiples)
       result = tiled.eval()
     self.assertTrue((np.array(multiples) * np.array(inp.shape) == np.array(
@@ -522,10 +534,16 @@ class TileTest(test.TestCase):
     self.assertShapeEqual(result, tiled)
 
   def testRandom(self):
+    # test low rank, like 5
     for _ in range(5):
-      self._RunAndVerifyResult(use_gpu=False)
+      self._RunAndVerifyResult(5, use_gpu=False)
     for _ in range(5):
-      self._RunAndVerifyResult(use_gpu=True)
+      self._RunAndVerifyResult(5, use_gpu=True)
+    # test high rank, like 10
+    for _ in range(5):
+      self._RunAndVerifyResult(10, use_gpu=False)
+    for _ in range(5):
+      self._RunAndVerifyResult(10, use_gpu=True)
 
   def testGradientSimpleReduction(self):
     with self.test_session():

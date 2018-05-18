@@ -43,7 +43,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
           "graph should be available.");
     }
     gtl::InlinedVector<Node*, 2> matches;
-    for (Node* n : g->nodes()) {
+    for (Node* n : g->op_nodes()) {
       if (n->type_string() == "ParallelConcat") {
         matches.push_back(n);
       }

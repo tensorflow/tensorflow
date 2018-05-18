@@ -28,7 +28,7 @@ namespace tensorflow {
 Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
                           bool* value) {
   *value = default_val;
-  const char* tf_env_var_val = getenv(env_var_name.ToString().c_str());
+  const char* tf_env_var_val = getenv(std::string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
     return Status::OK();
   }
@@ -48,7 +48,7 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
 Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
                            int64* value) {
   *value = default_val;
-  const char* tf_env_var_val = getenv(env_var_name.ToString().c_str());
+  const char* tf_env_var_val = getenv(std::string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
     return Status::OK();
   }
@@ -58,6 +58,17 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
   return errors::InvalidArgument(strings::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into int64: ",
       tf_env_var_val, ". Use the default value: ", default_val));
+}
+
+Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                            string* value) {
+  const char* tf_env_var_val = getenv(std::string(env_var_name).c_str());
+  if (tf_env_var_val != nullptr) {
+    *value = tf_env_var_val;
+  } else {
+    *value = std::string(default_val);
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

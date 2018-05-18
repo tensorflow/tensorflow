@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -32,23 +33,66 @@ namespace xla {
 // executable.
 class HloModuleConfig {
  public:
+  // A configuration can be created either with, or without an entry
+  // ComputationLayout. The default ctor creates it without -- in this case
+  // accessing entry_computation_layout will CHECK-fail. The ctor accepting a
+  // ProgramShape creates a computation layout using this shape.
+  HloModuleConfig();
   explicit HloModuleConfig(const ProgramShape& program_shape);
 
-  // Return a reference to the layout of the entry computation.
-  const ComputationLayout& entry_computation_layout() const {
-    return entry_computation_layout_;
-  }
-  ComputationLayout* mutable_entry_computation_layout() {
-    return &entry_computation_layout_;
+  // Checks if this config has an entry computation layout already.
+  bool has_host_entry_computation_layout() const {
+    return host_entry_computation_layout_.has_value();
   }
 
-  // Sets/returns whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
-  void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
+  bool has_device_entry_computation_layout() const {
+    return device_entry_computation_layout_.has_value();
+  }
 
-  bool has_hybrid_result() const { return has_hybrid_result_; }
-  void set_has_hybrid_result(bool has_hybrid_result) {
-    has_hybrid_result_ = has_hybrid_result;
+  // Sets the entry computation layout for this config. If the entry computation
+  // layout already exists, it is silently replaced.
+  void SetDefaultComputationLayout(const ProgramShape& program_shape);
+
+  // Returns a constant reference to the on-host layout of the entry
+  // computation. Assumes the layout was set.
+  const ComputationLayout& host_entry_computation_layout() const {
+    CHECK(host_entry_computation_layout_.has_value());
+    return *host_entry_computation_layout_;
+  }
+
+  // Returns a mutable pointer to the layout of the on-host entry computation.
+  // Assumes the layout was set.
+  ComputationLayout* mutable_host_entry_computation_layout() {
+    CHECK(host_entry_computation_layout_.has_value());
+    return &(*host_entry_computation_layout_);
+  }
+
+  // Returns a constant reference to the on-device layout of the entry
+  // computation. Assumes the layout was set.
+  const ComputationLayout& device_entry_computation_layout() const {
+    CHECK(device_entry_computation_layout_.has_value());
+    return *device_entry_computation_layout_;
+  }
+
+  // Returns a mutable pointer to the layout of the on-device entry computation.
+  // Assumes the layout was set.
+  ComputationLayout* mutable_device_entry_computation_layout() {
+    CHECK(device_entry_computation_layout_.has_value());
+    return &(*device_entry_computation_layout_);
+  }
+
+  // Returns whether to enable HLO-level profiling.
+  bool hlo_profiling_enabled() const {
+    return debug_options_.xla_hlo_profile();
+  }
+
+  // Sets/returns whether this is a "host module".  Host modules are used to
+  // record the data- and control-flow dependencies of host side computation
+  // that communicates with compiled code.  They are used for analysis and
+  // scheduling purposes, but no code is generated.
+  bool is_host_module() const { return is_host_module_; }
+  void set_is_host_module(bool is_host_module) {
+    is_host_module_ = is_host_module;
   }
 
   // Sets/returns the module seed set during execution.
@@ -60,36 +104,34 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
-  // Sets/returns whether unsafe math optimizations are disabled for this
-  // module.  Default is fast-math enabled.
-  //
-  // This is named fast_math_disabled rather than the more natural
-  // fast_math_enabled for consistency with the ExecutionOptions proto.
-  bool fast_math_disabled() const { return fast_math_disabled_; }
-  void set_fast_math_disabled(bool disabled) { fast_math_disabled_ = disabled; }
-
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
   string compilation_cache_key() const;
 
+  const DebugOptions& debug_options() const { return debug_options_; }
+
+  void set_debug_options(const DebugOptions& debug_options) {
+    debug_options_ = debug_options;
+  }
+
+  // Sets/returns the number of intra op threads for this module.
+  void set_intra_op_parallelism_threads(
+      const int intra_op_parallelism_threads) {
+    intra_op_parallelism_threads_ = intra_op_parallelism_threads;
+  }
+  int64 intra_op_parallelism_threads() const {
+    return intra_op_parallelism_threads_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  ComputationLayout entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> host_entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> device_entry_computation_layout_;
 
-  // Whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled_ = false;
-
-  // If this flag is true, the generated executable will return a ShapedBuffer
-  // holding the result of the computation. In a ShapedBuffer, tuples have their
-  // structure held in host memory and the element arrays (leaves of the tuple
-  // structure) stored in device memory. The ShapedBuffer is considered "hybrid"
-  // because its leaves are on device but its structure is stored on
-  // host. Otherwise, if this flag is false, the generated executable will
-  // return a DeviceMemoryBase where the result is held entirely in device
-  // memory.
-  bool has_hybrid_result_ = false;
+  // Whether this is a 'host module'.
+  bool is_host_module_ = false;
 
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
@@ -97,7 +139,11 @@ class HloModuleConfig {
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
 
-  bool fast_math_disabled_ = false;
+  // The target maximum parallelism at which to partition HLOs for parallel
+  // execution on the CPU backend.
+  int64 intra_op_parallelism_threads_ = -1;
+
+  DebugOptions debug_options_;
 };
 
 }  // namespace xla

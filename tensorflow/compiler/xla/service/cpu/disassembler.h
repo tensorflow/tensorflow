@@ -19,33 +19,43 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "external/llvm/include/llvm/MC/MCContext.h"
-#include "external/llvm/include/llvm/MC/MCDisassembler/MCDisassembler.h"
-#include "external/llvm/include/llvm/MC/MCInstPrinter.h"
-#include "external/llvm/include/llvm/MC/MCInstrAnalysis.h"
-#include "external/llvm/include/llvm/MC/MCObjectFileInfo.h"
-#include "external/llvm/include/llvm/MC/MCSubtargetInfo.h"
-#include "external/llvm/include/llvm/Object/ObjectFile.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
+#include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrAnalysis.h"
+#include "llvm/MC/MCObjectFileInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace cpu {
 
+struct DisassemblerResult {
+  DisassemblerResult(const string& text, size_t code_size_bytes)
+      : text(text), code_size_bytes(code_size_bytes) {}
+
+  // The disassembled text sections of the object file.
+  string text;
+  // The total number of bytes of executable code in the object file.
+  uint64_t code_size_bytes;
+};
+
 // Class for disassembling object files (and potentially other constructs) into
-// X86 assembly. Builds all the LLVM disassembly and instruction printing
+// x86/ARM assembly. Builds all the LLVM disassembly and instruction printing
 // constructs from a given TargetMachine.
 class Disassembler {
  public:
   explicit Disassembler(const llvm::TargetMachine& target_machine);
 
-  // Returns a string containing the disassembled text sections of the given
-  // object file.
+  // Returns a DisassemblerResult for the given object file, containing the
+  // disassembled code.
   //
-  // If we couldnt' retrieve a disassembler for this platform, an error status
+  // If we couldn't retrieve a disassembler for this platform, an error status
   // is returned.
-  StatusOr<string> DisassembleObjectFile(
+  StatusOr<DisassemblerResult> DisassembleObjectFile(
       const llvm::object::ObjectFile& object_file) const;
 
  private:

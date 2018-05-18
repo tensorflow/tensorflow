@@ -20,22 +20,40 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-CopyThunk::CopyThunk(const void* source_address,
-                     const BufferAllocation::Slice& destination_buffer,
-                     uint64 mem_size, const HloInstruction* hlo_instruction)
+HostToDeviceCopyThunk::HostToDeviceCopyThunk(
+    const void* source_address,
+    const BufferAllocation::Slice& destination_buffer, uint64 mem_size,
+    const HloInstruction* hlo_instruction)
     : Thunk(Kind::kCopy, hlo_instruction),
       source_address_(source_address),
       destination_buffer_(destination_buffer),
       mem_size_(mem_size) {}
 
-tensorflow::Status CopyThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
-  perftools::gputools::DeviceMemoryBase destination_data =
+Status HostToDeviceCopyThunk::ExecuteOnStream(
+    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+  se::DeviceMemoryBase destination_data =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
   stream->ThenMemcpy(&destination_data, source_address_, mem_size_);
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
+DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
+    const BufferAllocation::Slice& source_buffer,
+    const BufferAllocation::Slice& destination_buffer, uint64 mem_size,
+    const HloInstruction* hlo_instruction)
+    : Thunk(Kind::kCopy, hlo_instruction),
+      source_buffer_(source_buffer),
+      destination_buffer_(destination_buffer),
+      mem_size_(mem_size) {}
+
+Status DeviceToDeviceCopyThunk::ExecuteOnStream(
+    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+  se::DeviceMemoryBase destination_data =
+      buffer_allocations.GetDeviceAddress(destination_buffer_);
+  se::DeviceMemoryBase source_data =
+      buffer_allocations.GetDeviceAddress(source_buffer_);
+  stream->ThenMemcpy(&destination_data, source_data, mem_size_);
+  return Status::OK();
+}
 }  // namespace gpu
 }  // namespace xla

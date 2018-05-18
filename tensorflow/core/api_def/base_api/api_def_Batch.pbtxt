@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "Batch"
+  summary: "Batches all input tensors nondeterministically."
+  description: <<END
+When many instances of this Op are being run concurrently with the same
+container/shared_name in the same device, some will output zero-shaped Tensors
+and others will output Tensors of size up to max_batch_size.
+
+All Tensors in in_tensors are batched together (so, for example, labels and
+features should be batched with a single instance of this operation.
+
+Each invocation of batch emits an `id` scalar which will be used to identify
+this particular invocation when doing unbatch or its gradient.
+
+Each op which emits a non-empty batch will also emit a non-empty batch_index
+Tensor, which, is a [K, 3] matrix where each row contains the invocation's id,
+start, and length of elements of each set of Tensors present in batched_tensors.
+
+Batched tensors are concatenated along the first dimension, and all tensors in
+in_tensors must have the first dimension of the same size.
+
+in_tensors: The tensors to be batched.
+num_batch_threads: Number of scheduling threads for processing batches of work.
+ Determines the number of batches processed in parallel.
+max_batch_size: Batch sizes will never be bigger than this.
+batch_timeout_micros: Maximum number of microseconds to wait before outputting
+ an incomplete batch.
+allowed_batch_sizes: Optional list of allowed batch sizes. If left empty, does
+ nothing. Otherwise, supplies a list of batch sizes, causing the op to pad
+ batches up to one of those sizes. The entries must increase monotonically, and
+ the final entry must equal max_batch_size.
+grad_timeout_micros: The timeout to use for the gradient. See Unbatch.
+batched_tensors: Either empty tensors or a batch of concatenated Tensors.
+batch_index: If out_tensors is non-empty, has information to invert it.
+container: Controls the scope of sharing of this batch.
+id: always contains a scalar with a unique ID for this invocation of Batch.
+shared_name: Concurrently running instances of batch in the same device with the
+ same container and shared_name will batch their elements together. If left
+ empty, the op name will be used as the shared name.
+T: the types of tensors to be batched.
+END
+}

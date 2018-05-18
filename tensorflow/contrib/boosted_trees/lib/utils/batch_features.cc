@@ -54,7 +54,7 @@ Status BatchFeatures::Initialize(
     TF_CHECK_AND_RETURN_IF_ERROR(
         dense_float_feature.dim_size(1) == 1,
         errors::InvalidArgument(
-            "Dense float features may not be multi-valent: dim_size(1) = ",
+            "Dense float features may not be multivalent: dim_size(1) = ",
             dense_float_feature.dim_size(1)));
     dense_float_feature_columns_.emplace_back(dense_float_feature);
   }
@@ -94,10 +94,6 @@ Status BatchFeatures::Initialize(
         shape_flat(0) == batch_size_,
         errors::InvalidArgument(
             "Sparse float feature shape incompatible with batch size."));
-    TF_CHECK_AND_RETURN_IF_ERROR(
-        shape_flat(1) <= 1,
-        errors::InvalidArgument(
-            "Sparse float features may not be multi-valent."));
     auto tensor_shape = TensorShape({shape_flat(0), shape_flat(1)});
     auto order_dims = sparse::SparseTensor::VarDimArray({0, 1});
     sparse_float_feature_columns_.emplace_back(sparse_float_feature_indices,

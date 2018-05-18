@@ -14,18 +14,7 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@farmhash_archive//:farmhash",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

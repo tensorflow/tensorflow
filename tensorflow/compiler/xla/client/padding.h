@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -37,6 +38,14 @@ enum class Padding {
   kValid,
 };
 
+// Validates that the slices are acceptable for determining padding -- this can
+// be used to check the preconditions of MakePadding below to produce an error
+// message that can be returned to the user.
+Status ValidatePaddingValues(
+    tensorflow::gtl::ArraySlice<int64> input_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides);
+
 // Returns the padding needed for the base area, given the base area dimensions,
 // window dimensions, strides, and the type of padding.
 //
@@ -51,7 +60,7 @@ enum class Padding {
 std::vector<std::pair<int64, int64>> MakePadding(
     tensorflow::gtl::ArraySlice<int64> input_dimensions,
     tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> strides, Padding padding);
+    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding);
 
 }  // namespace xla
 

@@ -22,18 +22,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":api_objects_proto_py",
-        "//tensorflow/tools/common:traverse",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

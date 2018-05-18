@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/verbs_server_lib.h"
 
+#include "grpc/support/alloc.h"
+
 #include "tensorflow/contrib/verbs/rdma_mgr.h"
 #include "tensorflow/contrib/verbs/rdma_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -101,6 +103,8 @@ Status VerbsServer::Start() {
           ThreadOptions(), "TF_verbs_service",
           [this] { verbs_service_->HandleRPCsLoop(); }));
       rdma_mgr_->SetupChannels();
+      CHECK(rdma_mgr_->ConnectivityCheck()) << "Connectivity check failed!";
+      rdma_mgr_->InitAllocators();
       verbs_state_ = CONNECTED;
     }
   }

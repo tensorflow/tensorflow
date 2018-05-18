@@ -15,7 +15,7 @@
 include (ExternalProject)
 
 set(jpeg_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/jpeg_archive)
-set(jpeg_URL http://www.ijg.org/files/jpegsrc.v9a.tar.gz)
+set(jpeg_URL https://mirror.bazel.build/www.ijg.org/files/jpegsrc.v9a.tar.gz)
 set(jpeg_HASH SHA256=3a753ea48d917945dd54a2d97de388aa06ca2eb1066cbfdc6652036349fe05a7)
 set(jpeg_BUILD ${CMAKE_CURRENT_BINARY_DIR}/jpeg/src/jpeg)
 set(jpeg_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/jpeg/install)
@@ -46,6 +46,7 @@ if (WIN32)
         PREFIX jpeg
         URL ${jpeg_URL}
         URL_HASH ${jpeg_HASH}
+        BUILD_BYPRODUCTS ${jpeg_STATIC_LIBRARIES}
         PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/jpeg/CMakeLists.txt ${jpeg_BUILD}
         INSTALL_DIR ${jpeg_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
@@ -74,6 +75,7 @@ else()
         CONFIGURE_COMMAND
             ${jpeg_BUILD}/configure
             --prefix=${jpeg_INSTALL}
+            --libdir=${jpeg_INSTALL}/lib
             --enable-shared=yes
 	    CFLAGS=-fPIC
     )

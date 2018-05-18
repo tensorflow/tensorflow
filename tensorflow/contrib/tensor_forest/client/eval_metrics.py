@@ -37,7 +37,7 @@ def _top_k_generator(k):
   def _top_k(probabilities, targets):
     targets = math_ops.to_int32(targets)
     if targets.get_shape().ndims > 1:
-      targets = array_ops.squeeze(targets, squeeze_dims=[1])
+      targets = array_ops.squeeze(targets, axis=[1])
     return metric_ops.streaming_mean(nn.in_top_k(probabilities, targets, k))
   return _top_k
 
@@ -47,8 +47,6 @@ def _accuracy(predictions, targets, weights=None):
 
 
 def _r2(probabilities, targets, weights=None):
-  if targets.get_shape().ndims == 1:
-    targets = array_ops.expand_dims(targets, -1)
   targets = math_ops.to_float(targets)
   y_mean = math_ops.reduce_mean(targets, 0)
   squares_total = math_ops.reduce_sum(math_ops.square(targets - y_mean), 0)
@@ -59,7 +57,7 @@ def _r2(probabilities, targets, weights=None):
 
 
 def _squeeze_and_onehot(targets, depth):
-  targets = array_ops.squeeze(targets, squeeze_dims=[1])
+  targets = array_ops.squeeze(targets, axis=[1])
   return array_ops.one_hot(math_ops.to_int32(targets), depth)
 
 
@@ -117,7 +115,13 @@ def _recall_at_thresholds(predictions, targets, weights=None):
       weights=weights)
 
 
+def _auc(probs, targets, weights=None):
+  return metric_ops.streaming_auc(array_ops.slice(probs, [0, 1], [-1, 1]),
+                                  targets, weights=weights)
+
+
 _EVAL_METRICS = {
+    'auc': _auc,
     'sigmoid_entropy': _sigmoid_entropy,
     'softmax_entropy': _softmax_entropy,
     'accuracy': _accuracy,
@@ -132,10 +136,11 @@ _EVAL_METRICS = {
 }
 
 _PREDICTION_KEYS = {
+    'auc': INFERENCE_PROB_NAME,
     'sigmoid_entropy': INFERENCE_PROB_NAME,
     'softmax_entropy': INFERENCE_PROB_NAME,
     'accuracy': INFERENCE_PRED_NAME,
-    'r2': INFERENCE_PROB_NAME,
+    'r2': prediction_key.PredictionKey.SCORES,
     'predictions': INFERENCE_PRED_NAME,
     'classification_log_loss': INFERENCE_PROB_NAME,
     'precision': INFERENCE_PRED_NAME,

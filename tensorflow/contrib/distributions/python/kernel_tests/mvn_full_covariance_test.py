@@ -47,6 +47,13 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
       with self.assertRaisesOpError("not symmetric"):
         mvn.covariance().eval()
 
+  def testNamePropertyIsSetByInitArg(self):
+    with self.test_session():
+      mu = [1., 2.]
+      sigma = [[1., 0.], [0., 1.]]
+      mvn = ds.MultivariateNormalFullCovariance(mu, sigma, name="Billy")
+      self.assertEqual(mvn.name, "Billy/")
+
   def testDoesNotRaiseIfInitializedWithSymmetricMatrix(self):
     with self.test_session():
       mu = rng.rand(10)
@@ -124,8 +131,8 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
     return mu, sigma
 
   def testKLBatch(self):
-    batch_shape = (2,)
-    event_shape = (3,)
+    batch_shape = [2]
+    event_shape = [3]
     with self.test_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
@@ -146,6 +153,33 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
                                             mu_b[0, :], sigma_b[0, :])
       expected_kl_1 = _compute_non_batch_kl(mu_a[1, :], sigma_a[1, :, :],
                                             mu_b[1, :], sigma_b[1, :])
+      self.assertAllClose(expected_kl_0, kl_v[0])
+      self.assertAllClose(expected_kl_1, kl_v[1])
+
+  def testKLBatchBroadcast(self):
+    batch_shape = [2]
+    event_shape = [3]
+    with self.test_session():
+      mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
+      # No batch shape.
+      mu_b, sigma_b = self._random_mu_and_sigma([], event_shape)
+      mvn_a = ds.MultivariateNormalFullCovariance(
+          loc=mu_a,
+          covariance_matrix=sigma_a,
+          validate_args=True)
+      mvn_b = ds.MultivariateNormalFullCovariance(
+          loc=mu_b,
+          covariance_matrix=sigma_b,
+          validate_args=True)
+
+      kl = ds.kl_divergence(mvn_a, mvn_b)
+      self.assertEqual(batch_shape, kl.get_shape())
+
+      kl_v = kl.eval()
+      expected_kl_0 = _compute_non_batch_kl(mu_a[0, :], sigma_a[0, :, :],
+                                            mu_b, sigma_b)
+      expected_kl_1 = _compute_non_batch_kl(mu_a[1, :], sigma_a[1, :, :],
+                                            mu_b, sigma_b)
       self.assertAllClose(expected_kl_0, kl_v[0])
       self.assertAllClose(expected_kl_1, kl_v[1])
 

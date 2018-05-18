@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DepthwiseConv2dNative"
+  endpoint {
+    name: "nn.depthwise_conv2d_native"
+  }
+}

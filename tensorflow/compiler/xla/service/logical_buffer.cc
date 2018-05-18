@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 
-#include <ostream>
-#include <vector>
-
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -26,15 +23,22 @@ limitations under the License.
 
 namespace xla {
 
-string LogicalBuffer::ToString() const {
-  return tensorflow::strings::StrCat(instruction_->FullyQualifiedName(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "](#", id_, ")");
-}
+LogicalBuffer::LogicalBuffer(HloInstruction* instruction,
+                             const ShapeIndex& index, Id id)
+    : BufferValue(instruction, index, id),
+      instruction_(instruction),
+      index_(index) {}
 
-std::ostream& operator<<(std::ostream& out, const LogicalBuffer& buffer) {
-  out << buffer.ToString();
-  return out;
+LogicalBuffer::~LogicalBuffer() {}
+
+string LogicalBuffer::ToString() const {
+  string color_string;
+  if (has_color()) {
+    color_string = tensorflow::strings::StrCat(" @", color().value());
+  }
+  return tensorflow::strings::StrCat(instruction_->name(), "[",
+                                     tensorflow::str_util::Join(index_, ","),
+                                     "](#", id(), color_string, ")");
 }
 
 }  // namespace xla

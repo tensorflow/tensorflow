@@ -43,9 +43,26 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     in_shapes.push_back(shape);
   }
 
-  shape_inference::InferenceContext c(op.graph_def_version, &op.node_def,
-                                      op_reg_data->op_def, in_shapes,
-                                      op.input_tensors, {}, {}, {});
+  std::vector<std::unique_ptr<std::vector<shape_inference::ShapeAndType>>>
+      input_resource_handle_shapes_and_types;
+  for (const auto p : op.input_resource_handle_shapes_and_types) {
+    if (p == nullptr) {
+      input_resource_handle_shapes_and_types.push_back(nullptr);
+    } else {
+      std::unique_ptr<std::vector<ShapeAndType>> v(
+          new std::vector<ShapeAndType>());
+      for (const auto& shape_and_type : *p) {
+        ShapeHandle shape;
+        TF_RETURN_IF_ERROR(
+            MakeShapeFromString(&manager, shape_and_type.first, &shape));
+        v->emplace_back(shape, shape_and_type.second);
+      }
+      input_resource_handle_shapes_and_types.emplace_back(v.release());
+    }
+  }
+  shape_inference::InferenceContext c(
+      op.graph_def_version, &op.node_def, op_reg_data->op_def, in_shapes,
+      op.input_tensors, {}, std::move(input_resource_handle_shapes_and_types));
   TF_RETURN_IF_ERROR(c.construction_status());
   if (op_reg_data->shape_inference_fn == nullptr) {
     return errors::InvalidArgument(
@@ -83,7 +100,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
       }
     }
 
-    if (expected.starts_with("in")) {
+    if (str_util::StartsWith(expected, "in")) {
       if (in_index == -1) {
         return Unknown(err_prefix,
                        " should have matched an input shape by "
@@ -118,7 +135,9 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     }
 
     // Verify the dimensions.
-    CHECK(expected.starts_with("[") && expected.ends_with("]")) << expected;
+    CHECK(str_util::StartsWith(expected, "[") &&
+          str_util::EndsWith(expected, "]"))
+        << expected;
     expected.remove_prefix(1);
     expected.remove_suffix(1);
 
@@ -159,7 +178,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
           return Unknown(err_prefix, " expected to be unknown but was ",
                          c.Value(out_dim), err_suffix);
         }
-      } else if (expected_dim.starts_with("d")) {
+      } else if (str_util::StartsWith(expected_dim, "d")) {
         // Compare the dimension values.
         auto v = str_util::Split(expected_dim, '|');
         if (in_dim_idx.first == -1) {

@@ -21,12 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.opt.python.training import nadam_optimizer
-from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test

@@ -59,7 +59,7 @@ func (s Shape) NumDimensions() int {
 //
 // REQUIRES: 0 <= dim < s.NumDimensions()
 func (s Shape) Size(dim int) int64 {
-	if dim < 0 || dim > s.NumDimensions() {
+	if dim < 0 || dim >= s.NumDimensions() {
 		return -1
 	}
 	return s.dims[dim]

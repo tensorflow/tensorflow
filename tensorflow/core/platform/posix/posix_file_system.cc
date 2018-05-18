@@ -18,6 +18,9 @@ limitations under the License.
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#if !defined(__APPLE__)
+#include <sys/sendfile.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -28,11 +31,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/posix/error.h"
 #include "tensorflow/core/platform/posix/posix_file_system.h"
 
 namespace tensorflow {
+
+// 128KB of copy buffer
+constexpr size_t kPosixCopyFileBufferSize = 128 * 1024;
 
 // pread() based random-access
 class PosixRandomAccessFile : public RandomAccessFile {
@@ -78,7 +85,7 @@ class PosixWritableFile : public WritableFile {
       : filename_(fname), file_(f) {}
 
   ~PosixWritableFile() override {
-    if (file_ != NULL) {
+    if (file_ != nullptr) {
       // Ignoring any potential errors
       fclose(file_);
     }
@@ -97,7 +104,7 @@ class PosixWritableFile : public WritableFile {
     if (fclose(file_) != 0) {
       result = IOError(filename_, errno);
     }
-    file_ = NULL;
+    file_ = nullptr;
     return result;
   }
 
@@ -121,7 +128,9 @@ class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
  public:
   PosixReadOnlyMemoryRegion(const void* address, uint64 length)
       : address_(address), length_(length) {}
-  ~PosixReadOnlyMemoryRegion() { munmap(const_cast<void*>(address_), length_); }
+  ~PosixReadOnlyMemoryRegion() override {
+    munmap(const_cast<void*>(address_), length_);
+  }
   const void* data() override { return address_; }
   uint64 length() override { return length_; }
 
@@ -148,7 +157,7 @@ Status PosixFileSystem::NewWritableFile(const string& fname,
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "w");
-  if (f == NULL) {
+  if (f == nullptr) {
     s = IOError(fname, errno);
   } else {
     result->reset(new PosixWritableFile(translated_fname, f));
@@ -161,7 +170,7 @@ Status PosixFileSystem::NewAppendableFile(
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "a");
-  if (f == NULL) {
+  if (f == nullptr) {
     s = IOError(fname, errno);
   } else {
     result->reset(new PosixWritableFile(translated_fname, f));
@@ -203,11 +212,11 @@ Status PosixFileSystem::GetChildren(const string& dir,
   string translated_dir = TranslateName(dir);
   result->clear();
   DIR* d = opendir(translated_dir.c_str());
-  if (d == NULL) {
+  if (d == nullptr) {
     return IOError(dir, errno);
   }
   struct dirent* entry;
-  while ((entry = readdir(d)) != NULL) {
+  while ((entry = readdir(d)) != nullptr) {
     StringPiece basename = entry->d_name;
     if ((basename != ".") && (basename != "..")) {
       result->push_back(entry->d_name);
@@ -215,6 +224,11 @@ Status PosixFileSystem::GetChildren(const string& dir,
   }
   closedir(d);
   return Status::OK();
+}
+
+Status PosixFileSystem::GetMatchingPaths(const string& pattern,
+                                         std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status PosixFileSystem::DeleteFile(const string& fname) {
@@ -271,6 +285,72 @@ Status PosixFileSystem::RenameFile(const string& src, const string& target) {
   if (rename(TranslateName(src).c_str(), TranslateName(target).c_str()) != 0) {
     result = IOError(src, errno);
   }
+  return result;
+}
+
+Status PosixFileSystem::CopyFile(const string& src, const string& target) {
+  string translated_src = TranslateName(src);
+  struct stat sbuf;
+  if (stat(translated_src.c_str(), &sbuf) != 0) {
+    return IOError(src, errno);
+  }
+  int src_fd = open(translated_src.c_str(), O_RDONLY);
+  if (src_fd < 0) {
+    return IOError(src, errno);
+  }
+  string translated_target = TranslateName(target);
+  // O_WRONLY | O_CREAT:
+  //   Open file for write and if file does not exist, create the file.
+  // S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH:
+  //   Create the file with permission of 0644
+  int target_fd = open(translated_target.c_str(), O_WRONLY | O_CREAT,
+                       S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (target_fd < 0) {
+    close(src_fd);
+    return IOError(target, errno);
+  }
+  int rc = 0;
+  off_t offset = 0;
+  std::unique_ptr<char[]> buffer(new char[kPosixCopyFileBufferSize]);
+  while (offset < sbuf.st_size) {
+    // Use uint64 for safe compare SSIZE_MAX
+    uint64 chunk = sbuf.st_size - offset;
+    if (chunk > SSIZE_MAX) {
+      chunk = SSIZE_MAX;
+    }
+#if defined(__linux__) && !defined(__ANDROID__)
+    rc = sendfile(target_fd, src_fd, &offset, static_cast<size_t>(chunk));
+#else
+    if (chunk > kPosixCopyFileBufferSize) {
+      chunk = kPosixCopyFileBufferSize;
+    }
+    rc = read(src_fd, buffer.get(), static_cast<size_t>(chunk));
+    if (rc <= 0) {
+      break;
+    }
+    rc = write(target_fd, buffer.get(), static_cast<size_t>(chunk));
+    offset += chunk;
+#endif
+    if (rc <= 0) {
+      break;
+    }
+  }
+
+  Status result = Status::OK();
+  if (rc < 0) {
+    result = IOError(target, errno);
+  }
+
+  // Keep the error code
+  rc = close(target_fd);
+  if (rc < 0 && result == Status::OK()) {
+    result = IOError(target, errno);
+  }
+  rc = close(src_fd);
+  if (rc < 0 && result == Status::OK()) {
+    result = IOError(target, errno);
+  }
+
   return result;
 }
 

@@ -75,10 +75,10 @@ message SessionModule {
   repeated SessionComputation embedded_computations = 2;
 
   // The arguments passed to the computation.
-  repeated Literal arguments = 3;
+  repeated LiteralProto arguments = 3;
 
   // The result of the computation.
-  Literal result = 4;
+  LiteralProto result = 4;
 
   // The name of the platform used to run the computation.
   string execution_platform = 5;

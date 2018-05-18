@@ -13,8 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-# TODO(ptucker,ipolosukhin): Improve descriptions.
-"""High level API for learning.
+"""High level API for learning (DEPRECATED).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 See the @{$python/contrib.learn} guide.
 
@@ -73,6 +76,10 @@ See the @{$python/contrib.learn} guide.
 @@read_batch_examples
 @@read_batch_features
 @@read_batch_record_features
+@@read_keyed_batch_examples
+@@read_keyed_batch_examples_shared_queue
+@@read_keyed_batch_features
+@@read_keyed_batch_features_shared_queue
 
 @@InputFnOps
 @@ProblemType

@@ -14,7 +14,6 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
-        "//tensorflow/examples/tutorials/mnist:input_data",
     ],
 )
 
@@ -54,16 +53,4 @@ py_binary(
         "//tensorflow/examples/tutorials/mnist",
         "//tensorflow/examples/tutorials/mnist:input_data",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import math_ops
@@ -32,6 +34,7 @@ from tensorflow.python.platform import test
 
 class ConfusionMatrixTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testExample(self):
     """This is a test of the example provided in pydoc."""
     with self.test_session():
@@ -41,14 +44,16 @@ class ConfusionMatrixTest(test.TestCase):
           [0, 0, 1, 0, 0],
           [0, 0, 0, 0, 0],
           [0, 0, 0, 0, 1]
-      ], confusion_matrix.confusion_matrix(
-          labels=[1, 2, 4], predictions=[2, 2, 4]).eval())
+      ], self.evaluate(confusion_matrix.confusion_matrix(
+          labels=[1, 2, 4], predictions=[2, 2, 4])))
 
-  def _testConfMatrix(self, labels, predictions, truth, weights=None):
+  def _testConfMatrix(self, labels, predictions, truth, weights=None,
+                      num_classes=None):
     with self.test_session():
       dtype = predictions.dtype
       ans = confusion_matrix.confusion_matrix(
-          labels, predictions, dtype=dtype, weights=weights).eval()
+          labels, predictions, dtype=dtype, weights=weights,
+          num_classes=num_classes).eval()
       self.assertAllClose(truth, ans, atol=1e-10)
       self.assertEqual(ans.dtype, dtype)
 
@@ -100,11 +105,7 @@ class ConfusionMatrixTest(test.TestCase):
       d, l, cm_out = sess.run([data, lab, cm], {m_neg: 0.0, m_pos: 1.0, s: 1.0})
 
       truth = np.zeros([2, 2], dtype=np_dtype)
-      try:
-        range_builder = xrange
-      except NameError:  # In Python 3.
-        range_builder = range
-      for i in range_builder(len(d)):
+      for i in xrange(len(d)):
         truth[l[i], d[i]] += 1
 
       self.assertEqual(cm_out.dtype, np_dtype)
@@ -175,6 +176,34 @@ class ConfusionMatrixTest(test.TestCase):
 
     self._testConfMatrix(
         labels=labels, predictions=predictions, weights=weights, truth=truth)
+
+  def testLabelsTooLarge(self):
+    labels = np.asarray([1, 1, 0, 3, 5], dtype=np.int32)
+    predictions = np.asarray([2, 1, 0, 2, 2], dtype=np.int32)
+    with self.assertRaisesOpError("`labels`.*x < y"):
+      self._testConfMatrix(
+          labels=labels, predictions=predictions, num_classes=3, truth=None)
+
+  def testLabelsNegative(self):
+    labels = np.asarray([1, 1, 0, -1, -1], dtype=np.int32)
+    predictions = np.asarray([2, 1, 0, 2, 2], dtype=np.int32)
+    with self.assertRaisesOpError("`labels`.*negative values"):
+      self._testConfMatrix(
+          labels=labels, predictions=predictions, num_classes=3, truth=None)
+
+  def testPredictionsTooLarge(self):
+    labels = np.asarray([1, 1, 0, 2, 2], dtype=np.int32)
+    predictions = np.asarray([2, 1, 0, 3, 5], dtype=np.int32)
+    with self.assertRaisesOpError("`predictions`.*x < y"):
+      self._testConfMatrix(
+          labels=labels, predictions=predictions, num_classes=3, truth=None)
+
+  def testPredictionsNegative(self):
+    labels = np.asarray([1, 1, 0, 2, 2], dtype=np.int32)
+    predictions = np.asarray([2, 1, 0, -1, -1], dtype=np.int32)
+    with self.assertRaisesOpError("`predictions`.*negative values"):
+      self._testConfMatrix(
+          labels=labels, predictions=predictions, num_classes=3, truth=None)
 
   def testInvalidRank_predictionsTooBig(self):
     labels = np.asarray([1, 2, 3])

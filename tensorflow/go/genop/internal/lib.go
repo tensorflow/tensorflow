@@ -13,6 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
+// Package internal generates Go source code with functions for TensorFlow operations.
 package internal
 
 // #cgo LDFLAGS: -ltensorflow

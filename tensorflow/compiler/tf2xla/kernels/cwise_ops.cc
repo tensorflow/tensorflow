@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/bcast.h"
@@ -75,7 +75,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   // Call virtual method to emit the computation.
-  xla::ComputationDataHandle output =
+  xla::XlaOp output =
       Computation(ctx, lhs_handle, lhs_shape.dim_sizes(), rhs_handle,
                   rhs_shape.dim_sizes(), bcast, extend_dimension);
 
@@ -85,11 +85,9 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   ctx->SetOutput(0, output);
 }
 
-/* static */ std::pair<xla::ComputationDataHandle, xla::ComputationDataHandle>
-XlaBinaryOp::Broadcast(xla::ComputationBuilder* builder,
-                       const xla::ComputationDataHandle& lhs,
-                       const xla::ComputationDataHandle& rhs,
-                       const BCast& broadcast_helper) {
+/* static */ std::pair<xla::XlaOp, xla::XlaOp> XlaBinaryOp::Broadcast(
+    xla::XlaBuilder* builder, const xla::XlaOp& lhs, const xla::XlaOp& rhs,
+    const BCast& broadcast_helper) {
   // Manually construct the broadcasting since MapN does not do
   // automatic broadcasting. The bcast helper ensures that
   // lhs.reshape(bcast.x_reshape()).broadcast(bcast.x_bcast()) and
@@ -135,43 +133,6 @@ XlaBinaryOp::Broadcast(xla::ComputationBuilder* builder,
                                      broadcast_helper.output_shape());
 
   return {lhs_output, rhs_output};
-}
-
-xla::ComputationDataHandle XlaBinaryMapOp::Computation(
-    XlaOpKernelContext* ctx, const xla::ComputationDataHandle& lhs,
-    const gtl::ArraySlice<int64>& lhs_shape,
-    const xla::ComputationDataHandle& rhs,
-    const gtl::ArraySlice<int64>& rhs_shape, const BCast& broadcast_helper,
-    const std::vector<int64>& extend_dimensions) {
-  xla::ComputationBuilder* builder = ctx->builder();
-
-  // Construct the builder for the lambda computation.
-  xla::ComputationBuilder l(builder->client(), ctx->op_kernel().name());
-  xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
-
-  // Make two scalar parameters of the desired type for the lambda.
-  xla::ComputationDataHandle x =
-      l.Parameter(0, xla::ShapeUtil::MakeShape(type, {}), "x");
-  xla::ComputationDataHandle y =
-      l.Parameter(1, xla::ShapeUtil::MakeShape(type, {}), "y");
-
-  // Call virtual method to build the lambda.
-  BuildMapLambda(&l, x, y);
-  xla::Computation computation = l.Build().ConsumeValueOrDie();
-
-  xla::ComputationDataHandle lhs_broadcast = lhs;
-  xla::ComputationDataHandle rhs_broadcast = rhs;
-  if (lhs_shape == rhs_shape) {
-    // There's no broadcasting to do.
-    CHECK_EQ(0, extend_dimensions.size());
-    return builder->Map({lhs, rhs}, computation);
-  } else {
-    std::tie(lhs_broadcast, rhs_broadcast) =
-        Broadcast(builder, lhs, rhs, broadcast_helper);
-  }
-  // Now the two sides are broadcast to the final shape we can do the map.
-  return builder->Map({lhs_broadcast, rhs_broadcast}, computation);
 }
 
 }  // namespace tensorflow

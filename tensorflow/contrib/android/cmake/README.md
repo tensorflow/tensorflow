@@ -14,7 +14,7 @@ Add TensorFlow-Android-Inference as a dependency of your Android application
 
 ```
 include ':TensorFlow-Android-Inference'
-findProject(":TensorFlow-Android-Inference").projectDir = 
+findProject(":TensorFlow-Android-Inference").projectDir =
             new File("${/path/to/tensorflow_repo}/contrib/android/cmake")
 ```
 
@@ -43,6 +43,6 @@ Output
 - TensorFlow-Inference-release.aar
 
 File libtensorflow_inference.so should be packed under jni/${ANDROID_ABI}/
-in the above aar, and it is transparent to the app as it will acccess them via
+in the above aar, and it is transparent to the app as it will access them via
 equivalent java APIs.
 

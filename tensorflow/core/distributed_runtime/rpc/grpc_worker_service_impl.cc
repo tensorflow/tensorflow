@@ -32,6 +32,8 @@ const char* GrpcWorkerMethodName(GrpcWorkerMethod id) {
       return "/tensorflow.WorkerService/GetStatus";
     case GrpcWorkerMethod::kCreateWorkerSession:
       return "/tensorflow.WorkerService/CreateWorkerSession";
+    case GrpcWorkerMethod::kDeleteWorkerSession:
+      return "/tensorflow.WorkerService/DeleteWorkerSession";
     case GrpcWorkerMethod::kRegisterGraph:
       return "/tensorflow.WorkerService/RegisterGraph";
     case GrpcWorkerMethod::kDeregisterGraph:
@@ -44,10 +46,18 @@ const char* GrpcWorkerMethodName(GrpcWorkerMethod id) {
       return "/tensorflow.WorkerService/CleanupAll";
     case GrpcWorkerMethod::kRecvTensor:
       return "/tensorflow.WorkerService/RecvTensor";
+    case GrpcWorkerMethod::kRecvBuf:
+      return "/tensorflow.WorkerService/RecvBuf";
     case GrpcWorkerMethod::kLogging:
       return "/tensorflow.WorkerService/Logging";
     case GrpcWorkerMethod::kTracing:
       return "/tensorflow.WorkerService/Tracing";
+    case GrpcWorkerMethod::kCompleteGroup:
+      return "/tensorflow.WorkerService/CompleteGroup";
+    case GrpcWorkerMethod::kCompleteInstance:
+      return "/tensorflow.WorkerService/CompleteInstance";
+    case GrpcWorkerMethod::kGetStepSequence:
+      return "/tensorflow.WorkerService/GetStepSequence";
   }
   // Shouldn't be reached.
   LOG(FATAL) << "Invalid id: this line shouldn't be reached.";
@@ -58,9 +68,9 @@ namespace grpc {
 
 WorkerService::AsyncService::AsyncService() {
   for (int i = 0; i < kGrpcNumWorkerMethods; ++i) {
-    AddMethod(new ::grpc::RpcServiceMethod(
+    AddMethod(new ::grpc::internal::RpcServiceMethod(
         GrpcWorkerMethodName(static_cast<GrpcWorkerMethod>(i)),
-        ::grpc::RpcMethod::NORMAL_RPC, nullptr));
+        ::grpc::internal::RpcMethod::NORMAL_RPC, nullptr));
     ::grpc::Service::MarkMethodAsync(i);
   }
 }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
@@ -492,17 +493,15 @@ TEST(BundleShimTest, DefaultAndNamedSignatureWithPredict) {
   ASSERT_FALSE(
       actual_signature_def_predict->second.inputs().find("foo-input") ==
       actual_signature_def_predict->second.inputs().end());
-  EXPECT_EQ("foo-input",
-            actual_signature_def_predict->second.inputs()
-                .find("foo-input")
-                ->second.name());
+  EXPECT_EQ("foo-input", actual_signature_def_predict->second.inputs()
+                             .find("foo-input")
+                             ->second.name());
   ASSERT_FALSE(
       actual_signature_def_predict->second.outputs().find("foo-output") ==
       actual_signature_def_predict->second.outputs().end());
-  EXPECT_EQ("foo-output",
-            actual_signature_def_predict->second.outputs()
-                .find("foo-output")
-                ->second.name());
+  EXPECT_EQ("foo-output", actual_signature_def_predict->second.outputs()
+                              .find("foo-output")
+                              ->second.name());
   EXPECT_EQ(kPredictMethodName,
             actual_signature_def_predict->second.method_name());
 }

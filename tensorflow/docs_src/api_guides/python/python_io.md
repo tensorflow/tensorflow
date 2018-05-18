@@ -14,16 +14,16 @@ suitable if fast sharding or other non-sequential access is desired.
 
 ## TFRecords Format Details
 
-A TFRecords file contains a sequence of strings with CRC hashes.  Each record
-has the format
+A TFRecords file contains a sequence of strings with CRC32C (32-bit CRC using
+the Castagnoli polynomial) hashes.  Each record has the format
 
     uint64 length
     uint32 masked_crc32_of_length
     byte   data[length]
     uint32 masked_crc32_of_data
 
-and the records are concatenated together to produce the file.  The CRC32s
-are [described here](https://en.wikipedia.org/wiki/Cyclic_redundancy_check),
-and the mask of a CRC is
+and the records are concatenated together to produce the file. CRCs are
+[described here](https://en.wikipedia.org/wiki/Cyclic_redundancy_check), and
+the mask of a CRC is
 
     masked_crc = ((crc >> 15) | (crc << 17)) + 0xa282ead8ul

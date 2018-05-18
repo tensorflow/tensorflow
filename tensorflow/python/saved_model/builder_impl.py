@@ -34,8 +34,10 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("saved_model.builder.SavedModelBuilder")
 class SavedModelBuilder(object):
   """Builds the `SavedModel` protocol buffer and saves variables and assets.
 
@@ -130,7 +132,8 @@ class SavedModelBuilder(object):
       if not file_io.file_exists(asset_destination_filepath):
         file_io.copy(asset_source_filepath, asset_destination_filepath)
 
-    tf_logging.info("Assets written to: %s", assets_destination_dir)
+    tf_logging.info("Assets written to: %s",
+                    compat.as_text(assets_destination_dir))
 
   def _maybe_add_legacy_init_op(self, legacy_init_op=None):
     """Add legacy init op to the SavedModel.
@@ -140,11 +143,16 @@ class SavedModelBuilder(object):
 
     Raises:
       TypeError if legacy init op is not of type `Operation`.
+      AssertionError if the graph already contains one or more legacy init ops.
     """
     if legacy_init_op is not None:
       if not isinstance(legacy_init_op, ops.Operation):
         raise TypeError("legacy_init_op needs to be an Operation: %r" %
                         legacy_init_op)
+      if ops.get_collection(constants.LEGACY_INIT_OP_KEY):
+        raise AssertionError(
+            "graph already contains one or more legacy init ops under the "
+            "collection {}.".format(constants.LEGACY_INIT_OP_KEY))
       ops.add_to_collection(constants.LEGACY_INIT_OP_KEY, legacy_init_op)
 
   def _add_main_op(self, main_op):
@@ -160,6 +168,25 @@ class SavedModelBuilder(object):
       if not isinstance(main_op, ops.Operation):
         raise TypeError("main_op needs to be an Operation: %r" % main_op)
       ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
+
+  def _add_train_op(self, train_op):
+    """Add train op to the SavedModel.
+
+    Note that this functionality is in development, and liable to be
+    moved elsewhere.
+
+    Args:
+      train_op: Op or group of ops that are used for training. These are
+        stored as a collection with key TRAIN_OP_KEY, but not executed.
+
+    Raises:
+      TypeError if Train op is not of type `Operation`.
+    """
+    if train_op is not None:
+      if (not isinstance(train_op, ops.Tensor) and
+          not isinstance(train_op, ops.Operation)):
+        raise TypeError("train_op needs to be a Tensor or Op: %r" % train_op)
+      ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
 
   def _tag_and_add_meta_graph(self, meta_graph_def, tags, signature_def_map):
     """Tags the meta graph def and adds it to the SavedModel.
@@ -186,7 +213,8 @@ class SavedModelBuilder(object):
   def _validate_tensor_info(self, tensor_info):
     """Validates the `TensorInfo` proto.
 
-    Checks if the `name` and `dtype` fields exist and are non-empty.
+    Checks if the `encoding` (`name` or `coo_sparse`) and `dtype` fields exist
+    and are non-empty.
 
     Args:
       tensor_info: `TensorInfo` protocol buffer to validate.
@@ -199,10 +227,12 @@ class SavedModelBuilder(object):
       raise AssertionError(
           "All TensorInfo protos used in the SignatureDefs must have the name "
           "and dtype fields set.")
-    if not tensor_info.name:
+    if tensor_info.WhichOneof("encoding") is None:
+      # TODO(soergel) validate each of the fields of coo_sparse
       raise AssertionError(
-          "All TensorInfo protos used in the SignatureDefs must have the name "
-          "field set: %s" % tensor_info)
+          "All TensorInfo protos used in the SignatureDefs must have one of "
+          "the 'encoding' fields (e.g., name or coo_sparse) set: %s"
+          % tensor_info)
     if tensor_info.dtype is types_pb2.DT_INVALID:
       raise AssertionError(
           "All TensorInfo protos used in the SignatureDefs must have the dtype "
@@ -228,13 +258,29 @@ class SavedModelBuilder(object):
         for outputs_key in outputs:
           self._validate_tensor_info(outputs[outputs_key])
 
+  def _add_collections(
+      self, assets_collection, legacy_init_op, main_op, train_op):
+    """Add asset and op collections to be saved."""
+    # Save asset files and write them to disk, if any.
+    self._save_and_write_assets(assets_collection)
+
+    if main_op is None:
+      # Add legacy init op to the SavedModel.
+      self._maybe_add_legacy_init_op(legacy_init_op)
+    else:
+      self._add_main_op(main_op)
+
+    self._add_train_op(train_op)
+
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
                      assets_collection=None,
                      legacy_init_op=None,
                      clear_devices=False,
-                     main_op=None):
+                     main_op=None,
+                     strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -252,12 +298,18 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
-          yet.
+          yet, or if the graph already contains one or more legacy init ops.
     """
+    # pylint: enable=line-too-long
     if not self._has_saved_variables:
       raise AssertionError(
           "Graph state including variables and assets has not been saved yet. "
@@ -267,14 +319,8 @@ class SavedModelBuilder(object):
     # properly populated.
     self._validate_signature_def_map(signature_def_map)
 
-    # Save asset files and write them to disk, if any.
-    self._save_and_write_assets(assets_collection)
-
-    if main_op is None:
-      # Add legacy init op to the SavedModel.
-      self._maybe_add_legacy_init_op(legacy_init_op)
-    else:
-      self._add_main_op(main_op)
+    # Add assets and ops
+    self._add_collections(assets_collection, legacy_init_op, main_op, None)
 
     # Initialize a saver to generate a sharded output for all saveables in the
     # current scope.
@@ -284,7 +330,16 @@ class SavedModelBuilder(object):
         write_version=saver_pb2.SaverDef.V2,
         allow_empty=True)
 
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
+    # The graph almost certainly previously contained at least one Saver, and
+    # possibly several (e.g. one for loading a pretrained embedding, and another
+    # for the model weights).  However, a *new* Saver was just created that
+    # includes all of the variables.  Removing the preexisting ones was the
+    # motivation for the clear_extraneous_savers option, but it turns out that
+    # there are edge cases where that option breaks the graph.  Until that is
+    # resolved, we just leave the option set to False for now.
+    # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
+    meta_graph_def = saver.export_meta_graph(
+        clear_devices=clear_devices, strip_default_attrs=strip_default_attrs)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -296,7 +351,9 @@ class SavedModelBuilder(object):
                                    assets_collection=None,
                                    legacy_init_op=None,
                                    clear_devices=False,
-                                   main_op=None):
+                                   main_op=None,
+                                   strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel and saves variables.
 
     Creates a Saver to save the variables from the provided session. Exports the
@@ -316,8 +373,15 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+
     """
+    # pylint: enable=line-too-long
     if self._has_saved_variables:
       raise AssertionError("Graph state including variables and assets has "
                            "already been saved. Please invoke "
@@ -327,8 +391,8 @@ class SavedModelBuilder(object):
     # properly populated.
     self._validate_signature_def_map(signature_def_map)
 
-    # Save asset files and write them to disk, if any.
-    self._save_and_write_assets(assets_collection)
+    # Add assets and ops
+    self._add_collections(assets_collection, legacy_init_op, main_op, None)
 
     # Create the variables sub-directory, if it does not exist.
     variables_dir = os.path.join(
@@ -340,12 +404,6 @@ class SavedModelBuilder(object):
     variables_path = os.path.join(
         compat.as_text(variables_dir),
         compat.as_text(constants.VARIABLES_FILENAME))
-
-    if main_op is None:
-      # Add legacy init op to the SavedModel.
-      self._maybe_add_legacy_init_op(legacy_init_op)
-    else:
-      self._add_main_op(main_op)
 
     # Initialize a saver to generate a sharded output for all saveables in the
     # current scope.
@@ -362,7 +420,17 @@ class SavedModelBuilder(object):
     saver.save(sess, variables_path, write_meta_graph=False, write_state=False)
 
     # Export the meta graph def.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
+
+    # The graph almost certainly previously contained at least one Saver, and
+    # possibly several (e.g. one for loading a pretrained embedding, and another
+    # for the model weights).  However, a *new* Saver was just created that
+    # includes all of the variables.  Removing the preexisting ones was the
+    # motivation for the clear_extraneous_savers option, but it turns out that
+    # there are edge cases where that option breaks the graph.  Until that is
+    # resolved, we just leave the option set to False for now.
+    # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
+    meta_graph_def = saver.export_meta_graph(
+        clear_devices=clear_devices, strip_default_attrs=strip_default_attrs)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -396,7 +464,7 @@ class SavedModelBuilder(object):
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(path, self._saved_model.SerializeToString())
-    tf_logging.info("SavedModel written to: %s", path)
+    tf_logging.info("SavedModel written to: %s", compat.as_text(path))
 
     return path
 

@@ -13,7 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-r"""System for specifying garbage collection (GC) of path based data.
+r"""System for specifying garbage collection (GC) of path based data (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 This framework allows for GC of data specified by path names, for example files
 on disk.  gc.Path objects each represent a single item stored at a path and may
@@ -32,13 +36,14 @@ Note that functions should always return a sorted list.
 
 For example,
   base_dir = "/tmp"
-  # create the directories
+  # Create the directories.
   for e in xrange(10):
     os.mkdir("%s/%d" % (base_dir, e), 0o755)
 
-  # create a simple parser that pulls the export_version from the directory
+  # Create a simple parser that pulls the export_version from the directory.
+  path_regex = "^" + re.escape(base_dir) + "/(\\d+)$"
   def parser(path):
-    match = re.match("^" + base_dir + "/(\\d+)$", path.path)
+    match = re.match(path_regex, path.path)
     if not match:
       return None
     return path._replace(export_version=int(match.group(1)))
@@ -46,15 +51,15 @@ For example,
   path_list = gc.get_paths("/tmp", parser)  # contains all ten Paths
 
   every_fifth = gc.mod_export_version(5)
-  print every_fifth(path_list) # shows ["/tmp/0", "/tmp/5"]
+  print(every_fifth(path_list))  # shows ["/tmp/0", "/tmp/5"]
 
   largest_three = gc.largest_export_versions(3)
-  print largest_three(all_paths)  # shows ["/tmp/7", "/tmp/8", "/tmp/9"]
+  print(largest_three(all_paths))  # shows ["/tmp/7", "/tmp/8", "/tmp/9"]
 
   both = gc.union(every_fifth, largest_three)
-  print both(all_paths)  # shows ["/tmp/0", "/tmp/5",
-                         #        "/tmp/7", "/tmp/8", "/tmp/9"]
-  # delete everything not in 'both'
+  print(both(all_paths))  # shows ["/tmp/0", "/tmp/5",
+                          #        "/tmp/7", "/tmp/8", "/tmp/9"]
+  # Delete everything not in 'both'.
   to_delete = gc.negation(both)
   for p in to_delete(all_paths):
     gfile.DeleteRecursively(p.path)  # deletes:  "/tmp/1", "/tmp/2",
@@ -72,10 +77,12 @@ import os
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 Path = collections.namedtuple('Path', 'path export_version')
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def largest_export_versions(n):
   """Creates a filter that keeps the largest n export versions.
 
@@ -96,6 +103,7 @@ def largest_export_versions(n):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def one_of_every_n_export_versions(n):
   """Creates a filter that keeps one of every n export versions.
 
@@ -127,6 +135,7 @@ def one_of_every_n_export_versions(n):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def mod_export_version(n):
   """Creates a filter that keeps every export that is a multiple of n.
 
@@ -145,6 +154,7 @@ def mod_export_version(n):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def union(lf, rf):
   """Creates a filter that keeps the union of two filters.
 
@@ -162,6 +172,7 @@ def union(lf, rf):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def negation(f):
   """Negate a filter.
 
@@ -178,6 +189,7 @@ def negation(f):
   return keep
 
 
+@deprecated(None, 'Please implement your own file name management.')
 def get_paths(base_dir, parser):
   """Gets a list of Paths in a given directory.
 

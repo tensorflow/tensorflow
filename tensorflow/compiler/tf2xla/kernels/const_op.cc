@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -39,7 +40,12 @@ class ConstOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape(proto_.tensor_shape());
 
-    xla::ComputationBuilder* b = ctx->builder();
+    if (proto_.dtype() == DT_STRING) {
+      LOG(WARNING) << "Not computing Const of type DT_STRING";
+      ctx->SetInvalidOutput(0);
+      return;
+    }
+    xla::XlaBuilder* b = ctx->builder();
 
     // To avoid blowups for large constants filled with the same value,
     // recognize that case and emit a scalar broadcast instead.

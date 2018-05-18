@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -44,6 +46,10 @@ class Client {
   // * If execution_options is not nullptr, these options are passed to the
   //   service to affect how it compiles our computation.  (The pointer does not
   //   need to live beyond this call.)
+  // * If execution_options.device_handles is not empty, the computation is
+  //   executed on the devices associated with the handles by partitioning the
+  //   computation based on the attached sharding attributes. Otherwise, a
+  //   device is chosen by the service.
   // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
   //   will be filled with profile data from the execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
@@ -52,15 +58,40 @@ class Client {
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
+  // Executes the computation with the given arguments and returns the global
+  // data that was produced from the execution.
+  // * If execution_options is not nullptr, these options are passed to the
+  //   service to affect how it compiles our computation.  (The pointer does not
+  //   need to live beyond this call.)
+  // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
+  //   will be filled with profile data from the execution.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<GlobalData>> Execute(
+      const XlaComputation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const ExecutionOptions* execution_options = nullptr,
+      ExecutionProfile* execution_profile = nullptr);
+
   // A struct to represent a computation instance to be executed.
-  // * If device_handle is not nullptr, the computation is executed on a device
-  //   associated with the handle. Otherwise, a device is chosen by the service.
+  // * If execution_options.device_handles is not empty, the computation is
+  //   executed on the devices associated with the handles by partitioning the
+  //   computation based on the attached sharding attributes. Otherwise, a
+  //   device is chosen by the service.
   struct ComputationInstance {
     const Computation& computation;
     std::vector<GlobalData*> arguments;
-    const DeviceHandle* device_handle;
     ExecutionOptions execution_options;
     ExecutionProfile* execution_profile;
+
+    ComputationInstance(const Computation& computation,
+                        std::vector<GlobalData*> arguments,
+                        ExecutionOptions execution_options,
+                        ExecutionProfile* execution_profile)
+        : computation(computation),
+          arguments(std::move(arguments)),
+          execution_options(execution_options),
+          execution_profile(execution_profile) {}
   };
 
   // Executes a list ComputationInstances and returns global data produced from
@@ -68,29 +99,41 @@ class Client {
   StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteParallel(
       tensorflow::gtl::ArraySlice<ComputationInstance> computations);
 
+  // A struct to represent a computation instance to be executed.
+  // * If execution_options.device_handles is not empty, the computation is
+  //   executed on the devices associated with the handles by partitioning the
+  //   computation based on the attached sharding attributes. Otherwise, a
+  //   device is chosen by the service.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  struct XlaComputationInstance {
+    const XlaComputation& computation;
+    std::vector<GlobalData*> arguments;
+    ExecutionOptions execution_options;
+    ExecutionProfile* execution_profile;
+
+    XlaComputationInstance(const XlaComputation& computation,
+                           std::vector<GlobalData*> arguments,
+                           ExecutionOptions execution_options,
+                           ExecutionProfile* execution_profile)
+        : computation(computation),
+          arguments(std::move(arguments)),
+          execution_options(execution_options),
+          execution_profile(execution_profile) {}
+  };
+
+  // Executes a list XlaComputationInstances and returns global data produced
+  // from each computation.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteParallel(
+      tensorflow::gtl::ArraySlice<XlaComputationInstance> computations);
+
   // Requests device_count device handles available on the target. The returned
   // device handles are used to specify the devices to execute the computations
   // (see ExecuteParallel) or to transfer data (see TransferToServer or
   // TransferToInfeed).
   StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(int64 device_count);
-
-  // Executes the given computation as above Execute(), but launches the
-  // computation asynchronously and returns before the execution is complete.
-  // Returns an ExecutionHandle that represents the launched execution, which is
-  // used to call WaitForExecution() to wait for the execution's completion.
-  StatusOr<ExecutionHandle> ExecuteAsync(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const ExecutionOptions* execution_options = nullptr);
-
-  // Waits until the given asynchronously launched execution of the computation
-  // is complete and returns the execution result. Once this is called, the
-  // given execution handle is no longer valid. If execution_profile is not
-  // nullptr then the pointed-to ExecutionProfile will be filled with profile
-  // data from the execution.
-  StatusOr<std::unique_ptr<GlobalData>> WaitForExecution(
-      const Computation& computation, const ExecutionHandle& execution,
-      ExecutionProfile* execution_profile = nullptr);
 
   // Transfer the global data provided to this client process, which is
   // returned in the provided literal. Use sparingly to avoid transfer
@@ -140,20 +183,58 @@ class Client {
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
 
+  // Executes the computation with the given arguments and transfers the result
+  // to the client as a literal. Parameters are defined the same as for
+  // Execute() and Transfer().
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+      const XlaComputation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const ExecutionOptions* execution_options = nullptr,
+      ExecutionProfile* execution_profile = nullptr);
+
+  // Computes the value of the given computation using a non-optimized
+  // interpreter on the host.
+  //
+  // The computation must not depend on any parameters, or on stateful operators
+  // such as `RngNormal` or `Infeed`.
+  //
+  // This functionality can be useful when translating a computation into XLA
+  // where something that looked dynamic is required by XLA to be specified as a
+  // constant. E.g. the source computation (outside of XLA) may include a
+  // dynamic computation of the shape of something and ComputeConstant lets you
+  // determine what the value of that computation is in the case where the value
+  // can be determined at compile time.
+  //
+  // If output_layout is non-null, then the output of the computation will be
+  // stored using that layout.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
+      const XlaComputation& computation,
+      const Layout* output_layout = nullptr) const;
+
   // Unregister the memory for the given GlobalData on the device.
   Status Unregister(const GlobalData& data);
 
   // Returns a vector of global data handles that point to the tuple elements.
   StatusOr<std::vector<std::unique_ptr<GlobalData>>> DeconstructTuple(
-      const GlobalData& computation);
+      const GlobalData& data);
 
   // Retrieves the statistics of the given computation.
   StatusOr<ComputationStats> GetComputationStats(
-      const Computation& computation) const;
+      const Computation& computation, const DebugOptions& debug_options) const;
+
+  // Retrieves the statistics of the given computation.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<ComputationStats> GetComputationStats(
+      const XlaComputation& computation,
+      const DebugOptions& debug_options) const;
 
   // Returns the Shape of the given array specified by 'data'. The shape
-  // includes the Layout of the array as it is stored on the service. The layout
-  // information is useful for calling TransferInProcess.
+  // includes the Layout of the array as it is stored on the service.
   StatusOr<Shape> GetShape(const GlobalData& data);
 
   // As above, but returns the shape of the provided computation (parameter
@@ -161,29 +242,21 @@ class Client {
   StatusOr<std::unique_ptr<ProgramShape>> GetComputationShape(
       const Computation& computation);
 
+  // As above, but returns the shape of the provided computation (parameter
+  // types/names and return type).
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<ProgramShape>> GetComputationShape(
+      const XlaComputation& computation);
+
   // Creates a channel handle that can be used to transfer data between
   // two computations via a pair of Send and Recv instructions.
   StatusOr<ChannelHandle> CreateChannelHandle();
 
-  // If the service is running in the same process as the client then the
-  // following "InProcess" transfer methods may be used. These methods enable
-  // more efficient transfer of arrays to and from the service.
-
-  // Transfer array from the service into the given buffer. The buffer must be
-  // large enough to hold the array. The array is copied verbatim (memcpy) from
-  // the service. The method GetShape should be called ahead of time
-  // to get the shape and layout of the array as it is stored in the
-  // service. The shape and layout can be used to determine how large the buffer
-  // needs to be.
-  Status TransferInProcess(const GlobalData& data, void* destination);
-
-  // Transfer array to the service from the given buffer with the given shape
-  // and layout. The service creates an internal copy of the data so the client
-  // can free the buffer when this method returns.
-  StatusOr<std::unique_ptr<GlobalData>> TransferToServerInProcess(
-      const Shape& shape, const void* buffer);
-
   StatusOr<Computation> LoadSnapshot(const SessionModule& module);
+
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<XlaComputation> LoadSnapshot(const HloSnapshot& module);
 
   ServiceInterface* stub() { return stub_; }
 
@@ -191,6 +264,8 @@ class Client {
   // Returns the execution statistics (e.g., gflop/s) as a string from the
   // ExecutionProfile returned from an execution of the computation.
   StatusOr<string> ExecutionStatsAsString(const Computation& computation,
+                                          const ExecutionProfile& profile);
+  StatusOr<string> ExecutionStatsAsString(const XlaComputation& computation,
                                           const ExecutionProfile& profile);
 
   ServiceInterface* stub_;  // Stub that this client is connected on.

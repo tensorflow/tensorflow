@@ -29,8 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using std::placeholders::_1;
-
 // TODO(zhifengc): We need to consolidate (full/partial) device name
 // parsing into one place.
 //
@@ -39,7 +37,7 @@ string GetLocalDeviceName(StringPiece fullname) {
   auto pos = fullname.rfind('/');
   CHECK_NE(pos, StringPiece::npos);
   fullname.remove_prefix(pos + 1);
-  return fullname.ToString();
+  return std::string(fullname);
 }
 
 class RemoteDevice : public Device {

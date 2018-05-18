@@ -1,12 +1,14 @@
 """Build rules for Tensorflow/XLA testing."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
+load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 
 def all_backends():
+  b = ["cpu"] + plugins.keys()
   if cuda_is_configured():
-    return ["cpu", "gpu"]
+    return b + ["gpu"]
   else:
-    return ["cpu"]
+    return b
 
 def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
                    disabled_backends=None, **kwargs):
@@ -47,12 +49,23 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     backend_deps = []
     backend_data = []
     if backend == "cpu":
-      backend_args += ["--test_device=XLA_CPU",
-                       "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL"]
+      backend_args += [
+          "--test_device=XLA_CPU",
+          "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64"
+      ]
     elif backend == "gpu":
-      backend_args += ["--test_device=XLA_GPU",
-                       "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL"]
+      backend_args += [
+          "--test_device=XLA_GPU",
+          "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_BFLOAT16"
+      ]
       backend_tags += ["requires-gpu-sm35"]
+    elif backend in plugins:
+      backend_args += ["--test_device=" + plugins[backend]["device"],
+                       "--types=" + plugins[backend]["types"]]
+      backend_tags += plugins[backend]["tags"]
+      backend_args += plugins[backend]["args"]
+      backend_deps += plugins[backend]["deps"]
+      backend_data += plugins[backend]["data"]
     else:
       fail("Unknown backend {}".format(backend))
 
@@ -76,4 +89,3 @@ def generate_backend_suites(backends=[]):
     backends = all_backends()
   for backend in backends:
     native.test_suite(name="%s_tests" % backend, tags=["tf_xla_%s" % backend])
-

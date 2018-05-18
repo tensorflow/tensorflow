@@ -1,0 +1,51 @@
+path: "tensorflow.keras.constraints"
+tf_module {
+  member {
+    name: "Constraint"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MaxNorm"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MinMaxNorm"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NonNeg"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UnitNorm"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "max_norm"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "min_max_norm"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "non_neg"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "unit_norm"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'constraint\'], varargs=None, keywords=None, defaults=None"
+  }
+}

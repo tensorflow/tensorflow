@@ -2,10 +2,10 @@
 
 [TOC]
 
-## Fourier Transform Functions
+The @{tf.spectral} module supports several spectral decomposition operations
+that you can use to transform Tensors of real and complex signals.
 
-TensorFlow provides several operations that you can use to add discrete
-Fourier transform functions to your graph.
+## Discrete Fourier Transforms
 
 *   @{tf.spectral.fft}
 *   @{tf.spectral.ifft}
@@ -19,3 +19,7 @@ Fourier transform functions to your graph.
 *   @{tf.spectral.irfft2d}
 *   @{tf.spectral.rfft3d}
 *   @{tf.spectral.irfft3d}
+
+## Discrete Cosine Transforms
+
+*   @{tf.spectral.dct}

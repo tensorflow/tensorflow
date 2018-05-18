@@ -96,7 +96,7 @@ def gather_cpu_info():
   cpu_info.cpu_info = info['brand']
   cpu_info.num_cores = info['count']
   cpu_info.mhz_per_cpu = info['hz_advertised_raw'][0] / 1.0e6
-  l2_cache_size = re.match(r'(\d+)', str(info['l2_cache_size']))
+  l2_cache_size = re.match(r'(\d+)', str(info.get('l2_cache_size', '')))
   if l2_cache_size:
     # If a value is returned, it's in KB
     cpu_info.cache_size['L2'] = int(l2_cache_size.group(0)) * 1024

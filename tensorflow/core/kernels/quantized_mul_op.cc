@@ -298,9 +298,8 @@ class QuantizedMulOp : public OpKernel {
       return;
     }
     Tensor* z;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(0, BCast::ToShape(bcast.output_shape()), &z));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, BCast::ToShape(bcast.output_shape()), &z));
 
     // Make sure that we have valid quantization ranges for the input buffers.
     // If the difference between the min and max is negative or zero, it makes

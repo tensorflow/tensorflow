@@ -29,7 +29,7 @@ GetCpuCastFromBool(DataType dst_dtype) {
 #if GOOGLE_CUDA
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromBool(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, GPUDevice, bool);
+  CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, bool);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA
@@ -38,10 +38,9 @@ GetGpuCastFromBool(DataType dst_dtype) {
 typedef Eigen::SyclDevice SYCLDevice;
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetSyclCastFromBool(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, SYCLDevice, bool);
+  CURRY_TYPES3_NO_HALF(CAST_CASE, SYCLDevice, bool);
   return nullptr;
 }
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
-

@@ -23,8 +23,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.AdagradDAOptimizer")
 class AdagradDAOptimizer(optimizer.Optimizer):
   """Adagrad Dual Averaging algorithm for sparse linear models.
 
@@ -68,7 +70,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
       invalid.
     """
     if initial_gradient_squared_accumulator_value <= 0.0:
-      raise ValueError("initial_gradient_squared_accumulator_value must be"
+      raise ValueError("initial_gradient_squared_accumulator_value must be "
                        "positive: %s" %
                        initial_gradient_squared_accumulator_value)
     super(AdagradDAOptimizer, self).__init__(use_locking, name)
@@ -80,6 +82,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     self._l1_regularization_strength = l1_regularization_strength
     self._l2_regularization_strength = l2_regularization_strength
     self._global_step = global_step
+    self._global_step_on_worker = None
 
   def _create_slots(self, var_list):
     for v in var_list:
@@ -97,14 +100,16 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(
         self._learning_rate, name="learning_rate")
+    # Performance optimization so that worker creates a copy of the global step
+    # to avoid overloading the parameter server holding the global step.
+    with ops.colocate_with(self._learning_rate_tensor):
+      self._global_step_on_worker = array_ops.identity(self._global_step) + 1
 
   def _apply_dense(self, grad, var):
     g_acc = self.get_slot(var, "gradient_accumulator")
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
-    # Performance optimization so that worker creates a copy of the global step
-    # to avoid overloading the parameter server holding the global step.
-    with ops.device(grad[0].device):
-      global_step = array_ops.identity(self._global_step) + 1
+    with ops.device(var.device):
+      global_step = array_ops.identity(self._global_step_on_worker)
     return training_ops.apply_adagrad_da(
         var,
         g_acc,
@@ -119,10 +124,8 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   def _resource_apply_dense(self, grad, var):
     g_acc = self.get_slot(var, "gradient_accumulator")
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
-    # Performance optimization so that worker creates a copy of the global step
-    # to avoid overloading the parameter server holding the global step.
-    with ops.device(grad[0].device):
-      global_step = array_ops.identity(self._global_step) + 1
+    with ops.device(var.device):
+      global_step = array_ops.identity(self._global_step_on_worker)
     return training_ops.resource_apply_adagrad_da(
         var.handle,
         g_acc.handle,
@@ -137,10 +140,8 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   def _apply_sparse(self, grad, var):
     g_acc = self.get_slot(var, "gradient_accumulator")
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
-    # Performance optimization so that worker creates a copy of the global step
-    # to avoid overloading the parameter server holding the global step.
-    with ops.device(grad[0].device):
-      global_step = array_ops.identity(self._global_step) + 1
+    with ops.device(var.device):
+      global_step = array_ops.identity(self._global_step_on_worker)
     return training_ops.sparse_apply_adagrad_da(
         var,
         g_acc,
@@ -156,10 +157,8 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   def _resource_apply_sparse(self, grad, var, indices):
     g_acc = self.get_slot(var, "gradient_accumulator")
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
-    # Performance optimization so that worker creates a copy of the global step
-    # to avoid overloading the parameter server holding the global step.
-    with ops.device(grad[0].device):
-      global_step = array_ops.identity(self._global_step) + 1
+    with ops.device(var.device):
+      global_step = array_ops.identity(self._global_step_on_worker)
     return training_ops.resource_sparse_apply_adagrad_da(
         var.handle,
         g_acc.handle,

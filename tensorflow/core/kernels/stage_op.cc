@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <deque>
+#include <mutex>
 #include <numeric>
 #include <vector>
 
@@ -26,88 +28,38 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
-
 namespace {
 
 class Buffer : public ResourceBase {
  public:
-  // public types
-  typedef std::vector<Tensor> Tuple;
+  using Tuple = std::vector<Tensor>;
 
- private:
-  // private variables
-  std::size_t capacity_;
-  std::size_t memory_limit_;
-  std::size_t current_bytes_;
-  mutex mu_;
-  condition_variable non_empty_cond_var_;
-  condition_variable full_cond_var_;
-  std::deque<Tuple> buf_ GUARDED_BY(mu_);
-
-
- private:
-  // private methods
-
-  // If the buffer is configured for bounded capacity, notify
-  // waiting inserters that space is now available
-  void notify_inserters_if_bounded(mutex_lock & l)
-  {
-    if(IsBounded())
-    {
-      l.unlock();
-      full_cond_var_.notify_one();
-    }
-  }
-
-  // Are there a limit number of elements or a memory limit
-  // configued on this buffer?
-  bool IsBounded() {
-    return capacity_ > 0 || memory_limit_ > 0;
-  }
-
-  bool IsCapacityFull() {
-    return buf_.size() >= capacity_;
-  }
-
-  bool WouldExceedMemoryLimit(std::size_t bytes) {
-    return bytes + current_bytes_ > memory_limit_;
-  }
-
-  std::size_t GetTupleBytes(const Tuple & tuple)
-  {
-    return std::accumulate(tuple.begin(), tuple.end(), 0,
-      [](const std::size_t & lhs, const Tensor & rhs) {
-        return lhs + rhs.TotalBytes();
-    });
-  }
-
- public:
-  // public methods
-  explicit Buffer(std::size_t capacity, std::size_t memory_limit) :
-      capacity_(capacity),
-      memory_limit_(memory_limit),
-      current_bytes_(0) {}
+  explicit Buffer(std::size_t capacity, std::size_t memory_limit)
+      : capacity_(capacity), memory_limit_(memory_limit), current_bytes_(0) {}
 
   // the Buffer takes ownership of the Tuple
   Status Put(Tuple* tuple) {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     std::size_t tuple_bytes = GetTupleBytes(*tuple);
 
     // Sanity check so that we don't block for ever below
-    if(memory_limit_ > 0 && tuple_bytes > memory_limit_) {
-      return Status(errors::ResourceExhausted("Attempted to insert "
-        "tensors with combined size of '", tuple_bytes, "' bytes into "
-        "Staging Area with a memory limit of '", memory_limit_, "'."));
+    if (memory_limit_ > 0 && tuple_bytes > memory_limit_) {
+      return Status(
+          errors::ResourceExhausted("Attempted to insert "
+                                    "tensors with combined size of '",
+                                    tuple_bytes,
+                                    "' bytes into "
+                                    "Staging Area with a memory limit of '",
+                                    memory_limit_, "'."));
     }
 
-
     // If buffer capacity is bounded wait until elements have been removed
-    if(IsBounded()) {
-      full_cond_var_.wait(l, [tuple_bytes, this]() {
+    if (IsBounded()) {
+      full_cond_var_.wait(lock, [tuple_bytes, this]() {
         // If there's a memory limit, check if there's space for insertion
-        bool memory_limit_valid = memory_limit_ > 0 ?
-            !WouldExceedMemoryLimit(tuple_bytes) : true;
+        bool memory_limit_valid =
+            memory_limit_ > 0 ? !WouldExceedMemoryLimit(tuple_bytes) : true;
         // If we're configured for capacity check if there's space for insertion
         bool capacity_valid = capacity_ > 0 ? !IsCapacityFull() : true;
 
@@ -122,22 +74,23 @@ class Buffer : public ResourceBase {
     // Store tuple
     buf_.push_back(std::move(*tuple));
 
-    l.unlock();
-    // maybe possible to optimize by reducing
-    // how often this signal is sent
-    non_empty_cond_var_.notify_one();
+    lock.unlock();
+    // Notify all removers. Removers
+    // may be peeking at a specific element or waiting
+    // for the element at the front of the deque.
+    // As we don't know the appropriate one to wake up
+    // we should wake them all.
+    non_empty_cond_var_.notify_all();
 
     return Status::OK();
   }
 
   // Get tuple at front of the buffer
   void Get(Tuple* tuple) {  // TODO(zhifengc): Support cancellation.
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Wait for data if the buffer is empty
-    non_empty_cond_var_.wait(l, [this]() {
-      return !buf_.empty();
-    });
+    non_empty_cond_var_.wait(lock, [this]() { return !buf_.empty(); });
 
     // Move data into the output tuple
     *tuple = std::move(buf_.front());
@@ -146,20 +99,19 @@ class Buffer : public ResourceBase {
     // Update bytes in the Staging Area
     current_bytes_ -= GetTupleBytes(*tuple);
 
-    notify_inserters_if_bounded(l);
+    notify_inserters_if_bounded(&lock);
   }
 
   // Return tuple at index
   Status Peek(std::size_t index, Tuple* tuple) {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Wait if the requested index is not available
-    non_empty_cond_var_.wait(l, [index, this]() {
-      return index < this->buf_.size();
-    });
+    non_empty_cond_var_.wait(
+        lock, [index, this]() { return index < this->buf_.size(); });
 
     // Place tensors in the output tuple
-    for(const auto & tensor: buf_[index]) {
+    for (const auto& tensor : buf_[index]) {
       tuple->push_back(tensor);
     }
 
@@ -168,23 +120,60 @@ class Buffer : public ResourceBase {
 
   // Buffer size
   size_t Size() {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     return buf_.size();
   }
 
   void Clear() {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     buf_.clear();
     current_bytes_ = 0;
 
-    notify_inserters_if_bounded(l);
+    notify_inserters_if_bounded(&lock);
   }
 
-  string DebugString() {
-    mutex_lock l(mu_);
+  string DebugString() override {
+    std::unique_lock<std::mutex> lock(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }
 
+ private:
+  // If the buffer is configured for bounded capacity, notify
+  // waiting inserters that space is now available
+  void notify_inserters_if_bounded(std::unique_lock<std::mutex>* lock) {
+    if (IsBounded()) {
+      lock->unlock();
+      // Notify all inserters. The removal of an element
+      // may make memory available for many inserters
+      // to insert new elements
+      full_cond_var_.notify_all();
+    }
+  }
+
+  // Are there a limit number of elements or a memory limit
+  // configued on this buffer?
+  bool IsBounded() const { return capacity_ > 0 || memory_limit_ > 0; }
+
+  bool IsCapacityFull() const { return buf_.size() >= capacity_; }
+
+  bool WouldExceedMemoryLimit(std::size_t bytes) const {
+    return bytes + current_bytes_ > memory_limit_;
+  }
+
+  std::size_t GetTupleBytes(const Tuple& tuple) {
+    return std::accumulate(tuple.begin(), tuple.end(), 0,
+                           [](const std::size_t& lhs, const Tensor& rhs) {
+                             return lhs + rhs.TotalBytes();
+                           });
+  }
+
+  std::size_t capacity_;
+  std::size_t memory_limit_;
+  std::size_t current_bytes_;
+  std::mutex mu_;
+  std::condition_variable non_empty_cond_var_;
+  std::condition_variable full_cond_var_;
+  std::deque<Tuple> buf_;
 };
 
 Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
@@ -192,8 +181,7 @@ Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
   ContainerInfo cinfo;
 
   // Lambda for creating the Staging Area
-  auto create_fn = [&ndef](Buffer** ret) -> Status
-  {
+  auto create_fn = [&ndef](Buffer** ret) -> Status {
     int64 capacity;
     int64 memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
@@ -201,7 +189,6 @@ Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
     *ret = new Buffer(capacity, memory_limit);
     return Status::OK();
   };
-
 
   TF_RETURN_IF_ERROR(cinfo.Init(rm, ndef, true /* use name() */));
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<Buffer>(cinfo.container(), cinfo.name(),
@@ -220,7 +207,8 @@ class StageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetBuffer(ctx, def(), &buf));
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
-    for (std::size_t i = 0; i < ctx->num_inputs(); ++i) {
+    tuple.reserve(ctx->num_inputs());
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
       tuple.push_back(ctx->input(i));
     }
     OP_REQUIRES_OK(ctx, buf->Put(&tuple));
@@ -233,7 +221,7 @@ REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_GPU), StageOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_SYCL), StageOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class UnstageOp : public OpKernel {
  public:
@@ -249,7 +237,8 @@ class UnstageOp : public OpKernel {
 
     buf->Get(&tuple);
 
-    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
+    OP_REQUIRES(
+        ctx, tuple.size() == (size_t)ctx->num_outputs(),
         errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
                                 " vs. ", ctx->num_outputs()));
 
@@ -265,7 +254,7 @@ REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_GPU), UnstageOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_SYCL), UnstageOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class StagePeekOp : public OpKernel {
  public:
@@ -283,7 +272,8 @@ class StagePeekOp : public OpKernel {
 
     OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));
 
-    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
+    OP_REQUIRES(
+        ctx, tuple.size() == (size_t)ctx->num_outputs(),
         errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
                                 " vs. ", ctx->num_outputs()));
 
@@ -293,17 +283,15 @@ class StagePeekOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("StagePeek").Device(DEVICE_CPU),
-                                              StagePeekOp);
+REGISTER_KERNEL_BUILDER(Name("StagePeek").Device(DEVICE_CPU), StagePeekOp);
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("StagePeek").HostMemory("index").
-                            Device(DEVICE_GPU), StagePeekOp);
+REGISTER_KERNEL_BUILDER(
+    Name("StagePeek").HostMemory("index").Device(DEVICE_GPU), StagePeekOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("StagePeek").HostMemory("index")
-                          .Device(DEVICE_SYCL), StagePeekOp);
-#endif // TENSORFLOW_USE_SYCL
-
+REGISTER_KERNEL_BUILDER(
+    Name("StagePeek").HostMemory("index").Device(DEVICE_SYCL), StagePeekOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 class StageSizeOp : public OpKernel {
  public:
@@ -317,9 +305,8 @@ class StageSizeOp : public OpKernel {
     core::ScopedUnref scope(buf);
 
     // Allocate size output tensor
-    Tensor * size = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}),
-                                                     &size));
+    Tensor* size = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &size));
 
     // Set it to the actual size
     size->scalar<int32>().setConstant(buf->Size());
@@ -328,13 +315,13 @@ class StageSizeOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("StageSize").Device(DEVICE_CPU), StageSizeOp);
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
-                        .Device(DEVICE_GPU), StageSizeOp);
+REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size").Device(DEVICE_GPU),
+                        StageSizeOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
-                        .Device(DEVICE_SYCL), StageSizeOp);
-#endif // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("StageSize").HostMemory("size").Device(DEVICE_SYCL), StageSizeOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 class StageClearOp : public OpKernel {
  public:
@@ -357,7 +344,6 @@ REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_GPU), StageClearOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_SYCL), StageClearOp);
-#endif // TENSORFLOW_USE_SYCL
-
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

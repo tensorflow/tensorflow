@@ -105,7 +105,9 @@ GrpcServer::~GrpcServer() {
 
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
-    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+    const WorkerCreationFunction& worker_func,
+    const StatsPublisherFactory& stats_factory) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -181,9 +183,9 @@ Status GrpcServer::Init(
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   master_impl_ = CreateMaster(&master_env_);
-  master_service_ = NewGrpcMasterService(
-      master_impl_.get(), config.operation_timeout_in_ms(), &builder);
-  worker_impl_ = NewGrpcWorker(&worker_env_);
+  master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
+  worker_impl_ =
+      worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
   // extra service:
@@ -216,15 +218,17 @@ Status GrpcServer::Init(
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
   master_env_.master_session_factory =
-      [config](
+      [config, stats_factory](
           SessionOptions options, const MasterEnv* env,
           std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
           std::unique_ptr<WorkerCacheInterface> worker_cache,
-          std::unique_ptr<DeviceSet> device_set) {
+          std::unique_ptr<DeviceSet> device_set,
+          std::vector<string> filtered_worker_list) {
         options.config.MergeFrom(config);
         return new MasterSession(options, env, std::move(remote_devs),
                                  std::move(worker_cache), std::move(device_set),
-                                 CreateNoOpStatsPublisher);
+                                 std::move(filtered_worker_list),
+                                 stats_factory);
       };
   master_env_.worker_cache_factory =
       [this](const WorkerCacheFactoryOptions& options,
@@ -239,7 +243,21 @@ Status GrpcServer::Init(
   return Status::OK();
 }
 
-Status GrpcServer::Init() { return Init(nullptr, nullptr); }
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+    const WorkerCreationFunction& worker_func) {
+  return Init(std::move(service_func), rendezvous_mgr_func, worker_func,
+              CreateNoOpStatsPublisher);
+}
+
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
+  return Init(service_func, rendezvous_mgr_func, nullptr);
+}
+
+Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr); }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                     GrpcChannelSpec* channel_spec) {
@@ -278,19 +296,19 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
 
-  std::unique_ptr<GrpcChannelCache> channel_cache(
+  channel_cache_.reset(
       NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
 
   string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
                                        "/task:", options.task_index);
 
-  const string host_port = channel_cache->TranslateTask(name_prefix);
+  const string host_port = channel_cache_->TranslateTask(name_prefix);
   int requested_port;
 
   if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                            channel_cache->TranslateTask(name_prefix), "\".");
+                            channel_cache_->TranslateTask(name_prefix), "\".");
   }
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
@@ -298,7 +316,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   }
 
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
-      channel_cache.release(), worker_impl_.get(), name_prefix);
+      channel_cache_, worker_impl_.get(), name_prefix);
   return Status::OK();
 }
 
@@ -322,7 +340,7 @@ Status GrpcServer::Start() {
     case STOPPED:
       return errors::FailedPrecondition("Server has stopped.");
     default:
-      CHECK(false);
+      LOG(FATAL);
   }
 }
 
@@ -339,7 +357,7 @@ Status GrpcServer::Stop() {
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
       return Status::OK();
     default:
-      CHECK(false);
+      LOG(FATAL);
   }
 }
 
@@ -356,7 +374,7 @@ Status GrpcServer::Join() {
       worker_thread_.reset();
       return Status::OK();
     default:
-      CHECK(false);
+      LOG(FATAL);
   }
 }
 

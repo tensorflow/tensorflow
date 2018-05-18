@@ -43,17 +43,17 @@ class RenameAttributeTest : public ::testing::Test {
     mul_node1->set_op("Mul");
     mul_node1->add_input("add_node2");
     mul_node1->add_input("add_node3");
-    AddNodeAttr<int32>("foo", 23, mul_node1);
-    AddNodeAttr<string>("bar", "something", mul_node1);
+    AddNodeAttr("foo", 23, mul_node1);
+    AddNodeAttr("bar", "something", mul_node1);
 
     NodeDef* add_node2 = graph_def.add_node();
     add_node2->set_name("add_node2");
     add_node2->set_op("Add");
     add_node2->add_input("const_node1");
     add_node2->add_input("const_node2");
-    AddNodeAttr<int32>("foo", 46, add_node2);
-    AddNodeAttr<int32>("bob", 23, add_node2);
-    AddNodeAttr<string>("bar", "something else", add_node2);
+    AddNodeAttr("foo", 46, add_node2);
+    AddNodeAttr("bob", 23, add_node2);
+    AddNodeAttr("bar", "something else", add_node2);
 
     NodeDef* add_node3 = graph_def.add_node();
     add_node3->set_name("add_node3");

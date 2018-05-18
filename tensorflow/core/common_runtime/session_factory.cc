@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace {
 
 static mutex* get_session_factory_lock() {
-  static mutex session_factory_lock;
+  static mutex session_factory_lock(LINKER_INITIALIZED);
   return &session_factory_lock;
 }
 
@@ -60,8 +60,8 @@ const string RegisteredFactoriesErrorMessageLocked() {
                          str_util::Join(factory_types, ", "), "}.");
 }
 string SessionOptionsToString(const SessionOptions& options) {
-  return strings::StrCat("target: \"", options.target, "\" config: ",
-                         ProtoShortDebugString(options.config));
+  return strings::StrCat("target: \"", options.target,
+                         "\" config: ", ProtoShortDebugString(options.config));
 }
 }  // namespace
 
@@ -94,6 +94,7 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
     // TODO(mrry): Consider providing a system-default fallback option
     // in this case.
     std::vector<string> factory_types;
+    factory_types.reserve(candidate_factories.size());
     for (const auto& candidate_factory : candidate_factories) {
       factory_types.push_back(candidate_factory.first);
     }

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -29,6 +31,14 @@ namespace protobuf_util {
 // base, this form of equality checking is sufficient.
 extern bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
                            const tensorflow::protobuf::Message& m2);
+
+// Writes the given message in binary proto to the path formed by joining
+// 'directory/file_name.pb'. The 'directory' is recursively created if it
+// doesn't already exist, and the 'file_name' is sanitized by replacing
+// illegal characters with underscore '_'.
+Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
+                            const string& directory, const string& file_name);
+
 }  // namespace protobuf_util
 }  // namespace xla
 

@@ -26,10 +26,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("clip_by_value")
 def clip_by_value(t, clip_value_min, clip_value_max,
                   name=None):
   """Clips tensor values to a specified min and max.
@@ -68,8 +71,38 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     _ = t.shape.merge_with(t_max.shape)
 
   return t_max
+  # TODO(scottzhu): switch to use new implmentation in 2 weeks.
+    # return gen_math_ops.clip_by_value(
+    #     t, clip_value_min, clip_value_max, name=name)
 
 
+# TODO(scottzhu): switch to use new implmentation in 2 weeks.
+# @ops.RegisterGradient("ClipByValue")
+def _clip_by_value_grad(op, grad):
+  """Returns grad of clip_by_value."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  z = op.inputs[2]
+  gdtype = grad.dtype
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  sz = array_ops.shape(z)
+  gradshape = array_ops.shape(grad)
+  zeros = array_ops.zeros(gradshape, gdtype)
+  xymask = math_ops.less(x, y)
+  xzmask = math_ops.greater(x, z)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  rx, rz = gen_array_ops.broadcast_gradient_args(sx, sz)
+  xgrad = array_ops.where(math_ops.logical_or(xymask, xzmask), zeros, grad)
+  ygrad = array_ops.where(xymask, grad, zeros)
+  zgrad = array_ops.where(xzmask, grad, zeros)
+  gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
+  gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
+  gz = array_ops.reshape(math_ops.reduce_sum(zgrad, rz), sz)
+  return (gx, gy, gz)
+
+
+@tf_export("clip_by_norm")
 def clip_by_norm(t, clip_norm, axes=None, name=None):
   """Clips tensor values to a maximum L2-norm.
 
@@ -107,18 +140,18 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     t = ops.convert_to_tensor(t, name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    l2norm_inv = math_ops.rsqrt(
-        math_ops.reduce_sum(t * t, axes, keep_dims=True))
+    l2norm = math_ops.sqrt(math_ops.reduce_sum(t * t, axes, keepdims=True))
     intermediate = t * clip_norm
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
     _ = t.shape.merge_with(intermediate.shape)
-    tclip = array_ops.identity(intermediate * math_ops.minimum(
-        l2norm_inv, constant_op.constant(1.0, dtype=t.dtype) / clip_norm),
-                               name=name)
+    tclip = array_ops.identity(
+        intermediate / math_ops.maximum(l2norm, clip_norm), name=name)
 
   return tclip
 
+
+@tf_export("global_norm")
 def global_norm(t_list, name=None):
   """Computes the global norm of multiple tensors.
 
@@ -166,6 +199,8 @@ def global_norm(t_list, name=None):
 
   return norm
 
+
+@tf_export("clip_by_global_norm")
 def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   """Clips values of multiple tensors by the ratio of the sum of their norms.
 
@@ -248,6 +283,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   return list_clipped, use_norm
 
 
+@tf_export("clip_by_average_norm")
 def clip_by_average_norm(t, clip_norm, name=None):
   """Clips tensor values to a maximum average L2-norm.
 

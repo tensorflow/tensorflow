@@ -26,6 +26,7 @@ TEST(MfccTest, AgreesWithPythonGoldenValues) {
   Mfcc mfcc;
   std::vector<double> input;
   const int kSampleCount = 513;
+  input.reserve(kSampleCount);
   for (int i = 0; i < kSampleCount; ++i) {
     input.push_back(i + 1);
   }
@@ -35,11 +36,10 @@ TEST(MfccTest, AgreesWithPythonGoldenValues) {
   std::vector<double> output;
   mfcc.Compute(input, &output);
 
-  std::vector<double> expected = {29.13970072, -6.41568601, -0.61903012,
-                             -0.96778652, -0.26819878, -0.40907028,
-                             -0.15614748, -0.23203119, -0.10481487,
-                             -0.1543029,  -0.0769791,  -0.10806114,
-                             -0.06047613};
+  std::vector<double> expected = {
+      29.13970072, -6.41568601, -0.61903012, -0.96778652, -0.26819878,
+      -0.40907028, -0.15614748, -0.23203119, -0.10481487, -0.1543029,
+      -0.0769791,  -0.10806114, -0.06047613};
 
   ASSERT_EQ(expected.size(), output.size());
   for (int i = 0; i < output.size(); ++i) {
@@ -51,6 +51,7 @@ TEST(MfccTest, AvoidsNansWithZeroInput) {
   Mfcc mfcc;
   std::vector<double> input;
   const int kSampleCount = 513;
+  input.reserve(kSampleCount);
   for (int i = 0; i < kSampleCount; ++i) {
     input.push_back(0.0);
   }
@@ -63,7 +64,7 @@ TEST(MfccTest, AvoidsNansWithZeroInput) {
   int expected_size = 13;
   ASSERT_EQ(expected_size, output.size());
   for (const double value : output) {
-    EXPECT_FALSE(isnan(value));
+    EXPECT_FALSE(std::isnan(value));
   }
 }
 

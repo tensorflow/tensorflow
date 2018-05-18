@@ -65,15 +65,15 @@ def extract_example_parser_configuration(parse_example_op, sess):
 
   # Fetch total_features key names and num_dense default values.
   if len(fetch_list) != (total_features + num_dense):
-    raise ValueError("len(fetch_list) does not match total features + num_dense"
-                     "(%d vs %d" % (len(fetch_list),
-                                    (total_features + num_dense)))
+    raise ValueError("len(fetch_list) does not match total features + "
+                     "num_dense (%d vs %d)" %
+                     (len(fetch_list), (total_features + num_dense)))
 
   fetched = sess.run(fetch_list)
 
   if len(fetched) != len(fetch_list):
-    raise ValueError("len(fetched) does not match len(fetch_list)"
-                     "(%d vs %d" % (len(fetched), len(fetch_list)))
+    raise ValueError("len(fetched) does not match len(fetch_list) "
+                     "(%d vs %d)" % (len(fetched), len(fetch_list)))
 
   # Fetch indices.
   sparse_keys_start = 0

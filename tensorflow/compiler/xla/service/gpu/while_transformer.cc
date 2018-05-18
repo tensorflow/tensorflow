@@ -37,14 +37,14 @@ namespace {
 // patterns to match.
 //
 // Each ExprTree node is comprised of an HloOpcode, and a set of operands (each
-// of type ExprTree). Operands can be added by specifying the index and HloOpcode
-// of the operand.
+// of type ExprTree). Operands can be added by specifying the index and
+// HloOpcode of the operand.
 //
 // For example, the following computation:
 //
 //            Parameter
 //               |
-//   Const  GetTupleElemet
+//   Const  GetTupleElement
 //      \   /
 //       Add (root)
 //
@@ -62,7 +62,7 @@ namespace {
 //                                &tagged_instructions));
 //
 // Instructions that are "tagged" with a context-specific string will
-// be returned in 'tagged_instructions' for further procesing (i.e. parsing
+// be returned in 'tagged_instructions' for further processing (i.e. parsing
 // constants or recording the tuple_index).
 //
 class ExprTree {
@@ -144,7 +144,7 @@ class ExprTree {
       TF_RETURN_IF_ERROR(pair.second->Match(instruction->operand(pair.first),
                                             tagged_instructions));
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
  private:
@@ -169,7 +169,7 @@ class MatcherBase {
 
   // Attempts to match each ExprTree in 'expr_trees_'.
   // Returns OK on the first successful match, error status otherwise.
-  virtual tensorflow::Status Run() {
+  virtual Status Run() {
     Status status;
     for (const ExprTree& expr_tree : expr_trees_) {
       status = MatchExprTree(expr_tree);
@@ -197,12 +197,11 @@ class MatcherBase {
       return InvalidArgument("Must use S32 or S64 integral types.");
     }
     if (type == S32) {
-      *const_value =
-          static_cast<int64>(LiteralUtil::GetFirstElement<int32>(literal));
+      *const_value = static_cast<int64>(literal.GetFirstElement<int32>());
     } else if (type == S64) {
-      *const_value = LiteralUtil::GetFirstElement<int64>(literal);
+      *const_value = literal.GetFirstElement<int64>();
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   StatusOr<const HloInstruction*> GetTaggedInstruction(
@@ -223,7 +222,7 @@ class MatcherBase {
   TF_DISALLOW_COPY_AND_ASSIGN(MatcherBase);
 };
 
-// WhileConditionComputationMatcher attempst to match a target computation
+// WhileConditionComputationMatcher attempts to match a target computation
 // pattern in the while condition sub-computation.
 // If the target pattern is matched, two pieces of information are extracted
 // from 'tagged' instructions returned by the matcher:
@@ -240,7 +239,7 @@ class MatcherBase {
 //
 class WhileConditionComputationMatcher : public MatcherBase {
  public:
-  WhileConditionComputationMatcher(const HloComputation* computation)
+  explicit WhileConditionComputationMatcher(const HloComputation* computation)
       : computation_(computation) {
     expr_trees_.emplace_back(BuildCondExprTree());
   }
@@ -309,14 +308,14 @@ class WhileConditionComputationMatcher : public MatcherBase {
         GetTaggedInstruction("gte.fusion_param.param0", tagged_instructions));
     CHECK_EQ(HloOpcode::kParameter, gte_fusion_param0->opcode());
     CHECK(gte_fusion_param0->IsFused());
-    if (gte_fusion_param0->fusion_instruction()->operand(
+    if (gte_fusion_param0->parent()->FusionInstruction()->operand(
             gte_fusion_param0->parameter_number()) !=
         computation_->parameter_instruction(0)) {
       return InvalidArgument("Could not match fusion param: %s",
                              gte_fusion_param0->name().c_str());
     }
 
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   const HloComputation* computation_;
@@ -380,7 +379,7 @@ class WhileInitOperandMatcher : public MatcherBase {
         GetTaggedInstruction("loop_start", tagged_instructions));
     TF_RETURN_IF_ERROR(ParseConstInteger(const_hlo, &loop_start_));
 
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   const HloInstruction* while_hlo_;
@@ -470,14 +469,15 @@ class WhileBodyComputationMatcher : public MatcherBase {
         // Fusion parameter: lookup and compare with associated fusion operand.
         CHECK_EQ(HloOpcode::kParameter, inst->opcode());
         CHECK(inst->IsFused());
-        if (inst->fusion_instruction()->operand(inst->parameter_number()) !=
+        if (inst->parent()->FusionInstruction()->operand(
+                inst->parameter_number()) !=
             computation_->parameter_instruction(0)) {
           return InvalidArgument("Could not match fusion param: %s",
                                  inst->name().c_str());
         }
       }
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   const HloComputation* computation_;

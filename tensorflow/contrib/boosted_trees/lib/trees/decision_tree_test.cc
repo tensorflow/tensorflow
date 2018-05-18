@@ -27,13 +27,14 @@ class DecisionTreeTest : public ::testing::Test {
  protected:
   DecisionTreeTest() : batch_features_(2) {
     // Create a batch of two examples having one dense float, two sparse float
-    // and one sparse int features.
+    // and one sparse int features, and one sparse multi-column float feature
+    // (SparseFM).
     // The first example is missing the second sparse feature column and the
     // second example is missing the first sparse feature column.
     // This looks like the following:
-    // Instance | DenseF1 | SparseF1 | SparseF2 | SparseI1 |
-    // 0        |   7     |   -3     |          |    3     |
-    // 1        |  -2     |          |   4      |          |
+    // Instance | DenseF1 | SparseF1 | SparseF2 | SparseI1 | SparseFM (3 cols)
+    // 0        |   7     |   -3     |          |    3     | 3.0 |   | 1.0
+    // 1        |  -2     |          |   4      |          | 1.5 |3.5|
     auto dense_float_matrix = test::AsTensor<float>({7.0f, -2.0f}, {2, 1});
     auto sparse_float_indices1 = test::AsTensor<int64>({0, 0}, {1, 2});
     auto sparse_float_values1 = test::AsTensor<float>({-3.0f});
@@ -44,11 +45,21 @@ class DecisionTreeTest : public ::testing::Test {
     auto sparse_int_indices1 = test::AsTensor<int64>({0, 0}, {1, 2});
     auto sparse_int_values1 = test::AsTensor<int64>({3});
     auto sparse_int_shape1 = test::AsTensor<int64>({2, 1});
+
+    // Multivalent sparse feature.
+    auto multi_sparse_float_indices =
+        test::AsTensor<int64>({0, 0, 0, 2, 1, 0, 1, 1}, {4, 2});
+    auto multi_sparse_float_values =
+        test::AsTensor<float>({3.0f, 1.0f, 1.5f, 3.5f});
+    auto multi_sparse_float_shape = test::AsTensor<int64>({2, 3});
+
     TF_EXPECT_OK(batch_features_.Initialize(
-        {dense_float_matrix}, {sparse_float_indices1, sparse_float_indices2},
-        {sparse_float_values1, sparse_float_values2},
-        {sparse_float_shape1, sparse_float_shape2}, {sparse_int_indices1},
-        {sparse_int_values1}, {sparse_int_shape1}));
+        {dense_float_matrix},
+        {sparse_float_indices1, sparse_float_indices2,
+         multi_sparse_float_indices},
+        {sparse_float_values1, sparse_float_values2, multi_sparse_float_values},
+        {sparse_float_shape1, sparse_float_shape2, multi_sparse_float_shape},
+        {sparse_int_indices1}, {sparse_int_values1}, {sparse_int_shape1}));
   }
 
   template <typename SplitType>
@@ -121,44 +132,90 @@ TEST_F(DecisionTreeTest, TraverseDenseBinarySplit) {
 }
 
 TEST_F(DecisionTreeTest, TraverseSparseBinarySplit) {
-  // Test first sparse feature which is missing for the second example.
-  DecisionTreeConfig tree_config1;
-  auto* split_node1 = tree_config1.add_nodes()
-                          ->mutable_sparse_float_binary_split_default_left()
-                          ->mutable_split();
-  split_node1->set_feature_column(0);
-  split_node1->set_threshold(-20.0f);
-  split_node1->set_left_id(1);
-  split_node1->set_right_id(2);
-  tree_config1.add_nodes()->mutable_leaf();
-  tree_config1.add_nodes()->mutable_leaf();
   auto example_iterable = batch_features_.examples_iterable(0, 2);
+  // Split on SparseF1.
+  // Test first sparse feature which is missing for the second example.
+  {
+    DecisionTreeConfig tree_config;
+    auto* split_node = tree_config.add_nodes()
+                           ->mutable_sparse_float_binary_split_default_left()
+                           ->mutable_split();
+    split_node->set_feature_column(0);
+    split_node->set_threshold(-20.0f);
+    split_node->set_left_id(1);
+    split_node->set_right_id(2);
+    tree_config.add_nodes()->mutable_leaf();
+    tree_config.add_nodes()->mutable_leaf();
 
-  // Expect right child to be picked as !(-3 <= -20).
-  auto example_it = example_iterable.begin();
-  EXPECT_EQ(2, DecisionTree::Traverse(tree_config1, 0, *example_it));
+    // Expect right child to be picked as !(-3 <= -20).
+    auto example_it = example_iterable.begin();
+    EXPECT_EQ(2, DecisionTree::Traverse(tree_config, 0, *example_it));
 
-  // Expect left child to be picked as default direction.
-  EXPECT_EQ(1, DecisionTree::Traverse(tree_config1, 0, *++example_it));
-
+    // Expect left child to be picked as default direction.
+    EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *++example_it));
+  }
+  // Split on SparseF2.
   // Test second sparse feature which is missing for the first example.
-  DecisionTreeConfig tree_config2;
-  auto* split_node2 = tree_config2.add_nodes()
-                          ->mutable_sparse_float_binary_split_default_right()
-                          ->mutable_split();
-  split_node2->set_feature_column(1);
-  split_node2->set_threshold(4.0f);
-  split_node2->set_left_id(1);
-  split_node2->set_right_id(2);
-  tree_config2.add_nodes()->mutable_leaf();
-  tree_config2.add_nodes()->mutable_leaf();
+  {
+    DecisionTreeConfig tree_config;
+    auto* split_node = tree_config.add_nodes()
+                           ->mutable_sparse_float_binary_split_default_right()
+                           ->mutable_split();
+    split_node->set_feature_column(1);
+    split_node->set_threshold(4.0f);
+    split_node->set_left_id(1);
+    split_node->set_right_id(2);
+    tree_config.add_nodes()->mutable_leaf();
+    tree_config.add_nodes()->mutable_leaf();
 
-  // Expect right child to be picked as default direction.
-  example_it = example_iterable.begin();
-  EXPECT_EQ(2, DecisionTree::Traverse(tree_config2, 0, *example_it));
+    // Expect right child to be picked as default direction.
+    auto example_it = example_iterable.begin();
+    EXPECT_EQ(2, DecisionTree::Traverse(tree_config, 0, *example_it));
 
-  // Expect left child to be picked as (4 <= 4).
-  EXPECT_EQ(1, DecisionTree::Traverse(tree_config2, 0, *++example_it));
+    // Expect left child to be picked as (4 <= 4).
+    EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *++example_it));
+  }
+  // Split on SparseFM.
+  // Test second sparse feature which is missing for the first example.
+  {
+    DecisionTreeConfig tree_config;
+    auto* split_node = tree_config.add_nodes()
+                           ->mutable_sparse_float_binary_split_default_right()
+                           ->mutable_split();
+    split_node->set_feature_column(2);
+
+    split_node->set_left_id(1);
+    split_node->set_right_id(2);
+    tree_config.add_nodes()->mutable_leaf();
+    tree_config.add_nodes()->mutable_leaf();
+
+    // Split on first column
+    split_node->set_dimension_id(0);
+    split_node->set_threshold(2.0f);
+
+    // Both instances have this feature value.
+    auto example_it = example_iterable.begin();
+    EXPECT_EQ(2, DecisionTree::Traverse(tree_config, 0, *example_it));
+    EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *++example_it));
+
+    // Split on second column
+    split_node->set_dimension_id(1);
+    split_node->set_threshold(5.0f);
+
+    // First instance does not have it (default right), second does have it.
+    example_it = example_iterable.begin();
+    EXPECT_EQ(2, DecisionTree::Traverse(tree_config, 0, *example_it));
+    EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *++example_it));
+
+    // Split on third column
+    split_node->set_dimension_id(2);
+    split_node->set_threshold(3.0f);
+    example_it = example_iterable.begin();
+
+    // First instance has it, second does not (default right).
+    EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *example_it));
+    EXPECT_EQ(2, DecisionTree::Traverse(tree_config, 0, *++example_it));
+  }
 }
 
 TEST_F(DecisionTreeTest, TraverseCategoricalIdBinarySplit) {

@@ -57,7 +57,7 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
          tf_jobs, "--tf_job=localhost", strings::StrCat("--tf_task=", i),
          strings::StrCat("--num_cpus=", num_cpus),
          strings::StrCat("--num_gpus=", num_gpus)});
-    ret->subprocesses_.emplace_back(testing::CreateSubProcess(argv));
+    ret->subprocesses_.emplace_back(CreateSubProcess(argv));
     bool success = ret->subprocesses_[i]->Start();
     if (!success) {
       return errors::Internal("Could not start subprocess");
@@ -70,7 +70,7 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
   std::unique_ptr<GrpcSession> session;
   TF_RETURN_IF_ERROR(GrpcSession::Create(options_copy, &session));
   std::vector<DeviceAttributes> device_attributes;
-  ret->devices_ = session->ListDevices();
+  TF_RETURN_IF_ERROR(session->ListDevices(&ret->devices_));
 
   *out_cluster = std::move(ret);
   return Status::OK();

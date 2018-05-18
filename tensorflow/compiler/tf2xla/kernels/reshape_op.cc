@@ -50,7 +50,7 @@ class ReshapeOp : public XlaOpKernel {
     int64 product = 1;
     int unknown_index = -1;
     for (int d = 0; d < num_dims; ++d) {
-      const int32 size = xla::LiteralUtil::Get<int>(literal, {d});
+      const int32 size = literal.Get<int>({d});
       if (size == -1) {
         OP_REQUIRES(
             ctx, unknown_index == -1,
@@ -95,7 +95,7 @@ class ReshapeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Reshape"), ReshapeOp);
+REGISTER_XLA_OP(Name("Reshape").CompileTimeConstInput("shape"), ReshapeOp);
 
 }  // namespace
 }  // namespace tensorflow

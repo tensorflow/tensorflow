@@ -33,10 +33,11 @@ import (
 // A Scope object and all its derivates (e.g., obtained from Scope.SubScope)
 // are not safe for concurrent use by multiple goroutines.
 type Scope struct {
-	graph     *tf.Graph
-	namemap   map[string]int
-	namespace string
-	err       *scopeErr
+	graph               *tf.Graph
+	namemap             map[string]int
+	namespace           string
+	controlDependencies []*tf.Operation
+	err                 *scopeErr
 }
 
 // scopeErr is used to share errors between all derivatives of a root scope.
@@ -47,6 +48,11 @@ type scopeErr struct {
 // NewScope creates a Scope initialized with an empty Graph.
 func NewScope() *Scope {
 	return &Scope{graph: tf.NewGraph(), namemap: make(map[string]int), err: new(scopeErr)}
+}
+
+// NewScopeWithGraph creates a Scope initialized with the Graph thats passed in
+func NewScopeWithGraph(g *tf.Graph) *Scope {
+	return &Scope{graph: g, namemap: make(map[string]int), err: new(scopeErr)}
 }
 
 // Finalize returns the Graph on which this scope operates on and renders s
@@ -75,6 +81,7 @@ func (s *Scope) AddOperation(args tf.OpSpec) *tf.Operation {
 	if s.namespace != "" {
 		args.Name = s.namespace + "/" + args.Name
 	}
+	args.ControlDependencies = append(args.ControlDependencies, s.controlDependencies...)
 	op, err := s.graph.AddOperation(args)
 	if err != nil {
 		s.UpdateErr(args.Type, err)
@@ -95,6 +102,28 @@ func (s *Scope) SubScope(namespace string) *Scope {
 		namemap:   make(map[string]int),
 		namespace: namespace,
 		err:       s.err,
+	}
+}
+
+// WithControlDependencies returns a new Scope which will cause all operations
+// added to the graph to execute only after all the provided operations have
+// executed first (in addition to any other control dependencies in s).
+func (s *Scope) WithControlDependencies(ops ...*tf.Operation) *Scope {
+	// Force a copy of the control dependencies into a new underlying array on
+	// every call.  We cannot alias the same underlying array as `ops`, otherwise
+	// the user could modify that array after calling s.WithControlDependencies,
+	// which would be confusing.  We cannot alias the same underlying array as the
+	// original `s.controlDependencies`, since Scopes form a logical tree, and
+	// other calls to s.WithControlDependencies could stomp on each other.
+	deps := make([]*tf.Operation, 0, len(s.controlDependencies)+len(ops))
+	deps = append(deps, s.controlDependencies...)
+	deps = append(deps, ops...)
+	return &Scope{
+		graph:               s.graph,
+		namemap:             s.namemap,
+		namespace:           s.namespace,
+		controlDependencies: deps,
+		err:                 s.err,
 	}
 }
 

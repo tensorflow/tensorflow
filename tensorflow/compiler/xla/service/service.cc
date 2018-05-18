@@ -20,8 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -29,81 +30,99 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
+#include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 using ::tensorflow::strings::Printf;
 using ::tensorflow::strings::StrCat;
+using ::xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 
 namespace {
 
-// Copies the contents of an Allocation into a Literal proto.
-tensorflow::Status LiteralFromAllocation(const Allocation* allocation,
-                                         const Shape& literal_shape,
-                                         Literal* literal) {
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      allocation->backend()->stream_executor(allocation->device_ordinal()));
-  return allocation->backend()->transfer_manager()->TransferLiteralFromDevice(
-      executor, allocation->device_memory(), allocation->shape(), literal_shape,
-      literal);
-}
-
 // Records the arguments used to invoke a computation in a SessionModule
 // proto.
-tensorflow::Status RecordArguments(
-    const tensorflow::gtl::ArraySlice<const Allocation*> arg_allocations,
+Status RecordArguments(
+    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    se::StreamExecutor* executor, TransferManager* transfer_manager,
     SessionModule* module) {
   module->clear_arguments();
-  for (const Allocation* allocation : arg_allocations) {
-    TF_RETURN_IF_ERROR(LiteralFromAllocation(allocation, allocation->shape(),
-                                             module->add_arguments()));
+  for (const ShapedBuffer* argument : arguments) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Literal> literal,
+        transfer_manager->TransferLiteralFromDevice(executor, *argument));
+    *module->add_arguments() = literal->ToProto();
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 // Records the result of a computation in a SessionModule proto.
-tensorflow::Status RecordResult(const Allocation* result_allocation,
-                                SessionModule* module) {
+Status RecordResult(const ShapedBuffer& result, se::StreamExecutor* executor,
+                    TransferManager* transfer_manager, SessionModule* module) {
   module->clear_result();
-  return LiteralFromAllocation(result_allocation, result_allocation->shape(),
-                               module->mutable_result());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Literal> literal,
+      transfer_manager->TransferLiteralFromDevice(executor, result));
+  *module->mutable_result() = literal->ToProto();
+  return Status::OK();
+}
+
+// Records the arguments used to invoke a computation in an HloSnapshot proto.
+Status RecordArguments(
+    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    se::StreamExecutor* executor, TransferManager* transfer_manager,
+    HloSnapshot* module) {
+  module->clear_arguments();
+  for (const ShapedBuffer* argument : arguments) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Literal> literal,
+        transfer_manager->TransferLiteralFromDevice(executor, *argument));
+    *module->add_arguments() = literal->ToProto();
+  }
+  return Status::OK();
+}
+
+// Records the result of a computation in a HloSnapshot proto.
+Status RecordResult(const ShapedBuffer& result, se::StreamExecutor* executor,
+                    TransferManager* transfer_manager, HloSnapshot* module) {
+  module->clear_result();
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Literal> literal,
+      transfer_manager->TransferLiteralFromDevice(executor, result));
+  *module->mutable_result() = literal->ToProto();
+  return Status::OK();
 }
 
 }  // namespace
 
-ServiceOptions& ServiceOptions::set_platform(
-    perftools::gputools::Platform* platform) {
+ServiceOptions& ServiceOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
   return *this;
 }
 
-perftools::gputools::Platform* ServiceOptions::platform() const {
-  return platform_;
-}
+se::Platform* ServiceOptions::platform() const { return platform_; }
 
 ServiceOptions& ServiceOptions::set_number_of_replicas(int number_of_replicas) {
   number_of_replicas_ = number_of_replicas;
@@ -123,7 +142,7 @@ int ServiceOptions::intra_op_parallelism_threads() const {
 }
 
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   ServiceOptions default_options;
   default_options.set_platform(platform);
   return NewService(default_options);
@@ -131,70 +150,31 @@ int ServiceOptions::intra_op_parallelism_threads() const {
 
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
     const ServiceOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   std::unique_ptr<Backend> execute_backend;
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
   BackendOptions backend_options;
   backend_options.set_platform(platform);
-  backend_options.set_number_of_replicas(options.number_of_replicas());
   TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
-                      CreateComputeConstantBackend());
-  std::unique_ptr<Service> service(new Service(
-      std::move(execute_backend), std::move(compute_constant_backend)));
+
+  std::unique_ptr<Service> service(
+      new Service(options, std::move(execute_backend)));
   return std::move(service);
 }
 
-/* static */ StatusOr<std::unique_ptr<Backend>>
-Service::CreateComputeConstantBackend() {
-  TF_ASSIGN_OR_RETURN(std::vector<se::Platform*> platforms,
-                      PlatformUtil::GetSupportedPlatforms());
-  for (auto* platform : platforms) {
-    if (platform->id() == se::host::kHostPlatformId) {
-      BackendOptions backend_options;
-      backend_options.set_platform(platform);
-      backend_options.set_number_of_replicas(1);
-      return Backend::CreateBackend(backend_options);
-    }
-  }
-  return NotFound("CPU platform not found");
-}
-
-/* static */ void Service::DumpExecutedHlo(const HloModule& module,
-                                           const string& label,
-                                           const HloExecutionProfile* profile) {
-  VLOG(2) << "module name = " << module.name();
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (!flags->xla_generate_hlo_graph.empty() &&
-      RE2::PartialMatch(module.name(), flags->xla_generate_hlo_graph)) {
-    hlo_graph_dumper::DumpGraph(*module.entry_computation(), label,
-                                flags->xla_hlo_graph_addresses,
-                                flags->xla_hlo_graph_layout, profile);
-  }
-  if (!flags->xla_log_hlo_text.empty() &&
-      RE2::PartialMatch(module.name(), flags->xla_log_hlo_text)) {
-    LOG(INFO) << "HLO for module " << module.name();
-    LOG(INFO) << "Label: " << label;
-    XLA_LOG_LINES(2, module.ToString());
-  }
-  if (!flags->xla_dump_hlo_text_to.empty()) {
-    hlo_graph_dumper::DumpText(module, label, flags->xla_dump_hlo_text_to);
-  }
-}
-
-/* static */ Compiler::HloDumper Service::MakeHloDumper() {
-  return [](const HloModule& module, const string& label) {
-    return DumpExecutedHlo(module, label, /*profile=*/nullptr);
-  };
-}
-
-Service::Service(std::unique_ptr<Backend> execute_backend,
-                 std::unique_ptr<Backend> compute_constant_backend)
-    : execute_backend_(std::move(execute_backend)),
-      compute_constant_backend_(std::move(compute_constant_backend)) {
+Service::Service(const ServiceOptions& options,
+                 std::unique_ptr<Backend> execute_backend)
+    : options_(options),
+      allocation_tracker_(execute_backend.get()),
+      execute_backend_(std::move(execute_backend)) {
+  CHECK_GT(options_.number_of_replicas(), 0);
   if (execute_backend_) {
+    if (execute_backend_->device_count() > 0) {
+      CHECK_GE(execute_backend_->device_count(), options_.number_of_replicas())
+          << "Requested more replicas than there are devices.";
+    }
     LOG(INFO) << Printf(
         "XLA service %p executing computations on platform %s. Devices:", this,
         execute_backend_->platform()->Name().c_str());
@@ -215,34 +195,34 @@ Service::Service(std::unique_ptr<Backend> execute_backend,
   }
 }
 
-tensorflow::Status Service::Computation(const ComputationRequest* arg,
-                                        ComputationResponse* result) {
+Status Service::Computation(const ComputationRequest* arg,
+                            ComputationResponse* result) {
   if (arg->name().empty()) {
     return InvalidArgument("computation request needs a name");
   }
 
   *result->mutable_computation() =
       computation_tracker_.NewComputation(arg->name());
-  VLOG(1) << Printf("Created new computation %s on service %p",
-                    result->computation().ShortDebugString().c_str(), this);
-  return tensorflow::Status::OK();
+  VLOG(1) << Printf("Created new computation %s on service %p, name %s",
+                    result->computation().ShortDebugString().c_str(), this,
+                    arg->name().c_str());
+  return Status::OK();
 }
 
-tensorflow::Status Service::CreateChannelHandle(
-    const CreateChannelHandleRequest* arg,
-    CreateChannelHandleResponse* result) {
+Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
+                                    CreateChannelHandleResponse* result) {
   *result->mutable_channel() = channel_tracker_.NewChannel();
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::Unregister(const UnregisterRequest* arg,
-                                       UnregisterResponse* result) {
+Status Service::Unregister(const UnregisterRequest* arg,
+                           UnregisterResponse* result) {
   return allocation_tracker_.Unregister(arg->data());
 }
 
 // Deconstructs a previously-allocated global handle.
-tensorflow::Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
-                                             DeconstructTupleResponse* result) {
+Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
+                                 DeconstructTupleResponse* result) {
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDataHandle> elements,
       allocation_tracker_.DeconstructTuple(arg->tuple_handle()));
@@ -250,11 +230,11 @@ tensorflow::Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
   for (auto& element : elements) {
     *result->add_element_handles() = element;
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::ValidateResultShapeWithLayout(
-    const Shape& shape_with_layout, const Shape& result_shape) const {
+Status Service::ValidateResultShapeWithLayout(const Shape& shape_with_layout,
+                                              const Shape& result_shape) const {
   if (!ShapeUtil::Compatible(shape_with_layout, result_shape)) {
     return InvalidArgument(
         "Shape used to set computation result layout %s is not compatible "
@@ -270,113 +250,157 @@ tensorflow::Status Service::ValidateResultShapeWithLayout(
   return ShapeUtil::ValidateShape(shape_with_layout);
 }
 
-StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
+StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
+Service::ResolveAndValidateArguments(
     tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    const Backend* backend, int device_ordinal) {
-  std::vector<const Allocation*> allocations;
+    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors) {
+  CHECK_EQ(options_.number_of_replicas(), stream_executors.size());
+  std::vector<std::vector<const ShapedBuffer*>> replicated_arguments;
+  replicated_arguments.resize(options_.number_of_replicas());
   for (size_t i = 0; i < arguments.size(); ++i) {
-    auto allocation_status = allocation_tracker_.Resolve(*arguments[i]);
-    if (!allocation_status.ok()) {
-      return Status(allocation_status.status().code(),
-                    StrCat(allocation_status.status().error_message(), ", ",
+    auto buffer_status = allocation_tracker_.Resolve(*arguments[i]);
+    if (!buffer_status.ok()) {
+      return Status(buffer_status.status().code(),
+                    StrCat(buffer_status.status().error_message(), ", ",
                            "failed to resolve allocation for parameter ", i));
     }
-    const Allocation* allocation = allocation_status.ValueOrDie();
-
-    // Verify allocation is same platform and device as the execution.
-    if (allocation->backend() != backend ||
-        allocation->device_ordinal() != device_ordinal) {
-      return InvalidArgument(
-          "argument %lu is on device %s but computation will be executed "
-          "on device %s",
-          i,
-          allocation->backend()
-              ->device_name(allocation->device_ordinal())
-              .c_str(),
-          backend->device_name(device_ordinal).c_str());
+    auto replicated_buffers = buffer_status.ValueOrDie();
+    CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
+    for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
+      const ShapedBuffer* shaped_buffer = replicated_buffers[replica];
+      int replica_device_ordinal = stream_executors[replica]->device_ordinal();
+      // Verify allocation is same platform and device as the execution.
+      if (shaped_buffer->platform() != execute_backend_->platform() ||
+          shaped_buffer->device_ordinal() != replica_device_ordinal) {
+        return InvalidArgument(
+            "argument %lu is on device %s:%d but computation will be executed "
+            "on device %s",
+            i, shaped_buffer->platform()->Name().c_str(),
+            shaped_buffer->device_ordinal(),
+            execute_backend_->device_name(replica_device_ordinal).c_str());
+      }
+      replicated_arguments[replica].push_back(shaped_buffer);
     }
-
-    allocations.push_back(allocation);
   }
-  return allocations;
+  return replicated_arguments;
 }
 
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
-    tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-    const ExecutionOptions& execution_options, Backend* backend) {
-  auto module_config = MakeUnique<HloModuleConfig>(program_shape);
-  auto* computation_layout = module_config->mutable_entry_computation_layout();
-
-  if (program_shape.parameters_size() != arguments.size()) {
+    tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+    const ExecutionOptions* execution_options,
+    const UserComputation* user_computation) {
+  auto config = MakeUnique<HloModuleConfig>(program_shape);
+  ComputationLayout* host_computation_layout =
+      config->mutable_host_entry_computation_layout();
+  ComputationLayout* device_computation_layout =
+      config->mutable_device_entry_computation_layout();
+  if (program_shape.parameters_size() != argument_shapes.size()) {
     return InvalidArgument("computation takes %d parameters, but %zu given",
-                           program_shape.parameters_size(), arguments.size());
+                           program_shape.parameters_size(),
+                           argument_shapes.size());
   }
-
-  for (size_t i = 0; i < arguments.size(); ++i) {
+  for (int i = 0; i < argument_shapes.size(); ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
-    if (!ShapeUtil::Compatible(arguments[i]->shape(),
+    if (!ShapeUtil::Compatible(*argument_shapes[i],
                                program_shape.parameters(i))) {
-      return InvalidArgument(
-          "computation expects parameter %lu to have shape %s, given shape %s",
+      if (user_computation == nullptr) {
+        return InvalidArgument(
+            "Argument does not match shape of computation parameter %d: want "
+            "%s, got %s",
+            i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
+            ShapeUtil::HumanString(*argument_shapes[i]).c_str());
+      }
+      return InvalidParameterArgument(
+          *user_computation->ParameterMetadata(i).value(),
+          "Argument does not match shape of computation parameter %d: want %s, "
+          "got %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
-          ShapeUtil::HumanString(arguments[i]->shape()).c_str());
+          ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            arguments[i]->shape()));
+    TF_RETURN_IF_ERROR(host_computation_layout->mutable_parameter_layout(i)
+                           ->CopyLayoutFromShape(*argument_shapes[i]));
+    TF_RETURN_IF_ERROR(device_computation_layout->mutable_parameter_layout(i)
+                           ->CopyLayoutFromShape(*argument_shapes[i]));
   }
-  if (!execution_options.has_shape_with_output_layout()) {
-    computation_layout->mutable_result_layout()->Clear();
-  } else {
+  if (execution_options != nullptr &&
+      execution_options->has_shape_with_output_layout()) {
     const auto& shape_with_output_layout =
-        execution_options.shape_with_output_layout();
+        execution_options->shape_with_output_layout();
     TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
                                                      program_shape.result()));
     TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+        host_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
+    TF_RETURN_IF_ERROR(
+        device_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+            shape_with_output_layout));
+  } else {
+    // If the result layout is not set, then choose the default.
+    // TODO(b/29118294): Allow the compiler to choose a better layout in this
+    // case.
+    host_computation_layout->mutable_result_layout()->SetToDefaultLayout();
+    device_computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
 
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (flags->xla_hlo_profile) {
-    module_config->enable_hlo_profiling(true);
+  config->set_replica_count(options_.number_of_replicas());
+  if (execution_options != nullptr) {
+    config->set_seed(execution_options->seed());
+    config->set_debug_options(execution_options->debug_options());
+  } else {
+    config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   }
 
-  module_config->set_replica_count(backend->Replicas().size());
-  module_config->set_fast_math_disabled(execution_options.disable_fast_math());
-  module_config->set_seed(execution_options.seed());
+  if (execute_backend_ != nullptr &&
+      execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
+  return std::move(config);
+}
 
-  return std::move(module_config);
+StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+    const ProgramShape& program_shape,
+    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    const ExecutionOptions& execution_options,
+    const UserComputation* user_computation) {
+  std::vector<const Shape*> argument_shapes;
+  for (const auto* arg : arguments) {
+    argument_shapes.push_back(&arg->on_host_shape());
+  }
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options,
+                            user_computation);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     std::vector<VersionedComputationHandle> versioned_handles,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    Backend* backend,
-    std::vector<perftools::gputools::StreamExecutor*> executors) {
+    Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
+    DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << Printf("BuildExecutable on service %p", this);
 
   // Dump computation proto state if flag is set.
   std::vector<std::unique_ptr<SessionModule>> session_modules;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_computations_to;
-  const string& other_directory_path = flags->xla_dump_executions_to;
-  if ((!directory_path.empty() || !other_directory_path.empty())) {
-    for (int64 i = 0; i < versioned_handles.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<SessionModule> session_module,
-                          computation_tracker_.SnapshotComputation(
-                              versioned_handles[i].handle));
-      if (!directory_path.empty()) {
-        string filename = Printf("computation_%lld__%s__version_%lld",
-                                 versioned_handles[i].handle.handle(),
-                                 session_module->entry().name().c_str(),
-                                 versioned_handles[i].version);
-        TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
-                                                       *session_module));
-        session_modules.push_back(std::move(session_module));
-      }
+  for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    const string& directory_path =
+        module_configs[i]->debug_options().xla_dump_computations_to();
+    const string& other_directory_path =
+        module_configs[i]->debug_options().xla_dump_executions_to();
+    if (directory_path.empty() && other_directory_path.empty()) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<SessionModule> session_module,
+        computation_tracker_.SnapshotComputation(versioned_handles[i].handle));
+    if (!directory_path.empty()) {
+      string filename = Printf("computation_%lld__%s__version_%lld",
+                               versioned_handles[i].handle.handle(),
+                               session_module->entry().name().c_str(),
+                               versioned_handles[i].version);
+      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
+                                                     *session_module));
+      session_modules.push_back(std::move(session_module));
     }
   }
 
@@ -392,19 +416,18 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle, &config,
+                            versioned_handle, config,
                             /*include_unreachable_instructions=*/true));
     modules.push_back(std::move(module));
   }
 
-  Compiler::HloDumper hlo_dumper = MakeHloDumper();
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      backend->compiler()->Compile(std::move(modules), hlo_dumper,
-                                   std::move(executors)));
+      backend->compiler()->Compile(std::move(modules), std::move(executors),
+                                   device_allocator));
 
-  if (!other_directory_path.empty()) {
-    for (size_t i = 0; i < versioned_handles.size(); ++i) {
+  for (size_t i = 0; i < versioned_handles.size(); ++i) {
+    if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
       executables[i]->set_session_module(std::move(session_modules[i]));
     }
   }
@@ -412,23 +435,94 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   return std::move(executables);
 }
 
+StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
+    const std::vector<const HloModuleProto*>& module_protos,
+    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+    Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
+    DeviceMemoryAllocator* device_allocator) {
+  VLOG(1) << Printf("BuildExecutable on service %p", this);
+
+  // Dump computation proto state if flag is set.
+  std::vector<std::unique_ptr<HloSnapshot>> hlo_snapshots;
+  for (int64 i = 0; i < module_protos.size(); ++i) {
+    const string& directory_path =
+        module_configs[i]->debug_options().xla_dump_computations_to();
+    const string& execution_directory_path =
+        module_configs[i]->debug_options().xla_dump_executions_to();
+    if (directory_path.empty() && execution_directory_path.empty()) {
+      continue;
+    }
+    auto hlo_snapshot = MakeUnique<HloSnapshot>();
+    *hlo_snapshot->mutable_hlo()->mutable_hlo_module() = *module_protos[i];
+    if (!directory_path.empty()) {
+      string filename =
+          Printf("computation_%lld__%s", module_protos[i]->id(),
+                 module_protos[i]->entry_computation_name().c_str());
+      TF_RETURN_IF_ERROR(
+          Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot));
+      hlo_snapshots.push_back(std::move(hlo_snapshot));
+    }
+  }
+
+  VLOG(1) << "Computations:";
+  for (const HloModuleProto* proto : module_protos) {
+    VLOG(1) << proto->name();
+  }
+
+  CHECK_EQ(module_protos.size(), module_configs.size());
+  std::vector<std::unique_ptr<HloModule>> modules;
+  for (int64 i = 0; i < module_protos.size(); ++i) {
+    const HloModuleProto* proto = module_protos[i];
+    const HloModuleConfig& config = *module_configs[i];
+    TF_ASSIGN_OR_RETURN(auto module,
+                        HloModule::CreateFromProto(*proto, config));
+    modules.push_back(std::move(module));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      backend->compiler()->Compile(std::move(modules), std::move(executors),
+                                   device_allocator));
+
+  for (size_t i = 0; i < module_protos.size(); ++i) {
+    if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
+      executables[i]->set_hlo_snapshot(std::move(hlo_snapshots[i]));
+    }
+  }
+
+  return std::move(executables);
+}
+
+Status Service::ValidateEntryComputationLayout(HloModule* module) {
+  const ComputationLayout& on_device =
+      module->device_entry_computation_layout();
+  for (int64 i = 0; i < on_device.parameter_count(); ++i) {
+    TF_RET_CHECK(ShapeUtil::Equal(
+        on_device.parameter_shape(i),
+        execute_backend_->transfer_manager()->HostShapeToDeviceShape(
+            module->host_entry_computation_layout().parameter_shape(i))));
+  }
+  TF_RET_CHECK(ShapeUtil::Equal(
+      module->device_entry_computation_layout().result_shape(),
+      execute_backend_->transfer_manager()->HostShapeToDeviceShape(
+          module->host_entry_computation_layout().result_shape())));
+  return Status::OK();
+}
+
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const VersionedComputationHandle& versioned_handle,
-    std::unique_ptr<HloModuleConfig> module_config,
-    bool executable_for_compute_constant,
-    const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        arguments,
-    Backend* backend, se::StreamExecutor* executor) {
+    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+    se::StreamExecutor* executor, DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << Printf("BuildExecutable on service %p with handle %s", this,
                     versioned_handle.ToString().c_str());
 
   // Dump computation proto state if flag is set.
   std::unique_ptr<SessionModule> session_module;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_computations_to;
-  const string& other_directory_path = flags->xla_dump_executions_to;
-  if (!executable_for_compute_constant &&
-      (!directory_path.empty() || !other_directory_path.empty())) {
+  const string& directory_path =
+      module_config->debug_options().xla_dump_computations_to();
+  const string& other_directory_path =
+      module_config->debug_options().xla_dump_executions_to();
+  if (!directory_path.empty() || !other_directory_path.empty()) {
     TF_ASSIGN_OR_RETURN(
         session_module,
         computation_tracker_.SnapshotComputation(versioned_handle.handle));
@@ -444,19 +538,21 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle, module_config.get(),
+      computation_tracker_.BuildHloModule(versioned_handle, *module_config,
                                           /*include_unreachable_instructions=*/
-                                          !executable_for_compute_constant));
+                                          true));
 
-  Compiler::HloDumper hlo_dumper = MakeHloDumper();
-  if (executable_for_compute_constant &&
-      !flags->xla_hlo_graph_for_compute_constant) {
-    hlo_dumper = [](const HloModule&, const string&) {};
-  }
+  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), hlo_dumper, executor));
+      module, backend->compiler()->RunHloPasses(std::move(module), executor,
+                                                device_allocator));
+  // Check that on-host and on-device shapes are consistent.
+  TF_RETURN_IF_ERROR(ValidateEntryComputationLayout(module.get()));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      backend->compiler()->RunBackend(
+                          std::move(module), executor, device_allocator));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -467,11 +563,9 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
 StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
     const VersionedComputationHandle& versioned_handle,
-    std::unique_ptr<HloModuleConfig> module_config,
-    const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        arguments,
-    Backend* backend, perftools::gputools::StreamExecutor* executor,
-    ExecutionProfile* profile) {
+    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+    se::StreamExecutor* executor, ExecutionProfile* profile,
+    DeviceMemoryAllocator* device_allocator) {
   std::shared_ptr<Executable> executable =
       compilation_cache_.LookUp(versioned_handle, *module_config);
 
@@ -492,9 +586,8 @@ StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
   HloModuleConfig original_module_config = *module_config;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable_unique_ptr,
-      BuildExecutable(versioned_handle, std::move(module_config),
-                      /*executable_for_compute_constant=*/false, arguments,
-                      backend, executor));
+      BuildExecutable(versioned_handle, std::move(module_config), backend,
+                      executor, device_allocator));
 
   if (profile != nullptr) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
@@ -511,52 +604,133 @@ StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
 StatusOr<std::vector<GlobalDataHandle>>
 Service::ExecuteParallelAndRegisterResult(
     tensorflow::gtl::ArraySlice<Executable*> executables,
-    tensorflow::gtl::ArraySlice<
-        std::vector<perftools::gputools::DeviceMemoryBase>>
+    tensorflow::gtl::ArraySlice<std::vector<std::vector<const ShapedBuffer*>>>
         arguments,
-    Backend* backend,
-    tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*> executors,
-    tensorflow::gtl::ArraySlice<string> result_tags) {
-  // TODO(b/33943292): Support for replication when using multiple computations.
-  TF_RET_CHECK(backend->Replicas().size() == 1);
-
-  // Set up streams.
+    Backend* backend, tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
+    tensorflow::gtl::ArraySlice<string> result_tags,
+    ExecutionProfile* profile) {
+  // Streams where the computation are launched, so we can wait on the streams
+  // to complete.
   std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<std::unique_ptr<se::Timer>> timers;
 
-  for (se::StreamExecutor* executor : executors) {
-    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
-                        backend->BorrowStream(executor));
-    streams.push_back(std::move(stream));
-  }
-
-  // Set up run options.
-  std::vector<ServiceExecutableRunOptions> run_options;
-  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
-    ExecutableRunOptions options;
-    options.set_stream(stream.get());
-    options.set_allocator(backend->memory_allocator());
-    options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
-    options.set_intra_op_thread_pool(
-        backend->eigen_intra_op_thread_pool_device());
-    run_options.emplace_back(options, backend->StreamBorrower());
-  }
-
-  // Asynchronously launch all executables.
+  // Global data handles for the computation results, one for each computation.
   std::vector<GlobalDataHandle> result_handles;
-  for (tensorflow::gtl::ArraySlice<Executable*>::size_type i = 0;
-       i < executables.size(); i++) {
-    TF_ASSIGN_OR_RETURN(
-        perftools::gputools::DeviceMemoryBase result,
-        executables[i]->ExecuteAsyncOnStream(&run_options[i], arguments[i]));
-    result_handles.push_back(allocation_tracker_.Register(
-        backend, executors[i]->device_ordinal(), result,
-        executables[i]->result_shape(), result_tags[i]));
+
+  // Device ID to stream executor, populated only with devices that are being
+  // profiled.
+  std::map<int64, se::Stream*> index_to_profiled_streams;
+
+  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                      backend->computation_placer()->AssignDevices(
+                          options_.number_of_replicas(), executables.size()));
+
+  for (int64 i = 0; i < executables.size(); i++) {
+    // Stream executors for the replicas of the current computation.
+    TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
+    CHECK_EQ(replicas.size(), arguments[i].size());
+    std::vector<ScopedShapedBuffer> result_buffers;
+    for (int64 replica = 0; replica < replicas.size(); ++replica) {
+      TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+                          backend->BorrowStream(replicas[replica]));
+      streams.push_back(std::move(stream));
+
+      if (replica == 0 && profile != nullptr) {
+        timers.emplace_back(new se::Timer(streams.back()->parent()));
+        streams.back()
+            ->InitTimer(timers.back().get())
+            .ThenStartTimer(timers.back().get());
+        CHECK(timers.front() != nullptr);
+      }
+
+      if (replica == 0 &&
+          executables[i]->module_config().debug_options().xla_hlo_profile() &&
+          executables[i]->hlo_profiling_enabled()) {
+        index_to_profiled_streams[i] = streams.back().get();
+      }
+
+      // Set up run options.
+      ExecutableRunOptions options;
+      options.set_stream(streams.back().get());
+      options.set_allocator(backend->memory_allocator());
+      options.set_intra_op_thread_pool(
+          backend->eigen_intra_op_thread_pool_device());
+      options.set_device_assignment(&device_assignment);
+      ServiceExecutableRunOptions run_options(options,
+                                              backend->StreamBorrower());
+
+      // Asynchronously launch the computation.
+      TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                          executables[i]->ExecuteAsyncOnStream(
+                              &run_options, arguments[i][replica]));
+
+      if (replica == 0 && profile != nullptr) {
+        streams.back()->ThenStopTimer(timers.back().get());
+      }
+
+      result_buffers.emplace_back(std::move(result));
+    }
+    TF_ASSIGN_OR_RETURN(GlobalDataHandle handle,
+                        allocation_tracker_.RegisterReplicatedBuffers(
+                            std::move(result_buffers), result_tags[i]));
+    result_handles.push_back(handle);
   }
 
   // Wait for all executions to complete.
-  for (int64 i = 0; i < result_handles.size(); ++i) {
-    if (!streams[i]->BlockHostUntilDone()) {
-      return InternalError("failed to complete execution for stream %lld", i);
+  for (int64 i = 0; i < streams.size(); ++i) {
+    Status block_status = streams[i]->BlockHostUntilDone();
+    if (!block_status.ok()) {
+      return InternalError("failed to complete execution for stream %lld: %s",
+                           i, block_status.error_message().c_str());
+    }
+  }
+
+  // For every stream that had profiling enabled, obtain and debug-dump the HLO
+  // profile.
+  for (auto& index_to_profiled_stream : index_to_profiled_streams) {
+    int64 device = index_to_profiled_stream.first;
+    se::Stream* stream = index_to_profiled_stream.second;
+    Executable* executable = executables[device];
+    const HloModule& module = executable->module();
+    HloExecutionProfile hlo_profile(&executable->hlo_profile_printer_data(),
+                                    &executable->hlo_profile_index_map());
+    TF_RETURN_IF_ERROR(
+        executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));
+    hlo_graph_dumper::MaybeDumpHloModule(module, "Service::Execute",
+                                         &hlo_profile);
+  }
+
+  if (profile != nullptr) {
+    CHECK(!timers.empty());
+    std::vector<uint64> timer_nanoseconds;
+    timer_nanoseconds.reserve(timers.size());
+    for (auto& timer : timers) {
+      timer_nanoseconds.push_back(timer->Nanoseconds());
+    }
+    uint64 nanoseconds =
+        *std::max_element(timer_nanoseconds.begin(), timer_nanoseconds.end());
+
+    // Merge in run-time profile information from execution_profile on the
+    // zeroth device.
+    profile->MergeFrom(executables[0]->execution_profile());
+
+    // Overall execution time (in nanoseconds) from the executor timer.
+    profile->set_compute_and_transfer_time_ns(nanoseconds);
+
+    // TODO(b/28123297): On GPU we end up including transfer time in
+    // the compute time this way. Instead, we should get the correct
+    // value by measuring it. Setting the field here at least lets
+    // benchmarks provide *some* value for GPU computations.
+    //
+    // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
+    // the compute time without the transfer time, so this way we get the
+    // correct compute time. We should instead have the correct value for
+    // compute_and_transfer_time and set compute_time to the compute time.
+    if (profile->compute_time_ns() == 0) {
+      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
   }
 
@@ -565,96 +739,143 @@ Service::ExecuteParallelAndRegisterResult(
 
 StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
-    const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+    const tensorflow::gtl::ArraySlice<std::vector<const ShapedBuffer*>>
         arguments,
-    Backend* backend, perftools::gputools::StreamExecutor* executor,
-    const string& result_tag, ExecutionProfile* profile) {
-  TF_RET_CHECK(!backend->Replicas().empty());
-
+    Backend* backend, const string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<Pool<se::Stream>::SmartPtr> streams;
 
-  for (se::StreamExecutor* executor : backend->Replicas()) {
+  TF_ASSIGN_OR_RETURN(auto replicas,
+                      Replicas(*backend, SingleComputationDeviceHandle()));
+  TF_RET_CHECK(!replicas.empty());
+  for (se::StreamExecutor* executor : replicas) {
     TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
                         backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
+
+  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                      backend->computation_placer()->AssignDevices(
+                          options_.number_of_replicas(),
+                          /*computation_count=*/1));
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
   for (const Pool<se::Stream>::SmartPtr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
+    options.set_device_ordinal(stream->parent()->device_ordinal());
     options.set_allocator(backend->memory_allocator());
-    options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
-    run_options.emplace_back(options, backend->StreamBorrower(),
-                             backend->inter_op_thread_pool());
+    options.set_device_assignment(&device_assignment);
+    run_options.emplace_back(
+        options, backend->StreamBorrower(),
+        /*xla_intra_op_thread_pool=*/backend->eigen_intra_op_thread_pool());
   }
 
-  perftools::gputools::DeviceMemoryBase result;
-  if (backend->Replicas().size() == 1) {
+  if (options_.number_of_replicas() == 1) {
     TF_ASSIGN_OR_RETURN(
-        result, ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
-                    executable, &run_options[0], profile, backend,
-                    [&arguments](Executable* executable,
-                                 const ServiceExecutableRunOptions* run_options,
-                                 HloExecutionProfile* hlo_execution_profile) {
-                      return executable->ExecuteOnStream(run_options, arguments,
-                                                         hlo_execution_profile);
-                    }));
-  } else {
-    std::vector<
-        tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
-        repeated_arguments(backend->Replicas().size(), arguments);
-
-    TF_ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
-                                          run_options, repeated_arguments));
-    TF_RET_CHECK(!results.empty());
-    result = results[0];
+        auto result, executable->ExecuteOnStreamWrapper(&run_options[0],
+                                                        profile, arguments[0]));
+    return allocation_tracker_.Register(std::move(result), result_tag);
   }
-  return allocation_tracker_.Register(backend, executor->device_ordinal(),
-                                      result, executable->result_shape(),
-                                      result_tag);
+
+  // TODO(b/69985541): Support profiling also on this path.
+
+  std::vector<tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
+      replicated_arguments;
+  for (const auto& arg : arguments) {
+    replicated_arguments.emplace_back(arg);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
+                                        run_options, replicated_arguments));
+  TF_RET_CHECK(!results.empty());
+  return allocation_tracker_.RegisterReplicatedBuffers(std::move(results),
+                                                       result_tag);
 }
 
-tensorflow::Status Service::SetReturnValue(const SetReturnValueRequest* arg,
-                                           SetReturnValueResponse* results) {
+Status Service::SetReturnValue(const SetReturnValueRequest* arg,
+                               SetReturnValueResponse* results) {
   TF_ASSIGN_OR_RETURN(UserComputation * computation,
                       computation_tracker_.Resolve(arg->computation()));
   return computation->SetReturnValue(arg->operand());
 }
 
-tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
-                                            ExecuteParallelResponse* result) {
+StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
+    const ExecutionOptions& execution_options, int64 requests_size,
+    int64 request_index) const {
+  if (execution_options.device_handles().empty()) {
+    return FailedPrecondition(
+        "device handles must be given to execute parallel computations");
+  }
+  if (requests_size > 1 && execution_options.device_handles_size() > 1) {
+    return InvalidArgument(
+        "Parallel requests with multiple device handles is not supported. "
+        "Found %lld parallel requests, with request %lld containing %d device "
+        "handles.",
+        requests_size, request_index, execution_options.device_handles_size());
+  }
+  std::vector<se::StreamExecutor*> executors;
+  for (const auto& device_handle : execution_options.device_handles()) {
+    TF_ASSIGN_OR_RETURN(auto replicas,
+                        Replicas(*execute_backend_, device_handle));
+    se::StreamExecutor* executor = replicas[0];
+    CHECK(executor != nullptr);
+    executors.push_back(executor);
+  }
+  return executors;
+}
+
+StatusOr<std::vector<std::vector<const ShapedBuffer*>>> Service::GetArguments(
+    const ExecutionOptions& execution_options,
+    tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments) {
+  // Resolve the allocations for the arguments of the computation, and create
+  // a vector of device memory offsets for the arguments from the allocations.
+  // In the case of partitioned computations, assume all arguments go on the
+  // zeroth core.
+  TF_ASSIGN_OR_RETURN(
+      auto replicas,
+      Replicas(*execute_backend_, execution_options.device_handles(0)));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      ResolveAndValidateArguments(arguments, replicas));
+  return replicated_arguments;
+}
+
+Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
+                                ExecuteParallelResponse* result) {
   VLOG(1) << "running execute-parallel request: " << arg->ShortDebugString();
 
-  std::vector<std::vector<se::DeviceMemoryBase>> all_arguments;
-  std::vector<perftools::gputools::StreamExecutor*> executors;
+  std::vector<std::vector<std::vector<const ShapedBuffer*>>> all_arguments;
+  std::vector<std::vector<se::StreamExecutor*>> all_executors;
   std::vector<VersionedComputationHandle> versioned_handles;
   std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
   std::vector<string> computation_names;
+  std::vector<DeviceHandle> device_handles;
 
-  if (arg->requests_size() > execute_backend_->stream_executors().size()) {
+  int num_requested_devices =
+      std::accumulate(arg->requests().begin(), arg->requests().end(), 0,
+                      [](int a, const ExecuteRequest& r) -> int {
+                        return a + r.execution_options().device_handles_size();
+                      });
+  if (num_requested_devices * options_.number_of_replicas() >
+      execute_backend_->device_count()) {
     return FailedPrecondition(
         "there are not enough stream executors to execute %d computations",
-        arg->requests_size());
+        num_requested_devices);
   }
 
   for (int64 i = 0; i < arg->requests_size(); ++i) {
-    // Get the stream executor on which the computation will run. Select the
-    // specific device if requested, otherwise select the i'th device from the
-    // list of available stream executors.
-    se::StreamExecutor* executor;
-    if (arg->requests(i).has_device_handle()) {
-      executor =
-          execute_backend_
-              ->stream_executors()[arg->requests(i).device_handle().handle()];
-    } else {
-      executor = execute_backend_->stream_executors()[i];
-    }
-    CHECK(executor != nullptr);
+    // Get the stream executor for the i'th computation. This stream executor
+    // is one of the executors to run the replicated computation.
+    const ExecutionOptions& execution_options =
+        arg->requests(i).execution_options();
+
+    // Get the executors.
+    TF_ASSIGN_OR_RETURN(auto executors, GetExecutors(execution_options,
+                                                     arg->requests_size(), i));
 
     // Resolve the UserComputation object associated with the requested
     // computation and compute the program shape.
@@ -671,68 +892,178 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
         std::shared_ptr<const ProgramShape> program_shape,
         user_computation->ComputeProgramShape(versioned_handle.version));
 
-    // Resolve the allocations for the arguments of the computation, and create
-    // a vector of device memory offsets for the arguments from the allocations.
-    TF_ASSIGN_OR_RETURN(
-        std::vector<const Allocation*> arg_allocations,
-        ResolveAndValidateArguments(request.arguments(), execute_backend_.get(),
-                                    executor->device_ordinal()));
-    std::vector<se::DeviceMemoryBase> arguments;
-    for (const Allocation* allocation : arg_allocations) {
-      arguments.push_back(allocation->device_memory());
-    }
+    // Get the replicated arguments.
+    TF_ASSIGN_OR_RETURN(auto replicated_arguments,
+                        GetArguments(execution_options, request.arguments()));
 
     // Create an HloModuleConfig object for the computation, given the shape of
-    // the program and the argument allocations.
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                        CreateModuleConfig(*program_shape, arg_allocations,
-                                           request.execution_options(),
-                                           execute_backend_.get()));
+    // the program and the argument allocations. Here, we care only about the
+    // shapes of the arguments, so, it is sufficient to use the arguments of
+    // replica 0.
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleConfig> module_config,
+        CreateModuleConfig(*program_shape, replicated_arguments.front(),
+                           request.execution_options(), user_computation));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
-            << module_config->entry_computation_layout().ToString();
+            << module_config->host_entry_computation_layout().ToString();
 
     // Adds to the vectors to build and execute the computations after the loop.
-    all_arguments.push_back(arguments);
+    all_arguments.push_back(replicated_arguments);
+    all_arguments.insert(all_arguments.end(), executors.size() - 1, {{}});
     versioned_handles.push_back(versioned_handle);
     module_configs.push_back(std::move(module_config));
-    computation_names.push_back(user_computation->name());
-    executors.push_back(executor);
+    computation_names.insert(computation_names.end(), executors.size(),
+                             user_computation->name());
+    all_executors.push_back(executors);
+    device_handles.insert(device_handles.end(),
+                          execution_options.device_handles().begin(),
+                          execution_options.device_handles().end());
   }
 
   // Build the user computations into HloModules and compile to generate the
   // executables.
+  //
+  // TODO(jlebar): There's currently no way to pass a device allocator to
+  // ExecuteParallel, so we have to pass a null device_allocator below.
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       BuildExecutables(versioned_handles, std::move(module_configs),
-                       execute_backend_.get(), executors));
+                       execute_backend_.get(), all_executors,
+                       /*device_allocator=*/nullptr));
   std::vector<Executable*> executable_ptrs;
+  executable_ptrs.reserve(executables.size());
   for (const auto& executable : executables) {
     executable_ptrs.push_back(executable.get());
   }
 
   // Execute the generated executables in parallel and return the device
   // handles for each computation's output.
+  ExecutionProfile profile;
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDataHandle> outputs,
       ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
-                                       execute_backend_.get(), executors,
-                                       computation_names));
+                                       execute_backend_.get(), device_handles,
+                                       computation_names, &profile));
   for (const GlobalDataHandle& output : outputs) {
     ExecuteResponse response;
     *response.mutable_output() = output;
+    *response.mutable_profile() = profile;
     *result->add_responses() = response;
   }
 
   VLOG(1) << "successfully completed 'execute-parallel' request";
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                                             GetDeviceHandlesResponse* result) {
-  const int64 available_device_count =
-      execute_backend_->stream_executors().size();
-  const int64 replicas = execute_backend_->Replicas().size();
-  if (available_device_count < arg->device_count() * replicas) {
+Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
+                                     ExecuteParallelResponse* result) {
+  VLOG(1) << "running execute-graph-parallel request";
+
+  std::vector<std::vector<std::vector<const ShapedBuffer*>>> all_arguments;
+  std::vector<std::vector<se::StreamExecutor*>> all_executors;
+  std::vector<const HloModuleProto*> module_protos;
+  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
+  std::vector<string> computation_names;
+  std::vector<DeviceHandle> device_handles;
+
+  int num_requested_devices =
+      std::accumulate(arg->requests().begin(), arg->requests().end(), 0,
+                      [](int a, const ExecuteGraphRequest& r) -> int {
+                        return a + r.execution_options().device_handles_size();
+                      });
+  if (num_requested_devices * options_.number_of_replicas() >
+      execute_backend_->device_count()) {
+    return FailedPrecondition(
+        "there are not enough stream executors to execute %d computations",
+        num_requested_devices);
+  }
+
+  for (int64 i = 0; i < arg->requests_size(); ++i) {
+    // Get the stream executor for the i'th computation. This stream executor
+    // is one of the executors to run the replicated computation.
+    const ExecutionOptions& execution_options =
+        arg->requests(i).execution_options();
+    const ExecuteGraphRequest& request = arg->requests(i);
+    TF_RET_CHECK(request.has_computation()) << "computations may not be empty";
+    TF_RET_CHECK(request.computation().has_program_shape())
+        << "programe shape may not be empty";
+
+    // Get the executors.
+    TF_ASSIGN_OR_RETURN(auto executors, GetExecutors(execution_options,
+                                                     arg->requests_size(), i));
+
+    // Get the replicated arguments.
+    TF_ASSIGN_OR_RETURN(auto replicated_arguments,
+                        GetArguments(execution_options, request.arguments()));
+
+    // Create an HloModuleConfig object for the computation, given the shape of
+    // the program and the argument allocations. Here, we care only about the
+    // shapes of the arguments, so, it is sufficient to use the arguments of
+    // replica 0.
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleConfig> module_config,
+        CreateModuleConfig(request.computation().program_shape(),
+                           replicated_arguments.front(),
+                           request.execution_options(),
+                           /*user_computation=*/nullptr));
+    VLOG(3)
+        << "ExecuteGraphParallel created HloModuleConfig computation layout: "
+        << module_config->host_entry_computation_layout().ToString();
+
+    // Adds to the vectors to build and execute the computations after the loop.
+    all_arguments.push_back(replicated_arguments);
+    all_arguments.insert(all_arguments.end(), executors.size() - 1, {{}});
+    module_protos.push_back(&request.computation());
+    module_configs.push_back(std::move(module_config));
+    computation_names.insert(computation_names.end(), executors.size(),
+                             request.computation().name());
+    all_executors.push_back(executors);
+    device_handles.insert(device_handles.end(),
+                          execution_options.device_handles().begin(),
+                          execution_options.device_handles().end());
+  }
+
+  // Build the HloModules and compile to generate the executables.
+  //
+  // TODO(jlebar): There's currently no way to pass a device allocator to
+  // ExecuteGraphParallel, so we have to pass a null device_allocator below.
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
+                      BuildExecutables(module_protos, std::move(module_configs),
+                                       execute_backend_.get(), all_executors,
+                                       /*device_allocator=*/nullptr));
+  std::vector<Executable*> executable_ptrs;
+  executable_ptrs.reserve(executables.size());
+  for (const auto& executable : executables) {
+    executable_ptrs.push_back(executable.get());
+  }
+
+  // Execute the generated executables in parallel and return the device
+  // handles for each computation's output.
+  ExecutionProfile profile;
+  TF_ASSIGN_OR_RETURN(
+      std::vector<GlobalDataHandle> outputs,
+      ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
+                                       execute_backend_.get(), device_handles,
+                                       computation_names, &profile));
+  for (const GlobalDataHandle& output : outputs) {
+    ExecuteResponse response;
+    *response.mutable_output() = output;
+    *response.mutable_profile() = profile;
+    *result->add_responses() = response;
+  }
+
+  VLOG(1) << "successfully completed 'execute-graph-parallel' request";
+  return Status::OK();
+}
+
+Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                                 GetDeviceHandlesResponse* result) {
+  const int64 available_device_count = execute_backend_->device_count();
+  const int64 replica_count = options_.number_of_replicas();
+  if (replica_count <= 0) {
+    return FailedPrecondition("Replica count must be a positive integer");
+  }
+  if (available_device_count < arg->device_count() * replica_count) {
     return ResourceExhausted(
         "Requested device count (%lld) exceeds the number of available devices "
         "on the target (%lld)",
@@ -741,16 +1072,56 @@ tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
 
   for (int64 i = 0; i < arg->device_count(); ++i) {
     DeviceHandle device_handle;
-    device_handle.set_handle(
-        execute_backend_->stream_executors()[i * replicas]->device_ordinal());
+    device_handle.set_handle(i);
+    device_handle.set_device_count(arg->device_count());
     *result->add_device_handles() = device_handle;
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::Execute(const ExecuteRequest* arg,
-                                    ExecuteResponse* result) {
+Status Service::ExecuteOneToN(const ExecuteRequest* arg,
+                              ExecuteResponse* result) {
+  ExecuteParallelRequest parallel_arg;
+  *parallel_arg.add_requests() = *arg;
+  ExecuteParallelResponse parallel_result;
+  TF_RETURN_IF_ERROR(ExecuteParallel(&parallel_arg, &parallel_result));
+  return PickParallelResponse(parallel_result, result);
+}
+
+Status Service::ExecuteOneToN(const ExecuteGraphRequest* arg,
+                              ExecuteResponse* result) {
+  ExecuteGraphParallelRequest parallel_arg;
+  *parallel_arg.add_requests() = *arg;
+  ExecuteParallelResponse parallel_result;
+  TF_RETURN_IF_ERROR(ExecuteGraphParallel(&parallel_arg, &parallel_result));
+  return PickParallelResponse(parallel_result, result);
+}
+
+Status Service::PickParallelResponse(
+    const ExecuteParallelResponse& parallel_result, ExecuteResponse* result) {
+  // The "result device" selection is a bit hacky, but better than assuming it
+  // is device 0. We have b/76035356 for restructuring the client API to clean
+  // up the current asymmetries and support more functionalities.
+  for (int64 i = 0; i < parallel_result.responses_size(); ++i) {
+    TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
+                        allocation_tracker_.ResolveForReplica(
+                            parallel_result.responses(i).output(), 0));
+    const Shape& shape = buffer->on_host_shape();
+    if (!ShapeUtil::IsEmptyTuple(shape)) {
+      *result = parallel_result.responses(i);
+      VLOG(3) << "Fetching result from device " << i << ": "
+              << ShapeUtil::HumanString(shape);
+      return Status::OK();
+    }
+  }
+  TF_RET_CHECK(parallel_result.responses_size() > 0);
+  *result = parallel_result.responses(0);
+  VLOG(1) << "Defaulting to device 0 result";
+  return Status::OK();
+}
+
+Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   VLOG(1) << "running execute request: " << arg->ShortDebugString();
 
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
@@ -763,63 +1134,174 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
     return InvalidArgument("computations may not be empty");
   }
 
+  // If we received multiple device handles, we must partition the module.
+  if (arg->execution_options().device_handles_size() > 1) {
+    return ExecuteOneToN(arg, result);
+  }
+
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<const ProgramShape> program_shape,
       user_computation->ComputeProgramShape(versioned_handle.version));
 
+  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                              SingleComputationDeviceHandle()));
   TF_ASSIGN_OR_RETURN(
-      std::vector<const Allocation*> arg_allocations,
-      ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
-                                  execute_backend_->default_device_ordinal()));
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      ResolveAndValidateArguments(arg->arguments(), replicas));
 
+  // Since we care only about the shapes of the arguments, it is sufficient to
+  // use the arguments of replica 0.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         arg->execution_options(), execute_backend_.get()));
+      CreateModuleConfig(*program_shape, replicated_arguments.front(),
+                         arg->execution_options(), user_computation));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
-          << module_config->entry_computation_layout().ToString();
-
-  std::vector<se::DeviceMemoryBase> arguments;
-  for (const Allocation* allocation : arg_allocations) {
-    arguments.push_back(allocation->device_memory());
-  }
+          << module_config->host_entry_computation_layout().ToString();
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
       BuildAndCacheExecutable(versioned_handle, std::move(module_config),
-                              arguments, execute_backend_.get(),
+                              execute_backend_.get(),
                               execute_backend_->default_stream_executor(),
                               result->mutable_profile()));
 
   if (executable->dumping()) {
     executable->session_module()->set_execution_platform(
         execute_backend_->platform()->Name());
-    TF_RETURN_IF_ERROR(
-        RecordArguments(arg_allocations, executable->session_module()));
+    TF_RETURN_IF_ERROR(RecordArguments(
+        replicated_arguments.front(),
+        execute_backend_->default_stream_executor(),
+        execute_backend_->transfer_manager(), executable->session_module()));
   }
 
   TF_ASSIGN_OR_RETURN(
       *result->mutable_output(),
       ExecuteAndRegisterResult(
-          executable.get(), arguments, execute_backend_.get(),
-          execute_backend_->default_stream_executor(),
+          executable.get(), replicated_arguments, execute_backend_.get(),
           "result of " + user_computation->name(), result->mutable_profile()));
 
   if (executable->dumping()) {
-    TF_ASSIGN_OR_RETURN(const Allocation* result_allocation,
-                        allocation_tracker_.Resolve(result->output()));
-    TF_RETURN_IF_ERROR(
-        RecordResult(result_allocation, executable->session_module()));
+    TF_ASSIGN_OR_RETURN(
+        const ShapedBuffer* result_buffer,
+        allocation_tracker_.ResolveForReplica(result->output(), 0));
+    TF_RETURN_IF_ERROR(RecordResult(
+        *result_buffer, execute_backend_->default_stream_executor(),
+        execute_backend_->transfer_manager(), executable->session_module()));
     TF_RETURN_IF_ERROR(executable->DumpSessionModule());
   }
 
   VLOG(1) << "successfully completed 'execute' request";
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
-                                         ExecuteAsyncResponse* result) {
+StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
+    const HloModuleProto& module_proto,
+    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+    se::StreamExecutor* executor, DeviceMemoryAllocator* device_allocator) {
+  VLOG(1) << Printf(
+      "BuildExecutable on service %p with serialized module proto: %s", this,
+      module_proto.name().c_str());
+
+  // Dump computation proto state if flag is set.
+  auto hlo_snapshot = MakeUnique<HloSnapshot>();
+  const string& directory_path =
+      module_config->debug_options().xla_dump_computations_to();
+  const string& execution_directory_path =
+      module_config->debug_options().xla_dump_executions_to();
+  if (!directory_path.empty() || !execution_directory_path.empty()) {
+    *hlo_snapshot->mutable_hlo()->mutable_hlo_module() = module_proto;
+    if (!directory_path.empty()) {
+      string filename = Printf("computation_%lld__%s", module_proto.id(),
+                               module_proto.entry_computation_name().c_str());
+      TF_RETURN_IF_ERROR(
+          Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot));
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(module_proto, *module_config));
+
+  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
+
+  TF_ASSIGN_OR_RETURN(
+      module, backend->compiler()->RunHloPasses(std::move(module), executor,
+                                                device_allocator));
+  // Check that on-host and on-device shapes are consistent.
+  TF_RETURN_IF_ERROR(ValidateEntryComputationLayout(module.get()));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      backend->compiler()->RunBackend(
+                          std::move(module), executor, device_allocator));
+
+  return std::move(executable);
+}
+
+Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
+                             ExecuteResponse* result) {
+  VLOG(1) << "running execute-graph request";
+
+  if (!arg->has_computation()) {
+    return InvalidArgument("computations may not be empty");
+  }
+  if (!arg->computation().has_program_shape()) {
+    return InvalidArgument("programe shape may not be empty");
+  }
+
+  // If we received multiple device handles, we must partition the module.
+  if (arg->execution_options().device_handles_size() > 1) {
+    return ExecuteOneToN(arg, result);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                              SingleComputationDeviceHandle()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      ResolveAndValidateArguments(arg->arguments(), replicas));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(arg->computation().program_shape(),
+                                         replicated_arguments.front(),
+                                         arg->execution_options()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      BuildExecutable(arg->computation(), std::move(module_config),
+                      execute_backend_.get(),
+                      execute_backend_->default_stream_executor(),
+                      /*device_allocator=*/nullptr));
+
+  if (executable->dumping_snapshot()) {
+    executable->hlo_snapshot()->set_execution_platform(
+        execute_backend_->platform()->Name());
+    TF_RETURN_IF_ERROR(RecordArguments(
+        replicated_arguments.front(),
+        execute_backend_->default_stream_executor(),
+        execute_backend_->transfer_manager(), executable->hlo_snapshot()));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      *result->mutable_output(),
+      ExecuteAndRegisterResult(
+          executable.get(), replicated_arguments, execute_backend_.get(),
+          "result of " + arg->computation().name(), result->mutable_profile()));
+
+  if (executable->dumping_snapshot()) {
+    TF_ASSIGN_OR_RETURN(
+        const ShapedBuffer* result_buffer,
+        allocation_tracker_.ResolveForReplica(result->output(), 0));
+    TF_RETURN_IF_ERROR(RecordResult(
+        *result_buffer, execute_backend_->default_stream_executor(),
+        execute_backend_->transfer_manager(), executable->hlo_snapshot()));
+    TF_RETURN_IF_ERROR(executable->DumpHloSnapshot());
+  }
+
+  VLOG(1) << "successfully completed 'execute-graph' request";
+  return Status::OK();
+}
+
+Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
+                             ExecuteAsyncResponse* result) {
   VLOG(1) << "running execute-async request: " << arg->ShortDebugString();
 
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
@@ -835,80 +1317,71 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
       std::shared_ptr<const ProgramShape> program_shape,
       user_computation->ComputeProgramShape(versioned_handle.version));
 
+  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                              SingleComputationDeviceHandle()));
+  TF_RET_CHECK(!replicas.empty());
   TF_ASSIGN_OR_RETURN(
-      std::vector<const Allocation*> arg_allocations,
-      ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
-                                  execute_backend_->default_device_ordinal()));
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      ResolveAndValidateArguments(arg->arguments(), replicas));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         arg->execution_options(), execute_backend_.get()));
+      CreateModuleConfig(*program_shape, replicated_arguments.front(),
+                         arg->execution_options(), user_computation));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
-          << module_config->entry_computation_layout().ToString();
-
-  std::vector<se::DeviceMemoryBase> arguments;
-  for (const Allocation* allocation : arg_allocations) {
-    arguments.push_back(allocation->device_memory());
-  }
+          << module_config->host_entry_computation_layout().ToString();
 
   ExecutionProfile profile;
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
-      BuildAndCacheExecutable(versioned_handle, std::move(module_config),
-                              arguments, execute_backend_.get(),
-                              execute_backend_->default_stream_executor(),
-                              &profile));
+      BuildAndCacheExecutable(
+          versioned_handle, std::move(module_config), execute_backend_.get(),
+          execute_backend_->default_stream_executor(), &profile));
 
-  TF_RET_CHECK(!execute_backend_->Replicas().empty());
   // Set up streams.
   std::vector<Pool<se::Stream>::SmartPtr> streams;
-
-  for (se::StreamExecutor* executor : execute_backend_->Replicas()) {
+  for (se::StreamExecutor* executor : replicas) {
     TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
                         execute_backend_->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
-  perftools::gputools::DeviceMemoryBase result_data;
-  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
+  std::vector<ScopedShapedBuffer> result_buffers;
+  for (size_t i = 0; i < streams.size(); ++i) {
+    const auto& stream = streams[i];
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_allocator(execute_backend_->memory_allocator());
-    options.set_inter_op_thread_pool(execute_backend_->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         execute_backend_->eigen_intra_op_thread_pool_device());
 
     ServiceExecutableRunOptions service_options(
         options, execute_backend_->StreamBorrower());
 
-    TF_ASSIGN_OR_RETURN(
-        perftools::gputools::DeviceMemoryBase this_result_data,
-        executable->ExecuteAsyncOnStream(&service_options, arguments));
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer this_result_buffer,
+                        executable->ExecuteAsyncOnStream(
+                            &service_options, replicated_arguments[i]));
 
-    // Take the first result.
-    if (result_data == nullptr) {
-      result_data = this_result_data;
-    }
+    result_buffers.emplace_back(std::move(this_result_buffer));
   }
 
-  auto output = allocation_tracker_.Register(
-      execute_backend_.get(), execute_backend_->default_device_ordinal(),
-      result_data, executable->result_shape(),
-      "result of " + user_computation->name());
+  TF_ASSIGN_OR_RETURN(
+      GlobalDataHandle output,
+      allocation_tracker_.RegisterReplicatedBuffers(
+          std::move(result_buffers), "result of " + user_computation->name()));
 
   *result->mutable_execution() = execution_tracker_.Register(
       execute_backend_.get(), std::move(streams), profile, output);
   streams.clear();
 
   VLOG(1) << "successfully completed 'execute-async' request";
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
-                                             WaitForExecutionResponse* result) {
+Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
+                                 WaitForExecutionResponse* result) {
   TF_ASSIGN_OR_RETURN(const auto execution,
                       execution_tracker_.Resolve(arg->execution()));
 
@@ -919,75 +1392,98 @@ tensorflow::Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
 
   TF_RETURN_IF_ERROR(execution_tracker_.Unregister(arg->execution()));
   VLOG(1) << "successfully completed 'wait-for-execution' request";
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::TransferToClient(const TransferToClientRequest* arg,
-                                             TransferToClientResponse* result) {
-  TF_ASSIGN_OR_RETURN(const Allocation* allocation,
-                      allocation_tracker_.Resolve(arg->data()));
+Status Service::TransferToClient(const TransferToClientRequest* arg,
+                                 TransferToClientResponse* result) {
+  TF_ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
+                      allocation_tracker_.ResolveForReplica(arg->data(), 0));
 
-  const Shape* literal_shape;
+  const Shape* return_shape;
   if (arg->has_shape_with_layout()) {
     if (!LayoutUtil::HasLayout(arg->shape_with_layout())) {
       return InvalidArgument("shape_with_layout must have layout if present.");
     }
-    literal_shape = &arg->shape_with_layout();
+    return_shape = &arg->shape_with_layout();
   } else {
-    literal_shape = &allocation->shape();
+    return_shape = &shaped_buffer->on_host_shape();
   }
 
-  return LiteralFromAllocation(allocation, *literal_shape,
-                               result->mutable_literal());
+  TF_ASSIGN_OR_RETURN(
+      se::StreamExecutor * executor,
+      execute_backend_->stream_executor(shaped_buffer->device_ordinal()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Literal> result_literal,
+      execute_backend_->transfer_manager()->TransferLiteralFromDevice(
+          executor, *shaped_buffer));
+
+  if (LayoutUtil::LayoutsInShapesEqual(*return_shape,
+                                       result_literal->shape())) {
+    *result->mutable_literal() = result_literal->ToProto();
+  } else {
+    *result->mutable_literal() =
+        result_literal->Relayout(*return_shape)->ToProto();
+  }
+  return Status::OK();
 }
 
-tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
-                                             TransferToServerResponse* result) {
-  const Literal& literal = arg->literal();
-  const Shape& shape = literal.shape();
+namespace {
 
-  if (ShapeUtil::IsTuple(shape) && execute_backend_->Replicas().size() > 1) {
-    // TODO(b/32990684): Tuple transfers to host end up allocating further
-    // buffers - implement that correctly.
-    return Unimplemented(
-        "Tuple transfers to the device not supported with replication.");
-  }
+// Creates a clone of the given shaped buffer with the given device ordinal. The
+// shape and DeviceMemoryBase values of the clone are identical to the original.
+std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
+    const ShapedBuffer& shaped_buffer, int device_ordinal) {
+  auto clone = MakeUnique<ShapedBuffer>(
+      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape(),
+      shaped_buffer.platform(), device_ordinal);
+  clone->buffers() = shaped_buffer.buffers();
+  return clone;
+}
 
-  se::StreamExecutor* stream_executor;
+}  // namespace
+
+Status Service::TransferToServer(const TransferToServerRequest* arg,
+                                 TransferToServerResponse* result) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                      Literal::CreateFromProto(arg->literal()));
+  const Shape& shape = literal->shape();
+
+  std::vector<se::StreamExecutor*> replicas;
   if (arg->has_device_handle()) {
-    TF_ASSIGN_OR_RETURN(stream_executor, execute_backend_->stream_executor(
-                                             arg->device_handle().handle()));
+    TF_ASSIGN_OR_RETURN(replicas,
+                        Replicas(*execute_backend_, arg->device_handle()));
   } else {
-    stream_executor = execute_backend_->default_stream_executor();
+    TF_ASSIGN_OR_RETURN(
+        replicas, Replicas(*execute_backend_, SingleComputationDeviceHandle()));
   }
 
-  // Allocate memory on the device, using the stream executor. The size of the
-  // allocation is obtained by examining the shape of the literal passed from
-  // the client. An allocation handle is returned in the response.
-  int64 allocation_size =
-      execute_backend_->transfer_manager()->GetByteSizeRequirement(shape);
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase allocation,
-                      execute_backend_->memory_allocator()->Allocate(
-                          stream_executor->device_ordinal(), allocation_size));
-
-  *result->mutable_data() = allocation_tracker_.Register(
-      execute_backend_.get(), stream_executor->device_ordinal(), allocation,
-      shape, StrCat("TransferToServer literal of size ", allocation_size));
-
-  TF_ASSIGN_OR_RETURN(auto replicas, execute_backend_->Replicas(
-                                         stream_executor->device_ordinal()));
+  // Allocate memory in each replica and transfer the data to all replicas.
+  std::vector<ScopedShapedBuffer> replicated_buffers;
   for (se::StreamExecutor* executor : replicas) {
+    TF_ASSIGN_OR_RETURN(
+        ScopedShapedBuffer shaped_buffer,
+        execute_backend_->transfer_manager()->AllocateScopedShapedBuffer(
+            shape, execute_backend_->memory_allocator(),
+            executor->device_ordinal()));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            executor, literal, &allocation));
+            executor, *literal, shaped_buffer));
+    replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
-  return tensorflow::Status::OK();
+  TF_ASSIGN_OR_RETURN(*result->mutable_data(),
+                      allocation_tracker_.RegisterReplicatedBuffers(
+                          std::move(replicated_buffers),
+                          StrCat("TransferToServer literal of shape ",
+                                 ShapeUtil::HumanString(shape))));
+
+  return Status::OK();
 }
 
-tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
-                                             TransferToInfeedResponse* result) {
-  const int64 replica_count = execute_backend_->Replicas().size();
+Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
+                                 TransferToInfeedResponse* result) {
+  const int64 replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "%s",
@@ -999,21 +1495,25 @@ tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
 
   se::StreamExecutor* executor;
   if (arg->has_device_handle()) {
-    TF_ASSIGN_OR_RETURN(auto replicas, execute_backend_->Replicas(
-                                           arg->device_handle().handle()));
+    TF_ASSIGN_OR_RETURN(auto replicas,
+                        Replicas(*execute_backend_, arg->device_handle()));
     executor = replicas[arg->replica_id()];
   } else {
-    executor = execute_backend_->Replicas()[arg->replica_id()];
+    TF_ASSIGN_OR_RETURN(
+        auto replicas,
+        Replicas(*execute_backend_, SingleComputationDeviceHandle()));
+    executor = replicas[arg->replica_id()];
   }
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                      Literal::CreateFromProto(arg->literal()));
   return execute_backend_->transfer_manager()->TransferLiteralToInfeed(
-      executor, arg->literal());
+      executor, *literal);
 }
 
-tensorflow::Status Service::TransferFromOutfeed(
-    const TransferFromOutfeedRequest* arg,
-    TransferFromOutfeedResponse* result) {
-  const int64 replica_count = execute_backend_->Replicas().size();
+Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
+                                    TransferFromOutfeedResponse* result) {
+  const int64 replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "The replica_id=%lld on TransferFromOutfeedRequest not in range [0, "
@@ -1023,88 +1523,31 @@ tensorflow::Status Service::TransferFromOutfeed(
 
   se::StreamExecutor* executor;
   if (arg->has_device_handle()) {
-    TF_ASSIGN_OR_RETURN(auto replicas, execute_backend_->Replicas(
-                                           arg->device_handle().handle()));
+    TF_ASSIGN_OR_RETURN(auto replicas,
+                        Replicas(*execute_backend_, arg->device_handle()));
     executor = replicas[arg->replica_id()];
   } else {
-    executor = execute_backend_->Replicas()[arg->replica_id()];
+    TF_ASSIGN_OR_RETURN(
+        auto replicas,
+        Replicas(*execute_backend_, SingleComputationDeviceHandle()));
+    executor = replicas[arg->replica_id()];
   }
 
-  return execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-      executor, arg->shape_with_layout(), result->mutable_literal());
+  Literal literal;
+  TF_RETURN_IF_ERROR(
+      execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
+          executor, arg->shape_with_layout(), &literal));
+  *result->mutable_literal() = literal.ToProto();
+  return Status::OK();
 }
 
-tensorflow::Status Service::ResetDevice(const ResetDeviceRequest* arg,
-                                        ResetDeviceResponse* result) {
+Status Service::ResetDevice(const ResetDeviceRequest* arg,
+                            ResetDeviceResponse* result) {
   return execute_backend_->ResetDevices();
 }
 
-tensorflow::Status Service::TransferToClientInProcess(
-    const TransferToClientInProcessRequest* arg,
-    TransferToClientInProcessResponse* result) {
-  TF_RETURN_IF_ERROR(CheckRunsInClientProcess("TransferToClientInProcess"));
-
-  TF_ASSIGN_OR_RETURN(const Allocation* allocation,
-                      allocation_tracker_.Resolve(arg->data()));
-
-  void* buffer = reinterpret_cast<void*>(arg->buffer());
-  int64 size = ShapeUtil::ByteSizeOf(allocation->shape());
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      allocation->backend()->stream_executor(allocation->device_ordinal()));
-
-  return allocation->backend()->transfer_manager()->TransferBufferFromDevice(
-      executor, allocation->device_memory(), size, buffer);
-}
-
-tensorflow::Status Service::TransferToServerInProcess(
-    const TransferToServerInProcessRequest* arg,
-    TransferToServerInProcessResponse* result) {
-  TF_RETURN_IF_ERROR(CheckRunsInClientProcess("TransferToServerInProcess"));
-
-  const Shape& shape = arg->shape();
-
-  if (ShapeUtil::IsTuple(shape) && execute_backend_->Replicas().size() > 1) {
-    // TODO(b/32990684): Tuple transfers to host end up allocating further
-    // buffers - implement that correctly.
-    return Unimplemented(
-        "Tuple transfers to the device not supported with replication.");
-  }
-
-  if (!LayoutUtil::HasLayout(shape)) {
-    return InvalidArgument("shape must have layout");
-  }
-
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-
-  const void* buffer = reinterpret_cast<const void*>(arg->buffer());
-
-  // Allocate memory on the device, using the stream executor. The size of the
-  // allocation is obtained by examining the shape of the literal passed from
-  // the client. An allocation handle is returned in the response.
-  int64 allocation_size =
-      execute_backend_->transfer_manager()->GetByteSizeRequirement(shape);
-  se::StreamExecutor* stream_executor =
-      execute_backend_->default_stream_executor();
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase allocation,
-                      execute_backend_->memory_allocator()->Allocate(
-                          stream_executor->device_ordinal(), allocation_size));
-
-  *result->mutable_data() = allocation_tracker_.Register(
-      execute_backend_.get(), stream_executor->device_ordinal(), allocation,
-      shape, StrCat("TransferToServer literal of size ", allocation_size));
-
-  for (se::StreamExecutor* executor : execute_backend_->Replicas()) {
-    TF_RETURN_IF_ERROR(
-        execute_backend_->transfer_manager()->TransferBufferToDevice(
-            executor, allocation_size, buffer, &allocation));
-  }
-  return tensorflow::Status::OK();
-}
-
-tensorflow::Status Service::IsConstant(const IsConstantRequest* arg,
-                                       IsConstantResponse* result) {
+Status Service::IsConstant(const IsConstantRequest* arg,
+                           IsConstantResponse* result) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(arg->computation()));
 
@@ -1115,15 +1558,16 @@ tensorflow::Status Service::IsConstant(const IsConstantRequest* arg,
     return InvalidArgument("computations may not be empty");
   }
 
-  TF_ASSIGN_OR_RETURN(bool is_constant,
-                      user_computation->IsConstant(arg->operand()));
+  TF_ASSIGN_OR_RETURN(
+      bool is_constant,
+      user_computation->IsConstant(arg->operand(), arg->num_parameters()));
 
   result->set_is_constant(is_constant);
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
-                                            ComputeConstantResponse* result) {
+Status Service::ComputeConstant(const ComputeConstantRequest* arg,
+                                ComputeConstantResponse* result) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(arg->computation()));
 
@@ -1134,11 +1578,26 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
     return InvalidArgument("computations may not be empty");
   }
 
-  TF_ASSIGN_OR_RETURN(bool is_constant,
-                      user_computation->IsConstant(arg->operand()));
-
+  TF_ASSIGN_OR_RETURN(
+      bool is_constant,
+      user_computation->IsConstant(arg->operand(), arg->parameters_size()));
   if (!is_constant) {
-    return InvalidArgument("Operand to ComputeConstant depends on parameter.");
+    StatusOr<const OperationRequest*> op_request_status =
+        user_computation->LookUpRequestForErrorReporting(arg->operand());
+    string op_request_string = "<unknown operation>";
+    if (op_request_status.ok()) {
+      op_request_string = op_request_status.ValueOrDie()->ShortDebugString();
+    }
+    return InvalidArgument(
+        "Operand to ComputeConstant depends on a parameter.\n\n"
+        "  op requested for constant evaluation: %s\n\n"
+        "This is an internal error that typically happens when the XLA user "
+        "(e.g. TensorFlow) is attempting to determine a value that must be a "
+        "compile-time constant (e.g. an array dimension) but it is not capable "
+        "of being evaluated at XLA compile time.\n\n"
+        "Please file a usability bug with the framework being used (e.g. "
+        "TensorFlow).",
+        op_request_string.c_str());
   }
 
   // We can't use ComputeProgramShape because it checks that all parameter
@@ -1150,8 +1609,10 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
-  ExecutionOptions execution_options;
-  execution_options.set_disable_fast_math(true);
+  ExecutionOptions execution_options = xla::CreateDefaultExecutionOptions();
+  execution_options.mutable_debug_options()->set_xla_enable_fast_math(false);
+  execution_options.mutable_debug_options()
+      ->set_xla_eliminate_hlo_implicit_broadcast(true);
   *execution_options.mutable_shape_with_output_layout() =
       program_shape.result();
 
@@ -1165,36 +1626,88 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                       CreateModuleConfig(program_shape, {}, execution_options,
-                                         compute_constant_backend_.get()));
+                                         user_computation));
 
+  // Exclude dead parameter instructions for the purpose of computing constants.
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<Executable> executable,
-      BuildExecutable(versioned_handle, std::move(module_config),
-                      /*executable_for_compute_constant=*/true,
-                      /*arguments=*/{}, compute_constant_backend_.get(),
-                      compute_constant_backend_->default_stream_executor()));
+      std::unique_ptr<HloModule> module,
+      computation_tracker_.BuildHloModule(versioned_handle, *module_config,
+                                          /*include_unreachable_instructions=*/
+                                          false));
 
+  std::vector<std::unique_ptr<Literal>> parameters(arg->parameters_size());
+  for (int64 i = 0; i < arg->parameters_size(); ++i) {
+    TF_ASSIGN_OR_RETURN(parameters[i],
+                        Literal::CreateFromProto(arg->parameters(i)));
+  }
+  HloEvaluator evaluator;
   TF_ASSIGN_OR_RETURN(
-      *result->mutable_output(),
-      ExecuteAndRegisterResult(
-          executable.get(), /*arguments=*/{}, compute_constant_backend_.get(),
-          compute_constant_backend_->default_stream_executor(),
-          "constant computed from " + user_computation->name(),
-          /*profile=*/nullptr));
-  return tensorflow::Status::OK();
+      auto result_literal,
+      evaluator.Evaluate<std::unique_ptr<Literal>>(*module, parameters));
+
+  // Since the shape_with_output_layout option in ExecutionOption is
+  // non-effective to the Evaluator results, explicit relayout here.
+  //
+  // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
+  if (arg->has_output_layout()) {
+    result_literal = result_literal->Relayout(arg->output_layout());
+  }
+  *result->mutable_literal() = result_literal->ToProto();
+
+  return Status::OK();
 }
 
-tensorflow::Status Service::GetShape(const GetShapeRequest* arg,
-                                     GetShapeResponse* result) {
-  TF_ASSIGN_OR_RETURN(const Allocation* allocation,
-                      allocation_tracker_.Resolve(arg->data()));
-  *result->mutable_shape() = allocation->shape();
-  return tensorflow::Status::OK();
+Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
+                                     ComputeConstantResponse* result) {
+  if (!arg->has_computation()) {
+    return InvalidArgument("computations may not be empty");
+  }
+  if (!arg->computation().has_program_shape()) {
+    return InvalidArgument("program shape may not be empty");
+  }
+  if (arg->computation().program_shape().parameters_size() != 0) {
+    return InvalidArgument(
+        "constant computation may not depend on any parameters.");
+  }
+
+  ProgramShape program_shape = arg->computation().program_shape();
+  TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
+  if (arg->has_output_layout()) {
+    TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
+        arg->output_layout(), program_shape.result()));
+  }
+
+  HloModuleConfig config(program_shape);
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(arg->computation(), config));
+
+  HloEvaluator evaluator;
+  TF_ASSIGN_OR_RETURN(auto result_literal,
+                      evaluator.Evaluate<std::unique_ptr<Literal>>(
+                          *module, /*arg_literals=*/{}));
+
+  // Since the result layout is non-effective to the Evaluator results, explicit
+  // relayout here.
+  //
+  // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
+  if (arg->has_output_layout()) {
+    result_literal = result_literal->Relayout(arg->output_layout());
+  }
+  *result->mutable_literal() = result_literal->ToProto();
+
+  return Status::OK();
 }
 
-tensorflow::Status Service::GetComputationShape(
-    const GetComputationShapeRequest* arg,
-    GetComputationShapeResponse* result) {
+Status Service::GetShape(const GetShapeRequest* arg, GetShapeResponse* result) {
+  TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
+                      allocation_tracker_.ResolveForReplica(arg->data(), 0));
+  *result->mutable_shape() = buffer->on_host_shape();
+  return Status::OK();
+}
+
+Status Service::GetComputationShape(const GetComputationShapeRequest* arg,
+                                    GetComputationShapeResponse* result) {
   TF_ASSIGN_OR_RETURN(UserComputation * computation,
                       computation_tracker_.Resolve(arg->computation()));
 
@@ -1204,61 +1717,81 @@ tensorflow::Status Service::GetComputationShape(
   TF_ASSIGN_OR_RETURN(auto program_shape, computation->ComputeProgramShape(
                                               versioned_handle.version));
   *result->mutable_program_shape() = *program_shape;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::GetLocalShape(const GetLocalShapeRequest* arg,
-                                          GetLocalShapeResponse* result) {
+Status Service::GetLocalShape(const GetLocalShapeRequest* arg,
+                              GetLocalShapeResponse* result) {
   TF_ASSIGN_OR_RETURN(UserComputation * computation,
                       computation_tracker_.Resolve(arg->computation()));
 
   TF_ASSIGN_OR_RETURN(*result->mutable_shape(),
                       computation->GetShape(arg->operand()));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::GetComputationStats(
-    const ComputationStatsRequest* arg, ComputationStatsResponse* result) {
+Status Service::GetComputationStats(const ComputationStatsRequest* arg,
+                                    ComputationStatsResponse* result) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(arg->computation()));
 
   VersionedComputationHandle versioned_handle =
       user_computation->GetVersionedHandle();
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      computation_tracker_.BuildHloModule(versioned_handle,
-                                                          /*config=*/nullptr));
+  HloModuleConfig config;
+  config.set_debug_options(arg->debug_options());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      computation_tracker_.BuildHloModule(versioned_handle, config));
 
-  MakeHloDumper()(*module, "computation statistics subject");
+  hlo_graph_dumper::MaybeDumpHloModule(*module,
+                                       "computation statistics subject");
 
   // Run HLO analysis to get the computation statistics.
-  HloCostAnalysis analysis([this](const Shape& shape) {
-    return execute_backend_->compiler()->ShapeSizeBytes(shape);
-  });
+  HloCostAnalysis analysis(
+      execute_backend_->compiler()->ShapeSizeBytesFunction());
 
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->root_instruction()->Accept(&analysis));
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
 
   ComputationStats stats;
   stats.set_flop_count(analysis.flop_count());
   stats.set_transcendental_count(analysis.transcendental_count());
   *result->mutable_stats() = stats;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::CheckRunsInClientProcess(
-    const string& method_name) const {
-  if (runs_in_client_process_) {
-    return tensorflow::Status::OK();
-  } else {
-    return FailedPrecondition(
-        "%s only supported if service runs in the same process as the client",
-        method_name.c_str());
+Status Service::GetComputationGraphStats(
+    const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
+  if (!arg->has_computation()) {
+    return InvalidArgument("Computations may not be empty.");
   }
+  if (!arg->computation().has_program_shape()) {
+    return InvalidArgument("Program shape may not be empty.");
+  }
+
+  HloModuleConfig config(arg->computation().program_shape());
+  config.set_debug_options(arg->debug_options());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(arg->computation(), config));
+
+  hlo_graph_dumper::MaybeDumpHloModule(*module,
+                                       "computation statistics subject");
+
+  // Run HLO analysis to get the computation statistics.
+  HloCostAnalysis analysis(
+      execute_backend_->compiler()->ShapeSizeBytesFunction());
+
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
+
+  ComputationStats stats;
+  stats.set_flop_count(analysis.flop_count());
+  stats.set_transcendental_count(analysis.transcendental_count());
+  *result->mutable_stats() = stats;
+  return Status::OK();
 }
 
 template <typename RequestT, typename ResponseT>
-tensorflow::Status Service::AddInstruction(
+Status Service::AddInstruction(
     const RequestT* arg, ResponseT* result,
     const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
         adder) {
@@ -1266,15 +1799,27 @@ tensorflow::Status Service::AddInstruction(
                       computation_tracker_.Resolve(arg->computation()));
 
   TF_ASSIGN_OR_RETURN(*result->mutable_output(), adder(computation));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
+Status Service::Op(const OpRequest* arg, OpResponse* result) {
   TF_ASSIGN_OR_RETURN(UserComputation * computation,
                       computation_tracker_.Resolve(arg->computation()));
   StatusOr<ComputationDataHandle> handle_status;
 
   switch (arg->op_case()) {
+    case OpRequest::kBatchNormTrainingRequest:
+      handle_status = computation->AddBatchNormTrainingInstruction(
+          arg->batch_norm_training_request());
+      break;
+    case OpRequest::kBatchNormInferenceRequest:
+      handle_status = computation->AddBatchNormInferenceInstruction(
+          arg->batch_norm_inference_request());
+      break;
+    case OpRequest::kBatchNormGradRequest:
+      handle_status = computation->AddBatchNormGradInstruction(
+          arg->batch_norm_grad_request());
+      break;
     case OpRequest::kBinaryOpRequest:
       handle_status =
           computation->AddBinaryInstruction(arg->binary_op_request());
@@ -1295,6 +1840,17 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status =
           computation->AddConcatenateInstruction(arg->concatenate_request());
       break;
+    case OpRequest::kConditionalRequest: {
+      TF_ASSIGN_OR_RETURN(UserComputation * true_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().true_computation()));
+      TF_ASSIGN_OR_RETURN(UserComputation * false_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().false_computation()));
+      handle_status = computation->AddConditionalInstruction(
+          arg->conditional_request(), *true_computation, *false_computation);
+      break;
+    }
     case OpRequest::kConstantRequest:
       handle_status =
           computation->AddConstantInstruction(arg->constant_request());
@@ -1302,6 +1858,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kConvertRequest:
       handle_status =
           computation->AddConvertInstruction(arg->convert_request());
+      break;
+    case OpRequest::kBitcastConvertRequest:
+      handle_status = computation->AddBitcastConvertInstruction(
+          arg->bitcast_convert_request());
       break;
     case OpRequest::kConvolveRequest:
       handle_status =
@@ -1315,6 +1875,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status =
           computation->AddCustomCallInstruction(arg->custom_call_request());
       break;
+    case OpRequest::kDotRequest:
+      handle_status = computation->AddDotInstruction(arg->dot_request());
+      break;
     case OpRequest::kDynamicSliceRequest:
       handle_status =
           computation->AddDynamicSliceInstruction(arg->dynamic_slice_request());
@@ -1322,6 +1885,12 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kDynamicUpdateSliceRequest:
       handle_status = computation->AddDynamicUpdateSliceInstruction(
           arg->dynamic_update_slice_request());
+      break;
+    case OpRequest::kFftRequest:
+      handle_status = computation->AddFftInstruction(arg->fft_request());
+      break;
+    case OpRequest::kGatherRequest:
+      handle_status = computation->AddGatherInstruction(arg->gather_request());
       break;
     case OpRequest::kGetTupleElementRequest:
       handle_status = computation->AddGetTupleElementInstruction(
@@ -1331,9 +1900,13 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddInfeedInstruction(arg->infeed_request());
       break;
     case OpRequest::kOutfeedRequest:
-      TF_RETURN_IF_ERROR(
-          computation->AddOutfeedInstruction(arg->outfeed_request()));
-      return tensorflow::Status::OK();
+      handle_status =
+          computation->AddOutfeedInstruction(arg->outfeed_request());
+      break;
+    case OpRequest::kHostComputeRequest:
+      handle_status =
+          computation->AddHostComputeInstruction(arg->host_compute_request());
+      break;
     case OpRequest::kMapRequest: {
       TF_ASSIGN_OR_RETURN(
           UserComputation * to_apply,
@@ -1355,6 +1928,11 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
           computation_tracker_.Resolve(arg->reduce_request().to_apply()));
       handle_status =
           computation->AddReduceInstruction(arg->reduce_request(), *to_apply);
+      break;
+    }
+    case OpRequest::kReducePrecisionRequest: {
+      handle_status = computation->AddReducePrecisionInstruction(
+          arg->reduce_precision_request());
       break;
     }
     case OpRequest::kReduceWindowRequest: {
@@ -1421,8 +1999,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kSendRequest: {
       TF_RETURN_IF_ERROR(
           channel_tracker_.RegisterSend(arg->send_request().channel_handle()));
-      TF_RETURN_IF_ERROR(computation->AddSendInstruction(arg->send_request()));
-      return tensorflow::Status::OK();
+      // Send does not return a value, but we need a handle to be able to
+      // set OpMetadata and OpSharding (device assignment).
+      handle_status = computation->AddSendInstruction(arg->send_request());
+      break;
     }
     case OpRequest::kRecvRequest: {
       TF_RETURN_IF_ERROR(
@@ -1430,8 +2010,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddRecvInstruction(arg->recv_request());
       break;
     }
+    case OpRequest::OP_NOT_SET:
+      return InvalidArgument("XLA service received OpRequest with OP_NOT_SET");
     default:
-      return InvalidArgument("Unsupported operation");
+      return InvalidArgument("Unsupported operation in XLA service");
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_output(), handle_status);
 
@@ -1439,28 +2021,64 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
   // proto in the above switch statement.
   TF_ASSIGN_OR_RETURN(ComputationDataHandle handle, handle_status);
   TF_RETURN_IF_ERROR(computation->SetOpMetadata(handle, arg->metadata()));
-
-  return tensorflow::Status::OK();
+  if (arg->has_sharding()) {
+    TF_RETURN_IF_ERROR(computation->SetOpSharding(handle, arg->sharding()));
+  }
+  return Status::OK();
 }
 
-tensorflow::Status Service::SnapshotComputation(
-    const SnapshotComputationRequest* arg,
-    SnapshotComputationResponse* result) {
+Status Service::SnapshotComputation(const SnapshotComputationRequest* arg,
+                                    SnapshotComputationResponse* result) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<SessionModule> module,
       computation_tracker_.SnapshotComputation(arg->computation()));
 
   result->set_allocated_module(module.release());
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status Service::LoadComputationSnapshot(
+Status Service::LoadComputationSnapshot(
     const LoadComputationSnapshotRequest* arg,
     LoadComputationSnapshotResponse* result) {
   TF_ASSIGN_OR_RETURN(*result->mutable_computation(),
                       computation_tracker_.LoadSessionModule(arg->module()));
-  return tensorflow::Status::OK();
+  return Status::OK();
+}
+
+DeviceHandle Service::SingleComputationDeviceHandle() const {
+  DeviceHandle device_handle;
+  device_handle.set_handle(0);
+  device_handle.set_device_count(1);
+  return device_handle;
+}
+
+StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
+    const Backend& backend, const DeviceHandle& device_handle) const {
+  std::vector<se::StreamExecutor*> replicas;
+  for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
+    // From the computation placer, find out the device ids of the replicas for
+    // the given device handle.
+    TF_ASSIGN_OR_RETURN(
+        int device_ordinal,
+        backend.computation_placer()->DeviceId(replica, device_handle.handle(),
+                                               options_.number_of_replicas(),
+                                               device_handle.device_count()));
+    TF_ASSIGN_OR_RETURN(auto executor, backend.stream_executor(device_ordinal));
+    replicas.push_back(executor);
+  }
+  return replicas;
+}
+
+Status Service::MaybeDumpHloModule(const HloModule& module) const {
+  const string xla_dump_unoptimized_hlo_proto_to =
+      module.config().debug_options().xla_dump_unoptimized_hlo_proto_to();
+  if (xla_dump_unoptimized_hlo_proto_to.empty()) {
+    return Status::OK();
+  }
+  HloProto proto = MakeHloProto(module);
+  return protobuf_util::DumpProtoToDirectory(
+      proto, xla_dump_unoptimized_hlo_proto_to, module.name());
 }
 
 }  // namespace xla

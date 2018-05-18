@@ -26,16 +26,21 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 // Definition of the GPU implementations declared in pad_op.cc.
-#define DEFINE_GPU_SPECS(T)                      \
-  template struct functor::Pad<GPUDevice, T, 0>; \
-  template struct functor::Pad<GPUDevice, T, 1>; \
-  template struct functor::Pad<GPUDevice, T, 2>; \
-  template struct functor::Pad<GPUDevice, T, 3>; \
-  template struct functor::Pad<GPUDevice, T, 4>; \
-  template struct functor::Pad<GPUDevice, T, 5>; \
-  template struct functor::Pad<GPUDevice, T, 6>;
+#define DEFINE_GPU_PAD_SPECS(T, Tpadding)                  \
+  template struct functor::Pad<GPUDevice, T, Tpadding, 0>; \
+  template struct functor::Pad<GPUDevice, T, Tpadding, 1>; \
+  template struct functor::Pad<GPUDevice, T, Tpadding, 2>; \
+  template struct functor::Pad<GPUDevice, T, Tpadding, 3>; \
+  template struct functor::Pad<GPUDevice, T, Tpadding, 4>; \
+  template struct functor::Pad<GPUDevice, T, Tpadding, 5>; \
+  template struct functor::Pad<GPUDevice, T, Tpadding, 6>;
+
+#define DEFINE_GPU_SPECS(T)      \
+  DEFINE_GPU_PAD_SPECS(T, int32) \
+  DEFINE_GPU_PAD_SPECS(T, int64)
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_int8(DEFINE_GPU_SPECS);
 
 }  // namespace tensorflow
 

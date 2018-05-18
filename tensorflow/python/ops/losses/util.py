@@ -12,16 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for manipulating the loss collections.
-
-
-@@add_loss
-@@get_losses
-@@get_regularization_loss
-@@get_regularization_losses
-@@get_total_loss
-
-"""
+"""Utilities for manipulating the loss collections."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,8 +21,10 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("losses.add_loss")
 def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
   """Adds a externally defined loss to the collection of losses.
 
@@ -43,11 +36,12 @@ def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
     ops.add_to_collection(loss_collection, loss)
 
 
+@tf_export("losses.get_losses")
 def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   """Gets the list of losses from the loss_collection.
 
   Args:
-    scope: An optional scope for filtering the losses to return.
+    scope: An optional scope name for filtering the losses to return.
     loss_collection: Optional losses collection.
 
   Returns:
@@ -56,11 +50,12 @@ def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   return ops.get_collection(loss_collection, scope)
 
 
+@tf_export("losses.get_regularization_losses")
 def get_regularization_losses(scope=None):
   """Gets the list of regularization losses.
 
   Args:
-    scope: An optional scope for filtering the losses to return.
+    scope: An optional scope name for filtering the losses to return.
 
   Returns:
     A list of regularization losses as Tensors.
@@ -68,11 +63,12 @@ def get_regularization_losses(scope=None):
   return ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES, scope)
 
 
+@tf_export("losses.get_regularization_loss")
 def get_regularization_loss(scope=None, name="total_regularization_loss"):
   """Gets the total regularization loss.
 
   Args:
-    scope: An optional scope for filtering the losses to return.
+    scope: An optional scope name for filtering the losses to return.
     name: The name of the returned tensor.
 
   Returns:
@@ -85,6 +81,7 @@ def get_regularization_loss(scope=None, name="total_regularization_loss"):
     return constant_op.constant(0.0)
 
 
+@tf_export("losses.get_total_loss")
 def get_total_loss(add_regularization_losses=True, name="total_loss"):
   """Returns a tensor whose value represents the total loss.
 

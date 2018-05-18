@@ -88,7 +88,7 @@ tf_class {
   }
   member_method {
     name: "Stop"
-    argspec: "args=[\'self\', \'threads\', \'close_summary_writer\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'self\', \'threads\', \'close_summary_writer\', \'ignore_live_threads\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "StopOnException"
@@ -136,7 +136,7 @@ tf_class {
   }
   member_method {
     name: "stop"
-    argspec: "args=[\'self\', \'threads\', \'close_summary_writer\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'self\', \'threads\', \'close_summary_writer\', \'ignore_live_threads\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "stop_on_exception"

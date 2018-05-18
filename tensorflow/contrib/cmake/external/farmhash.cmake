@@ -15,8 +15,8 @@
 include (ExternalProject)
 
 set(farmhash_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/farmhash_archive ${CMAKE_CURRENT_BINARY_DIR}/external/farmhash_archive/util)
-set(farmhash_URL https://github.com/google/farmhash/archive/34c13ddfab0e35422f4c3979f360635a8c050260.zip)
-set(farmhash_HASH SHA256=e3d37a59101f38fd58fb799ed404d630f0eee18bfc2a2433910977cc8fea9c28)
+set(farmhash_URL https://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz)
+set(farmhash_HASH SHA256=6560547c63e4af82b0f202cb710ceabb3f21347a4b996db565a411da5b17aba0)
 set(farmhash_BUILD ${CMAKE_CURRENT_BINARY_DIR}/farmhash/src/farmhash)
 set(farmhash_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/farmhash/install)
 set(farmhash_INCLUDES ${farmhash_BUILD})
@@ -33,6 +33,7 @@ if(WIN32)
       URL_HASH ${farmhash_HASH}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       BUILD_IN_SOURCE 1
+      BUILD_BYPRODUCTS ${farmhash_STATIC_LIBRARIES}
       PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/farmhash/CMakeLists.txt ${farmhash_BUILD}
       INSTALL_DIR ${farmhash_INSTALL}
       CMAKE_CACHE_ARGS
@@ -52,6 +53,7 @@ else()
       CONFIGURE_COMMAND
           ${farmhash_BUILD}/configure
           --prefix=${farmhash_INSTALL}
+          --libdir=${farmhash_INSTALL}/lib
           --enable-shared=yes
           CXXFLAGS=-fPIC)
 

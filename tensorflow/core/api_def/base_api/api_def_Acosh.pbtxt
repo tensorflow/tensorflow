@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Acosh"
+  summary: "Computes inverse hyperbolic cosine of x element-wise."
+}

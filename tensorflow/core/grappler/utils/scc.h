@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
 
 #include <unordered_map>
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/grappler/inputs/utils.h"
+#include "tensorflow/core/lib/io/path.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -32,7 +34,13 @@ void StronglyConnectedComponents(
     const GraphDef& graph, std::unordered_map<const NodeDef*, int>* components,
     int* num_ids);
 
+// Returns the number of individual loops present in the graph, and populate the
+// 'loops' argument with the collection of loops (denoted by their loop ids) a
+// node is part of. Loops ids are arbitrary.
+int IdentifyLoops(const GraphDef& graph,
+                  std::unordered_map<const NodeDef*, std::vector<int>>* loops);
+
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_SCC_H_

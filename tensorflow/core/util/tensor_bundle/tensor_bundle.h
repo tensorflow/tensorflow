@@ -107,7 +107,14 @@ extern const char* const kHeaderEntryKey;
 // All threads accessing the same BundleWriter must synchronize.
 class BundleWriter {
  public:
-  BundleWriter(Env* env, StringPiece prefix);
+  struct Options {
+    Options() {}
+    // Alignment, in bytes, for tensor data.
+    // Must be >= 1. The default size of 1 densely packs tensors.
+    int data_alignment{1};
+  };
+  BundleWriter(Env* env, StringPiece prefix,
+               const Options& options = Options());
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.
@@ -140,6 +147,7 @@ class BundleWriter {
 
  private:
   Env* const env_;  // Not owned.
+  const Options options_;
   const string prefix_;
   const string tmp_metadata_path_;
   const string tmp_data_path_;
@@ -210,6 +218,14 @@ class BundleReader {
   // REQUIRES: status().ok()
   Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
 
+  // Looks up the tensor pointed to by the internal iterator.
+  //
+  // On error, "val" may contain nonsense data.
+  //
+  // Validates the stored crc32c checksum against the restored bytes.
+  // REQUIRES: status().ok() && Valid()
+  Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
+
   // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
   // is non-empty if and only if the tensor is a partitioned tensor.
   //
@@ -273,6 +289,7 @@ class BundleReader {
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
   table::Iterator* iter_;
+  // Owned the InputBuffer objects and their underlying RandomAccessFile's.
   std::unordered_map<int32, io::InputBuffer*> data_;
 
   // Maps each partitioned tensor's key to its stored slices (represented in a
@@ -282,6 +299,8 @@ class BundleReader {
   // Expected number of data file shards in the bundle.  Extracted by reading
   // the header entry in the metadata table.
   int num_shards_;
+
+  friend class TensorBundleAlignmentTest;  // For testing data alignment.
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
 };

@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "MetaGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
 
 import "tensorflow/core/framework/graph.proto";
@@ -61,6 +61,10 @@ message MetaGraphDef {
     // graph. This will be populated by the framework, which will overwrite any
     // user supplied value.
     string tensorflow_git_version = 6;
+
+    // A flag to denote whether default-valued attrs have been stripped from
+    // the nodes in this graph_def.
+    bool stripped_default_attrs = 7;
   }
   MetaInfoDef meta_info_def = 1;
 
@@ -202,8 +206,34 @@ message CollectionDef {
 
 // Information about a Tensor necessary for feeding or retrieval.
 message TensorInfo {
-  string name = 1;
+  // For sparse tensors, The COO encoding stores a triple of values, indices,
+  // and shape.
+  message CooSparse {
+    // The shape of the values Tensor is [?].  Its dtype must be the dtype of
+    // the SparseTensor as a whole, given in the enclosing TensorInfo.
+    string values_tensor_name = 1;
+
+    // The indices Tensor must have dtype int64 and shape [?, ?].
+    string indices_tensor_name = 2;
+
+    // The dynamic logical shape represented by the SparseTensor is recorded in
+    // the Tensor referenced here.  It must have dtype int64 and shape [?].
+    string dense_shape_tensor_name = 3;
+  }
+
+  oneof encoding {
+    // For dense `Tensor`s, the name of the tensor in the graph.
+    string name = 1;
+    // There are many possible encodings of sparse matrices
+    // (https://en.wikipedia.org/wiki/Sparse_matrix).  Currently, TensorFlow
+    // uses only the COO encoding.  This is supported and documented in the
+    // SparseTensor Python class.
+    CooSparse coo_sparse = 4;
+  }
   DataType dtype = 2;
+  // The static shape should be recorded here, to the extent that it can
+  // be known in advance.  In the case of a SparseTensor, this field describes
+  // the logical shape of the represented tensor (aka dense_shape).
   TensorShapeProto tensor_shape = 3;
 }
 

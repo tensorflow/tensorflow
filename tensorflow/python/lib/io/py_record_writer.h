@@ -44,6 +44,7 @@ class PyRecordWriter {
   ~PyRecordWriter();
 
   bool WriteRecord(tensorflow::StringPiece record);
+  void Flush(TF_Status* out_status);
   void Close(TF_Status* out_status);
 
  private:

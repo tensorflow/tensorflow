@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "external/llvm/include/llvm/IR/LegacyPassManager.h"
-#include "external/llvm/include/llvm/Pass.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Pass.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {

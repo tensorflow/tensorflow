@@ -15,24 +15,105 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace gpu {
 
 using InstructionFusionTest = HloTestBase;
 
+TEST_F(InstructionFusionTest,
+       CostlyProducerAndOperandElementReusingConsumerNotFused) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+  HloInstruction* broadcast2 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(S32, {1}), exp1, {0}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(broadcast2, computation->root_instruction());
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie());
+  EXPECT_EQ(broadcast2, computation->root_instruction());
+}
+
+TEST_F(InstructionFusionTest,
+       NonCostlyProducerAndOperandElementReusingConsumerFused) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
+  HloInstruction* broadcast2 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(S32, {1}), negate1, {0}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(broadcast2, computation->root_instruction());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+}
+
+TEST_F(InstructionFusionTest,
+       CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+  HloInstruction* reshape2 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), exp1));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(reshape2, computation->root_instruction());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+}
+
+TEST_F(InstructionFusionTest,
+       CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
+  HloInstruction* transpose2 = builder.AddInstruction(
+      HloInstruction::CreateTranspose(ShapeUtil::MakeShape(S32, {}), exp1, {}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(transpose2, computation->root_instruction());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+}
+
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(S32, {1, 1}), HloOpcode::kDot, param0, param0));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
+      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto reshape2 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {1, 1, 1}), dot1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape2, computation->root_instruction());
   EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -44,12 +125,12 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(S32, {1, 1}), HloOpcode::kDot, param0, param0));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
+      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto transpose2 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {1, 1}), dot1, {0, 1}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
   EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -57,69 +138,203 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
                    .ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfConvolutionUnfused) {
-  HloComputation::Builder builder(TestName());
-  auto input = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {1, 1, 1, 3}), "input"));
-  auto filter = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {1, 1, 1, 2}), "filter"));
+// Tests that broadcasts fused into a fusion with a reduce root.
+TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
+  auto module = tools::Parse(R"(
+    HloModule test_module
 
-  Window conv_window;
-  WindowDimension* conv_window_row = conv_window.add_dimensions();
-  conv_window_row->set_size(1);
-  WindowDimension* conv_window_col = conv_window.add_dimensions();
-  conv_window_col->set_size(2);
-  conv_window_col->set_padding_high(1);
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
 
-  ConvolutionDimensionNumbers conv_dnums;
-  conv_dnums.set_batch_dimension(0);
-  conv_dnums.set_feature_dimension(1);
-  conv_dnums.add_spatial_dimensions(2);
-  conv_dnums.add_spatial_dimensions(3);
-  conv_dnums.set_kernel_output_feature_dimension(0);
-  conv_dnums.set_kernel_input_feature_dimension(1);
-  conv_dnums.add_kernel_spatial_dimensions(2);
-  conv_dnums.add_kernel_spatial_dimensions(3);
+    ENTRY BroadcastIntoReduce {
+      constant = f32[] constant(1)
+      broadcast = f32[16,16,16,16]{3,2,1,0} broadcast(constant), dimensions={}
+      constant.1 = f32[] constant(0)
+      ROOT reduce = f32[] reduce(broadcast, constant.1), dimensions={0,1,2,3},
+                                                         to_apply=add
+    })")
+                    .ValueOrDie();
 
-  auto conv = builder.AddInstruction(
-      HloInstruction::CreateConvolve(ShapeUtil::MakeShape(F32, {1, 1, 1, 3}),
-                                     input, filter, conv_window, conv_dnums));
-  auto transpose = builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(F32, {3, 1, 1, 1}), conv, {3, 2, 1, 0}));
-  builder.AddInstruction(
-      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {3}), transpose));
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
 
-  auto module = MakeUnique<HloModule>(TestName());
-  module->AddEntryComputation(builder.Build());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Reduce(op::Broadcast(op::Parameter()), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, BitcastIntoAdd) {
+  auto module = tools::Parse(R"(
+    HloModule test_module
+
+    ENTRY BroadcastIntoAdd {
+      p0 = f32[4,1,1]{2,1,0} parameter(0)
+      p1 = f32[4,1]{1,0} parameter(1)
+      bitcast = f32[4,1]{1,0} bitcast(p0)
+      ROOT add = f32[4,1] add(bitcast, p1)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Add(op::Bitcast(op::Parameter()), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, AddIntoBitcast) {
+  auto module = tools::Parse(R"(
+    HloModule test_module
+
+    ENTRY BroadcastIntoAdd {
+      p0 = f32[4,1,1]{2,1,0} parameter(0)
+      p1 = f32[4,1]{1,0} parameter(1)
+      add = f32[4,1] add(p0, p1)
+      ROOT bitcast = f32[4,1,1] bitcast(add)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Bitcast(op::Add(op::Parameter(), op::Parameter())));
+}
+
+TEST_F(InstructionFusionTest, DontFuseGTE) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY DontFuseGTE {
+    p0 = (f32[10], f32[10]) parameter(0)
+    gte0 = f32[10] get-tuple-element(p0), index=0
+    gte1 = f32[10] get-tuple-element(p0), index=1
+    ROOT add = f32[10] add(gte0, gte1)
+  })")
+                    .ValueOrDie();
+
   EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
                    .Run(module.get())
                    .ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, GetTupleElementFused) {
-  HloComputation::Builder builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({data_shape, data_shape});
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape, param, 0));
-  auto gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(data_shape, param, 1));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, gte0, gte1));
-  auto module = MakeUnique<HloModule>(TestName());
-  auto computation = module->AddEntryComputation(builder.Build());
+TEST_F(InstructionFusionTest, DotOutputFusion) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY OutputFusion {
+    alpha = f32[] constant(3)
+    broadcast = f32[4,4]{1,0} broadcast(alpha), dimensions={}
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[4,3]{1,0} parameter(1)
+    transpose = f32[3,4]{1,0} transpose(p1), dimensions={1, 0}
+    dot = f32[4,4]{1,0} dot(p0, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ROOT mul = f32[4,4] multiply(dot, broadcast)
+  })")
+                    .ValueOrDie();
+
   EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
                   .Run(module.get())
                   .ValueOrDie());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(HloOpcode::kFusion, root->opcode());
-  HloInstruction* fused_root = root->fused_expression_root();
-  EXPECT_EQ(HloOpcode::kAdd, fused_root->opcode());
-  // Check that operands of 'fused_root' are GTE.
-  EXPECT_EQ(HloOpcode::kGetTupleElement, fused_root->operand(0)->opcode());
-  EXPECT_EQ(HloOpcode::kGetTupleElement, fused_root->operand(1)->opcode());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kOutput);
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      op::Multiply(op::Dot(op::Parameter(), op::Transpose(op::Parameter())),
+                   op::Broadcast(op::Parameter())));
+}
+
+// Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
+// duplicated and fused into both reduces.
+TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  Add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = f32[] constant(0)
+    one = f32[] constant(1)
+    p0 = f32[100] parameter(0)
+    recip = f32[100] divide(one, p0)
+    sum1 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT root = (f32[], f32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()));
+}
+
+// Compute sum(100/p0), where p0 has type s32, twice.  Check that the division
+// is *not* duplicated and fused into both reduces, because we say that integer
+// division is not cheap.
+TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  Add {
+    lhs = s32[] parameter(0)
+    rhs = s32[] parameter(1)
+    ROOT add = s32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = s32[] constant(0)
+    one_hundred = s32[] constant(100)
+    p0 = s32[100] parameter(0)
+    recip = s32[100] divide(one_hundred, p0)
+    sum1 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT mul = (s32[], s32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY NoOutputFusion {
+    alpha = f32[] constant(3)
+    broadcast = f32[4,4]{1,0} broadcast(alpha), dimensions={}
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[3,4]{1,0} parameter(1)
+    dot = f32[4,4]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    d = f32[4,4]{1,0} multiply(dot, dot)
+    ROOT mul = f32[4,4] multiply(d, broadcast)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Multiply(op::Multiply(op::Parameter(), op::Parameter()),
+                           op::Broadcast(op::Parameter())));
 }
 
 }  // namespace gpu

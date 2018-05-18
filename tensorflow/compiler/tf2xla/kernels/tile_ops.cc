@@ -68,7 +68,7 @@ class TileOp : public XlaOpKernel {
     bool all_multiples_are_one = true;
     bool one_dimension_is_broadcasted_without_multiple = true;
     for (int i = 0; i < input_dims; ++i) {
-      int multiple = xla::LiteralUtil::Get<int>(literal, {i});
+      int multiple = literal.Get<int>({i});
       OP_REQUIRES(ctx, multiple,
                   errors::InvalidArgument("Expected multiples[", i,
                                           "] >= 0, but got ", multiple));
@@ -112,7 +112,7 @@ class TileOp : public XlaOpKernel {
       flattened.push_back(i);
       flattened.push_back(i + output_shape.size());
     }
-    xla::ComputationDataHandle output =
+    xla::XlaOp output =
         ctx->builder()->Reshape(broadcasted, flattened, output_shape);
 
     ctx->SetOutput(0, output);
@@ -122,7 +122,7 @@ class TileOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
 };
 
-REGISTER_XLA_OP(Name("Tile"), TileOp);
+REGISTER_XLA_OP(Name("Tile").CompileTimeConstInput("multiples"), TileOp);
 
 }  // namespace
 }  // namespace tensorflow

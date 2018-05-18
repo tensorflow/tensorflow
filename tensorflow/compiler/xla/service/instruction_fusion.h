@@ -66,11 +66,55 @@ class InstructionFusion : public HloPassInterface {
   virtual HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
                                                 const HloInstruction* consumer);
 
+  // Fuses producer into consumer.
+  virtual HloInstruction* Fuse(HloInstruction* producer,
+                               HloInstruction* consumer);
+
+  // Creates a new fusion instruction containing `producer` and `consumer`. A
+  // tuple is added as the fusion instruction's root, which consumes from both,
+  // `producer` and `consumer`. This style of fusion is referred to as
+  // multi-output fusion.
+  virtual HloInstruction* FuseIntoMultiOutput(HloInstruction* producer,
+                                              HloInstruction* consumer);
+
+  // An "effectively unary" operation is one that has at most one "large"
+  // input with the others being negligible in terms of memory usage.
+  // We use "has a smaller true rank than the output" as a heuristic
+  // for "negligible" memory usage.
+  bool EffectivelyAtMostUnary(HloInstruction* hlo);
+
+  // Returns true if fusing producer into consumer would cause producer to be
+  // duplicated. This is the case if producer has uses other than consumer.
+  bool FusionWouldDuplicate(const HloInstruction& producer,
+                            const HloInstruction& consumer) {
+    return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
+  }
+
+  bool is_expensive(const HloInstruction& instruction) {
+    return is_expensive_(instruction);
+  }
+
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
+  HloModule* module_;
 
  private:
-  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
+  // The set of producers whose consumers we cannot fuse into.
+  using DoNotFuseSet = std::unordered_set<HloInstruction*>;
+
+  HloInstruction* AddFusionInstruction(HloInstruction* producer,
+                                       HloInstruction* consumer);
+
+  // Whether or not we can fuse producer into consumer on all paths
+  // from the producer to the consumer where nodes are HLOs and edges are uses.
+  bool CanFuseOnAllPaths(HloInstruction* producer, HloInstruction* consumer,
+                         const HloReachabilityMap& reachability_map,
+                         const DoNotFuseSet& do_not_fuse);
+
+  // Computes the set of nodes that we do not want to fuse into any of their
+  // consumers based on a global analysis of the HLO graph.
+  DoNotFuseSet ComputeGloballyUnfusable(
+      tensorflow::gtl::ArraySlice<HloInstruction*> post_order);
 
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.

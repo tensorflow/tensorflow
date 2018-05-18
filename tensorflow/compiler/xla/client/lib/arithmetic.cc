@@ -17,79 +17,106 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
+namespace {
 
-Computation CreateScalarAddComputation(PrimitiveType type,
-                                       ComputationBuilder* builder) {
+using XlaOpGenerator = XlaOp (*)(XlaBuilder*, const XlaOp&, const XlaOp&);
+
+XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
+                                       XlaBuilder* builder,
+                                       XlaOpGenerator generator) {
+  std::unique_ptr<XlaBuilder> b;
+  if (type == PRED) {
+    b = builder->CreateSubBuilder(name);
+  } else {
+    b = builder->CreateSubBuilder(
+        tensorflow::strings::StrCat(name, "_", PrimitiveType_Name(type)));
+  }
+
   const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("add_" + PrimitiveType_Name(type));
   auto lhs = b->Parameter(0, scalar, "lhs");
   auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Add(lhs, rhs);
+  generator(b.get(), lhs, rhs);
   return b->BuildAndNoteError();
 }
 
-Computation CreateScalarGeComputation(PrimitiveType type,
-                                      ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("ge_" + PrimitiveType_Name(type));
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Ge(lhs, rhs);
-  return b->BuildAndNoteError();
+}  // namespace
+
+XlaComputation CreateScalarAddComputation(PrimitiveType type,
+                                          XlaBuilder* builder) {
+  return CreateScalarComputation(
+      "add", type, builder,
+      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
+        return b->Add(lhs, rhs);
+      });
 }
 
-Computation CreateScalarMaxComputation(PrimitiveType type,
-                                       ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("max_" + PrimitiveType_Name(type));
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Max(lhs, rhs);
-  return b->BuildAndNoteError();
+XlaComputation CreateScalarMultiplyComputation(PrimitiveType type,
+                                               XlaBuilder* builder) {
+  return CreateScalarComputation(
+      "mul", type, builder,
+      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
+        return b->Mul(lhs, rhs);
+      });
 }
 
-Computation CreateScalarMinComputation(PrimitiveType type,
-                                       ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto b = builder->CreateSubBuilder("min_" + PrimitiveType_Name(type));
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Min(lhs, rhs);
-  return b->BuildAndNoteError();
+XlaComputation CreateScalarGeComputation(PrimitiveType type,
+                                         XlaBuilder* builder) {
+  return CreateScalarComputation(
+      "ge", type, builder,
+      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
+        return b->Ge(lhs, rhs);
+      });
 }
 
-Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(PRED, {});
-  auto b = builder->CreateSubBuilder("logical_and");
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->LogicalAnd(lhs, rhs);
-  return b->BuildAndNoteError();
+XlaComputation CreateScalarMaxComputation(PrimitiveType type,
+                                          XlaBuilder* builder) {
+  return CreateScalarComputation(
+      "max", type, builder,
+      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
+        return b->Max(lhs, rhs);
+      });
 }
 
-Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder) {
-  const Shape scalar = ShapeUtil::MakeShape(PRED, {});
-  auto b = builder->CreateSubBuilder("logical_or");
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->LogicalOr(lhs, rhs);
-  return b->BuildAndNoteError();
+XlaComputation CreateScalarMinComputation(PrimitiveType type,
+                                          XlaBuilder* builder) {
+  return CreateScalarComputation(
+      "min", type, builder,
+      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
+        return b->Min(lhs, rhs);
+      });
 }
 
-StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,
-                                    ComputationBuilder* builder) {
+XlaComputation CreateScalarAndComputation(XlaBuilder* builder) {
+  return CreateScalarComputation(
+      "and", PRED, builder,
+      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
+        return b->And(lhs, rhs);
+      });
+}
+
+XlaComputation CreateScalarOrComputation(XlaBuilder* builder) {
+  return CreateScalarComputation(
+      "or", PRED, builder,
+      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
+        return b->Or(lhs, rhs);
+      });
+}
+
+StatusOr<XlaOp> Any(const XlaOp& predicates, XlaBuilder* builder) {
   auto f = builder->ConstantR0<bool>(false);
-  Computation logical_or = CreateScalarLogicalOrComputation(builder);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Shape> predicates_shape,
+  XlaComputation logical_or = CreateScalarOrComputation(builder);
+  TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
                       builder->GetShape(predicates));
-  std::vector<int64> all_dimensions(ShapeUtil::Rank(*predicates_shape));
+  std::vector<int64> all_dimensions(ShapeUtil::Rank(predicates_shape));
   std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
   return builder->Reduce(predicates, f, logical_or, all_dimensions);
 }

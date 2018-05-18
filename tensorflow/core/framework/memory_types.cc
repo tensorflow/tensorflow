@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -60,7 +61,8 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
 }
 
 MemoryType MTypeFromDType(const DataType dtype) {
-  return (dtype == DT_INT32) ? HOST_MEMORY : DEVICE_MEMORY;
+  return (dtype == DT_INT32 || DataTypeAlwaysOnHost(dtype)) ? HOST_MEMORY
+                                                            : DEVICE_MEMORY;
 }
 
 }  // namespace
@@ -116,6 +118,20 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     return errors::InvalidArgument(
         "HostMemory args '", str_util::Join(host_memory_args, "', '"),
         "' not found in OpDef: ", SummarizeOpDef(*op_def));
+  }
+  CHECK_LE(inp_mtypes->size(), inp_dtypes.size());
+  CHECK_LE(out_mtypes->size(), out_dtypes.size());
+
+  // Mark e.g. all resource and string types as host memory.
+  for (int i = 0; i < inp_mtypes->size(); ++i) {
+    if (DataTypeAlwaysOnHost(inp_dtypes[i])) {
+      (*inp_mtypes)[i] = HOST_MEMORY;
+    }
+  }
+  for (int i = 0; i < out_mtypes->size(); ++i) {
+    if (DataTypeAlwaysOnHost(out_dtypes[i])) {
+      (*out_mtypes)[i] = HOST_MEMORY;
+    }
   }
 
   std::vector<int32> hostmem_attr;

@@ -28,17 +28,18 @@ typedef Eigen::GpuDevice GPUDevice;
   template class generator::ReverseGenerator<T, Tlen, dims>; \
   template struct functor::ReverseSequence<GPUDevice, T, Tlen, dims>;
 
-#define DEFINE_GPU_SPEC_LEN(T, dims)  \
-  DEFINE_GPU_SPEC(T, int32, dims);    \
+#define DEFINE_GPU_SPEC_LEN(T, dims) \
+  DEFINE_GPU_SPEC(T, int32, dims);   \
   DEFINE_GPU_SPEC(T, int64, dims);
 
-#define DEFINE_GPU_SPECS(T) \
-  DEFINE_GPU_SPEC_LEN(T, 2);    \
-  DEFINE_GPU_SPEC_LEN(T, 3);    \
-  DEFINE_GPU_SPEC_LEN(T, 4);    \
+#define DEFINE_GPU_SPECS(T)  \
+  DEFINE_GPU_SPEC_LEN(T, 2); \
+  DEFINE_GPU_SPEC_LEN(T, 3); \
+  DEFINE_GPU_SPEC_LEN(T, 4); \
   DEFINE_GPU_SPEC_LEN(T, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_bool(DEFINE_GPU_SPECS);
 
 }  // end namespace tensorflow
 

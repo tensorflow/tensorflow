@@ -31,11 +31,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using namespace ops;  // NOLINT(build/namespaces)
+namespace ops {
+namespace {
 
 TEST(EncodeWavOpTest, EncodeWavTest) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
 
   Tensor audio_tensor(DT_FLOAT, {4, 2});
   test::FillValues<float>(
@@ -77,4 +77,6 @@ TEST(EncodeWavOpTest, EncodeWavTest) {
   EXPECT_EQ(44100, sample_rate);
 }
 
+}  // namespace
+}  // namespace ops
 }  // namespace tensorflow

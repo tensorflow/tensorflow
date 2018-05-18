@@ -23,12 +23,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-
-namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
 
@@ -36,11 +35,12 @@ namespace tensorflow {
 // algorithm.
 class GPUBFCAllocator : public BFCAllocator {
  public:
-  // 'device_id' refers to the StreamExecutor ID of the device within
+  // 'cuda_gpu_id' refers to the ID of the GPU device within
   // the process and must reference a valid ID in the process.
-  GPUBFCAllocator(int device_id, size_t total_memory);
-  GPUBFCAllocator(int device_id, size_t total_memory,
-                  const GPUOptions& gpu_options);
+  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+                  const string& name);
+  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+                  const GPUOptions& gpu_options, const string& name);
   virtual ~GPUBFCAllocator() {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
@@ -50,7 +50,7 @@ class GPUBFCAllocator : public BFCAllocator {
 class GPUMemAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(perftools::gputools::StreamExecutor* stream_exec)
+  explicit GPUMemAllocator(se::StreamExecutor* stream_exec)
       : stream_exec_(stream_exec) {
     CHECK(stream_exec_ != nullptr);
   }
@@ -66,13 +66,13 @@ class GPUMemAllocator : public SubAllocator {
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
-      gpu::DeviceMemoryBase gpu_ptr(ptr);
+      se::DeviceMemoryBase gpu_ptr(ptr);
       stream_exec_->Deallocate(&gpu_ptr);
     }
   }
 
  private:
-  perftools::gputools::StreamExecutor* stream_exec_;  // not owned, non-null
+  se::StreamExecutor* stream_exec_;  // not owned, non-null
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
 };

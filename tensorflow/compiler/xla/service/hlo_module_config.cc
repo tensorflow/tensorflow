@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <vector>
 
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -27,20 +28,36 @@ namespace xla {
 
 using tensorflow::strings::StrAppend;
 
+HloModuleConfig::HloModuleConfig() {}
+
 HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape)
-    : entry_computation_layout_(program_shape) {}
+    : host_entry_computation_layout_(program_shape),
+      device_entry_computation_layout_(program_shape) {}
+
+void HloModuleConfig::SetDefaultComputationLayout(
+    const ProgramShape& program_shape) {
+  host_entry_computation_layout_ = ComputationLayout(program_shape);
+  device_entry_computation_layout_ = ComputationLayout(program_shape);
+}
 
 string HloModuleConfig::compilation_cache_key() const {
-  string key = tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled_,
-                                           "::hybrid=", has_hybrid_result_);
+  string key =
+      tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");
   std::vector<string> params;
   for (const ShapeLayout& param_layout :
-       entry_computation_layout_.parameter_layouts()) {
+       host_entry_computation_layout_->parameter_layouts()) {
     params.push_back(param_layout.shape().DebugString());
   }
   StrAppend(&key, tensorflow::str_util::Join(params, ", "), ") => ",
-            entry_computation_layout_.result_shape().SerializeAsString());
+            host_entry_computation_layout_->result_shape().SerializeAsString());
+  for (const ShapeLayout& param_layout :
+       device_entry_computation_layout_->parameter_layouts()) {
+    params.push_back(param_layout.shape().DebugString());
+  }
+  StrAppend(
+      &key, tensorflow::str_util::Join(params, ", "), ") => ",
+      device_entry_computation_layout_->result_shape().SerializeAsString());
   if (seed() != 0) {
     // TODO(b/32083678): force recompilation to reset global state.
     static std::atomic<int> counter{0};
@@ -49,7 +66,11 @@ string HloModuleConfig::compilation_cache_key() const {
   if (replica_count() != 1) {
     StrAppend(&key, "::replica_count=", replica_count());
   }
-  StrAppend(&key, "::fast_math_disabled=", fast_math_disabled_);
+  StrAppend(&key, debug_options_.DebugString());
+  if (intra_op_parallelism_threads() > 0) {
+    StrAppend(&key, "::intra_op_parallelism_threads=",
+              intra_op_parallelism_threads());
+  }
   return key;
 }
 

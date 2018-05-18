@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -33,19 +32,22 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
+
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
+namespace {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 using Callback = std::function<void()>;
-
-namespace {
 
 static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                            const Tensor& box_index,
@@ -93,8 +95,12 @@ inline void RunIfBoxIndexIsValid<CPUDevice>(
         errors::OutOfRange("box_index has values outside [0, batch_size)"),
         done);
   }
-  compute();
-  done();
+  if (compute) {
+    compute();
+  }
+  if (done) {
+    done();
+  }
 }
 
 }  // namespace
@@ -104,10 +110,10 @@ class CropAndResizeOp : public AsyncOpKernel {
  public:
   explicit CropAndResizeOp(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-    string method;
-    OP_REQUIRES_OK(context, context->GetAttr("method", &method));
-    OP_REQUIRES(context, method == "bilinear",
-                errors::InvalidArgument("method must be 'bilinear'", method));
+    OP_REQUIRES_OK(context, context->GetAttr("method", &method_));
+    OP_REQUIRES(context, method_ == "bilinear" || method_ == "nearest",
+                errors::InvalidArgument(
+                    "method must be 'bilinear' or 'nearest'", method_));
     OP_REQUIRES_OK(context, context->GetAttr("extrapolation_value",
                                              &extrapolation_value_));
   }
@@ -171,9 +177,9 @@ class CropAndResizeOp : public AsyncOpKernel {
       const Tensor& boxes = context->input(1);
       const Tensor& box_index = context->input(2);
       const bool status = functor::CropAndResize<Device, T>()(
-          context->eigen_device<Device>(), image.tensor<T, 4>(),
-          boxes.tensor<float, 2>(), box_index.tensor<int32, 1>(),
-          extrapolation_value_, output->tensor<float, 4>());
+          context, image.tensor<T, 4>(), boxes.tensor<float, 2>(),
+          box_index.tensor<int32, 1>(), method_, extrapolation_value_,
+          output->tensor<float, 4>());
       if (!status) {
         context->SetStatus(
             errors::Internal("Failed launch CropAndResizeKernel."));
@@ -187,16 +193,18 @@ class CropAndResizeOp : public AsyncOpKernel {
 
  private:
   float extrapolation_value_;
+  string method_;
 };
 
 // Partial specialization of CropAndResize functor for a CPUDevice.
 namespace functor {
 template <typename T>
 struct CropAndResize<CPUDevice, T> {
-  bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor image,
+  bool operator()(const OpKernelContext* context,
+                  typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_index,
-                  float extrapolation_value,
+                  const string& method_name, float extrapolation_value,
                   typename TTypes<float, 4>::Tensor crops) {
     const int batch_size = image.dimension(0);
     const int image_height = image.dimension(1);
@@ -207,71 +215,115 @@ struct CropAndResize<CPUDevice, T> {
     const int crop_width = crops.dimension(2);
     const int depth = crops.dimension(3);
 
-    for (int b = 0; b < num_boxes; ++b) {
-      const float y1 = boxes(b, 0);
-      const float x1 = boxes(b, 1);
-      const float y2 = boxes(b, 2);
-      const float x2 = boxes(b, 3);
+    // Sharding across boxes.
+    auto CropAndResizePerBox = [&](int start_box, int limit_box) {
+      for (int b = start_box; b < limit_box; ++b) {
+        const float y1 = boxes(b, 0);
+        const float x1 = boxes(b, 1);
+        const float y2 = boxes(b, 2);
+        const float x2 = boxes(b, 3);
 
-      const int32 b_in = box_index(b);
-      if (!FastBoundsCheck(b_in, batch_size)) {
-        continue;
-      }
-
-      const float height_scale =
-          (crop_height > 1) ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
-                            : 0;
-      const float width_scale =
-          (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
-                           : 0;
-
-      for (int y = 0; y < crop_height; ++y) {
-        const float in_y = (crop_height > 1)
-                               ? y1 * (image_height - 1) + y * height_scale
-                               : 0.5 * (y1 + y2) * (image_height - 1);
-        if (in_y < 0 || in_y > image_height - 1) {
-          for (int x = 0; x < crop_width; ++x) {
-            for (int d = 0; d < depth; ++d) {
-              crops(b, y, x, d) = extrapolation_value;
-            }
-          }
+        const int32 b_in = box_index(b);
+        if (!FastBoundsCheck(b_in, batch_size)) {
           continue;
         }
-        const int top_y_index = floorf(in_y);
-        const int bottom_y_index = ceilf(in_y);
-        const float y_lerp = in_y - top_y_index;
 
-        for (int x = 0; x < crop_width; ++x) {
-          const float in_x = (crop_width > 1)
-                                 ? x1 * (image_width - 1) + x * width_scale
-                                 : 0.5 * (x1 + x2) * (image_width - 1);
-          if (in_x < 0 || in_x > image_width - 1) {
-            for (int d = 0; d < depth; ++d) {
-              crops(b, y, x, d) = extrapolation_value;
+        const float height_scale =
+            (crop_height > 1)
+                ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
+                : 0;
+        const float width_scale =
+            (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
+                             : 0;
+
+        for (int y = 0; y < crop_height; ++y) {
+          const float in_y = (crop_height > 1)
+                                 ? y1 * (image_height - 1) + y * height_scale
+                                 : 0.5 * (y1 + y2) * (image_height - 1);
+          if (in_y < 0 || in_y > image_height - 1) {
+            for (int x = 0; x < crop_width; ++x) {
+              for (int d = 0; d < depth; ++d) {
+                crops(b, y, x, d) = extrapolation_value;
+              }
             }
             continue;
           }
-          const int left_x_index = floorf(in_x);
-          const int right_x_index = ceilf(in_x);
-          const float x_lerp = in_x - left_x_index;
+          if (method_name == "bilinear") {
+            const int top_y_index = floorf(in_y);
+            const int bottom_y_index = ceilf(in_y);
+            const float y_lerp = in_y - top_y_index;
 
-          for (int d = 0; d < depth; ++d) {
-            const float top_left(
-                static_cast<float>(image(b_in, top_y_index, left_x_index, d)));
-            const float top_right(
-                static_cast<float>(image(b_in, top_y_index, right_x_index, d)));
-            const float bottom_left(static_cast<float>(
-                image(b_in, bottom_y_index, left_x_index, d)));
-            const float bottom_right(static_cast<float>(
-                image(b_in, bottom_y_index, right_x_index, d)));
-            const float top = top_left + (top_right - top_left) * x_lerp;
-            const float bottom =
-                bottom_left + (bottom_right - bottom_left) * x_lerp;
-            crops(b, y, x, d) = top + (bottom - top) * y_lerp;
+            for (int x = 0; x < crop_width; ++x) {
+              const float in_x = (crop_width > 1)
+                                     ? x1 * (image_width - 1) + x * width_scale
+                                     : 0.5 * (x1 + x2) * (image_width - 1);
+              if (in_x < 0 || in_x > image_width - 1) {
+                for (int d = 0; d < depth; ++d) {
+                  crops(b, y, x, d) = extrapolation_value;
+                }
+                continue;
+              }
+              const int left_x_index = floorf(in_x);
+              const int right_x_index = ceilf(in_x);
+              const float x_lerp = in_x - left_x_index;
+
+              for (int d = 0; d < depth; ++d) {
+                const float top_left(static_cast<float>(
+                    image(b_in, top_y_index, left_x_index, d)));
+                const float top_right(static_cast<float>(
+                    image(b_in, top_y_index, right_x_index, d)));
+                const float bottom_left(static_cast<float>(
+                    image(b_in, bottom_y_index, left_x_index, d)));
+                const float bottom_right(static_cast<float>(
+                    image(b_in, bottom_y_index, right_x_index, d)));
+                const float top = top_left + (top_right - top_left) * x_lerp;
+                const float bottom =
+                    bottom_left + (bottom_right - bottom_left) * x_lerp;
+                crops(b, y, x, d) = top + (bottom - top) * y_lerp;
+              }
+            }
+          } else {  // method == "nearest"
+            for (int x = 0; x < crop_width; ++x) {
+              const float in_x = (crop_width > 1)
+                                     ? x1 * (image_width - 1) + x * width_scale
+                                     : 0.5 * (x1 + x2) * (image_width - 1);
+              if (in_x < 0 || in_x > image_width - 1) {
+                for (int d = 0; d < depth; ++d) {
+                  crops(b, y, x, d) = extrapolation_value;
+                }
+                continue;
+              }
+              const int closest_x_index = roundf(in_x);
+              const int closest_y_index = roundf(in_y);
+              for (int d = 0; d < depth; ++d) {
+                crops(b, y, x, d) = static_cast<float>(
+                    image(b_in, closest_y_index, closest_x_index, d));
+              }
+            }
           }
         }
       }
+    };
+
+    // A rough estimation of the cost for each cropped box.
+    double cost_per_pixel =
+        depth * (Eigen::TensorOpCost::AddCost<float>() * 6 +
+                 Eigen::TensorOpCost::MulCost<float>() * 3 +
+                 Eigen::TensorOpCost::CastCost<T, float>() * 4) +
+        (Eigen::TensorOpCost::AddCost<float>() * 2 +
+         Eigen::TensorOpCost::AddCost<float>() * 3);
+    if (method_name == "nearest") {
+      cost_per_pixel = depth * Eigen::TensorOpCost::CastCost<T, float>() +
+                       Eigen::TensorOpCost::AddCost<float>() * 4 +
+                       Eigen::TensorOpCost::MulCost<float>() * 4;
     }
+    const double cost_per_box = crop_height * crop_width * cost_per_pixel;
+
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *(context->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, num_boxes,
+          cost_per_box, CropAndResizePerBox);
+
     return true;
   }
 };
@@ -283,10 +335,10 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
  public:
   explicit CropAndResizeGradImageOp(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-    string method;
-    OP_REQUIRES_OK(context, context->GetAttr("method", &method));
-    OP_REQUIRES(context, method == "bilinear",
-                errors::InvalidArgument("method must be 'bilinear'", method));
+    OP_REQUIRES_OK(context, context->GetAttr("method", &method_));
+    OP_REQUIRES(context, method_ == "bilinear" || method_ == "nearest",
+                errors::InvalidArgument(
+                    "method must be 'bilinear' or 'nearest'", method_));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
@@ -346,14 +398,14 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
             &output),
         done);
 
-    auto compute_callback = [context, output]() {
+    auto compute_callback = [this, context, output]() {
       const Tensor& grads = context->input(0);
       const Tensor& boxes = context->input(1);
       const Tensor& box_index = context->input(2);
       const bool status = functor::CropAndResizeBackpropImage<Device, T>()(
           context->eigen_device<Device>(), grads.tensor<float, 4>(),
           boxes.tensor<float, 2>(), box_index.tensor<int32, 1>(),
-          output->tensor<T, 4>());
+          output->tensor<T, 4>(), method_);
       if (!status) {
         context->SetStatus(errors::Internal(
             "Failed launch CropAndResizeBackpropImage kernel."));
@@ -364,6 +416,9 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
                                  batch_size, std::move(compute_callback),
                                  std::move(done));
   }
+
+ private:
+  string method_;
 };
 
 // Partial specialization of CropAndResizeBackpropImage functor for a CPUDevice.
@@ -374,7 +429,8 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
                   typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_index,
-                  typename TTypes<T, 4>::Tensor grads_image) {
+                  typename TTypes<T, 4>::Tensor grads_image,
+                  const string& method_name) {
     const int batch_size = grads_image.dimension(0);
     const int image_height = grads_image.dimension(1);
     const int image_width = grads_image.dimension(2);
@@ -422,21 +478,30 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
           if (in_x < 0 || in_x > image_width - 1) {
             continue;
           }
-          const int left_x_index = floorf(in_x);
-          const int right_x_index = ceilf(in_x);
-          const float x_lerp = in_x - left_x_index;
+          if (method_name == "bilinear") {
+            const int left_x_index = floorf(in_x);
+            const int right_x_index = ceilf(in_x);
+            const float x_lerp = in_x - left_x_index;
 
-          for (int d = 0; d < depth; ++d) {
-            const float dtop = (1 - y_lerp) * grads(b, y, x, d);
-            grads_image(b_in, top_y_index, left_x_index, d) +=
-                static_cast<T>((1 - x_lerp) * dtop);
-            grads_image(b_in, top_y_index, right_x_index, d) +=
-                static_cast<T>(x_lerp * dtop);
-            const float dbottom = y_lerp * grads(b, y, x, d);
-            grads_image(b_in, bottom_y_index, left_x_index, d) +=
-                static_cast<T>((1 - x_lerp) * dbottom);
-            grads_image(b_in, bottom_y_index, right_x_index, d) +=
-                static_cast<T>(x_lerp * dbottom);
+            for (int d = 0; d < depth; ++d) {
+              const float dtop = (1 - y_lerp) * grads(b, y, x, d);
+              grads_image(b_in, top_y_index, left_x_index, d) +=
+                  static_cast<T>((1 - x_lerp) * dtop);
+              grads_image(b_in, top_y_index, right_x_index, d) +=
+                  static_cast<T>(x_lerp * dtop);
+              const float dbottom = y_lerp * grads(b, y, x, d);
+              grads_image(b_in, bottom_y_index, left_x_index, d) +=
+                  static_cast<T>((1 - x_lerp) * dbottom);
+              grads_image(b_in, bottom_y_index, right_x_index, d) +=
+                  static_cast<T>(x_lerp * dbottom);
+            }
+          } else {  // method_name == "nearest"
+            for (int d = 0; d < depth; ++d) {
+              int closest_x_index = roundf(in_x);
+              int closest_y_index = roundf(in_y);
+              grads_image(b_in, closest_y_index, closest_x_index, d) +=
+                  static_cast<T>(grads(b, y, x, d));
+            }
           }
         }
       }
@@ -726,8 +791,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
       context->allocate_temp(DataTypeToEnum<bool>::value, TensorShape({}),
                              &isvalid_host_tensor, alloc_attr),
       done);
-  perftools::gputools::DeviceMemoryBase wrapped(isvalid_dev.data(),
-                                                sizeof(bool));
+  se::DeviceMemoryBase wrapped(isvalid_dev.data(), sizeof(bool));
   const bool status =
       stream
           ->ThenMemcpy(
@@ -741,9 +805,13 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
 
   // We capture both temporary tensors to prevent them from being deallocated
   // when ComputeAsync returns and before the closure runs.
-  auto wrapped_callback = [context, isvalid_host_tensor, isvalid_dev_tensor,
+  TensorReference isvalid_dev_ref(isvalid_dev_tensor);
+  auto wrapped_callback = [context, isvalid_host_tensor, isvalid_dev_ref,
                            compute, done]() {
+    auto stream = context->op_device_context()->stream();
+    ScopedActivateExecutorContext scoped_activation{stream->parent()};
     const bool isvalid = isvalid_host_tensor.scalar<bool>()();
+    isvalid_dev_ref.Unref();
     OP_REQUIRES_ASYNC(
         context, isvalid,
         errors::OutOfRange("box_index has values outside [0, batch_size)"),

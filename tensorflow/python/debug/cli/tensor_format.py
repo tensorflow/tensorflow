@@ -72,6 +72,8 @@ class HighlightOptions(object):
 def format_tensor(tensor,
                   tensor_label,
                   include_metadata=False,
+                  auxiliary_message=None,
+                  include_numeric_summary=False,
                   np_printoptions=None,
                   highlight_options=None):
   """Generate a RichTextLines object showing a tensor in formatted style.
@@ -83,6 +85,10 @@ def format_tensor(tensor,
       suppress the tensor name line in the return value.
     include_metadata: Whether metadata such as dtype and shape are to be
       included in the formatted text.
+    auxiliary_message: An auxiliary message to display under the tensor label,
+      dtype and shape information lines.
+    include_numeric_summary: Whether a text summary of the numeric values (if
+      applicable) will be included.
     np_printoptions: A dictionary of keyword arguments that are passed to a
       call of np.set_printoptions() to set the text format for display numpy
       ndarrays.
@@ -128,29 +134,38 @@ def format_tensor(tensor,
 
   if include_metadata:
     lines.append("  dtype: %s" % str(tensor.dtype))
-    lines.append("  shape: %s" % str(tensor.shape))
+    lines.append("  shape: %s" % str(tensor.shape).replace("L", ""))
 
   if lines:
     lines.append("")
-  hlines = len(lines)
+  formatted = debugger_cli_common.RichTextLines(
+      lines, font_attr_segs=font_attr_segs)
+
+  if auxiliary_message:
+    formatted.extend(auxiliary_message)
+
+  if include_numeric_summary:
+    formatted.append("Numeric summary:")
+    formatted.extend(numeric_summary(tensor))
+    formatted.append("")
 
   # Apply custom string formatting options for numpy ndarray.
   if np_printoptions is not None:
     np.set_printoptions(**np_printoptions)
 
   array_lines = repr(tensor).split("\n")
-  lines.extend(array_lines)
-
   if tensor.dtype.type is not np.string_:
     # Parse array lines to get beginning indices for each line.
 
     # TODO(cais): Currently, we do not annotate string-type tensors due to
     #   difficulty in escaping sequences. Address this issue.
     annotations = _annotate_ndarray_lines(
-        array_lines, tensor, np_printoptions=np_printoptions, offset=hlines)
-
-  formatted = debugger_cli_common.RichTextLines(
-      lines, font_attr_segs=font_attr_segs, annotations=annotations)
+        array_lines, tensor, np_printoptions=np_printoptions)
+  else:
+    annotations = None
+  formatted_array = debugger_cli_common.RichTextLines(
+      array_lines, annotations=annotations)
+  formatted.extend(formatted_array)
 
   # Perform optional highlighting.
   if highlight_options is not None:
@@ -464,3 +479,91 @@ def _locate_elements_in_line(line, indices_list, ref_indices):
     offset_counter += 1
 
   return start_columns, end_columns
+
+
+def _pad_string_to_length(string, length):
+  return " " * (length - len(string)) + string
+
+
+def numeric_summary(tensor):
+  """Get a text summary of a numeric tensor.
+
+  This summary is only available for numeric (int*, float*, complex*) and
+  Boolean tensors.
+
+  Args:
+    tensor: (`numpy.ndarray`) the tensor value object to be summarized.
+
+  Returns:
+    The summary text as a `RichTextLines` object. If the type of `tensor` is not
+    numeric or Boolean, a single-line `RichTextLines` object containing a
+    warning message will reflect that.
+  """
+
+  def _counts_summary(counts, skip_zeros=True, total_count=None):
+    """Format values as a two-row table."""
+    if skip_zeros:
+      counts = [(count_key, count_val) for count_key, count_val in counts
+                if count_val]
+    max_common_len = 0
+    for count_key, count_val in counts:
+      count_val_str = str(count_val)
+      common_len = max(len(count_key) + 1, len(count_val_str) + 1)
+      max_common_len = max(common_len, max_common_len)
+
+    key_line = debugger_cli_common.RichLine("|")
+    val_line = debugger_cli_common.RichLine("|")
+    for count_key, count_val in counts:
+      count_val_str = str(count_val)
+      key_line += _pad_string_to_length(count_key, max_common_len)
+      val_line += _pad_string_to_length(count_val_str, max_common_len)
+    key_line += " |"
+    val_line += " |"
+
+    if total_count is not None:
+      total_key_str = "total"
+      total_val_str = str(total_count)
+      max_common_len = max(len(total_key_str) + 1, len(total_val_str))
+      total_key_str = _pad_string_to_length(total_key_str, max_common_len)
+      total_val_str = _pad_string_to_length(total_val_str, max_common_len)
+      key_line += total_key_str + " |"
+      val_line += total_val_str + " |"
+
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(
+        [key_line, val_line])
+
+  if not isinstance(tensor, np.ndarray) or not np.size(tensor):
+    return debugger_cli_common.RichTextLines([
+        "No numeric summary available due to empty tensor."])
+  elif (np.issubdtype(tensor.dtype, np.floating) or
+        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.integer)):
+    counts = [
+        ("nan", np.sum(np.isnan(tensor))),
+        ("-inf", np.sum(np.isneginf(tensor))),
+        ("-", np.sum(np.logical_and(
+            tensor < 0.0, np.logical_not(np.isneginf(tensor))))),
+        ("0", np.sum(tensor == 0.0)),
+        ("+", np.sum(np.logical_and(
+            tensor > 0.0, np.logical_not(np.isposinf(tensor))))),
+        ("+inf", np.sum(np.isposinf(tensor)))]
+    output = _counts_summary(counts, total_count=np.size(tensor))
+
+    valid_array = tensor[
+        np.logical_not(np.logical_or(np.isinf(tensor), np.isnan(tensor)))]
+    if np.size(valid_array):
+      stats = [
+          ("min", np.min(valid_array)),
+          ("max", np.max(valid_array)),
+          ("mean", np.mean(valid_array)),
+          ("std", np.std(valid_array))]
+      output.extend(_counts_summary(stats, skip_zeros=False))
+    return output
+  elif tensor.dtype == np.bool:
+    counts = [
+        ("False", np.sum(tensor == 0)),
+        ("True", np.sum(tensor > 0)),]
+    return _counts_summary(counts, total_count=np.size(tensor))
+  else:
+    return debugger_cli_common.RichTextLines([
+        "No numeric summary available due to tensor dtype: %s." % tensor.dtype])

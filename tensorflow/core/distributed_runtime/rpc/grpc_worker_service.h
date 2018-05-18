@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 
 namespace grpc {
@@ -34,10 +35,21 @@ class GrpcWorker : public Worker {
   GrpcWorker(WorkerEnv* env);
 
   // Specialized version of RecvTensor for gRPC, which avoids a copy.
-  void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
-                       ::grpc::ByteBuffer* response, StatusCallback done);
+  virtual void GrpcRecvTensorAsync(CallOptions* opts,
+                                   const RecvTensorRequest* request,
+                                   ::grpc::ByteBuffer* response,
+                                   StatusCallback done);
+
+  virtual void LoggingAsync(const LoggingRequest* request,
+                            LoggingResponse* response, StatusCallback done);
+
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response, StatusCallback done);
 
   WorkerEnv* env();
+
+ private:
+  RecentRequestIds recv_tensor_recent_request_ids_;
 };
 
 std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env);
@@ -48,4 +60,4 @@ std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_

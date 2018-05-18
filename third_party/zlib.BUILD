@@ -32,9 +32,13 @@ cc_library(
         "zutil.h",
     ],
     hdrs = ["zlib.h"],
-    copts = [
-        "-Wno-shift-negative-value",
-        "-Wno-implicit-function-declaration",
-    ],
+    copts = select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow:windows_msvc": [],
+        "//conditions:default": [
+            "-Wno-shift-negative-value",
+            "-DZ_HAVE_UNISTD_H",
+        ],
+    }),
     includes = ["."],
 )

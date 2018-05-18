@@ -28,7 +28,7 @@ Computation::Computation(ServiceInterface* parent,
     : handle_(handle), parent_(parent) {}
 
 Computation::Computation(Computation&& computation)
-    : handle_(computation.handle_), parent_(computation.parent_) {
+    : handle_(std::move(computation.handle_)), parent_(computation.parent_) {
   computation.ResetWithoutFreeing();
 }
 
@@ -62,6 +62,16 @@ Computation& Computation::operator=(Computation&& computation) {
 void Computation::ResetWithoutFreeing() {
   handle_.Clear();
   parent_ = nullptr;
+}
+
+StatusOr<ProgramShape> Computation::GetProgramShape() const {
+  GetComputationShapeRequest request;
+  *request.mutable_computation() = handle_;
+  GetComputationShapeResponse response;
+
+  TF_RETURN_IF_ERROR(parent_->GetComputationShape(&request, &response));
+
+  return std::move(*response.mutable_program_shape());
 }
 
 }  // namespace xla

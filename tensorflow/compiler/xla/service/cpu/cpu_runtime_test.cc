@@ -12,21 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#define EIGEN_USE_THREADS
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
 #include <memory>
 #include <string>
-
-#define EIGEN_USE_THREADS
+#include <tuple>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -75,14 +77,8 @@ void CheckMatrixMultiply(const Array2D<float>& a, const Array2D<float>& b,
 std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
                                                     const Array2D<float>& b,
                                                     bool transpose_lhs,
-                                                    bool transpose_rhs) {
-  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                      2);
-  tensorflow::EigenThreadPoolWrapper tp(&pool);
-  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
-  ExecutableRunOptions run_options;
-  run_options.set_intra_op_thread_pool(&device);
-
+                                                    bool transpose_rhs,
+                                                    bool single_threaded) {
   CHECK_EQ(a.width(), b.height());
   int64 m = a.height();
   int64 n = b.width();
@@ -98,41 +94,148 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
   // Since we're going to transpose c before returning it. Swap the order of the
   // dimension sizes to ensure the returned array is properly dimensioned.
   auto c_transpose = MakeUnique<Array2D<float>>(n, m);
-  __xla_cpu_runtime_EigenMatMulF32(&run_options, c_transpose->data(),
-                                   a_transpose->data(), b_transpose->data(), m,
-                                   n, k, transpose_lhs, transpose_rhs);
+  if (single_threaded) {
+    __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
+        nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),
+        m, n, k, transpose_lhs, transpose_rhs);
+  } else {
+    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
+                                        2);
+    tensorflow::EigenThreadPoolWrapper tp(&pool);
+    Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+    ExecutableRunOptions run_options;
+    run_options.set_intra_op_thread_pool(&device);
+
+    __xla_cpu_runtime_EigenMatMulF32(&run_options, c_transpose->data(),
+                                     a_transpose->data(), b_transpose->data(),
+                                     m, n, k, transpose_lhs, transpose_rhs);
+  }
   return MaybeTransposeArray2D(*c_transpose, true);
 }
 
-TEST_F(CpuRuntimeTest, SmallEigenMatmul) {
-  Array2D<float> a({{1.0f, 2.0f}, {3.0f, 4.0f}});
-  Array2D<float> b({{5.0f, -1.0f, 3.0f}, {2.0f, 6.0f, 4.0f}});
+struct MatMulShape {
+  int64 m;
+  int64 k;
+  int64 n;
+};
 
-  for (bool transpose_lhs : {false, true}) {
-    for (bool transpose_rhs : {false, true}) {
-      auto c = EigenMatrixMultiply(a, b, transpose_lhs, transpose_rhs);
+MatMulShape MatMulShapes[] = {
+    MatMulShape{2, 2, 3},     MatMulShape{256, 512, 1024},
+    MatMulShape{128, 128, 1}, MatMulShape{1, 128, 128},
+    MatMulShape{1, 32, 128},  MatMulShape{1, 32, 16},
+    MatMulShape{32, 16, 1},   MatMulShape{32, 128, 1},
+};
 
-      LOG(INFO) << "a = " << a.ToString();
-      LOG(INFO) << "b = " << b.ToString();
-      LOG(INFO) << "c = " << c->ToString();
+// This takes 4 parameters:
+// * shape of the matmul
+// * transpose_lhs
+// * transpose_rhs
+// * single_threaded
+using MatMulTestParam = std::tuple<MatMulShape, bool, bool, bool>;
 
-      CheckMatrixMultiply(a, b, *c);
-    }
+class EigenMatMulTest : public CpuRuntimeTest,
+                        public ::testing::WithParamInterface<MatMulTestParam> {
+ public:
+  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
+    MatMulShape shape = std::get<0>(info.param);
+    bool transpose_lhs = std::get<1>(info.param);
+    bool transpose_rhs = std::get<2>(info.param);
+    bool single_threaded = std::get<3>(info.param);
+
+    return tensorflow::strings::Printf(
+        "EigenMatMul_%lld_%lld_%lld_%s%s%s_threaded", shape.m, shape.k, shape.n,
+        transpose_lhs ? "Tlhs_" : "", transpose_rhs ? "Trhs_" : "",
+        single_threaded ? "single" : "multi");
   }
+};
+
+TEST_P(EigenMatMulTest, DoIt) {
+  MatMulShape shape = std::get<0>(GetParam());
+  bool transpose_lhs = std::get<1>(GetParam());
+  bool transpose_rhs = std::get<2>(GetParam());
+  bool single_threaded = std::get<3>(GetParam());
+
+  auto a = MakeLinspaceArray2D(0.0, 1.0, shape.m, shape.k);
+  auto b = MakeLinspaceArray2D(-2.0, 2.0, shape.k, shape.n);
+  auto c = EigenMatrixMultiply(*a, *b, transpose_lhs, transpose_rhs,
+                               single_threaded);
+  CheckMatrixMultiply(*a, *b, *c);
 }
 
-TEST_F(CpuRuntimeTest, LargeEigenMatmul) {
-  auto a = MakeLinspaceArray2D(0.0, 1.0, 256, 512);
-  auto b = MakeLinspaceArray2D(-2.0, 2.0, 512, 1024);
+INSTANTIATE_TEST_CASE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
+                        ::testing::Combine(::testing::ValuesIn(MatMulShapes),
+                                           ::testing::Bool(), ::testing::Bool(),
+                                           ::testing::Bool()),
+                        EigenMatMulTest::Name);
 
-  for (bool transpose_lhs : {false, true}) {
-    for (bool transpose_rhs : {false, true}) {
-      auto c = EigenMatrixMultiply(*a, *b, transpose_lhs, transpose_rhs);
+#ifdef INTEL_MKL
+class MKLMatMulTest : public CpuRuntimeTest,
+                      public ::testing::WithParamInterface<MatMulTestParam> {
+ public:
+  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
+    MatMulShape shape = std::get<0>(info.param);
+    bool transpose_lhs = std::get<1>(info.param);
+    bool transpose_rhs = std::get<2>(info.param);
+    bool single_threaded = std::get<3>(info.param);
 
-      CheckMatrixMultiply(*a, *b, *c);
-    }
+    return tensorflow::strings::Printf(
+        "MKLMatMul_%lld_%lld_%lld_%s%s%s_threaded", shape.m, shape.k, shape.n,
+        transpose_lhs ? "Tlhs_" : "", transpose_rhs ? "Trhs_" : "",
+        single_threaded ? "single" : "multi");
   }
+};
+
+std::unique_ptr<Array2D<float>> MKLMatrixMultiply(const Array2D<float>& a,
+                                                  const Array2D<float>& b,
+                                                  bool transpose_lhs,
+                                                  bool transpose_rhs,
+                                                  bool single_threaded) {
+  CHECK_EQ(a.width(), b.height());
+  int64 m = a.height();
+  int64 n = b.width();
+  int64 k = a.width();
+
+  // The MKL matmul runtime function expects the matrix to be in column major
+  // order and array2d is in row-major order. Create transposes of a and b. The
+  // 'data' buffer in the transposed array is the original array in column major
+  // order.
+  auto a_transpose = MaybeTransposeArray2D(a, !transpose_lhs);
+  auto b_transpose = MaybeTransposeArray2D(b, !transpose_rhs);
+
+  // Since we're going to transpose c before returning it, swap the order of the
+  // dimension sizes to ensure the returned array is properly dimensioned.
+  auto c_transpose = MakeUnique<Array2D<float>>(n, m);
+  if (single_threaded) {
+    __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
+        nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),
+        m, n, k, transpose_lhs, transpose_rhs);
+  } else {
+    __xla_cpu_runtime_MKLMatMulF32(nullptr, c_transpose->data(),
+                                   a_transpose->data(), b_transpose->data(), m,
+                                   n, k, transpose_lhs, transpose_rhs);
+  }
+  return MaybeTransposeArray2D(*c_transpose, true);
 }
+
+TEST_P(MKLMatMulTest, DoIt) {
+  MatMulShape shape = std::get<0>(GetParam());
+  bool transpose_lhs = std::get<1>(GetParam());
+  bool transpose_rhs = std::get<2>(GetParam());
+  bool single_threaded = std::get<3>(GetParam());
+
+  auto a = MakeLinspaceArray2D(0.0, 1.0, shape.m, shape.k);
+  auto b = MakeLinspaceArray2D(-2.0, 2.0, shape.k, shape.n);
+  auto c =
+      MKLMatrixMultiply(*a, *b, transpose_lhs, transpose_rhs, single_threaded);
+  CheckMatrixMultiply(*a, *b, *c);
+}
+
+INSTANTIATE_TEST_CASE_P(MKLMatMulTestInstantiaion, MKLMatMulTest,
+                        ::testing::Combine(::testing::ValuesIn(MatMulShapes),
+                                           ::testing::Bool(), ::testing::Bool(),
+                                           ::testing::Bool()),
+                        MKLMatMulTest::Name);
+#endif  // INTEL_MKL
 
 }  // namespace
 }  // namespace xla

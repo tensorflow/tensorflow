@@ -31,11 +31,10 @@ namespace xla {
 namespace {
 
 TEST(LiteralTestUtilTest, ComparesEqualTuplesEqual) {
-  std::unique_ptr<Literal> literal = LiteralUtil::MakeTuple({
-      LiteralUtil::CreateR0<int32>(42).get(),
-      LiteralUtil::CreateR0<int32>(64).get(),
+  std::unique_ptr<Literal> literal = Literal::MakeTuple({
+      Literal::CreateR0<int32>(42).get(), Literal::CreateR0<int32>(64).get(),
   });
-  LiteralTestUtil::ExpectEqual(*literal, *literal);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *literal));
 }
 
 TEST(LiteralTestUtilTest, ComparesUnequalTuplesUnequal) {
@@ -43,13 +42,11 @@ TEST(LiteralTestUtilTest, ComparesUnequalTuplesUnequal) {
   // un-fail an assertion failure. The CHECK-failure is death, so we can make a
   // death assertion.
   auto unequal_things_are_equal = [] {
-    std::unique_ptr<Literal> lhs = LiteralUtil::MakeTuple({
-        LiteralUtil::CreateR0<int32>(42).get(),
-        LiteralUtil::CreateR0<int32>(64).get(),
+    std::unique_ptr<Literal> lhs = Literal::MakeTuple({
+        Literal::CreateR0<int32>(42).get(), Literal::CreateR0<int32>(64).get(),
     });
-    std::unique_ptr<Literal> rhs = LiteralUtil::MakeTuple({
-        LiteralUtil::CreateR0<int32>(64).get(),
-        LiteralUtil::CreateR0<int32>(42).get(),
+    std::unique_ptr<Literal> rhs = Literal::MakeTuple({
+        Literal::CreateR0<int32>(64).get(), Literal::CreateR0<int32>(42).get(),
     });
     CHECK(LiteralTestUtil::Equal(*lhs, *rhs)) << "LHS and RHS are unequal";
   };
@@ -58,8 +55,8 @@ TEST(LiteralTestUtilTest, ComparesUnequalTuplesUnequal) {
 
 TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   auto dummy_lambda = [] {
-    auto two = LiteralUtil::CreateR0<float>(2);
-    auto four = LiteralUtil::CreateR0<float>(4);
+    auto two = Literal::CreateR0<float>(2);
+    auto four = Literal::CreateR0<float>(4);
     ErrorSpec error(0.001);
     CHECK(LiteralTestUtil::Near(*two, *four, error)) << "two is not near four";
   };
@@ -83,19 +80,54 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   LOG(INFO) << "results: [" << tensorflow::str_util::Join(results, ", ") << "]";
   EXPECT_EQ(3, results.size());
   for (const string& result : results) {
-    Literal literal;
+    LiteralProto literal_proto;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
-                                            &literal));
+                                            &literal_proto));
+    std::unique_ptr<Literal> literal =
+        Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
     if (result.find("expected") != string::npos) {
-      EXPECT_EQ("2", LiteralUtil::ToString(literal));
+      EXPECT_EQ("2", literal->ToString());
     } else if (result.find("actual") != string::npos) {
-      EXPECT_EQ("4", LiteralUtil::ToString(literal));
-    } else if (result.find("miscompares") != string::npos) {
-      EXPECT_EQ("true", LiteralUtil::ToString(literal));
+      EXPECT_EQ("4", literal->ToString());
+    } else if (result.find("mismatches") != string::npos) {
+      EXPECT_EQ("true", literal->ToString());
     } else {
       FAIL() << "unknown file in temporary directory: " << result;
     }
   }
+}
+
+TEST(LiteralTestUtilTest, NotEqualHasValuesInMessage) {
+  auto expected = Literal::CreateR1<int32>({1, 2, 3});
+  auto actual = Literal::CreateR1<int32>({4, 5, 6});
+  ::testing::AssertionResult result =
+      LiteralTestUtil::Equal(*expected, *actual);
+  EXPECT_THAT(result.message(), ::testing::HasSubstr("expected: {1, 2, 3}"));
+  EXPECT_THAT(result.message(), ::testing::HasSubstr("actual:   {4, 5, 6}"));
+}
+
+TEST(LiteralTestUtilTest, NearComparatorR1) {
+  auto a =
+      Literal::CreateR1<float>({0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
+  auto b =
+      Literal::CreateR1<float>({0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
+  EXPECT_TRUE(LiteralTestUtil::Near(*a, *b, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, NearComparatorR1Nan) {
+  auto a =
+      Literal::CreateR1<float>({0.0, 0.1, 0.2, 0.3, NAN, 0.5, 0.6, 0.7, 0.8});
+  auto b =
+      Literal::CreateR1<float>({0.0, 0.1, 0.2, 0.3, NAN, 0.5, 0.6, 0.7, 0.8});
+  EXPECT_TRUE(LiteralTestUtil::Near(*a, *b, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtil, NearComparatorDifferentLengths) {
+  auto a =
+      Literal::CreateR1<float>({0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
+  auto b = Literal::CreateR1<float>({0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7});
+  EXPECT_FALSE(LiteralTestUtil::Near(*a, *b, ErrorSpec{0.0001}));
+  EXPECT_FALSE(LiteralTestUtil::Near(*b, *a, ErrorSpec{0.0001}));
 }
 
 }  // namespace

@@ -30,64 +30,99 @@ from logging import ERROR
 from logging import FATAL
 from logging import INFO
 from logging import WARN
+import threading
 
 import six
 
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
-# Determine whether we are in an interactive environment
-_interactive = False
-try:
-  # This is only defined in interactive shells
-  if _sys.ps1: _interactive = True
-except AttributeError:
-  # Even now, we may be in an interactive shell with `python -i`.
-  _interactive = _sys.flags.interactive
-
-# Scope the tensorflow logger to not conflict with users' loggers
-_logger = _logging.getLogger('tensorflow')
-
-# If we are in an interactive environment (like jupyter), set loglevel to info
-# and pipe the output to stdout
-if _interactive:
-  _logger.setLevel(INFO)
-  _logging_target = _sys.stdout
-else:
-  _logging_target = _sys.stderr
-
-# Add the output handler
-_handler = _logging.StreamHandler(_logging_target)
-_handler.setFormatter(_logging.Formatter(_logging.BASIC_FORMAT, None))
-_logger.addHandler(_handler)
+# Don't use this directly. Use _get_logger() instead.
+_logger = None
+_logger_lock = threading.Lock()
 
 
+def _get_logger():
+  global _logger
+
+  # Use double-checked locking to avoid taking lock unnecessarily.
+  if _logger:
+    return _logger
+
+  _logger_lock.acquire()
+
+  try:
+    if _logger:
+      return _logger
+
+    # Scope the TensorFlow logger to not conflict with users' loggers.
+    logger = _logging.getLogger('tensorflow')
+
+    # Don't further configure the TensorFlow logger if the root logger is
+    # already configured. This prevents double logging in those cases.
+    if not _logging.getLogger().handlers:
+      # Determine whether we are in an interactive environment
+      _interactive = False
+      try:
+        # This is only defined in interactive shells.
+        if _sys.ps1: _interactive = True
+      except AttributeError:
+        # Even now, we may be in an interactive shell with `python -i`.
+        _interactive = _sys.flags.interactive
+
+      # If we are in an interactive environment (like Jupyter), set loglevel
+      # to INFO and pipe the output to stdout.
+      if _interactive:
+        logger.setLevel(INFO)
+        _logging_target = _sys.stdout
+      else:
+        _logging_target = _sys.stderr
+
+      # Add the output handler.
+      _handler = _logging.StreamHandler(_logging_target)
+      _handler.setFormatter(_logging.Formatter(_logging.BASIC_FORMAT, None))
+      logger.addHandler(_handler)
+
+    _logger = logger
+    return _logger
+
+  finally:
+    _logger_lock.release()
+
+
+@tf_export('logging.log')
 def log(level, msg, *args, **kwargs):
-  _logger.log(level, msg, *args, **kwargs)
+  _get_logger().log(level, msg, *args, **kwargs)
 
 
+@tf_export('logging.debug')
 def debug(msg, *args, **kwargs):
-  _logger.debug(msg, *args, **kwargs)
+  _get_logger().debug(msg, *args, **kwargs)
 
 
+@tf_export('logging.error')
 def error(msg, *args, **kwargs):
-  _logger.error(msg, *args, **kwargs)
+  _get_logger().error(msg, *args, **kwargs)
 
 
+@tf_export('logging.fatal')
 def fatal(msg, *args, **kwargs):
-  _logger.fatal(msg, *args, **kwargs)
+  _get_logger().fatal(msg, *args, **kwargs)
 
 
+@tf_export('logging.info')
 def info(msg, *args, **kwargs):
-  _logger.info(msg, *args, **kwargs)
+  _get_logger().info(msg, *args, **kwargs)
 
 
+@tf_export('logging.warn')
 def warn(msg, *args, **kwargs):
-  _logger.warn(msg, *args, **kwargs)
+  _get_logger().warn(msg, *args, **kwargs)
 
 
+@tf_export('logging.warning')
 def warning(msg, *args, **kwargs):
-  _logger.warning(msg, *args, **kwargs)
+  _get_logger().warning(msg, *args, **kwargs)
 
 
 _level_names = {
@@ -108,17 +143,20 @@ _log_prefix = None  # later set to google2_log_prefix
 _log_counter_per_token = {}
 
 
+@tf_export('logging.TaskLevelStatusMessage')
 def TaskLevelStatusMessage(msg):
   error(msg)
 
 
+@tf_export('logging.flush')
 def flush():
   raise NotImplementedError()
 
 
 # Code below is taken from pyglib/logging
+@tf_export('logging.vlog')
 def vlog(level, msg, *args, **kwargs):
-  _logger.log(level, msg, *args, **kwargs)
+  _get_logger().log(level, msg, *args, **kwargs)
 
 
 def _GetNextLogCountPerToken(token):
@@ -136,6 +174,7 @@ def _GetNextLogCountPerToken(token):
   return _log_counter_per_token[token]
 
 
+@tf_export('logging.log_every_n')
 def log_every_n(level, msg, n, *args):
   """Log 'msg % args' at level 'level' once per 'n' times.
 
@@ -152,6 +191,7 @@ def log_every_n(level, msg, n, *args):
   log_if(level, msg, not (count % n), *args)
 
 
+@tf_export('logging.log_first_n')
 def log_first_n(level, msg, n, *args):  # pylint: disable=g-bad-name
   """Log 'msg % args' at level 'level' only first 'n' times.
 
@@ -167,6 +207,7 @@ def log_first_n(level, msg, n, *args):  # pylint: disable=g-bad-name
   log_if(level, msg, count < n, *args)
 
 
+@tf_export('logging.log_if')
 def log_if(level, msg, condition, *args):
   """Log 'msg % args' at level 'level' only if condition is fulfilled."""
   if condition:
@@ -223,14 +264,16 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
   return s
 
 
+@tf_export('logging.get_verbosity')
 def get_verbosity():
   """Return how much logging output will be produced."""
-  return _logger.getEffectiveLevel()
+  return _get_logger().getEffectiveLevel()
 
 
+@tf_export('logging.set_verbosity')
 def set_verbosity(v):
   """Sets the threshold for what messages will be logged."""
-  _logger.setLevel(v)
+  _get_logger().setLevel(v)
 
 
 def _get_thread_id():
@@ -243,29 +286,8 @@ def _get_thread_id():
 
 _log_prefix = google2_log_prefix
 
-# Controls which methods from pyglib.logging are available within the project.
-# Do not add methods here without also adding to platform/tf_logging.py.
-_allowed_symbols = [
-    'DEBUG',
-    'ERROR',
-    'FATAL',
-    'INFO',
-    'TaskLevelStatusMessage',
-    'WARN',
-    'debug',
-    'error',
-    'fatal',
-    'flush',
-    'get_verbosity',
-    'info',
-    'log',
-    'log_if',
-    'log_every_n',
-    'log_first_n',
-    'set_verbosity',
-    'vlog',
-    'warn',
-    'warning',
-]
-
-remove_undocumented(__name__, _allowed_symbols)
+tf_export('logging.DEBUG').export_constant(__name__, 'DEBUG')
+tf_export('logging.ERROR').export_constant(__name__, 'ERROR')
+tf_export('logging.FATAL').export_constant(__name__, 'FATAL')
+tf_export('logging.INFO').export_constant(__name__, 'INFO')
+tf_export('logging.WARN').export_constant(__name__, 'WARN')

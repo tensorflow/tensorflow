@@ -29,6 +29,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -42,6 +43,7 @@ dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
 `self.batch_shape() + self.event_shape()`."""
 
 
+@tf_export("distributions.Dirichlet")
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -152,8 +154,8 @@ class Dirichlet(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[concentration]) as name:
       self._concentration = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration, name="concentration"),
           validate_args)
@@ -196,7 +198,7 @@ class Dirichlet(distribution.Distribution):
         alpha=self.concentration,
         dtype=self.dtype,
         seed=seed)
-    return gamma_sample / math_ops.reduce_sum(gamma_sample, -1, keep_dims=True)
+    return gamma_sample / math_ops.reduce_sum(gamma_sample, -1, keepdims=True)
 
   @distribution_util.AppendDocstring(_dirichlet_sample_note)
   def _log_prob(self, x):

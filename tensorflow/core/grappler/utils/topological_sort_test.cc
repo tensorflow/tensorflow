@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -51,8 +52,19 @@ TEST_F(TopologicalSortTest, NoLoop) {
   *graph.add_node() = CreateNode("5", {});
   *graph.add_node() = CreateNode("4", {});
 
-  TopologicalSort(&graph);
-  std::vector<string> order = {"5", "4", "2", "0", "3", "1"};
+  std::unordered_map<const NodeDef*, int> topo_order;
+  TF_EXPECT_OK(ComputeTopologicalOrder(graph, &topo_order, nullptr));
+
+  const std::vector<string> order = {"5", "4", "2", "0", "3", "1"};
+  for (const auto& topo : topo_order) {
+    const string& node_name = topo.first->name();
+    const int topo_order = topo.second;
+    std::cout << "Node " << node_name << " at order " << topo_order
+              << std::endl;
+    EXPECT_EQ(node_name, order[topo_order]);
+  }
+
+  TF_EXPECT_OK(TopologicalSort(&graph));
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
   }
@@ -67,8 +79,17 @@ TEST_F(TopologicalSortTest, WithLoop) {
   *graph.add_node() = CreateNode("5", "NextIteration", {"4"});
   *graph.add_node() = CreateNode("1", {});
 
-  TopologicalSort(&graph);
-  std::vector<string> order = {"1", "2", "3", "4", "5"};
+  std::unordered_map<const NodeDef*, int> topo_order;
+  TF_EXPECT_OK(ComputeTopologicalOrder(graph, &topo_order, nullptr));
+
+  const std::vector<string> order = {"1", "2", "3", "4", "5"};
+  for (const auto& topo : topo_order) {
+    const string& node_name = topo.first->name();
+    const int topo_order = topo.second;
+    EXPECT_EQ(node_name, order[topo_order]);
+  }
+
+  TF_EXPECT_OK(TopologicalSort(&graph));
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
   }
@@ -82,11 +103,74 @@ TEST_F(TopologicalSortTest, WithIllegalLoop) {
   *graph.add_node() = CreateNode("3", {"2"});
   *graph.add_node() = CreateNode("1", {});
 
-  TopologicalSort(&graph);
+  EXPECT_FALSE(TopologicalSort(&graph).ok());
   std::vector<string> order = {"2", "3", "1"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
   }
+}
+
+TEST_F(TopologicalSortTest, DuplicatedInputs) {
+  GraphDef graph;
+  *graph.add_node() = CreateNode("2", {"1", "1"});
+  *graph.add_node() = CreateNode("1", {});
+
+  TF_EXPECT_OK(TopologicalSort(&graph));
+  std::vector<string> order = {"1", "2"};
+  for (int i = 0; i < order.size(); i++) {
+    EXPECT_EQ(graph.node(i).name(), order[i]);
+  }
+}
+
+TEST_F(TopologicalSortTest, Idempotent) {
+  GraphDef graph;
+  *graph.add_node() = CreateNode("1", {});
+  *graph.add_node() = CreateNode("2", {});
+  *graph.add_node() = CreateNode("3", {"1", "2"});
+  *graph.add_node() = CreateNode("4", {"1", "3"});
+  *graph.add_node() = CreateNode("5", {"2", "3"});
+
+  TF_EXPECT_OK(TopologicalSort(&graph));
+  std::vector<string> order = {"1", "2", "3", "4", "5"};
+  for (int i = 0; i < order.size(); i++) {
+    EXPECT_EQ(graph.node(i).name(), order[i]);
+  }
+
+  // Run topo sort again to verify that it is idenpotent.
+  TF_EXPECT_OK(TopologicalSort(&graph));
+  for (int i = 0; i < order.size(); i++) {
+    EXPECT_EQ(graph.node(i).name(), order[i]);
+  }
+}
+
+TEST_F(TopologicalSortTest, ExtraDependencies) {
+  GraphDef graph;
+  *graph.add_node() = CreateNode("2", {"5"});
+  *graph.add_node() = CreateNode("0", {"5", "4"});
+  *graph.add_node() = CreateNode("1", {"4", "3"});
+  *graph.add_node() = CreateNode("3", {"2"});
+  *graph.add_node() = CreateNode("5", {});
+  *graph.add_node() = CreateNode("4", {});
+
+  // Add an edge from 4 to 5.
+  std::vector<std::pair<const NodeDef*, const NodeDef*>> extra_dependencies;
+  extra_dependencies.emplace_back(&graph.node(5), &graph.node(4));
+
+  std::unordered_map<const NodeDef*, int> topo_order;
+  TF_EXPECT_OK(
+      ComputeTopologicalOrder(graph, &topo_order, &extra_dependencies));
+
+  const std::vector<string> order = {"4", "5", "2", "0", "3", "1"};
+  for (const auto& topo : topo_order) {
+    const string& node_name = topo.first->name();
+    const int topo_order = topo.second;
+    EXPECT_EQ(node_name, order[topo_order]);
+  }
+
+  // Add an edge from 0 to 4. This will create a loop
+  extra_dependencies.emplace_back(&graph.node(1), &graph.node(5));
+  EXPECT_FALSE(
+      ComputeTopologicalOrder(graph, &topo_order, &extra_dependencies).ok());
 }
 
 }  // namespace

@@ -21,14 +21,17 @@ from __future__ import print_function
 from tensorflow.python.estimator import model_fn
 
 
-# TODO(pucker): Merge with model_fn.MetricKeys once we've worked out out naming
-# conventions.
 class MetricKeys(object):
   """Metric key strings."""
-  LOSS = model_fn.MetricKeys.LOSS
-  LOSS_MEAN = model_fn.MetricKeys.AVERAGE_LOSS
+  LOSS = model_fn.LOSS_METRIC_KEY
+  LOSS_MEAN = model_fn.AVERAGE_LOSS_METRIC_KEY
+  LOSS_REGULARIZATION = 'regularization_loss'
 
   ACCURACY = 'accuracy'
+  PRECISION = 'precision'
+  RECALL = 'recall'
+  # This is the best the model could do by always predicting one class.
+  # Should be < ACCURACY in a trained model.
   ACCURACY_BASELINE = 'accuracy_baseline'
   AUC = 'auc'
   AUC_PR = 'auc_precision_recall'
@@ -39,3 +42,8 @@ class MetricKeys(object):
   ACCURACY_AT_THRESHOLD = 'accuracy/positive_threshold_%g'
   PRECISION_AT_THRESHOLD = 'precision/positive_threshold_%g'
   RECALL_AT_THRESHOLD = 'recall/positive_threshold_%g'
+
+  # The following require a class id applied.
+  PROBABILITY_MEAN_AT_CLASS = 'probability_mean/class%d'
+  AUC_AT_CLASS = 'auc/class%d'
+  AUC_PR_AT_CLASS = 'auc_precision_recall/class%d'

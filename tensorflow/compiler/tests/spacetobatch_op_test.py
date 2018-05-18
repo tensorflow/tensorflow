@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
@@ -75,11 +76,11 @@ class SpaceToBatchTest(XLATestCase):
       for dtype in self.float_types:
         # outputs = space_to_batch(inputs)
         placeholder = array_ops.placeholder(dtype)
-        x_tf = gen_array_ops._space_to_batch(
+        x_tf = gen_array_ops.space_to_batch(
             placeholder, paddings, block_size=block_size)
         self.assertAllEqual(sess.run(x_tf, {placeholder: inputs}), outputs)
         # inputs = batch_to_space(outputs)
-        x_tf = gen_array_ops._batch_to_space(
+        x_tf = gen_array_ops.batch_to_space(
             placeholder, paddings, block_size=block_size)
         self.assertAllEqual(sess.run(x_tf, {placeholder: outputs}), inputs)
 
@@ -156,14 +157,32 @@ class SpaceToBatchNDTest(XLATestCase):
     paddings = np.array(paddings).reshape((len(block_shape), 2))
     with self.test_session() as sess, self.test_scope():
       for dtype in self.float_types:
+        # TODO(b/68813416): Skip bfloat16's as the input type for direct is
+        # float32 and results in a mismatch, while making testDirect provide the
+        # correctly typed input results in 'no fill-function for data-type'
+        # error.
+        if dtype == dtypes.bfloat16.as_numpy_dtype:
+          continue
+        if dtype == np.float16:
+          actual_inputs = np.array(inputs).astype(dtype)
+          actual_paddings = np.array(paddings).astype(dtype)
+          expected_outputs = np.array(outputs).astype(dtype)
+        else:
+          actual_inputs = inputs
+          actual_paddings = paddings
+          expected_outputs = outputs
         placeholder = array_ops.placeholder(dtype)
         # outputs = space_to_batch(inputs)
-        x_tf = array_ops.space_to_batch_nd(placeholder, block_shape, paddings)
-        self.assertAllEqual(sess.run(x_tf, {placeholder: inputs}), outputs)
+        x_tf = array_ops.space_to_batch_nd(placeholder, block_shape,
+                                           actual_paddings)
+        self.assertAllEqual(
+            sess.run(x_tf, {placeholder: actual_inputs}), expected_outputs)
         # inputs = batch_to_space(outputs)
         placeholder = array_ops.placeholder(dtype)
-        x_tf = array_ops.batch_to_space_nd(placeholder, block_shape, paddings)
-        self.assertAllEqual(sess.run(x_tf, {placeholder: outputs}), inputs)
+        x_tf = array_ops.batch_to_space_nd(placeholder, block_shape,
+                                           actual_paddings)
+        self.assertAllEqual(
+            sess.run(x_tf, {placeholder: expected_outputs}), actual_inputs)
 
   def _testDirect(self, input_shape, block_shape, paddings):
     inputs = np.arange(np.prod(input_shape), dtype=np.float32)
@@ -228,34 +247,40 @@ class SpaceToBatchNDTest(XLATestCase):
         outputs=[[[0, 0], [2, 21]], [[0, 0], [5, 51]], [[1, 11], [3, 31]],
                  [[4, 41], [6, 61]]])
 
-  def testDirect(self):
+  def testDirect0(self):
     # Test with zero-size remaining dimension.
     self._testDirect(
         input_shape=[3, 1, 2, 0], block_shape=[3], paddings=[[0, 2]])
 
+  def testDirect1(self):
     # Test with zero-size blocked dimension.
     self._testDirect(
         input_shape=[3, 0, 2, 5], block_shape=[3], paddings=[[0, 0]])
 
+  def testDirect2(self):
     # Test with padding up from zero size.
     self._testDirect(
         input_shape=[3, 0, 2, 5], block_shape=[3], paddings=[[1, 2]])
 
+  def testDirect3(self):
     self._testDirect(
         input_shape=[3, 3, 4, 5, 2],
         block_shape=[3, 4, 2],
         paddings=[[1, 2], [0, 0], [3, 0]])
 
+  def testDirect4(self):
     self._testDirect(
         input_shape=[3, 3, 4, 5, 2],
         block_shape=[3, 4, 2, 2],
         paddings=[[1, 2], [0, 0], [3, 0], [0, 0]])
 
+  def testDirect5(self):
     self._testDirect(
         input_shape=[3, 2, 2, 3, 4, 5, 2, 5],
         block_shape=[1, 1, 3, 4, 2, 2],
         paddings=[[0, 0], [0, 0], [1, 2], [0, 0], [3, 0], [0, 0]])
 
+  def testDirect6(self):
     self._testDirect(
         input_shape=[3, 2, 2, 3, 4, 5, 2, 5],
         block_shape=[1, 1, 3, 4, 2, 2, 1],

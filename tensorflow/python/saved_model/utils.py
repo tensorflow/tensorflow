@@ -22,8 +22,5 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.saved_model.utils_impl import build_tensor_info
+from tensorflow.python.saved_model.utils_impl import get_tensor_from_tensor_info
 # pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = ["build_tensor_info",]
-remove_undocumented(__name__, _allowed_symbols)

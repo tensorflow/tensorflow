@@ -97,6 +97,13 @@ class DataColumn(object):
                                                            self.size)
 
 
+def GetColumnName(column_key, col_num):
+  if isinstance(column_key, str):
+    return column_key
+  else:
+    return getattr(column_key, 'column_name', str(col_num))
+
+
 def ParseDataTensorOrDict(data):
   """Return a tensor to use for input data.
 
@@ -119,14 +126,13 @@ def ParseDataTensorOrDict(data):
     for k in sorted(data.keys()):
       is_sparse = isinstance(data[k], sparse_tensor.SparseTensor)
       if is_sparse:
-        # TODO(gilberth): support sparse categorical.
-        if data[k].dtype == dtypes.string:
-          logging.info('TensorForest does not support sparse categorical. '
-                       'Transform it into a number with hash buckets.')
+        # TODO(gilberth): support sparse continuous.
+        if data[k].dtype == dtypes.float32:
+          logging.info('TensorForest does not support sparse continuous.')
           continue
         elif data_spec.sparse.size() == 0:
           col_spec = data_spec.sparse.add()
-          col_spec.original_type = DATA_FLOAT
+          col_spec.original_type = DATA_CATEGORICAL
           col_spec.name = 'all_sparse'
           col_spec.size = -1
         sparse_features.append(
@@ -136,7 +142,7 @@ def ParseDataTensorOrDict(data):
         col_spec = data_spec.dense.add()
 
         col_spec.original_type = DTYPE_TO_FTYPE[data[k].dtype]
-        col_spec.name = k
+        col_spec.name = GetColumnName(k, len(dense_features))
         # the second dimension of get_shape should always be known.
         shape = data[k].get_shape()
         if len(shape) == 1:

@@ -1,18 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 cc_library(
     name = "op_types",
@@ -20,6 +9,9 @@ cc_library(
     hdrs = ["op_types.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -30,18 +22,22 @@ cc_library(
     hdrs = ["utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -51,12 +47,39 @@ tf_cuda_library(
     name = "devices",
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
+    cuda_deps = [
+        "//tensorflow/core:gpu_init",
+        "//tensorflow/core:stream_executor",
+    ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
+    ],
+)
+
+cc_library(
+    name = "graph_view",
+    srcs = ["graph_view.cc"],
+    hdrs = ["graph_view.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_view_test",
+    srcs = ["graph_view_test.cc"],
+    deps = [
+        ":graph_view",
+        ":grappler_item",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
@@ -90,21 +113,41 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/inputs:utils",
+        "//tensorflow/core/grappler/optimizers:model_pruner",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grappler_item_test",
     srcs = ["grappler_item_test.cc"],
     deps = [
         ":grappler_item",
-        ":grappler_item_builder",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+tf_cc_test(
+    name = "grappler_item_builder_test",
+    srcs = ["grappler_item_builder_test.cc"],
+    deps = [
+        ":grappler_item_builder",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:grad_testutil",
+        "//tensorflow/cc:gradients",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )

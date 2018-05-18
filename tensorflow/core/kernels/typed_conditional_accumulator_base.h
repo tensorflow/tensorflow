@@ -22,7 +22,7 @@ namespace tensorflow {
 
 /*
  * TypedConditionalAccumulatorBase is a templated companion of
- * ConditionalAccumulatorBase which allows for subclassses to use different
+ * ConditionalAccumulatorBase which allows for subclasses to use different
  * types for the input gradients. (See ConditionalAccumulator and
  * SparseConditionalAccumulator.)
  *

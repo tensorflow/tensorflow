@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/audio_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -31,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using namespace ops;  // NOLINT(build/namespaces)
+namespace ops {
+namespace {
 
 TEST(DecodeWavOpTest, DecodeWavTest) {
   Scope root = Scope::NewRootScope();
@@ -83,4 +84,43 @@ TEST(DecodeWavOpTest, DecodeWavTest) {
   EXPECT_EQ(14099, sample_rate);
 }
 
+TEST(DecodeWavOpTest, DecodeWav_ShapeFn) {
+  ShapeInferenceTestOp op("DecodeWav");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
+
+  // audio shape is unknown when desired_{samples,channels} are default.
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeWav")
+                   .Input({"a", 0, DT_STRING})
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[]", "[?,?];[]");
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeWav")
+                   .Input({"a", 0, DT_STRING})
+                   .Attr("desired_samples", 42)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[]", "[42,?];[]");
+
+  // Negative sample value is rejected.
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeWav")
+                   .Input({"a", 0, DT_STRING})
+                   .Attr("desired_samples", -2)
+                   .Finalize(&op.node_def));
+  INFER_ERROR("samples must be non-negative, got -2", op, "[]");
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeWav")
+                   .Input({"a", 0, DT_STRING})
+                   .Attr("desired_channels", 2)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[]", "[?,2];[]");
+
+  // Negative channel value is rejected.
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeWav")
+                   .Input({"a", 0, DT_STRING})
+                   .Attr("desired_channels", -2)
+                   .Finalize(&op.node_def));
+  INFER_ERROR("channels must be non-negative, got -2", op, "[]");
+}
+
+}  // namespace
+}  // namespace ops
 }  // namespace tensorflow

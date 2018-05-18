@@ -28,6 +28,15 @@ namespace gpu {
 
 class StreamAssignmentTest : public HloTestBase {
  protected:
+  std::unique_ptr<HloModule> CreateNewModule() {
+    HloModuleConfig config;
+    auto debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_disable_multi_streaming(false);
+    config.set_debug_options(debug_options);
+    return MakeUnique<HloModule>("test_module", VersionedComputationHandle(),
+                                 config);
+  }
+
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
 };
@@ -41,14 +50,14 @@ TEST_F(StreamAssignmentTest, SequentialMatMul) {
   HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
   HloInstruction* dot1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, x, y));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, x, y));
   HloInstruction* dot2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, dot1, z));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, dot1, z));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(dot2));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(dot2));
 
-  std::unique_ptr<StreamAssignment> assignment = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
   EXPECT_EQ(assignment->StreamNumberForHlo(*dot1),
             assignment->StreamNumberForHlo(*dot2));
 }
@@ -60,16 +69,16 @@ TEST_F(StreamAssignmentTest, ConcurrentMatMul) {
   HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
   HloInstruction* dot1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, x, y));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, x, y));
   HloInstruction* dot2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, y, x));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, y, x));
   HloInstruction* add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, dot1, dot2));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(add));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(add));
 
-  std::unique_ptr<StreamAssignment> assignment = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
   EXPECT_NE(assignment->StreamNumberForHlo(*dot1),
             assignment->StreamNumberForHlo(*dot2));
 }
@@ -86,33 +95,34 @@ TEST_F(StreamAssignmentTest, LatticeMatMul) {
   //      d40      -- layer 4
   HloComputation::Builder builder("entry_computation");
   std::vector<HloInstruction*> params;
+  params.reserve(6);
   for (int i = 0; i < 6; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
         i, f32_2x2_, /*name=*/tensorflow::strings::Printf("param%d", i))));
   }
-  HloInstruction* d00 = builder.AddInstruction(HloInstruction::CreateBinary(
-      f32_2x2_, HloOpcode::kDot, params[2], params[3]));
+  HloInstruction* d00 = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(f32_2x2_, params[2], params[3]));
   HloInstruction* d10 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, params[1], d00));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, params[1], d00));
   HloInstruction* d11 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d00, params[4]));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, d00, params[4]));
   HloInstruction* d20 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, params[0], d10));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, params[0], d10));
   HloInstruction* d21 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d10, d11));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, d10, d11));
   HloInstruction* d22 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d11, params[5]));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, d11, params[5]));
   HloInstruction* d30 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d20, d21));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, d20, d21));
   HloInstruction* d31 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d21, d22));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, d21, d22));
   HloInstruction* d40 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kDot, d30, d31));
+      HloInstruction::CreateCanonicalDot(f32_2x2_, d30, d31));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build(d40));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build(d40));
 
-  std::unique_ptr<StreamAssignment> assignment = AssignStreams(module);
+  std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
   // The two dots on layer 1 are concurrent.
   EXPECT_NE(assignment->StreamNumberForHlo(*d10),
             assignment->StreamNumberForHlo(*d11));

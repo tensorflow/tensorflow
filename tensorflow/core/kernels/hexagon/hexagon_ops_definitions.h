@@ -13,26 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
 
 #include <unordered_map>
 
-#include "i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
-// HexagonOpsDefinitions provides ops definitons supported in hexagon library
+// HexagonOpsDefinitions provides ops definitions supported in hexagon library
 // TODO(satok): add a functionality to call functions in hexagon library
-class HexagonOpsDefinitions final : public IGraphTransferOpsDefinitions {
+class HexagonOpsDefinitions final : public IRemoteFusedGraphOpsDefinitions {
  public:
-  static const IGraphTransferOpsDefinitions& getInstance();
+  static const IRemoteFusedGraphOpsDefinitions& getInstance();
 
   int GetTotalOpsCount() const final;
   int GetOpIdFor(const string& op_type, const DataTypeVector& dt) const final;
-  GraphTransferInfo::Destination GetTransferDestination() const final;
 
  private:
   enum class SupportedOpType;
@@ -56,4 +55,4 @@ class HexagonOpsDefinitions final : public IGraphTransferOpsDefinitions {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H

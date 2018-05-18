@@ -383,6 +383,7 @@ def get_within_boundary_ops(ops,
 def get_forward_walk_ops(seed_ops,
                          inclusive=True,
                          within_ops=None,
+                         within_ops_fn=None,
                          stop_at_ts=(),
                          control_outputs=None):
   """Do a forward graph walk and return all the visited ops.
@@ -395,6 +396,9 @@ def get_forward_walk_ops(seed_ops,
     within_ops: an iterable of `tf.Operation` within which the search is
       restricted. If `within_ops` is `None`, the search is performed within
       the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     stop_at_ts: an iterable of tensors at which the graph walk stops.
     control_outputs: a `util.ControlOutputs` instance or None.
       If not `None`, it will be used while walking the graph forward.
@@ -423,7 +427,8 @@ def get_forward_walk_ops(seed_ops,
     seed_ops &= within_ops
 
   def is_within(op):
-    return within_ops is None or op in within_ops
+    return (within_ops is None or op in within_ops) and (
+        within_ops_fn is None or within_ops_fn(op))
 
   result = list(seed_ops)
   wave = set(seed_ops)
@@ -450,6 +455,7 @@ def get_forward_walk_ops(seed_ops,
 def get_backward_walk_ops(seed_ops,
                           inclusive=True,
                           within_ops=None,
+                          within_ops_fn=None,
                           stop_at_ts=(),
                           control_inputs=False):
   """Do a backward graph walk and return all the visited ops.
@@ -462,6 +468,9 @@ def get_backward_walk_ops(seed_ops,
     within_ops: an iterable of `tf.Operation` within which the search is
       restricted. If `within_ops` is `None`, the search is performed within
       the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     stop_at_ts: an iterable of tensors at which the graph walk stops.
     control_inputs: if True, control inputs will be used while moving backward.
   Returns:
@@ -488,7 +497,8 @@ def get_backward_walk_ops(seed_ops,
     seed_ops &= within_ops
 
   def is_within(op):
-    return within_ops is None or op in within_ops
+    return (within_ops is None or op in within_ops) and (
+        within_ops_fn is None or within_ops_fn(op))
 
   result = list(seed_ops)
   wave = set(seed_ops)
@@ -516,6 +526,7 @@ def get_walks_intersection_ops(forward_seed_ops,
                                forward_inclusive=True,
                                backward_inclusive=True,
                                within_ops=None,
+                               within_ops_fn=None,
                                control_inputs=False,
                                control_outputs=None,
                                control_ios=None):
@@ -535,6 +546,9 @@ def get_walks_intersection_ops(forward_seed_ops,
     within_ops: an iterable of tf.Operation within which the search is
       restricted. If within_ops is None, the search is performed within
       the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     control_inputs: A boolean indicating whether control inputs are enabled.
     control_outputs: An instance of util.ControlOutputs or None. If not None,
       control outputs are enabled.
@@ -555,11 +569,13 @@ def get_walks_intersection_ops(forward_seed_ops,
       forward_seed_ops,
       inclusive=forward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_outputs=control_outputs)
   backward_ops = get_backward_walk_ops(
       backward_seed_ops,
       inclusive=backward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_inputs=control_inputs)
   return [op for op in forward_ops if op in backward_ops]
 
@@ -569,6 +585,7 @@ def get_walks_union_ops(forward_seed_ops,
                         forward_inclusive=True,
                         backward_inclusive=True,
                         within_ops=None,
+                        within_ops_fn=None,
                         control_inputs=False,
                         control_outputs=None,
                         control_ios=None):
@@ -587,6 +604,9 @@ def get_walks_union_ops(forward_seed_ops,
       resulting set.
     within_ops: restrict the search within those operations. If within_ops is
       None, the search is done within the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     control_inputs: A boolean indicating whether control inputs are enabled.
     control_outputs: An instance of util.ControlOutputs or None. If not None,
       control outputs are enabled.
@@ -607,11 +627,13 @@ def get_walks_union_ops(forward_seed_ops,
       forward_seed_ops,
       inclusive=forward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_outputs=control_outputs)
   backward_ops = get_backward_walk_ops(
       backward_seed_ops,
       inclusive=backward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_inputs=control_inputs)
   return util.concatenate_unique(forward_ops, backward_ops)
 
@@ -620,7 +642,7 @@ def select_ops(*args, **kwargs):
   """Helper to select operations.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Operation`. `tf.Tensor` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
@@ -686,7 +708,7 @@ def select_ts(*args, **kwargs):
   """Helper to select tensors.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Tensor`. `tf.Operation` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
@@ -752,7 +774,7 @@ def select_ops_and_ts(*args, **kwargs):
   """Helper to select operations and tensors.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Operation` 3) (array of) tf.Tensor. Regular expressions matching
       tensors must start with the comment `"(?#ts)"`, for instance:
       `"(?#ts)^foo/.*"`.

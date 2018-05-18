@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "Invert"
+  summary: "Flips all bits elementwise."
+  description: <<END
+The result will have exactly those bits set, that are not set in `x`. The
+computation is performed on the underlying representation of x.
+END
+}

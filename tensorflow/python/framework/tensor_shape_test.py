@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -34,12 +35,20 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.Dimension(15),
                      dim + tensor_shape.Dimension(3))
     self.assertEqual(tensor_shape.Dimension(15), dim + 3)
+    self.assertEqual(tensor_shape.Dimension(15), 3 + dim)
+    self.assertEqual(tensor_shape.Dimension(9), dim - 3)
+    self.assertEqual(tensor_shape.Dimension(1), 13 - dim)
     self.assertEqual(tensor_shape.Dimension(24),
                      dim * tensor_shape.Dimension(2))
     self.assertEqual(tensor_shape.Dimension(24), dim * 2)
+    self.assertEqual(tensor_shape.Dimension(24), 2 * dim)
+    self.assertEqual([4] * 12, [4] * dim)
+    self.assertEqual(12 * [4], dim * [4])
+    self.assertEqual(tensor_shape.Dimension(24), 2 * dim)
     self.assertEqual(
         tensor_shape.Dimension(6), dim // tensor_shape.Dimension(2))
     self.assertEqual(tensor_shape.Dimension(6), dim // 2)
+    self.assertEqual(tensor_shape.Dimension(0), 2 // dim)
     self.assertEqual(tensor_shape.Dimension(12),
                      dim.merge_with(tensor_shape.Dimension(12)))
     self.assertEqual(tensor_shape.Dimension(12), dim.merge_with(12))
@@ -176,6 +185,26 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertEqual(str(tensor_shape.Dimension(7)), "7")
     self.assertEqual(str(tensor_shape.Dimension(None)), "?")
 
+  def testUnsupportedType(self):
+    with self.assertRaises(TypeError):
+      tensor_shape.Dimension(dtypes.string)
+
+  def testMod(self):
+    four = tensor_shape.Dimension(4)
+    nine = tensor_shape.Dimension(9)
+    self.assertEqual(nine % four, 1)
+    # test both __mod__ and __rmod__.
+    self.assertEqual(nine % 4, 1)
+    self.assertEqual(4 % nine, 4)
+
+  def testReduce(self):
+    dim = tensor_shape.Dimension(5)
+    ctor, args = dim.__reduce__()
+    self.assertEquals(ctor, tensor_shape.Dimension)
+    self.assertEquals(args, (5,))
+    reconstructed = ctor(*args)
+    self.assertEquals(reconstructed, dim)
+
 
 class ShapeTest(test_util.TensorFlowTestCase):
 
@@ -274,6 +303,26 @@ class ShapeTest(test_util.TensorFlowTestCase):
     tensor_shape.TensorShape([1, 2, 3]).assert_is_compatible_with(
         tensor_shape.TensorShape([1, 2]).concatenate(
             tensor_shape.Dimension(3)))
+
+  def _testMostSpecificCompatibleShapeHelper(self, x, y, expected):
+    mcs = tensor_shape.TensorShape(x).most_specific_compatible_shape(
+        tensor_shape.TensorShape(y))
+    mcs_dims = mcs.dims
+    if expected is None or mcs_dims is None:
+      self.assertIs(expected, mcs_dims)
+    else:
+      self.assertEqual(expected, mcs.as_list())
+
+  def testMostSpecificCompatibleShape(self):
+    self._testMostSpecificCompatibleShapeHelper([1, 2], None, None)
+    self._testMostSpecificCompatibleShapeHelper(None, [1, 2], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2], [1, 2, 3, 4], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2, 3, 4], [1, 2], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2], [1, 2], [1, 2])
+    self._testMostSpecificCompatibleShapeHelper([None, 2, 3], [1, 1, 3],
+                                                [None, None, 3])
+    self._testMostSpecificCompatibleShapeHelper([1, 1, 3], [None, 2, 3],
+                                                [None, None, 3])
 
   def testHelpers(self):
     tensor_shape.TensorShape([]).assert_is_compatible_with(
@@ -380,6 +429,16 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([None, None], tensor_shape.unknown_shape(2).as_list())
     self.assertAllEqual([2, None, 4], tensor_shape.TensorShape(
         (2, None, 4)).as_list())
+
+  def testReduce(self):
+    shape = tensor_shape.TensorShape([2, 3])
+    ctor, args = shape.__reduce__()
+    self.assertEquals(ctor, tensor_shape.TensorShape)
+    self.assertEquals(args, ([tensor_shape.Dimension(2),
+                              tensor_shape.Dimension(3)],))
+    reconstructed = ctor(*args)
+    self.assertEquals(reconstructed, shape)
+
 
 if __name__ == "__main__":
   googletest.main()
