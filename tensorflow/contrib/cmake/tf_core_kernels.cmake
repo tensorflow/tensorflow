@@ -220,6 +220,7 @@ endif(WIN32 AND tensorflow_ENABLE_GPU)
 
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 add_dependencies(tf_core_kernels tf_core_cpu)
+add_dependencies(tf_core_kernels tf_stream_executor)
 
 if (WIN32)
   target_compile_options(tf_core_kernels PRIVATE /MP)
