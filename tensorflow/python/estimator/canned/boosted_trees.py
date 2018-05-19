@@ -96,14 +96,18 @@ def _get_transformed_features(features, sorted_feature_columns):
   return result_features
 
 
-def _local_variable(tensor, name=None):
+def _local_variable(initial_value, name=None):
   """Stores a tensor as a local Variable for faster read."""
-  return variable_scope.variable(
-      initial_value=tensor,
+  result = variable_scope.variable(
+      initial_value=initial_value,
       trainable=False,
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
       validate_shape=False,
       name=name)
+  if isinstance(initial_value, ops.Tensor):
+    # Match the resulting variable's shape if the initial_value is a Tensor.
+    result.set_shape(initial_value.shape)
+  return result
 
 
 def _group_features_by_num_buckets(sorted_feature_columns):
@@ -264,7 +268,10 @@ class _CacheTrainingStatesUsingHashTable(object):
     # bitcast the ids to int32.
     self._table_ref = lookup_ops.mutable_dense_hash_table_v2(
         empty_key=empty_key, value_dtype=dtypes.float32, value_shape=[3])
-    self._example_ids = example_ids
+    self._example_ids = ops.convert_to_tensor(example_ids)
+    if self._example_ids.shape.ndims not in (None, 1):
+      raise ValueError('example_id should have rank 1, but got %s' %
+                       self._example_ids)
     self._logits_dimension = logits_dimension
 
   def lookup(self):
@@ -278,6 +285,9 @@ class _CacheTrainingStatesUsingHashTable(object):
         array_ops.bitcast(cached_tree_ids, dtypes.int32))
     cached_node_ids = array_ops.squeeze(
         array_ops.bitcast(cached_node_ids, dtypes.int32))
+    if self._example_ids.shape.ndims is not None:
+      cached_logits.set_shape(
+          [self._example_ids.shape[0], self._logits_dimension])
     return (cached_tree_ids, cached_node_ids, cached_logits)
 
   def insert(self, tree_ids, node_ids, logits):
@@ -668,14 +678,18 @@ def _create_classification_head_and_closed_form(n_classes, weight_column,
                                                 label_vocabulary):
   """Creates a head for classifier and the closed form gradients/hessians."""
   head = _create_classification_head(n_classes, weight_column, label_vocabulary)
-  if n_classes == 2 and weight_column is None and label_vocabulary is None:
+  if (n_classes == 2 and head.logits_dimension == 1 and weight_column is None
+      and label_vocabulary is None):
     # Use the closed-form gradients/hessians for 2 class.
     def _grad_and_hess_for_logloss(logits, labels):
+      """A closed form gradient and hessian for logistic loss."""
       # TODO(youngheek): add weights handling.
       predictions = math_ops.reciprocal(math_ops.exp(-logits) + 1.0)
       normalizer = math_ops.reciprocal(
           math_ops.cast(array_ops.size(predictions), dtypes.float32))
       labels = math_ops.cast(labels, dtypes.float32)
+      labels = head_lib._check_dense_labels_match_logits_and_reshape(  # pylint: disable=protected-access
+          labels, logits, head.logits_dimension)
       gradients = (predictions - labels) * normalizer
       hessians = predictions * (1.0 - predictions) * normalizer
       return gradients, hessians

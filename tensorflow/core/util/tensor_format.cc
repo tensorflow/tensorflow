@@ -41,6 +41,8 @@ string ToString(TensorFormat format) {
       return "NCHW";
     case FORMAT_NCHW_VECT_C:
       return "NCHW_VECT_C";
+    case FORMAT_NHWC_VECT_W:
+      return "NHWC_VECT_W";
     default:
       LOG(FATAL) << "Invalid Format: " << static_cast<int32>(format);
       return "INVALID_FORMAT";
@@ -72,6 +74,10 @@ bool FormatFromString(const string& format_str, TensorFormat* format) {
   }
   if (format_str == "NCHW_VECT_C") {
     *format = FORMAT_NCHW_VECT_C;
+    return true;
+  }
+  if (format_str == "NHWC_VECT_W") {
+    *format = FORMAT_NHWC_VECT_W;
     return true;
   }
   return false;

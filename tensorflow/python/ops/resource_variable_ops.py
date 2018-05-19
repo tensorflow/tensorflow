@@ -919,7 +919,7 @@ class ResourceVariable(variables.Variable):
             begin=begin,
             end=end,
             strides=strides,
-            value=value,
+            value=ops.convert_to_tensor(value, dtype=self.dtype),
             name=name,
             begin_mask=begin_mask,
             end_mask=end_mask,

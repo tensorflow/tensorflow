@@ -94,7 +94,7 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                  << HloOpcodeString(opcode);
   }
 
-  auto result = Literal::CreateFromShape(shape);
+  auto result = MakeUnique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<OperandT>(multi_index),
                       rhs_literal.Get<OperandT>(multi_index));
@@ -124,7 +124,7 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
                  << HloOpcodeString(opcode);
   }
 
-  auto result = Literal::CreateFromShape(shape);
+  auto result = MakeUnique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<complex64>(multi_index),
                       rhs_literal.Get<complex64>(multi_index));
@@ -951,8 +951,8 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   auto* true_computation = conditional->true_computation();
   auto* false_computation = conditional->false_computation();
 
-  auto result = Literal::CreateFromShape(conditional->shape());
   HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result;
   if (pred.Get<bool>({})) {
     result = embedded_evaluator
                  .Evaluate<const Literal*>(*true_computation,

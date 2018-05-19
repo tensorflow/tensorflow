@@ -1,7 +1,7 @@
 path: "tensorflow.keras.layers.StackedRNNCells"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.recurrent.StackedRNNCells\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent.StackedRNNCells\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {

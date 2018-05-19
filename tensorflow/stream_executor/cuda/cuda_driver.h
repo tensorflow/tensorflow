@@ -147,7 +147,7 @@ class CUDADriver {
   // userspace processes is given here:
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
   static port::Status CreateContext(CUdevice device,
-                                    DeviceOptions device_options,
+                                    const DeviceOptions& device_options,
                                     CudaContext** context);
 
   // Destroys the provided context via cuCtxDestroy.

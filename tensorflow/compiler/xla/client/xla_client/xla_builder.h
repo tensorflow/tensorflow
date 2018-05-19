@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(b/74197823): Replace computation_builder.h with this file.
-//
-// This is NOT YET ready to use.
-
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_XLA_CLIENT_XLA_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_CLIENT_XLA_BUILDER_H_
 
@@ -48,8 +44,6 @@ class XlaBuilder;
 // This represents an instruction that has been enqueued using the XlaBuilder.
 // This is used to pass to subsequent computations that depends upon the
 // instruction as an operand.
-//
-// TODO(b/74197823): Replace xla::ComputationDataHandle with this one.
 class XlaOp {
  public:
   XlaOp() : handle_(0), builder_(nullptr) {}
@@ -85,8 +79,6 @@ class XlaOp {
 // A convenient interface for building up computations.
 //
 // Thread-compatible.
-//
-// TODO(b/74197823): Replace xla::ComputationBuilder with this one.
 class XlaBuilder {
  public:
   // computation_name: name to use for the built computation.
@@ -989,8 +981,6 @@ XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
 
 // RAII-style object: sets the current sharding assignment in builder on
 // construction, and sets back to the previous assignment on destruction.
-//
-// TODO(b/74197823): This is a part of a NOT YET ready refactor.
 class XlaScopedShardingAssignment {
  public:
   XlaScopedShardingAssignment(xla::XlaBuilder* builder,

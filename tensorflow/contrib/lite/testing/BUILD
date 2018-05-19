@@ -63,6 +63,7 @@ gen_zipped_test_files(
         "split.zip",
         "squeeze.zip",
         "strided_slice.zip",
+        "strided_slice_1d_exhaustive.zip",
         "sub.zip",
         "topk.zip",
         "transpose.zip",

@@ -42,6 +42,7 @@ limitations under the License.
 %rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
 %rename("%s") TFE_Py_TapeSetNew;
+%rename("%s") TFE_Py_TapeSetAdd;
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
@@ -152,9 +153,12 @@ limitations under the License.
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
       } else {
-        SWIG_exception_fail(SWIG_TypeError,
-                            "provided list of inputs contains objects other "
-                            "than 'EagerTensor'");
+        SWIG_exception_fail(
+            SWIG_TypeError,
+            tensorflow::strings::StrCat(
+                "provided list of inputs contains objects other "
+                "than 'EagerTensor'. Item ",
+                i, " is ", elem->ob_type->tp_name).c_str());
       }
     }
   }

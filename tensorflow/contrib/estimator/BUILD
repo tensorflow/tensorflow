@@ -21,6 +21,7 @@ py_library(
         ":export",
         ":extenders",
         ":head",
+        ":hooks",
         ":linear",
         ":logit_fns",
         ":multi_head",
@@ -316,6 +317,36 @@ py_test(
         "//tensorflow/python/estimator:prediction_keys",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "hooks",
+    srcs = [
+        "python/estimator/hooks.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_test(
+    name = "hooks_test",
+    size = "medium",
+    srcs = ["python/estimator/hooks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":hooks",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
