@@ -122,7 +122,7 @@ genrule(
         "api/user_ops/__init__.py",
         # END GENERATED FILES
     ],
-    cmd = "$(location create_python_api) $(OUTS)",
+    cmd = "$${PYTHON_BIN_PATH} $(location create_python_api) $(OUTS)",
     tools = ["create_python_api"],
 )
 
