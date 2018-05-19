@@ -116,14 +116,15 @@ class LibHDFS {
 #endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
     if (hdfs_home != nullptr) {
+      string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
       status_ = TryLoadAndBind(path.c_str(), &handle_);
       if (status_.ok()) {
         return;
       }
     }
 
-    // try load libhdfs.so using dynamic loader's search path in case
-    // libhdfs.so is installed in non-standard location
+    // Try to load the library dynamically in case it has been installed
+    // to a in non-standard location.
     status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
   }
 
