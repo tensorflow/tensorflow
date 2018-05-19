@@ -761,6 +761,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "shaped_buffer_test",
+    srcs = ["shaped_buffer_test.cc"],
+    deps = [
+        ":cpu_plugin",
+        ":device_memory_allocator",
+        ":platform_util",
+        ":shaped_buffer",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:ptr_util",
+    ],
+)
+
 cc_library(
     name = "executable",
     srcs = ["executable.cc"],
