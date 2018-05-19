@@ -998,11 +998,9 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
     v = resource_variable_ops.ResourceVariable(init_val)
     with self.test_session() as sess:
       sess.run(v.initializer)
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "l-value dtype int32 does not match r-value dtype int64"):
+      with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_large_val))
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
 

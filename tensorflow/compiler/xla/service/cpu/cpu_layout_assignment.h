@@ -29,7 +29,7 @@ namespace cpu {
 class CpuLayoutAssignment : public LayoutAssignment {
  public:
   explicit CpuLayoutAssignment(
-      const ComputationLayout& entry_computation_layout,
+      ComputationLayout* entry_computation_layout,
       const TargetMachineFeatures* target_machine_features)
       : LayoutAssignment(entry_computation_layout),
         target_machine_features_(*target_machine_features) {}

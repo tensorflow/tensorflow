@@ -17,7 +17,7 @@ limitations under the License.
 //
 // Replays computations and shows the results on the command line.
 //
-// some_binary_snapshot_proto is obtained by serializing the SessionModule from
+// some_binary_snapshot_proto is obtained by serializing the HloSnapshot from
 // ServiceInterface::SnapshotComputation to disk.
 //
 // Computations that require arguments can be replayed using fake data by
@@ -36,14 +36,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -76,13 +74,9 @@ struct Options {
 //
 // Similarly, infeeds fake data of shape fake_infeed_shape if it is provided;
 // otherwise, no infeed is performed.
-template <typename ModuleT>
-StatusOr<std::unique_ptr<Literal>> ReplayComputation(const ModuleT& module,
+StatusOr<std::unique_ptr<Literal>> ReplayComputation(const HloSnapshot& module,
                                                      Client* client,
                                                      const Options& opts) {
-  static_assert(std::is_same<ModuleT, HloSnapshot>::value ||
-                    std::is_same<ModuleT, SessionModule>::value,
-                "Proto must be in HloSnapshot or SessionModule format");
   TF_ASSIGN_OR_RETURN(auto computation, client->LoadSnapshot(module));
 
   std::vector<std::unique_ptr<GlobalData>> arguments;
@@ -161,40 +155,13 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
   for (char* arg : args) {
     HloSnapshot snapshot;
     auto status = tensorflow::ReadBinaryProto(env, arg, &snapshot);
-    if (status.ok()) {
-      StatusOr<std::unique_ptr<Literal>> result_status =
-          ReplayComputation(snapshot, client, opts);
-      if (!result_status.ok()) {
-        fprintf(stderr, "%s: error: %s\n", arg,
-                result_status.status().ToString().c_str());
-        exit_status = EXIT_FAILURE;
-        continue;
-      }
-
-      std::unique_ptr<Literal> result = result_status.ConsumeValueOrDie();
-      if (result != nullptr) {
-        fprintf(stdout, "%s: %s :: %s:%s\n", arg,
-                snapshot.hlo().hlo_module().name().c_str(),
-                ShapeUtil::HumanString(result->shape()).c_str(),
-                result->ToString().c_str());
-        if (snapshot.has_result()) {
-          std::unique_ptr<Literal> literal =
-              Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
-          fprintf(stdout, "was %s:%s\n",
-                  ShapeUtil::HumanString(snapshot.result().shape()).c_str(),
-                  literal->ToString().c_str());
-        }
-      }
-
+    if (!status.ok()) {
+      fprintf(stderr, "%s: is not HloSnapshot: %s.\n", arg,
+              status.ToString().c_str());
       continue;
     }
-    fprintf(stderr, "%s: is not HloSnapshot: %s. Trying as SessionModule...\n",
-            arg, status.ToString().c_str());
-
-    SessionModule module;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(env, arg, &module));
     StatusOr<std::unique_ptr<Literal>> result_status =
-        ReplayComputation(module, client, opts);
+        ReplayComputation(snapshot, client, opts);
     if (!result_status.ok()) {
       fprintf(stderr, "%s: error: %s\n", arg,
               result_status.status().ToString().c_str());
@@ -204,14 +171,15 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
 
     std::unique_ptr<Literal> result = result_status.ConsumeValueOrDie();
     if (result != nullptr) {
-      fprintf(stdout, "%s: %s :: %s:%s\n", arg, module.entry().name().c_str(),
+      fprintf(stdout, "%s: %s :: %s:%s\n", arg,
+              snapshot.hlo().hlo_module().name().c_str(),
               ShapeUtil::HumanString(result->shape()).c_str(),
               result->ToString().c_str());
-      if (module.has_result()) {
+      if (snapshot.has_result()) {
         std::unique_ptr<Literal> literal =
-            Literal::CreateFromProto(module.result()).ConsumeValueOrDie();
+            Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
         fprintf(stdout, "was %s:%s\n",
-                ShapeUtil::HumanString(module.result().shape()).c_str(),
+                ShapeUtil::HumanString(snapshot.result().shape()).c_str(),
                 literal->ToString().c_str());
       }
     }

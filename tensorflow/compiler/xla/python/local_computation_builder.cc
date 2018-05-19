@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/default/thread_annotations.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 

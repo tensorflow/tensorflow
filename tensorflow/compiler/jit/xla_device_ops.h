@@ -33,7 +33,7 @@ namespace tensorflow {
 
 // Dummy OpKernel, used for kernels assigned to an XLA device that should be
 // compiled. Should never be called at runtime since such ops should be
-// rewritten to a _XlaLaunch op. If it is called, it means the placer placed an
+// rewritten to a XlaLaunch op. If it is called, it means the placer placed an
 // operator on an XLA device but the compiler did not compile it.
 class XlaDeviceDummyOp : public OpKernel {
  public:
@@ -42,7 +42,7 @@ class XlaDeviceDummyOp : public OpKernel {
 };
 
 #define REGISTER_XLA_LAUNCH_KERNEL(DEVICE, KERNEL, TYPES) \
-  REGISTER_KERNEL_BUILDER(Name("_XlaLaunch")              \
+  REGISTER_KERNEL_BUILDER(Name("XlaLaunch")               \
                               .Device(DEVICE)             \
                               .HostMemory("constants")    \
                               .HostMemory("resources"),   \

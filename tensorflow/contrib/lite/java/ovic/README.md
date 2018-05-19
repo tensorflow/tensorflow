@@ -37,19 +37,37 @@ unzip -j /tmp/ovic.zip -d tensorflow/contrib/lite/java/ovic/src/testdata/
 You can run test with Bazel as below. This helps to ensure that the installation is correct.
 
 ```sh
-bazel test --cxxopt=--std=c++11 //tensorflow/contrib/lite/java:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
+bazel test --cxxopt=--std=c++11 //tensorflow/contrib/lite/java/ovic:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
 ```
 
 ### Test your submissions
 
-Once you have a submission that follows the instructions from the [competition site](https://rebootingcomputing.ieee.org/home/sitemap/14-lpirc/80-low-power-image-recognition-challenge-lpirc-2018), you can verify it as below.
+Once you have a submission that follows the instructions from the [competition site](https://rebootingcomputing.ieee.org/home/sitemap/14-lpirc/80-low-power-image-recognition-challenge-lpirc-2018), you can verify it in two ways:
+
+#### Validate using randomly generated images
+
+You can call the validator binary below to verify that your model fits the format requirements. This often helps you to catch size mismatches (e.g. output should be [1, 1001] instead of [1,1,1,1001]). Let say the submission file is located at `/path/to/my_model.lite`, then call:
+
+```sh
+bazel build --cxxopt--std=c++11 //tensorflow/contrib/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
+bazel-bin/tensorflow/contrib/lite/java/ovic/ovic_validator /path/to/my_model.lite
+```
+
+Successful validation should print the following message to terminal:
+
+```
+Successfully validated /path/to/my_model.lite.
+
+```
+
+#### Test that the model produces sensible outcomes
+
+You can go a step further to verify that the model produces results as expected. This helps you catch bugs during TOCO conversion (e.g. using the wrong mean and std values).
 
 * Move your submission to the testdata folder:
 
-Let say the submission file is located at `/tmp/my_model.lite`, then
-
 ```sh
-cp /tmp/my_model.lite tensorflow/contrib/lite/java/ovic/src/testdata/
+cp /path/to/my_model.lite tensorflow/contrib/lite/java/ovic/src/testdata/
 ```
 
 * Resize the test image to the resolutions that are expected by your submission:
@@ -135,4 +153,6 @@ Note: the benchmarking results can be quite different depending on the backgroun
 |  float_model.lite    | 120                   | 155                  |
 | quantized_model.lite | 85                    | 74                   |
 |  low_res_model.lite  | 4.2                   | 4.0                  |
+
+Since Pixel 2 has excellent support for 8-bit quantized models, we strongly recommend you to check out the [quantization training tutorial](https://www.tensorflow.org/performance/quantization).
 
