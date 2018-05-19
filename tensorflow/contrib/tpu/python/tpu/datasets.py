@@ -166,9 +166,15 @@ def StreamingFilesDataset(files,
     return remote_iterator.get_next()
 
   def MapFn(unused_input):
+    if isinstance(source_dataset.output_types, dtypes.DType):
+      output_types = [source_dataset.output_types]
+    elif isinstance(source_dataset.output_types, (list, tuple)):
+      output_types = source_dataset.output_types
+    else:
+      raise ValueError('source dataset has invalid output types')
     return functional_ops.remote_call(
         args=[source_handle],
-        Tout=[dtypes.string],
+        Tout=output_types,
         f=LoadingFunc,
         target='/job:%s/replica:0/task:0/cpu:0' % file_reader_job)[0]
 
