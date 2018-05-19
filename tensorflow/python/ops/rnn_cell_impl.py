@@ -979,6 +979,7 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
+    super(DropoutWrapper, self).__init__()
     assert_like_rnncell("cell", cell)
 
     if (dropout_state_filter_visitor is not None
@@ -1153,6 +1154,7 @@ class ResidualWrapper(RNNCell):
         Defaults to calling nest.map_structure on (lambda i, o: i + o), inputs
         and outputs.
     """
+    super(ResidualWrapper, self).__init__()
     self._cell = cell
     if isinstance(cell, checkpointable.CheckpointableBase):
       self._track_checkpointable(self._cell, name="cell")
@@ -1210,6 +1212,7 @@ class DeviceWrapper(RNNCell):
       cell: An instance of `RNNCell`.
       device: A device string or function, for passing to `tf.device`.
     """
+    super(DeviceWrapper, self).__init__()
     self._cell = cell
     if isinstance(cell, checkpointable.CheckpointableBase):
       self._track_checkpointable(self._cell, name="cell")

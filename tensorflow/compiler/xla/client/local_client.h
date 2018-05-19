@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -109,16 +108,7 @@ class LocalClient : public Client {
   void operator=(const LocalClient&) = delete;
 
   // Build and return a LocalExecutable object. The executable is compiled using
-  // the given argument layouts and options.
-  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
-      const Computation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const ExecutableBuildOptions& options);
-
-  // Build and return a LocalExecutable object. The executable is compiled using
   // the given XlaComputation, argument layouts and options.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,

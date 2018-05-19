@@ -34,9 +34,8 @@ class EluOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
     const auto zero = XlaHelpers::Zero(b, input_type(0));
-    const auto one = XlaHelpers::One(b, input_type(0));
     const auto pred = b->Gt(ctx->Input(0), zero);
-    const auto expm1 = b->Sub(b->Exp(ctx->Input(0)), one);
+    const auto expm1 = b->Expm1(ctx->Input(0));
     ctx->SetOutput(0, b->Select(pred, ctx->Input(0), expm1));
   }
 };
@@ -68,13 +67,12 @@ class SeluOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
     const auto zero = XlaHelpers::Zero(b, input_type(0));
-    const auto one = XlaHelpers::One(b, input_type(0));
     const auto scale = XlaHelpers::FloatLiteral(b, input_type(0),
             1.0507009873554804934193349852946);
     const auto scale_alpha = XlaHelpers::FloatLiteral(b, input_type(0),
             1.7580993408473768599402175208123);
     const auto pred = b->Gt(ctx->Input(0), zero);
-    const auto expm1 = b->Sub(b->Exp(ctx->Input(0)), one);
+    const auto expm1 = b->Expm1(ctx->Input(0));
     ctx->SetOutput(0, b->Select(pred, b->Mul(scale, ctx->Input(0)),
                                       b->Mul(scale_alpha, expm1)));
   }

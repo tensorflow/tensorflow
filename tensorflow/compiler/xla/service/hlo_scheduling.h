@@ -76,15 +76,6 @@ StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
     const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
         memory_by_computation);
 
-// DFS-order scheduler with reversed heuristics. This helps some cases (see
-// b/78906799).
-StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerReverse(
-    const HloComputation& computation,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
-        memory_by_computation);
-
 // The default scheduling algorithm. Runs both the list scheduler
 // and the DFS scheduler, and chooses whichever returns a lower min-memory,
 // not accounting for fragmentation.

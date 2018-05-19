@@ -26,6 +26,7 @@ from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
 from tensorflow.contrib.estimator.python.estimator.export import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
 from tensorflow.contrib.estimator.python.estimator.head import *
+from tensorflow.contrib.estimator.python.estimator.hooks import *
 from tensorflow.contrib.estimator.python.estimator.linear import *
 from tensorflow.contrib.estimator.python.estimator.logit_fns import *
 from tensorflow.contrib.estimator.python.estimator.multi_head import *
@@ -40,6 +41,7 @@ _allowed_symbols = [
     'binary_classification_head',
     'clip_gradients_by_norm',
     'forward_features',
+    'InMemoryEvaluatorHook',
     'logistic_regression_head',
     'multi_class_head',
     'multi_head',

@@ -118,7 +118,8 @@ def toco_convert(input_data,
                  input_format=lite_constants.TENSORFLOW_GRAPHDEF,
                  output_format=lite_constants.TFLITE,
                  quantized_input_stats=None,
-                 drop_control_dependency=True):
+                 drop_control_dependency=True,
+                 allow_custom_ops=False):
   """Convert a model using TOCO from `input_format` to `output_format`.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -154,6 +155,7 @@ def toco_convert(input_data,
   toco.drop_control_dependency = drop_control_dependency
   model = _model_flags_pb2.ModelFlags()
   toco.inference_type = inference_type
+  toco.allow_custom_ops = allow_custom_ops
   for idx, input_tensor in enumerate(input_tensors):
     if input_tensor.dtype == _dtypes.float32:
       tflite_input_type = lite_constants.FLOAT

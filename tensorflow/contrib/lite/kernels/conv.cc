@@ -212,8 +212,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     } else {
       TF_LITE_ENSURE_EQ(context, bias->type, data_type);
     }
-    TF_LITE_ENSURE_EQ(context, bias->dims->size, 1);
-    TF_LITE_ENSURE_EQ(context, bias->dims->data[0], filter->dims->data[0]);
+    TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
 
   int channels_out = filter->dims->data[0];

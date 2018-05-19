@@ -1547,6 +1547,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
     TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                         operand_to_generator.at(hlo->operand(1))(dim_index));
+
+    // Clamp the start index so that the sliced portion fits in the operand:
+    // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
+
+    // TODO(b/74360564): This is implementation defined behavior, but is
+    // currently respected by all implementations. Change this if we ever decide
+    // to oficially document different behavior.
+    start_index_value = ir_builder_->CreateSExtOrBitCast(start_index_value,
+                                                         index[i]->getType());
+    llvm::Value* operand_dim_size = llvm::ConstantInt::get(
+        start_index_value->getType(), input_hlo->shape().dimensions(i));
+    llvm::Value* output_dim_size = llvm::ConstantInt::get(
+        start_index_value->getType(), hlo->shape().dimensions(i));
+
+    start_index_value = EmitIntegralMin(
+        ir_builder_->CreateSub(operand_dim_size, output_dim_size),
+        EmitIntegralMax(llvm::ConstantInt::get(start_index_value->getType(), 0),
+                        start_index_value, /*is_signed=*/true),
+        /*is_signed=*/true);
+
     start_index_value->setName(
         AsStringRef(IrName(hlo, StrCat("start_idx", i))));
     slice_start_index[i] = start_index_value;
@@ -1555,14 +1575,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   llvm_ir::IrArray::Index input_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     // Emit IR which computes:
-    //   input_index = (start_index + offset_index) % dim_size
-    // Security note: this is the code that keeps the indices in-bounds.
-    llvm::Value* dim_size = llvm::ConstantInt::get(
-        index[i]->getType(), input_hlo->shape().dimensions(i));
-    llvm::Value* start_index = ir_builder_->CreateZExtOrBitCast(
-        slice_start_index[i], index[i]->getType());
-    input_index[i] = ir_builder_->CreateURem(
-        ir_builder_->CreateAdd(start_index, index[i]), dim_size);
+    //   input_index = start_index + offset_index
+    input_index[i] = ir_builder_->CreateAdd(slice_start_index[i], index[i]);
   }
   return operand_to_generator.at(input_hlo)(input_index);
 }
@@ -1661,104 +1675,48 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const int64 rank = ShapeUtil::Rank(input_hlo->shape());
   llvm_ir::IrArray::Index slice_start_index(rank);
   llvm_ir::IrArray::Index slice_limit_index(rank);
-  // Slice starts at update[index - slice_start_index_adjusted],
-  // where adjusted value = slice_start_index when in bounds, and
-  // adjusted value = slice_start_index - input_dim, when wrapping.
-  llvm_ir::IrArray::Index slice_start_index_adjusted(rank);
-
   // Slice intersection gathers (ANDs) conditions on all ranks for which
   // 'input' is set to 'update'
   llvm::Value* slice_intersection = ir_builder_->getTrue();
 
   for (int64 i = 0; i < rank; ++i) {
-    // Emit IR to read dynamic start indices from 'start_hlo'.
     llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
     TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                         operand_to_generator.at(start_hlo)(dim_index));
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
-    slice_start_index[i] = ir_builder_->CreateZExtOrBitCast(
-        start_index_value, index[i]->getType());
 
+    // Clamp the start index so that the update region fits in the operand.
+    // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
+
+    // TODO(b/74360564): This is implementation defined behavior, but is
+    // currently respected by all implementations. Change this if we ever decide
+    // to oficially document different behavior.
+    start_index_value = ir_builder_->CreateSExtOrBitCast(start_index_value,
+                                                         index[i]->getType());
     llvm::Value* input_dim_size = llvm::ConstantInt::get(
         index[i]->getType(), input_hlo->shape().dimensions(i));
     llvm::Value* update_dim_size = llvm::ConstantInt::get(
         index[i]->getType(), update_hlo->shape().dimensions(i));
 
-    // Generate code to handle wrapping semantics:
-    // slice_start_index[i] = slice_start_index[i] % input_dim_size;
-    // slice_limit_index[i] = slice_start_index[i] + update_dim_size.
-    // slice_start_index[i] is updated in place and it will now be in
-    // range. slice_limit_index[i] may be out of range, and it's being
-    // URem-ed below if so.
-    slice_start_index[i] =
-        ir_builder_->CreateURem(slice_start_index[i], input_dim_size);
+    start_index_value = EmitIntegralMin(
+        ir_builder_->CreateSub(input_dim_size, update_dim_size),
+        EmitIntegralMax(llvm::ConstantInt::get(start_index_value->getType(), 0),
+                        start_index_value, /*is_signed=*/true),
+        /*is_signed=*/true);
+
+    start_index_value->setName(
+        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
+    slice_start_index[i] = start_index_value;
     slice_limit_index[i] =
         ir_builder_->CreateAdd(slice_start_index[i], update_dim_size);
 
-    // Test if slice_limit_index[i] is in bounds
-    llvm::Value* in_bounds =
-        ir_builder_->CreateICmpULE(slice_limit_index[i], input_dim_size);
-    llvm_ir::LlvmIfData if_in_bounds =
-        llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
-
-    // Handle true BB (slice_limit_index[i] <= input_dim_size).
-    SetToFirstInsertPoint(if_in_bounds.true_block, ir_builder_);
-    // Check that index[i] >= slice_start_index[i] &&
-    //            index[i] < slice_limit_index[i]
-    llvm::Value* slice_intersection_in_bounds = ir_builder_->CreateAnd(
+    slice_intersection = ir_builder_->CreateAnd(
         slice_intersection,
         ir_builder_->CreateICmpSGE(index[i], slice_start_index[i]),
-        "slice_intersection_in");
-    slice_intersection_in_bounds = ir_builder_->CreateAnd(
-        slice_intersection_in_bounds,
+        "slice_intersection");
+    slice_intersection = ir_builder_->CreateAnd(
+        slice_intersection,
         ir_builder_->CreateICmpSLT(index[i], slice_limit_index[i]),
-        "slice_intersection_in");
-
-    // Handle false BB (slice_limit_index[i] > input_dim_size).
-    SetToFirstInsertPoint(if_in_bounds.false_block, ir_builder_);
-    // Check that index[i] >= slice_start_index[i] ||
-    //            index[i] < slice_limit_index[i]%input_dim_size.
-    llvm::Value* index_wraps = ir_builder_->CreateICmpSLT(
-        index[i],
-        ir_builder_->CreateURem(slice_limit_index[i], input_dim_size));
-    llvm::Value* slice_intersection_or = ir_builder_->CreateOr(
-        ir_builder_->CreateICmpSGE(index[i], slice_start_index[i]), index_wraps,
-        "slice_intersection_out");
-    llvm::Value* slice_intersection_out_of_bounds = ir_builder_->CreateAnd(
-        slice_intersection, slice_intersection_or, "slice_intersection_out");
-    // Create value for slice_start_index_adjusted[i] when out of bounds.
-    // If within out-of-bounds if.
-    llvm_ir::LlvmIfData if_start_needs_adjustment =
-        llvm_ir::EmitIfThenElse(index_wraps, "adjust_start", ir_builder_);
-    SetToFirstInsertPoint(if_start_needs_adjustment.true_block, ir_builder_);
-    llvm::Value* slice_start_index_adjusted_oob =
-        ir_builder_->CreateSub(slice_start_index[i], input_dim_size);
-    SetToFirstInsertPoint(if_start_needs_adjustment.after_block, ir_builder_);
-    llvm::PHINode* slice_start_index_adjusted_phi =
-        ir_builder_->CreatePHI(slice_start_index_adjusted_oob->getType(), 2);
-    slice_start_index_adjusted_phi->addIncoming(
-        slice_start_index_adjusted_oob, if_start_needs_adjustment.true_block);
-    slice_start_index_adjusted_phi->addIncoming(
-        slice_start_index[i], if_start_needs_adjustment.false_block);
-    // End of if within if.
-
-    // After checking in/out of bounds.
-    SetToFirstInsertPoint(if_in_bounds.after_block, ir_builder_);
-    llvm::PHINode* phi_slice_intersection =
-        ir_builder_->CreatePHI(slice_intersection->getType(), 2);
-    phi_slice_intersection->addIncoming(slice_intersection_in_bounds,
-                                        if_in_bounds.true_block);
-    phi_slice_intersection->addIncoming(slice_intersection_out_of_bounds,
-                                        if_start_needs_adjustment.after_block);
-    slice_intersection = phi_slice_intersection;
-
-    llvm::PHINode* phi_index =
-        ir_builder_->CreatePHI(slice_start_index[i]->getType(), 2);
-    phi_index->addIncoming(slice_start_index[i], if_in_bounds.true_block);
-    phi_index->addIncoming(slice_start_index_adjusted_phi,
-                           if_start_needs_adjustment.after_block);
-    slice_start_index_adjusted[i] = phi_index;
+        "slice_intersection");
   }
 
   // Emit:
@@ -1775,12 +1733,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   // Compute update index for intersection case.
   llvm_ir::IrArray::Index update_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    llvm::Value* update_dim_size = llvm::ConstantInt::get(
-        index[i]->getType(), update_hlo->shape().dimensions(i));
-    // NOTE: Subtraction will be positive due to bounds checking above.
-    update_index[i] = ir_builder_->CreateURem(
-        ir_builder_->CreateSub(index[i], slice_start_index_adjusted[i]),
-        update_dim_size);
+    update_index[i] = ir_builder_->CreateSub(index[i], slice_start_index[i]);
   }
   TF_ASSIGN_OR_RETURN(llvm::Value * true_value,
                       operand_to_generator.at(update_hlo)(update_index));

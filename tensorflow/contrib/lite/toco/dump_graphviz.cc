@@ -91,10 +91,7 @@ Color GetColorForArray(const Model& model, const string& array_name) {
   // We use gray colors for them because they are the majority
   // of arrays so we want to highlight other arrays instead of them.
   // First, we use a bolder gray for input/output arrays:
-  const auto& dump_options = *GraphVizDumpOptions::singleton();
-  if (IsInputArray(model, array_name) ||
-      array_name == dump_options.graphviz_first_array ||
-      array_name == dump_options.graphviz_last_array) {
+  if (IsInputArray(model, array_name)) {
     return Color(0x9E, 0x9E, 0x9E);
   }
   if (IsOutputArray(model, array_name)) {
@@ -287,47 +284,6 @@ NodeProperties GetPropertiesForOperator(const Operator& op) {
   return node_properties;
 }
 
-std::vector<const Operator*> OperatorsToDump(const Model& model) {
-  const auto& dump_options = *GraphVizDumpOptions::singleton();
-  bool first_specified = !dump_options.graphviz_first_array.empty();
-  bool last_specified = !dump_options.graphviz_last_array.empty();
-  CHECK_EQ(first_specified, last_specified);
-  std::vector<const Operator*> ops_to_dump;
-  if (last_specified) {
-    // Return only the part of the graph between graphviz_first_array
-    // and graphviz_last_array.
-    CHECK(model.HasArray(dump_options.graphviz_first_array));
-    CHECK(model.HasArray(dump_options.graphviz_last_array));
-    std::unordered_set<string> arrays_already_produced;
-    std::vector<string> arrays_to_produce;
-    arrays_to_produce.push_back(dump_options.graphviz_last_array);
-    while (!arrays_to_produce.empty()) {
-      const string array = arrays_to_produce.back();
-      arrays_to_produce.pop_back();
-      CHECK(!arrays_already_produced.count(array));
-      arrays_already_produced.insert(array);
-      const Operator* op = GetOpWithOutput(model, array);
-      if (!op) {
-        continue;
-      }
-      ops_to_dump.push_back(op);
-      for (const string& input : op->inputs) {
-        if (arrays_already_produced.count(input) ||
-            input == dump_options.graphviz_first_array) {
-          continue;
-        }
-        arrays_to_produce.push_back(input);
-      }
-    }
-  } else {
-    // Return the whole graph.
-    for (const auto& op : model.operators) {
-      ops_to_dump.push_back(op.get());
-    }
-  }
-  return ops_to_dump;
-}
-
 }  // namespace
 
 void DumpGraphviz(const Model& model, string* output_file_contents) {
@@ -348,10 +304,9 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
   constexpr char kRNNBackEdgeFormat[] =
       "\t \"%s\" -> \"%s\" [color=\"#0F9D58\"];\n";
 
-  std::vector<const Operator*> ops_to_dump = OperatorsToDump(model);
   std::set<string> already_added_arrays;
-  for (int op_index = 0; op_index < ops_to_dump.size(); op_index++) {
-    const Operator& op = *ops_to_dump[op_index];
+  for (int op_index = 0; op_index < model.operators.size(); op_index++) {
+    const Operator& op = *model.operators[op_index];
     // Add node for operator.
     auto op_properties = GetPropertiesForOperator(op);
     string operator_id = StringF("op%05d", op_index);

@@ -39,10 +39,10 @@ const char* const DEVICE_XLA_GPU = "XLA_GPU";
 
 static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
   const OpDef* op_def;
-  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef("_XlaLaunch", &op_def));
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef("XlaLaunch", &op_def));
   NodeDef node_def;
   node_def.set_name("_XlaLaunch-op");
-  node_def.set_op("_XlaLaunch");
+  node_def.set_op("XlaLaunch");
   string kernel_class_name;
   TF_RETURN_IF_ERROR(FindKernelDef(device_type, node_def, /*KernelDef*/ nullptr,
                                    &kernel_class_name));

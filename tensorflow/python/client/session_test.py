@@ -1565,10 +1565,6 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
   def testFeedShapeCompatibility(self):
-    # TODO(nolivia): C API doesn't yet handle marking nodes as not feedable.
-    if ops._USE_C_API:
-      return
-
     with session.Session() as sess:
       some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
       new_shape = constant_op.constant([2, 2])
@@ -1577,7 +1573,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
         sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
 
-      with self.assertRaisesRegexp(ValueError, 'may not be fed'):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          'Input to reshape is a tensor with 4 values, '
+          'but the requested shape has 21'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
 
   def testInferShapesFalse(self):
