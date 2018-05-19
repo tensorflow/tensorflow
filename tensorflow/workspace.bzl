@@ -317,7 +317,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "backports.weakref-1.0rc1/src",
       build_file = clean_dep("//third_party:backports_weakref.BUILD"),
   )
-  
+
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0
@@ -453,11 +453,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/710be84a0052819c99b54fb403985e94903a53c5.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/710be84a0052819c99b54fb403985e94903a53c5.tar.gz",
       ],
-      sha256 = "1b75cb65517e41aaa70a95af55e45d08f37d0d44a192669b10d7b14b976dcc2a",
-      strip_prefix = "llvm-e17809bf50a4cdf3cec3b9dc5c9f79d9a45fc32f",
+      sha256 = "eecbe2ca5c8161976bb8b088e7fbcdd6eca64c8008a07023def16ecb5f670529",
+      strip_prefix = "llvm-710be84a0052819c99b54fb403985e94903a53c5",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 

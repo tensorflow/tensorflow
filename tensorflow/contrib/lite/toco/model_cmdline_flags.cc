@@ -124,14 +124,6 @@ bool ParseModelFlagsFromCommandLineFlags(
            parsed_flags.model_checks.default_value(),
            "A list of model checks to be applied to verify the form of the "
            "model.  Applied after the graph transformations after import."),
-      Flag("graphviz_first_array", parsed_flags.graphviz_first_array.bind(),
-           parsed_flags.graphviz_first_array.default_value(),
-           "If set, defines the start of the sub-graph to be dumped to "
-           "GraphViz."),
-      Flag(
-          "graphviz_last_array", parsed_flags.graphviz_last_array.bind(),
-          parsed_flags.graphviz_last_array.default_value(),
-          "If set, defines the end of the sub-graph to be dumped to GraphViz."),
       Flag("dump_graphviz", parsed_flags.dump_graphviz.bind(),
            parsed_flags.dump_graphviz.default_value(),
            "Dump graphviz during LogDump call. If string is non-empty then "
@@ -180,8 +172,6 @@ bool ParseModelFlagsFromCommandLineFlags(
     if (!tensorflow::Flags::Parse(argc, argv, flags)) return false;
   }
   auto& dump_options = *GraphVizDumpOptions::singleton();
-  dump_options.graphviz_first_array = parsed_flags.graphviz_first_array.value();
-  dump_options.graphviz_last_array = parsed_flags.graphviz_last_array.value();
   dump_options.dump_graphviz_video = parsed_flags.dump_graphviz_video.value();
   dump_options.dump_graphviz = parsed_flags.dump_graphviz.value();
 

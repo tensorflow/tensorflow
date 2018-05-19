@@ -307,6 +307,11 @@ class LiteralBase {
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
+  //
+  // Note: It's an antipattern to use this method then immediately call
+  // Literal::Populate on the result (since that results in zero initialization,
+  // then reinitialization. Conside if a call to MakeUnique<Literal>(shape),
+  // followed by the call to Literal::Populate can be used instead.
   static std::unique_ptr<Literal> CreateFromShape(const Shape& shape);
 
  protected:
@@ -1650,7 +1655,7 @@ template <PrimitiveType type, typename T>
     const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
+  auto literal = MakeUnique<Literal>(shape);
   TF_RETURN_IF_ERROR(literal.get()->Populate<NativeT>(
       [&](tensorflow::gtl::ArraySlice<int64> indexes) {
         return generator(indexes);

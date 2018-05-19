@@ -210,8 +210,7 @@ class UnaryOpsTest(XLATestCase):
           math_ops.expm1,
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[-0.63212056, 1.71828183]], dtype=dtype),
-          rtol=1e-5,
-          atol=1e-6)
+          rtol=1e-5)
 
       self._assertOpOutputMatchesExpected(
           math_ops.floor,
@@ -335,13 +334,19 @@ class UnaryOpsTest(XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           nn_ops.elu,
-          np.array([[-1, 0, 1]], dtype=dtype),
-          expected=np.array([[-0.63212056, 0, 1]], dtype=dtype))
+          np.array([[-1, 0, 1, -1e-6]], dtype=dtype),
+          expected=np.array([[-0.63212056, 0, 1, -9.999995e-07]], dtype=dtype),
+          rtol=1e-5,
+          atol=1e-6)
 
       self._assertOpOutputMatchesExpected(
           nn_ops.selu,
-          np.array([[-1, 0, 1]], dtype=dtype),
-          expected=np.array([[-1.11133074, 0., 1.05070099]], dtype=dtype))
+          np.array([[-1, 0, 1, -1e-5]], dtype=dtype),
+          expected=np.array(
+              [[-1.11133074, 0., 1.05070099, -1.758090550379974e-05]],
+              dtype=dtype),
+          rtol=1e-5,
+          atol=1e-6)
 
       self._assertOpOutputMatchesExpected(
           nn_ops.relu,

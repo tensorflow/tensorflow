@@ -33,8 +33,8 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras._impl.keras.engine import training
-from tensorflow.python.keras._impl.keras.layers import core
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
