@@ -113,26 +113,43 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate2(
     throwException(env, kNullPointerException, "Graph has been close()d");
     return 0;
   }
-  TF_Graph* graph = reinterpret_cast<TF_Graph*>(graph_handle);
+
   TF_Status* status = TF_NewStatus();
   TF_SessionOptions* opts = TF_NewSessionOptions();
-  const char* ctarget = nullptr;
+
+
+  //Check the session optionsp
   jbyte* cconfig = nullptr;
+  TF_Buffer* csession_options = nullptr;
+  if (config != nullptr) {
+	  size_t sz = env->GetArrayLength(config);
+	  if(sz > 0){
+		  cconfig = env->GetByteArrayElements(config, nullptr);
+		  //Copy the config to buffer
+		  csession_options =
+		  		           TF_NewBufferFromString(static_cast<void*>(cconfig), sz);
+		  //Release the config let the garbage collect it.
+		  env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+		  TF_SetConfig(opts, csession_options->data,
+				                        csession_options->length, status);
+		  if (!throwExceptionIfNotOK(env, status)) {
+			  TF_DeleteSessionOptions(opts);
+			  TF_DeleteStatus(status);
+			  TF_DeleteBuffer(csession_options);
+			  return 0;
+		  }
+	  }
+  }
+
+  const char* ctarget = nullptr;
   if (target != nullptr) {
-    ctarget = env->GetStringUTFChars(target, nullptr);
+      ctarget = env->GetStringUTFChars(target, nullptr);
   }
-  if (config != nullptr) {
-    cconfig = env->GetByteArrayElements(config, nullptr);
-    TF_SetConfig(opts, cconfig,
-                 static_cast<size_t>(env->GetArrayLength(config)), status);
-    if (!throwExceptionIfNotOK(env, status)) {
-      env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
-      return 0;
-    }
-  }
+
+  TF_Graph* graph = reinterpret_cast<TF_Graph*>(graph_handle);
   TF_Session* session = TF_NewSession(graph, opts, status);
-  if (config != nullptr) {
-    env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+  if (csession_options != nullptr) {
+	  TF_DeleteBuffer(csession_options);
   }
   if (target != nullptr) {
     env->ReleaseStringUTFChars(target, ctarget);

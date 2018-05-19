@@ -20,14 +20,36 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/exception_jni.h"
 #include "tensorflow/java/src/main/native/saved_model_bundle_jni.h"
 
+
 JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
     JNIEnv* env, jclass clazz, jstring export_dir, jobjectArray tags,
-    jbyteArray run_options) {
+    jbyteArray run_options, jbyteArray session_options) {
   TF_Status* status = TF_NewStatus();
   jobject bundle = nullptr;
 
   // allocate parameters for TF_LoadSessionFromSavedModel
   TF_SessionOptions* opts = TF_NewSessionOptions();
+
+
+  TF_Buffer* csession_options = nullptr;
+  if (session_options != nullptr) {
+	  size_t sz = env->GetArrayLength(session_options);
+	  if(sz > 0){
+		  jbyte* sconfigbyte = env->GetByteArrayElements(session_options, nullptr);
+		  csession_options =
+		           TF_NewBufferFromString(static_cast<void*>(sconfigbyte), sz);
+		  env->ReleaseByteArrayElements(session_options, sconfigbyte, JNI_ABORT);
+	      TF_SetConfig(opts, csession_options->data,
+					  	  	  	  	  csession_options->length, status);
+	      if (!throwExceptionIfNotOK(env, status)) {
+	    	   	   TF_DeleteSessionOptions(opts);
+	           TF_DeleteStatus(status);
+	           TF_DeleteBuffer(csession_options);
+	           return nullptr;
+	       }
+	  }
+  }
+
   TF_Buffer* crun_options = nullptr;
   if (run_options != nullptr) {
     size_t sz = env->GetArrayLength(run_options);
@@ -38,6 +60,8 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
       env->ReleaseByteArrayElements(run_options, run_options_data, JNI_ABORT);
     }
   }
+
+
   const char* cexport_dir = env->GetStringUTFChars(export_dir, nullptr);
   std::unique_ptr<const char* []> tags_ptrs;
   size_t tags_len = env->GetArrayLength(tags);
@@ -59,6 +83,9 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
   TF_DeleteSessionOptions(opts);
   if (crun_options != nullptr) {
     TF_DeleteBuffer(crun_options);
+  }
+  if (csession_options != nullptr) {
+      TF_DeleteBuffer(csession_options);
   }
   env->ReleaseStringUTFChars(export_dir, cexport_dir);
   for (size_t i = 0; i < tags_len; ++i) {
