@@ -221,6 +221,21 @@ class BackpropTest(test.TestCase):
     self.assertTrue(ordered_variables[0] is v0)
     self.assertTrue(ordered_variables[1] is v1)
 
+  def testTapeStopRecording(self):
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      with t.stop_recording():
+        y = x * x
+    self.assertEqual(t.gradient(y, x), None)
+
+  def testTapeReset(self):
+    with backprop.GradientTape() as t:
+      v = resource_variable_ops.ResourceVariable(1.0)
+      loss = v * v
+      t.reset()
+      loss += v * v
+    self.assertAllEqual(t.gradient(loss, v), 2.0)
+
   @test_util.assert_no_new_tensors
   def testGradientNone(self):
 

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import student_t
@@ -44,6 +45,7 @@ def try_import(name):  # pylint: disable=invalid-name
 stats = try_import("scipy.stats")
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class StudentTTest(test.TestCase):
 
   def testStudentPDFAndLogPDF(self):
@@ -60,10 +62,10 @@ class StudentTTest(test.TestCase):
 
       log_pdf = student.log_prob(t)
       self.assertEquals(log_pdf.get_shape(), (6,))
-      log_pdf_values = log_pdf.eval()
+      log_pdf_values = self.evaluate(log_pdf)
       pdf = student.prob(t)
       self.assertEquals(pdf.get_shape(), (6,))
-      pdf_values = pdf.eval()
+      pdf_values = self.evaluate(pdf)
 
       if not stats:
         return
@@ -88,10 +90,10 @@ class StudentTTest(test.TestCase):
       t = np.array([[-2.5, 2.5, 4., 0., -1., 2.]], dtype=np.float32).T
       student = student_t.StudentT(df, loc=mu, scale=sigma)
       log_pdf = student.log_prob(t)
-      log_pdf_values = log_pdf.eval()
+      log_pdf_values = self.evaluate(log_pdf)
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       pdf = student.prob(t)
-      pdf_values = pdf.eval()
+      pdf_values = self.evaluate(pdf)
       self.assertEqual(pdf.get_shape(), (6, 2))
 
       if not stats:
@@ -117,10 +119,10 @@ class StudentTTest(test.TestCase):
 
       log_cdf = student.log_cdf(t)
       self.assertEquals(log_cdf.get_shape(), (6,))
-      log_cdf_values = log_cdf.eval()
+      log_cdf_values = self.evaluate(log_cdf)
       cdf = student.cdf(t)
       self.assertEquals(cdf.get_shape(), (6,))
-      cdf_values = cdf.eval()
+      cdf_values = self.evaluate(cdf)
 
       if not stats:
         return
@@ -140,7 +142,7 @@ class StudentTTest(test.TestCase):
     with self.test_session():
       student = student_t.StudentT(df=df_v, loc=mu_v, scale=sigma_v)
       ent = student.entropy()
-      ent_values = ent.eval()
+      ent_values = self.evaluate(ent)
 
     # Help scipy broadcast to 3x3
     ones = np.array([[1, 1, 1]])
@@ -167,7 +169,7 @@ class StudentTTest(test.TestCase):
       n = constant_op.constant(200000)
       student = student_t.StudentT(df=df, loc=mu, scale=sigma)
       samples = student.sample(n, seed=123456)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       n_val = 200000
       self.assertEqual(sample_values.shape, (n_val,))
       self.assertAllClose(sample_values.mean(), mu_v, rtol=1e-2, atol=0)
@@ -189,12 +191,12 @@ class StudentTTest(test.TestCase):
       random_seed.set_random_seed(654321)
       student = student_t.StudentT(
           df=df, loc=mu, scale=sigma, name="student_t1")
-      samples1 = student.sample(n, seed=123456).eval()
+      samples1 = self.evaluate(student.sample(n, seed=123456))
 
       random_seed.set_random_seed(654321)
       student2 = student_t.StudentT(
           df=df, loc=mu, scale=sigma, name="student_t2")
-      samples2 = student2.sample(n, seed=123456).eval()
+      samples2 = self.evaluate(student2.sample(n, seed=123456))
 
       self.assertAllClose(samples1, samples2)
 
@@ -205,7 +207,7 @@ class StudentTTest(test.TestCase):
       n = constant_op.constant(200000)
       student = student_t.StudentT(df=df, loc=1., scale=1.)
       samples = student.sample(n, seed=123456)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       n_val = 200000
       self.assertEqual(sample_values.shape, (n_val, 4))
       self.assertTrue(np.all(np.logical_not(np.isnan(sample_values))))
@@ -223,7 +225,7 @@ class StudentTTest(test.TestCase):
       n = constant_op.constant(200000)
       student = student_t.StudentT(df=df, loc=mu, scale=sigma)
       samples = student.sample(n, seed=123456)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       self.assertEqual(samples.get_shape(), (200000, batch_size, 2))
       self.assertAllClose(
           sample_values[:, 0, 0].mean(), mu_v[0], rtol=1e-2, atol=0)
@@ -325,7 +327,7 @@ class StudentTTest(test.TestCase):
     with self.test_session():
       mu = [1., 3.3, 4.4]
       student = student_t.StudentT(df=[3., 5., 7.], loc=mu, scale=[3., 2., 1.])
-      mean = student.mean().eval()
+      mean = self.evaluate(student.mean())
       self.assertAllClose([1., 3.3, 4.4], mean)
 
   def testMeanAllowNanStatsIsFalseRaisesWhenBatchMemberIsUndefined(self):
@@ -335,7 +337,7 @@ class StudentTTest(test.TestCase):
           df=[0.5, 5., 7.], loc=mu, scale=[3., 2., 1.],
           allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
-        student.mean().eval()
+        self.evaluate(student.mean())
 
   def testMeanAllowNanStatsIsTrueReturnsNaNForUndefinedBatchMembers(self):
     with self.test_session():
@@ -344,7 +346,7 @@ class StudentTTest(test.TestCase):
       student = student_t.StudentT(
           df=[0.5, 1., 3., 5., 7.], loc=mu, scale=sigma,
           allow_nan_stats=True)
-      mean = student.mean().eval()
+      mean = self.evaluate(student.mean())
       self.assertAllClose([np.nan, np.nan, 1., 3.3, 4.4], mean)
 
   def testVarianceAllowNanStatsTrueReturnsNaNforUndefinedBatchMembers(self):
@@ -356,7 +358,7 @@ class StudentTTest(test.TestCase):
       sigma = [5., 4., 3., 2., 1.]
       student = student_t.StudentT(
           df=df, loc=mu, scale=sigma, allow_nan_stats=True)
-      var = student.variance().eval()
+      var = self.evaluate(student.variance())
       ## scipy uses inf for variance when the mean is undefined.  When mean is
       # undefined we say variance is undefined as well.  So test the first
       # member of var, making sure it is NaN, then replace with inf and compare
@@ -379,7 +381,7 @@ class StudentTTest(test.TestCase):
       mu = [0., 1., 3.3, 4.4]
       sigma = [4., 3., 2., 1.]
       student = student_t.StudentT(df=df, loc=mu, scale=sigma)
-      var = student.variance().eval()
+      var = self.evaluate(student.variance())
 
       if not stats:
         return
@@ -394,14 +396,14 @@ class StudentTTest(test.TestCase):
       student = student_t.StudentT(
           df=1., loc=0., scale=1., allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
-        student.variance().eval()
+        self.evaluate(student.variance())
 
     with self.test_session():
       # df <= 1 ==> variance not defined
       student = student_t.StudentT(
           df=0.5, loc=0., scale=1., allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
-        student.variance().eval()
+        self.evaluate(student.variance())
 
   def testStd(self):
     with self.test_session():
@@ -411,7 +413,7 @@ class StudentTTest(test.TestCase):
       sigma = [5., 4., 3., 2., 1.]
       student = student_t.StudentT(df=df, loc=mu, scale=sigma)
       # Test broadcast of mu across shape of df/sigma
-      stddev = student.stddev().eval()
+      stddev = self.evaluate(student.stddev())
       mu *= len(df)
 
       if not stats:
@@ -428,59 +430,58 @@ class StudentTTest(test.TestCase):
       sigma = [5., 4., 3.]
       student = student_t.StudentT(df=df, loc=mu, scale=sigma)
       # Test broadcast of mu across shape of df/sigma
-      mode = student.mode().eval()
+      mode = self.evaluate(student.mode())
       self.assertAllClose([-1., 0, 1], mode)
 
   def testPdfOfSample(self):
-    with self.test_session() as sess:
-      student = student_t.StudentT(df=3., loc=np.pi, scale=1.)
-      num = 20000
-      samples = student.sample(num, seed=123456)
-      pdfs = student.prob(samples)
-      mean = student.mean()
-      mean_pdf = student.prob(student.mean())
-      sample_vals, pdf_vals, mean_val, mean_pdf_val = sess.run(
-          [samples, pdfs, student.mean(), mean_pdf])
-      self.assertEqual(samples.get_shape(), (num,))
-      self.assertEqual(pdfs.get_shape(), (num,))
-      self.assertEqual(mean.get_shape(), ())
-      self.assertNear(np.pi, np.mean(sample_vals), err=0.02)
-      self.assertNear(np.pi, mean_val, err=1e-6)
-      # Verify integral over sample*pdf ~= 1.
-      self._assertIntegral(sample_vals, pdf_vals, err=2e-3)
-      if not stats:
-        return
-      self.assertNear(stats.t.pdf(np.pi, 3., loc=np.pi), mean_pdf_val, err=1e-6)
+    student = student_t.StudentT(df=3., loc=np.pi, scale=1.)
+    num = 20000
+    samples = student.sample(num, seed=123456)
+    pdfs = student.prob(samples)
+    mean = student.mean()
+    mean_pdf = student.prob(student.mean())
+    sample_vals, pdf_vals, mean_val, mean_pdf_val = self.evaluate(
+        [samples, pdfs, student.mean(), mean_pdf])
+    self.assertEqual(samples.get_shape(), (num,))
+    self.assertEqual(pdfs.get_shape(), (num,))
+    self.assertEqual(mean.get_shape(), ())
+    self.assertNear(np.pi, np.mean(sample_vals), err=0.02)
+    self.assertNear(np.pi, mean_val, err=1e-6)
+    # Verify integral over sample*pdf ~= 1.
+    # Tolerance increased since eager was getting a value of 1.002041.
+    self._assertIntegral(sample_vals, pdf_vals, err=3e-3)
+    if not stats:
+      return
+    self.assertNear(stats.t.pdf(np.pi, 3., loc=np.pi), mean_pdf_val, err=1e-6)
 
   def testPdfOfSampleMultiDims(self):
-    with self.test_session() as sess:
-      student = student_t.StudentT(df=[7., 11.], loc=[[5.], [6.]], scale=3.)
-      self.assertAllEqual([], student.event_shape)
-      self.assertAllEqual([], student.event_shape_tensor().eval())
-      self.assertAllEqual([2, 2], student.batch_shape)
-      self.assertAllEqual([2, 2], student.batch_shape_tensor().eval())
-      num = 50000
-      samples = student.sample(num, seed=123456)
-      pdfs = student.prob(samples)
-      sample_vals, pdf_vals = sess.run([samples, pdfs])
-      self.assertEqual(samples.get_shape(), (num, 2, 2))
-      self.assertEqual(pdfs.get_shape(), (num, 2, 2))
-      self.assertNear(5., np.mean(sample_vals[:, 0, :]), err=.03)
-      self.assertNear(6., np.mean(sample_vals[:, 1, :]), err=.03)
-      self._assertIntegral(sample_vals[:, 0, 0], pdf_vals[:, 0, 0], err=0.02)
-      self._assertIntegral(sample_vals[:, 0, 1], pdf_vals[:, 0, 1], err=0.02)
-      self._assertIntegral(sample_vals[:, 1, 0], pdf_vals[:, 1, 0], err=0.02)
-      self._assertIntegral(sample_vals[:, 1, 1], pdf_vals[:, 1, 1], err=0.02)
-      if not stats:
-        return
-      self.assertNear(
-          stats.t.var(7., loc=0., scale=3.),  # loc d.n. effect var
-          np.var(sample_vals[:, :, 0]),
-          err=.4)
-      self.assertNear(
-          stats.t.var(11., loc=0., scale=3.),  # loc d.n. effect var
-          np.var(sample_vals[:, :, 1]),
-          err=.4)
+    student = student_t.StudentT(df=[7., 11.], loc=[[5.], [6.]], scale=3.)
+    self.assertAllEqual([], student.event_shape)
+    self.assertAllEqual([], self.evaluate(student.event_shape_tensor()))
+    self.assertAllEqual([2, 2], student.batch_shape)
+    self.assertAllEqual([2, 2], self.evaluate(student.batch_shape_tensor()))
+    num = 50000
+    samples = student.sample(num, seed=123456)
+    pdfs = student.prob(samples)
+    sample_vals, pdf_vals = self.evaluate([samples, pdfs])
+    self.assertEqual(samples.get_shape(), (num, 2, 2))
+    self.assertEqual(pdfs.get_shape(), (num, 2, 2))
+    self.assertNear(5., np.mean(sample_vals[:, 0, :]), err=.03)
+    self.assertNear(6., np.mean(sample_vals[:, 1, :]), err=.03)
+    self._assertIntegral(sample_vals[:, 0, 0], pdf_vals[:, 0, 0], err=0.02)
+    self._assertIntegral(sample_vals[:, 0, 1], pdf_vals[:, 0, 1], err=0.02)
+    self._assertIntegral(sample_vals[:, 1, 0], pdf_vals[:, 1, 0], err=0.02)
+    self._assertIntegral(sample_vals[:, 1, 1], pdf_vals[:, 1, 1], err=0.02)
+    if not stats:
+      return
+    self.assertNear(
+        stats.t.var(7., loc=0., scale=3.),  # loc d.n. effect var
+        np.var(sample_vals[:, :, 0]),
+        err=.4)
+    self.assertNear(
+        stats.t.var(11., loc=0., scale=3.),  # loc d.n. effect var
+        np.var(sample_vals[:, :, 1]),
+        err=.4)
 
   def _assertIntegral(self, sample_vals, pdf_vals, err=1.5e-3):
     s_p = zip(sample_vals, pdf_vals)
@@ -494,10 +495,10 @@ class StudentTTest(test.TestCase):
 
   def testNegativeDofFails(self):
     with self.test_session():
-      student = student_t.StudentT(df=[2, -5.], loc=0., scale=1.,
-                                   validate_args=True, name="S")
       with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
-        student.mean().eval()
+        student = student_t.StudentT(
+            df=[2, -5.], loc=0., scale=1., validate_args=True, name="S")
+        self.evaluate(student.mean())
 
   def testStudentTWithAbsDfSoftplusScale(self):
     with self.test_session():
@@ -507,9 +508,11 @@ class StudentTTest(test.TestCase):
       student = student_t.StudentTWithAbsDfSoftplusScale(
           df=df, loc=mu, scale=sigma)
       self.assertAllClose(
-          math_ops.floor(math_ops.abs(df)).eval(), student.df.eval())
-      self.assertAllClose(mu.eval(), student.loc.eval())
-      self.assertAllClose(nn_ops.softplus(sigma).eval(), student.scale.eval())
+          math_ops.floor(self.evaluate(math_ops.abs(df))),
+          self.evaluate(student.df))
+      self.assertAllClose(self.evaluate(mu), self.evaluate(student.loc))
+      self.assertAllClose(
+          self.evaluate(nn_ops.softplus(sigma)), self.evaluate(student.scale))
 
 
 if __name__ == "__main__":

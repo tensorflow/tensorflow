@@ -340,6 +340,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     // If the result layout is not set, then choose the default.
     // TODO(b/29118294): Allow the compiler to choose a better layout in this
     // case.
+    // TODO(b/78356948): We are forcing the default layout here. We should fix
+    // clients which expect a default layout, to be explicit about it, by
+    // passing the proper ExecutionOptions with shape_with_output_layout set.
     host_computation_layout->mutable_result_layout()->SetToDefaultLayout();
     device_computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }

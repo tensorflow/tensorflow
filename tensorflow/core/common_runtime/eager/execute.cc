@@ -186,14 +186,14 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
 // primitive op (e.g. matmul).
 //
 // The wrapper function conforms to the function signature expected by
-// _XlaLaunchOp, with input params ordered by <constants, (variable) args and
+// XlaLaunch, with input params ordered by <constants, (variable) args and
 // resources>. For example, if the op has input params <Const1, Arg2, Const3,
 // Resource4, Arg5>, they will be reordered to <Const1, Const3, Arg2, Arg5,
 // Resource4> as the input params to the synthesized function.
 //
 // It populates `const_input_types`, `arg_input_types` and
 // `op_input_to_func_input` based on the reordering results, that the caller can
-// use them to build an _XlaLaunchOp. On error, it returns NULL, and sets
+// use them to build an XlaLaunch. On error, it returns NULL, and sets
 // `status` accordingly.
 const FunctionDef* OpToFunction(TFE_Op* op,
                                 std::vector<TF_DataType>* const_input_types,
@@ -311,12 +311,12 @@ const FunctionDef* OpToFunction(TFE_Op* op,
   return ret;
 }
 
-// Builds an _XLALaunchOp as a wrapper over 'op', so that 'op' can be executed
+// Builds an XlaLaunch as a wrapper over 'op', so that 'op' can be executed
 // via XLA.
 std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
-  VLOG(1) << "Creating _XlaLaunchOp for TFE_Op " << op->operation.Name();
+  VLOG(1) << "Creating XlaLaunch for TFE_Op " << op->operation.Name();
   auto launch_op = std::unique_ptr<TFE_Op>(
-      TFE_NewOp(op->operation.ctx, "_XlaLaunch", status));
+      TFE_NewOp(op->operation.ctx, "XlaLaunch", status));
   if (TF_GetCode(status) != TF_OK) return nullptr;
   if (op->operation.device) {
     TFE_OpSetDevice(launch_op.get(), op->operation.device->name().c_str(),
@@ -331,7 +331,7 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   gtl::FlatMap<int, int> op_input_to_func_input;
   if (fdef == nullptr) {
     // See if this is a primitive op, and if so create a function for it, so
-    // that _XlaLaunchOp can access it.
+    // that XlaLaunch can access it.
     fdef = OpToFunction(op, &const_input_types, &arg_input_types,
                         &op_input_to_func_input, status);
     if (!status.ok()) return nullptr;
@@ -423,7 +423,7 @@ Status EagerLocalExecute(EagerOperation* op,
   if (!status.ok()) return status;
 #ifdef TENSORFLOW_EAGER_USE_XLA
   std::unique_ptr<TFE_Op> xla_launch_op;
-  if (op->UseXla() && op->Name() != "_XlaLaunch") {
+  if (op->UseXla() && op->Name() != "XlaLaunch") {
     xla_launch_op = BuildXlaLaunch(op, status);
     if (!status.ok()) return status;
     op = xla_launch_op.get();

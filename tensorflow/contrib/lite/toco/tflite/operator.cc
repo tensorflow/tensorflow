@@ -53,6 +53,8 @@ class AveragePool
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Convolution
@@ -83,6 +85,8 @@ class Convolution
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class DepthwiseConvolution
@@ -112,6 +116,8 @@ class DepthwiseConvolution
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
@@ -132,6 +138,8 @@ class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class SpaceToBatchND
@@ -149,6 +157,8 @@ class SpaceToBatchND
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
@@ -169,6 +179,8 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
@@ -189,6 +201,8 @@ class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class BatchToSpaceND
@@ -206,6 +220,8 @@ class BatchToSpaceND
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Cast : public BuiltinOperator<CastOperator, ::tflite::CastOptions,
@@ -225,6 +241,8 @@ class Cast : public BuiltinOperator<CastOperator, ::tflite::CastOptions,
     op->src_data_type = DataType::Deserialize(options.in_data_type());
     op->dst_data_type = DataType::Deserialize(options.out_data_type());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Concatenation
@@ -243,6 +261,8 @@ class Concatenation
                    TocoOperator* op) const override {
     op->axis = options.axis();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
@@ -255,6 +275,8 @@ class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
   void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
     op->block_size = m["block_size"].AsInt64();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class FakeQuant : public CustomOperator<FakeQuantOperator> {
@@ -274,6 +296,8 @@ class FakeQuant : public CustomOperator<FakeQuantOperator> {
     const auto& num_bits = m["num_bits"];
     op->num_bits = num_bits.IsInt() ? num_bits.AsInt32() : 8;
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class FullyConnected
@@ -295,6 +319,8 @@ class FullyConnected
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
@@ -311,6 +337,8 @@ class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
                    TocoOperator* op) const override {
     op->axis = options.axis();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Svdf : public BuiltinOperator<SvdfOperator, ::tflite::SVDFOptions,
@@ -331,6 +359,8 @@ class Svdf : public BuiltinOperator<SvdfOperator, ::tflite::SVDFOptions,
         ActivationFunction::Deserialize(options.fused_activation_function());
     op->rank = options.rank();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class L2Normalization
@@ -351,6 +381,8 @@ class L2Normalization
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class L2Pool : public BuiltinOperator<L2PoolOperator, ::tflite::Pool2DOptions,
@@ -378,6 +410,8 @@ class L2Pool : public BuiltinOperator<L2PoolOperator, ::tflite::Pool2DOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class LocalResponseNormalization
@@ -401,6 +435,8 @@ class LocalResponseNormalization
     op->alpha = options.alpha();
     op->beta = options.beta();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class MaxPool : public BuiltinOperator<MaxPoolOperator, ::tflite::Pool2DOptions,
@@ -428,6 +464,8 @@ class MaxPool : public BuiltinOperator<MaxPoolOperator, ::tflite::Pool2DOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
@@ -448,6 +486,8 @@ class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
@@ -463,6 +503,8 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class PadV2 : public BuiltinOperator<PadV2Operator, ::tflite::PadV2Options,
@@ -478,6 +520,8 @@ class PadV2 : public BuiltinOperator<PadV2Operator, ::tflite::PadV2Options,
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Reshape
@@ -499,6 +543,8 @@ class Reshape
     op->shape.insert(op->shape.end(), options.new_shape()->begin(),
                      options.new_shape()->end());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Softmax
@@ -516,6 +562,8 @@ class Softmax
                    TocoOperator* op) const override {
     op->beta = options.beta();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class SpaceToDepth
@@ -534,6 +582,8 @@ class SpaceToDepth
                    TocoOperator* op) const override {
     op->block_size = options.block_size();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Transpose
@@ -549,6 +599,8 @@ class Transpose
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
@@ -571,6 +623,8 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
     CHECK(options.fused_activation_function() ==
           ::tflite::ActivationFunctionType_TANH);
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
@@ -587,6 +641,8 @@ class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
                    TocoOperator* op) const override {
     op->keep_dims = options.keep_dims();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class ResizeBilinear
@@ -605,6 +661,8 @@ class ResizeBilinear
                    TocoOperator* op) const override {
     op->align_corners = options.align_corners();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Squeeze
@@ -626,6 +684,8 @@ class Squeeze
                             options.squeeze_dims()->begin(),
                             options.squeeze_dims()->end());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class Split
@@ -644,6 +704,8 @@ class Split
                    TocoOperator* op) const override {
     op->num_split = options.num_splits();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class StridedSlice
@@ -668,6 +730,8 @@ class StridedSlice
     op->new_axis_mask = options.new_axis_mask();
     op->shrink_axis_mask = options.shrink_axis_mask();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class TopK_V2 : public BuiltinOperator<TopKV2Operator, ::tflite::TopKV2Options,
@@ -682,6 +746,8 @@ class TopK_V2 : public BuiltinOperator<TopKV2Operator, ::tflite::TopKV2Options,
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
@@ -699,6 +765,8 @@ class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
                    TocoOperator* op) const override {
     op->output_data_type = DataType::Deserialize(options.output_type());
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class TransposeConv
@@ -722,6 +790,8 @@ class TransposeConv
     op->stride_width = options.stride_w();
     op->stride_height = options.stride_h();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 class TensorFlowUnsupported : public BaseOperator {
@@ -827,6 +897,12 @@ class TensorFlowUnsupported : public BaseOperator {
       }
     }
     node_def.SerializeToString(&op->tensorflow_node_def);
+  }
+
+  int GetVersion(const Operator& op) const override {
+    // TODO(ycling): Deisng and implement a way to plumb the version of
+    // custom ops.
+    return 1;
   }
 };
 

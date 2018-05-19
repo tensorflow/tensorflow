@@ -126,6 +126,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_scheduling",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:indexed_array_analysis",
         "//tensorflow/compiler/xla/service:inliner",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:reduce_precision_insertion",
