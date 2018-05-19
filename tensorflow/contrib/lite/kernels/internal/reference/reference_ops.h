@@ -1793,7 +1793,7 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // The quantization of the input, output arrays is as follows:
 //  - The input activations are quantized as uint8 on the interval
 //    [-1, 127/128].
-//    The rationale for that is that that is the natural interval for output
+//    The rationale for that is that is the natural interval for output
 //    activations (see next point) and these need to be concatenated together.
 //    We could accommodate different ranges by re-scaling, but we empirically
 //    found that setting the input activations range to be [-1, 127/128] in the
@@ -1858,7 +1858,7 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // However, for a fixed-point implementation in 16-bit integers, using 5
 // integer bits to represent the [-16, 16] range would leave only 11
 // fractional bits, giving an increment of 2^-11 = 4.9e-4 between consecutive
-// representable values. Notice that that is higher than the
+// representable values. Notice that is higher than the
 // worst-case clamping error with clamping to [-8, 8]: 3.4e-4 for Logistic.
 // Using [-8, 8] thus seems like the better compromise overall, enjoying
 // an increment of 2.4e-4 between representable values and a worst-case
