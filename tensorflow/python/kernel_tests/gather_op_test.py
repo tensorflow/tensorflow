@@ -123,6 +123,9 @@ class GatherTest(test.TestCase):
                 gather, [tf_params, tf_indices, tf_axis], gather_grad)
             self.assertEqual(indices_grad, None)
             self.assertEqual(axis_grad, None)
+            if dtype.is_integer:
+              self.assertEqual(params_grad, None)
+              continue
             # For axis 0, we are able to create an efficient IndexedSlices for
             # the gradient.
             if axis == 0:
