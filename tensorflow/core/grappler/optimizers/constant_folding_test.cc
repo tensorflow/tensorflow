@@ -72,8 +72,7 @@ class ConstantFoldingTest : public GrapplerTest {
       GrapplerItem item;
       TF_CHECK_OK(s.ToGraphDef(&item.graph));
       item.fetch = {"mul1", "mul2", "add1", "add2"};
-      ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
-                                nullptr /* cpu_device */);
+      ConstantFolding optimizer(nullptr /* cpu_device */);
       GraphDef output;
       Status status = optimizer.Optimize(nullptr, item, &output);
       TF_EXPECT_OK(status);
@@ -296,8 +295,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
     item.fetch = {"stack", "matmul3", "matmul4"};
 
-    ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
-                              nullptr /* cpu_device */);
+    ConstantFolding optimizer(nullptr /* cpu_device */);
     GraphDef output;
     Status status = optimizer.Optimize(nullptr, item, &output);
     TF_EXPECT_OK(status);

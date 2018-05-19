@@ -69,6 +69,9 @@ TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
     case kTfLiteFloat32:
       copyCast(in, out->data.f, num_elements);
       break;
+    case kTfLiteBool:
+      copyCast(in, out->data.b, num_elements);
+      break;
     default:
       // Unsupported type.
       return kTfLiteError;
@@ -90,6 +93,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return copyToTensor(input->data.uint8, output, num_elements);
     case kTfLiteFloat32:
       return copyToTensor(input->data.f, output, num_elements);
+    case kTfLiteBool:
+      return copyToTensor(input->data.b, output, num_elements);
     default:
       // Unsupported type.
       return kTfLiteError;

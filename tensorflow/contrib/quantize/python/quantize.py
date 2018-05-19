@@ -218,8 +218,19 @@ def _FindLayersToQuantize(graph):
   """
   input_pattern = graph_matcher.OpTypePattern('*')
   weight_var_pattern = graph_matcher.OpTypePattern('Variable|VariableV2')
-  weight_identity_pattern = graph_matcher.OpTypePattern(
+  weight_partition_identity_pattern = graph_matcher.OpTypePattern(
       'Identity', inputs=[weight_var_pattern])
+  weight_partition_concat_pattern = graph_matcher.OpTypePattern(
+      'ConcatV2', inputs=[weight_partition_identity_pattern, '*', '*'])
+  weight_identity_pattern = graph_matcher.OpTypePattern(
+      'Identity',
+      inputs=[
+          graph_matcher.OneofPattern([
+              weight_partition_identity_pattern,
+              weight_partition_concat_pattern,
+              weight_var_pattern,
+          ])
+      ])
   weight_resource_var_pattern = graph_matcher.OpTypePattern('ReadVariableOp')
   folded_weight_pattern = graph_matcher.OpTypePattern('Mul')
 

@@ -462,7 +462,9 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
+        ":abi",
         ":lib_platform",
+        ":stacktrace",
     ],
 )
 
@@ -1967,6 +1969,7 @@ tf_proto_library(
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
+    provide_cc_alias = True,
 )
 
 tf_generate_proto_text_sources(
@@ -2817,6 +2820,8 @@ cc_library(
         # we now need at least "str_util".
         ":lib",
         ":lib_platform",
+        ":stacktrace_handler",
+        ":test_lite",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,

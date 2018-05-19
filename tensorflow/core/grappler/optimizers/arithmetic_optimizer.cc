@@ -1175,11 +1175,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
     NodeDef* tail = node;
-    // TODO(rmlarsen): Enable in regular mode after May 15, 2018.
-    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-      tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
-                                      *ctx().nodes_to_preserve);
-    }
+    tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
+                                    *ctx().nodes_to_preserve);
     NodeDef* first_transpose;
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &first_transpose));
 

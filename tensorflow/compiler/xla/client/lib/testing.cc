@@ -93,21 +93,6 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
 }
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const Computation& computation, Client* client) {
-  auto program_shape =
-      client->GetComputationShape(computation).ConsumeValueOrDie();
-
-  // For every (unbound) parameter that the computation wants, we manufacture
-  // some arbitrary data so that we can invoke the computation.
-  std::vector<std::unique_ptr<GlobalData>> fake_arguments;
-  for (const Shape& parameter : program_shape->parameters()) {
-    fake_arguments.push_back(MakeFakeDataOrDie(parameter, client));
-  }
-
-  return fake_arguments;
-}
-
-std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
     const XlaComputation& computation, Client* client) {
   CHECK(computation.proto().has_program_shape())
       << "Computation should have progran shape.";

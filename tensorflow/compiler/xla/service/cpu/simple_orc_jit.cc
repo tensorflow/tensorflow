@@ -99,6 +99,7 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
+          execution_session_,
           [this](const std::string& name) -> llvm::JITSymbol {
             return this->ResolveRuntimeSymbol(name);
           },

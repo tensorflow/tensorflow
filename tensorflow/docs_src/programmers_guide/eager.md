@@ -118,7 +118,8 @@ it is easy to write [fizzbuzz](https://en.wikipedia.org/wiki/Fizz_buzz):
 ```py
 def fizzbuzz(max_num):
   counter = tf.constant(0)
-  for num in range(max_num):
+  max_num = tf.convert_to_tensor(max_num)
+  for num in range(max_num.numpy()):
     num = tf.constant(num)
     if int(num % 3) == 0 and int(num % 5) == 0:
       print('FizzBuzz')
