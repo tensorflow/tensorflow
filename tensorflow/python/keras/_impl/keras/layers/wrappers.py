@@ -283,10 +283,10 @@ class Bidirectional(Wrapper):
     self.stateful = layer.stateful
     self.return_sequences = layer.return_sequences
     self.return_state = layer.return_state
-    self.supports_masking = True
     self._trainable = True
     self._num_constants = None
     super(Bidirectional, self).__init__(layer, **kwargs)
+    self.supports_masking = True
     self.input_spec = layer.input_spec
 
   @property
