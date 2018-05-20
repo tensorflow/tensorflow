@@ -58,7 +58,7 @@ namespace {
 //
 class ConditionVariableResource : public ResourceBase {
  public:
-  typedef std::function<void(Status s, bool notified)> Callback;
+  typedef std::function<void(const Status& s, bool notified)> Callback;
 
   explicit ConditionVariableResource(OpKernelContext* c, const string& name)
       : env_(c->env()),
