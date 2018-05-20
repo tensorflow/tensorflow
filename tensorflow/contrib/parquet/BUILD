@@ -45,6 +45,8 @@ cc_library(
     srcs = ["kernels/parquet_dataset_ops.cc"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@parquet",
         "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
