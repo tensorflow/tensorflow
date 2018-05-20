@@ -22,10 +22,21 @@ cc_library(
         "cpp/src/arrow/io/interfaces.cc",
         "cpp/src/arrow/util/compression.h",
         "cpp/src/arrow/util/compression.cc",
+        "cpp/src/arrow/util/compression_snappy.h",
+        "cpp/src/arrow/util/compression_snappy.cc",
         "cpp/src/arrow/util/key_value_metadata.h",
         "cpp/src/arrow/util/key_value_metadata.cc",
     ],
+    hdrs = [
+    ],
+    defines = [
+        "ARROW_WITH_SNAPPY",
+    ],
     includes = [
         "cpp/src/",
+    ],
+    copts = ["-Iexternal/snappy"],
+    deps = [
+        "@snappy",
     ],
 )
