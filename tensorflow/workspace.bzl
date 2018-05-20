@@ -592,6 +592,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = clean_dep("//third_party:thrift.BUILD"),
   )
 
+  tf_http_archive(
+      name = "parquet",
+      urls = [
+          "https://mirror.bazel.build/github.com/apache/parquet-cpp/archive/apache-parquet-cpp-1.4.0.tar.gz",
+          "https://github.com/apache/parquet-cpp/archive/apache-parquet-cpp-1.4.0.tar.gz",
+      ],
+      sha256 = "52899be6c9dc49a14976d4ad84597243696c3fa2882e5c802b56e912bfbcc7ce",
+      strip_prefix = "parquet-cpp-apache-parquet-cpp-1.4.0",
+      build_file = clean_dep("//third_party:parquet/BUILD"),
+  )
+
   java_import_external(
       name = "junit",
       jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
