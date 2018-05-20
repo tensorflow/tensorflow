@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,8 @@ class ParquetDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     for (const DataType& dt : output_types_) {
-      OP_REQUIRES(ctx, dt == DT_INT32 || dt == DT_INT64 || dt == DT_FLOAT || dt == DT_DOUBLE || dt == DT_BOOL,
+      OP_REQUIRES(ctx, dt == DT_INT32 || dt == DT_INT64 || dt == DT_FLOAT ||
+                           dt == DT_DOUBLE || dt == DT_BOOL,
                   errors::InvalidArgument(
                       "Each element of `output_types_` must be one of: "
                       "DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL "));
@@ -69,9 +70,8 @@ class ParquetDatasetOp : public DatasetOpKernel {
  private:
   class Dataset : public GraphDatasetBase {
    public:
-    Dataset(OpKernelContext* ctx,
-            const std::vector<string> &filenames,
-            const std::vector<int64> &columns,
+    Dataset(OpKernelContext* ctx, const std::vector<string>& filenames,
+            const std::vector<int64>& columns,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : GraphDatasetBase(ctx),
@@ -103,10 +103,10 @@ class ParquetDatasetOp : public DatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
       Node* columns = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(columns_, &columns));
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this, {filenames, columns}, output));
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {filenames, columns}, output));
       return Status::OK();
     }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -118,7 +118,8 @@ class ParquetDatasetOp : public DatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         do {
-          // We are currently processing a file, so try to read the next row group.
+          // We are currently processing a file, so try to read the next row
+          // group.
           if (parquet_reader_) {
             while (current_row_group_ < file_metadata_->num_row_groups()) {
               if (current_row_ < row_group_reader_->metadata()->num_rows()) {
@@ -127,7 +128,8 @@ class ParquetDatasetOp : public DatasetOpKernel {
                   DataType dt = dataset()->output_types_[i];
                   int64 column = dataset()->columns_[i];
                   Tensor tensor(ctx->allocator({}), dt, {});
-                  TF_RETURN_IF_ERROR(GetTensorValue(current_row_, dt, column, &tensor));
+                  TF_RETURN_IF_ERROR(
+                      GetTensorValue(current_row_, dt, column, &tensor));
                   out_tensors->emplace_back(std::move(tensor));
                 }
                 ++current_row_;
@@ -140,7 +142,8 @@ class ParquetDatasetOp : public DatasetOpKernel {
               row_group_reader_.reset();
               ++current_row_group_;
               if (current_row_group_ < file_metadata_->num_row_groups()) {
-                row_group_reader_ = parquet_reader_->RowGroup(current_row_group_);
+                row_group_reader_ =
+                    parquet_reader_->RowGroup(current_row_group_);
               }
             }
             // We have reached the end of the current file, so maybe
@@ -159,91 +162,115 @@ class ParquetDatasetOp : public DatasetOpKernel {
         } while (true);
       }
 
-      Status GetTensorValue(int64 row, const DataType& data_type, int64 column, Tensor* tensor) {
-        std::shared_ptr<parquet::ColumnReader> column_reader = row_group_reader_->Column(column);
+      Status GetTensorValue(int64 row, const DataType& data_type, int64 column,
+                            Tensor* tensor) {
+        std::shared_ptr<parquet::ColumnReader> column_reader =
+            row_group_reader_->Column(column);
         switch (data_type) {
-        case DT_INT32: {
+          case DT_INT32: {
             parquet::Int32Reader* int32_reader =
                 static_cast<parquet::Int32Reader*>(column_reader.get());
             int32_reader->Skip(row);
-            // Read one value at a time. The number of rows read is returned. values_read
+            // Read one value at a time. The number of rows read is returned.
+            // values_read
             // contains the number of non-null rows
             int32_t value;
             int64_t values_read = 0;
-            int64_t rows_read = int32_reader->ReadBatch(1, nullptr, nullptr, &value, &values_read);
-            // Ensure only one value is read and there are no NULL values in the rows read
+            int64_t rows_read = int32_reader->ReadBatch(1, nullptr, nullptr,
+                                                        &value, &values_read);
+            // Ensure only one value is read and there are no NULL values in the
+            // rows read
             if (rows_read != 1) {
-              return errors::Internal("rows_read (", rows_read, ") != 1 or values_read (", values_read, ") != 1");
+              return errors::Internal("rows_read (", rows_read,
+                                      ") != 1 or values_read (", values_read,
+                                      ") != 1");
             }
             tensor->scalar<int32>()() = value;
-          }
-          break;
-        case DT_INT64: {
+          } break;
+          case DT_INT64: {
             parquet::Int64Reader* int64_reader =
                 static_cast<parquet::Int64Reader*>(column_reader.get());
             int64_reader->Skip(row);
-            // Read one value at a time. The number of rows read is returned. values_read
+            // Read one value at a time. The number of rows read is returned.
+            // values_read
             // contains the number of non-null rows
             int64_t value;
             int64_t values_read = 0;
-            int64_t rows_read = int64_reader->ReadBatch(1, nullptr, nullptr, &value, &values_read);
-            // Ensure only one value is read and there are no NULL values in the rows read
+            int64_t rows_read = int64_reader->ReadBatch(1, nullptr, nullptr,
+                                                        &value, &values_read);
+            // Ensure only one value is read and there are no NULL values in the
+            // rows read
             if (rows_read != 1) {
-              return errors::Internal("rows_read (", rows_read, ") != 1 or values_read (", values_read, ") != 1");
+              return errors::Internal("rows_read (", rows_read,
+                                      ") != 1 or values_read (", values_read,
+                                      ") != 1");
             }
             tensor->scalar<int64>()() = value;
-          }
-          break;
-        case DT_FLOAT: {
+          } break;
+          case DT_FLOAT: {
             parquet::FloatReader* float_reader =
                 static_cast<parquet::FloatReader*>(column_reader.get());
             float_reader->Skip(row);
-            // Read one value at a time. The number of rows read is returned. values_read
+            // Read one value at a time. The number of rows read is returned.
+            // values_read
             // contains the number of non-null rows
             float value;
             int64_t values_read = 0;
-            int64_t rows_read = float_reader->ReadBatch(1, nullptr, nullptr, &value, &values_read);
-            // Ensure only one value is read and there are no NULL values in the rows read
+            int64_t rows_read = float_reader->ReadBatch(1, nullptr, nullptr,
+                                                        &value, &values_read);
+            // Ensure only one value is read and there are no NULL values in the
+            // rows read
             if (rows_read != 1) {
-              return errors::Internal("rows_read (", rows_read, ") != 1 or values_read (", values_read, ") != 1");
+              return errors::Internal("rows_read (", rows_read,
+                                      ") != 1 or values_read (", values_read,
+                                      ") != 1");
             }
             tensor->scalar<float>()() = value;
-          }
-          break;
-        case DT_DOUBLE: {
+          } break;
+          case DT_DOUBLE: {
             parquet::DoubleReader* double_reader =
                 static_cast<parquet::DoubleReader*>(column_reader.get());
             double_reader->Skip(row);
-            // Read one value at a time. The number of rows read is returned. values_read
+            // Read one value at a time. The number of rows read is returned.
+            // values_read
             // contains the number of non-null rows
             double value;
             int64_t values_read = 0;
-            int64_t rows_read = double_reader->ReadBatch(1, nullptr, nullptr, &value, &values_read);
-            // Ensure only one value is read and there are no NULL values in the rows read
+            int64_t rows_read = double_reader->ReadBatch(1, nullptr, nullptr,
+                                                         &value, &values_read);
+            // Ensure only one value is read and there are no NULL values in the
+            // rows read
             if (rows_read != 1) {
-              return errors::Internal("rows_read (", rows_read, ") != 1 or values_read (", values_read, ") != 1");
+              return errors::Internal("rows_read (", rows_read,
+                                      ") != 1 or values_read (", values_read,
+                                      ") != 1");
             }
             tensor->scalar<double>()() = value;
-          }
-          break;
-        case DT_BOOL: {
+          } break;
+          case DT_BOOL: {
             parquet::BoolReader* bool_reader =
                 static_cast<parquet::BoolReader*>(column_reader.get());
             bool_reader->Skip(row);
-            // Read one value at a time. The number of rows read is returned. values_read
+            // Read one value at a time. The number of rows read is returned.
+            // values_read
             // contains the number of non-null rows
             bool value;
             int64_t values_read = 0;
-            int64_t rows_read = bool_reader->ReadBatch(1, nullptr, nullptr, &value, &values_read);
-            // Ensure only one value is read and there are no NULL values in the rows read
+            int64_t rows_read = bool_reader->ReadBatch(1, nullptr, nullptr,
+                                                       &value, &values_read);
+            // Ensure only one value is read and there are no NULL values in the
+            // rows read
             if (rows_read != 1) {
-              return errors::Internal("rows_read (", rows_read, ") != 1 or values_read (", values_read, ") != 1");
+              return errors::Internal("rows_read (", rows_read,
+                                      ") != 1 or values_read (", values_read,
+                                      ") != 1");
             }
             tensor->scalar<bool>()() = value;
-          }
-          break;
-        default:
-          return errors::Unimplemented(DataTypeString(data_type), " is currently not supported in ParquetDataset");
+          } break;
+          default:
+            return errors::Unimplemented(
+                DataTypeString(data_type),
+                " is currently not supported in ParquetDataset");
         }
         return Status::OK();
       }
@@ -255,7 +282,8 @@ class ParquetDatasetOp : public DatasetOpKernel {
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        return errors::Unimplemented("RestoreInternal is currently not supported");
+        return errors::Unimplemented(
+            "RestoreInternal is currently not supported");
       }
 
      private:
@@ -269,8 +297,10 @@ class ParquetDatasetOp : public DatasetOpKernel {
         }
 
         // Actually move on to next file.
-        const string& next_filename = dataset()->filenames_[current_file_index_];
-        parquet_reader_ = parquet::ParquetFileReader::OpenFile(next_filename, false);
+        const string& next_filename =
+            dataset()->filenames_[current_file_index_];
+        parquet_reader_ =
+            parquet::ParquetFileReader::OpenFile(next_filename, false);
         file_metadata_ = parquet_reader_->metadata();
         current_row_group_ = 0;
         if (current_row_group_ < file_metadata_->num_row_groups()) {
@@ -291,10 +321,12 @@ class ParquetDatasetOp : public DatasetOpKernel {
 
       mutex mu_;
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
-      std::unique_ptr<parquet::ParquetFileReader> parquet_reader_ GUARDED_BY(mu_);
+      std::unique_ptr<parquet::ParquetFileReader> parquet_reader_
+          GUARDED_BY(mu_);
       std::shared_ptr<parquet::FileMetaData> file_metadata_ GUARDED_BY(mu_);
       int64 current_row_group_ GUARDED_BY(mu_) = 0;
-      std::shared_ptr<parquet::RowGroupReader> row_group_reader_ GUARDED_BY(mu_);
+      std::shared_ptr<parquet::RowGroupReader> row_group_reader_
+          GUARDED_BY(mu_);
       int64 current_row_ GUARDED_BY(mu_) = 0;
     };
 
