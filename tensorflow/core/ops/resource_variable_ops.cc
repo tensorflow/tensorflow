@@ -269,4 +269,32 @@ REGISTER_OP("ConsumeMutexLock")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
 
+REGISTER_OP("ConditionVariable")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Output("resource: resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("NotifyConditionVariable")
+    .Input("condition_variable: resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+
+REGISTER_OP("WaitForConditionVariable")
+    .Input("condition_variable: resource")
+    .Input("timeout_in_us: int64")
+    .Output("notified: bool")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

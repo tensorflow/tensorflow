@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "NotifyConditionVariable"
+  in_arg {
+    name: "condition_variable"
+    description: <<END
+The condition variable to notify.
+END
+  }
+  summary: "Notifies a condition variable."
+}

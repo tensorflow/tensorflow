@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "WaitForConditionVariable"
+  in_arg {
+    name: "condition_variable"
+    description: <<END
+The condition variable to wait for.
+END
+  }
+  in_arg {
+    name: "timeout_in_us"
+    description: <<END
+The number of microseconds until this wait operation times out.  A value of
+`-1` means wait forever until notification.
+END
+  }
+  out_arg {
+    name: "notified"
+    description: <<END
+0-D.  Whether the waiter was notified or not.  If a notification arrives from
+the condition variable before the timeout, this value is `true`.  Otherwise
+the value is `false`.
+END
+  }
+  summary: "Wait until the condition variable is notified, or timeout."
+}

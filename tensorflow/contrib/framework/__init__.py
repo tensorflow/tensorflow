@@ -96,6 +96,7 @@ See the @{$python/contrib.framework} guide.
 @@smart_constant_value
 @@smart_case
 
+@@ConditionVariable
 @@CriticalSection
 
 @@BoundedTensorSpec

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -32,6 +33,147 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+// A thread-safe Condition Variable container.  The ConditionVariableResource
+// keeps track of a shared condition variable and registered waiter callbacks.
+// It exposes two methods.
+//
+// Users register a Callback with an optional timeout via `RegisterWaiter`.
+// When another user calls `NotifyAndReset`, any callbacks currently registered
+// are called and then removed.  If `NotifyAndReset` is not called within
+// a the timeout period of a given Callback, the callback will be called with
+// the `notified` argument set `false`.
+//
+// Example usage:
+//
+//  auto callback = [...](const Status& s, bool notified) {
+//    ...
+//  };
+//  cv->RegisterWaiter(callback, -1);  // Never time out.
+//  ...
+//  cv->NotifyAndReset();
+//  cv->RegisterWaiter(callback, 1e6);  // Time out in 1 second.
+//  ...
+//  cv->NotifyAndReset();
+//
+class ConditionVariableResource : public ResourceBase {
+ public:
+  typedef std::function<void(Status s, bool notified)> Callback;
+
+  explicit ConditionVariableResource(OpKernelContext* c, const string& name)
+      : env_(c->env()),
+        thread_pool_(new thread::ThreadPool(
+            c->env(), ThreadOptions(),
+            strings::StrCat("condition_variable_notify_thread_",
+                            SanitizeThreadSuffix(name)),
+            1 /* num_threads */, true /* low_latency_hint */)),
+        mode_(RUNNING) {
+    thread_pool_->Schedule([this, c]() {
+      mutex_lock lock(mu_);
+      while (mode_ == RUNNING || !waiters_.empty()) {
+        uint64 time_now = env_->NowMicros();
+        // At most 1 second from now.
+        uint64 next_visit = time_now + 1e6;
+        auto waiter = waiters_.begin();
+        while (waiter != waiters_.end()) {
+          if (time_now >= waiter->second.timeout_time_in_us) {
+            CancellationManager* cm = waiter->first.first;
+            if (cm) {
+              cm->DeregisterCallback(waiter->first.second);
+            }
+            // We timed out before getting to this one.
+            waiter->second.callback(/*s=*/Status::OK(), /*notified=*/false);
+            waiter = waiters_.erase(waiter);
+          } else {
+            next_visit =
+                std::min(next_visit, waiter->second.timeout_time_in_us);
+            ++waiter;
+          }
+        }
+        cv_.wait_for(lock,
+                     std::chrono::microseconds(next_visit - time_now + 1));
+      }
+      mode_ = FINISHED;
+      cv_.notify_all();
+    });
+  }
+
+  ~ConditionVariableResource() override {
+    mutex_lock lock(mu_);
+    mode_ = EXITING;
+    while (mode_ != FINISHED) {
+      cv_.wait(lock);
+    }
+    DCHECK(waiters_.empty());
+  }
+
+  void NotifyAndReset() {
+    mutex_lock lock(mu_);
+    for (auto& waiter : waiters_) {
+      CancellationManager* cm = waiter.first.first;
+      if (cm) cm->DeregisterCallback(waiter.first.second);
+      waiter.second.callback(/*s=*/Status::OK(), /*notified=*/true);
+    }
+    waiters_.clear();
+    cv_.notify_all();
+  }
+
+  void RegisterWaiter(OpKernelContext* c, Callback callback,
+                      uint64 timeout_time_in_us) {
+    mutex_lock lock(mu_);
+
+    if (mode_ != RUNNING) {
+      callback(/*s=*/errors::Cancelled("Notification cancelled."),
+               /*notified=*/false);
+      return;
+    }
+
+    CancellationManager* cm = c->cancellation_manager();
+    CancellationToken token =
+        (cm) ? cm->get_cancellation_token() : waiters_.size();
+
+    if (cm) {
+      const bool already_cancelled =
+          !cm->RegisterCallback(token, [this, token, cm]() {
+            mutex_lock lock_(mu_);
+            auto waiter = waiters_.find(std::make_pair(cm, token));
+            if (waiter != waiters_.end()) {
+              waiter->second.callback(
+                  /*s=*/errors::Cancelled("Notification cancelled."),
+                  /*notified=*/false);
+              waiters_.erase(waiter);
+            }
+          });
+      if (already_cancelled) {
+        callback(/*s=*/errors::Cancelled("Notification cancelled."),
+                 /*notified=*/false);
+        return;
+      }
+    }
+    waiters_.emplace(
+        std::make_pair(cm, token),
+        CallbackAndTimeout{std::move(callback), timeout_time_in_us});
+    cv_.notify_all();
+  }
+
+  string DebugString() override { return "ConditionVariable"; }
+
+ private:
+  OpKernelContext* c_;
+  Env* env_;
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  mutex mu_;
+  struct CallbackAndTimeout {
+    Callback callback;
+    uint64 timeout_time_in_us;
+  };
+  typedef std::pair<CancellationManager*, CancellationToken> CMAndToken;
+  gtl::FlatMap<CMAndToken, CallbackAndTimeout> waiters_ GUARDED_BY(mu_);
+  condition_variable cv_ GUARDED_BY(mu_);
+
+  enum RunMode { RUNNING, EXITING, FINISHED };
+  RunMode mode_ GUARDED_BY(mu_);
+};
 
 class Mutex : public ResourceBase {
  public:
@@ -238,6 +380,71 @@ class ConsumeMutexLockOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
+class NotifyConditionVariableOp : public OpKernel {
+ public:
+  explicit NotifyConditionVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    ConditionVariableResource* cv = nullptr;
+    ResourceHandle handle = HandleFromInput(c, 0);
+    OP_REQUIRES_OK(c, LookupOrCreateResource<ConditionVariableResource>(
+                          c, HandleFromInput(c, 0), &cv,
+                          [this, c](ConditionVariableResource** ptr) {
+                            *ptr = new ConditionVariableResource(
+                                c, HandleFromInput(c, 0).name());
+                            return Status::OK();
+                          }));
+    cv->NotifyAndReset();
+  }
+};
+
+class WaitForConditionVariableOp : public AsyncOpKernel {
+ public:
+  explicit WaitForConditionVariableOp(OpKernelConstruction* c)
+      : AsyncOpKernel(c) {}
+
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    ConditionVariableResource* cv = nullptr;
+    OP_REQUIRES_OK_ASYNC(c,
+                         LookupOrCreateResource<ConditionVariableResource>(
+                             c, HandleFromInput(c, 0), &cv,
+                             [this, c](ConditionVariableResource** ptr) {
+                               *ptr = new ConditionVariableResource(
+                                   c, HandleFromInput(c, 0).name());
+                               return Status::OK();
+                             }),
+                         done);
+    const Tensor& timeout_in_us_t = c->input(1);
+    OP_REQUIRES_ASYNC(
+        c, timeout_in_us_t.dims() == 0,
+        errors::InvalidArgument(
+            "Expected timeout_in_us to be a scalar, but saw shape: ",
+            timeout_in_us_t.shape().DebugString()),
+        done);
+    const int64 timeout_in_us = timeout_in_us_t.scalar<int64>()();
+
+    ConditionVariableResource::Callback callback = std::bind(
+        [c, timeout_in_us](DoneCallback done_,
+                           // End of bound arguments.
+                           const Status& s, bool notified) {
+          if (s.ok()) {
+            Tensor out(DT_BOOL, {});
+            out.scalar<bool>()() = notified;
+            c->set_output(0, out);
+          } else {
+            c->SetStatus(s);
+          }
+          done_();
+        },
+        std::move(done), std::placeholders::_1, std::placeholders::_2);
+
+    const uint64 timeout_time_in_us =
+        (timeout_in_us == -1) ? std::numeric_limits<uint64>::max()
+                              : c->env()->NowMicros() + timeout_in_us;
+    cv->RegisterWaiter(c, std::move(callback), timeout_time_in_us);
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("MutexLock").Device(DEVICE_CPU), MutexLockOp);
 
 REGISTER_KERNEL_BUILDER(Name("MutexV2").Device(DEVICE_CPU),
@@ -245,5 +452,14 @@ REGISTER_KERNEL_BUILDER(Name("MutexV2").Device(DEVICE_CPU),
 
 REGISTER_KERNEL_BUILDER(Name("ConsumeMutexLock").Device(DEVICE_CPU),
                         ConsumeMutexLockOp);
+
+REGISTER_KERNEL_BUILDER(Name("ConditionVariable").Device(DEVICE_CPU),
+                        ResourceHandleOp<ConditionVariableResource>);
+
+REGISTER_KERNEL_BUILDER(Name("NotifyConditionVariable").Device(DEVICE_CPU),
+                        NotifyConditionVariableOp);
+
+REGISTER_KERNEL_BUILDER(Name("WaitForConditionVariable").Device(DEVICE_CPU),
+                        WaitForConditionVariableOp);
 
 }  // namespace tensorflow

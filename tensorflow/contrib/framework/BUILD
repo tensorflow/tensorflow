@@ -31,6 +31,7 @@ tf_custom_op_py_library(
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
+        "python/ops/condition_variable_ops.py",
         "python/ops/critical_section_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
@@ -167,6 +168,26 @@ cuda_py_test(
     name = "critical_section_test",
     size = "medium",
     srcs = ["python/ops/critical_section_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        ":framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "condition_variable_test",
+    size = "medium",
+    srcs = ["python/ops/condition_variable_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
         ":framework_py",
