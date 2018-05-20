@@ -769,9 +769,12 @@ tf_cc_test(
         ":device_memory_allocator",
         ":platform_util",
         ":shaped_buffer",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:ptr_util",
+        "//tensorflow/core:test",
     ],
 )
 
