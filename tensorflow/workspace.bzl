@@ -655,6 +655,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   tf_http_archive(
+      name = "rocprim_archive",
+      urls = [
+          "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/v0.3.0.zip",
+          "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/v0.3.0.zip",
+      ],
+      sha256 = "74d729f6e3d1a9c438ec8dad1a93e8e8b8e68388d4700ab19c3293ec5f397356",
+      strip_prefix = "rocPRIM-0.3.0",
+      build_file = clean_dep("//third_party:rocprim.BUILD"),
+  )
+
+  tf_http_archive(
       name = "cython",
       sha256 = "6dcd30b5ceb887b2b965ee7ceb82ea3acb5f0642fe2206c7636b45acea4798e5",
       urls = [
