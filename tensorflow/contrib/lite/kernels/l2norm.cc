@@ -94,7 +94,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 #undef TF_LITE_L2NORM
   } else {
-    context->ReportError(context, "Inputs and outputs not all float types.");
+    context->ReportError(context, "Output type is %d, requires float.",
+                         output->type);
     return kTfLiteError;
   }
 
