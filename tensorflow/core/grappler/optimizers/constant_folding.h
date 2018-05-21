@@ -122,6 +122,10 @@ class ConstantFolding : public GraphOptimizer {
   // the transformation applied successfully.
   bool ConstantPushDown(NodeDef* node);
 
+  // Aggregate constants present around a conv operator. Returns true if the
+  // transformation was applied successfully.
+  bool MulConvPushDown(NodeDef* node, const GraphProperties& properties);
+
   // Strength reduces floating point division by a constant Div(x, const) to
   // multiplication by the reciprocal Mul(x, Reciprocal(const)).
   bool ReduceDivToReciprocalMul(GraphDef* optimized_graph, NodeDef* node);

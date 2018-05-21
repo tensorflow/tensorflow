@@ -240,6 +240,77 @@ TEST_F(ConstantFoldingTest, AddTree) {
   }
 }
 
+TEST_F(ConstantFoldingTest, ConvPushDownTest) {
+  // Tests if the following rewrite is performed:
+  //
+  //         *                       Conv2D
+  //        / \                       / \
+  //       c  Conv2D        -->      x  (c * filter)
+  //           / \
+  //          x  filter
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  int input_depth = 3;
+  int filter_count = 5;
+  int filter_size = 2;
+  TensorShape filter_shape(
+      {filter_size, filter_size, input_depth, filter_count});
+  Tensor filter_values(DT_FLOAT, filter_shape);
+  for (int i = 0; i < filter_values.NumElements(); ++i) {
+    filter_values.flat<float>()(i) = std::sqrt(static_cast<float>(i));
+  }
+  Output filter =
+      ops::Const(s.WithOpName("filter"), Input::Initializer(filter_values));
+
+  int batch_size = 4;
+  int input_dim = 10;
+  TensorShape input_shape({batch_size, input_dim, input_dim, input_depth});
+  Output input = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                                  ops::Placeholder::Shape(input_shape));
+
+  Output conv =
+      ops::Conv2D(s.WithOpName("conv"), input, filter, {1, 1, 1, 1}, "VALID");
+  Output c = ops::Const(s.WithOpName("c"), 3.0f, {1});
+  Output mul = ops::Mul(s.WithOpName("mul"), c, conv);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding fold(nullptr);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  std::cout << output.DebugString() << std::endl;
+
+  EXPECT_EQ(5, output.node_size());
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "mul") {
+      found++;
+      EXPECT_EQ("Conv2D", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("conv/merged_input", node.input(1));
+    } else if (node.name() == "conv/merged_input") {
+      found++;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(0, node.input_size());
+    }
+  }
+  EXPECT_EQ(2, found);
+
+  // Check that const folded multiplication node has the expected value.
+  std::vector<string> fetch = {"mul"};
+  Tensor value(DT_FLOAT, input_shape);
+  for (int i = 0; i < value.NumElements(); ++i) {
+    value.flat<float>()(i) = i;
+  }
+  auto actual = EvaluateNodes(output, fetch, {{"x", value}});
+  auto expected = EvaluateNodes(item.graph, fetch, {{"x", value}});
+  test::ExpectTensorEqual<float>(expected[0], actual[0]);
+}
+
 TEST_F(ConstantFoldingTest, NeutralElement) {
   int kConst = 0;
   int kLike = 1;
