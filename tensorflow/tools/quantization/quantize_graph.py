@@ -350,7 +350,8 @@ def intel_cpu_quantize_weight_eightbit(input_node, quantization_mode="SCALED"):
         min_value,
         max_value,
         dtypes.qint8,
-        mode=quantization_mode)
+        mode=quantization_mode,
+        round_mode="HALF_TO_EVEN")
     qint8_tensor = quantize_op[0].eval()
     # Updated min-max values should be passed to the next feeding node.
     min_value = quantize_op[1].eval()
@@ -914,6 +915,9 @@ class GraphRewriter(object):
     set_attr_dtype(quantize_input_node, "T", dtypes.quint8)
     set_attr_string(quantize_input_node, "mode",
         b"SCALED" if self.intel_cpu_eightbitize else  b"MIN_FIRST")
+    set_attr_string(quantize_input_node, "round_mode",
+        b"HALF_TO_EVEN" if self.intel_cpu_eightbitize 
+        else  b"HALF_AWAY_FROM_ZERO")
     self.add_output_graph_node(quantize_input_node)
     min_output_name = quantize_input_name + ":1"
     max_output_name = quantize_input_name + ":2"
