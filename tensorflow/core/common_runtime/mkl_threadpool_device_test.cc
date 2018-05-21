@@ -29,31 +29,22 @@ namespace tensorflow {
 TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   SessionOptions options;
   unsetenv("OMP_NUM_THREADS");
-  unsetenv("KMP_BLOCKTIME");
-  unsetenv("KMP_AFFINITY");
-  unsetenv("OMP_PROC_BIND");
 
   ThreadPoolDevice* tp = new ThreadPoolDevice(
       options, "/device:CPU:0", Bytes(256), DeviceLocality(), cpu_allocator());
 
   const int ht = port::NumHyperthreadsPerCore();
   EXPECT_EQ(omp_get_max_threads(), (port::NumSchedulableCPUs() + ht - 1) / ht);
-  ASSERT_STREQ(getenv("KMP_BLOCKTIME"), "1");
-  ASSERT_STREQ(getenv("OMP_PROC_BIND"), "true");
 }
 
 TEST(MKLThreadPoolDeviceTest, TestOmpPreSets) {
   SessionOptions options;
   setenv("OMP_NUM_THREADS", "314", 1);
-  setenv("KMP_BLOCKTIME", "1001", 1);
-  setenv("KMP_AFFINITY", "verbose", 1);
 
   ThreadPoolDevice* tp = new ThreadPoolDevice(
       options, "/device:CPU:0", Bytes(256), DeviceLocality(), cpu_allocator());
 
   EXPECT_EQ(omp_get_max_threads(), 314);
-  ASSERT_STREQ(getenv("KMP_BLOCKTIME"), "1001");
-  ASSERT_STREQ(getenv("KMP_AFFINITY"), "verbose");
 }
 #endif  // _OPENMP
 

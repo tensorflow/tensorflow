@@ -348,6 +348,7 @@ int CPUIDNumSMT() {
 #ifdef PLATFORM_IS_X86
   // https://software.intel.com/en-us/articles/intel-64-architecture-processor-topology-enumeration
   // https://software.intel.com/en-us/articles/intel-sdm (Vol 3A)
+  // Section: Detecting Hardware Multi-threads Support and Topology
   // Uses CPUID Leaf 11 to enumerate system topology on Intel x86 architectures
   // Other cases not supported
   uint32 eax, ebx, ecx, edx;

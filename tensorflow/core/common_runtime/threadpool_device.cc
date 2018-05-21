@@ -50,18 +50,6 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
 #ifdef INTEL_MKL
 #ifdef _OPENMP
-  // Defaults for MKL optimized kernel execution.
-  if (getenv("KMP_BLOCKTIME") == NULL) {
-    // Explicitly set block time to reduce interference from spinning openmp
-    // threads
-    setenv("KMP_BLOCKTIME", "1", 1);
-  }
-
-  if (getenv("KMP_AFFINITY") == NULL && getenv("OMP_PROC_BIND") == NULL) {
-    // Bind threads to processors to reduce OS scheduling overhead
-    setenv("OMP_PROC_BIND", "true", 1);
-  }
-
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   if (user_omp_threads == nullptr) {
     // OMP_NUM_THREADS controls MKL's intra-op parallelization
@@ -72,6 +60,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
   } else {
     uint64 user_val = 0;
     if (strings::safe_strtou64(user_omp_threads, &user_val)) {
+      // Superflous but triggers OpenMP loading
       omp_set_num_threads(user_val);
     }
   }
