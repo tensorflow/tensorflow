@@ -5562,6 +5562,10 @@ def get_default_graph():
   """
   return _default_graph_stack.get_default()
 
+def has_default_graph():
+  """Returns True if there is a default graph."""
+  return len(_default_graph_stack.stack) >= 1
+
 
 def get_name_scope():
   """Returns the current name scope in the default_graph.
