@@ -2123,7 +2123,7 @@ TEST_F(ConstantFoldingTest, SqueezeWithAllDimesionsGreaterThanOne) {
 }
 
 TEST_F(ConstantFoldingTest, NoOpReduction) {
-  // Build a simple graph with a reduction that can be reduced to the
+  // Build a simple graph with reductions that can be reduced to the
   // identity.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
@@ -2134,8 +2134,15 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
   Output p = ops::Prod(scope.WithOpName("p"), v, i);
   Output s = ops::Square(scope.WithOpName("s"), p);
 
+  Output v2 = ops::Variable(scope.WithOpName("v2"), {3, 5, 1}, DT_FLOAT);
+  Output c2 =
+      ops::Const(scope.WithOpName("c2").WithControlDependencies(v), 2, {1});
+  ops::Prod::Attrs attr;
+  attr = attr.KeepDims(true);
+  Output p2 = ops::Prod(scope.WithOpName("p2"), v2, c2, attr);
+
   GrapplerItem item;
-  item.fetch.push_back("s");
+  item.fetch = {"s", "p2"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
   ConstantFolding optimizer(nullptr /* cpu_device */);
@@ -2143,24 +2150,33 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  bool found = false;
+  int found = 0;
   for (const auto& node : output.node()) {
     if (node.name() == "p") {
-      found = true;
+      found++;
       EXPECT_EQ("Identity", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("v", node.input(0));
       EXPECT_EQ("^i", node.input(1));
+    } else if (node.name() == "p2") {
+      found++;
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("v2", node.input(0));
+      EXPECT_EQ("^c2", node.input(1));
     }
   }
-  EXPECT_TRUE(found);
+  EXPECT_EQ(2, found);
 
   auto v_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 5, 7}));
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"v", v_t}});
-  EXPECT_EQ(1, tensors_expected.size());
-  auto tensors = EvaluateNodes(output, item.fetch, {{"v", v_t}});
-  EXPECT_EQ(1, tensors.size());
+  auto v2_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 5, 1}));
+  auto tensors_expected =
+      EvaluateNodes(item.graph, item.fetch, {{"v", v_t}, {"v2", v2_t}});
+  EXPECT_EQ(2, tensors_expected.size());
+  auto tensors = EvaluateNodes(output, item.fetch, {{"v", v_t}, {"v2", v2_t}});
+  EXPECT_EQ(2, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-5);
+  test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-5);
 }
 
 TEST_F(ConstantFoldingTest, NoOpReshape) {

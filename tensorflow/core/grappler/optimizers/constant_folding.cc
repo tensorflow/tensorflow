@@ -1331,21 +1331,55 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
 // Returns true iff this reduction can be reduced to an identity (i.e if the set
 // of dimensions to reduce along is empty). This happens often in the gradient
 // graphs.
-bool ConstantFolding::IsSimplifiableReduction(const NodeDef& node) const {
+bool ConstantFolding::IsSimplifiableReduction(
+    const NodeDef& node, const GraphProperties& properties) const {
   if (IsReduction(node)) {
     CHECK_LE(2, node.input_size());
     const NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
     if (IsReallyConstant(*reductions_indices)) {
       TensorVector output;
+      auto outputs_cleanup = gtl::MakeCleanup([&output] {
+        for (const auto& out : output) {
+          delete out.tensor;
+        }
+      });
       Status s = EvaluateNode(*reductions_indices, TensorVector(), &output);
       if (!s.ok()) {
         return false;
       }
       CHECK_EQ(1, output.size());
       int output_size = output[0]->NumElements();
-      delete output[0].tensor;
       if (output_size == 0) {
         return true;
+      }
+      if (node.attr().count("keep_dims") > 0 &&
+          node.attr().at("keep_dims").b()) {
+        const auto& props = properties.GetInputProperties(node.name());
+        if (!props.empty()) {
+          const TensorShapeProto& input_shape = props[0].shape();
+          if (!input_shape.unknown_rank()) {
+            bool simplifiable = true;
+            for (int i = 0; i < output[0]->NumElements(); ++i) {
+              int64 dim;
+              if (output[0]->dtype() == DT_INT32) {
+                dim = output[0]->flat<int32>()(i);
+              } else {
+                dim = output[0]->flat<int64>()(i);
+              }
+              if (dim < 0) {
+                dim += input_shape.dim_size();
+              }
+              if (dim < 0 || dim >= input_shape.dim_size() ||
+                  input_shape.dim(dim).size() != 1) {
+                simplifiable = false;
+                break;
+              }
+            }
+            if (simplifiable) {
+              return true;
+            }
+          }
+        }
       }
     }
   }
@@ -2099,7 +2133,7 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
       return Status::OK();
     }
   }
-  if (IsSimplifiableReduction(*node)) {
+  if (IsSimplifiableReduction(*node, *properties)) {
     // Replace the reduction node with an identity node, that can be further
     // optimized by the model pruner.
     DataType output_type;

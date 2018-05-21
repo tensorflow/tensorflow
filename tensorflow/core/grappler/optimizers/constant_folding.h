@@ -93,7 +93,8 @@ class ConstantFolding : public GraphOptimizer {
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output);
 
-  bool IsSimplifiableReduction(const NodeDef& node) const;
+  bool IsSimplifiableReduction(const NodeDef& node,
+                               const GraphProperties& properties) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
