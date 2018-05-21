@@ -354,7 +354,7 @@ class ForestVariables(object):
         if tree_stats is not None:
           kwargs.update(dict(tree_stat=tree_stats[i]))
         self.variables.append(tree_variables_class(
-                params, i, training, **kwargs))
+            params, i, training, **kwargs))
 
   def __setitem__(self, t, val):
     self.variables[t] = val
