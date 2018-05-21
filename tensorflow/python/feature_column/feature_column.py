@@ -140,7 +140,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras._impl.keras.engine import training
+from tensorflow.python.keras.engine import training
 from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -3044,7 +3044,7 @@ class _CrossedColumn(
         feature_tensors.append(ids_and_weights.id_tensor)
       else:
         raise ValueError('Unsupported column type. Given: {}'.format(key))
-    return sparse_ops._sparse_cross_hashed(  # pylint: disable=protected-access
+    return sparse_ops.sparse_cross_hashed(
         inputs=feature_tensors,
         num_buckets=self.hash_bucket_size,
         hash_key=self.hash_key)

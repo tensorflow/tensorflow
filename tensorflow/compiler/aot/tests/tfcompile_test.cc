@@ -551,14 +551,16 @@ TEST(TFCompileTest, HloProfiling) {
   auto header = HasSubstr("Execution profile for");
   auto total_cycles_profile_line = HasSubstr("[total]");
   auto dot_profile_line = HasSubstr(
-      "%dot.0.2 = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
+      "%dot.0.4 = f32[2,2]{1,0} dot(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
       "%arg1.0.1)");
   auto add_profile_line = HasSubstr(
-      "%add.0.5 = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
+      "%add.0.6 = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg0.0.0, f32[2,2]{1,0} "
       "%arg1.0.1)");
   auto tuple_profile_line = HasSubstr(
       "%tuple.0.8 = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(f32[2,2]{1,0} "
-      "%dot.0.2, f32[2,2]{1,0} %add.0.5)");
+      "%dot.0.4, f32[2,2]{1,0} %add.0.6)");
+  auto arg0_profile_line = HasSubstr("%arg0.0.0 = f32[2,2]{1,0} parameter(0)");
+  auto arg1_profile_line = HasSubstr("%arg1.0.1 = f32[2,2]{1,0} parameter(1)");
 
   EXPECT_THAT(hlo_profile_lines,
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,

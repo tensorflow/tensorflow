@@ -50,6 +50,10 @@ bool TensorHandle::IsReady() {
   return is_ready_;
 }
 
+bool TensorHandle::IsRemote() {
+  return remote_op_id_ >= 0 && remote_output_num_ >= 0;
+}
+
 Status TensorHandle::WaitReady() {
   if (node_id == 0) return Status::OK();
   EagerExecutor* executor = nullptr;
@@ -62,6 +66,11 @@ Status TensorHandle::WaitReady() {
 }
 
 Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
+  if (IsRemote()) {
+    return errors::Unavailable(
+        "Unable to get a tensor for a remote device. Please copy the tensor "
+        "handle to a local device using TFE_TensorHandleCopyToDevice");
+  }
   TF_RETURN_IF_ERROR(WaitReady());
   DCHECK(IsReady());
   *t = &tensor_;
@@ -85,11 +94,27 @@ Status TensorHandle::OpDevice(tensorflow::Device** d) {
 Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
                                      tensorflow::Device** device,
                                      tensorflow::Device** op_device) {
+  if (IsRemote()) {
+    return errors::Unavailable(
+        "Unable to get a tensor for a remote device. Please copy the tensor "
+        "handle to a local device using TFE_TensorHandleCopyToDevice");
+  }
   TF_RETURN_IF_ERROR(WaitReady());
   DCHECK(IsReady());
   *tensor = &tensor_;
   *device = device_;
   *op_device = op_device_;
+  return Status::OK();
+}
+
+Status TensorHandle::RemoteAddress(uint64* op_id, int32* output_num) {
+  if (!IsRemote()) {
+    return errors::FailedPrecondition(
+        "This TensorHandle refers to a local tensor handle");
+  }
+  *op_id = remote_op_id_;
+  *output_num = remote_output_num_;
+
   return Status::OK();
 }
 

@@ -268,6 +268,12 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
+closure_proto_library(
+    name = "example_protos_closure",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
+)
+
 exports_files([
     "framework/types.proto",
 ])
@@ -338,6 +344,8 @@ cc_library(
     ],
     hdrs = PLATFORM_BASE_HDRS,
     copts = tf_copts(),
+    # TODO(ahentz): remove use of this library so we can move it into 'platform'
+    tags = ["avoid_dep"],
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
@@ -454,7 +462,9 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
+        ":abi",
         ":lib_platform",
+        ":stacktrace",
     ],
 )
 
@@ -1660,13 +1670,6 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "platform/**/cuda.h",
         "platform/**/stream_executor.h",
     ],
-) + tf_additional_lib_srcs(
-    exclude = [
-        "**/*.cc",
-        "**/*test*",
-        "platform/**/cuda.h",
-        "platform/**/stream_executor.h",
-    ],
 )
 
 LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
@@ -1966,6 +1969,7 @@ tf_proto_library(
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
+    provide_cc_alias = True,
 )
 
 tf_generate_proto_text_sources(
@@ -2816,6 +2820,8 @@ cc_library(
         # we now need at least "str_util".
         ":lib",
         ":lib_platform",
+        ":stacktrace_handler",
+        ":test_lite",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
@@ -4193,10 +4199,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-closure_proto_library(
-    name = "example_protos_closure",
-    visibility = ["//visibility:public"],
-    deps = [":example_protos"],
 )

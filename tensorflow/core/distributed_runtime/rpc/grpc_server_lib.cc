@@ -296,19 +296,19 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
 
-  std::shared_ptr<GrpcChannelCache> channel_cache(
+  channel_cache_.reset(
       NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
 
   string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
                                        "/task:", options.task_index);
 
-  const string host_port = channel_cache->TranslateTask(name_prefix);
+  const string host_port = channel_cache_->TranslateTask(name_prefix);
   int requested_port;
 
   if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                            channel_cache->TranslateTask(name_prefix), "\".");
+                            channel_cache_->TranslateTask(name_prefix), "\".");
   }
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
@@ -316,7 +316,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   }
 
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
-      channel_cache, worker_impl_.get(), name_prefix);
+      channel_cache_, worker_impl_.get(), name_prefix);
   return Status::OK();
 }
 

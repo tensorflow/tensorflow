@@ -80,7 +80,7 @@ Status EncapsulateSubgraphsInFunctions(
     std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library);
 
 // The attribute that marks function calls produced by the encapsulate
-// subgraphs pass and that should in turn be compiled via _XlaLaunch operators.
+// subgraphs pass and that should in turn be compiled via XlaLaunch operators.
 extern const char* const kXlaCompiledKernelAttr;
 
 // Does `node` have the kXlaCompiledKernelAttr attribute?

@@ -221,6 +221,21 @@ class BackpropTest(test.TestCase):
     self.assertTrue(ordered_variables[0] is v0)
     self.assertTrue(ordered_variables[1] is v1)
 
+  def testTapeStopRecording(self):
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      with t.stop_recording():
+        y = x * x
+    self.assertEqual(t.gradient(y, x), None)
+
+  def testTapeReset(self):
+    with backprop.GradientTape() as t:
+      v = resource_variable_ops.ResourceVariable(1.0)
+      loss = v * v
+      t.reset()
+      loss += v * v
+    self.assertAllEqual(t.gradient(loss, v), 2.0)
+
   @test_util.assert_no_new_tensors
   def testGradientNone(self):
 
@@ -242,12 +257,22 @@ class BackpropTest(test.TestCase):
     self.evaluate(v1.initializer)
     with backprop.GradientTape() as t:
       loss = 2 * v1
-      with self.assertRaises(RuntimeError):
-        t.gradient(loss, [v1])
+      grad = t.gradient(loss, v1)
+    self.assertAllEqual(self.evaluate(grad), 2.0)
+
     with backprop.GradientTape(persistent=True) as t:
       loss = 2 * v1
-      grad = t.gradient(loss, [v1])
-    self.assertAllEqual(self.evaluate(grad[0]), 2.0)
+      grad = t.gradient(loss, v1)
+    self.assertAllEqual(self.evaluate(grad), 2.0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNestedSelfContexts(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v1.initializer)
+    with backprop.GradientTape() as t:
+      with self.assertRaises(ValueError):
+        with t:
+          pass
 
   @test_util.assert_no_new_tensors
   def testSecondGrad(self):
@@ -539,6 +564,23 @@ class BackpropTest(test.TestCase):
     self.assertEqual(self.evaluate(dz_dx), 4 * 3 * 3 * 3)
     dy_dx = g.gradient(y, [x])[0]
     self.assertEqual(self.evaluate(dy_dx), 2 * 3)
+    del g
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes()
+  def testHigherOrderGradient(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x ** 3                      # y       := x^3
+      dy_dx = g.gradient(y, x)        # dy/dx   := 3x^2
+      d2y_dx2 = g.gradient(dy_dx, x)  # d2y/dx2 := 6x
+    d3y_dx3 = g.gradient(d2y_dx2, x)  # d3y/dx3 := 6
+    x = 3
+    self.assertEqual(self.evaluate(y), x ** 3)
+    self.assertEqual(self.evaluate(dy_dx), 3 * x ** 2)
+    self.assertEqual(self.evaluate(d2y_dx2), 6 * x)
+    self.assertEqual(self.evaluate(d3y_dx3), 6)
     del g
 
   @test_util.assert_no_new_tensors

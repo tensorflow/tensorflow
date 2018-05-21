@@ -33,18 +33,18 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras._impl.keras.engine import training
-from tensorflow.python.keras._impl.keras.layers import core
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import checkpointable
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import saver as core_saver
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class NonLayerCheckpointable(checkpointable.Checkpointable):

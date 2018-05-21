@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -203,9 +202,9 @@ Status HeapSimulator::RunComputation(
         for (const BufferValue* operand_buffer : operand_buffers_to_free) {
           if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
               buffer->instruction()->opcode() != HloOpcode::kCopy &&
-              CanShareOperandBufferWithUser(
+              points_to_analysis.CanShareOperandBufferWithUser(
                   operand_buffer->instruction(), operand_buffer->index(),
-                  buffer->instruction(), buffer->index(), points_to_analysis)) {
+                  buffer->instruction(), buffer->index())) {
             VLOG(3) << "  Sharing: " << buffer->ToString() << " with "
                     << operand_buffer->ToString();
             ShareBuffer(buffer, operand_buffer, instruction);

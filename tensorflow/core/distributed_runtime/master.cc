@@ -269,7 +269,8 @@ class DeviceFinder {
     mutex_lock l(mu_);
     seen_targets_[target_index] = true;
     if (!s.ok()) {
-      LOG(ERROR) << "Master init: " << s;
+      LOG(ERROR) << "CreateSession failed because worker "
+                 << targets_[target_index] << " returned error: " << s;
       status_.Update(s);
     } else {
       found_.insert(found_.end(), devices->begin(), devices->end());

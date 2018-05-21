@@ -24,12 +24,14 @@ import numpy as np
 import six
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BaseBijectorTest(test.TestCase):
   """Tests properties of the Bijector base-class."""
 
@@ -47,42 +49,38 @@ class BaseBijectorTest(test.TestCase):
       def __init__(self):
         super(_BareBonesBijector, self).__init__(forward_min_event_ndims=0)
 
-    with self.test_session() as sess:
-      bij = _BareBonesBijector()
-      self.assertEqual([], bij.graph_parents)
-      self.assertEqual(False, bij.is_constant_jacobian)
-      self.assertEqual(False, bij.validate_args)
-      self.assertEqual(None, bij.dtype)
-      self.assertEqual("bare_bones_bijector", bij.name)
+    bij = _BareBonesBijector()
+    self.assertEqual([], bij.graph_parents)
+    self.assertEqual(False, bij.is_constant_jacobian)
+    self.assertEqual(False, bij.validate_args)
+    self.assertEqual(None, bij.dtype)
+    self.assertEqual("bare_bones_bijector", bij.name)
 
-      for shape in [[], [1, 2], [1, 2, 3]]:
-        [
-            forward_event_shape_,
-            inverse_event_shape_,
-        ] = sess.run([
-            bij.inverse_event_shape_tensor(shape),
-            bij.forward_event_shape_tensor(shape),
-        ])
-        self.assertAllEqual(shape, forward_event_shape_)
-        self.assertAllEqual(shape, bij.forward_event_shape(shape))
-        self.assertAllEqual(shape, inverse_event_shape_)
-        self.assertAllEqual(shape, bij.inverse_event_shape(shape))
+    for shape in [[], [1, 2], [1, 2, 3]]:
+      forward_event_shape_ = self.evaluate(
+          bij.inverse_event_shape_tensor(shape))
+      inverse_event_shape_ = self.evaluate(
+          bij.forward_event_shape_tensor(shape))
+      self.assertAllEqual(shape, forward_event_shape_)
+      self.assertAllEqual(shape, bij.forward_event_shape(shape))
+      self.assertAllEqual(shape, inverse_event_shape_)
+      self.assertAllEqual(shape, bij.inverse_event_shape(shape))
 
-      with self.assertRaisesRegexp(
-          NotImplementedError, "inverse not implemented"):
-        bij.inverse(0)
+    with self.assertRaisesRegexp(
+        NotImplementedError, "inverse not implemented"):
+      bij.inverse(0)
 
-      with self.assertRaisesRegexp(
-          NotImplementedError, "forward not implemented"):
-        bij.forward(0)
+    with self.assertRaisesRegexp(
+        NotImplementedError, "forward not implemented"):
+      bij.forward(0)
 
-      with self.assertRaisesRegexp(
-          NotImplementedError, "inverse_log_det_jacobian not implemented"):
-        bij.inverse_log_det_jacobian(0, event_ndims=0)
+    with self.assertRaisesRegexp(
+        NotImplementedError, "inverse_log_det_jacobian not implemented"):
+      bij.inverse_log_det_jacobian(0, event_ndims=0)
 
-      with self.assertRaisesRegexp(
-          NotImplementedError, "forward_log_det_jacobian not implemented"):
-        bij.forward_log_det_jacobian(0, event_ndims=0)
+    with self.assertRaisesRegexp(
+        NotImplementedError, "forward_log_det_jacobian not implemented"):
+      bij.forward_log_det_jacobian(0, event_ndims=0)
 
 
 class IntentionallyMissingError(Exception):

@@ -38,7 +38,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
 
 
@@ -919,7 +919,7 @@ class ResourceVariable(variables.Variable):
             begin=begin,
             end=end,
             strides=strides,
-            value=value,
+            value=ops.convert_to_tensor(value, dtype=self.dtype),
             name=name,
             begin_mask=begin_mask,
             end_mask=end_mask,

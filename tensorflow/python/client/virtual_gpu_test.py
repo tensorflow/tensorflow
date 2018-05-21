@@ -192,7 +192,6 @@ class VirtualGpuTestUtil(object):
     return True
 
 
-@test_util.with_c_api
 class VirtualGpuTest(test_util.TensorFlowTestCase):
 
   def __init__(self, method_name):

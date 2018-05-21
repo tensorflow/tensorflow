@@ -361,8 +361,11 @@ message RecvTensorResponse {
 // Out-of-band request to begin or end logging, or
 // to retrieve logs for particular steps.
 message LoggingRequest {
-  // If true, RPC logging will be activated.
-  bool rpc_logging = 1;
+  // If true, RPC logging will be enabled.
+  bool enable_rpc_logging = 1;
+
+  // If true, RPC logging will be disabled.
+  bool disable_rpc_logging = 4;
 
   // If true, discard any saved logging data (for all steps).
   bool clear = 2;

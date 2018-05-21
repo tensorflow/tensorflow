@@ -489,6 +489,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "sparse"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "spectral"
     mtype: "<type \'module\'>"
   }
@@ -1527,6 +1531,10 @@ tf_module {
   member_method {
     name: "pow"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "print"
+    argspec: "args=[\'input_\', \'data\', \'message\', \'first_n\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "py_func"

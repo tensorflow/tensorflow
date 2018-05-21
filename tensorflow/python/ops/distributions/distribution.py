@@ -357,7 +357,7 @@ class Distribution(_BaseDistribution):
 
   For detailed usage examples of TensorFlow Distributions shapes, see
   [this tutorial](
-  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding%20TensorFlow%20Distributions%20Shapes.ipynb)
+  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding_TensorFlow_Distributions_Shapes.ipynb)
 
   #### Parameter values leading to undefined statistics or distributions.
 

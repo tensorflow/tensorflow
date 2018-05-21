@@ -355,7 +355,7 @@ class Dataset(object):
     else:
       args = tuple(ops.convert_n_to_tensor(args, name="args"))
 
-    flattened_types = nest.flatten(output_types)
+    flattened_types = [dtypes.as_dtype(dt) for dt in nest.flatten(output_types)]
     flattened_shapes = nest.flatten(output_shapes)
 
     generator_state = Dataset._GeneratorState(generator)
@@ -741,7 +741,6 @@ class Dataset(object):
     d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
     d = d.repeat(FLAGS.num_epochs)
     d = d.shuffle(FLAGS.shuffle_buffer_size)
-    d = d.repeat()
     d = d.interleave(tf.data.TFRecordDataset,
                      cycle_length=FLAGS.num_readers, block_length=1)
     d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)

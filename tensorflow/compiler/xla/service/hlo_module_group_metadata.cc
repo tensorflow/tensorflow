@@ -57,7 +57,7 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
 
 /* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(const std::vector<HloModule*>& modules) {
-  auto metadata = absl::make_unique<HloModuleGroupMetadata>(modules);
+  auto metadata = MakeUnique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
   return std::move(metadata);
 }
@@ -298,7 +298,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
   if (!ContainsKey(companion_set_index_, instruction1) &&
       !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
-        absl::make_unique<std::unordered_set<HloInstruction*>>());
+        tensorflow::MakeUnique<std::unordered_set<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
     companion_set->insert(instruction1);
     companion_set->insert(instruction2);

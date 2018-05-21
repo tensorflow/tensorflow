@@ -53,12 +53,9 @@ def tearDownModule():
   file_io.delete_recursively(test.get_temp_dir())
 
 
-@test_util.with_c_api
 class SavedModelTest(test.TestCase):
 
   def _get_export_dir(self, label):
-    if ops._USE_C_API:
-      label += "_c_api"
     return os.path.join(test.get_temp_dir(), label)
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
@@ -1118,12 +1115,8 @@ class SavedModelTest(test.TestCase):
     # does not have any attr values for the "TestAttr" node, and there is no
     # default specified in the TestAttr OpDef.
     sess = session.Session(graph=ops.Graph())
-    if ops._USE_C_API:
-      error_message = "NodeDef missing attr 'T' from Op<name=TestAttr"
-    else:
-      error_message = ("Expected one attr with name .*T(out)?.* in name: "
-                       "\"test_attr\".*")
-    with self.assertRaisesRegexp(ValueError, error_message):
+    with self.assertRaisesRegexp(
+        ValueError, "NodeDef missing attr 'T' from Op<name=TestAttr"):
       loader.load(sess, ["foo"], export_dir)
 
     # Rewrite the SavedModel to change the type of the T attr in "test_attr"
