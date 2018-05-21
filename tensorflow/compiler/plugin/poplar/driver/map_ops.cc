@@ -5,6 +5,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
 
@@ -134,6 +135,16 @@ StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
     for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
       TF_RETURN_IF_ERROR(
           AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
+    }
+  } else if (StartsWith(comp->name(), "__arithmetic")) {
+    ArithmeticExprVisitor arithmetic_visitor(graph, res, args);
+    TF_RETURN_IF_ERROR(comp->Accept(&arithmetic_visitor));
+
+    seq.add(arithmetic_visitor.sequence);
+
+    for (size_t i = 0; i < arithmetic_visitor.outputs().size(); i++) {
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
+                                         arithmetic_visitor.outputs()[i]));
     }
   } else {
     ComputationMap::iterator subcomp_visitor;

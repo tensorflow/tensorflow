@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -32,9 +34,7 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
-    case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
@@ -72,8 +72,13 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
     case HloOpcode::kShiftRightLogical:
       // Ternary
     case HloOpcode::kSelect:
+      return !ShapeUtil::IsTuple(inst->shape());
     case HloOpcode::kClamp:
       return true;
+    // Ops not supported in Expressions
+    case HloOpcode::kConvert:
+    case HloOpcode::kCopy:
+      return false;
     default:
       return false;
   }
@@ -81,9 +86,8 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 
 }  // namespace
 
-ExpressionOutliner::ExpressionOutliner(const InplaceSet& inplace) :
-    HloMatcher({}, true),
-    inplace_instructions(inplace) {}
+ExpressionOutliner::ExpressionOutliner(const InplaceSet& inplace)
+    : HloMatcher({}, true), inplace_instructions(inplace) {}
 
 ReplacedInstructions ExpressionOutliner::ReplaceNodes(
     int, const HloMatcherMatched&) {
@@ -97,7 +101,56 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   for (auto* inst : comp->MakeInstructionPostOrder()) {
     if (IsPopopsElementwise(inst)) {
       if (inplace_instructions.count(inst) == 0) {
-        all_ops.push_front(inst);
+        bool add_op = true;
+        if (inst->IsElementwiseBinary()) {
+          // for BinaryOps check the shapes of inputs match
+          const HloInstruction* in0 = inst->operand(0);
+          const HloInstruction* in1 = inst->operand(1);
+          const bool input_shapes_match =
+              ShapeUtil::Equal(in0->shape(), in1->shape());
+          if (!input_shapes_match) {
+            // if shapes don't match check that they can be broadcasted to the
+            // same shape
+            tensorflow::BCast::Vec shape0 =
+                convert_array<tensorflow::BCast::Vec>(
+                    in0->shape().dimensions());
+            tensorflow::BCast::Vec shape1 =
+                convert_array<tensorflow::BCast::Vec>(
+                    in1->shape().dimensions());
+
+            const bool valid_bcast =
+                tensorflow::BCast(shape0, shape1).IsValid();
+            if (!valid_bcast) {
+              add_op = false;
+            }
+          }
+        } else if (inst->opcode() == HloOpcode::kClamp) {
+          // don't add ClampOps for which inputs don't have the same shape as
+          // output
+          const bool shapes_match =
+              ShapeUtil::Equal(inst->shape(), inst->operand(0)->shape()) &&
+              ShapeUtil::Equal(inst->shape(), inst->operand(1)->shape()) &&
+              ShapeUtil::Equal(inst->shape(), inst->operand(2)->shape());
+          if (!shapes_match) {
+            add_op = false;
+          }
+        } else if (inst->opcode() == HloOpcode::kSelect) {
+          const HloInstruction* pred = inst->operand(0);
+          const HloInstruction* in0 = inst->operand(1);
+          const HloInstruction* in1 = inst->operand(2);
+          // for Elementwise Select, predicate has to be scalar
+          const bool pred_scalar = ShapeUtil::ElementsIn(pred->shape()) == 1;
+          // or match the shape with the inputs
+          const bool shapes_match =
+              ShapeUtil::Equal(pred->shape(), in0->shape()) &&
+              ShapeUtil::Equal(pred->shape(), in1->shape());
+          if (!pred_scalar || !shapes_match) {
+            add_op = false;
+          }
+        }
+        if (add_op) {
+          all_ops.push_front(inst);
+        }
       }
     }
   }
@@ -165,12 +218,12 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
         match.parameters.push_back(pr);
       }
 
-      OutlineExpressionFromComputation(match, "__inline_arithmetic", 0);
+      OutlineExpressionFromComputation(match, "__arithmetic_expression", 0);
     }
   }
 
   return true;
-}
+}  // namespace poplarplugin
 
 }  // namespace poplarplugin
 }  // namespace xla
