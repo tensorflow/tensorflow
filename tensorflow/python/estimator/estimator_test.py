@@ -814,6 +814,7 @@ class EstimatorTrainTest(test.TestCase):
 
   def test_saving_listeners_are_used(self):
     listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    listener.after_save.return_value = None
     est = estimator.Estimator(
         model_fn=model_fn_global_step_incrementer,
         config=run_config.RunConfig(save_checkpoints_steps=10))
