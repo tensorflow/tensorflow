@@ -118,6 +118,30 @@ PyObject* Flatten(PyObject* nested);
 // the type from the module. This approach also requires some trigger from
 // Python so that we know that Python interpreter had been initialzied.
 void RegisterSequenceClass(PyObject* sequence_class);
+// Similar to the above function, except for the
+// sparse_tensor.SparseTensorValue class.
+void RegisterSparseTensorValueClass(PyObject* sparse_tensor_value_class);
+
+// The tensorflow.python.data package has its own nest utility that follows very
+// slightly different semantics for its functions than the tensorflow.python
+// nest utility. Returns a true if its input is a collections.Sequence (except
+// strings).
+//
+// Main differences are (this is copied from nest.py in the
+// tensorflow.data.util):
+//
+// 1. It removes support for lists as a level of nesting in nested structures.
+// 2. It adds support for `SparseTensorValue` as an atomic element.
+
+// IsSequence specialized for the data package. Additional comments about
+// difference in functionality can be found in nest.py in tensorflow.data.util
+// and in the comments for Flatten above.
+bool IsSequenceForData(PyObject* o);
+
+// IsSequence specialized for the data package. Additional comments about
+// difference in functionality can be found in nest.py in tensorflow.data.util
+// and in the comments for Flatten above.
+PyObject* FlattenForData(PyObject* nested);
 
 }  // namespace swig
 }  // namespace tensorflow
