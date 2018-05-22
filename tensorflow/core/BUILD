@@ -1108,11 +1108,24 @@ cc_library(
         ":shape_inference_testutil",
         ":tensor_testutil",
         ":test",
+        ":testlib_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
     ],
+)
+
+cc_library(
+    name = "testlib_ops",
+    testonly = 1,
+    srcs = ["common_runtime/testlib_ops.cc"],
+    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
 )
 
 # This is a link-only library to provide a DirectSession
@@ -3745,6 +3758,31 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_executor_test",
+    size = "small",
+    srcs = ["common_runtime/executor_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:state",
     ],
 )
 
