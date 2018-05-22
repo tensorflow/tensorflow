@@ -583,6 +583,7 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":xla_data_proto",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
