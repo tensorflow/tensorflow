@@ -24,6 +24,7 @@ cc_library(
     name = "all_ops",
     deps = [
         ":cross_replica_ops_op_lib",
+        ":heartbeat_ops_op_lib",
         ":host_compute_ops_op_lib",
         ":infeed_ops_op_lib",
         ":outfeed_ops_op_lib",
@@ -71,6 +72,7 @@ py_library(
 tf_gen_op_libs(
     op_lib_names = [
         "cross_replica_ops",
+        "heartbeat_ops",
         "host_compute_ops",
         "infeed_ops",
         "outfeed_ops",
@@ -89,6 +91,7 @@ tf_custom_op_library(
     name = "python/ops/_tpu_ops.so",
     srcs = [
         "ops/cross_replica_ops.cc",
+        "ops/heartbeat_ops.cc",
         "ops/host_compute_ops.cc",
         "ops/infeed_ops.cc",
         "ops/outfeed_ops.cc",
@@ -106,6 +109,7 @@ tf_gen_op_wrapper_py(
     name = "tpu_ops",
     deps = [
         ":cross_replica_ops_op_lib",
+        ":heartbeat_ops_op_lib",
         ":host_compute_ops_op_lib",
         ":infeed_ops_op_lib",
         ":outfeed_ops_op_lib",
@@ -162,6 +166,8 @@ py_library(
         "python/tpu/__init__.py",
         "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
+        "python/tpu/keras_support.py",
+        "python/tpu/session_support.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
         "python/tpu/tpu_feed.py",
@@ -175,6 +181,7 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
+        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

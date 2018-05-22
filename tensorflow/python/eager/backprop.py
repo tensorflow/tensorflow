@@ -37,7 +37,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -358,6 +360,8 @@ def gradients_function(f, params=None):
   assert y_grad.numpy() == (2 ** 3) - 2 * 2 * 3
   ```
 
+  Note that only tensors with real or complex dtypes are differentiable.
+
   Args:
    f: function to be differentiated. If `f` returns a scalar, this scalar will
      be differentiated. If `f` returns a tensor or list of tensors, by default
@@ -666,11 +670,11 @@ class GradientTape(object):
   be computed as:
 
   ```python
-  x = tf.constant(3.)
-  with tfe.GradientTape() as g:
+  x = tf.constant(3.0)
+  with tf.GradientTape() as g:
     g.watch(x)
     y = x * x
-  grad = g.gradient(y, [x])[0] # Will compute to 6.0
+  dy_dx = g.gradient(y, x) # Will compute to 6.0
   ```
 
   GradientTapes can be nested to compute higher-order derivatives. For example,
@@ -681,8 +685,8 @@ class GradientTape(object):
     with tfe.GradientTape() as gg:
       gg.watch(x)
       y = x * x
-    dy_dx = gg.gradient(y, [x])[0]     # Will compute to 6.0
-  d2y_dx2 = g.gradient(dy_dx, [x])[0]  # Will compute to 2.0
+    dy_dx = gg.gradient(y, x)     # Will compute to 6.0
+  d2y_dx2 = g.gradient(dy_dx, x)  # Will compute to 2.0
   ```
 
   By default, the resources held by a GradientTape are released as soon as
@@ -693,13 +697,16 @@ class GradientTape(object):
 
   ```python
   x = tf.constant(3.0)
-  with tfe.GradientTape(persistent=True) as g:
+  with tf.GradientTape(persistent=True) as g:
     g.watch(x)
     y = x * x
     z = y * y
-  dy_dx = g.gradient(z, [x])[0]  # 6.0
-  dz_dx = g.gradient(y, [x])[0]  # 108.0 (4*x^3 at x = 3)
+  dz_dx = g.gradient(z, x)  # 108.0 (4*x^3 at x = 3)
+  dy_dx = g.gradient(y, x)  # 6.0
   del g  # Drop the reference to the tape
+  ```
+
+  Note that only tensors with real or complex dtypes are differentiable.
   """
 
   def __init__(self, persistent=False):
@@ -712,13 +719,29 @@ class GradientTape(object):
     """
     self._tape = None
     self._persistent = persistent
+    self._recording = False
 
   def __enter__(self):
-    self._tape = tape.push_new_tape(persistent=self._persistent)
+    """Enters a context inside which operations are recorded on this tape."""
+    self._push_tape()
     return self
 
   def __exit__(self, typ, value, traceback):
+    """Exits the recording context, no further operations are traced."""
+    if self._recording:
+      self._pop_tape()
+
+  def _push_tape(self):
+    if self._recording:
+      raise ValueError("Tape is already recording.")
+    self._tape = tape.push_new_tape(persistent=self._persistent)
+    self._recording = True
+
+  def _pop_tape(self):
+    if not self._recording:
+      raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
+    self._recording = False
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -728,6 +751,72 @@ class GradientTape(object):
     """
     for t in nest.flatten(tensor):
       tape.watch(_handle_or_self(t))
+
+  @tf_contextlib.contextmanager
+  def stop_recording(self):
+    """Temporarily stops recording operations on this tape.
+
+    Operations executed while this context manager is active will not be
+    recorded on the tape. This is useful for reducing the memory used by tracing
+    all computations.
+
+    For example:
+
+    ```
+      with tf.GradientTape(persistent=True) as t:
+        loss = compute_loss(model)
+        with t.stop_recording():
+          # The gradient computation below is not traced, saving memory.
+          grads = t.gradient(loss, model.variables)
+    ```
+
+    Yields:
+      None
+    Raises:
+      RuntimeError: if the tape is not currently recording.
+    """
+    if self._tape is None:
+      raise RuntimeError(
+          "Trying to stop recording a tape which is not recording.")
+    self._pop_tape()
+    try:
+      yield
+    finally:
+      self._push_tape()
+
+  def reset(self):
+    """Clears all information stored in this tape.
+
+    Equivalent to exiting and reentering the tape context manager with a new
+    tape. For example, the two following code blocks are equivalent:
+    ```
+    with tf.GradientTape() as t:
+      loss = loss_fn()
+    with tf.GradientTape() as t:
+      loss += other_loss_fn()
+    t.gradient(loss, ...)  # Only differentiates other_loss_fn, not loss_fn
+
+
+    # The following is equivalent to the above
+    with tf.GradientTape() as t:
+      loss = loss_fn()
+      t.reset()
+      loss += other_loss_fn()
+    t.gradient(loss, ...)  # Only differentiates other_loss_fn, not loss_fn
+    ```
+
+    This is useful if you don't want to exit the context manager for the tape,
+    or can't because the desired reset point is inside a control flow construct:
+
+    ```
+    with tf.GradientTape() as t:
+      loss = ...
+      if loss > k:
+        t.reset()
+    ```
+    """
+    self._pop_tape()
+    self._push_tape()
 
   def watched_variables(self):
     # Sorting variables by id, which is monotonically increasing in construction
@@ -740,7 +829,7 @@ class GradientTape(object):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:
-      target: Tensor to be differentiated.
+      target: Tensor (or list of tensors) to be differentiated.
       sources: a list or nested structure of Tensors or Variables. `target`
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
@@ -756,14 +845,32 @@ class GradientTape(object):
        than once on a non-persistent tape.
     """
     if self._tape is None:
-      raise RuntimeError("GradientTape.gradient can only be called once "
-                         "on non-persistent tapes, and "
-                         "only when the context manager has exited.")
+      raise RuntimeError("GradientTape.gradient can only be called once on "
+                         "non-persistent tapes.")
+    if self._recording:
+      if not self._persistent:
+        self._pop_tape()
+      else:
+        logging.log_first_n(logging.WARN,
+                            "Calling GradientTape.gradient on a persistent "
+                            "tape inside it's context is significantly less "
+                            "efficient than calling it outside the context (it "
+                            "causes the gradient ops to be recorded on the "
+                            "tape, leading to increased CPU and memory usage). "
+                            "Only call GradientTape.gradient inside the "
+                            "context if you actually want to trace the "
+                            "gradient in order to compute higher order "
+                            "derrivatives.", 1)
+
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 
+    if output_gradients is not None:
+      output_gradients = [None if x is None else ops.convert_to_tensor(x)
+                          for x in nest.flatten(output_gradients)]
+
     flat_grad = imperative_grad.imperative_grad(
-        _default_vspace, self._tape, [target], flat_sources,
+        _default_vspace, self._tape, nest.flatten(target), flat_sources,
         output_gradients=output_gradients)
 
     if not self._persistent:

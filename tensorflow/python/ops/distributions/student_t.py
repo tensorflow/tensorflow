@@ -157,8 +157,8 @@ class StudentT(distribution.Distribution):
     Raises:
       TypeError: if loc and scale are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[df, loc, scale]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[df, loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(df)]
                                     if validate_args else []):
         self._df = array_ops.identity(df, name="df")
@@ -349,8 +349,8 @@ class StudentTWithAbsDfSoftplusScale(StudentT):
                validate_args=False,
                allow_nan_stats=True,
                name="StudentTWithAbsDfSoftplusScale"):
-    parameters = locals()
-    with ops.name_scope(name, values=[df, scale]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[df, scale]) as name:
       super(StudentTWithAbsDfSoftplusScale, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           loc=loc,

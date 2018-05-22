@@ -62,8 +62,6 @@ class Namer(object):
       n += 1
       new_name = '%s_%d' % (new_name_root, n)
 
-    if live_entity is not None:
-      self.renamed_calls[live_entity] = new_name
     self.generated_names.add(new_name)
     if live_entity is not None:
       self.renamed_calls[live_entity] = new_name

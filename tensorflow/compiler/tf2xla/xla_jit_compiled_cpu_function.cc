@@ -112,10 +112,10 @@ void CollectNames(const T& entries, std::vector<string>* nonempty_names,
 XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {
-  // Convert the graph_def into an xla::Computation.
+  // Convert the graph_def into an xla::XlaComputation.
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client,
                       xla::ClientLibrary::GetOrCreateLocalClient());
-  xla::Computation computation;
+  xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToXla(graph_def, config, client,
                                                       &computation));
 

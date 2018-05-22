@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
@@ -98,6 +99,107 @@ TEST(HloMatchersTest, CustomCallMatcher) {
               R"(custom-call with call target that isn't equal to "bar")");
   EXPECT_THAT(DescribeHloMatcher(op::CustomCall("foo_target")),
               R"(custom-call with call target that is equal to "foo_target")");
+}
+
+TEST(HloMatchersTest, ShapeMatcher) {
+  auto p0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1}), "param");
+
+  EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {5, 7})));
+  EXPECT_THAT(p0.get(), op::Shape("f32[5,7]"));
+  EXPECT_THAT(
+      p0.get(),
+      ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {5, 7}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]")));
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::Shape("f32[7,5]")));
+  EXPECT_THAT(
+      p0.get(),
+      ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {7, 5}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[7,5]")));
+  EXPECT_THAT(p0.get(),
+              op::Shape(ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::Shape("f32[5,7]{0,1}"));
+  EXPECT_THAT(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+                            F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::ShapeWithLayout("f32[5,7]{0,1}"));
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::ShapeWithLayout(
+                  ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {1, 0}))));
+  EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]{1,0}")));
+
+  EXPECT_THAT(Explain(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))),
+              "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
+              "(expected: f32[7,5])");
+  EXPECT_THAT(
+      Explain(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+                            F32, {7, 5}, {1, 0}))),
+      "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
+      "(expected: f32[7,5]{1,0})");
+}
+
+TEST(HloMatchersTest, ShardingMatcher) {
+  auto p0 = HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {5}),
+                                            "param.0");
+  p0->clear_sharding();
+  auto p1 = HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {7}),
+                                            "param.1");
+  p1->set_sharding(HloSharding::AssignDevice(1));
+
+  EXPECT_THAT(p0.get(), op::NoSharding());
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::Sharding(HloSharding::AssignDevice(1))));
+  EXPECT_THAT(p1.get(), ::testing::Not(op::NoSharding()));
+  EXPECT_THAT(p1.get(),
+              ::testing::Not(op::Sharding(HloSharding::AssignDevice(0))));
+  EXPECT_THAT(p1.get(), op::Sharding(HloSharding::AssignDevice(1)));
+
+  EXPECT_THAT(Explain(p0.get(), op::Sharding(HloSharding::AssignDevice(1))),
+              "%param.0 = f32[5]{0} parameter(0) has no sharding (expected: "
+              "{maximal device=1})");
+  EXPECT_THAT(Explain(p1.get(), op::NoSharding()),
+              "%param.1 = f32[7]{0} parameter(1), sharding={maximal device=1} "
+              "expected to have no sharding.");
+  EXPECT_THAT(Explain(p1.get(), op::Sharding(HloSharding::AssignDevice(0))),
+              "%param.1 = f32[7]{0} parameter(1), sharding={maximal device=1} "
+              "has incorrect sharding (expected: {maximal device=0})");
+}
+
+TEST(HloMatchersTest, DotMatcher) {
+  string hlo_string = R"(
+HloModule DotOperationFusion_TransposeFusion
+
+ENTRY DotOperationFusion_TransposeFusion {
+  arg0 = f32[1,256] parameter(0)
+  arg1 = f32[256,1024] parameter(1)
+  ROOT dot = f32[1,1024] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(root, op::Dot(op::Parameter(0), op::Parameter(1),
+                            /*lhs_contracting_dim=*/1,
+                            /*rhs_contracting_dim=*/0));
+
+  EXPECT_THAT(
+      Explain(root, op::Dot(op::Parameter(0), op::Parameter(1),
+                            /*lhs_contracting_dim=*/0,
+                            /*rhs_contracting_dim=*/0)),
+      "%dot = f32[1,1024]{1,0} dot(f32[1,256]{1,0} %arg0, f32[256,1024]{1,0} "
+      "%arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0} has wrong "
+      "lhs_contracting_dimensions (got {1} want {0})");
+
+  EXPECT_THAT(
+      Explain(root, op::Dot(op::Parameter(0), op::Parameter(1),
+                            /*lhs_contracting_dim=*/1,
+                            /*rhs_contracting_dim=*/1)),
+      "%dot = f32[1,1024]{1,0} dot(f32[1,256]{1,0} %arg0, f32[256,1024]{1,0} "
+      "%arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0} has wrong "
+      "rhs_contracting_dimensions (got {0} want {1})");
 }
 
 }  // namespace

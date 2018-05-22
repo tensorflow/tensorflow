@@ -53,15 +53,14 @@ def _validate_value_destination_pairs(value_destination_pairs):
   return True
 
 
+# TODO(yuefengz): consider calling this function in the caller of CrossTowerOps.
 def _get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
   elif isinstance(destinations, six.string_types):
-    return [device_util.canonicalize(destinations)]
+    return [device_util.resolve(destinations)]
   else:
-    return [
-        device_util.canonicalize(destination) for destination in destinations
-    ]
+    return [device_util.resolve(destination) for destination in destinations]
 
 
 def _devices_match(left, right):

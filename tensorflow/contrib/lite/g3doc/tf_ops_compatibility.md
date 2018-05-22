@@ -132,10 +132,7 @@ TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
-*   [tf.floor](https://www.tensorflow.org/api_docs/python/tf/floor)
-*   [tf.gather](https://www.tensorflow.org/api_docs/python/tf/gather)
 *   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
-*   [tf.slice](https://www.tensorflow.org/api_docs/python/tf/slice)
 *   [tf.tanh](https://www.tensorflow.org/api_docs/python/tf/tanh)
 
 ## TensorFlow Lite Operations
@@ -223,6 +220,23 @@ Options {
 }
 ```
 
+**CONV_2D_TRANSPOSE**
+
+```
+Inputs {
+  0: output_shape
+  1: filter
+  2: 4D tensor
+}
+Outputs {
+  0: the transpose (gradient) of conv2d
+}
+Options {
+  padding: SAME|VALID
+  stride_w,stride_h: stride of the filter window
+}
+```
+
 **DEPTHWISE_CONV_2D**
 
 ```
@@ -254,6 +268,17 @@ Outputs {
 }
 ```
 
+**FLOOR**
+
+```
+inputs {
+  0: tensor
+}
+outputs: {
+  0: result of computing element-wise floor of the input tensor
+}
+```
+
 **FULLY_CONNECTED**
 
 ```
@@ -268,6 +293,45 @@ Outputs {
 }
 Options {
   fused_activation_function:  NONE|RELU|RELU6
+}
+```
+
+**GATHER**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
+  2: axis tensor (optional)
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
+}
+```
+
+**GREATER**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is
+  greater than the corresponding element of the second tensor.
+}
+```
+
+**GREATER_EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is
+  greater than or equal to the corresponding element of the second tensor.
 }
 ```
 
@@ -312,6 +376,19 @@ Inputs {
 Outputs {
   0: a tensor of type bool, true whenever an element of the first tensor is less
   than the corresponding element of the second tensor.
+}
+```
+
+**LESS_EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is less
+  than or equal to the corresponding element of the second tensor.
 }
 ```
 
@@ -384,6 +461,17 @@ Outputs {
 }
 Options {
   fused_activation_function:  NONE|RELU|RELU6
+}
+```
+
+**NEG**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: elementwise negation of the input tensor
 }
 ```
 
@@ -460,6 +548,19 @@ Outputs {
 }
 Options {
   new_shape
+}
+```
+
+**SLICE**
+
+```
+Inputs {
+  0: tensor
+  1: 1D tensor
+  2: 1D tensor
+}
+Outputs {
+  0: slice of the input tensor of the given size from the given begin index.
 }
 ```
 
@@ -548,7 +649,7 @@ Outputs {
   0: slice of the input tensor of the given size
 }
 Options {
-  begin_mask: mask for begin indicies
+  begin_mask: mask for begin indices
   end_mask: mask for end indices
   shrink_axis_mask: mask that indicates which dimensions to remove
 }
@@ -563,7 +664,7 @@ Inputs {
 }
 Outputs {
   0: k largest element along each last dimensional slice
-  1: indicies of values within the last dimension of the input ensor
+  1: indices of values within the last dimension of the input ensor
 }
 ```
 
@@ -576,6 +677,20 @@ Inputs {
 }
 Outputs {
   0: tensor permuted according to perm
+}
+```
+
+**SELECT**
+
+```
+Inputs {
+  0: tensor
+  1: tensor
+  2: tensor
+}
+Outputs {
+  0: tensor that contains the elementwise values of 'tensor 1' if the
+  corresponding value of 'tensor 0' is true or the value of 'tensor 2' if false.
 }
 ```
 

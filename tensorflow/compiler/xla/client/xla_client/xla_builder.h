@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(b/74197823): Replace computation_builder.h with this file.
-//
-// This is NOT YET ready to use.
-
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_XLA_CLIENT_XLA_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_CLIENT_XLA_BUILDER_H_
 
@@ -48,20 +44,32 @@ class XlaBuilder;
 // This represents an instruction that has been enqueued using the XlaBuilder.
 // This is used to pass to subsequent computations that depends upon the
 // instruction as an operand.
-//
-// TODO(b/74197823): Replace xla::ComputationDataHandle with this one.
 class XlaOp {
  public:
   XlaOp() : handle_(0), builder_(nullptr) {}
   ~XlaOp() {}
 
-  StatusOr<Shape> GetShape() const;
+  const XlaBuilder* builder() const { return builder_; }
+
+  bool operator==(const XlaOp& rhs) const {
+    return handle_ == rhs.handle_ && builder_ == rhs.builder_;
+  }
+
+  bool operator!=(const XlaOp& rhs) const {
+    return handle_ != rhs.handle_ || builder_ != rhs.builder_;
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, const XlaOp& op) {
+    out << op.handle();
+    return out;
+  }
 
  private:
   XlaOp(int64 handle, XlaBuilder* builder)
       : handle_(handle), builder_(builder) {}
 
   int64 handle() const { return handle_; }
+
   friend class XlaBuilder;
 
   int64 handle_;
@@ -71,8 +79,6 @@ class XlaOp {
 // A convenient interface for building up computations.
 //
 // Thread-compatible.
-//
-// TODO(b/74197823): Replace xla::ComputationBuilder with this one.
 class XlaBuilder {
  public:
   // computation_name: name to use for the built computation.
@@ -123,7 +129,7 @@ class XlaBuilder {
 
   // Enqueues a constant with the value of the given literal onto the
   // computation.
-  XlaOp ConstantLiteral(const Literal& literal);
+  XlaOp ConstantLiteral(const LiteralSlice& literal);
 
   // Enqueues a constant onto the computation. Methods are templated on the
   // native host type (NativeT) which corresponds to a specific XLA
@@ -555,6 +561,9 @@ class XlaBuilder {
   // Enqueues an exp instruction onto the computation.
   XlaOp Exp(const XlaOp& operand);
 
+  // Enqueues an expm1 instruction onto the computation.
+  XlaOp Expm1(const XlaOp& operand);
+
   // Enqueues a floor instruction onto the computation.
   XlaOp Floor(const XlaOp& operand);
 
@@ -568,8 +577,14 @@ class XlaBuilder {
   // Enqueues an log instruction (natural logarithm) onto the computation.
   XlaOp Log(const XlaOp& operand);
 
+  // Enqueues an log1p instruction (log(x+1)) onto the computation.
+  XlaOp Log1p(const XlaOp& operand);
+
   // Enqueues a sign instruction onto the computation.
   XlaOp Sign(const XlaOp& operand);
+
+  // Enqueues a count leading zeros instruction onto the computation.
+  XlaOp Clz(const XlaOp& operand);
 
   // Enqueues a cosine instruction onto the computation.
   XlaOp Cos(const XlaOp& operand);
@@ -828,6 +843,10 @@ class XlaBuilder {
   // computation and fills the root_id in the pointer.
   StatusOr<ProgramShape> GetProgramShape(int64* root_id) const;
 
+  // Returns shapes for the operands.
+  StatusOr<std::vector<Shape>> GetOperandShapes(
+      tensorflow::gtl::ArraySlice<XlaOp> operands) const;
+
   // A visitor which checks whether an operation is a compile-time constant,
   // meaning that it doesn't depend on any parameters, or on any stateful
   // operation such as `RngNormal` or `Infeed`. The visitor walks the
@@ -962,8 +981,6 @@ XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
 
 // RAII-style object: sets the current sharding assignment in builder on
 // construction, and sets back to the previous assignment on destruction.
-//
-// TODO(b/74197823): This is a part of a NOT YET ready refactor.
 class XlaScopedShardingAssignment {
  public:
   XlaScopedShardingAssignment(xla::XlaBuilder* builder,

@@ -4,14 +4,16 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test", "py_test", "tf_py_test")
 
 py_test(
     name = "batch_dataset_op_test",
     size = "medium",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:batching",
@@ -32,7 +34,7 @@ py_test(
 
 py_test(
     name = "bucketing_test",
-    size = "small",
+    size = "medium",
     srcs = ["bucketing_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -118,11 +120,27 @@ py_library(
 )
 
 py_test(
+    name = "csv_dataset_op_test",
+    size = "small",
+    srcs = ["csv_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:readers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "filter_dataset_op_test",
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/python:array_ops",
@@ -211,7 +229,11 @@ py_test(
     size = "medium",
     srcs = ["map_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "noasan",  # times out
+        "optonly",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:error_ops",
@@ -280,6 +302,7 @@ py_test(
     name = "reader_dataset_ops_test",
     size = "medium",
     srcs = ["reader_dataset_ops_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -294,6 +317,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
@@ -306,15 +330,22 @@ py_test(
     srcs = ["resample_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],
+    tags = [
+        "noasan",
+        "optonly",
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:resampling",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -333,6 +364,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )
@@ -396,6 +428,7 @@ py_test(
     srcs = ["sql_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -471,12 +504,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "prefetching_ops_test",
     size = "small",
     srcs = ["prefetching_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -505,5 +537,25 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "writer_ops_test",
+    size = "small",
+    srcs = ["writer_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/data/python/ops:writers",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:readers",
     ],
 )

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
+#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -77,10 +78,12 @@ enum class OperatorType {
   kFloor,
   kGather,
   kResizeBilinear,
+  kSin,
   kSpaceToBatchND,
   kStack,
   kBatchToSpaceND,
   kPad,
+  kPadV2,
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -131,6 +134,7 @@ enum class OperatorType {
   // instead of being given as plain constant arrays. So we need to insert
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
+  kSelect,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -151,9 +155,9 @@ enum class AxesOrder {
 };
 
 // The type of the scalars in an array.
-// Note that that does not by itself tell whether the values in the array are
-// real (are literally interpreted as real numbers) or quantized (only acquire
-// a meaning as real numbers in conjunction with QuantizationParams).
+// Note that the type does not by itself tell whether the values in the array
+// are real (are literally interpreted as real numbers) or quantized (only
+// acquire a meaning as real numbers in conjunction with QuantizationParams).
 //
 // In practice though:
 //   float values are always real
@@ -615,6 +619,17 @@ struct TanhOperator : Operator {
   TanhOperator() : Operator(OperatorType::kTanh) {}
 };
 
+// Element-wise Sin operator:
+//   x -> Sin(x) = sin(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Sin
+struct SinOperator : Operator {
+  SinOperator() : Operator(OperatorType::kSin) {}
+};
+
 // Element-wise addition operator.
 //
 // Inputs:
@@ -824,6 +839,29 @@ struct PadOperator : Operator {
   std::vector<int> right_padding;
 };
 
+// PaddingV2 operator. Pads a tensor with the given constant value.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the padding array
+//   inputs[2]: required: the scalar constant_values
+//
+// This operation pads input according to the paddings and constant_values you
+// specify. paddings is an integer tensor with shape [Dn, 2], where n is the
+// rank of input. For each dimension D of input, paddings[D, 0] indicates how
+// many padding values to add before the contents of input in that dimension,
+// and paddings[D, 1] indicates how many padding values to add after the
+// contents of input in that dimension. constant_values is a scalar tensor of
+// the same type as input that indicates the value to use for padding input.
+//
+// TensorFlow equivalent: PadV2
+struct PadV2Operator : Operator {
+  PadV2Operator() : Operator(OperatorType::kPadV2) {}
+
+  std::vector<int> left_padding;
+  std::vector<int> right_padding;
+};
+
 // Strided slice operator.
 //
 // Inputs:
@@ -845,6 +883,60 @@ struct StridedSliceOperator : Operator {
   int end_mask;
   int new_axis_mask;
   int shrink_axis_mask;
+
+  StridedSliceOperator(const StridedSliceOperator& other)
+      : Operator(OperatorType::kStridedSlice) {
+    inputs = other.inputs;
+    outputs = other.outputs;
+
+    start_indices = other.start_indices;
+    stop_indices = other.stop_indices;
+    strides = other.strides;
+
+    begin_mask = other.begin_mask;
+    ellipsis_mask = other.ellipsis_mask;
+    end_mask = other.end_mask;
+    new_axis_mask = other.new_axis_mask;
+    shrink_axis_mask = other.shrink_axis_mask;
+  }
+
+  void PadIndices(int dim_count) {
+    // Add indices and mask bits to fully include extra dimensions
+    CHECK_GE(dim_count, start_indices.size());
+    CHECK_EQ(start_indices.size(), stop_indices.size());
+    CHECK_EQ(stop_indices.size(), strides.size());
+
+    for (int i = start_indices.size(); i < dim_count; i++) {
+      start_indices.push_back(0);
+      stop_indices.push_back(0);
+      strides.push_back(1);
+      begin_mask |= 1 << i;
+      end_mask |= 1 << i;
+    }
+  }
+
+  void ReverseIndices() {
+    CHECK_EQ(start_indices.size(), stop_indices.size());
+    CHECK_EQ(stop_indices.size(), strides.size());
+
+    std::reverse(start_indices.begin(), start_indices.end());
+    std::reverse(stop_indices.begin(), stop_indices.end());
+    std::reverse(strides.begin(), strides.end());
+
+    begin_mask = toco::port::ReverseBits32(static_cast<uint32>(begin_mask)) >>
+                 (32 - start_indices.size());
+    ellipsis_mask =
+        toco::port::ReverseBits32(static_cast<uint32>(ellipsis_mask)) >>
+        (32 - start_indices.size());
+    end_mask = toco::port::ReverseBits32(static_cast<uint32>(end_mask)) >>
+               (32 - start_indices.size());
+    new_axis_mask =
+        toco::port::ReverseBits32(static_cast<uint32>(new_axis_mask)) >>
+        (32 - start_indices.size());
+    shrink_axis_mask =
+        toco::port::ReverseBits32(static_cast<uint32>(shrink_axis_mask)) >>
+        (32 - start_indices.size());
+  }
 };
 
 // Reshaping operator, reshaping its input array to a two-dimensional shape
@@ -1006,6 +1098,18 @@ struct RankOperator : Operator {
 // TensorFlow equivalent: Neg
 struct NegOperator : Operator {
   NegOperator() : Operator(OperatorType::kNeg) {}
+};
+
+// Element-wise select operator choosing elements from inputs[1] or input[2]
+//
+// Inputs:
+//  inputs[0]: required: boolean mask per index
+//  inputs[1]: required: tensor of values if true
+//  inputs[2]: required: tensor of values if false
+//
+//  TensorFlow equivalent: Select
+struct SelectOperator : Operator {
+  SelectOperator() : Operator(OperatorType::kSelect) {}
 };
 
 // Element-wise reciprocal-square-root (x^-0.5) operator.
@@ -1725,6 +1829,8 @@ class Model {
   }
   const ArrayMap& GetArrayMap() const { return arrays; }
 
+  int64 ArithmeticOpsCount() const { return ops_count; }
+
   // Optional arrays are used for optional tensors,
   // these tensors do not have data, but with reserved names as op inputs.
   std::set<string> optional_arrays;
@@ -1741,6 +1847,8 @@ class Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
+  // Arithmatic operations performed in the model.
+  int64 ops_count = 0;
 
  private:
   // The associative array mapping names to Array's.

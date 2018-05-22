@@ -116,7 +116,7 @@ class Mixture(distribution.Distribution):
         matching static batch shapes, or all components do not
         have matching static event shapes.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     if not isinstance(cat, categorical.Categorical):
       raise TypeError("cat must be a Categorical distribution, but saw: %s" %
                       cat)
@@ -145,7 +145,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]):
+    with ops.name_scope(name, values=[cat.logits]) as name:
       num_components = cat.event_size
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:

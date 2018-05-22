@@ -37,18 +37,18 @@ class SDCAOptimizer(object):
   Example usage:
 
   ```python
-    real_feature_column = real_valued_column(...)
-    sparse_feature_column = sparse_column_with_hash_bucket(...)
-    sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
-                                          num_loss_partitions=1,
-                                          num_table_shards=1,
-                                          symmetric_l2_regularization=2.0)
-    classifier = tf.contrib.learn.LinearClassifier(
-        feature_columns=[real_feature_column, sparse_feature_column],
-        weight_column_name=...,
-        optimizer=sdca_optimizer)
-    classifier.fit(input_fn_train, steps=50)
-    classifier.evaluate(input_fn=input_fn_eval)
+  real_feature_column = real_valued_column(...)
+  sparse_feature_column = sparse_column_with_hash_bucket(...)
+  sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
+                                        num_loss_partitions=1,
+                                        num_table_shards=1,
+                                        symmetric_l2_regularization=2.0)
+  classifier = tf.contrib.learn.LinearClassifier(
+      feature_columns=[real_feature_column, sparse_feature_column],
+      weight_column_name=...,
+      optimizer=sdca_optimizer)
+  classifier.fit(input_fn_train, steps=50)
+  classifier.evaluate(input_fn=input_fn_eval)
   ```
 
   Here the expectation is that the `input_fn_*` functions passed to train and
@@ -198,6 +198,14 @@ class SDCAOptimizer(object):
           example_ids = array_ops.reshape(id_tensor.indices[:, 0], [-1])
 
           flat_ids = array_ops.reshape(id_tensor.values, [-1])
+          # Prune invalid IDs (< 0) from the flat_ids, example_ids, and
+          # weight_tensor.  These can come from looking up an OOV entry in the
+          # vocabulary (default value being -1).
+          is_id_valid = math_ops.greater_equal(flat_ids, 0)
+          flat_ids = array_ops.boolean_mask(flat_ids, is_id_valid)
+          example_ids = array_ops.boolean_mask(example_ids, is_id_valid)
+          weight_tensor = array_ops.boolean_mask(weight_tensor, is_id_valid)
+
           projection_length = math_ops.reduce_max(flat_ids) + 1
           # project ids based on example ids so that we can dedup ids that
           # occur multiple times for a single example.

@@ -24,7 +24,7 @@ function real_path() {
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
-  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*org_tensorflow*'`; do
+  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*local_config_tensorrt*' ! -name '*org_tensorflow*'`; do
     cp -R "$f" "$dest_dir"
   done
   mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
@@ -53,6 +53,7 @@ function main() {
   PKG_NAME_FLAG=""
   GPU_BUILD=0
   NIGHTLY_BUILD=0
+  PROJECT_NAME=""
   while true; do
     if [[ "$1" == "--nightly_flag" ]]; then
       NIGHTLY_BUILD=1
@@ -60,6 +61,12 @@ function main() {
       GPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
       PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
+    elif [[ "$1" == "--project_name" ]]; then
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      PROJECT_NAME="$1"
     fi
     shift
 
@@ -68,7 +75,9 @@ function main() {
     fi
   done
 
-  if [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
+  if [[ -n ${PROJECT_NAME} ]]; then
+    PKG_NAME_FLAG="--project_name ${PROJECT_NAME}"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_gpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"

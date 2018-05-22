@@ -532,7 +532,7 @@ class ShapePattern {
       ShapeType,
       ShapePatternLayoutImpl<Impl, const ::xla::Layout,
                              LayoutPatternFormatImpl<LayoutPatternBaseImpl>>>
-  IsDenseArray(const ::xla::Layout* layout) const {
+  IsDenseArray() const {
     return WithLayout(Layout().WithDenseFormat());
   }
 
@@ -540,7 +540,7 @@ class ShapePattern {
       ShapeType,
       ShapePatternLayoutImpl<Impl, const ::xla::Layout,
                              LayoutPatternFormatImpl<LayoutPatternBaseImpl>>>
-  IsSparseArray(const ::xla::Layout* layout) const {
+  IsSparseArray() const {
     return WithLayout(Layout().WithSparseFormat());
   }
 
@@ -702,6 +702,30 @@ class HloInstructionPatternOperandImpl {
   HloInstructionPattern<OperandType, OperandImpl> operand_;
 };
 
+// An HloInstructionPattern implementation that matches only if the instruction
+// is a fusion node with a particular kind.
+template <typename Previous>
+class HloInstructionPatternFusionKindImpl {
+ public:
+  explicit constexpr HloInstructionPatternFusionKindImpl(
+      const Previous& previous, ::xla::HloInstruction::FusionKind kind)
+      : previous_(previous), kind_(kind) {}
+
+  bool Match(const ::xla::HloInstruction* inst) const {
+    return previous_.Match(inst) && inst->opcode() == HloOpcode::kFusion &&
+           inst->fusion_kind() == kind_;
+  }
+
+  bool Match(::xla::HloInstruction* inst) const {
+    return previous_.Match(inst) && inst->opcode() == HloOpcode::kFusion &&
+           inst->fusion_kind() == kind_;
+  }
+
+ private:
+  Previous previous_;
+  ::xla::HloInstruction::FusionKind kind_;
+};
+
 // A pattern that matches HloInstructions.
 template <typename HloInstructionType, typename Impl>
 class HloInstructionPattern {
@@ -807,6 +831,16 @@ class HloInstructionPattern {
         matched_inst_);
   }
 
+  // Modifies the pattern to match only if the instruction is a fusion node with
+  // the given kind.
+  constexpr HloInstructionPattern<HloInstructionType,
+                                  HloInstructionPatternFusionKindImpl<Impl>>
+  WithFusionKind(HloInstruction::FusionKind kind) const {
+    return HloInstructionPattern<HloInstructionType,
+                                 HloInstructionPatternFusionKindImpl<Impl>>(
+        HloInstructionPatternFusionKindImpl<Impl>(impl_, kind), matched_inst_);
+  }
+
  private:
   Impl impl_;
   HloInstructionType** matched_inst_;
@@ -879,7 +913,6 @@ XLA_UNOP_PATTERN(Abs)
 XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(Broadcast)
-XLA_UNOP_PATTERN(BroadcastDimOne)
 XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)

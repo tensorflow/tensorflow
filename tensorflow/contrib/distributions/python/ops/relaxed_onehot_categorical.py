@@ -162,8 +162,8 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[logits, probs, temperature]) as name:
 
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           name=name, logits=logits, probs=probs, validate_args=validate_args,

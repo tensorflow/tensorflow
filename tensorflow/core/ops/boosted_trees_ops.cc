@@ -37,9 +37,10 @@ REGISTER_OP("IsBoostedTreesEnsembleInitialized")
 REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
     .Input("node_id_range: int32")
     .Input("stats_summary_list: num_features * float32")
-    .Attr("l1: float")
-    .Attr("l2: float")
-    .Attr("tree_complexity: float")
+    .Input("l1: float")
+    .Input("l2: float")
+    .Input("tree_complexity: float")
+    .Input("min_node_weight: float")
     .Attr("max_splits: int >= 1")
     .Attr("num_features: int >= 1")  // not passed but populated automatically.
     .Output("node_ids_list: num_features * int32")
@@ -51,19 +52,6 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
       // Confirms the rank of the inputs and sets the shape of the outputs.
       int max_splits;
       int num_features;
-      float l1, l2, tree_complexity;
-      TF_RETURN_IF_ERROR(c->GetAttr("l1", &l1));
-      if (l1 < 0) {
-        return errors::InvalidArgument("l1 must be non-negative.");
-      }
-      TF_RETURN_IF_ERROR(c->GetAttr("l2", &l2));
-      if (l2 < 0) {
-        return errors::InvalidArgument("l2 must be non-negative.");
-      }
-      TF_RETURN_IF_ERROR(c->GetAttr("tree_complexity", &tree_complexity));
-      if (tree_complexity < 0) {
-        return errors::InvalidArgument("Tree complexity must be non-negative.");
-      }
       TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
       TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
       shape_inference::ShapeHandle node_id_range_shape;
@@ -83,6 +71,12 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
         TF_RETURN_IF_ERROR(
             c->Merge(summary_shape_base, summary_shape, &unused_shape));
       }
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features + 1), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features + 2), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features + 3), 0, &unused_shape));
       // Sets the output lists.
       std::vector<shape_inference::ShapeHandle> output_shapes_vec(
           num_features, c->MakeShape({-1}));
@@ -185,9 +179,8 @@ REGISTER_OP("BoostedTreesMakeStatsSummary")
 REGISTER_OP("BoostedTreesPredict")
     .Input("tree_ensemble_handle: resource")
     .Input("bucketized_features: num_bucketized_features * int32")
-    .Attr("num_bucketized_features: int >= 1")
+    .Attr("num_bucketized_features: int >= 1")  // Inferred.
     .Attr("logits_dimension: int")
-    .Attr("max_depth: int >= 1")
     .Output("logits: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle feature_shape;
@@ -229,7 +222,6 @@ REGISTER_OP("BoostedTreesTrainingPredict")
     .Input("bucketized_features: num_bucketized_features * int32")
     .Attr("num_bucketized_features: int >= 1")
     .Attr("logits_dimension: int")
-    .Attr("max_depth: int >= 1")
     .Output("partial_logits: float")
     .Output("tree_ids: int32")
     .Output("node_ids: int32")
@@ -238,9 +230,6 @@ REGISTER_OP("BoostedTreesTrainingPredict")
       int num_bucketized_features;
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_bucketized_features", &num_bucketized_features));
-
-      int max_depth;
-      TF_RETURN_IF_ERROR(c->GetAttr("max_depth", &max_depth));
 
       shape_inference::ShapeHandle unused_input;
       for (int i = 0; i < num_bucketized_features; ++i) {
@@ -273,8 +262,8 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
     .Input("thresholds: num_features * int32")
     .Input("left_node_contribs: num_features * float")
     .Input("right_node_contribs: num_features * float")
-    .Attr("max_depth: int >= 1")
-    .Attr("learning_rate: float")
+    .Input("max_depth: int32")
+    .Input("learning_rate: float")
     .Attr("pruning_mode: int >=0")
     .Attr("num_features: int >= 0")  // Inferred.
     .SetShapeFn([](shape_inference::InferenceContext* c) {

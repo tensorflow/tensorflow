@@ -15,10 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_QUANTIZATION_UTIL_H_
 #define TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_QUANTIZATION_UTIL_H_
 
+#include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 
 namespace toco {
+
+// Gets the target quantized data type of an array based on the fake quant op.
+// For example, if the num_bits is 8 the data type will be kUint8.
+bool InferQuantizedDataTypeFromFakeQuant(
+    const FakeQuantOperator& op, ArrayDataType* out_quantized_data_type);
 
 // Gets the min/max numerical range for the given quantized data type.
 // For example, kUint8 will return [0,255].
@@ -32,10 +38,27 @@ bool GetQuantizedDataTypeNumericalRange(ArrayDataType data_type,
 ArrayDataType GetQuantizedDataType(const Array& array,
                                    ArrayDataType default_type);
 
-// Gets the quantization params for the array with the given data type and
+// Returns the quantization params for the array with the given data type and
 // minmax.
 void GetQuantizationParams(ArrayDataType data_type, const MinMax& minmax,
                            QuantizationParams* quantization_params);
+
+// Returns the quantization params for the data type and minmax values.
+template <ArrayDataType A>
+void GetQuantizationParamsFromMinMax(const MinMax& minmax,
+                                     QuantizationParams* quantization_params) {
+  using Integer = DataType<A>;
+  const double rmin = minmax.min;
+  const double rmax = minmax.max;
+  *quantization_params =
+      ::tflite::ChooseQuantizationParams<Integer>(rmin, rmax);
+}
+
+// Quantizes an array by setting its data type and (if constant) quantizing
+// all values in the array.
+void QuantizeArray(GraphTransformation* transformation, Model* model,
+                   const string& name, ArrayDataType quantized_data_type,
+                   const QuantizationParams& quantization_params);
 
 // Returns true if the given array, when quantized, contains only values between
 // the provided clamp min/max.

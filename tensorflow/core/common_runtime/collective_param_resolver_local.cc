@@ -34,7 +34,8 @@ void CollectiveParamResolverLocal::CompleteGroupAsync(
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
     const string& device, CollectiveParams* cp, const GroupRecCallback& done) {
-  VLOG(1) << "CompleteGroupLocal " << cp << ": " << cp->ToString();
+  VLOG(1) << "CompleteGroupLocal device=" << device << " cp: " << cp << ": "
+          << cp->ToString();
   std::vector<StatusCallback> to_be_called;
   GroupRec* gr = nullptr;
   {
@@ -250,6 +251,38 @@ GlobalDeviceMap EstablishGlobalRank(
   return gdm;
 }
 
+// Count the devices associated with each task and set
+// cp->same_num_devices_per_task.  Requires cp->instance.task_names
+// be sorted.
+void SetDevPerTask(CollectiveParams* cp) {
+  cp->instance.same_num_devices_per_task = false;
+  if (cp->instance.task_names.empty()) return;
+  int dev_per_task = -1;
+  int count = 0;
+  const string* last_task_name = &cp->instance.task_names[0];
+  for (const string& task_name : cp->instance.task_names) {
+    if (task_name != *last_task_name) {
+      CHECK_GT(count, 0);
+      if (dev_per_task < 0) {
+        dev_per_task = count;
+      } else {
+        CHECK_GT(dev_per_task, 0);
+        if (count != dev_per_task) return;
+      }
+      count = 1;
+      last_task_name = &task_name;
+    } else {
+      ++count;
+    }
+  }
+  CHECK_GT(count, 0);
+  if ((dev_per_task > 0) && (count != dev_per_task)) {
+    return;
+  }
+  cp->instance.same_num_devices_per_task = true;
+  CHECK_EQ((cp->group.group_size % cp->group.num_tasks), 0);
+}
+
 // Sort cp->instance.device_names lexicographically, but do by first
 // computing a reordering permutation so we can keep cp->instance.task_names
 // in corresponding order.
@@ -278,15 +311,13 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
   cp->instance.device_names = std::move(new_devs);
   cp->instance.task_names = std::move(new_tasks);
   VLOG(1) << "Modified device_names on " << cp;
+  SetDevPerTask(cp);
 }
 
 // Establish the requested number of subdivision permutations based on the
 // ring order implicit in the device order.
 void GenerateSubdivPerms(const string& device, int source_rank,
                          CollectiveParams* cp) {
-  CHECK_GT(cp->instance.impl_details.subdiv_offsets.size(), 0);
-  cp->instance.impl_details.subdiv_permutations.resize(
-      cp->instance.impl_details.subdiv_offsets.size());
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
   // sense when each task has the same number of devices but we can't
@@ -343,17 +374,18 @@ void GenerateSubdivPerms(const string& device, int source_rank,
 
   if (cp->instance.type == BROADCAST_COLLECTIVE) {
     CHECK_GE(source_rank, 0);
-    cp->subdiv_source_rank.resize(
+    cp->instance.impl_details.subdiv_source_rank.resize(
         cp->instance.impl_details.subdiv_offsets.size(), -1);
-    for (int sdi = 0; sdi < cp->subdiv_source_rank.size(); ++sdi) {
+    for (int sdi = 0; sdi < cp->instance.impl_details.subdiv_source_rank.size();
+         ++sdi) {
       for (int j = 0; j < cp->group.group_size; ++j) {
         if (cp->instance.impl_details.subdiv_permutations[sdi][j] ==
             source_rank) {
-          cp->subdiv_source_rank[sdi] = j;
+          cp->instance.impl_details.subdiv_source_rank[sdi] = j;
           break;
         }
       }
-      CHECK_GE(cp->subdiv_source_rank[sdi], 0);
+      CHECK_GE(cp->instance.impl_details.subdiv_source_rank[sdi], 0);
     }
   }
 
@@ -400,8 +432,9 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
   }
 }
 
-Status CollectiveParamResolverLocal::InitInstanceSharedParams(
-    GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
+void CollectiveParamResolverLocal::InitInstanceSharedParams(
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
+    const StatusCallback& done) {
   VLOG(1) << "InitInstanceSharedParams " << ir;
   ir->shared.instance = cp->instance;
   {
@@ -427,23 +460,23 @@ Status CollectiveParamResolverLocal::InitInstanceSharedParams(
   // called by a derived class, some of the devices may be non-local and
   // GetDeviceLocalitiesAsync will use those fields to launch RPCs.
   CompleteTaskIsLocal(task_name_, &ir->shared);
-  std::vector<DeviceLocality> localities;
-  Notification note;
-  Status status;
-  dev_resolver_->GetDeviceLocalitiesAsync(ir->shared.instance, &localities,
-                                          [&note, &status](const Status& s) {
-                                            status = s;
-                                            note.Notify();
-                                          });
-  note.WaitForNotification();
-  if (status.ok()) {
-    CompleteDefaultRanking(gr, cp, ir, localities);
-  }
-  return status;
+  std::vector<DeviceLocality>* localities = new std::vector<DeviceLocality>;
+  dev_resolver_->GetDeviceLocalitiesAsync(
+      ir->shared.instance, localities,
+      [this, gr, cp, ir, localities, done](const Status& s)
+          EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu) {
+            if (s.ok()) {
+              CompleteDefaultRanking(gr, cp, ir, *localities);
+              done(Status::OK());
+            } else {
+              done(s);
+            }
+            delete localities;
+          });
 }
 
 void CollectiveParamResolverLocal::CompleteDefaultRanking(
-    GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
     const std::vector<DeviceLocality>& localities) {
   // Establish an instance-specific default rank order for devices
   // based on localities.  This rank order should be a good ring
@@ -485,7 +518,7 @@ void CollectiveParamResolverLocal::CallbackWithStatus(
 }
 
 void CollectiveParamResolverLocal::FindInstanceRec(
-    GroupRec* gr, CollectiveParams* cp, const InstanceRecCallback& done) {
+    const GroupRec* gr, CollectiveParams* cp, const InstanceRecCallback& done) {
   InstanceRec* irec = nullptr;
   bool exit_outside_locks = false;
   {
@@ -514,28 +547,50 @@ void CollectiveParamResolverLocal::FindInstanceRec(
     CallbackWithStatus(done, irec);
     return;
   }
-  // Initialize the new InstanceRec while holding out_mu.
-  {
-    mutex_lock il(irec->out_mu);
-    irec->known.resize(cp->group.group_size, false);
-    irec->status = InitInstanceSharedParams(gr, cp, irec);
-  }
-  // Prepare to invoke any waiters that accumlated during initialization.
-  std::vector<IRConsumer> init_waiters;
-  {
-    mutex_lock tl(instance_mu_);
-    {
-      mutex_lock l(irec->in_mu);
-      irec->is_init = true;
-      if (!irec->init_waiters.empty()) {
-        std::swap(init_waiters, irec->init_waiters);
-      }
-    }
-  }
-  CallbackWithStatus(done, irec);
-  for (auto& f : init_waiters) {
-    f(irec);
-  }
+
+  CallInitInstanceSharedParams(gr, cp, irec, done);
+}
+
+void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
+    const InstanceRecCallback& done) NO_THREAD_SAFETY_ANALYSIS {
+  // This function serves merely to make a function call that should
+  // be thread/mutex safe but violates the simple model applied by
+  // static analysis, so we turn off analysis only within this
+  // function body.
+  //
+  // A lock on ir->out_mu must be held throughout the _bodies_ of the
+  // chain of function calls initiated here, each of which calls
+  // another as its last action, but it will be dropped within the
+  // callback defined below, which means that the lock can be dropped
+  // before all the function stack frames pop. The static analysis will
+  // not allow that.
+  ir->out_mu.lock();
+  ir->known.resize(cp->group.group_size, false);
+  InitInstanceSharedParams(
+      gr, cp, ir,
+      [this, ir, done](const Status& s) UNLOCK_FUNCTION(ir->out_mu) {
+        DCHECK(!ir->out_mu.try_lock());
+        ir->status.Update(s);
+        ir->out_mu.unlock();
+        // Prepare to invoke any waiters that accumlated during
+        // initialization.
+        std::vector<IRConsumer> init_waiters;
+        {
+          mutex_lock tl(instance_mu_);
+          {
+            mutex_lock l(ir->in_mu);
+            ir->is_init = true;
+            if (!ir->init_waiters.empty()) {
+              std::swap(init_waiters, ir->init_waiters);
+            }
+          }
+        }
+        CallbackWithStatus(done, ir);
+        for (auto& f : init_waiters) {
+          f(ir);
+        }
+      });
 }
 
 void CollectiveParamResolverLocal::CompleteParamsAsync(
@@ -544,7 +599,8 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
   VLOG(1) << "CompleteParams " << device << " for " << cp << ": "
           << cp->ToString();
   CompleteGroupLocal(
-      device, cp, [this, device, cp, done](const Status& s, GroupRec* gr) {
+      device, cp,
+      [this, device, cp, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
         } else {
@@ -563,8 +619,8 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceLocal(
-    const string& device, GroupRec* gr, CollectiveParams* cp, bool is_source,
-    const StatusCallback& done) {
+    const string& device, const GroupRec* gr, CollectiveParams* cp,
+    bool is_source, const StatusCallback& done) {
   VLOG(1) << "CompleteInstanceLocal " << device
           << " instance_key: " << cp->instance.instance_key << " gr " << gr;
 
@@ -589,8 +645,8 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
-    const string& device, GroupRec* gr, CollectiveParams* cp, InstanceRec* ir,
-    bool is_source, const StatusCallback& done) {
+    const string& device, const GroupRec* gr, CollectiveParams* cp,
+    InstanceRec* ir, bool is_source, const StatusCallback& done) {
   // Populate the fields common across instance.
   {
     mutex_lock l(ir->out_mu);

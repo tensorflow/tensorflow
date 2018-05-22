@@ -49,9 +49,13 @@ cd Python-3.6.1
 make altinstall
 ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
+pip3 install --upgrade setuptools
+pip3 install --upgrade pip
+
 pip3 install --upgrade virtualenv
 
 set -e
+
 # Install six.
 pip3 install --upgrade absl-py
 pip3 install --upgrade six==1.10.0

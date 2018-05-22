@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
-#define TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
 #include <string>
 #include <utility>
@@ -55,6 +55,10 @@ class GcsStatsInterface {
   /// retrieved.
   virtual void RecordBlockRetrieved(const string& file, size_t offset,
                                     size_t bytes_transferred) = 0;
+
+  // RecordStatObjectRequest is called once a statting object request over GCS
+  // is about to be made.
+  virtual void RecordStatObjectRequest() = 0;
 
   /// HttpStats is called to optionally provide a RequestStats listener
   /// to be annotated on every HTTP request made to the GCS API.
@@ -187,6 +191,12 @@ class GcsFileSystem : public FileSystem {
   Status CreateHttpRequest(std::unique_ptr<HttpRequest>* request);
 
  private:
+  // GCS file statistics.
+  struct GcsFileStat {
+    FileStatistics base;
+    int64 generation_number = 0;
+  };
+
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
@@ -214,9 +224,15 @@ class GcsFileSystem : public FileSystem {
   Status GetChildrenBounded(const string& dir, uint64 max_results,
                             std::vector<string>* result, bool recursively,
                             bool include_self_directory_marker);
-  /// Retrieves file statistics assuming fname points to a GCS object.
+
+  /// Retrieves file statistics assuming fname points to a GCS object. The data
+  /// may be read from cache or from GCS directly.
   Status StatForObject(const string& fname, const string& bucket,
-                       const string& object, FileStatistics* stat);
+                       const string& object, GcsFileStat* stat);
+  /// Retrieves file statistics of file fname directly from GCS.
+  Status UncachedStatForObject(const string& fname, const string& bucket,
+                               const string& object, GcsFileStat* stat);
+
   Status RenameObject(const string& src, const string& target);
 
   std::unique_ptr<FileBlockCache> MakeFileBlockCache(size_t block_size,
@@ -227,13 +243,16 @@ class GcsFileSystem : public FileSystem {
   Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
                            char* buffer, size_t* bytes_transferred);
 
+  // Clear all the caches related to the file with name `filename`.
+  void ClearFileCaches(const string& fname);
+
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<FileBlockCache> file_block_cache_;
   std::unique_ptr<GcsDnsCache> dns_cache_;
   GcsThrottle throttle_;
 
-  using StatCache = ExpiringLRUCache<FileStatistics>;
+  using StatCache = ExpiringLRUCache<GcsFileStat>;
   std::unique_ptr<StatCache> stat_cache_;
 
   using MatchingPathsCache = ExpiringLRUCache<std::vector<string>>;
@@ -253,20 +272,12 @@ class GcsFileSystem : public FileSystem {
 };
 
 /// Google Cloud Storage implementation of a file system with retry on failures.
-class RetryingGcsFileSystem : public RetryingFileSystem {
+class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
  public:
-  RetryingGcsFileSystem() : RetryingGcsFileSystem(new GcsFileSystem) {}
-
-  void SetStats(GcsStatsInterface* stats) { underlying_->SetStats(stats); }
-
- private:
-  explicit RetryingGcsFileSystem(GcsFileSystem* fs)
-      : RetryingFileSystem(std::unique_ptr<FileSystem>(fs)), underlying_(fs) {}
-
-  // TODO(b/74259157): Refactor RetryingFileSystem to avoid holding this ptr.
-  GcsFileSystem* underlying_;
+  RetryingGcsFileSystem()
+      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem)) {}
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_

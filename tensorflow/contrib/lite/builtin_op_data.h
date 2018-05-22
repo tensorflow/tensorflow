@@ -162,6 +162,9 @@ typedef struct {
 } TfLitePadParams;
 
 typedef struct {
+} TfLitePadV2Params;
+
+typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
   int shape[8];
@@ -226,6 +229,12 @@ typedef struct {
 typedef struct {
   TfLiteType output_type;
 } TfLiteArgMaxParams;
+
+typedef struct {
+  TfLitePadding padding;
+  int stride_width;
+  int stride_height;
+} TfLiteTransposeConvParams;
 
 #ifdef __cplusplus
 }  // extern "C"

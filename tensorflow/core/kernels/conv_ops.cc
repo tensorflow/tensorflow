@@ -18,10 +18,16 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA
+
 #include "tensorflow/core/kernels/conv_ops.h"
+
 #include <string.h>
 #include <map>
 #include <vector>
+
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -32,9 +38,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-#include "tensorflow/core/kernels/xsmm_conv2d.h"
-#endif
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -44,6 +47,10 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
+
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
+#include "tensorflow/core/kernels/xsmm_conv2d.h"
+#endif
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
@@ -123,6 +130,10 @@ struct LaunchConv2DOp<CPUDevice, T> {
                                 "NHWC tensor format for now."));
       return;
     }
+    const int64 in_depth = GetTensorDim(input, data_format, 'C');
+    OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
+                errors::Unimplemented("Generic conv implementation does not "
+                                      "support grouped convolutions for now."));
     LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
                                   row_dilation, col_dilation, padding, output,
                                   data_format);
@@ -324,12 +335,13 @@ class Conv2DOp : public BinaryOp<T> {
     }
 
     // The last dimension for input is in_depth. It must be the same as the
-    // filter's in_depth.
+    // filter's in_depth or be evenly divisible by filter's in_depth.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+    const int64 patch_depth = filter.dim_size(2);
+    OP_REQUIRES(context, in_depth % patch_depth == 0,
                 errors::InvalidArgument(
-                    "input and filter must have the same depth: ", in_depth,
-                    " vs ", filter.dim_size(2)));
+                    "input depth must be evenly divisible by filter depth: ",
+                    in_depth, " vs ", patch_depth));
 
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
@@ -386,6 +398,7 @@ class Conv2DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
     VLOG(2) << "Conv2D: in_depth = " << in_depth
+            << ", patch_depth = " << patch_depth
             << ", input_cols = " << input_cols
             << ", filter_cols = " << filter_cols
             << ", input_rows = " << input_rows
@@ -450,7 +463,9 @@ TF_CALL_double(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
+template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<CPUDevice, float>;
+template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
@@ -475,7 +490,7 @@ struct ConvAutoTuneGroup {
   static string name() { return "Conv"; }
 };
 typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
-                          perftools::gputools::dnn::AlgorithmConfig>
+                          se::dnn::AlgorithmConfig>
     AutoTuneConv;
 
 template <typename T>
@@ -484,9 +499,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     const Tensor& input_param, const Tensor& filter, int row_dilation,
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
     Tensor* output, TensorFormat data_format) {
-  using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmDesc;
-  using perftools::gputools::dnn::ProfileResult;
+  using se::dnn::AlgorithmConfig;
+  using se::dnn::AlgorithmDesc;
+  using se::dnn::ProfileResult;
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -498,13 +513,24 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   }
 
   Tensor input = input_param;
+  const int64 in_batch = GetTensorDim(input, data_format, 'N');
+  int64 in_rows = GetTensorDim(input, data_format, 'H');
+  int64 in_cols = GetTensorDim(input, data_format, 'W');
+  const int64 in_depths = GetTensorDim(input, data_format, 'C');
+  const int64 patch_rows = filter.dim_size(0);
+  const int64 patch_cols = filter.dim_size(1);
+  const int64 patch_depths = filter.dim_size(2);
 
-  if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_dilation == 1 &&
-      col_dilation == 1 && row_stride == 1 && col_stride == 1 &&
-      data_format == FORMAT_NHWC) {
+  // If the filter in-depth (patch_depths) is 1 and smaller than the input
+  // depth, it's a depthwise convolution. More generally, if the filter in-depth
+  // divides but is smaller than the input depth, it is a grouped convolution.
+  bool is_grouped_convolution = patch_depths != in_depths;
+  if (patch_rows == 1 && patch_cols == 1 && !is_grouped_convolution &&
+      row_dilation == 1 && col_dilation == 1 && row_stride == 1 &&
+      col_stride == 1 && data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
-    const uint64 m = input.dim_size(0) * input.dim_size(1) * input.dim_size(2);
-    const uint64 k = filter.dim_size(2);
+    const uint64 m = in_batch * in_rows * in_cols;
+    const uint64 k = patch_depths;
     const uint64 n = filter.dim_size(3);
 
     auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
@@ -514,7 +540,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
                                 output->template flat<T>().size());
 
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
@@ -525,15 +551,14 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                       ", n=", n, ", k=", k));
     }
     return;
-  } else if (filter.dim_size(0) == input.dim_size(1) &&
-             filter.dim_size(1) == input.dim_size(2) && row_dilation == 1 &&
+  } else if (patch_rows == in_rows && patch_cols == in_cols &&
+             !is_grouped_convolution && row_dilation == 1 &&
              col_dilation == 1 && padding == VALID &&
              data_format == FORMAT_NHWC) {
     // The input data and filter have the same height/width, so call cublas
     // directly.
-    const uint64 m = input.dim_size(0);
-    const uint64 k =
-        filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+    const uint64 m = in_batch;
+    const uint64 k = patch_rows * patch_cols * patch_depths;
     const uint64 n = filter.dim_size(3);
 
     auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
@@ -543,7 +568,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
                                 output->template flat<T>().size());
 
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
@@ -558,16 +583,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   int padding_rows = 0;
   int padding_cols = 0;
-  const int64 in_batch = GetTensorDim(input, data_format, 'N');
-  int64 in_rows = GetTensorDim(input, data_format, 'H');
-  int64 in_cols = GetTensorDim(input, data_format, 'W');
-  const int64 in_depths = GetTensorDim(input, data_format, 'C');
   const int64 out_batch = GetTensorDim(*output, data_format, 'N');
   const int64 out_rows = GetTensorDim(*output, data_format, 'H');
   const int64 out_cols = GetTensorDim(*output, data_format, 'W');
   const int64 out_depths = GetTensorDim(*output, data_format, 'C');
-  const int64 patch_rows = filter.dim_size(0);
-  const int64 patch_cols = filter.dim_size(1);
   if (padding == SAME) {
     // Total padding on rows and cols is
     // Pr = (R' - 1) * S + (Kr - 1) * Dr + 1 - R
@@ -629,30 +648,31 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   CHECK(padding_rows >= 0 && padding_cols >= 0)
       << "Negative row or col paddings: (" << padding_rows << ", "
       << padding_cols << ")";
-  perftools::gputools::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(in_batch)
       .set_feature_map_count(in_depths)
       .set_height(in_rows)
       .set_width(in_cols)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::BatchDescriptor output_desc;
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(out_batch)
       .set_height(out_rows)
       .set_width(out_cols)
       .set_feature_map_count(out_depths)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::FilterDescriptor filter_desc;
-  filter_desc.set_input_filter_height(filter.dim_size(0))
-      .set_input_filter_width(filter.dim_size(1))
-      .set_input_feature_map_count(filter.dim_size(2))
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::FilterDescriptor filter_desc;
+  filter_desc.set_input_filter_height(patch_rows)
+      .set_input_filter_width(patch_cols)
+      .set_input_feature_map_count(patch_depths)
       .set_output_feature_map_count(filter.dim_size(3));
-  perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
+  se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(row_dilation)
       .set_horizontal_dilation_rate(col_dilation)
       .set_vertical_filter_stride(row_stride)
       .set_horizontal_filter_stride(col_stride)
       .set_zero_padding_height(padding_rows / 2)
-      .set_zero_padding_width(padding_cols / 2);
+      .set_zero_padding_width(padding_cols / 2)
+      .set_group_count(in_depths / patch_depths);
 
   Tensor transformed_filter;
   OP_REQUIRES_OK(ctx, ctx->allocate_temp(
@@ -695,7 +715,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         in_cols}},       // in_cols
       out_depths,        // out_depths
       {{patch_rows,      // filter_rows
-        patch_cols}},    // filter_cols
+        patch_cols,      // filter_cols
+        patch_depths}},  // filter_depths
       {{row_dilation,    // dilation_rows
         col_dilation}},  // dilation_cols
       {{row_stride,      // stride_rows
@@ -710,7 +731,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
-        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
+        &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
@@ -811,9 +833,9 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);     \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
-DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -829,7 +851,9 @@ REGISTER_KERNEL_BUILDER(
     Conv2DOp<GPUDevice, double>);
 
 // To be used inside depthwise_conv_op.cc.
-template class LaunchConv2DOp<GPUDevice, float>;
+template struct LaunchConv2DOp<GPUDevice, float>;
+template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
+template struct LaunchConv2DOp<GPUDevice, double>;
 
 #endif  // GOOGLE_CUDA
 

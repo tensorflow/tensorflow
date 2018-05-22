@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,13 +34,35 @@ limitations under the License.
 namespace xla {
 namespace {
 
+StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
+    int64 input_batch, int64 input_feature, int64 input_first_spatial,
+    int64 input_second_spatial, int64 output_batch, int64 output_feature,
+    int64 output_first_spatial, int64 output_second_spatial,
+    int64 kernel_output_feature, int64 kernel_input_feature,
+    int64 kernel_first_spatial, int64 kernel_second_spatial) {
+  ConvolutionDimensionNumbers dimension_numbers;
+  dimension_numbers.set_input_batch_dimension(input_batch);
+  dimension_numbers.set_input_feature_dimension(input_feature);
+  dimension_numbers.add_input_spatial_dimensions(input_first_spatial);
+  dimension_numbers.add_input_spatial_dimensions(input_second_spatial);
+  dimension_numbers.set_kernel_output_feature_dimension(kernel_output_feature);
+  dimension_numbers.set_kernel_input_feature_dimension(kernel_input_feature);
+  dimension_numbers.add_kernel_spatial_dimensions(kernel_first_spatial);
+  dimension_numbers.add_kernel_spatial_dimensions(kernel_second_spatial);
+  dimension_numbers.set_output_batch_dimension(output_batch);
+  dimension_numbers.set_output_feature_dimension(output_feature);
+  dimension_numbers.add_output_spatial_dimensions(output_first_spatial);
+  dimension_numbers.add_output_spatial_dimensions(output_second_spatial);
+  TF_RETURN_IF_ERROR(XlaBuilder::Validate(dimension_numbers));
+  return dimension_numbers;
+}
+
 class ConvolutionDimensionNumbersTest : public ClientLibraryTestBase {};
 
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
   auto dimension_numbers_status =
-      ComputationBuilder::CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3, 0,
-                                                     1, 2, 3);
+      CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
               ::testing::HasSubstr("input are not unique"));
@@ -49,8 +71,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
 // Tests the convolution operation with invalid weight dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
   auto dimension_numbers_status =
-      ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 0, 1, 2, 3, 0,
-                                                     2, 2, 3);
+      CreateConvDimensionNumbers(0, 1, 2, 3, 0, 1, 2, 3, 0, 2, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
               ::testing::HasSubstr("weight are not unique"));
@@ -59,8 +80,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
 // Tests the convolution operation with invalid output dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidOutputDimensionNumbers) {
   auto dimension_numbers_status =
-      ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 0, 2, 2, 3, 0,
-                                                     1, 2, 3);
+      CreateConvDimensionNumbers(0, 1, 2, 3, 0, 2, 2, 3, 0, 1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
               ::testing::HasSubstr("output are not unique"));
@@ -76,14 +96,14 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
       client_->TransferToServer(*Literal::CreateR4FromArray4D(*weight_array))
           .ConsumeValueOrDie();
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto input = builder.ConstantR4FromArray4D<float>(*input_array);
   auto weight =
       builder.Parameter(0, ShapeUtil::MakeShape(F32, {4, 3, 1, 1}), "weight");
   auto conv1 = builder.Conv(input, weight, {1, 1}, Padding::kValid);
 
   ConvolutionDimensionNumbers dim_nums =
-      ComputationBuilder::CreateDefaultConvDimensionNumbers();
+      XlaBuilder::CreateDefaultConvDimensionNumbers();
   // Swap batch_dimension and feature_dimension.
   int64 old_input_batch_dim = dim_nums.input_batch_dimension();
   int64 old_output_batch_dim = dim_nums.output_batch_dimension();

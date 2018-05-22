@@ -417,9 +417,18 @@ class SparseSplitHandler(InequalitySplitHandler):
     return (are_splits_ready, partition_ids, gains, split_infos)
 
 
-@function.Defun(dtypes.bool, dtypes.bool, dtypes.float32, dtypes.float32,
-                dtypes.int32, dtypes.float32, dtypes.float32, dtypes.float32,
-                dtypes.float32, dtypes.float32)
+@function.Defun(
+    dtypes.bool,
+    dtypes.bool,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.int32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    noinline=True)
 def dense_make_stats_update(is_active, are_buckets_ready, float_column,
                             quantile_buckets, example_partition_ids, gradients,
                             hessians, weights, empty_gradients, empty_hessians):
@@ -452,9 +461,20 @@ def dense_make_stats_update(is_active, are_buckets_ready, float_column,
           gradients, hessians)
 
 
-@function.Defun(dtypes.bool, dtypes.bool, dtypes.int64, dtypes.float32,
-                dtypes.int64, dtypes.float32, dtypes.int32, dtypes.float32,
-                dtypes.float32, dtypes.float32, dtypes.float32, dtypes.float32)
+@function.Defun(
+    dtypes.bool,
+    dtypes.bool,
+    dtypes.int64,
+    dtypes.float32,
+    dtypes.int64,
+    dtypes.float32,
+    dtypes.int32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    dtypes.float32,
+    noinline=True)
 def sparse_make_stats_update(
     is_active, are_buckets_ready, sparse_column_indices, sparse_column_values,
     sparse_column_shape, quantile_buckets, example_partition_ids, gradients,
@@ -481,11 +501,18 @@ def sparse_make_stats_update(
         example_partition_ids)
 
     # Compute aggregate stats for each partition.
+    # Since unsorted_segment_sum can be numerically unstable, use 64bit
+    # operation.
+    gradients64 = math_ops.cast(gradients, dtypes.float64)
+    hessians64 = math_ops.cast(hessians, dtypes.float64)
     per_partition_gradients = math_ops.unsorted_segment_sum(
-        gradients, mapped_partitions, array_ops.size(unique_partitions))
+        gradients64, mapped_partitions, array_ops.size(unique_partitions))
     per_partition_hessians = math_ops.unsorted_segment_sum(
-        hessians, mapped_partitions, array_ops.size(unique_partitions))
-
+        hessians64, mapped_partitions, array_ops.size(unique_partitions))
+    per_partition_gradients = math_ops.cast(per_partition_gradients,
+                                            dtypes.float32)
+    per_partition_hessians = math_ops.cast(per_partition_hessians,
+                                           dtypes.float32)
     # Prepend a bias feature per partition that accumulates the stats for all
     # examples in that partition.
     bias_feature_ids = array_ops.fill(

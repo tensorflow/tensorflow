@@ -169,7 +169,7 @@ class SeedStream(object):
         and TensorFlow Probability code base.  See class docstring for
         rationale.
     """
-    self._seed = seed
+    self._seed = seed.original_seed if isinstance(seed, SeedStream) else seed
     self._salt = salt
     self._counter = 0
 

@@ -36,21 +36,20 @@ class GpuTransferManager : public GenericTransferManager {
   GpuTransferManager();
   ~GpuTransferManager() override {}
 
-  Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
-                                 const Literal& literal) override;
-  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
-                                int64 size, const void* source) override;
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal) override;
+  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
+                                const void* source) override;
 
  private:
   // Initiates the infeed data transfers. InfeedBuffer->Done() must be
   // called to clean up the memory allocated for InfeedBuffer.
   StatusOr<gpu::InfeedBuffer*> TransferBufferToInfeedInternal(
-      perftools::gputools::StreamExecutor* executor, int64 size,
-      const void* source);
+      se::StreamExecutor* executor, int64 size, const void* source);
 
   // Enqueues infeed data buffers with the infeed manager after their
   // transfer completes.
-  Status EnqueueBuffersToInfeed(perftools::gputools::StreamExecutor* executor,
+  Status EnqueueBuffersToInfeed(se::StreamExecutor* executor,
                                 std::vector<gpu::InfeedBuffer*> buffers);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuTransferManager);

@@ -257,8 +257,39 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   return kernel;
 }
 
+namespace {
+// Computes the maximum valid unroll factor for a given instruction.
+int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
+  int max_unroll_factor = hlo->GetModule()
+                              ->config()
+                              .debug_options()
+                              .xla_gpu_max_kernel_unroll_factor();
+
+  // Find the largest possible power of two to unroll by.
+  // TODO(kramerb): Make this smarter.
+  const Shape& element_shape = hlo->IsMultiOutputFusion()
+                                   ? ShapeUtil::GetSubshape(hlo->shape(), {0})
+                                   : hlo->shape();
+  int64 num_elements = ShapeUtil::ElementsIn(element_shape);
+  for (int i = max_unroll_factor; i > 1; i /= 2) {
+    if (num_elements % i == 0) {
+      return i;
+    }
+  }
+
+  // Cannot unroll.
+  return 1;
+}
+}  // namespace
+
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
-  thunk_sequence_->emplace_back(BuildKernelThunk(hlo));
+  int unroll_factor = 1;
+  // Unfused elementwise operations are usually memory bound, unroll them.
+  if (hlo->IsElementwise()) {
+    unroll_factor = ComputeMaxUnrollFactor(hlo);
+  }
+
+  thunk_sequence_->emplace_back(BuildKernelThunk(hlo, unroll_factor));
   return IrEmitter::DefaultAction(hlo);
 }
 
@@ -537,24 +568,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  int max_unroll_factor = fusion->GetModule()
-                              ->config()
-                              .debug_options()
-                              .xla_gpu_max_kernel_unroll_factor();
-
-  // Find the largest possible power of two to unroll by.
-  // TODO(kramerb): Make this smarter.
-  int unroll_factor = 1;
-  if (!fusion->IsMultiOutputFusion()) {
-    CHECK(fusion->fusion_kind() == HloInstruction::FusionKind::kLoop);
-    int64 num_elements = ShapeUtil::ElementsIn(fusion->shape());
-    for (int i = max_unroll_factor; i > 1; i /= 2) {
-      if (num_elements % i == 0) {
-        unroll_factor = i;
-        break;
-      }
-    }
-  }
+  CHECK(fusion->fusion_kind() == HloInstruction::FusionKind::kLoop);
+  int unroll_factor = ComputeMaxUnrollFactor(fusion);
 
   thunk_sequence_->emplace_back(BuildKernelThunk(fusion, unroll_factor));
   return IrEmitter::HandleFusion(fusion);
@@ -2178,6 +2193,21 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
       /*destination_buffer=*/GetAllocationSlice(*inst), inst);
 }
 
+namespace {
+double GetScalarConstantAsDouble(const Literal& literal) {
+  switch (literal.shape().element_type()) {
+    case F16:
+      return static_cast<double>(literal.Get<Eigen::half>({}));
+    case F32:
+      return literal.Get<float>({});
+    case F64:
+      return literal.Get<double>({});
+    default:
+      LOG(FATAL) << "Unsupported type.";
+  }
+}
+}  // namespace
+
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     const HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kDot) {
@@ -2190,65 +2220,48 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
         lhs->shape(),               // The shape of LHS.
         rhs->shape(),               // The shape of RHS.
         inst->shape(),              // The shape of the output.
-        false,                      // Do not transpose LHS.
-        false,                      // Do not transpose RHS.
         1.0,                        // alpha.
         inst);
   }
 
   if (inst->opcode() == HloOpcode::kFusion) {
-    if (inst->fusion_kind() == HloInstruction::FusionKind::kOutput) {
-      const HloInstruction* mul = inst->fused_expression_root();
-      const HloInstruction* dot = mul->operand(0);
-      const HloInstruction* alpha = mul->operand(1);
-      if (dot->opcode() != HloOpcode::kDot) {
-        std::swap(dot, alpha);
-      }
-      DCHECK(dot->opcode() == HloOpcode::kDot);
-      const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
-      const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
-      DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
-             rhs_parameter->opcode() == HloOpcode::kParameter);
-      const HloInstruction* lhs =
-          inst->operand(lhs_parameter->parameter_number());
-      const HloInstruction* rhs =
-          inst->operand(rhs_parameter->parameter_number());
-
-      return MakeUnique<GemmThunk>(
-          GetAllocationSlice(*lhs),             // The buffer assigned to LHS.
-          GetAllocationSlice(*rhs),             // The buffer assigned to RHS.
-          GetAllocationSlice(*mul),             // The output buffer.
-          lhs->shape(),                         // The shape of LHS.
-          rhs->shape(),                         // The shape of RHS.
-          inst->shape(),                        // The shape of the output.
-          dot->operand(0)->IsRank2Transpose(),  // Transpose LHS.
-          dot->operand(1)->IsRank2Transpose(),  // Transpose RHS.
-          alpha->literal().Get<double>({0}),    // alpha.
-          inst);
-    } else {
-      const HloInstruction* dot = inst->fused_expression_root();
-      DCHECK(dot->opcode() == HloOpcode::kDot);
-      const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
-      const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
-      DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
-             rhs_parameter->opcode() == HloOpcode::kParameter);
-      const HloInstruction* lhs =
-          inst->operand(lhs_parameter->parameter_number());
-      const HloInstruction* rhs =
-          inst->operand(rhs_parameter->parameter_number());
-
-      return MakeUnique<GemmThunk>(
-          GetAllocationSlice(*lhs),             // The buffer assigned to LHS.
-          GetAllocationSlice(*rhs),             // The buffer assigned to RHS.
-          GetAllocationSlice(*inst),            // The output buffer.
-          lhs->shape(),                         // The shape of LHS.
-          rhs->shape(),                         // The shape of RHS.
-          inst->shape(),                        // The shape of the output.
-          dot->operand(0)->IsRank2Transpose(),  // Transpose LHS.
-          dot->operand(1)->IsRank2Transpose(),  // Transpose RHS.
-          1.0,                                  // Alpha.
-          inst);
+    CHECK_EQ(inst->fusion_kind(), HloInstruction::FusionKind::kOutput);
+    const HloInstruction* mul = inst->fused_expression_root();
+    const HloInstruction* dot = mul->operand(0);
+    const HloInstruction* alpha = mul->operand(1);
+    if (dot->opcode() != HloOpcode::kDot) {
+      std::swap(dot, alpha);
     }
+    if (alpha->opcode() == HloOpcode::kBroadcast) {
+      alpha = alpha->operand(0);
+    }
+    alpha = inst->operand(alpha->parameter_number());
+    // TODO(b/74185543): Remove the following if block once we support fusion
+    // with a non-constant as well. Then we will just always use the constant
+    // on the device.
+    if (alpha->opcode() == HloOpcode::kCopy) {
+      alpha = alpha->operand(0);
+    }
+
+    DCHECK(dot->opcode() == HloOpcode::kDot);
+    const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
+    const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
+    DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
+           rhs_parameter->opcode() == HloOpcode::kParameter);
+    const HloInstruction* lhs =
+        inst->operand(lhs_parameter->parameter_number());
+    const HloInstruction* rhs =
+        inst->operand(rhs_parameter->parameter_number());
+
+    return MakeUnique<GemmThunk>(
+        GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
+        GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
+        GetAllocationSlice(*inst),  // The output buffer.
+        lhs->shape(),               // The shape of LHS.
+        rhs->shape(),               // The shape of RHS.
+        inst->shape(),              // The shape of the output.
+        GetScalarConstantAsDouble(alpha->literal()),  // alpha.
+        inst);
   }
 
   LOG(FATAL) << "Cannot build a GemmThunk for " << inst->ToString();
@@ -2524,16 +2537,14 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
         .EmitLoop(IrName(&hlo));
   }
 
-  CHECK_EQ(unroll_factor, 1)
-      << "multi-output fusion does not support unrolling";
-
   // For multiple outputs fusion, we need to emit each operand and the root.
   std::vector<llvm_ir::IrArray> output_arrays;
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(hlo.shape()); ++i) {
     output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
   }
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, output_arrays,
-                                         launch_dimensions, &ir_builder_)
+                                         launch_dimensions, &ir_builder_,
+                                         unroll_factor)
                          .EmitLoop(IrName(&hlo)));
 
   std::vector<llvm::Value*> tuple_operand_ptrs;

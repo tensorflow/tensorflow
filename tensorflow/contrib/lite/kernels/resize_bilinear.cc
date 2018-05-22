@@ -36,8 +36,10 @@ constexpr int kInputTensor = 0;
 constexpr int kSizeTensor = 1;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus ResizeOutputTensor(TfLiteContext* context, TfLiteTensor* input,
-                                TfLiteTensor* size, TfLiteTensor* output) {
+TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
+                                const TfLiteTensor* input,
+                                const TfLiteTensor* size,
+                                TfLiteTensor* output) {
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = input->dims->data[0];
   const int32* size_data = GetTensorData<int32>(size);
@@ -51,8 +53,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // TODO(ahentz): Our current implementations rely on the inputs being 4D.
@@ -78,9 +80,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
+  const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,

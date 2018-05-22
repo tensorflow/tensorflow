@@ -208,18 +208,19 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
-  struct Item : public core::RefCounted {
+  struct Item {
+    uint64 instantiation_counter = 0;
     const Graph* graph = nullptr;                            // Owned by exec.
     const FunctionLibraryDefinition* overlay_lib = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
 
-    ~Item() override {
+    ~Item() {
       delete this->func_graph;
       delete this->exec;
     }
   };
-  std::unordered_map<Handle, Item*> items_ GUARDED_BY(mu_);
+  std::unordered_map<Handle, std::unique_ptr<Item>> items_ GUARDED_BY(mu_);
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
@@ -283,17 +284,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
   }
 }
 
-FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
-  // The most common patterns of FLR usage don't require the caller to
-  // explicitly release handles. As a result, we try to unref each item until
-  // it's erased.
-  for (auto item : items_) {
-    if (item.second) {
-      while (!item.second->Unref()) {
-      }
-    }
-  }
-}
+FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {}
 
 // An asynchronous op kernel which executes an instantiated function
 // defined in a library.
@@ -513,7 +504,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
                                 " for handle ", *handle,
                                 " not found in items.");
       }
-      item_handle->second->Ref();
+      ++item_handle->second->instantiation_counter;
       return Status::OK();
     }
   }
@@ -549,13 +540,15 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       delete fbody;
-      items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
+      ++items_[parent_->GetHandleOnDevice(device_name_, *handle)]
+            ->instantiation_counter;
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
       item->func_graph = fbody;
       item->overlay_lib = options.overlay_lib;
-      items_.insert({next_handle_, item});
+      item->instantiation_counter = 1;
+      items_.emplace(next_handle_, std::unique_ptr<Item>(item));
       next_handle_++;
     }
   }
@@ -571,8 +564,9 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   CHECK_NE(h, kInvalidLocalHandle);
   mutex_lock l(mu_);
   CHECK_EQ(1, items_.count(h));
-  Item* item = items_[h];
-  if (item->Unref()) {
+  std::unique_ptr<Item>& item = items_[h];
+  --item->instantiation_counter;
+  if (item->instantiation_counter == 0) {
     items_.erase(h);
     TF_RETURN_IF_ERROR(parent_->RemoveHandle(handle));
   }
@@ -685,7 +679,7 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
       return errors::NotFound("Function handle ", handle,
                               " is not valid. Likely an internal error.");
     }
-    *item = items_[local_handle];
+    *item = items_[local_handle].get();
     if ((*item)->exec != nullptr) {
       return Status::OK();
     }
@@ -754,7 +748,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
           return;
         }
         item->exec->RunAsync(
-            *exec_args, [item, frame, rets, done, source_device, target_device,
+            *exec_args, [frame, rets, done, source_device, target_device,
                          target_incarnation, rendezvous, device_context,
                          remote_args, exec_args](const Status& status) {
               Status s = status;
@@ -797,15 +791,15 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     };
   }
 
-  if (run_opts.runner == nullptr) {
-    run_opts.runner = &default_runner_;
-  }
-  DCHECK(run_opts.runner != nullptr);
-
   if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
     parent_->Run(run_opts, handle, args, rets, done);
     return;
   }
+
+  if (run_opts.runner == nullptr) {
+    run_opts.runner = &default_runner_;
+  }
+  DCHECK(run_opts.runner != nullptr);
 
   Executor::Args* exec_args = new Executor::Args;
   // Inherit the step_id from the caller.
@@ -846,7 +840,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       // Executor args
       *exec_args,
       // Done callback.
-      [item, frame, rets, done, exec_args](const Status& status) {
+      [frame, rets, done, exec_args](const Status& status) {
         Status s = status;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);

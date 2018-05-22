@@ -11,7 +11,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":checkpointable_utils",
         ":datasets",
         ":metrics",
         ":network",
@@ -19,15 +18,14 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
-        "//tensorflow/python:numerics",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:template",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:function",
     ],
@@ -70,7 +68,6 @@ cuda_py_test(
     srcs = ["datasets_test.py"],
     additional_deps = [
         ":datasets",
-        ":checkpointable_utils",
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/contrib/data/python/ops:threadpool",
         "//tensorflow/contrib/data/python/ops:unique",
@@ -79,6 +76,7 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python/data",
         "//tensorflow/python/eager:test",
     ],
@@ -121,7 +119,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -133,6 +130,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/training/checkpointable:base",
     ],
 )
 
@@ -223,45 +221,5 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
-    ],
-)
-
-py_library(
-    name = "checkpointable_utils",
-    srcs = ["checkpointable_utils.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:training",
-    ],
-)
-
-cuda_py_test(
-    name = "checkpointable_utils_test",
-    srcs = ["checkpointable_utils_test.py"],
-    additional_deps = [
-        ":checkpointable_utils",
-        ":network",
-        "@six_archive//:six",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:layers_base",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-    ],
-    tags = [
-        "no_windows",  # TODO: needs investigation on Windows
-        "notsan",  # b/74395663
     ],
 )
