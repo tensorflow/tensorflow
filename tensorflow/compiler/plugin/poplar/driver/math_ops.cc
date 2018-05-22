@@ -51,14 +51,20 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction* inst) {
       return popops::expr::UnaryOpType::ABSOLUTE;
     case HloOpcode::kCeil:
       return popops::expr::UnaryOpType::CEIL;
+    case HloOpcode::kClz:
+      return popops::expr::UnaryOpType::COUNT_LEADING_ZEROS;
     case HloOpcode::kCos:
       return popops::expr::UnaryOpType::COS;
     case HloOpcode::kExp:
       return popops::expr::UnaryOpType::EXPONENT;
+    case HloOpcode::kExpm1:
+      return popops::expr::UnaryOpType::EXPONENT_MINUS_ONE;
     case HloOpcode::kFloor:
       return popops::expr::UnaryOpType::FLOOR;
     case HloOpcode::kLog:
       return popops::expr::UnaryOpType::LOGARITHM;
+    case HloOpcode::kLog1p:
+      return popops::expr::UnaryOpType::LOGARITHM_ONE_PLUS;
     case HloOpcode::kNegate:
       return popops::expr::UnaryOpType::NEGATE;
     case HloOpcode::kRoundNearestAfz:
@@ -71,8 +77,6 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction* inst) {
       return popops::expr::UnaryOpType::TANH;
     case HloOpcode::kIsFinite:
       return popops::expr::UnaryOpType::IS_FINITE;
-    case HloOpcode::kClz:
-      return popops::expr::UnaryOpType::COUNT_LEADING_ZEROS;
     default:
       break;
   }
