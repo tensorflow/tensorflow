@@ -1,9 +1,9 @@
-path: "tensorflow.RunOptions"
+path: "tensorflow.ConfigProto.Experimental"
 tf_class {
-  is_instance: "<class \'tensorflow.core.protobuf.config_pb2.RunOptions\'>"
+  is_instance: "<class \'tensorflow.core.protobuf.config_pb2.Experimental\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
-    name: "DEBUG_OPTIONS_FIELD_NUMBER"
+    name: "COLLECTIVE_GROUP_LEADER_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
@@ -11,56 +11,8 @@ tf_class {
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
   member {
-    name: "EXPERIMENTAL_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "Experimental"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
-  }
-  member {
-    name: "FULL_TRACE"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "HARDWARE_TRACE"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "INTER_OP_THREAD_POOL_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "NO_TRACE"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "OUTPUT_PARTITION_GRAPHS_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "REPORT_TENSOR_ALLOCATIONS_UPON_OOM_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "SOFTWARE_TRACE"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "TIMEOUT_IN_MS_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "TRACE_LEVEL_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "TraceLevel"
-    mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
   }
   member_method {
     name: "ByteSize"
