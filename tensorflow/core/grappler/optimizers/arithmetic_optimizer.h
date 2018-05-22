@@ -69,6 +69,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool convert_sqrt_div_to_rsqrt_mul = false;
     bool remove_idempotent = true;
     bool remove_logical_not = true;
+    bool convert_pow = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
