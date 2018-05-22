@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
+#if GOOGLE_CUDA
 #include "external/cub_archive/cub/device/device_histogram.cuh"
+#elif TENSORFLOW_USE_ROCM
+#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,6 +30,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+
+#if TENSORFLOW_USE_ROCM
+#define cudaGetErrorString hipGetErrorString
+#define cudaSuccess hipSuccess
+#endif
 
 namespace tensorflow {
 
@@ -55,11 +64,19 @@ struct BincountFunctor<GPUDevice, T> {
     int32 lower_level = 0;
     int32 upper_level = output.size();
     int num_samples = arr.size();
+#ifdef GOOGLE_CUDA
     const cudaStream_t& stream = GetCudaStream(context);
+#elif TENSORFLOW_USE_ROCM
+    const hipStream_t& stream = context->eigen_gpu_device().stream();
+#endif
 
     // The first HistogramEven is to obtain the temp storage size required
     // with d_temp_storage = NULL passed to the call.
+#ifdef GOOGLE_CUDA
     auto err = cub::DeviceHistogram::HistogramEven(
+#elif TENSORFLOW_USE_ROCM
+    auto err = hipcub::DeviceHistogram::HistogramEven(
+#endif
         /* d_temp_storage */ NULL,
         /* temp_storage_bytes */ temp_storage_bytes,
         /* d_samples */ d_samples,
@@ -82,7 +99,11 @@ struct BincountFunctor<GPUDevice, T> {
     void* d_temp_storage = temp_storage.flat<int8>().data();
     // The second HistogramEven is to actual run with d_temp_storage
     // allocated with temp_storage_bytes.
+#ifdef GOOGLE_CUDA
     err = cub::DeviceHistogram::HistogramEven(
+#elif TENSORFLOW_USE_ROCM
+    err = hipcub::DeviceHistogram::HistogramEven(
+#endif
         /* d_temp_storage */ d_temp_storage,
         /* temp_storage_bytes */ temp_storage_bytes,
         /* d_samples */ d_samples,
@@ -110,5 +131,10 @@ TF_CALL_float(REGISTER_GPU_SPEC);
 #undef REGISTER_GPU_SPEC
 
 }  // namespace tensorflow
+
+#if TENSORFLOW_USE_ROCM
+#undef cudaGetErrorString
+#undef cudaSuccess
+#endif
 
 #endif  // GOOGLE_CUDA
