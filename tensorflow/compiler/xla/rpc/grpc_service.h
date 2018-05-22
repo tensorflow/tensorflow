@@ -29,7 +29,7 @@ class GRPCService : public grpc::XlaService::Service {
   // that the service should target. If platform is null then the default
   // platform is used.
   static StatusOr<std::unique_ptr<GRPCService>> NewService(
-      perftools::gputools::Platform* platform = nullptr);
+      se::Platform* platform = nullptr);
 
   ::grpc::Status Computation(::grpc::ServerContext* context,
                              const ComputationRequest* arg,
@@ -53,6 +53,10 @@ class GRPCService : public grpc::XlaService::Service {
   ::grpc::Status Execute(::grpc::ServerContext* context,
                          const ExecuteRequest* arg,
                          ExecuteResponse* result) override;
+
+  ::grpc::Status ExecuteGraph(::grpc::ServerContext* context,
+                              const ExecuteGraphRequest* arg,
+                              ExecuteResponse* result) override;
 
   ::grpc::Status ExecuteAsync(::grpc::ServerContext* context,
                               const ExecuteAsyncRequest* arg,

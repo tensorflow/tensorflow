@@ -29,22 +29,6 @@ class ProfileHandler {
   ProfileHandler() {}
   virtual ~ProfileHandler() {}
 
-  // Records that a miscellaneous activity occurred in the current step.
-  //
-  // Implementations of this method must be thread-safe.
-  //
-  // Args:
-  // - device: The device on which the activity occurred.
-  // - start: The time at which the activity started.
-  // - limit: The time at which the activity finished.
-  // - label: A label for the op, which may be used in visualization.
-  // - op_type: A type string for the op, which may be used in visualization.
-  // - details: A details string, which may be used in visualization.
-  // from time "start" to "limit" with "op_type" and "details".
-  virtual void RecordActivity(const string& device, Microseconds start,
-                              Microseconds limit, StringPiece label,
-                              StringPiece op_type, StringPiece details) = 0;
-
   // Records that a single Op was executed in the current step.
   //
   // Implementations of this method must be thread-safe.

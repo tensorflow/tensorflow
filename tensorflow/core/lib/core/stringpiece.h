@@ -88,24 +88,11 @@ class StringPiece {
 
   size_t find(char c, size_t pos = 0) const;
   size_t rfind(char c, size_t pos = npos) const;
-  // DEPRECATED: Use tensorflow::str_util::StrContains instead.
-  bool contains(StringPiece s) const;
-
-  // Checks whether StringPiece starts with x and if so advances the beginning
-  // of it to past the match.  It's basically a shortcut for starts_with
-  // followed by remove_prefix.
-  // DEPRECATED: Use tensorflow::str_util::ConsumePrefix instead.
-  bool Consume(StringPiece x) {
-    if (starts_with(x)) {
-      remove_prefix(x.size_);
-      return true;
-    }
-    return false;
-  }
 
   StringPiece substr(size_t pos, size_t n = npos) const;
 
   // Return a string that contains the copy of the referenced data.
+  // DEPRECATED: use std::string(sv) instead.
   std::string ToString() const { return std::string(data_, size_); }
 
   // Three-way comparison.  Returns value:
@@ -114,16 +101,11 @@ class StringPiece {
   //   >  0 iff "*this" >  "b"
   int compare(StringPiece b) const;
 
-  // Return true iff "x" is a prefix of "*this"
-  // DEPRECATED: Use tensorflow::str_util::StartsWith instead.
-  bool starts_with(StringPiece x) const {
-    return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
-  }
-  // Return true iff "x" is a suffix of "*this"
-  // DEPRECATED: Use tensorflow::str_util::EndsWith instead.
-  bool ends_with(StringPiece x) const {
-    return ((size_ >= x.size_) &&
-            (memcmp(data_ + (size_ - x.size_), x.data_, x.size_) == 0));
+  // Converts to `std::basic_string`.
+  template <typename A>
+  explicit operator std::basic_string<char, std::char_traits<char>, A>() const {
+    if (!data()) return {};
+    return std::basic_string<char, std::char_traits<char>, A>(data(), size());
   }
 
  private:

@@ -34,15 +34,16 @@ final class Tensor {
     if (NativeInterpreterWrapper.dataTypeOf(dst) != dtype) {
       throw new IllegalArgumentException(
           String.format(
-              "Cannot convert an TensorFlowLite tensor with type %s to a Java object of "
-                  + "type %s (which is compatible with the TensorFlowLite type %s)",
+              "Output error: Cannot convert an TensorFlowLite tensor with type %s to a Java "
+                  + "object of type %s (which is compatible with the TensorFlowLite type %s)",
               dtype, dst.getClass().getName(), NativeInterpreterWrapper.dataTypeOf(dst)));
     }
     int[] dstShape = NativeInterpreterWrapper.shapeOf(dst);
     if (!Arrays.equals(dstShape, shapeCopy)) {
       throw new IllegalArgumentException(
           String.format(
-              "Shape of output target %s does not match with the shape of the Tensor %s.",
+              "Output error: Shape of output target %s does not match with the shape of the "
+                  + "Tensor %s.",
               Arrays.toString(dstShape), Arrays.toString(shapeCopy)));
     }
     readMultiDimensionalArray(nativeHandle, dst);

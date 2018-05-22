@@ -28,9 +28,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribute as distribute_lib
@@ -116,7 +119,6 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.assertEqual(expected, self.evaluate(unwrapped[0]))
 
 
-@test_util.with_c_api
 class MirroredStrategyVariableCreationTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
@@ -247,8 +249,9 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     dist = mirrored_strategy.MirroredStrategy(
         ["/device:GPU:0", "/device:CPU:0"])
-    features = dataset_ops.Dataset.from_tensors([[1.]]).repeat(10)
-    features = dist.distribute_dataset(features).get_next()
+    features = dist.distribute_dataset(
+        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10)
+    ).make_one_shot_iterator().get_next()
 
     with dist.scope():
       result = dist.call_for_each_tower(
@@ -369,22 +372,27 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       expected_sum = 0.0
       expected_mean = 0.0
       for i, d in enumerate(dist.worker_devices):
-        # Test access within a device scope, should see different values.
-        with ops.device(d):
-          v_sum_value = self.evaluate(ret_v_sum.read_value())
-          v_mean_value = self.evaluate(ret_v_mean.read_value())
-          expected = i + 3.0
-          self.assertEqual(expected, v_sum_value)
-          expected_sum += expected
-          expected = i * 6.0
-          self.assertEqual(expected, v_mean_value)
-          expected_mean += expected
-
-      # fetch() should return the value you get by applying the
-      # reduction across all towers.
-      self.assertEqual(expected_sum, self.evaluate(dist.fetch(ret_v_sum)))
+        # Should see different values on different devices.
+        v_sum_value = self.evaluate(ret_v_sum.get(d).read_value())
+        v_mean_value = self.evaluate(ret_v_mean.get(d).read_value())
+        expected = i + 3.0
+        self.assertEqual(expected, v_sum_value)
+        expected_sum += expected
+        expected = i * 6.0
+        self.assertEqual(expected, v_mean_value)
+        expected_mean += expected
       expected_mean /= len(dist.worker_devices)
+
+      # Without get(device), should return the value you get by
+      # applying the reduction across all towers (whether you use
+      # fetch(), get(), or nothing).
+      self.assertEqual(expected_sum, self.evaluate(dist.fetch(ret_v_sum)))
       self.assertEqual(expected_mean, self.evaluate(dist.fetch(ret_v_mean)))
+      self.assertEqual(expected_sum, self.evaluate(ret_v_sum.get()))
+      self.assertEqual(expected_mean, self.evaluate(ret_v_mean.get()))
+      if not context.executing_eagerly():
+        self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
+        self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
 
   # NOTE(priyag): Names and name scopes are ignored in eager, hence we are not
   # testing this in eager mode.
@@ -429,6 +437,30 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         v0, v1 = dist.unwrap(v)
         self.assertEquals("foo/" + name + ":0", v0.name)
         self.assertEquals("tower_1/foo/" + name + ":0", v1.name)
+
+  def testDynamicRnnVariables(self):
+    def model_fn():
+      inputs = constant_op.constant(2 * [2 * [[0.0, 1.0, 2.0, 3.0, 4.0]]])
+      cell_fw = rnn_cell_impl.LSTMCell(300)
+      cell_bw = rnn_cell_impl.LSTMCell(300)
+      (outputs, _) = rnn.bidirectional_dynamic_rnn(
+          cell_fw,
+          cell_bw,
+          inputs,
+          dtype=dtypes.float32)
+      return outputs
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with context.graph_mode(), dist.scope():
+      result = dist.call_for_each_tower(model_fn, run_concurrently=False)
+      # Two variables are created by the RNN layer.
+      self.assertEquals(2, len(result))
+      for v in result:
+        self.assertIsInstance(v, values.DistributedValues)
+        _, v1 = dist.unwrap(v)
+        self.assertStartsWith(v1.name, "tower_1/")
 
 
 if __name__ == "__main__":

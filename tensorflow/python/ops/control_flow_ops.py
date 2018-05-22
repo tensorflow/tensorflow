@@ -15,36 +15,6 @@
 """Control Flow Operations.
 
 See the @{$python/control_flow_ops} guide.
-
-@@identity
-@@identity_n
-@@tuple
-@@group
-@@no_op
-@@count_up_to
-@@cond
-@@case
-@@while_loop
-@@logical_and
-@@logical_not
-@@logical_or
-@@logical_xor
-@@equal
-@@not_equal
-@@less
-@@less_equal
-@@greater
-@@greater_equal
-@@where
-@@is_finite
-@@is_inf
-@@is_nan
-@@verify_tensor_all_finite
-@@check_numerics
-@@add_check_numerics_ops
-@@Assert
-@@Print
-@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -73,6 +43,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -609,27 +580,29 @@ def _EnforceShapeInvariant(merge_var, next_var):
   """Check if the shapes of the loops variables are invariants.
 
   Args:
-    merge_vars: The list of tensors representing the initial values of the
+    merge_var: The list of tensors representing the initial values of the
       loop variables.
-    next_vars: The list of tensors representing the values of the loop
+    next_var: The list of tensors representing the values of the loop
       variables after one loop iteration.
 
   Raises:
-    ValueError: If any tensor in `merge_vars` has a more specific shape than
+    ValueError: If any tensor in `merge_var` has a more specific shape than
       its correspnding tensor in `next_var`.
   """
   if isinstance(merge_var, ops.Tensor):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
-      # TODO(skyewm): get original loop input that caused the shape error and
-      # report its name instead of the merge node's.
+      enter = merge_var.op.inputs[0].op
+      assert util.IsLoopEnter(enter)
+      input_t = enter.inputs[0]
+      assert input_t.shape == m_shape
       raise ValueError(
-          "The shape for %s is not an invariant for the loop. It enters "
-          "the loop with shape %s, but has shape %s after one iteration. "
-          "Provide shape invariants using either the `shape_invariants` "
-          "argument of tf.while_loop or set_shape() on the loop variables." %
-          (merge_var.name, m_shape, n_shape))
+          "Input tensor '%s' enters the loop with shape %s, but has shape %s "
+          "after one iteration. To allow the shape to vary across iterations, "
+          "use the `shape_invariants` argument of tf.while_loop to specify a "
+          "less-specific shape." %
+          (input_t.name, input_t.shape, n_shape))
   else:
     if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError("Type %s not supported" % type(var))
@@ -833,7 +806,7 @@ class GradLoopState(object):
     if outer_grad_state:
       outer_forward_ctxt = outer_grad_state.forward_context
     else:
-      if not hasattr(forward_ctxt, 'outer_context'):
+      if not hasattr(forward_ctxt, "outer_context"):
         raise ValueError("Failed to call gradients on a while loop without"
                          "properly serializing graph via MetaGraphDef")
       outer_forward_ctxt = forward_ctxt.outer_context
@@ -1461,6 +1434,8 @@ def ZerosLikeOutsideLoop(op, index):
   """Create zeros_like for the specified output of an op."""
   val = op.outputs[index]
   if not util.IsSwitch(op):
+    if val.dtype == dtypes.resource:
+      return array_ops.zeros(gen_resource_variable_ops.variable_shape(val))
     return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()
@@ -1469,6 +1444,10 @@ def ZerosLikeOutsideLoop(op, index):
       pred = op_ctxt.pred
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
+      if val.dtype == dtypes.resource:
+        with ops.control_dependencies([switch_val]):
+          return array_ops.zeros(
+              gen_resource_variable_ops.variable_shape(switch_val))
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
       # Ensure ops created within array_ops.zeros are dominated by switch in
       # cond context.
@@ -1706,12 +1685,12 @@ class CondContext(ControlFlowContext):
       self._pivot = pivot  # The predicate tensor in this branch
       self._branch = branch  # 0 or 1 representing this branch
 
-      # Values considered to have been already seen in this context. They are
-      # not included in this context.
+      # Values considered to have been already seen in this context. pred is not
+      # included in this context.
       self._values.add(pred.name)
       self._external_values[pred.name] = pred
       self._values.add(pivot.name)
-      self._external_values[pivot.name] = pivot
+      pivot.op._set_control_flow_context(self)  # pylint: disable=protected-access
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `CondContext` from protocol buffer.
@@ -2379,7 +2358,15 @@ class WhileContext(ControlFlowContext):
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
     result = val
-    if val.name not in self._values:
+    new_value = val.name not in self._values
+    # Don't treat ops in this context as new values. Usually all known values
+    # are in self._values, except when we're importing a while loop inside this
+    # WhileContext. Since there's a cycle in this case, `val` may be part of the
+    # imported while loop but not yet processed by this context and added to
+    # self._values in _AddOpInternal. We only want to process external input
+    # tensors to the while loop here.
+    new_value &= val.op._control_flow_context is not self  # pylint: disable=protected-access
+    if new_value:
       self._values.add(val.name)
 
       # If we are in a grad context and val is from its forward context,
@@ -2965,7 +2952,7 @@ class WhileContext(ControlFlowContext):
     packed_exit_vars = nest.pack_sequence_as(
         structure=original_body_result,
         flat_sequence=exit_vars_with_tensor_arrays)
-    return (packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars)
+    return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
 
   def _FixControlInputsAndContext(self, enters):
     graph = ops.get_default_graph()

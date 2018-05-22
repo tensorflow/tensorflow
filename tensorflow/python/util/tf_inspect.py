@@ -17,21 +17,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect as _inspect
-import six
 from collections import namedtuple
+import functools
+import inspect as _inspect
+
+import six
 
 from tensorflow.python.util import tf_decorator
 
 ArgSpec = _inspect.ArgSpec
 
 
-if six.PY3:
-  FullArgSpec = _inspect.FullArgSpec
+if hasattr(_inspect, 'FullArgSpec'):
+  FullArgSpec = _inspect.FullArgSpec  # pylint: disable=invalid-name
 else:
-  FullArgSpec = namedtuple(
-      'FullArgSpec', ['args', 'varargs', 'varkw', 'defaults',
-                      'kwonlyargs', 'kwonlydefaults', 'annotations'])
+  FullArgSpec = namedtuple('FullArgSpec', [
+      'args', 'varargs', 'varkw', 'defaults', 'kwonlyargs', 'kwonlydefaults',
+      'annotations'
+  ])
 
 
 def currentframe():
@@ -43,16 +46,95 @@ def getargspec(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.getargspec.
 
   Args:
-    object: A callable, possibly decorated.
+    object: A callable (function or partial function), possibly decorated.
 
   Returns:
     The `ArgSpec` that describes the signature of the outermost decorator that
     changes the callable's signature. If the callable is not decorated,
     `inspect.getargspec()` will be called directly on the callable.
+
+  Raises:
+    ValueError: When callable's function signature can not be expressed with
+    ArgSpec.
   """
-  decorators, target = tf_decorator.unwrap(object)
-  return next((d.decorator_argspec for d in decorators
-               if d.decorator_argspec is not None), _inspect.getargspec(target))
+
+  def get_argspec_with_decorator(obj):
+    decorators, target = tf_decorator.unwrap(obj)
+    return next((d.decorator_argspec
+                 for d in decorators
+                 if d.decorator_argspec is not None),
+                _inspect.getargspec(target))
+
+  if not isinstance(object, functools.partial):
+    return get_argspec_with_decorator(object)
+
+  # When callable is a functools.partial object, we construct its ArgSpec with
+  # following strategy:
+  # - If callable partial contains default value for positional arguments (ie.
+  # object.args), then final ArgSpec doesn't contain those positional arguments.
+  # - If callable partial contains default value for keyword arguments (ie.
+  # object.keywords), then we merge them with wrapped target. Default values
+  # from callable partial takes precedence over those from wrapped target.
+  #
+  # However, there is a case where it is impossible to construct a valid
+  # ArgSpec. Python requires arguments that have no default values must be
+  # defined before those with default values. ArgSpec structure is only valid
+  # when this presumption holds true because default values are expressed as a
+  # tuple of values without keywords and they are always assumed to belong to
+  # last K arguments where K is number of default values present.
+  #
+  # Since functools.partial can give default value to any argument, this
+  # presumption may no longer hold in some cases. For example:
+  #
+  # def func(m, n):
+  #   return 2 * m + n
+  # partialed = functools.partial(func, m=1)
+  #
+  # This example will result in m having a default value but n doesn't. This is
+  # usually not allowed in Python and can not be expressed in ArgSpec correctly.
+  #
+  # Thus, we must detect cases like this by finding first argument with default
+  # value and ensures all following arguments also have default values. When
+  # this is not true, a ValueError is raised.
+
+  n_prune_args = len(object.args)
+  partial_keywords = object.keywords or {}
+
+  args, varargs, keywords, defaults = get_argspec_with_decorator(object.func)
+
+  # Pruning first n_prune_args arguments.
+  args = args[n_prune_args:]
+
+  # Partial function may give default value to any argument, therefore length
+  # of default value list must be len(args) to allow each argument to
+  # potentially be given a default value.
+  all_defaults = [None] * len(args)
+  if defaults:
+    all_defaults[-len(defaults):] = defaults
+
+  # Fill in default values provided by partial function in all_defaults.
+  for kw, default in six.iteritems(partial_keywords):
+    idx = args.index(kw)
+    all_defaults[idx] = default
+
+  # Find first argument with default value set.
+  first_default = next((idx for idx, x in enumerate(all_defaults) if x), None)
+
+  # If no default values are found, return ArgSpec with defaults=None.
+  if first_default is None:
+    return ArgSpec(args, varargs, keywords, None)
+
+  # Checks if all arguments have default value set after first one.
+  invalid_default_values = [
+      args[i] for i, j in enumerate(all_defaults) if not j and i > first_default
+  ]
+
+  if invalid_default_values:
+    raise ValueError('Some arguments %s do not have default value, but they '
+                     'are positioned after those with default values. This can '
+                     'not be expressed with ArgSpec.' % invalid_default_values)
+
+  return ArgSpec(args, varargs, keywords, tuple(all_defaults[first_default:]))
 
 
 def getfullargspec(obj):  # pylint: disable=redefined-builtin
@@ -70,8 +152,20 @@ def getfullargspec(obj):  # pylint: disable=redefined-builtin
     callable is not decorated, `inspect.getfullargspec()` will be called
     directly on the callable.
   """
-  if six.PY2:
+  if hasattr(_inspect, 'getfullargspec'):
+    spec_fn = _inspect.getfullargspec
+  else:
     def spec_fn(target):
+      """Spec function that adding default value from FullArgSpec.
+
+      It is used when getfullargspec is not available (eg in PY2).
+
+      Args:
+        target: the target object to inspect.
+      Returns:
+        The full argument specs with empty kwonlyargs, kwonlydefaults and
+        annotations.
+      """
       argspecs = _inspect.getargspec(target)
       fullargspecs = FullArgSpec(
           args=argspecs.args,
@@ -82,8 +176,6 @@ def getfullargspec(obj):  # pylint: disable=redefined-builtin
           kwonlydefaults=None,
           annotations={})
       return fullargspecs
-  else:
-    spec_fn = _inspect.getfullargspec
 
   decorators, target = tf_decorator.unwrap(obj)
   return next((d.decorator_argspec for d in decorators
@@ -106,7 +198,7 @@ def getcallargs(func, *positional, **named):
   it. If no attached decorators modify argspec, the final unwrapped target's
   argspec will be used.
   """
-  argspec = getargspec(func)
+  argspec = getfullargspec(func)
   call_args = named.copy()
   this = getattr(func, 'im_self', None) or getattr(func, '__self__', None)
   if ismethod(func) and this:

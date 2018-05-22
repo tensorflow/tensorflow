@@ -46,7 +46,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -352,10 +352,17 @@ class BasicRNNCell(LayerRNNCell):
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such
       cases.
+    dtype: Default dtype of the layer (default of `None` means use the type
+      of the first input). Required when `build` is called before `call`.
   """
 
-  def __init__(self, num_units, activation=None, reuse=None, name=None):
-    super(BasicRNNCell, self).__init__(_reuse=reuse, name=name)
+  def __init__(self,
+               num_units,
+               activation=None,
+               reuse=None,
+               name=None,
+               dtype=None):
+    super(BasicRNNCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -413,6 +420,8 @@ class GRUCell(LayerRNNCell):
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such
       cases.
+    dtype: Default dtype of the layer (default of `None` means use the type
+      of the first input). Required when `build` is called before `call`.
   """
 
   def __init__(self,
@@ -421,8 +430,9 @@ class GRUCell(LayerRNNCell):
                reuse=None,
                kernel_initializer=None,
                bias_initializer=None,
-               name=None):
-    super(GRUCell, self).__init__(_reuse=reuse, name=name)
+               name=None,
+               dtype=None):
+    super(GRUCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -531,8 +541,14 @@ class BasicLSTMCell(LayerRNNCell):
   that follows.
   """
 
-  def __init__(self, num_units, forget_bias=1.0,
-               state_is_tuple=True, activation=None, reuse=None, name=None):
+  def __init__(self,
+               num_units,
+               forget_bias=1.0,
+               state_is_tuple=True,
+               activation=None,
+               reuse=None,
+               name=None,
+               dtype=None):
     """Initialize the basic LSTM cell.
 
     Args:
@@ -550,11 +566,13 @@ class BasicLSTMCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
+      dtype: Default dtype of the layer (default of `None` means use the type
+        of the first input). Required when `build` is called before `call`.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
       `CudnnCompatibleLSTMCell` instead.
     """
-    super(BasicLSTMCell, self).__init__(_reuse=reuse, name=name)
+    super(BasicLSTMCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -668,7 +686,7 @@ class LSTMCell(LayerRNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=None, num_proj_shards=None,
                forget_bias=1.0, state_is_tuple=True,
-               activation=None, reuse=None, name=None):
+               activation=None, reuse=None, name=None, dtype=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -701,11 +719,13 @@ class LSTMCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
+      dtype: Default dtype of the layer (default of `None` means use the type
+        of the first input). Required when `build` is called before `call`.
 
       When restoring from CudnnLSTM-trained checkpoints, use
       `CudnnCompatibleLSTMCell` instead.
     """
-    super(LSTMCell, self).__init__(_reuse=reuse, name=name)
+    super(LSTMCell, self).__init__(_reuse=reuse, name=name, dtype=dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -765,10 +785,14 @@ class LSTMCell(LayerRNNCell):
         shape=[input_depth + h_depth, 4 * self._num_units],
         initializer=self._initializer,
         partitioner=maybe_partitioner)
+    if self.dtype is None:
+      initializer = init_ops.zeros_initializer
+    else:
+      initializer = init_ops.zeros_initializer(dtype=self.dtype)
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],
-        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+        initializer=initializer)
     if self._use_peepholes:
       self._w_f_diag = self.add_variable("w_f_diag", shape=[self._num_units],
                                          initializer=self._initializer)
@@ -955,6 +979,7 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
+    super(DropoutWrapper, self).__init__()
     assert_like_rnncell("cell", cell)
 
     if (dropout_state_filter_visitor is not None
@@ -981,6 +1006,8 @@ class DropoutWrapper(RNNCell):
 
     # Set cell, variational_recurrent, seed before running the code below
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._variational_recurrent = variational_recurrent
     self._seed = seed
 
@@ -1127,7 +1154,10 @@ class ResidualWrapper(RNNCell):
         Defaults to calling nest.map_structure on (lambda i, o: i + o), inputs
         and outputs.
     """
+    super(ResidualWrapper, self).__init__()
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._residual_fn = residual_fn
 
   @property
@@ -1182,7 +1212,10 @@ class DeviceWrapper(RNNCell):
       cell: An instance of `RNNCell`.
       device: A device string or function, for passing to `tf.device`.
     """
+    super(DeviceWrapper, self).__init__()
     self._cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self._cell, name="cell")
     self._device = device
 
   @property
@@ -1298,7 +1331,7 @@ class MultiRNNCell(RNNCell):
     return cur_inp, new_states
 
 
-class _SlimRNNCell(RNNCell):
+class _SlimRNNCell(RNNCell, checkpointable.NotCheckpointable):
   """A simple wrapper for slim.rnn_cells."""
 
   def __init__(self, cell_fn):

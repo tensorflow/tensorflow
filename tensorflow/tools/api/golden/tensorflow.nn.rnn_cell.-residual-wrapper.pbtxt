@@ -3,8 +3,8 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.ResidualWrapper\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"

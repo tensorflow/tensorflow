@@ -36,7 +36,7 @@ struct ExpContext {
     input = GetInput(context, node, 0);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
+  const TfLiteTensor* input;
   TfLiteTensor* output;
 };
 

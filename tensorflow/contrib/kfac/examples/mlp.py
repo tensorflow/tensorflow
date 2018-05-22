@@ -105,18 +105,21 @@ def build_model(examples, labels, num_labels, layer_collection):
   return loss, accuracy
 
 
-def minimize(loss, accuracy, layer_collection, session_config=None):
+def minimize(loss, accuracy, layer_collection, num_towers, session_config=None):
   """Minimize 'loss' with KfacOptimizer.
 
   Args:
     loss: 0-D Tensor. Loss to be minimized.
     accuracy: 0-D Tensor. Accuracy of classifier on current minibatch.
     layer_collection: LayerCollection instance. Describes layers in model.
+    num_towers: int. Number of CPUs to split minibatch across.
     session_config: tf.ConfigProto. Configuration for tf.Session().
 
   Returns:
     accuracy of classifier on final minibatch.
   """
+  devices = tuple("/cpu:%d" % tower_id for tower_id in range(num_towers))
+
   # Train with K-FAC. We'll use a decreasing learning rate that's cut in 1/2
   # every 10k iterations.
   tf.logging.info("Building KFAC Optimizer.")
@@ -125,27 +128,38 @@ def minimize(loss, accuracy, layer_collection, session_config=None):
       learning_rate=tf.train.exponential_decay(
           0.00002, global_step, 10000, 0.5, staircase=True),
       cov_ema_decay=0.95,
-      damping=0.0001,
+      damping=0.0005,
       layer_collection=layer_collection,
-      momentum=0.99)
-  train_op = optimizer.minimize(loss, global_step=global_step)
+      momentum=0.99,
+      placement_strategy="round_robin",
+      cov_devices=devices,
+      inv_devices=devices)
+
+  (cov_update_thunks,
+   inv_update_thunks) = optimizer.make_vars_and_create_op_thunks()
+
+  def make_update_op(update_thunks):
+    update_ops = [thunk() for thunk in update_thunks]
+    return tf.group(*update_ops)
+
+  # TODO(b/78537047): change (some) examples to use PeriodicInvCovUpdateKfacOpt
+  # once that gets moved over?  Could still leave more advanced examples as they
+  # are (e.g. train_mnist_estimator in this file)
+
+  cov_update_op = make_update_op(cov_update_thunks)
+  with tf.control_dependencies([cov_update_op]):
+    # We update the inverses only every 20 iterations.
+    inverse_op = tf.cond(
+        tf.equal(tf.mod(global_step, 100), 0),
+        lambda: make_update_op(inv_update_thunks), tf.no_op)
+    with tf.control_dependencies([inverse_op]):
+      train_op = optimizer.minimize(loss, global_step=global_step)
 
   tf.logging.info("Starting training.")
   with tf.train.MonitoredTrainingSession(config=session_config) as sess:
     while not sess.should_stop():
-      # K-FAC has 3 primary ops,
-      # - train_op: Update the weights with the minibatch's gradient.
-      # - cov_update_op: Update statistics used for building K-FAC's
-      #   preconditioner matrix.
-      # - inv_update_op: Update preconditioner matrix using statistics.
-      #
-      # The first 2 of these are cheap and should be done with each step. The
-      # latter is more expensive, and should be updated ~100 iterations.
-      global_step_, loss_, accuracy_, _, _ = sess.run(
-          [global_step, loss, accuracy, train_op, optimizer.cov_update_op])
-
-      if global_step_ % 100 == 0:
-        sess.run(optimizer.inv_update_op)
+      global_step_, loss_, accuracy_, _ = sess.run(
+          [global_step, loss, accuracy, train_op])
 
       if global_step_ % 100 == 0:
         tf.logging.info("global_step: %d | loss: %f | accuracy: %f",
@@ -180,7 +194,7 @@ def train_mnist(data_dir, num_epochs, use_fake_data=False):
   loss, accuracy = build_model(examples, labels, 10, layer_collection)
 
   # Fit model.
-  minimize(loss, accuracy, layer_collection)
+  minimize(loss, accuracy, layer_collection, 1)
 
 
 def train_mnist_multitower(data_dir,
@@ -238,7 +252,8 @@ def train_mnist_multitower(data_dir,
           "CPU": num_towers
       })
   return minimize(
-      loss, accuracy, layer_collection, session_config=session_config)
+      loss, accuracy, layer_collection, num_towers,
+      session_config=session_config)
 
 
 def train_mnist_estimator(data_dir, num_epochs, use_fake_data=False):
@@ -298,13 +313,26 @@ def train_mnist_estimator(data_dir, num_epochs, use_fake_data=False):
         layer_collection=layer_collection,
         momentum=0.99)
 
+    (cov_update_thunks,
+     inv_update_thunks) = optimizer.make_vars_and_create_op_thunks()
+
+    def make_update_op(update_thunks):
+      update_ops = [thunk() for thunk in update_thunks]
+      return tf.group(*update_ops)
+
+    def make_batch_executed_op(update_thunks, batch_size=1):
+      return tf.group(*tf.contrib.kfac.utils.batch_execute(
+          global_step, update_thunks, batch_size=batch_size))
+
     # Run cov_update_op every step. Run 1 inv_update_ops per step.
-    cov_update_op = optimizer.cov_update_op
-    inv_update_op = tf.group(
-        tf.contrib.kfac.utils.batch_execute(
-            global_step, optimizer.inv_update_thunks, batch_size=1))
-    with tf.control_dependencies([cov_update_op, inv_update_op]):
-      train_op = optimizer.minimize(loss, global_step=global_step)
+    cov_update_op = make_update_op(cov_update_thunks)
+    with tf.control_dependencies([cov_update_op]):
+      # But make sure to execute all the inverse ops on the first step
+      inverse_op = tf.cond(tf.equal(global_step, 0),
+                           lambda: make_update_op(inv_update_thunks),
+                           lambda: make_batch_executed_op(inv_update_thunks))
+      with tf.control_dependencies([inverse_op]):
+        train_op = optimizer.minimize(loss, global_step=global_step)
 
     # Print metrics every 5 sec.
     hooks = [

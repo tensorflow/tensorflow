@@ -16,18 +16,6 @@
 """Operations for working with string Tensors.
 
 See the @{$python/string_ops} guide.
-
-@@regex_replace
-@@string_to_hash_bucket_fast
-@@string_to_hash_bucket_strong
-@@string_to_hash_bucket
-@@reduce_join
-@@string_join
-@@string_split
-@@substr
-@@as_string
-@@encode_base64
-@@decode_base64
 """
 
 from __future__ import absolute_import
@@ -51,6 +39,8 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
+# Expose regex_full_match in strings namespace
+tf_export("strings.regex_full_match")(regex_full_match)
 
 @tf_export("string_split")
 def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
@@ -113,7 +103,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    if x.get_shape().ndims is not None:
       return constant_op.constant(
           np.arange(x.get_shape().ndims - 1, -1, -1), dtype=dtypes.int32)
 
@@ -127,10 +117,11 @@ def reduce_join(inputs, axis=None,
                 separator="",
                 name=None,
                 reduction_indices=None):
+  inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
-      inputs, axis, reduction_indices)
+      inputs_t, axis, reduction_indices)
   return gen_string_ops.reduce_join(
-      inputs=inputs,
+      inputs=inputs_t,
       reduction_indices=reduction_indices,
       keep_dims=keep_dims,
       separator=separator,

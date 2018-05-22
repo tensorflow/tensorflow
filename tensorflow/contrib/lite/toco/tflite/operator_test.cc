@@ -115,6 +115,10 @@ TEST_F(OperatorTest, SimpleOperators) {
       "MINIMUM", OperatorType::kTensorFlowMinimum);
   CheckSimpleOperator<TensorFlowLessOperator>("LESS",
                                               OperatorType::kTensorFlowLess);
+  CheckSimpleOperator<NegOperator>("NEG", OperatorType::kNeg);
+  CheckSimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect);
+  CheckSimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice);
+  CheckSimpleOperator<SinOperator>("SIN", OperatorType::kSin);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -402,6 +406,18 @@ TEST_F(OperatorTest, BuiltinArgMax) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("ARG_MAX", OperatorType::kArgMax), op);
   EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
+TEST_F(OperatorTest, BuiltinTransposeConv) {
+  TransposeConvOperator op;
+  op.stride_width = 123;
+  op.stride_height = 124;
+  op.padding.type = PaddingType::kValid;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TRANSPOSE_CONV", OperatorType::kTransposeConv), op);
+  EXPECT_EQ(op.stride_width, output_toco_op->stride_width);
+  EXPECT_EQ(op.stride_height, output_toco_op->stride_height);
+  EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

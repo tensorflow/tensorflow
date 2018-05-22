@@ -29,6 +29,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -102,8 +103,8 @@ class Uniform(distribution.Distribution):
     Raises:
       InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[low, high]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[low, high]) as name:
       with ops.control_dependencies([
           check_ops.assert_less(
               low, high, message="uniform not defined when low >= high.")

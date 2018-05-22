@@ -25,7 +25,8 @@ def tf_library(name, graph, config,
                visibility=None, testonly=None,
                tfcompile_flags=None,
                tfcompile_tool="//tensorflow/compiler/aot:tfcompile",
-               include_standard_runtime_deps=True, deps=None, tags=None):
+               include_standard_runtime_deps=True,
+               enable_xla_hlo_profiling=False, deps=None, tags=None):
   """Runs tfcompile to compile a TensorFlow graph into executable code.
 
   Given an invocation of tf_library(name="foo", ...), generates the following
@@ -68,6 +69,8 @@ def tf_library(name, graph, config,
     include_standard_runtime_deps: If True, the standard list of kernel/runtime
       deps is added to deps.  If False, deps must contain the full set of deps
       needed by the generated library.
+    enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated program,
+      and emit metadata that lets us pretty-print the gathered profile counters.
     deps: a list of deps to include on the build rules for the generated
       library, added to the standard deps if standard_runtime_deps is True.
     tags: tags to apply to subsidiary build rules.
@@ -137,6 +140,10 @@ def tf_library(name, graph, config,
     flags = tfcompile_flags
   else:
     flags = " ".join(["'" + arg.replace("'", "'\\''") + "'" for arg in (tfcompile_flags or [])])
+  if enable_xla_hlo_profiling:
+    profiling_flag = "--xla_hlo_profile"
+  else:
+    profiling_flag = ""
   native.genrule(
       name=("gen_" + name),
       srcs=[
@@ -157,7 +164,7 @@ def tf_library(name, graph, config,
            " --out_header=$(@D)/" + header_file +
            " --out_metadata_object=$(@D)/" + metadata_object_file +
            " --out_function_object=$(@D)/" + function_object_file +
-           " " + flags),
+           " " + flags + " " + profiling_flag),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -220,6 +227,8 @@ def tf_library(name, graph, config,
       ] + (need_xla_data_proto and [
           # If we're generating the program shape, we must depend on the proto.
           "//tensorflow/compiler/xla:xla_data_proto",
+      ] or []) + (enable_xla_hlo_profiling and [
+          "//tensorflow/compiler/xla/service:hlo_profile_printer_data"
       ] or []) + (include_standard_runtime_deps and [
           # TODO(cwhipkey): only depend on kernel code that the model actually needed.
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",

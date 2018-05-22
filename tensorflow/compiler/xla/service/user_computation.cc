@@ -49,10 +49,14 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kAbs;
     case UNOP_CEIL:
       return HloOpcode::kCeil;
+    case UNOP_CLZ:
+      return HloOpcode::kClz;
     case UNOP_COS:
       return HloOpcode::kCos;
     case UNOP_EXP:
       return HloOpcode::kExp;
+    case UNOP_EXPM1:
+      return HloOpcode::kExpm1;
     case UNOP_FLOOR:
       return HloOpcode::kFloor;
     case UNOP_IMAG:
@@ -61,6 +65,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kIsFinite;
     case UNOP_LOG:
       return HloOpcode::kLog;
+    case UNOP_LOG1P:
+      return HloOpcode::kLog1p;
     case UNOP_NOT:
       return HloOpcode::kNot;
     case UNOP_NEGATE:

@@ -21,8 +21,6 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib.distribute.python import values
-from tensorflow.contrib.eager.python import datasets
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -38,9 +36,11 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   # doing something that won't work with other DistributionStrategy
   # implementations?
 
-  def __init__(self, device):
+  def __init__(self, device, prefetch_on_device=None):
     super(OneDeviceStrategy, self).__init__()
     self._device = device
+    self._prefetch_on_device = prefetch_on_device
+    self._default_device = device
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # No need to distinguish tower-local variables when not mirroring,
@@ -62,11 +62,10 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
 
-  def distribute_dataset(self, dataset):
-    if context.executing_eagerly():
-      return datasets.Iterator(dataset)
-    else:
-      return dataset.make_one_shot_iterator()
+  def distribute_dataset(self, dataset_fn):
+    return values.PerDeviceDataset(
+        self._call_dataset_fn(dataset_fn), [self._device],
+        self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
     return tensor

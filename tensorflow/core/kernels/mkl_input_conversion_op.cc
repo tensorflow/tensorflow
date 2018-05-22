@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -291,7 +292,8 @@ class MklInputConversionOp : public OpKernel {
     // If both inputs are in MKL format
     if (input_shape_0.IsMklTensor() && input_shape_1.IsMklTensor()) {
       // It is safer to compare the original TensorFlow shapes than to compare
-      // Mkl shapes since element wise ops are forwarded to Eigen implementation.
+      // Mkl shapes since element wise ops are forwarded to Eigen
+      // implementation.
       TensorShape tf_shape0 = input_shape_0.GetTfShape();
       TensorShape tf_shape1 = input_shape_1.GetTfShape();
       if (tf_shape0 == tf_shape1) {
@@ -310,9 +312,8 @@ class MklInputConversionOp : public OpKernel {
           VLOG(1) << "MklInputConversionOp: Shape is same, but format is "
                      "different, "
                   << "need to convert to same format";
-
-          // Convert input0, and keep input1 unchanged
-          // Create MklDnnShape for output mkl tensor based on input0
+          // TODO: For now, input0 is converted and input1 is unchanged
+          //       we should choose the optimal MKL format to convert to.
           Tensor* tensor_out;
           MklDnnShape mkl_output_mkl_shape;
           mkl_output_mkl_shape.SetMklTensor(true);
@@ -360,11 +361,14 @@ class MklInputConversionOp : public OpKernel {
       // with MKL tensors)
       VLOG(1) << "MklInputConversionOp: Broadcast needed, "
               << "converted MKL inputs to TF format";
-
+      // TODO: Cleanup op_data_type and has_avx512f_ after these two parameters
+      //       are removed from ConvertMklToTf
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
-                                           op_data_type, has_avx512f_, kInputIndex_0);
+                                           op_data_type, has_avx512f_,
+                                           kInputIndex_0);
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
-                                           op_data_type, has_avx512f_, kInputIndex_1);
+                                           op_data_type, has_avx512f_,
+                                           kInputIndex_1);
       SetDummyMklShapeOutput(context, kInputIndex_0);
       SetDummyMklShapeOutput(context, kInputIndex_1);
       return;
@@ -399,19 +403,7 @@ class MklInputConversionOp : public OpKernel {
     }
 
     // Broadcast is needed if the shapes are not the same
-    bool broadcast_needed;
-
-    size_t in0_size = 1;
-    for (size_t i = 0; i < mkl_shape->GetDimension(); ++i)
-      in0_size *= mkl_shape->TfDimSize(i);
-
-    size_t in1_size = 1;
-    for (size_t i = 0; i < tf_tensor->shape().dims(); ++i)
-      in1_size *= tf_tensor->shape().dim_size(i);
-
-    broadcast_needed = (in0_size != in1_size);
-
-    if (!broadcast_needed) {
+    if (mkl_shape->GetTfShape().num_elements() == tf_tensor->shape().num_elements() ) {
       // Both shapes are same, convert the TF input to MKL
       VLOG(1) << "MklInputConversionOp: No broadcast needed.";
       VLOG(1) << "MklInputConversionOp: Converting input " << tf_tensor_index
@@ -442,10 +434,19 @@ class MklInputConversionOp : public OpKernel {
 
       // Create reorder between tensorflow layout and Mkl layout if necessary
       std::vector<primitive> net;
-      tf_input.CheckReorderToOpMem(
+      bool reordered = tf_input.CheckReorderToOpMem(
                    memory::primitive_desc(output_mkl_md, cpu_engine),
                    tensor_out, &net);
-      stream(stream::kind::eager).submit(net).wait();
+      if(!reordered) {
+        // This is the case that the TF tensor has the same shape and format of
+        // mkl tensor. However, tf_tensor can not be simply forwarded to the output
+        // tensor since mkl data tensor is always one dimensional tensor. 
+        // Tensor::CopyFrom shares the buffer of the other tensor while set its shape
+        // to the other tensor. 
+        tensor_out->CopyFrom(*tf_tensor, tensor_out->shape());
+      }
+      else  
+        stream(stream::kind::eager).submit(net).wait();
 
       // -- The tensor in MKL format passes through --
       ForwardMklTensorInToOut(context, mkl_tensor_index, mkl_tensor_index);
@@ -464,7 +465,8 @@ class MklInputConversionOp : public OpKernel {
     }
 
     VLOG(1) << "MklInputConversionOp: Shapes (output): "
-            << context->mutable_output(kInputIndex_0)->shape().DebugString() << " and "
+            << context->mutable_output(kInputIndex_0)->shape().DebugString()
+            << " and "
             << context->mutable_output(kInputIndex_1)->shape().DebugString();
 
     VLOG(1) << "MklInputConversion completed successfully.";

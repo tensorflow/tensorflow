@@ -16,8 +16,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -41,7 +39,7 @@ namespace {
 
 class MapTest : public ClientLibraryTestBase {
  public:
-  explicit MapTest(perftools::gputools::Platform* platform = nullptr)
+  explicit MapTest(se::Platform* platform = nullptr)
       : ClientLibraryTestBase(platform) {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
@@ -339,48 +337,6 @@ XLA_TEST_F(MapTest, ComplexNestedMaps) {
   builder.Add(map_42, map_7);
 
   ComputeAndCompareR0<float>(&builder, 73.0, {}, ErrorSpec(0.01f));
-}
-
-TEST_F(MapTest, VersionedEmbeddedComputation) {
-  // Build a computation X, use it in a map, then add an additional operation to
-  // computation X and use it again in a different map. Verify that the proper
-  // versions of computation X are used in each of the maps.
-
-  // Create a (embedded) computation which adds one to its parameter argument.
-  ComputationBuilder embedded_builder(client_, "EmbeddedComputation");
-  auto param_0 =
-      embedded_builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
-  auto constant_one = embedded_builder.ConstantR0<float>(1.0);
-  auto adder_to_one = embedded_builder.Add(param_0, constant_one);
-  auto computation_status = embedded_builder.Build();
-  ASSERT_IS_OK(computation_status.status());
-  auto embedded_computation = computation_status.ConsumeValueOrDie();
-
-  ComputationBuilder builder(client_, TestName());
-  auto constant_vector = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
-  auto map_plus_1 = builder.Map({constant_vector}, embedded_computation, {0});
-
-  // Add another Add(1) operation to the existing embedded computation. This
-  // requires using the stub interface because the ComputationBuilder does not
-  // allow modification to the XlaComputation objects after they have been
-  // built.
-  BinaryOpRequest request;
-  request.set_binop(BINOP_ADD);
-  *request.mutable_lhs() = adder_to_one;
-  *request.mutable_rhs() = constant_one;
-  OpRequest op_request;
-  *op_request.mutable_computation() = embedded_computation.handle();
-  *op_request.mutable_binary_op_request() = request;
-  OpResponse response;
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-  ASSERT_TRUE(s.ok());
-
-  auto map_plus_2 = builder.Map({map_plus_1}, embedded_computation, {0});
-
-  // The original vector has Add(1) applied to it with a map, followed by
-  // Add(1+1) resulting in a net Add(3).
-  ComputeAndCompareR1<float>(&builder, {4.0, 5.0, 6.0, 7.0}, {},
-                             ErrorSpec(0.01f));
 }
 
 TEST_F(MapTest, MapBinaryAdder) {

@@ -126,7 +126,8 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options,
       return nullptr;
     }
 
-    const CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
     gpu_allocator =
         new GPUBFCAllocator(cuda_gpu_id, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
@@ -146,7 +147,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options,
 
     // If there are any pending AllocVisitors for this bus, add
     // them now.
-    gpu::StreamExecutor* se =
+    se::StreamExecutor* se =
         GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
     if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
@@ -257,7 +258,7 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // better source of information about which executor to use.  For
   // example, process_state could maybe save the first stream executor
   // it knows is valid.
-  gpu::StreamExecutor* se = nullptr;
+  se::StreamExecutor* se = nullptr;
   for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
     if (gpu_allocators_[i] != nullptr) {
       se = GpuIdUtil::ExecutorForTfGpuId(TfGpuId(i)).ValueOrDie();
@@ -305,7 +306,7 @@ void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
 #if GOOGLE_CUDA
   mutex_lock lock(mu_);
   for (int i = 0; i < static_cast<int64>(gpu_allocators_.size()); ++i) {
-    gpu::StreamExecutor* se =
+    se::StreamExecutor* se =
         GpuIdUtil::ExecutorForTfGpuId(TfGpuId(i)).ValueOrDie();
     if (gpu_allocators_[i] &&
         (se->GetDeviceDescription().numa_node() + 1) == bus_id) {

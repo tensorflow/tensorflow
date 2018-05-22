@@ -212,7 +212,7 @@ class ForestHParams(object):
     self.regression = getattr(self, 'regression', False)
 
     # Num_outputs is the actual number of outputs (a single prediction for
-    # classification, a N-dimenensional point for regression).
+    # classification, a N-dimensional point for regression).
     self.num_outputs = self.num_classes if self.regression else 1
 
     # Add an extra column to classes for storing counts, which is needed for
@@ -445,7 +445,7 @@ class RandomForestGraphs(object):
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
           gather_indices = array_ops.squeeze(
-              array_ops.where(mask), squeeze_dims=[1])
+              array_ops.where(mask), axis=[1])
           # TODO(thomaswc): Calculate out-of-bag data and labels, and store
           # them for use in calculating statistics later.
           tree_data = array_ops.gather(processed_dense_features, gather_indices)

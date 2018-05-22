@@ -47,9 +47,10 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
-  Status Initialize(const GpuExecutable& executable) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream) override;
 
  private:
   BufferAllocation::Slice predicate_buffer_index_;

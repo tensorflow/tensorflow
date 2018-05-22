@@ -524,6 +524,7 @@ REGISTER_OP("Conv3DBackpropInput")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropInputV2")
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
     });
@@ -537,6 +538,7 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropFilterV2")
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &out));
@@ -545,7 +547,7 @@ REGISTER_OP("Conv3DBackpropFilter")
     });
 
 REGISTER_OP("Conv3DBackpropInputV2")
-    .Input("input_sizes: int32")
+    .Input("input_sizes: Tshape")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
@@ -554,6 +556,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -1450,6 +1453,7 @@ REGISTER_OP("QuantizedReluX")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();

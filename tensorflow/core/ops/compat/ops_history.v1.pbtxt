@@ -1535,6 +1535,85 @@ op {
   }
 }
 op {
+  name: "ApplyAdaMax"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "m"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "beta1_power"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "ApplyAdadelta"
   input_arg {
     name: "var"
@@ -2039,6 +2118,71 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "ApplyAdagrad"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
@@ -10855,6 +10999,22 @@ op {
     type: DT_FLOAT
     number_attr: "num_features"
   }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tree_complexity"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_node_weight"
+    type: DT_FLOAT
+  }
   output_arg {
     name: "node_ids_list"
     type: DT_INT32
@@ -10879,18 +11039,6 @@ op {
     name: "right_node_contribs_list"
     type: DT_FLOAT
     number_attr: "num_features"
-  }
-  attr {
-    name: "l1"
-    type: "float"
-  }
-  attr {
-    name: "l2"
-    type: "float"
-  }
-  attr {
-    name: "tree_complexity"
-    type: "float"
   }
   attr {
     name: "max_splits"
@@ -11054,12 +11202,6 @@ op {
     name: "logits_dimension"
     type: "int"
   }
-  attr {
-    name: "max_depth"
-    type: "int"
-    has_minimum: true
-    minimum: 1
-  }
   is_stateful: true
 }
 op {
@@ -11119,12 +11261,6 @@ op {
     name: "logits_dimension"
     type: "int"
   }
-  attr {
-    name: "max_depth"
-    type: "int"
-    has_minimum: true
-    minimum: 1
-  }
   is_stateful: true
 }
 op {
@@ -11162,15 +11298,13 @@ op {
     type: DT_FLOAT
     number_attr: "num_features"
   }
-  attr {
+  input_arg {
     name: "max_depth"
-    type: "int"
-    has_minimum: true
-    minimum: 1
+    type: DT_INT32
   }
-  attr {
+  input_arg {
     name: "learning_rate"
-    type: "float"
+    type: DT_FLOAT
   }
   attr {
     name: "pruning_mode"
@@ -11232,6 +11366,38 @@ op {
   }
   attr {
     name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "BroadcastTo"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tidx"
     type: "type"
     default_value {
       type: DT_INT32
@@ -11757,6 +11923,50 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "ClipByValue"
+  input_arg {
+    name: "t"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "clip_value_min"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "clip_value_max"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13412,6 +13622,68 @@ op {
   }
 }
 op {
+  name: "Conv3DBackpropFilter"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+  }
+  deprecation {
+    version: 10
+  }
+}
+op {
   name: "Conv3DBackpropFilterV2"
   input_arg {
     name: "input"
@@ -13677,6 +13949,68 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  deprecation {
+    version: 10
+  }
+}
+op {
+  name: "Conv3DBackpropInput"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
       }
     }
   }
@@ -14308,6 +14642,66 @@ op {
   }
 }
 op {
+  name: "CropAndResize"
+  input_arg {
+    name: "image"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "box_ind"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "crop_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "crops"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "method"
+    type: "string"
+    default_value {
+      s: "bilinear"
+    }
+    allowed_values {
+      list {
+        s: "bilinear"
+        s: "nearest"
+      }
+    }
+  }
+  attr {
+    name: "extrapolation_value"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+}
+op {
   name: "CropAndResizeGradBoxes"
   input_arg {
     name: "grads"
@@ -14452,6 +14846,53 @@ op {
     allowed_values {
       list {
         s: "bilinear"
+      }
+    }
+  }
+}
+op {
+  name: "CropAndResizeGradImage"
+  input_arg {
+    name: "grads"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "box_ind"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "image_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "method"
+    type: "string"
+    default_value {
+      s: "bilinear"
+    }
+    allowed_values {
+      list {
+        s: "bilinear"
+        s: "nearest"
       }
     }
   }
@@ -14754,6 +15195,148 @@ op {
   input_arg {
     name: "reserve_space"
     type_attr: "T"
+  }
+  output_arg {
+    name: "input_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_h_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_c_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "params_backprop"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "CudnnRNNBackpropV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_h_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_c_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "reserve_space"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "host_reserved"
+    type: DT_INT8
   }
   output_arg {
     name: "input_backprop"
@@ -15167,6 +15750,127 @@ op {
       i: 0
     }
   }
+}
+op {
+  name: "CudnnRNNV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "params"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_h"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_c"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "reserve_space"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "host_reserved"
+    type: DT_INT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "rnn_mode"
+    type: "string"
+    default_value {
+      s: "lstm"
+    }
+    allowed_values {
+      list {
+        s: "rnn_relu"
+        s: "rnn_tanh"
+        s: "lstm"
+        s: "gru"
+      }
+    }
+  }
+  attr {
+    name: "input_mode"
+    type: "string"
+    default_value {
+      s: "linear_input"
+    }
+    allowed_values {
+      list {
+        s: "linear_input"
+        s: "skip_input"
+        s: "auto_select"
+      }
+    }
+  }
+  attr {
+    name: "direction"
+    type: "string"
+    default_value {
+      s: "unidirectional"
+    }
+    allowed_values {
+      list {
+        s: "unidirectional"
+        s: "bidirectional"
+      }
+    }
+  }
+  attr {
+    name: "dropout"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Cumprod"
@@ -15793,6 +16497,21 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "DatasetToTFRecord"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
   }
 }
 op {
@@ -20387,7 +21106,66 @@ op {
   }
 }
 op {
+  name: "FFT"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "FFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFT2D"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "FFT3D"
   input_arg {
     name: "input"
     type: DT_COMPLEX64
@@ -20401,11 +21179,24 @@ op {
   name: "FFT3D"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "Tcomplex"
   }
   output_arg {
     name: "output"
-    type: DT_COMPLEX64
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
@@ -23555,6 +24346,82 @@ op {
   }
 }
 op {
+  name: "GroupByReducerDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "key_func_other_arguments"
+    type_list_attr: "Tkey_func_other_arguments"
+  }
+  input_arg {
+    name: "init_func_other_arguments"
+    type_list_attr: "Tinit_func_other_arguments"
+  }
+  input_arg {
+    name: "reduce_func_other_arguments"
+    type_list_attr: "Treduce_func_other_arguments"
+  }
+  input_arg {
+    name: "finalize_func_other_arguments"
+    type_list_attr: "Tfinalize_func_other_arguments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "key_func"
+    type: "func"
+  }
+  attr {
+    name: "init_func"
+    type: "func"
+  }
+  attr {
+    name: "reduce_func"
+    type: "func"
+  }
+  attr {
+    name: "finalize_func"
+    type: "func"
+  }
+  attr {
+    name: "Tkey_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tinit_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tfinalize_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "GroupByWindowDataset"
   input_arg {
     name: "input_dataset"
@@ -24024,7 +24891,66 @@ op {
   }
 }
 op {
+  name: "IFFT"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "IFFT2D"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "IFFT2D"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "IFFT3D"
   input_arg {
     name: "input"
     type: DT_COMPLEX64
@@ -24038,11 +24964,24 @@ op {
   name: "IFFT3D"
   input_arg {
     name: "input"
-    type: DT_COMPLEX64
+    type_attr: "Tcomplex"
   }
   output_arg {
     name: "output"
-    type: DT_COMPLEX64
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {
@@ -25620,18 +26559,6 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
-  }
-  is_stateful: true
-}
-op {
-  name: "IteratorSetStatsAggregator"
-  input_arg {
-    name: "iterator_handle"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "stats_aggregator_handle"
-    type: DT_RESOURCE
   }
   is_stateful: true
 }
@@ -27277,6 +28204,54 @@ op {
   }
   input_arg {
     name: "num_parallel_batches"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "MapAndBatchDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_calls"
     type: DT_INT64
   }
   input_arg {
@@ -33589,6 +34564,33 @@ op {
   }
 }
 op {
+  name: "NonMaxSuppressionV3"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+}
+op {
   name: "NotEqual"
   input_arg {
     name: "x"
@@ -35285,6 +36287,31 @@ op {
   attr {
     name: "out_type"
     type: "type"
+  }
+}
+op {
+  name: "PartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
   }
 }
 op {
@@ -42725,6 +43752,78 @@ op {
   }
 }
 op {
+  name: "ResourceApplyAdaMax"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "v"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "beta1_power"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "ResourceApplyAdadelta"
   input_arg {
     name: "var"
@@ -43176,6 +44275,65 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ResourceApplyAdagrad"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_stateful: true
@@ -47528,6 +48686,79 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ResourceSparseApplyAdagrad"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_stateful: true
@@ -55030,6 +56261,34 @@ op {
   }
 }
 op {
+  name: "SetStatsAggregatorDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "stats_aggregator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "Shape"
   input_arg {
     name: "input"
@@ -58247,6 +59506,85 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "SparseApplyAdagrad"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
@@ -66246,6 +67584,17 @@ op {
   }
 }
 op {
+  name: "StringStrip"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+}
+op {
   name: "StringToHashBucket"
   input_arg {
     name: "string_tensor"
@@ -68579,6 +69928,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorListConcatLists"
+  input_arg {
+    name: "input_a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "input_b"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}
+op {
   name: "TensorListElementShape"
   input_arg {
     name: "input_handle"
@@ -69937,6 +71305,29 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "UnbatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {

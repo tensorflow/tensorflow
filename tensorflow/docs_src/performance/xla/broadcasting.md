@@ -97,9 +97,9 @@ shape is broadcast into a larger rank shape. For example, given a 2x3x4 cuboid
 and a 3x4 matrix, a broadcasting tuple (1,2) means matching the matrix to
 dimensions 1 and 2 of the cuboid.
 
-This type of broadcast is used in the binary ops in `ComputationBuilder`, if the
+This type of broadcast is used in the binary ops in `XlaBuilder`, if the
 `broadcast_dimensions` argument is given. For example, see
-[ComputationBuilder::Add](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.cc).
+[XlaBuilder::Add](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.cc).
 In the XLA source code, this type of broadcasting is sometimes called "InDim"
 broadcasting.
 

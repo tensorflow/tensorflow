@@ -652,7 +652,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     padded.set_shape(padded_shape)
 
     if not is_batch:
-      padded = array_ops.squeeze(padded, squeeze_dims=[0])
+      padded = array_ops.squeeze(padded, axis=[0])
 
     return padded
 
@@ -732,7 +732,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     cropped.set_shape(cropped_shape)
 
     if not is_batch:
-      cropped = array_ops.squeeze(cropped, squeeze_dims=[0])
+      cropped = array_ops.squeeze(cropped, axis=[0])
 
     return cropped
 
@@ -849,7 +849,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     resized = control_flow_ops.with_dependencies(assert_ops, resized)
 
     if not is_batch:
-      resized = array_ops.squeeze(resized, squeeze_dims=[0])
+      resized = array_ops.squeeze(resized, axis=[0])
 
     return resized
 
@@ -942,7 +942,7 @@ def resize_images(images,
            for x in [new_width_const, width, new_height_const, height]) and (
                width == new_width_const and height == new_height_const):
       if not is_batch:
-        images = array_ops.squeeze(images, squeeze_dims=[0])
+        images = array_ops.squeeze(images, axis=[0])
       return images
 
     if method == ResizeMethod.BILINEAR:
@@ -965,7 +965,7 @@ def resize_images(images,
     images.set_shape([None, new_height_const, new_width_const, None])
 
     if not is_batch:
-      images = array_ops.squeeze(images, squeeze_dims=[0])
+      images = array_ops.squeeze(images, axis=[0])
     return images
 
 
@@ -1727,7 +1727,7 @@ def sample_distorted_bounding_box(image_size,
       width / height within this range.
     area_range: An optional list of `floats`. Defaults to `[0.05, 1]`.
       The cropped area of the image must contain a fraction of the
-      supplied image within in this range.
+      supplied image within this range.
     max_attempts: An optional `int`. Defaults to `100`.
       Number of attempts at generating a cropped region of the image
       of the specified constraints. After `max_attempts` failures, return the
@@ -1772,6 +1772,7 @@ def non_max_suppression(boxes,
                         scores,
                         max_output_size,
                         iou_threshold=0.5,
+                        score_threshold=0.0,
                         name=None):
   """Greedily selects a subset of bounding boxes in descending order of score.
 
@@ -1800,6 +1801,8 @@ def non_max_suppression(boxes,
       of boxes to be selected by non max suppression.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
     name: A name for the operation (optional).
 
   Returns:
@@ -1808,8 +1811,10 @@ def non_max_suppression(boxes,
   """
   with ops.name_scope(name, 'non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
-    return gen_image_ops.non_max_suppression_v2(boxes, scores, max_output_size,
-                                                iou_threshold)
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    return gen_image_ops.non_max_suppression_v3(boxes, scores, max_output_size,
+                                                iou_threshold, score_threshold)
 
 
 _rgb_to_yiq_kernel = [[0.299, 0.59590059,

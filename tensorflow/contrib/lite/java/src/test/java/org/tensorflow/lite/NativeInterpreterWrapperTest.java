@@ -321,9 +321,7 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains("Invalid inputs. Inputs should not be null or empty.");
+      assertThat(e).hasMessageThat().contains("Inputs should not be null or empty.");
     }
     wrapper.close();
   }
@@ -440,7 +438,7 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper.numDimensions(emptyArray);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("array lengths cannot be 0.");
+      assertThat(e).hasMessageThat().contains("Array lengths cannot be 0.");
     }
   }
 

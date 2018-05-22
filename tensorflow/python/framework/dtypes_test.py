@@ -311,3 +311,4 @@ class TypesTest(test_util.TensorFlowTestCase):
 
 if __name__ == "__main__":
   googletest.main()
+

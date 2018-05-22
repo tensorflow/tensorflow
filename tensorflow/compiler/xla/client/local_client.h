@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -38,18 +38,9 @@ class LocalExecutable {
  public:
   // Run the compiled computation with the given arguments and options and
   // return the result.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> Run(
+  StatusOr<ScopedShapedBuffer> Run(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ExecutableRunOptions run_options);
-
-  // Return the layout (contained in a shape) of the result produced by the
-  // computation.
-  const Shape& result_layout() const {
-    return executable_->module_config()
-        .entry_computation_layout()
-        .result_layout()
-        .shape();
-  }
 
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
@@ -67,25 +58,25 @@ class LocalExecutable {
 
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
-  tensorflow::Status ValidateExecutionOptions(
+  Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteAndDump(
+  StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
   // Records the arguments used to invoke the computation in a SessionModule
   // proto.
-  tensorflow::Status RecordArguments(
+  Status RecordArguments(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       SessionModule* session_module);
 
   // Records the result of the computation in a SessionModule proto.
-  tensorflow::Status RecordResult(const ShapedBuffer* result,
-                                  SessionModule* session_module);
+  Status RecordResult(const ShapedBuffer* result,
+                      SessionModule* session_module);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
@@ -117,16 +108,7 @@ class LocalClient : public Client {
   void operator=(const LocalClient&) = delete;
 
   // Build and return a LocalExecutable object. The executable is compiled using
-  // the given argument layouts and options.
-  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
-      const Computation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const ExecutableBuildOptions& options);
-
-  // Build and return a LocalExecutable object. The executable is compiled using
   // the given XlaComputation, argument layouts and options.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
@@ -136,7 +118,7 @@ class LocalClient : public Client {
   // ScopedShapedBuffer. If non-null the given memory allocator is used for
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
-  StatusOr<std::unique_ptr<ScopedShapedBuffer>> LiteralToShapedBuffer(
+  StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const Literal& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 
@@ -167,7 +149,7 @@ class LocalClient : public Client {
   StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
   // Returns the platform that the underlying service targets.
-  perftools::gputools::Platform* platform() const;
+  se::Platform* platform() const;
 
   // Returns the number of devices on the system of the service platform
   // type. Not all devices may be supported by the service (see

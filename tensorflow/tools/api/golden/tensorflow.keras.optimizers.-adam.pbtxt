@@ -1,7 +1,7 @@
 path: "tensorflow.keras.optimizers.Adam"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.optimizers.Adam\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.optimizers.Optimizer\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Adam\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Optimizer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

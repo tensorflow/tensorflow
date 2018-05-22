@@ -31,8 +31,6 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
-#ifdef TF_HAS_CUDA_FP16
-
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
 // It also tries to use native half2 primitives as much as possible.
@@ -113,8 +111,6 @@ struct ReluGrad<Device, Eigen::half> {
                                        backprop.data(), count);
   }
 };
-
-#endif  // TF_HAS_CUDA_FP16
 }  // namespace functor
 
 // Definition of the GPU implementations declared in relu_op.cc.

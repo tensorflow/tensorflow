@@ -145,4 +145,13 @@ REGISTER_OP("For")
     .Attr("body: func")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// TODO(b/73826847, b/37549631) Mark as stateful.
+REGISTER_OP("PartitionedCall")
+    .Input("args: Tin")
+    .Output("output: Tout")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // end namespace tensorflow

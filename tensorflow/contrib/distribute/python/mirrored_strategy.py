@@ -80,6 +80,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         dict((d, i) for i, d in enumerate(devices)))
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
+    # TODO(yuefengz): consider setting the default device.
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -110,10 +111,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
             kwargs["name"] = "%s/replica_%d" % (var0name, i)
             # Initialize replicas with the same value:
             if context.executing_eagerly():
-              initial_value = index[devices[0]].value()
+              kwargs["initial_value"] = array_ops.identity(
+                  index[devices[0]].value())
             else:
-              initial_value = index[devices[0]].initial_value
-            kwargs["initial_value"] = array_ops.identity(initial_value)
+              def initial_value_fn(device=d):
+                with ops.device(device):
+                  return array_ops.identity(index[devices[0]].initial_value)
+              kwargs["initial_value"] = initial_value_fn
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.DistributedVariable)
@@ -140,10 +144,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       g.add_to_collections(collections, result)
     return result
 
-  def distribute_dataset(self, dataset):
-    per_device_dataset = values.PerDeviceDataset(
-        dataset, self._devices, self._prefetch_on_device)
-    return per_device_dataset.make_one_shot_iterator()
+  def distribute_dataset(self, dataset_fn):
+    return values.PerDeviceDataset(
+        self._call_dataset_fn(dataset_fn), self._devices,
+        self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
@@ -321,7 +325,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""
-    assert isinstance(destination, six.string_types)
     if isinstance(val, values.TowerLocalVariable):
       val = self.reduce(val.reduce_method, val, destinations=destination)
       with ops.device(destination):

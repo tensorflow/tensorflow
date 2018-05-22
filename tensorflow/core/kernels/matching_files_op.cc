@@ -60,6 +60,7 @@ class MatchingFilesOp : public OpKernel {
         output(index++) = all_fnames[i][j];
       }
     }
+    std::sort(&output(0), &output(0) + num_files);
   }
 };
 

@@ -138,6 +138,9 @@ class DfsHloVisitorBase {
   virtual Status HandleExp(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleExpm1(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleFloor(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -145,6 +148,12 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleLog(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleClz(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleLog1p(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleCos(HloInstructionPtr hlo) {
@@ -199,7 +208,6 @@ class DfsHloVisitorBase {
   virtual Status HandleReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleBitcast(HloInstructionPtr hlo) = 0;
   virtual Status HandleBroadcast(HloInstructionPtr hlo) = 0;
-  virtual Status HandleBroadcastDimOne(HloInstructionPtr hlo) = 0;
   virtual Status HandleReshape(HloInstructionPtr hlo) = 0;
   virtual Status HandleTranspose(HloInstructionPtr hlo) = 0;
   virtual Status HandleParameter(HloInstructionPtr hlo) = 0;

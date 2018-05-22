@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -78,14 +78,18 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
-  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
-  void ReplaceOperationWithSnapshot(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
+  void ReplaceOperationWithIdentity(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithSnapshot(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
   void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
-  Status ReplaceOperationWithConstant(double value, const AttrValue& dtype_attr,
+  Status ReplaceOperationWithConstant(double value,
+                                      const GraphProperties& properties,
                                       const TensorShapeProto& shape,
-                                      NodeDef* node, GraphDef* graph);
+                                      NodeDef* node, GraphDef* graph,
+                                      bool* success);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output);
 
@@ -94,9 +98,41 @@ class ConstantFolding : public GraphOptimizer {
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
                        bool use_shape_info);
+  Status SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
+                      GraphProperties* properties, bool use_shape_info);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
+
+  // Applies partial constant folding for Concat which is not commutative.
+  // Returns true if the transformation applied successfully.
+  bool PartialConcatConstFolding(GraphDef* optimized_graph,
+                                 GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant folding for associative operators AddN and
+  // AccumulateNV2. Returns true if the transformation applied successfully.
+  bool PartialAssocOpConstFolding(GraphDef* optimized_graph,
+                                  GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant propagation through IdentityN operator.
+  // Returns true if the transformation applied successfully.
+  bool PartialConstPropThroughIdentityN(NodeDef* node);
+
+  // Pushes down constants on '+' and '*' operators if applicable. Returns true
+  // the transformation applied successfully.
+  bool ConstantPushDown(NodeDef* node);
+
+  // Strength reduces floating point division by a constant Div(x, const) to
+  // multiplication by the reciprocal Mul(x, Reciprocal(const)).
+  bool ReduceDivToReciprocalMul(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies arithmetic operations with ones or zeros. Returns the status,
+  // and updates the success input argument that denotes if any simplification
+  // was applied.
+  Status SimplifyArithmeticOperations(GraphDef* optimized_graph,
+                                      GraphProperties* properties,
+                                      NodeDef* node, bool use_shape_info,
+                                      bool* success);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
@@ -111,9 +147,10 @@ class ConstantFolding : public GraphOptimizer {
   std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
   bool graph_modified_;
+  bool graph_contains_assign_or_inplace_op_;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_

@@ -17,13 +17,24 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 StatusOr<ProgramShape> XlaComputation::GetProgramShape() const {
   TF_RET_CHECK(proto_.has_program_shape());
   return proto_.program_shape();
+}
+
+StatusOr<std::unique_ptr<HloSnapshot>> XlaComputation::Snapshot() const {
+  if (IsNull()) {
+    return InvalidArgument("Computation is invalid.");
+  }
+  auto session = MakeUnique<HloSnapshot>();
+  *session->mutable_hlo()->mutable_hlo_module() = proto_;
+  return std::move(session);
 }
 
 }  // namespace xla

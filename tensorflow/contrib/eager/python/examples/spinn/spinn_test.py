@@ -34,10 +34,10 @@ import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.spinn import data
 from third_party.examples.eager.spinn import spinn
 from tensorflow.contrib.summary import summary_test_util
-from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
-from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 # pylint: enable=g-bad-import-order
 
 
@@ -421,10 +421,8 @@ class SpinnTest(test_util.TensorFlowTestCase):
 
     # 5. Verify that checkpoints exist and contains all the expected variables.
     self.assertTrue(glob.glob(os.path.join(config.logdir, "ckpt*")))
-    object_graph_string = checkpoint_utils.load_variable(
-        config.logdir, name="_CHECKPOINTABLE_OBJECT_GRAPH")
-    object_graph = checkpointable_object_graph_pb2.CheckpointableObjectGraph()
-    object_graph.ParseFromString(object_graph_string)
+    object_graph = checkpointable_utils.object_metadata(
+        saver.latest_checkpoint(config.logdir))
     ckpt_variable_names = set()
     for node in object_graph.nodes:
       for attribute in node.attributes:
