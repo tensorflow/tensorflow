@@ -303,7 +303,7 @@ and test sets respectively:
 
 ```python
     # Call load_data() to parse the CSV file.
-    (train_feature, train_label), (test_feature, test_label) = load_data()
+    (train_x, train_y), (test_x, test_y) = load_data()
 ```
 
 Pandas is an open-source Python library leveraged by several
@@ -466,7 +466,7 @@ method. For example:
 
 ```python
     classifier.train(
-        input_fn=lambda:train_input_fn(train_feature, train_label, args.batch_size),
+        input_fn=lambda:train_input_fn(train_x, train_y, args.batch_size),
         steps=args.train_steps)
 ```
 
