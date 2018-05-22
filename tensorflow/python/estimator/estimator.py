@@ -1616,6 +1616,7 @@ class _DatasetInitializerHook(training.SessionRunHook):
     session.run(self._initializer)
 
 VocabInfo = warm_starting_util.VocabInfo  # pylint: disable=invalid-name
+tf_export('estimator.VocabInfo', allow_multiple_exports=True)(VocabInfo)
 
 
 @tf_export('estimator.WarmStartSettings')
