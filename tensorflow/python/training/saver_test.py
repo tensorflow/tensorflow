@@ -24,8 +24,10 @@ import math
 import os
 import random
 import shutil
+import sys
 import tempfile
 import time
+import traceback
 
 import numpy as np
 import six
@@ -3093,6 +3095,16 @@ class CheckpointableCompatibilityTests(test.TestCase):
           errors.NotFoundError,
           "Failed to find any matching files for path_which_does_not_exist"):
         saver.restore(sess=sess, save_path="path_which_does_not_exist")
+      try:
+        saver.restore(sess=sess, save_path="path_which_does_not_exist")
+      except errors.NotFoundError:
+        # Make sure we don't have a confusing "During handling of the above
+        # exception" block in Python 3.
+        # pylint: disable=no-value-for-parameter
+        exception_string = "\n".join(
+            traceback.format_exception(*sys.exc_info()))
+        # pylint: enable=no-value-for-parameter
+        self.assertNotIn("NewCheckpointReader", exception_string)
 
   def testLoadFromObjectBasedGraph(self):
     checkpoint_directory = self.get_temp_dir()

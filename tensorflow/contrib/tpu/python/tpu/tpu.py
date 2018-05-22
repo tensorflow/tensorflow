@@ -394,7 +394,8 @@ def split_compile_and_replicate(computation,
                                 inputs=None,
                                 infeed_queue=None,
                                 device_assignment=None,
-                                name=None):
+                                name=None,
+                                use_tpu=True):
   """Builds graph operators that runs compilation and replicated computation.
 
   This is a lower level interface than replicate that returns a separate compile
@@ -417,6 +418,9 @@ def split_compile_and_replicate(computation,
       only one core, and there is either only one replica, or the number of
       replicas is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    use_tpu: When false, the input `computation` is executed on the XLA CPU/GPU
+      backends. Currently, only supports a default placement (computation is
+      placed on GPU if one is available, and on CPU if not).
   Returns:
     A list of lists with the first list corresponding to the compile op and the
     second a list of output tensors, indexed by `[replica_num][output_num]`.
@@ -502,7 +506,7 @@ def split_compile_and_replicate(computation,
     context.Enter()
 
     metadata = tpu_ops.tpu_replicate_metadata(
-        num_replicas=num_replicas, **metadata_kwargs)
+        num_replicas=num_replicas, use_tpu=use_tpu, **metadata_kwargs)
 
     with tpu_function.tpu_shard_context(
         num_replicas), ops.control_dependencies([metadata]):
@@ -590,10 +594,13 @@ def split_compile_and_replicate(computation,
              for i in xrange(output_arity)]
 
   with ops.control_dependencies([metadata]):
-    compile_status = tpu_ops.tpu_compilation_result()
-    op = compile_status.op
-    attr_value = attr_value_pb2.AttrValue(s=compat.as_bytes(cluster_name))
-    op._set_attr(_TPU_COMPILATION_STATUS_ATTR, attr_value)  # pylint: disable=protected-access
+    if use_tpu:
+      compile_status = tpu_ops.tpu_compilation_result()
+      op = compile_status.op
+      attr_value = attr_value_pb2.AttrValue(s=compat.as_bytes(cluster_name))
+      op._set_attr(_TPU_COMPILATION_STATUS_ATTR, attr_value)  # pylint: disable=protected-access
+    else:
+      compile_status = control_flow_ops.no_op(name="compilation_status")
 
   with ops.control_dependencies(output_operations):
     if output_arity == 0:

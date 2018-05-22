@@ -1380,6 +1380,47 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
   }
 };
 
+class RemoveLogicalNotStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveLogicalNotStage(const GraphOptimizerContext& ctx,
+                                 const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveLogicalNot", ctx, ctx_ext) {}
+  ~RemoveLogicalNotStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsLogicalNot(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const string node_name = node->name();
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+    if (IsInPreserveSet(*input) ||
+        NumNonControlOutputs(*input, *ctx().node_map) > 1) {
+      return Status::OK();
+    }
+    string new_op;
+    if (IsEqual(*input)) {
+      new_op = "NotEqual";
+    } else if (IsNotEqual(*input)) {
+      new_op = "Equal";
+    } else if (IsLess(*input)) {
+      new_op = "GreaterEqual";
+    } else if (IsLessEqual(*input)) {
+      new_op = "Greater";
+    } else if (IsGreater(*input)) {
+      new_op = "LessEqual";
+    } else if (IsGreaterEqual(*input)) {
+      new_op = "Less";
+    }
+    if (!new_op.empty()) {
+      input->set_op(new_op);
+      *simplified_node_name = input->name();
+    }
+    return Status::OK();
+  }
+};
+
 // This optimization hoists the common prefix of unary ops of the inputs to
 // concat out of the concat, for example:
 //    Concat([Exp(Sin(x)), Exp(Sin(y)), Exp(Sin(z))])
@@ -2429,6 +2470,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
+  if (options_.remove_logical_not)
+    pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
     pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)

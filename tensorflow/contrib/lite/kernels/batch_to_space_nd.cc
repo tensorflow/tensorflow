@@ -163,8 +163,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type is currently not supported by BatchToSpace.");
+      context->ReportError(
+          context, "Type %d is currently not supported by BatchToSpace.",
+          op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_BATCH_TO_SPACE_ND

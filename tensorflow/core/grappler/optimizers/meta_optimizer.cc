@@ -110,10 +110,10 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->emplace_back(
         new ConstantFolding(cfg_.constant_folding(), cpu_device_));
   }
-  if (cfg_.shape_optimization() == RewriterConfig::ON) {
+  if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->emplace_back(new ShapeOptimizer());
   }
-  if (cfg_.remapping() == RewriterConfig::ON) {
+  if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->emplace_back(new Remapper(cfg_.remapping()));
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -353,8 +353,8 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.function_optimization() != RewriterConfig::OFF ||
          cfg.constant_folding() != RewriterConfig::OFF ||
-         cfg.shape_optimization() == RewriterConfig::ON ||
-         cfg.remapping() == RewriterConfig::ON ||
+         cfg.shape_optimization() != RewriterConfig::OFF ||
+         cfg.remapping() != RewriterConfig::OFF ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.loop_optimization() != RewriterConfig::OFF ||
          cfg.dependency_optimization() != RewriterConfig::OFF ||

@@ -488,7 +488,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  bias, im2col, hwcn_weights, output);
       break;
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
