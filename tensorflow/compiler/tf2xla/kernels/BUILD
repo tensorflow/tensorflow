@@ -45,6 +45,7 @@ tf_kernel_library(
         "image_resize_ops.cc",
         "index_ops.cc",
         "l2loss_op.cc",
+        "listdiff_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
         "matrix_band_part_op.cc",

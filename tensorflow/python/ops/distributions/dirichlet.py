@@ -154,7 +154,7 @@ class Dirichlet(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     with ops.name_scope(name, values=[concentration]) as name:
       self._concentration = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration, name="concentration"),

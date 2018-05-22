@@ -498,7 +498,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
       Used to copy-through state and zero-out outputs when past a batch
-      element's sequence length.  So it's more for correctness than performance.
+      element's sequence length.  So it's more for performance than correctness.
     initial_state: (optional) An initial state for the RNN.
       If `cell.state_size` is an integer, this must be
       a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
@@ -1400,6 +1400,13 @@ def static_state_saving_rnn(cell,
     ]
     outputs[-1] = nest.pack_sequence_as(
         structure=last_output, flat_sequence=flat_last_output)
+
+    if state_is_tuple:
+      state = nest.pack_sequence_as(
+          structure=state,
+          flat_sequence=[array_ops.identity(s) for s in flat_state])
+    else:
+      state = array_ops.identity(state)
 
   return (outputs, state)
 

@@ -289,10 +289,6 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, grads[1].eval())
 
   def testNoGradientForStringOutputs(self):
-    # This test can't be run twice because the TestStringOutput gradient can
-    # only be registered once. Just run with the C API enabled.
-    if not ops._USE_C_API: return
-
     with ops.Graph().as_default():
 
       def _TestOpGrad(_, float_grad, string_grad):
@@ -438,7 +434,6 @@ class GradientsTest(test_util.TensorFlowTestCase):
         np.testing.assert_allclose(a, b)
 
 
-@test_util.with_c_api
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -528,7 +523,6 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
         f.add_to_graph(ops.Graph())
 
 
-@test_util.with_c_api
 class StopGradientTest(test_util.TensorFlowTestCase):
 
   def testStopGradient(self):
@@ -539,7 +533,6 @@ class StopGradientTest(test_util.TensorFlowTestCase):
     assert igrad is None
 
 
-@test_util.with_c_api
 class PreventGradientTest(test_util.TensorFlowTestCase):
 
   def testPreventGradient(self):
@@ -550,7 +543,6 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
         _ = gradients.gradients(out, inp)
 
 
-@test_util.with_c_api
 class HessianVectorProductTest(test_util.TensorFlowTestCase):
 
   def testHessianVectorProduct(self):
@@ -579,7 +571,6 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
       self.assertAllClose(hess_v_value, hess_v_actual)
 
 
-@test_util.with_c_api
 class HessianTest(test_util.TensorFlowTestCase):
 
   def testHessian1D(self):
@@ -668,7 +659,6 @@ class HessianTest(test_util.TensorFlowTestCase):
     self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
 
-@test_util.with_c_api
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesToTensor(self):
@@ -749,7 +739,6 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         str(w[0].message))
 
 
-@test_util.with_c_api
 class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
 
   def testRealOnly(self):
@@ -786,7 +775,6 @@ class ResourceCondTest(test_util.TensorFlowTestCase):
     self.assertTrue(None not in grads)
 
 
-@test_util.with_c_api
 class CustomGradientTest(test_util.TensorFlowTestCase):
 
   def testCustomGradientTrivial(self):
@@ -943,6 +931,21 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       x = np.ones((3, 2), dtype=np.float32)
       # Smoke test to ensure numpy inputs are accepted
       F(x)
+
+  def testRVGradientsDynamicCond(self):
+    with self.test_session():
+      alpha = resource_variable_ops.ResourceVariable(
+          np.random.random((1,)),
+          dtype="float32")
+
+      conditional = array_ops.placeholder_with_default(True, shape=())
+      output = control_flow_ops.cond(
+          conditional, lambda: alpha * 2, lambda: alpha * 3)
+
+      g, = gradients_impl.gradients(output, alpha)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(g.eval(), [2.0])
+      self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
 
 if __name__ == "__main__":

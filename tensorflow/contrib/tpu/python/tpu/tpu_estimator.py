@@ -46,7 +46,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -68,6 +67,7 @@ from tensorflow.python.training import evaluation
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -76,12 +76,13 @@ _ZERO_LOSS = 0.
 _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
+_CTX_KEY = 'context'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
 
-_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
+_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
 
 # TODO(b/65703635): Flip the value and remove all dead code. Currently, this is
@@ -175,17 +176,7 @@ class _SIGNAL(object):
   STOP = -2
 
 
-class TPUEstimatorSpec(
-    collections.namedtuple('TPUEstimatorSpec', [
-        'mode',
-        'predictions',
-        'loss',
-        'train_op',
-        'eval_metrics',
-        'export_outputs',
-        'scaffold_fn',
-        'host_call'
-    ])):
+class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
   """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
 
   See `EstimatorSpec` for `mode`, 'predictions, 'loss', 'train_op', and
@@ -636,8 +627,8 @@ class _StoppingPredictHook(session_run_hook.SessionRunHook):
       raise errors.OutOfRangeError(None, None, 'Stopped by stopping signal.')
 
 
-def generate_per_core_enqueue_ops_fn_for_host(ctx, input_fn,
-                                              inputs_structure_recorder):
+def generate_per_core_enqueue_ops_fn_for_host(
+    ctx, input_fn, inputs_structure_recorder, host_device, host_id):
   """Generates infeed enqueue ops for per-core input_fn on a single host."""
   captured_infeed_queue = _CapturedObject()
 
@@ -647,7 +638,12 @@ def generate_per_core_enqueue_ops_fn_for_host(ctx, input_fn,
     per_host_sharded_inputs = []
     for core_ordinal in range(num_cores_per_host):
       with ops.name_scope('ordinal_%d' % (core_ordinal)):
-        inputs = _Inputs.from_input_fn(input_fn())
+        user_context = tpu_context.TPUContext(
+            internal_ctx=ctx,
+            input_device=host_device,
+            invocation_index=host_id * ctx.num_of_cores_per_host + core_ordinal
+        )
+        inputs = _Inputs.from_input_fn(input_fn(user_context))
         if inputs.is_dataset:
           raise TypeError(
               '`input_fn` returning `Dataset`  is not yet supported in '
@@ -684,7 +680,11 @@ def generate_per_host_enqueue_ops_fn_for_host(
   hooks = []
 
   with ops.device(device):
-    inputs = _Inputs.from_input_fn(input_fn())
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx,
+        input_device=device,
+        invocation_index=host_id)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
 
     is_dataset = inputs.is_dataset
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
@@ -702,7 +702,7 @@ def generate_per_host_enqueue_ops_fn_for_host(
       hooks.append(inputs.dataset_initializer_hook())
 
   # TODO(ylc): Refactoring the code to merge the tpu ordinal logic here and the
-  # _TPUContext.tpu_ordinal_function. We should either introduce another
+  # _InternalTPUContext.tpu_ordinal_function. We should either introduce another
   # abstraction or a different helper method.
   def _tpu_ordinal_function_impl(shard_index_in_host):
     # We put both enqueue/dequeue op at tpu.core(0) in each replica.
@@ -755,12 +755,15 @@ def generate_per_host_enqueue_ops_fn_for_host(
 def generate_per_host_v2_enqueue_ops_fn_for_host(
     ctx, input_fn, inputs_structure_recorder, device, host_id):
   """Generates infeed enqueue ops for per-host input_fn on a single host."""
-  del host_id  # unused
   captured_infeed_queue = _CapturedObject()
   hooks = []
 
   with ops.device(device):
-    inputs = _Inputs.from_input_fn(input_fn())
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx,
+        input_device=device,
+        invocation_index=host_id)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
 
     is_dataset = inputs.is_dataset
     if not is_dataset:
@@ -811,13 +814,14 @@ class _InputPipeline(object):
   """`_InputPipeline` handles invoking `input_fn` and piping to infeed queue.
 
   `_InputPipeline` abstracts the per-core/per-host `input_fn` invocation from
-  call site.  To be precise, based on the configuration in `_TPUContext`,  it
-  invokes `input_fn` for all cores (usually multi-host TPU training) or for one
-  host (usually for single-host TPU evaluation), and sends all `features` and
-  `labels` returned by `input_fn` to TPU infeed. For per-core invocation,
-  `features` and `labels` are piped to infeed directly, one tuple for each
-  core. For per-host invocation,  `features` and `labels` are split at host
-  (with respect to `batch_axis`) and piped to all cores accordingly.
+  call site.  To be precise, based on the configuration in
+  `_InternalTPUContext`,  it invokes `input_fn` for all cores (usually
+  multi-host TPU training) or for one host (usually for single-host TPU
+  evaluation), and sends all `features` and `labels` returned by `input_fn` to
+  TPU infeed. For per-core invocation, `features` and `labels` are piped to
+  infeed directly, one tuple for each core. For per-host invocation,  `features`
+  and `labels` are split at host (with respect to `batch_axis`) and piped to all
+  cores accordingly.
 
   In addition, flatten/unflatten are handled by `_InputPipeline` also.  Model
   inputs returned by the `input_fn` can have one of the following forms:
@@ -970,7 +974,7 @@ class _InputPipeline(object):
       batch_axis: A python tuple of int values describing how each tensor
         produced by the Estimator `input_fn` should be split across the TPU
         compute shards.
-      ctx: A `_TPUContext` instance with mode.
+      ctx: A `_InternalTPUContext` instance with mode.
 
     Raises:
       ValueError: If both `sharded_features` and `num_cores` are `None`.
@@ -1025,7 +1029,8 @@ class _InputPipeline(object):
           with ops.name_scope('input_pipeline_task%d' % (host_id)):
             enqueue_ops_fn, captured_infeed_queue = (
                 generate_per_core_enqueue_ops_fn_for_host(
-                    self._ctx, self._input_fn, self._inputs_structure_recorder))
+                    self._ctx, self._input_fn, self._inputs_structure_recorder,
+                    host_device, host_id))
 
             if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
               run_infeed_loop_on_coordinator = False
@@ -1156,7 +1161,7 @@ class _ModelFnWrapper(object):
           self._call_model_fn(features, labels))
       loss, train_op = estimator_spec.loss, estimator_spec.train_op
 
-      if isinstance(estimator_spec, TPUEstimatorSpec):
+      if isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
         captured_scaffold_fn.capture(estimator_spec.scaffold_fn)
       else:
         captured_scaffold_fn.capture(None)
@@ -1165,8 +1170,8 @@ class _ModelFnWrapper(object):
       # outfeed.
       with ops.control_dependencies([train_op]):
         host_call_outfeed_ops = []
-        if (isinstance(estimator_spec, TPUEstimatorSpec) and
-            estimator_spec.host_call is not None):
+        if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
+            and estimator_spec.host_call is not None):
           host_call.record({'host_call': estimator_spec.host_call})
           host_call_outfeed_ops = host_call.create_enqueue_op()
         with ops.control_dependencies(host_call_outfeed_ops):
@@ -1209,7 +1214,7 @@ class _ModelFnWrapper(object):
       features, labels = inputs.features_and_labels()
 
       tpu_estimator_spec = self._call_model_fn(features, labels)
-      if not isinstance(tpu_estimator_spec, TPUEstimatorSpec):
+      if not isinstance(tpu_estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
         raise RuntimeError(
             'estimator_spec used by TPU evaluation must have type'
             '`TPUEstimatorSpec`. Got {}'.format(type(tpu_estimator_spec)))
@@ -1254,7 +1259,7 @@ class _ModelFnWrapper(object):
 
       tpu_estimator_spec = self._call_model_fn(
           features, labels, is_export_mode=False)
-      if not isinstance(tpu_estimator_spec, TPUEstimatorSpec):
+      if not isinstance(tpu_estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
         raise RuntimeError(
             'estimator_spec used by TPU prediction must have type'
             '`TPUEstimatorSpec`. Got {}'.format(type(tpu_estimator_spec)))
@@ -1279,7 +1284,7 @@ class _ModelFnWrapper(object):
 
   def _call_model_fn(self, features, labels, is_export_mode=False):
     """Calls the model_fn with required parameters."""
-    model_fn_args = util.fn_args(self._model_fn)
+    model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
 
     # Makes deep copy with `config` and params` in case user mutates them.
@@ -1309,14 +1314,11 @@ class _ModelFnWrapper(object):
       batch_size_for_model_fn = self._ctx.batch_size_for_model_fn
 
     if batch_size_for_model_fn is not None:
-      if isinstance(params, hparam.HParams):
-        params.add_hparam(_BATCH_SIZE_KEY, batch_size_for_model_fn)
-      else:
-        params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
+      _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
 
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (self._ctx.is_running_on_cpu(is_export_mode) and
-        isinstance(estimator_spec, TPUEstimatorSpec)):
+        isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
       # The estimator_spec will be passed to `Estimator` directly, which expects
       # type `EstimatorSpec`.
       return estimator_spec.as_estimator_spec()
@@ -1325,7 +1327,7 @@ class _ModelFnWrapper(object):
 
   def _verify_estimator_spec(self, estimator_spec):
     """Validates the estimator_spec."""
-    if isinstance(estimator_spec, TPUEstimatorSpec):
+    if isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
       return estimator_spec
 
     err_msg = '{} returned by EstimatorSpec is not supported in TPUEstimator.'
@@ -1371,7 +1373,7 @@ class _OutfeedHostCall(object):
 
       if isinstance(host_call[1], (tuple, list)):
         fullargspec = tf_inspect.getfullargspec(host_call[0])
-        fn_args = util.fn_args(host_call[0])
+        fn_args = function_utils.fn_args(host_call[0])
         # wrapped_hostcall_with_global_step uses varargs, so we allow that.
         if fullargspec.varargs is None and len(host_call[1]) != len(fn_args):
           raise RuntimeError(
@@ -1622,7 +1624,9 @@ class TPUEstimator(estimator_lib.Estimator):
   ==========
 
   `model_fn` should return `TPUEstimatorSpec`, which expects the `eval_metrics`
-  for TPU evaluation.
+  for TPU evaluation. However, if eval_on_tpu is False, `model_fn` must return
+  `EstimatorSpec` and the evaluation will execute on CPU or GPU; in this case
+  the following discussion on TPU evaluation does not apply.
 
   `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`, where
   `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. (See
@@ -1769,7 +1773,9 @@ class TPUEstimator(estimator_lib.Estimator):
                train_batch_size=None,
                eval_batch_size=None,
                predict_batch_size=None,
-               batch_axis=None):
+               batch_axis=None,
+               eval_on_tpu=True,
+               warm_start_from=None):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -1787,7 +1793,8 @@ class TPUEstimator(estimator_lib.Estimator):
         basic python types. There are reserved keys for `TPUEstimator`,
         including 'batch_size'.
       use_tpu: A bool indicating whether TPU support is enabled. Currently,
-        - TPU training and evaluation respect this bit.
+        - TPU training and evaluation respect this bit, but eval_on_tpu can
+          override execution of eval. See below.
         - Predict still happens on CPU.
       train_batch_size: An int representing the global training batch size.
         TPUEstimator transforms this global batch size to a per-shard batch
@@ -1808,6 +1815,14 @@ class TPUEstimator(estimator_lib.Estimator):
         and per_host_input_for_training is True, batches will be sharded based
         on the major dimension. If tpu_config.per_host_input_for_training is
         False or `PER_HOST_V2`, batch_axis is ignored.
+      eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
+        model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
+      warm_start_from: Optional string filepath to a checkpoint or SavedModel to
+                       warm-start from, or a `tf.estimator.WarmStartSettings`
+                       object to fully configure warm-starting.  If the string
+                       filepath is provided instead of a `WarmStartSettings`,
+                       then all variables are warm-started, and it is assumed
+                       that vocabularies and Tensor names are unchanged.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -1822,7 +1837,7 @@ class TPUEstimator(estimator_lib.Estimator):
 
     if use_tpu:
       # Perform some very basic validations. More validations will be found in
-      # _TPUContext.
+      # _InternalTPUContext.
       if train_batch_size is None:
         raise ValueError('`train_batch_size` cannot be `None`')
       util_lib.check_positive_integer(train_batch_size, 'train_batch_size')
@@ -1860,16 +1875,18 @@ class TPUEstimator(estimator_lib.Estimator):
         model_fn=model_function,
         model_dir=model_dir,
         config=config,
-        params=params)
+        params=params,
+        warm_start_from=warm_start_from)
     self._iterations_per_training_loop = (
         self._config.tpu_config.iterations_per_loop)
 
-    # All properties passed to _TPUContext are immutable.
+    # All properties passed to _InternalTPUContext are immutable.
     # pylint: disable=protected-access
     self._ctx = tpu_context._get_tpu_context(
         self._config, train_batch_size,
         eval_batch_size, predict_batch_size,
-        use_tpu)
+        use_tpu,
+        eval_on_tpu)
 
     self._is_input_fn_invoked = None
 
@@ -1940,7 +1957,7 @@ class TPUEstimator(estimator_lib.Estimator):
     Raises:
       ValueError: if input_fn takes invalid arguments or does not have `params`.
     """
-    input_fn_args = util.fn_args(input_fn)
+    input_fn_args = function_utils.fn_args(input_fn)
     config = self.config  # a deep copy.
     kwargs = {}
     if 'params' in input_fn_args:
@@ -1963,10 +1980,8 @@ class TPUEstimator(estimator_lib.Estimator):
       # input_fn for use_tpu=True/False.
       batch_size_for_input_fn = ctx.batch_size_for_input_fn
       if batch_size_for_input_fn is not None:
-        if isinstance(kwargs['params'], hparam.HParams):
-          kwargs['params'].add_hparam(_BATCH_SIZE_KEY, batch_size_for_input_fn)
-        else:
-          kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
+        _add_item_to_params(kwargs['params'],
+                            _BATCH_SIZE_KEY, batch_size_for_input_fn)
 
       # For export_savedmodel, input_fn is never passed to Estimator. So,
       # `is_export_mode` must be False.
@@ -1984,7 +1999,8 @@ class TPUEstimator(estimator_lib.Estimator):
       # tf.while_loop also. So, we either pass input_fn to model_fn or pass
       # dequeue_fn to model_fn. Here, `input_fn` is passed directly as
       # `features` in `model_fn` signature.
-      def _input_fn():
+      def _input_fn(ctx):
+        _add_item_to_params(kwargs['params'], _CTX_KEY, ctx)
         return input_fn(**kwargs)
 
       return _input_fn
@@ -2802,3 +2818,17 @@ def _verify_cross_hosts_transfer_size(tensor_dict, message):
         '{}'.format(message, '\n'.join([
             ' -- Key: {}, Shape: {}'.format(k, v)
             for k, v in tensor_structure.items()])))
+
+
+def _add_item_to_params(params, key, value):
+  """Adds a new item into `params`."""
+  if isinstance(params, hparam.HParams):
+    # For HParams, we need to use special API.
+    if key in params:
+      params.key = value
+    else:
+      params.add_hparam(key, value)
+  else:
+    # Now params is Python dict.
+    params[key] = value
+

@@ -40,6 +40,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 class VariableScopeTest(test.TestCase):
@@ -109,6 +110,12 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope(tower, constraint=constraint):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.constraint, constraint)
+
+  def testStringDefaultInitializer(self):
+    with self.test_session():
+      v = variable_scope.get_variable("string", shape=[], dtype=dtypes.string)
+      variables_lib.global_variables_initializer().run()
+      self.assertAllEqual(compat.as_bytes(v.eval()), b"")
 
   @test_util.run_in_graph_and_eager_modes()
   def testVarScopeDType(self):

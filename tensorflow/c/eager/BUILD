@@ -24,10 +24,10 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":runtime",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
+            "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -49,6 +49,17 @@ tf_cuda_library(
         "//conditions:default": [],
     }) + [
         "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
+        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:remote_device",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -59,7 +70,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
-        ":runtime",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:core_cpu",
@@ -69,11 +79,23 @@ tf_cuda_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/distributed_runtime:remote_device",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
+        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
     ],
 )
 
@@ -92,47 +114,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cuda_library(
-    name = "runtime",
-    srcs = ["runtime.cc"],
-    hdrs = ["runtime.h"],
-    copts = tf_copts(),
-    visibility = ["//tensorflow:internal"],
-    deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/c:c_api",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core/common_runtime/eager:kernel_and_device",
-            "//tensorflow/core:core_cpu_internal",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
-        ],
-    }),
-)
-
-tf_cc_test(
-    name = "runtime_test",
-    srcs = ["runtime_test.cc"],
-    deps = [
-        ":runtime",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
     ],
 )
 

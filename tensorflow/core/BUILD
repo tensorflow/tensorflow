@@ -225,6 +225,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "protobuf/named_tensor.proto",
     "protobuf/saved_model.proto",
     "protobuf/tensorflow_server.proto",
+    "protobuf/transport_options.proto",
     "util/test_log.proto",
 ]
 
@@ -267,6 +268,12 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
+closure_proto_library(
+    name = "example_protos_closure",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
+)
+
 exports_files([
     "framework/types.proto",
 ])
@@ -303,6 +310,7 @@ PLATFORM_OTHER_HDRS = [
     "platform/cpu_info.h",
     "platform/cpu_feature_guard.h",
     "platform/dynamic_annotations.h",
+    "platform/error.h",
     "platform/env.h",
     "platform/file_system.h",
     "platform/file_system_helper.h",
@@ -336,6 +344,8 @@ cc_library(
     ],
     hdrs = PLATFORM_BASE_HDRS,
     copts = tf_copts(),
+    # TODO(ahentz): remove use of this library so we can move it into 'platform'
+    tags = ["avoid_dep"],
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
@@ -801,8 +811,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
-        "//third_party/eigen3",
-        "@farmhash_archive//:farmhash",
     ],
     alwayslink = 1,
 )
@@ -1519,6 +1527,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "framework/cost_graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/cost_graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "framework/tensor_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/tensor.proto",
@@ -1652,13 +1667,6 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "lib/jpeg/**/*",
         "platform/gif.h",
         "platform/jpeg.h",
-        "platform/**/cuda.h",
-        "platform/**/stream_executor.h",
-    ],
-) + tf_additional_lib_srcs(
-    exclude = [
-        "**/*.cc",
-        "**/*test*",
         "platform/**/cuda.h",
         "platform/**/stream_executor.h",
     ],
@@ -1961,6 +1969,7 @@ tf_proto_library(
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
+    provide_cc_alias = True,
 )
 
 tf_generate_proto_text_sources(
@@ -2359,6 +2368,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/executor.h",
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
+    "common_runtime/lower_if_op.h",
     "common_runtime/memory_types.h",
     "common_runtime/mkl_cpu_allocator.h",
     "common_runtime/optimization_registry.h",
@@ -2409,6 +2419,7 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
         "common_runtime/local_device.cc",
+        "common_runtime/lower_if_op.cc",
         "common_runtime/memory_types.cc",
         "common_runtime/mkl_cpu_allocator.cc",
         "common_runtime/optimization_registry.cc",
@@ -2566,6 +2577,7 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    visibility = ["//visibility:private"],
     deps = [
         ":core_cpu_internal",
         ":lib",
@@ -3402,7 +3414,11 @@ tf_cuda_only_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl(
+        [
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
 )
 
 tf_cc_test_gpu(
@@ -4068,6 +4084,29 @@ tf_cc_test_gpu(
     ],
 )
 
+tf_cc_tests(
+    name = "common_runtime_lower_if_op_test",
+    size = "small",
+    srcs = ["common_runtime/lower_if_op_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+    ],
+)
+
 # Test data
 filegroup(
     name = "image_testdata",
@@ -4160,10 +4199,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-closure_proto_library(
-    name = "example_protos_closure",
-    visibility = ["//visibility:public"],
-    deps = [":example_protos"],
 )

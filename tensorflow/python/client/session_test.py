@@ -62,7 +62,6 @@ from tensorflow.python.util import compat
 ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
-@test_util.with_c_api
 class SessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -172,21 +171,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(exc_predicate):
         # Run with a bogus handle.
         s.partial_run('foo', r1, feed_dict={a: 1, b: 2})
-
-  def testOpConstructionErrorPayload(self):
-    if ops._USE_C_API:
-      return  # No shape registration for 'ConstructionFails'
-
-    with session.Session():
-      failing_op = ops.get_default_graph().create_op(
-          'ConstructionFails', [], [], name='f')
-
-      def exc_predicate(e):
-        return (e.op == failing_op and
-                e.error_code == error_codes_pb2.INVALID_ARGUMENT)
-
-      with self.assertRaisesOpError(exc_predicate):
-        failing_op.run()
 
   def testErrorBasedOn(self):
     with session.Session() as sess:
@@ -1084,10 +1068,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           if gdef is None:
             gdef = graph.as_graph_def()
           else:
-            # NOTE(skyewm): import_graph_def breaks the running threads without
-            # the C API enabled. This is not a regression so I didn't fix it.
-            if ops._USE_C_API:
-              importer.import_graph_def(gdef, name='import')
+            importer.import_graph_def(gdef, name='import')
 
       stop.set()
       for t in threads:
@@ -1584,10 +1565,6 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
   def testFeedShapeCompatibility(self):
-    # TODO(nolivia): C API doesn't yet handle marking nodes as not feedable.
-    if ops._USE_C_API:
-      return
-
     with session.Session() as sess:
       some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
       new_shape = constant_op.constant([2, 2])
@@ -1596,7 +1573,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
         sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
 
-      with self.assertRaisesRegexp(ValueError, 'may not be fed'):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          'Input to reshape is a tensor with 4 values, '
+          'but the requested shape has 21'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
 
   def testInferShapesFalse(self):
