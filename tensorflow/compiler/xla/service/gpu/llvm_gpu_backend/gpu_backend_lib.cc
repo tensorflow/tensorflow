@@ -272,7 +272,7 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
 
-    target_machine->addPassesToEmitFile(codegen_passes, pstream,
+    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
                                         llvm::TargetMachine::CGFT_AssemblyFile);
     codegen_passes.run(*module);
   }
