@@ -76,6 +76,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleInfeed(HloInstruction* xla_infeed) override;
   Status HandleRng(HloInstruction* random) override;
   Status HandleSelect(HloInstruction* select) override;
+  Status HandleCrossReplicaSum(HloInstruction* crs) override;
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
