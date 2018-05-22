@@ -444,7 +444,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
         'For distributed training, there can only be one `evaluator` task '
         '(with task id 0).  Given task id {}'.format(config.task_id))
 
-  executor.run()
+  return executor.run()
 
 
 class _StopAtSecsHook(session_run_hook.SessionRunHook):
