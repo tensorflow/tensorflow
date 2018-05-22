@@ -157,11 +157,13 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
         pass.AddPass<CudnnBatchNormRewriter>();
       }
+      // TODO(kramerb): Remove use_fusion once instruction fusion can create
+      // multi-output fusions from the unfused expander output.
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,
-          /*use_fusion=*/false);
+          /*use_fusion=*/true);
 
       // Rewrite gather ops into smaller ones.
       pass.AddPass<GatherExpander>();
