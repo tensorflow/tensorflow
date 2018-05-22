@@ -9,34 +9,6 @@ exports_files(["LICENSE"])
 
 load("@org_tensorflow//third_party:common.bzl", "template_rule")
 
-# Note: parquet_types.cpp/parquet_types.h
-# are pre-generated statically. The reason
-# to not generate during the tf build is
-# that they depend on bison/flex, and so many
-# other tools. It is better to generate them
-# copy here.
-# Also windows_compatibility.h is needed by
-# parquet_types.cpp.
-cc_library(
-    name = "parquet_types",
-    srcs = [
-        "src/parquet/parquet_types.cpp",
-        "src/parquet/parquet_types.h",
-        "src/parquet/util/windows_compatibility.h",
-    ],
-    hdrs = [
-        "src/parquet/parquet_types.h",
-    ],
-    includes = [
-        "src",
-    ],
-    deps = [
-        "@arrow",
-        "@boost",
-        "@thrift",
-    ],
-)
-
 cc_library(
     name = "parquet",
     srcs = [
@@ -60,17 +32,26 @@ cc_library(
         "src/parquet/util/comparison.h",
         "src/parquet/util/memory.cc",
         "src/parquet/util/memory.h",
-    ],
-    hdrs = [
+        "src/parquet/util/visibility.h",
+        "src/parquet/util/macros.h",
         "src/parquet/parquet_version.h",
     ],
+    hdrs = [
+        "src",
+    ],
     copts = [
+        "-Iexternal/boost",
+        "-Iexternal/arrow/cpp/src",
+        "-Iexternal/thrift/lib/cpp/src",
     ],
     includes = [
-        "src/",
+        "src",
     ],
     deps = [
-        "@org_tensorflow//third_party/parquet:parquet_types",
+        "@org_tensorflow//third_party/parquet_types",
+        "@arrow",
+        "@boost",
+        "@thrift",
     ],
 )
 

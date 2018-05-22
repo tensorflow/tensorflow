@@ -43,6 +43,10 @@ tf_gen_op_libs(
 cc_library(
     name = "dataset_kernels",
     srcs = ["kernels/parquet_dataset_ops.cc"],
+    copts = [
+        "-Iexternal/parquet/src",
+        "-Iexternal/arrow/cpp/src",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

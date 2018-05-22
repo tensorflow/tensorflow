@@ -20,12 +20,16 @@ cc_library(
         "lib/cpp/src/thrift/protocol/TProtocol.h",
         "lib/cpp/src/thrift/protocol/TProtocol.cpp",
         "lib/cpp/src/thrift/config.h",
+        "compiler/cpp/src/thrift/version.h",
     ],
     hdrs = [
-        "lib/cpp/src/thrift/Thrift.h",
     ],
     includes = [
-        "lib/cpp/src/",
+        "lib/cpp/src",
+    ],
+    copts = [
+        "-Iexternal/boost",
+        "-Iexternal/thrift/lib/cpp/src",
     ],
     deps = [
         "@boost",
