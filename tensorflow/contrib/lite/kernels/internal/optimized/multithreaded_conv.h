@@ -56,7 +56,8 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 // operations anyway, it shouldn't affect overall performance.
 const Eigen::ThreadPoolDevice& GetThreadPoolDevice() {
   const int thread_count = 4;
-  static Eigen::ThreadPool* tp = new Eigen::ThreadPool(thread_count);
+  std::vector<int> proc_set;
+  static Eigen::ThreadPool* tp = new Eigen::ThreadPool(thread_count, proc_set);
   static EigenThreadPoolWrapper* thread_pool_wrapper =
       new EigenThreadPoolWrapper(tp);
   static Eigen::ThreadPoolDevice* device =

@@ -63,6 +63,65 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
     const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& send_args,
     const Rendezvous::Args& recv_args, const Tensor& in, Tensor* out,
     StatusCallback done) {
+/*
+  std::cout << "src device = " << parsed.src_device 
+            << " src = " << DeviceNameUtils::ParsedNameToString(parsed.src) 
+            << " src incarnation = " << parsed.src_incarnation 
+            << " dst device = " << parsed.dst_device 
+            << " dst = " <<  DeviceNameUtils::ParsedNameToString(parsed.dst) 
+            << " edge = " << parsed.edge_name << "\n";
+
+
+  if(in.dtype() != DT_FLOAT){
+    std::cout << "IN NOT FLOAT TYPE = " << (int)in.dtype() << "\n";
+    std::cout << "FLOAT = " << (int)DT_FLOAT << "\n";
+    std::cout << "COMPLEX128 = " << (int)DT_COMPLEX128 << "\n";
+    std::cout << "BOOL = " << (int)DT_BOOL << "\n";
+  }
+
+  if(out->dtype() != DT_FLOAT){
+    std::cout << "OUT NOT FLOAT TYPE = " << (int)out->dtype() << "\n";
+    std::cout << "FLOAT = " << (int)DT_FLOAT << "\n";
+  }
+*/
+  if(parsed.src.type == parsed.dst.type && 
+     parsed.src.id   == parsed.dst.id) {
+    *out = in;
+    done(Status::OK());
+    return;
+  }
+  else {
+    Device* dst_device;
+    Status s = device_mgr_->LookupDevice(parsed.dst_device, &dst_device);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
+
+    const AllocatorAttributes attr = recv_args.alloc_attrs;
+    Allocator* out_allocator = dst_device->GetAllocator(attr);
+    Tensor copy = Tensor(out_allocator, in.dtype(), in.shape());
+    if(in.dtype() == DT_FLOAT) {
+      float *buffer_in  = (float *)in.flat<float>().data();
+      float *buffer_out = (float *)copy.flat<float>().data();
+      memcpy(buffer_out, buffer_in, in.flat<float>().size() * sizeof(float));
+    }
+    else if(in.dtype() == DT_BOOL) {
+      bool *buffer_in  = (bool *)in.flat<bool>().data();
+      bool *buffer_out = (bool *)copy.flat<bool>().data();
+      memcpy(buffer_out, buffer_in, in.flat<bool>().size() * sizeof(bool));
+    }
+    else{
+      std::cout << "Unsupported data type = " << in.dtype() << "\n";
+      exit(-1);
+    }
+
+    *out = copy;
+
+    done(Status::OK());
+    return;
+  }
+
   // Do a quick copy (sharing the underlying buffer) if both tensors
   // are on host memory.
   const bool src_host =

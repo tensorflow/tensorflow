@@ -45,6 +45,8 @@ class ThreadPool {
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const string& name, int num_threads);
 
+  ThreadPool(Env* env, const string& name, int num_threads, std::vector<int> &proc_set);
+
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual
   // threads with the given ThreadOptions.
