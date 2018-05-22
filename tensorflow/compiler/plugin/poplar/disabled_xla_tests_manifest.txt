@@ -250,3 +250,11 @@ DotOperationTest.DotOfGatherOptimizationWithConstRHSCols POPLAR
 DotOperationTest.DotOfGatherOptimizationWithConstRHSRows POPLAR
 
 MultiOutputFusionTest.MultiOutputLoopFeedingMap POPLAR // Don't support fusion
+
+ReduceTest.AddReduce2DScalarToR0 POPLAR // Reduction is too big for poplibs CPU mode
+ReduceTest.MaxReduce2DScalarToR0 POPLAR
+ReduceTest.ReduceR1_1M_F32_To_R0 POPLAR
+ReduceTest.ReduceR1_16M_F32_To_R0 POPLAR
+ReduceTest.ReduceR2_1000x1500_To_R0 POPLAR
+ReduceTest.ReduceR2_1024x1024_To_R0 POPLAR
+ReduceR3ToR2Test.ReduceR3ToR2 POPLAR

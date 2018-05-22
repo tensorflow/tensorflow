@@ -15,3 +15,5 @@ WhileTest.testCountingLoopHandrolledC64 # C64
 EagerTest # Eager test crashing
 EagerFunctionTest # Eager function test crashing
 StatelessRandomOpsTest # Times out due to large expressions - T3023
+CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
+DepthwiseConv2DTest # Failing due to input size to poplibs convolution
