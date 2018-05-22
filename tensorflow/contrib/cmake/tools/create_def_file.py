@@ -44,7 +44,7 @@ UNDNAME = "undname.exe"
 DUMPBIN = "dumpbin.exe"
 
 # Exclude if matched
-EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::|Internal|python_op_gen_internal")
+EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::|Internal|python_op_gen_internal|grappler")
 
 # Include if matched before exclude
 INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
@@ -56,6 +56,7 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"tensorflow::ops::internal::Enter|"
                            r"tensorflow::strings::internal::AppendPieces|"
                            r"tensorflow::strings::internal::CatPieces|"
+                           r"tensorflow::errors::Internal|"
                            r"tensorflow::io::internal::JoinPathImpl")
 
 # Include if matched after exclude
