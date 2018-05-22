@@ -79,6 +79,7 @@ py_library(
         ":check_ops",
         ":client",
         ":client_testlib",
+        ":collective_ops",
         ":confusion_matrix",
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
@@ -1436,6 +1437,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "collective_ops_gen",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:collective_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
@@ -1737,8 +1746,32 @@ py_test(
 )
 
 py_library(
+    name = "collective_ops",
+    srcs = ["ops/collective_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":collective_ops_gen",
+        ":framework_for_generated_wrappers",
+    ],
+)
+
+py_test(
+    name = "collective_ops_test",
+    size = "small",
+    srcs = ["ops/collective_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "control_flow_grad",
-    srcs = ["ops/control_flow_grad.py"],
+    srcs =
+        ["ops/control_flow_grad.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":control_flow_ops",
