@@ -29,6 +29,13 @@ float PortableClip(float f, float abs_limit) {
   return result;
 }
 
+bool PortableIsZeroVector(const float* vector, int v_size) {
+  for (int i = 0; i < v_size; ++i) {
+    if (*vector++ != 0.0f) return false;
+  }
+  return true;
+}
+
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min,
                                      float* max, float* scaling_factor) {
