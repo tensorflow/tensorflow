@@ -464,6 +464,20 @@ bool StreamExecutor::GetSymbol(const string &symbol_name, void **mem,
   return implementation_->GetSymbol(symbol_name, mem, bytes);
 }
 
+void *StreamExecutor::UnifiedMemoryAllocate(uint64 bytes) {
+  void *buffer = implementation_->UnifiedMemoryAllocate(bytes);
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryAllocate(size=" << bytes
+          << ") returns " << buffer << StackTraceIfVLOG10();
+  return buffer;
+}
+
+void StreamExecutor::UnifiedMemoryDeallocate(void *location) {
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryDeallocate(location="
+          << location << ")" << StackTraceIfVLOG10();
+
+  return implementation_->UnifiedMemoryDeallocate(location);
+}
+
 void *StreamExecutor::HostMemoryAllocate(uint64 size) {
   void *buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size

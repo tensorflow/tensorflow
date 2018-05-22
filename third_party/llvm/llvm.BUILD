@@ -8,10 +8,10 @@ exports_files(["LICENSE.TXT"])
 
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
-    "gentbl",
-    "expand_cmake_vars",
-    "llvm_target_cmake_vars",
     "cmake_var_string",
+    "expand_cmake_vars",
+    "gentbl",
+    "llvm_target_cmake_vars",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",

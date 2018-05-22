@@ -199,7 +199,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     default:
-      context->ReportError(context, "Type is currently not supported by Pad.");
+      context->ReportError(context,
+                           "Type %d is currently not supported by Pad.",
+                           op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_PAD

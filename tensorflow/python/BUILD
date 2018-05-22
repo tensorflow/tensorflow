@@ -313,8 +313,8 @@ cc_library(
     hdrs = ["util/util.h"],
     deps = [
         ":safe_ptr",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//util/python:python_headers",
     ],
 )

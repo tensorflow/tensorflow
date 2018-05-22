@@ -104,6 +104,10 @@ class VSpace {
       gtl::ArraySlice<Gradient*> output_gradients,
       std::vector<Gradient*>* result) const = 0;
 
+  // Marks the following gradient as a result so it's not consumed by backward
+  // functions.
+  virtual void MarkAsResult(Gradient* gradient) const = 0;
+
   // Deletes the input tensor.
   virtual void DeleteGradient(Gradient* gradient) const = 0;
 
@@ -356,8 +360,7 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
         count_it->second++;
       } else {
         result.tensor_usage_counts[it] = 1;
-        if (sources_set.find(it) == sources_set.end() &&
-            tensor_tape.find(it) != tensor_tape.end()) {
+        if (tensor_tape.find(it) != tensor_tape.end()) {
           tensor_stack.push_back(it);
         }
       }
@@ -522,10 +525,15 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
         }
       } else {
         any_gradient_nonzero = true;
-        out_gradients.push_back(vspace.AggregateGradients(grad_it->second));
+        auto new_gradients = vspace.AggregateGradients(grad_it->second);
         if (sources_set.find(grad_it->first) == sources_set.end()) {
           gradients.erase(grad_it);
+        } else {
+          grad_it->second.clear();
+          grad_it->second.push_back(new_gradients);
+          vspace.MarkAsResult(new_gradients);
         }
+        out_gradients.push_back(new_gradients);
       }
     }
     std::vector<Gradient*> in_gradients;

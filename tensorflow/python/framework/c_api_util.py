@@ -134,6 +134,9 @@ class ApiDefMap(object):
       return self._op_per_name[op_name]
     raise ValueError("No entry found for " + op_name + ".")
 
+  def op_names(self):
+    return self._op_per_name.keys()
+
 
 @tf_contextlib.contextmanager
 def tf_buffer(data=None):

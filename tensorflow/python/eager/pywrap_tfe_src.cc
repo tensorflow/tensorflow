@@ -1348,6 +1348,8 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     return result;
   }
 
+  void MarkAsResult(PyObject* gradient) const final { Py_INCREF(gradient); }
+
   PyObject* Zeros(tensorflow::TensorShape shape,
                   tensorflow::DataType dtype) const final {
     PyObject* py_shape = PyTuple_New(shape.dims());

@@ -48,7 +48,8 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default: {
-      context->ReportError(context, "Only float32 is supported currently");
+      context->ReportError(context, "Input type is %d, requires float32",
+                           input->type);
       return kTfLiteError;
     }
   }

@@ -25,6 +25,10 @@ from tensorflow.python.platform import googletest
 
 class ApiDefMapTest(test_util.TensorFlowTestCase):
 
+  def testApiDefMapOpNames(self):
+    api_def_map = c_api_util.ApiDefMap()
+    self.assertIn("Add", api_def_map.op_names())
+
   def testApiDefMapGet(self):
     api_def_map = c_api_util.ApiDefMap()
     op_def = api_def_map.get_op_def("Add")
