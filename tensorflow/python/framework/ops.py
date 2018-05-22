@@ -5347,6 +5347,7 @@ def init_scope():
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
       scope = scope + '/'
+    inner_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
     outer_context = None
     if not _default_graph_stack.stack:
@@ -5375,9 +5376,23 @@ def init_scope():
       raise RuntimeError("All graphs are building functions, and no "
                          "eager context was previously active.")
 
-    with outer_context(), name_scope(scope), control_dependencies(
-        None), tape.stop_recording():
-      yield
+    outer_graph = None
+    outer_device_stack = None
+    try:
+      with outer_context(), name_scope(scope), control_dependencies(
+          None), tape.stop_recording():
+        if not context.executing_eagerly():
+          # The device stack is preserved when lifting into a graph. Eager
+          # execution doesn't implement device stacks and in particular it
+          # doesn't support device functions, so in general it's not possible
+          # to do the same when lifting into the eager context.
+          outer_graph = get_default_graph()
+          outer_device_stack = outer_graph._device_function_stack  # pylint: disable=protected-access
+          outer_graph._device_function_stack = inner_device_stack  # pylint: disable=protected-access
+        yield
+    finally:
+      if outer_graph is not None:
+        outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
 @tf_export("enable_eager_execution")
