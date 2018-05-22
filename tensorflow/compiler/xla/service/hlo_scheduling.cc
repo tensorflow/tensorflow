@@ -457,6 +457,13 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
       extra_users[hlo] += extra_users[operand];
       total_sizes[hlo] += total_sizes[operand];
     }
+    // total_sizes[hlo] transitively includes the sizes of all nodes that
+    // lead to it. But computation is a DAG, so we are double-counting nodes,
+    // which can lead to overflows for large programs.
+    // cumulative_total_size caps the size to prevent overflows.
+    // NOTE(dimvar): this is quite ugly and should be changed. It's unclear
+    // why we care about transitive sizes; when scheduling a node, its input
+    // and output buffers should be all that matters, not its "history".
     total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
