@@ -80,7 +80,7 @@ def pairwise_distance(feature, squared=False):
   pairwise_distances = math_ops.multiply(pairwise_distances, mask_offdiagonals)
   return pairwise_distances
 
-def pairwise_distance_cosine(feature):
+def pairwise_distance_cosine(feature, squared=True):
   """Computes the pairwise distance matrix using the cosine distance.
 
   output[i, j] = 1 - tf.matmul(feature[i, :], feature[j, :]) / (tf.norm(feature[i, :]) * tf.norm(feature[j, :]))
@@ -182,7 +182,7 @@ def masked_minimum(data, mask, dim=1):
   return masked_minimums
 
 
-def triplet_semihard_loss(labels, embeddings, margin=1.0, metric='euclidean'):
+def triplet_semihard_loss(labels, embeddings, margin=1.0, pairwise_dist_fn=pairwise_distance):
   """Computes the triplet loss with semi-hard negative mining.
 
   The loss encourages the positive distances (between a pair of embeddings with
@@ -208,12 +208,7 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0, metric='euclidean'):
   labels = array_ops.reshape(labels, [lshape[0], 1])
 
   # Build pairwise squared distance matrix.
-  if metric == 'euclidean':
-    pdist_matrix = pairwise_distance(embeddings)
-  elif metric == 'cosine':
-    pdist_matrix = pairwise_distance_cosine(embeddings)
-  else:
-    raise ValueError("Metric {} not recognized, use 'euclidean or 'cosine'".format(metric))
+  pdist_matrix = pairwise_dist_fn(embeddings, squared=True)
   # Build pairwise binary adjacency matrix.
   adjacency = math_ops.equal(labels, array_ops.transpose(labels))
   # Invert so we can select negatives only.
@@ -437,7 +432,7 @@ def npairs_loss_multilabel(sparse_labels, embeddings_anchor,
     return l2loss + xent_loss
 
 
-def lifted_struct_loss(labels, embeddings, margin=1.0, metric='euclidean'):
+def lifted_struct_loss(labels, embeddings, margin=1.0, pairwise_dist_fn=pairwise_distance):
   """Computes the lifted structured loss.
 
   The loss encourages the positive distances (between a pair of embeddings
@@ -462,13 +457,7 @@ def lifted_struct_loss(labels, embeddings, margin=1.0, metric='euclidean'):
   labels = array_ops.reshape(labels, [lshape[0], 1])
 
   # Build pairwise squared distance matrix.
-  if metric == 'euclidean':
-    pairwise_distances = pairwise_distance(embeddings)
-  elif metric == 'cosine':
-    pairwise_distances = pairwise_distance_cosine(embeddings)
-  else:
-    raise ValueError("Metric {} not recognized, use 'euclidean or 'cosine'".format(metric))
-
+  pairwise_distances = pairwise_dist_fn(embeddings)
   # Build pairwise binary adjacency matrix.
   adjacency = math_ops.equal(labels, array_ops.transpose(labels))
   # Invert so we can select negatives only.
@@ -980,7 +969,7 @@ def compute_gt_cluster_score(pairwise_distances, labels):
 def cluster_loss(labels,
                  embeddings,
                  margin_multiplier,
-                 metric='euclidean'
+                 pairwise_dist_fn=pairwise_distance,
                  enable_pam_finetuning=True,
                  margin_type='nmi',
                  print_losses=False):
@@ -1014,13 +1003,8 @@ def cluster_loss(labels,
   """
   if not HAS_SKLEARN:
     raise ImportError('Cluster loss depends on sklearn.')
-  if metric == 'euclidean':
-    pairwise_distances = pairwise_distance(embeddings)
-  elif metric == 'cosine':
-    pairwise_distances = pairwise_distance_cosine(embeddings)
-  else:
-    raise ValueError("Metric {} not recognized, use 'euclidean or 'cosine'".format(metric))
-
+  pairwise_distances = pairwise_dist_fn(embeddings)
+  
   labels = array_ops.squeeze(labels)
   all_ids = math_ops.range(array_ops.shape(embeddings)[0])
 
