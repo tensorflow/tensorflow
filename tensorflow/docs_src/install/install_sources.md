@@ -238,13 +238,13 @@ the desired version instead of relying on the default.
 One of the questions that `configure` will ask is as follows:
 
 <pre>
-Please specify optimization flags to use during compilation when bazel option "--config=opt" is specified [Default is -march=native]
+Please specify optimization flags to use during compilation when bazel option "--config=opt" is specified [Default is -march=haswell]
 </pre>
 
 This question refers to a later phase in which you'll use bazel to [build the
 pip package](#build-the-pip-package) or the [C/Java libraries](#BuildCorJava).
-We recommend accepting the default (`-march=native`), which will optimize the
-generated code for your local machine's CPU type.  However, if you are building
+We recommend accepting the default (`-march=haswell`), for better portability over different Linux falvors and CPU architectures.
+However, if you are building
 TensorFlow on one CPU type but will run TensorFlow on a different CPU type, then
 consider specifying a more specific optimization
 flag as described in [the gcc
@@ -263,7 +263,7 @@ Found possible Python library paths:
 Please input the desired Python library path to use.  Default is [/usr/lib/python2.7/dist-packages]
 
 Using python library path: /usr/local/lib/python2.7/dist-packages
-Please specify optimization flags to use during compilation when bazel option "--config=opt" is specified [Default is -march=native]:
+Please specify optimization flags to use during compilation when bazel option "--config=opt" is specified [Default is -march=haswell]:
 Do you wish to use jemalloc as the malloc implementation? [Y/n]
 jemalloc enabled
 Do you wish to build TensorFlow with Google Cloud Platform support? [y/N]
