@@ -110,28 +110,31 @@ class IrEmitterUnnested : public IrEmitter {
   // `EmitReductionToVector`. Note that input shape might not be
   // [height x width], but can be bitcast to [height x weight] with "height"
   // being the major dimension.
-  Status EmitColumnReduction(int64 height, int64 width, HloInstruction* reduce,
-                             const Shape& input_shape,
-                             const llvm_ir::ElementGenerator& input_gen,
-                             const llvm_ir::ElementGenerator& init_value_gen,
-                             HloComputation* reducer);
+  Status EmitColumnReduction(
+      int64 height, int64 width, HloInstruction* reduce,
+      const Shape& input_shape,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
+      tensorflow::gtl::ArraySlice<HloComputation*> reducers);
 
   // Emits code that reduces a 3D tensor of shape [depth x height x width] to a
   // vector of shape [height]. Other parameters have the same meaning as those
   // of `EmitReductionToVector`. Note that input shape might not be
   // [depth x height x width], but can be bitcast to [depth x height x weight]
   // with "depth" being the most major dimension.
-  Status EmitRowReduction(int64 depth, int64 height, int64 width,
-                          HloInstruction* reduce, const Shape& input_shape,
-                          const llvm_ir::ElementGenerator& input_gen,
-                          const llvm_ir::ElementGenerator& init_value_gen,
-                          HloComputation* reducer);
+  Status EmitRowReduction(
+      int64 depth, int64 height, int64 width, HloInstruction* reduce,
+      const Shape& input_shape,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
+      tensorflow::gtl::ArraySlice<HloComputation*> reducers);
 
   // Emits code that reduces a tensor of arbitrary rank to a scalar.
-  Status EmitReductionToScalar(HloInstruction* reduce, const Shape& input_shape,
-                               const llvm_ir::ElementGenerator& input_gen,
-                               const llvm_ir::ElementGenerator& init_value_gen,
-                               HloComputation* reducer);
+  Status EmitReductionToScalar(
+      HloInstruction* reduce, const Shape& input_shape,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
+      tensorflow::gtl::ArraySlice<HloComputation*> reducers);
 
   // Figures out whether `reduce` is a row or column reduction, and which
   // dimensions to reduce, and calls either `EmitRowReduction` or
@@ -141,13 +144,16 @@ class IrEmitterUnnested : public IrEmitter {
   // generate elements of the input and the initial value. Other parameters mean
   // the same as for `HandleReduce`.
   //
+  // Multiple reduces can be emitted in the same loop, assuming they have the
+  // same input and output shapes, and the same reduce dimensions.
+  //
   // Prerequisite: `IsReductionToVector(*reduce)`
   Status EmitReductionToVector(
       HloInstruction* reduce, const Shape& input_shape,
-      const llvm_ir::ElementGenerator& input_gen,
-      const llvm_ir::ElementGenerator& init_value_gen,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
+      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
-      HloComputation* reducer);
+      tensorflow::gtl::ArraySlice<HloComputation*> reducers);
 
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
@@ -166,7 +172,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a thunk that, given a reduce or select-and-scatter op, initializes
   // its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
-      const HloInstruction* hlo);
+      const HloInstruction* hlo, const ShapeIndex& index = {});
 
   // Returns a thunk that calls host-to-device cuMemcpy to implement `inst`.
   std::unique_ptr<Thunk> BuildHostToDeviceCopyThunk(const HloInstruction* inst);
