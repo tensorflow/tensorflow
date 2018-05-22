@@ -25,15 +25,15 @@ import tempfile
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import keras
 from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras._impl import keras
-from tensorflow.python.keras._impl.keras import testing_utils
-from tensorflow.python.keras._impl.keras.applications import mobilenet
-from tensorflow.python.keras._impl.keras.optimizers import SGD
+from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.applications import mobilenet
+from tensorflow.python.keras.optimizers import SGD
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test

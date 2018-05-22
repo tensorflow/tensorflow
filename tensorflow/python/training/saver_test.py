@@ -51,8 +51,8 @@ from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras._impl.keras.engine import training
-from tensorflow.python.keras._impl.keras.layers import core
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops

@@ -61,11 +61,11 @@ from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras._impl.keras import backend as K
-from tensorflow.python.keras._impl.keras import layers
-from tensorflow.python.keras._impl.keras import models
-from tensorflow.python.keras._impl.keras import optimizers as keras_optimizers
-from tensorflow.python.keras._impl.keras.layers import embeddings
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import layers
+from tensorflow.python.keras import models
+from tensorflow.python.keras import optimizers as keras_optimizers
+from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -400,7 +400,7 @@ class KerasTPUModel(models.Model):
   """TPU compatible Keras model wrapper."""
 
   def __init__(self, inputs, outputs, name, replicas=1):
-    super(models.Model, self).__init__(
+    super(models.Model, self).__init__(  # pylint: disable=bad-super-call
         inputs=inputs,
         outputs=outputs,
         name=name,

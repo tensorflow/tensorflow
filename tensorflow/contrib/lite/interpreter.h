@@ -249,10 +249,17 @@ class Interpreter {
     return nullptr;
   }
 
-  // Return a pointer into the data of a given input tensor. The given index
-  // must be between 0 and inputs().size().
+  // Return a mutable pointer into the data of a given input tensor. The given
+  // index must be between 0 and inputs().size().
   template <class T>
   T* typed_input_tensor(int index) {
+    return typed_tensor<T>(inputs_[index]);
+  }
+
+  // Return an immutable pointer into the data of a given input tensor. The
+  // given index must be between 0 and inputs().size().
+  template <class T>
+  const T* typed_input_tensor(int index) const {
     return typed_tensor<T>(inputs_[index]);
   }
 

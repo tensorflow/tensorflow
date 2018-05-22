@@ -252,6 +252,57 @@ class EagerFunctionTest(XLATestCase):
     self.assertEqual(30, dy.numpy())
 
 
+class ExcessivePaddingTest(XLATestCase):
+  """Test that eager execution works with TPU flattened tensors.
+
+  Tensors that would normally be excessively padded when written
+  to TPU memory are reshaped to 1-D flat tensors.
+
+  This test case verifies that such tensors work with eager execution.
+
+  The flattening currently only happens on TPU, but tests should work
+  fine with all backends as flattening is transparent.
+  """
+
+  def testFromConstant(self):
+    with self.test_scope():
+      # Create constant of shape [100, 2, 1]. This tensor would be
+      # excessively padded on TPU.
+      tensor = constant_op.constant(100 * [[[10.0], [2.0]]])
+      # Use reduce_sum since it requires correctly working with
+      # a particular dimension.
+      reduced = math_ops.reduce_sum(tensor, axis=1)
+      self.assertAllEqual(100 * [[12.0]], reduced)
+
+  def testFromOperation(self):
+    with self.test_scope():
+      tensor = array_ops.ones([3, 100, 2, 2])
+      reduced = math_ops.reduce_sum(tensor, axis=[0, 2, 3])
+      self.assertAllEqual(100 * [12.0], reduced)
+
+  def testAsFunctionInput(self):
+    with self.test_scope():
+
+      @function.defun(compiled=True)
+      def f(x):
+        return math_ops.reduce_sum(x, axis=2)
+
+      tensor = constant_op.constant(100 * [[[10.0, 2.0]]])
+      reduced = f(tensor)
+      self.assertAllEqual(100 * [[12.0]], reduced)
+
+  def testAsFunctionOutput(self):
+    with self.test_scope():
+
+      @function.defun(compiled=True)
+      def f(x):
+        return x * constant_op.constant(100 * [[[10.0, 2.0]]])
+
+      y = f(3)
+      reduced = math_ops.reduce_sum(y, axis=2)
+      self.assertAllEqual(100 * [[36.0]], reduced)
+
+
 if __name__ == '__main__':
   ops.enable_eager_execution(
       config=config_pb2.ConfigProto(log_device_placement=True))

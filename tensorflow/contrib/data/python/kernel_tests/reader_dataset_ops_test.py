@@ -622,14 +622,12 @@ class MakeCsvDatasetTest(test.TestCase):
     f.close()
     return fn
 
-  def _create_file(self, fileno, header=True, comment=True):
+  def _create_file(self, fileno, header=True):
     rows = []
     if header:
       rows.append(self.COLUMNS)
     for recno in range(self._num_records):
       rows.append(self._csv_values(fileno, recno))
-      if comment:
-        rows.append("# Some comment goes here. Ignore me.")
     return self._write_file("csv_file%d.csv" % fileno, rows)
 
   def _create_files(self):
@@ -650,9 +648,7 @@ class MakeCsvDatasetTest(test.TestCase):
       shuffle=False,
       shuffle_seed=None,
       header=True,
-      comment="#",
       na_value="",
-      default_float_type=dtypes.float32,
   ):
     return readers.make_csv_dataset(
         filenames,
@@ -664,9 +660,7 @@ class MakeCsvDatasetTest(test.TestCase):
         shuffle=shuffle,
         shuffle_seed=shuffle_seed,
         header=header,
-        comment=comment,
         na_value=na_value,
-        default_float_type=default_float_type,
         select_columns=select_cols,
     )
 
@@ -788,29 +782,6 @@ class MakeCsvDatasetTest(test.TestCase):
             num_epochs=10,
             label_name=None)
 
-  def testMakeCSVDataset_withNoComments(self):
-    """Tests that datasets can be created from CSV files with no header line.
-    """
-    defaults = self.DEFAULTS
-    file_without_header = self._create_file(
-        len(self._test_filenames), comment=False)
-    with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
-        dataset = self._make_csv_dataset(
-            file_without_header,
-            defaults,
-            batch_size=2,
-            num_epochs=10,
-            comment=None,
-        )
-        self._verify_records(
-            sess,
-            dataset,
-            [len(self._test_filenames)],
-            batch_size=2,
-            num_epochs=10,
-        )
-
   def testMakeCSVDataset_withNoHeader(self):
     """Tests that datasets can be created from CSV files with no header line.
     """
@@ -878,7 +849,7 @@ class MakeCsvDatasetTest(test.TestCase):
 
     In that case, we should infer the types from the first N records.
     """
-    # Test that it works with standard test files (with comments, header, etc)
+    # Test that it works with standard test files (with header, etc)
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         dataset = self._make_csv_dataset(
@@ -891,7 +862,9 @@ class MakeCsvDatasetTest(test.TestCase):
             num_epochs=10,
             defaults=[[], [], [], [], [""]])
 
-    # Test on a deliberately tricky file
+  def testMakeCSVDataset_withTypeInferenceTricky(self):
+    # Test on a deliberately tricky file (type changes as we read more rows, and
+    # there are null values)
     fn = os.path.join(self.get_temp_dir(), "file.csv")
     expected_dtypes = [
         dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float32,
@@ -916,20 +889,29 @@ class MakeCsvDatasetTest(test.TestCase):
             column_names=None,
             label_name=None,
             na_value="NAN",
-            default_float_type=dtypes.float32,
         )
         features = dataset.make_one_shot_iterator().get_next()
         # Check that types match
         for i in range(len(expected_dtypes)):
+          print(features["col%d" % i].dtype, expected_dtypes[i])
           assert features["col%d" % i].dtype == expected_dtypes[i]
         for i in range(len(rows)):
           assert sess.run(features) == dict(zip(col_names, expected[i]))
 
-    # With float64 as default type for floats
+  def testMakeCSVDataset_withTypeInferenceAllTypes(self):
+    # Test that we make the correct inference for all types with fallthrough
+    fn = os.path.join(self.get_temp_dir(), "file.csv")
     expected_dtypes = [
-        dtypes.int32, dtypes.int64, dtypes.float64, dtypes.float64,
+        dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64,
         dtypes.string, dtypes.string
     ]
+    col_names = ["col%d" % i for i in range(len(expected_dtypes))]
+    rows = [[1, 2**31 + 1, 1.0, 4e40, "abc", ""]]
+    expected = [[
+        1, 2**31 + 1, 1.0, 4e40, "abc".encode("utf-8"), "".encode("utf-8")
+    ]]
+    self._write_file("file.csv", [col_names] + rows)
+
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         dataset = self._make_csv_dataset(
@@ -938,7 +920,6 @@ class MakeCsvDatasetTest(test.TestCase):
             column_names=None,
             label_name=None,
             na_value="NAN",
-            default_float_type=dtypes.float64,
         )
         features = dataset.make_one_shot_iterator().get_next()
         # Check that types match

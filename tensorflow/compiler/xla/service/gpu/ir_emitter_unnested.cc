@@ -267,7 +267,10 @@ int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
 
   // Find the largest possible power of two to unroll by.
   // TODO(kramerb): Make this smarter.
-  int64 num_elements = ShapeUtil::ElementsIn(hlo->shape());
+  const Shape& element_shape = hlo->IsMultiOutputFusion()
+                                   ? ShapeUtil::GetSubshape(hlo->shape(), {0})
+                                   : hlo->shape();
+  int64 num_elements = ShapeUtil::ElementsIn(element_shape);
   for (int i = max_unroll_factor; i > 1; i /= 2) {
     if (num_elements % i == 0) {
       return i;
@@ -565,12 +568,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  int unroll_factor = 1;
-  // TODO(kramerb): Unrolling multi-output loop fusions too.
-  if (!fusion->IsMultiOutputFusion()) {
-    CHECK(fusion->fusion_kind() == HloInstruction::FusionKind::kLoop);
-    unroll_factor = ComputeMaxUnrollFactor(fusion);
-  }
+  CHECK(fusion->fusion_kind() == HloInstruction::FusionKind::kLoop);
+  int unroll_factor = ComputeMaxUnrollFactor(fusion);
 
   thunk_sequence_->emplace_back(BuildKernelThunk(fusion, unroll_factor));
   return IrEmitter::HandleFusion(fusion);
@@ -2538,16 +2537,14 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
         .EmitLoop(IrName(&hlo));
   }
 
-  CHECK_EQ(unroll_factor, 1)
-      << "multi-output fusion does not support unrolling";
-
   // For multiple outputs fusion, we need to emit each operand and the root.
   std::vector<llvm_ir::IrArray> output_arrays;
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(hlo.shape()); ++i) {
     output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
   }
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, output_arrays,
-                                         launch_dimensions, &ir_builder_)
+                                         launch_dimensions, &ir_builder_,
+                                         unroll_factor)
                          .EmitLoop(IrName(&hlo)));
 
   std::vector<llvm::Value*> tuple_operand_ptrs;
