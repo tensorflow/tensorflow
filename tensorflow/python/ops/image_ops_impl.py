@@ -1551,8 +1551,11 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
 
     def _png():
       """Decodes a PNG image."""
-      return convert_image_dtype(gen_image_ops.decode_png(contents, channels,
-          dtype = dtypes.uint8 if dtype == dtypes.uint8 else dtypes.uint16), dtype)
+      return convert_image_dtype(
+          gen_image_ops.decode_png(contents, channels,
+                                   dtype=dtypes.uint8
+                                   if dtype == dtypes.uint8
+                                   else dtypes.uint16), dtype)
 
     def check_png():
       """Checks if an image is PNG."""
@@ -1568,7 +1571,8 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
                       'images')
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_jpeg(contents, channels), dtype)
+        return convert_image_dtype(
+            gen_image_ops.decode_jpeg(contents, channels), dtype)
 
     # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
     # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
