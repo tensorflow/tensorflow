@@ -44,7 +44,7 @@ UNDNAME = "undname.exe"
 DUMPBIN = "dumpbin.exe"
 
 # Exclude if matched
-EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
+EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::|Internal|python_op_gen_internal")
 
 # Include if matched before exclude
 INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
