@@ -3289,7 +3289,10 @@ tf_cc_tests_gpu(
 tf_cc_test_mkl(
     name = "mkl_runtime_tests",
     size = "small",
-    srcs = ["common_runtime/mkl_cpu_allocator_test.cc"],
+    srcs = [
+        "common_runtime/mkl_cpu_allocator_test.cc",
+        "common_runtime/mkl_threadpool_device_test.cc",
+    ],
     linkstatic = 1,
     deps = [
         ":core",
