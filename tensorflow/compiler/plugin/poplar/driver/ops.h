@@ -72,6 +72,23 @@ poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
 Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
                        const poplar::Tensor& tensor);
 
+
+/* Returns a pair of numbers representing the half-open range of indicies
+ * which a particular input to a tuple represents in the flattened output.
+ *
+ * eg.
+ *   a = tuple(f32[], tuple(f32[], f32[]), f32)(b c d)
+ *
+ *   a is a tuple containing a scalar, a tuple of 2 scalars, and another scalar
+ *   and flattened it has 4 tensors
+ *
+ *   FindTupleInputIndices(a, 0) = (0,1)
+ *   FindTupleInputIndices(a, 1) = (1,3)
+ *   FindTupleInputIndices(a, 2) = (3,4)
+ */
+std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
+                                              int64 input);
+
 /* This returns the vector of all poplar tensors which are part of the n'th
  * member of the tuple which is the input to the instruction.
  */

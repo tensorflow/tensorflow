@@ -11,6 +11,16 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
+std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
+                                              int64 n) {
+  int64 start = 0;
+  for (int64 i = 0; i < n; i++) {
+    start += CountShapes(tuple->operand(i)->shape());
+  }
+  int64 end = start + CountShapes(tuple->operand(n)->shape());
+  return std::make_pair(start, end);
+}
+
 ArgVector FindTupleInInstructionInput(const TensorMap& map,
                                       const HloInstruction* inst, int64 input,
                                       int64 n) {

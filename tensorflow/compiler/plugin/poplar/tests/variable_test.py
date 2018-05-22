@@ -295,8 +295,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(filter(lambda x:x[1]==w_dl, host_to_device)), 1)
       self.assertEqual(len(filter(lambda x:x[1]==b_dl, host_to_device)), 1)
 
-      # Weights/biases should not be uploaded, and the loss is uploaded 5 times
-      self.assertEqual(len(filter(lambda x:x[1]==d_ul, device_to_host)), 5)
+      # Weights/biases should not be uploaded, and the loss is streamed
+      self.assertEqual(len(filter(lambda x:x[1]==d_ul, device_to_host)), 0)
       self.assertEqual(len(filter(lambda x:x[1]==w_ul, device_to_host)), 0)
       self.assertEqual(len(filter(lambda x:x[1]==b_ul, device_to_host)), 0)
 

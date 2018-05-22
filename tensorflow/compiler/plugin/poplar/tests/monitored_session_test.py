@@ -67,7 +67,8 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
             sess.run(init)
             measured_loss,_ = sess.run([loss,train_op],
                                        feed_dict={x: image_data, l: label_data})
-            self.assertTrue(measured_loss < 5.0)
+
+            self.assertTrue(measured_loss < 15.0)
 
     def testMonitoredSessionStopAtStepHook(self):
       tf.set_random_seed(1)

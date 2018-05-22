@@ -372,7 +372,8 @@ void PoplarExecutor::CreateArgsHandleMap(
 
 std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateSingleOutput(
     xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-    const int64 n, const OutputMap& map, const Args& args) {
+    const int64 n, const OutputMap& map, const Args& args,
+    const std::vector<bool>& streamed) {
   int64 size(xla::ShapeUtil::ByteSizeOf(shape));
   auto it(map.find(n));
   if (it != map.end() && args.size() > n) {
@@ -381,7 +382,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateSingleOutput(
     se::DeviceMemoryBase buf(args[it->second]);
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
     tc->size = size;
-    tc->on_device = true;
+    tc->on_device = streamed[n] ? false : true;
     tc->ref_count++;
     tc->output_handle = GetOutputCopyHandle(n);
     tc->output_convertor = GetOutputConversionFunction(shape);
@@ -392,7 +393,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateSingleOutput(
         allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
     tc->size = size;
-    tc->on_device = true;
+    tc->on_device = streamed[n] ? false : true;
     tc->output_handle = GetOutputCopyHandle(n);
     tc->output_convertor = GetOutputConversionFunction(shape);
     return std::make_tuple(allocated, n + 1);
@@ -401,11 +402,12 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateSingleOutput(
 
 std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateOutputBuffer(
     xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-    const int64 n, const OutputMap& map, const Args& args) {
+    const int64 n, const OutputMap& map, const Args& args,
+    const std::vector<bool>& streamed) {
   // This needs to allocate buffers of the form that can be fetched by
   // PoplarTransferManager::TransferLiteralFromDevice
   if (shape.element_type() != xla::TUPLE) {
-    return AllocateSingleOutput(allocator, shape, n, map, args);
+    return AllocateSingleOutput(allocator, shape, n, map, args, streamed);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     se::DeviceMemoryBase allocated =
@@ -417,7 +419,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateOutputBuffer(
     for (int64 i = 0; i < xla::ShapeUtil::TupleElementCount(shape); i++) {
       se::DeviceMemoryBase out;
       std::tie(out, new_n) = AllocateOutputBuffer(
-          allocator, shape.tuple_shapes(i), new_n, map, args);
+          allocator, shape.tuple_shapes(i), new_n, map, args, streamed);
       *buf++ = out.opaque();
     }
 
@@ -476,6 +478,23 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::GetTupleBufferByIndex(
   int64 size = reinterpret_cast<const TensorControl*>(bufs[value])->size;
 
   return se::DeviceMemoryBase(bufs[value], size);
+}
+
+void PoplarExecutor::FlattenedOutputDeviceMemoryList(
+    std::vector<void*>& list, const xla::Shape& shape,
+    void* base) {
+  TensorControl* tc = static_cast<TensorControl*>(base);
+  if (xla::ShapeUtil::IsTuple(shape)) {
+    void** ptrs = reinterpret_cast<void**>(tc->data);
+    for (unsigned int t = 0; t < xla::ShapeUtil::TupleElementCount(shape);
+         t++) {
+      void* ptr = ptrs[t];
+      FlattenedOutputDeviceMemoryList(
+          list, xla::ShapeUtil::GetTupleElementShape(shape, t), ptr);
+    }
+  } else {
+    list.push_back(tc->data);
+  }
 }
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
@@ -575,7 +594,17 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       std::tie(retbuf, tensor_count) =
-          AllocateOutputBuffer(allocator, output_shape, 0, output_map, args);
+          AllocateOutputBuffer(allocator, output_shape, 0, output_map, args,
+                               executable.OutputStreamed());
+
+      const auto& streamed = executable.OutputStreamed();
+      std::vector<void*> bufs;
+      FlattenedOutputDeviceMemoryList(bufs, output_shape, retbuf.opaque());
+      for (int o = 0; o < streamed.size(); o++) {
+        if (streamed[o]) {
+          current_engine_->connectStream(GetOutputCopyHandle(o), bufs[o]);
+        }
+      }
 
       current_engine_->run(0);
 

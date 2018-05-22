@@ -277,17 +277,23 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   static void FlattenedDeviceMemoryList(InputPairList &, const xla::Shape &,
                                         void *, bool);
 
+  static void FlattenedOutputDeviceMemoryList(std::vector<void*>& list,
+                                              const xla::Shape& shape,
+                                              void* base);
+
   static void CreateArgsHandleMap(ArgsHandleMap &, const Args &,
                                   const std::vector<xla::Shape> &,
                                   const std::vector<bool> &);
 
   std::tuple<se::DeviceMemoryBase, int64> AllocateSingleOutput(
       xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
-      const int64 n, const OutputMap &map, const Args &args);
+      const int64 n, const OutputMap &map, const Args &args,
+      const std::vector<bool>& streamed);
 
   std::tuple<se::DeviceMemoryBase, int64> AllocateOutputBuffer(
       xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
-      const int64 n, const OutputMap &map, const Args &args);
+      const int64 n, const OutputMap &map, const Args &args,
+      const std::vector<bool>& streamed);
 
   std::tuple<se::DeviceMemoryBase, int64> RemapArgs(const xla::Shape &,
                                                     const int64,

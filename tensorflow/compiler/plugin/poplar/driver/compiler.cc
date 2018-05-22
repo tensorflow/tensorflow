@@ -119,11 +119,11 @@ static bool OkToStream(const Shape& shape) {
 class EntryVisitor : public FullVisitor {
  public:
   EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
-               uint64 num_parameters)
+               uint64 num_parameters, uint64 num_outputs)
       : FullVisitor(graph, resources),
         parameter_shapes(num_parameters),
         parameter_streamed(num_parameters),
-        output_streamed(num_parameters),
+        output_streamed(num_outputs),
         all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
@@ -205,8 +205,10 @@ class EntryVisitor : public FullVisitor {
         }
       }
 
-      poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
-      graph_.createHostRead(GetOutputCopyHandle(o), out, opt);
+      if (!output_streamed[o]) {
+        poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
+        graph_.createHostRead(GetOutputCopyHandle(o), out, opt);
+      }
     }
 
     if (inst->opcode() == HloOpcode::kParameter) {
@@ -222,6 +224,51 @@ class EntryVisitor : public FullVisitor {
 
     tensor_map.clear();
 
+    return Status::OK();
+  }
+
+  Status Postprocess(HloInstruction* inst) {
+    // After processing each instruction, check if its output can be streamed
+    // off the device, and arrange for a FIFO and Copy if it can be.
+    if (OkToStream(inst->shape())) {
+      const auto* root = inst->parent()->root_instruction();
+      auto num_streaming = FlattenedXlaShape(root->shape()).size() -
+          resources_.num_resource_variables;
+      if (root->opcode() == HloOpcode::kTuple) {
+        for (int i = 0; i < root->operand_count(); i++) {
+          if (root->operand(i) == inst) {
+            if (i < num_streaming) {
+              auto pair = FindTupleInputIndices(root, i);
+              const auto& outputs = FindInstructionOutputs(tensor_map, inst);
+              if (pair.second - pair.first == outputs.size()) {
+                for (int o = 0; o < outputs.size(); o++) {
+                  int64 index = pair.first + o;
+                  output_streamed[index] = true;
+
+                  HloComputation* comp = inst->parent();
+                  HloModule* mod = comp->parent();
+                  auto* layout = mod->mutable_host_entry_computation_layout();
+                  auto shapes = FlattenedXlaShape(layout->result_shape());
+
+                  poplar::Tensor out =
+                      ConvertFromDeviceLayout(shapes[index], outputs[o]);
+
+                  poplar::DataTransferOptions opt;
+                  opt.convertHalf = true;
+
+                  auto fifo = graph_.addDeviceToHostFIFO(
+                      GetOutputCopyHandle(index), out.elementType(),
+                      out.numElements(), opt);
+
+                  sequence.add(poplar::program::Copy(out, fifo));
+
+                }
+              }
+            }
+          }
+        }
+      }
+    }
     return Status::OK();
   }
 
@@ -339,7 +386,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::vector<const HloInstruction*> instruction_order;
   TF_ASSIGN_OR_RETURN(instruction_order, Scheduler::schedule(entry));
 
-  EntryVisitor visitor(graph, resources, entry->num_parameters());
+  uint64 num_inputs = entry->num_parameters();
+  uint64 num_outputs = CountShapes(entry->root_instruction()->shape());
+
+  EntryVisitor visitor(graph, resources, num_inputs, num_outputs);
   try {
     TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
   } catch (std::logic_error e) {
