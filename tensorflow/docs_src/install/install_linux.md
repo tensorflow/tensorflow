@@ -517,7 +517,7 @@ on your system:
   from source. To use the TensorFlow binaries, version 3.5 or higher is required.
   See the [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
   list of supported GPU cards.
-* [GPU drivers](http://nvidia.com/driver) that support your version of the CUDA
+* [GPU drivers](http://nvidia.com/drivers) that support your version of the CUDA
   Toolkit.
 * The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
   library provides advanced profiling support. To install this library,
