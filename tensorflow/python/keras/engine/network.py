@@ -146,14 +146,14 @@ class Network(base_layer.Layer):
           raise TypeError('When eager execution is enabled, '
                           'inputs must come from a call to '
                           '`tf.keras.Input` (called after '
-                          'tfe.enable_eager_execution()). '
+                          'tf.enable_eager_execution()). '
                           'Received invalid input: ' + str(tensor))
       for tensor in self.outputs:
         if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
           raise TypeError('When eager execution is enabled, '
                           'outputs must come from a call to '
                           'a layer (called after '
-                          'tfe.enable_eager_execution()). '
+                          'tf.enable_eager_execution()). '
                           'Received invalid output: ' + str(tensor))
     # Check for redundancy in inputs.
     if len(set(self.inputs)) != len(self.inputs):

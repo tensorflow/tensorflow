@@ -51,7 +51,7 @@ def random_batch(batch_size, data_format):
 
 def train_one_step(model, images, labels, optimizer):
 
-  with tfe.GradientTape() as tape:
+  with tf.GradientTape() as tape:
     logits = model(images, training=True)
     loss = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)

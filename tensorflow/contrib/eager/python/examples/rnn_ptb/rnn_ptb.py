@@ -304,7 +304,7 @@ def test_model(use_cudnn_rnn):
 
 
 def main(_):
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   if not FLAGS.data_path:
     raise ValueError("Must specify --data-path")
