@@ -28,8 +28,8 @@ print(x)
 ```
 
 Swift combines the flexibility of
-[Eager Execution](programmers_guide/eager) with the
-high performance of [Graphs and Sessions](programmers_guide/graphs).
+[Eager Execution](https://www.tensorflow.org/programmers_guide/eager) with the
+high performance of [Graphs and Sessions](https://www.tensorflow.org/programmers_guide/graphs).
 Behind the scenes, Swift analyzes your Tensor code and automatically builds
 graphs for you. Swift also catches type errors and shape mismatches before
 running your code, and has [Automatic Differentiation](https://en.wikipedia.org/wiki/Automatic_differentiation)
