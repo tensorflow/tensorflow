@@ -21,6 +21,7 @@ from __future__ import print_function
 import ast
 import collections
 import functools
+import itertools
 import json
 import os
 import re
@@ -906,6 +907,9 @@ class _FunctionPageInfo(object):
   def add_decorator(self, dec):
     self._decorators.append(dec)
 
+  def get_metadata_html(self):
+    return _Metadata(self.full_name).build_html()
+
 
 class _ClassPageInfo(object):
   """Collects docs for a class page.
@@ -1098,6 +1102,14 @@ class _ClassPageInfo(object):
   def classes(self):
     """Returns a list of `_LinkInfo` pointing to any nested classes."""
     return self._classes
+
+  def get_metadata_html(self):
+    meta_data = _Metadata(self.full_name)
+    for item in itertools.chain(self.classes, self.properties, self.methods,
+                                self.other_members):
+      meta_data.append(item)
+
+    return meta_data.build_html()
 
   def _add_class(self, short_name, full_name, obj, doc, url):
     """Adds a `_LinkInfo` for a nested class to `classes` list.
@@ -1329,6 +1341,16 @@ class _ModulePageInfo(object):
   def _add_other_member(self, short_name, full_name, obj, doc):
     self._other_members.append(
         _OtherMemberInfo(short_name, full_name, obj, doc))
+
+  def get_metadata_html(self):
+    meta_data = _Metadata(self.full_name)
+
+    # Objects with their own pages are not added to the matadata list for the
+    # module, the module only has a link to the object page. No docs.
+    for item in self.other_members:
+      meta_data.append(item)
+
+    return meta_data.build_html()
 
   def collect_docs_for_module(self, parser_config):
     """Collect information necessary specifically for a module's doc page.
@@ -1656,3 +1678,41 @@ def generate_global_index(library_name, index, reference_resolver):
 
   # TODO(markdaoust): use a _ModulePageInfo -> prety_docs.build_md_page()
   return '\n'.join(lines)
+
+
+class _Metadata(object):
+  """A class for building a page's Metadata block.
+
+  Attributes:
+    name: The name of the page being described by the Metadata block.
+  """
+
+  def __init__(self, name):
+    """Creates a Metadata builder.
+
+    Args:
+      name: The name of the page being described by the Metadata block.
+    """
+    self.name = name
+    self._content = []
+
+  def append(self, item):
+    """Adds an item from the page to the Metadata block.
+
+    Args:
+      item: The parsed page section to add.
+    """
+    self._content.append(item.short_name)
+
+  def build_html(self):
+    """Returns the Metadata block as an Html string."""
+    schema = 'http://developers.google.com/ReferenceObject'
+    parts = ['<div itemscope itemtype="%s">' % schema]
+
+    parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    for item in self._content:
+      parts.append('<meta itemprop="property" content="%s"/>' % item)
+
+    parts.extend(['</div>', ''])
+
+    return '\n'.join(parts)
