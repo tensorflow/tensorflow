@@ -1003,6 +1003,7 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
         "noasan",  # Times out due to size of test (b/73731462).
+        "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
 )
