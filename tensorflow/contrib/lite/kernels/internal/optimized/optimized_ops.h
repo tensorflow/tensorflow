@@ -2353,24 +2353,27 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
   const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
   const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  TFLITE_DCHECK_EQ(outer_size, 1);
-  int32 square_l2_norm = 0;
-  for (int i = 0; i < depth; i++) {
-    int32 diff = input_data[i] - input_zero_point;
-    square_l2_norm += diff * diff;
-  }
-  int32 inv_l2norm_multiplier;
-  int inv_l2norm_shift;
-  GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
-                                &inv_l2norm_shift);
+  for (int i = 0; i < outer_size; ++i) {
+    int32 square_l2_norm = 0;
+    for (int c = 0; c < depth; c++) {
+      int32 diff = input_data[c] - input_zero_point;
+      square_l2_norm += diff * diff;
+    }
+    int32 inv_l2norm_multiplier;
+    int inv_l2norm_shift;
+    GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
+                                  &inv_l2norm_shift);
 
-  for (int i = 0; i < depth; i++) {
-    int32 diff = input_data[i] - input_zero_point;
-    int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOne(
-        128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
-    int32 unclamped_output_val = 128 + rescaled_diff;
-    int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-    output_data[i] = static_cast<uint8>(output_val);
+    for (int c = 0; c < depth; c++) {
+      int32 diff = *input_data - input_zero_point;
+      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOne(
+          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
+      int32 unclamped_output_val = 128 + rescaled_diff;
+      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
+      *output_data = static_cast<uint8>(output_val);
+      ++input_data;
+      ++output_data;
+    }
   }
 }
 
