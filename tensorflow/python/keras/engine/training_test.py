@@ -1742,7 +1742,7 @@ class TestTrainingWithDatasetIterators(test.TestCase):
       # Test with validation split
       with self.assertRaisesRegexp(
           ValueError, '`validation_split` argument is not supported '
-          'when input `x` is a dataset iterator'):
+          'when input `x` is a dataset or a dataset iterator'):
         model.fit(iterator,
                   epochs=1, steps_per_epoch=2, verbose=0,
                   validation_split=0.5, validation_steps=2)
@@ -1751,7 +1751,7 @@ class TestTrainingWithDatasetIterators(test.TestCase):
       sample_weight = np.random.random((10,))
       with self.assertRaisesRegexp(
           ValueError, '`sample_weight` argument is not supported '
-          'when input `x` is a dataset iterator'):
+          'when input `x` is a dataset or a dataset iterator'):
         model.fit(
             iterator,
             epochs=1,
@@ -1760,10 +1760,6 @@ class TestTrainingWithDatasetIterators(test.TestCase):
             sample_weight=sample_weight)
 
       # Test invalid usage
-      with self.assertRaisesRegexp(ValueError,
-                                   'Instead, pass an `Iterator`'):
-        model.fit(dataset,
-                  epochs=1, steps_per_epoch=2, verbose=0)
       with self.assertRaisesRegexp(ValueError,
                                    'you should not specify a target'):
         model.fit(iterator, iterator,
@@ -1827,6 +1823,99 @@ class TestTrainingWithDatasetIterators(test.TestCase):
         self.assertRegexpMatches(
             str(mock_log.call_args),
             'dataset iterator ran out of data')
+
+
+class TestTrainingWithDataset(test.TestCase):
+
+  def test_calling_model_on_same_dataset(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      targets = np.zeros((10, 4), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+
+      # Call fit with validation data
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=dataset, validation_steps=2)
+      # Finalize the graph to make sure new ops aren't added when calling on the
+      # same dataset
+      ops.get_default_graph().finalize()
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=dataset, validation_steps=2)
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_training_and_eval_methods_on_dataset(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      targets = np.zeros((10, 4), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
+      model.evaluate(dataset, steps=2, verbose=1)
+      model.predict(dataset, steps=2)
+      model.train_on_batch(dataset)
+      model.predict_on_batch(dataset)
+
+      # Test with validation data
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=dataset, validation_steps=2)
+
+      # Test with validation split
+      with self.assertRaisesRegexp(
+          ValueError, '`validation_split` argument is not supported '
+          'when input `x` is a dataset or a dataset iterator'):
+        model.fit(dataset,
+                  epochs=1, steps_per_epoch=2, verbose=0,
+                  validation_split=0.5, validation_steps=2)
+
+      # Test with sample weight.
+      sample_weight = np.random.random((10,))
+      with self.assertRaisesRegexp(
+          ValueError, '`sample_weight` argument is not supported '
+          'when input `x` is a dataset or a dataset iterator'):
+        model.fit(
+            dataset,
+            epochs=1,
+            steps_per_epoch=2,
+            verbose=0,
+            sample_weight=sample_weight)
+
+      # Test invalid usage
+      with self.assertRaisesRegexp(ValueError,
+                                   'you should not specify a target'):
+        model.fit(dataset, dataset,
+                  epochs=1, steps_per_epoch=2, verbose=0)
+
+      with self.assertRaisesRegexp(
+          ValueError, 'you should specify the `steps_per_epoch` argument'):
+        model.fit(dataset, epochs=1, verbose=0)
+      with self.assertRaisesRegexp(ValueError,
+                                   'you should specify the `steps` argument'):
+        model.evaluate(dataset, verbose=0)
+      with self.assertRaisesRegexp(ValueError,
+                                   'you should specify the `steps` argument'):
+        model.predict(dataset, verbose=0)
 
 
 if __name__ == '__main__':

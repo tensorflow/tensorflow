@@ -632,19 +632,20 @@ def validate_iterator_input(x, y, sample_weight, validation_split=None):
         provided by user.
   """
   if y is not None:
-    raise ValueError('You passed a dataset iterator (%s) as input `x` to '
-                     'your model. In that case, you should not specify '
-                     'a target (`y`) argument, since the dataset iterator '
-                     'generates both input data and target data. '
+    raise ValueError('You passed a dataset or dataset iterator (%s) as '
+                     'input `x` to your model. In that case, you should '
+                     'not specify a target (`y`) argument, since the dataset '
+                     'or dataset iterator generates both input data and '
+                     'target data. '
                      'Received: %s' % (x, y))
   if sample_weight is not None:
-    raise ValueError('`sample_weight` argument is not supported when input'
-                     ' `x` is a dataset iterator. '
+    raise ValueError('`sample_weight` argument is not supported when input '
+                     '`x` is a dataset or a dataset iterator. '
                      'Received: x=%s, sample_weight=%s' % (x, sample_weight))
   if validation_split is not None and validation_split != 0.0:
     raise ValueError(
         '`validation_split` argument is not supported when '
-        'input `x` is a dataset iterator. '
+        'input `x` is a dataset or a dataset iterator. '
         'Received: x=%s, validation_split=%f' % (x, validation_split))
 
 
