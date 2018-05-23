@@ -182,8 +182,6 @@ DynamicSliceTest.Int64R3Wrap POPLAR
 DynamicSliceTest.UInt64R3Wrap POPLAR
 DynamicUpdateSliceTest.R3ContiguousMultipleWrapping POPLAR
 
-ReduceWindowTest.NonstandardReduceFunction POPLAR // Don't support non-standard reductions
-
 LocalClientExecuteTest.AddZeroElementVectors POPLAR // Doesn't cope with aliasing
 LocalClientExecuteTest.TupleResult POPLAR
 LocalClientExecuteTest.NestedTupleResult POPLAR
@@ -222,10 +220,6 @@ ArrayElementwiseOpTest.MaxF32s POPLAR
 MatOpsSimpleTest_F16F32.ExpTwoByTwoValues POPLAR // Precision error
 
 DotOperationTest.ZeroElementVectorDot POPLAR // Zero sized matmul
-DotOperationTest_F16F32F64.Dot_3x2_2x0 POPLAR
-DotOperationTest_F16F32F64.Dot_0x2_2x0 POPLAR
-DotOperationTest_F16F32F64.Dot_0x2_2x3 POPLAR
-DotOperationTest_F16F32F64.Dot_2x0_0x2 POPLAR
 DotOperationTest_F16F32F64CF64.ZeroElementVectorDot POPLAR
 
 SelectAndScatterTest.R2F32Tie POPLAR // Is this even valid?
@@ -241,6 +235,9 @@ GatherOperationTest POPLAR // don't support Gather
 GatherClientLibraryTest POPLAR
 
 TestUtilsTest.UnusedParam POPLAR // Decide what to do with strange reductions
+HloTestBase.ReduceWindowIdentity POPLAR
+HloTestBase.ReduceWindowS32 POPLAR
+ReduceWindowTest.NonstandardReduceFunction POPLAR
 
 DotOperationTest.DotOfGatherOptimizationWithConstLHSReverseMM POPLAR // Dot contracting dims
 DotOperationTest.DotOfGatherOptimizationWithConstRHSReverseMM POPLAR
