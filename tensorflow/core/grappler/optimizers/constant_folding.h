@@ -97,10 +97,10 @@ class ConstantFolding : public GraphOptimizer {
                                const GraphProperties& properties) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
-  Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
-                       bool use_shape_info);
-  Status SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
-                      GraphProperties* properties, bool use_shape_info);
+  Status SimplifyGraph(bool use_shape_info, GraphDef* optimized_graph,
+                       GraphProperties* properties);
+  Status SimplifyNode(bool use_shape_info, NodeDef* node,
+                      GraphDef* optimized_graph, GraphProperties* properties);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
@@ -134,10 +134,15 @@ class ConstantFolding : public GraphOptimizer {
   // Simplifies arithmetic operations with ones or zeros. Returns the status,
   // and updates the success input argument that denotes if any simplification
   // was applied.
-  Status SimplifyArithmeticOperations(GraphDef* optimized_graph,
-                                      GraphProperties* properties,
-                                      NodeDef* node, bool use_shape_info,
+  Status SimplifyArithmeticOperations(const GraphProperties& properties,
+                                      bool use_shape_info,
+                                      GraphDef* optimized_graph, NodeDef* node,
                                       bool* success);
+
+  // Simplifies a Reshape operation to an Identity operation if the input node
+  // to the operation is a constant.
+  bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
+                       NodeDef* node);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
