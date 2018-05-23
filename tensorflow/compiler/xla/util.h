@@ -219,6 +219,12 @@ Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status InvalidArgumentV(const char* format, va_list args);
 
 template <typename... Args>
+Status InvalidArgumentStrCat(Args&&... concat) {
+  return InvalidArgument(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
   return Unimplemented(
       "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
