@@ -73,7 +73,9 @@ class XlaDeviceDummyOp : public OpKernel {
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
-      ResourceHandleOp<Var>);
+      ResourceHandleOp<Var>);                                                  \
+  REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE),               \
+                          ControlTriggerOp);
 
 }  // namespace tensorflow
 
