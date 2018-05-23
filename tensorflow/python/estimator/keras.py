@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+import re
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import export as export_lib
@@ -42,9 +42,11 @@ from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
+
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
@@ -136,8 +138,9 @@ def _in_place_subclassed_model_reset(model):
   To "instantiate" an identical model in a new TF graph, we reuse the original
   model object, but we clear its state.
 
-  After calling this function on a model intance, you can use the model instance
-  as if it were a model clone (in particular you can use it in a new graph).
+  After calling this function on a model instance, you can use the model
+  instance as if it were a model clone (in particular you can use it in a new
+  graph).
 
   This method clears the state of the input model. It is thus destructive.
   However the original state can be restored fully by calling
@@ -220,7 +223,6 @@ def _in_place_subclassed_model_reset(model):
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
   model._original_attributes_cache = attributes_cache
-
   # Reset built state
   model.built = False
   model.inputs = None
@@ -340,8 +342,19 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
     """model_fn for keras Estimator."""
     model = _clone_and_build_model(mode, keras_model, custom_objects, features,
                                    labels)
+    model_output_names = []
+    # We need to make sure that the output names of the last layer in the model
+    # is the same for each of the cloned models. This is required for mirrored
+    # strategy when we call regroup.
+    if distribute_lib.has_distribution_strategy():
+      for name in model.output_names:
+        name = re.compile(r'_\d$').sub('', name)
+        model_output_names.append(name)
+    else:
+      model_output_names = model.output_names
+
     # Get inputs to EstimatorSpec
-    predictions = dict(zip(model.output_names, model.outputs))
+    predictions = dict(zip(model_output_names, model.outputs))
 
     loss = None
     train_op = None

@@ -547,3 +547,21 @@ cuda_py_test(
         "no_pip",
     ],
 )
+
+cuda_py_test(
+    name = "keras_test",
+    srcs = ["keras_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:keras",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/keras",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "notsan",
+    ],
+)
