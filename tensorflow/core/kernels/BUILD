@@ -5171,7 +5171,6 @@ filegroup(
             "partitioned_function_ops.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
-            "scatter_nd_op*",
             "mutex_ops.*",
             "batch_kernels.*",
             "regex_replace_op.cc",
