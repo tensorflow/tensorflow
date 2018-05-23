@@ -2322,6 +2322,9 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 2,
+    tags = [
+        "nogpu",  #  Flaky: b/80127739
+    ],
 )
 
 cuda_py_test(
