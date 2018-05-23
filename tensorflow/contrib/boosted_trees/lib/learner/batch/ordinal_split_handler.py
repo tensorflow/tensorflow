@@ -78,6 +78,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+
 _BIAS_FEATURE_ID = -1
 # Pattern to remove all non alpha numeric from a string.
 _PATTERN = re.compile(r"[\W_]+")
@@ -409,10 +410,14 @@ def _specialize_sparse_split(is_multi_dimentional):
         gen_quantile_ops.quantile_accumulator_get_buckets(
             quantile_accumulator_handles=[quantile_accumulator_handle],
             stamp_token=stamp_token))
+    # quantile_accumulator_get_buckets returns a list of results per handle that
+    # we pass to it. In this case we're getting results just for one resource.
+    are_splits_ready = are_splits_ready[0]
+    buckets = buckets[0]
 
     # After we receive the boundaries from previous iteration we can flush
     # the quantile accumulator.
-    with ops.control_dependencies([buckets[0]]):
+    with ops.control_dependencies([buckets]):
       flush_quantiles = gen_quantile_ops.quantile_accumulator_flush(
           quantile_accumulator_handle=quantile_accumulator_handle,
           stamp_token=stamp_token,
@@ -433,7 +438,7 @@ def _specialize_sparse_split(is_multi_dimentional):
     partition_ids, gains, split_infos = (
         split_handler_ops.build_sparse_inequality_splits(
             num_minibatches=num_minibatches,
-            bucket_boundaries=buckets[0],
+            bucket_boundaries=buckets,
             partition_ids=partition_ids,
             bucket_ids=bucket_ids,
             gradients=gradients,
