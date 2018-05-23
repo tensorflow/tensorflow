@@ -1746,10 +1746,19 @@ class WarmStartSettings(
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    vars_to_warm_start: [Optional] A regular expression that captures which
-      variables to warm-start (see tf.get_collection).  Defaults to `'.*'`,
-      which warm-starts all variables.  If `None` is explicitly given, only
-      variables specified in `var_name_to_vocab_info` will be warm-started.
+    vars_to_warm_start: [Optional] One of the following:
+
+      - A regular expression (string) that captures which variables to
+        warm-start (see tf.get_collection).  This expression will only consider
+        variables in the TRAINABLE_VARIABLES collection.
+      - A list of Variables to warm-start.
+      - A list of strings, each representing a full variable name to warm-start.
+      - `None`, in which case only variables specified in
+        `var_name_to_vocab_info` will be warm-started.
+
+      Defaults to `'.*'`, which warm-starts all variables in the
+      TRAINABLE_VARIABLES collection.  Note that this excludes variables such as
+      accumulators and moving statistics from batch norm.
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
       VocabInfo. The variable names should be "full" variables, not the names
       of the partitions.  If not explicitly provided, the variable is assumed to
