@@ -1,3 +1,5 @@
+load("//tools/build_defs/android:rules.bzl", "android_binary")
+
 package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
