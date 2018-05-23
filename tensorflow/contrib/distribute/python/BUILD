@@ -445,10 +445,29 @@ py_library(
     srcs = ["cross_tower_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":values",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "cross_tower_utils_test",
+    srcs = ["cross_tower_utils_test.py"],
+    additional_deps = [
+        ":combinations",
+        ":cross_tower_utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "no_pip",
     ],
 )
 
