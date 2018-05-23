@@ -1804,7 +1804,7 @@ class MklDnnData {
   }
 };
 
-/// Base class for operations with reuse of  primitives
+/// Base class for operations with reuse of primitives
 ///
 class MklPrimitive {
  public:
