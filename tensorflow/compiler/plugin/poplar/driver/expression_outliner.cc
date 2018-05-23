@@ -34,26 +34,21 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
-    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
-    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
-    case HloOpcode::kReal:
-    case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kTanh:
       // Binary
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
-    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
@@ -78,8 +73,15 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
     case HloOpcode::kClamp:
       return true;
     // Ops not supported in Expressions
+    // Unary
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kImag:
+    case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
+    // Binary
+    case HloOpcode::kComplex:
       return false;
     default:
       return false;
@@ -146,7 +148,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
           const bool shapes_match =
               ShapeUtil::Equal(pred->shape(), in0->shape()) &&
               ShapeUtil::Equal(pred->shape(), in1->shape());
-          if (!pred_scalar || !shapes_match) {
+          if (!(pred_scalar || shapes_match)) {
             add_op = false;
           }
         }
