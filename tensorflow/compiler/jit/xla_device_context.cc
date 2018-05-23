@@ -60,10 +60,11 @@ Status XlaTransferManager::TransferLiteralToDevice(
     const Tensor& host_tensor, Tensor* device_tensor) const {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(HostTensorToLiteral(host_tensor, &literal));
-  VLOG(1) << "Transfer to device as literal: " << literal.ToString();
 
   const xla::ShapedBuffer& shaped_buffer =
       XlaTensor::FromTensor(device_tensor)->shaped_buffer();
+  VLOG(1) << "Transfer to device as literal: " << literal.ToString() << " "
+          << shaped_buffer.ToString();
   return transfer_manager_->TransferLiteralToDevice(stream_->parent(), literal,
                                                     shaped_buffer);
 }
@@ -76,7 +77,8 @@ Status XlaTransferManager::TransferLiteralFromDevice(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
                       transfer_manager_->TransferLiteralFromDevice(
                           stream_->parent(), shaped_buffer));
-  VLOG(1) << "Transfer from device as literal: " << literal->ToString();
+  VLOG(1) << "Transfer from device as literal: " << literal->ToString() << " "
+          << shaped_buffer.ToString();
   Tensor tensor;
   TF_RETURN_IF_ERROR(
       LiteralToHostTensor(*literal, host_tensor->dtype(), &tensor));
@@ -98,7 +100,9 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
             << " "
             << reinterpret_cast<const void*>(
                    device_tensor->tensor_data().data())
-            << " " << cpu_tensor->NumElements();
+            << " " << cpu_tensor->NumElements() << " "
+            << cpu_tensor->shape().DebugString() << " "
+            << device_tensor->shape().DebugString();
 
     void* src_ptr = const_cast<void*>(DMAHelper::base(cpu_tensor));
     const int64 total_bytes = cpu_tensor->TotalBytes();
@@ -165,7 +169,9 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                    device_tensor->tensor_data().data())
             << " "
             << reinterpret_cast<const void*>(cpu_tensor->tensor_data().data())
-            << device_tensor->NumElements();
+            << " " << device_tensor->NumElements() << " "
+            << cpu_tensor->shape().DebugString() << " "
+            << device_tensor->shape().DebugString();
 
     const int64 total_bytes = cpu_tensor->TotalBytes();
     se::DeviceMemoryBase dev_src_ptr =
