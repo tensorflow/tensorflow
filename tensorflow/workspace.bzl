@@ -657,11 +657,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "rocprim_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/v0.3.0.zip",
-          "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/v0.3.0.zip",
+          "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/563461f.zip",
+          "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/563461f.zip",
       ],
-      sha256 = "74d729f6e3d1a9c438ec8dad1a93e8e8b8e68388d4700ab19c3293ec5f397356",
-      strip_prefix = "rocPRIM-0.3.0",
+      sha256 = "64d340057649d7643cb6ae158b168dd6d48d2b1dd77297fbdfcb6249528e0707",
+      strip_prefix = "rocPRIM-563461f3def38e30bcc53d9bf37b2e12f494ab99",
       build_file = clean_dep("//third_party:rocprim.BUILD"),
   )
 
