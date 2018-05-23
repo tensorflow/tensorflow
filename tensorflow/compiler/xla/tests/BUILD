@@ -619,6 +619,7 @@ xla_test(
 
 xla_test(
     name = "exhaustive_f32_elementwise_op_test",
+    size = "enormous",
     srcs = ["exhaustive_f32_elementwise_op_test.cc"],
     backends = [
         "cpu",
@@ -626,7 +627,6 @@ xla_test(
     ],
     shard_count = 48,
     tags = [
-        "enormous",
         "manual",
         "notap",
     ],
