@@ -59,7 +59,8 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"tensorflow::strings::internal::CatPieces|"
                            r"tensorflow::errors::Internal|"
                            r"tensorflow::Tensor::CopyFromInternal|"
-                           r"tensorflow::kernel_factory::OpKernelRegistrar::InitInternal|"
+                           r"tensorflow::kernel_factory::"
+                           r"OpKernelRegistrar::InitInternal|"
                            r"tensorflow::io::internal::JoinPathImpl")
 
 # Include if matched after exclude
