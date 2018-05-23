@@ -18,11 +18,14 @@ Visualization and inspection:
 @@dot_graph_from_checkpoint
 @@object_metadata
 
-Creating and managing dependencies:
+Managing dependencies:
 @@Checkpointable
 @@CheckpointableObjectGraph
 @@NoDependency
 @@split_dependency
+
+Checkpointable data structures:
+@@List
 @@UniqueNameTracker
 """
 
@@ -36,6 +39,7 @@ from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkp
 from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import CheckpointableObjectGraph
 from tensorflow.python.training.checkpointable.base import Checkpointable
 from tensorflow.python.training.checkpointable.base import NoDependency
+from tensorflow.python.training.checkpointable.data_structures import List
 from tensorflow.python.training.checkpointable.util import object_metadata
 
 from tensorflow.python.util.all_util import remove_undocumented

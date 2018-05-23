@@ -152,7 +152,7 @@ class RNNColorbot(tf.keras.Model):
     self.label_dimension = label_dimension
     self.keep_prob = keep_prob
 
-    self.cells = self._add_cells(
+    self.cells = tf.contrib.checkpoint.List(
         [tf.nn.rnn_cell.BasicLSTMCell(size) for size in rnn_cell_sizes])
     self.relu = layers.Dense(
         label_dimension, activation=tf.nn.relu, name="relu")
@@ -203,14 +203,6 @@ class RNNColorbot(tf.keras.Model):
     indices = tf.stack([sequence_length - 1, batch_range], axis=1)
     hidden_states = tf.gather_nd(chars, indices)
     return self.relu(hidden_states)
-
-  def _add_cells(self, cells):
-    # "Magic" required for keras.Model classes to track all the variables in
-    # a list of layers.Layer objects.
-    # TODO(ashankar): Figure out API so user code doesn't have to do this.
-    for i, c in enumerate(cells):
-      setattr(self, "cell-%d" % i, c)
-    return cells
 
 
 def loss(labels, predictions):
