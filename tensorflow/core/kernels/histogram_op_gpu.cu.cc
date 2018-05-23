@@ -13,12 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#if GOOGLE_CUDA
 #include "external/cub_archive/cub/device/device_histogram.cuh"
+#elif TENSORFLOW_USE_ROCM
+#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,7 +30,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/histogram_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/util/cuda_kernel_helper.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/util/rocm_kernel_helper.h"
+#endif
 
 namespace tensorflow {
 
