@@ -4408,12 +4408,10 @@ struct ConvRow3x3FilterDepth8<8, 1, 1> {
   }
 };
 
-inline bool Fast3x3FilterKernelSupported(const Dims<4>& input_dims,
-                                         const Dims<4>& filter_dims,
-                                         int stride_width, int stride_height,
-                                         int pad_width, int pad_height,
-                                         int depth_multiplier,
-                                         const Dims<4>& output_dims) {
+inline bool Fast3x3FilterKernelSupported(
+    const Dims<4>& input_dims, const Dims<4>& filter_dims, int stride_width,
+    int stride_height, int pad_width, int pad_height, int depth_multiplier,
+    const Dims<4>& output_dims, int output_shift) {
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int input_depth = ArraySize(input_dims, 0);
@@ -4422,12 +4420,12 @@ inline bool Fast3x3FilterKernelSupported(const Dims<4>& input_dims,
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
 
-  bool supported = filter_width == 3 && filter_height == 3 &&
-                   depth_multiplier == 1 &&
-                   (stride_width == 1 || stride_width == 2) &&
-                   (stride_height == 1 || stride_height == 2) &&
-                   (stride_width == stride_height) && pad_width == 0 &&
-                   pad_height == 0 && (input_depth % 8) == 0;
+  bool supported =
+      filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
+      (stride_width == 1 || stride_width == 2) &&
+      (stride_height == 1 || stride_height == 2) &&
+      (stride_width == stride_height) && pad_width == 0 && pad_height == 0 &&
+      (input_depth % 8) == 0 && (output_shift > 0);
 
   if (!supported) {
     return false;
