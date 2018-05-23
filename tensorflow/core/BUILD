@@ -111,8 +111,6 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
-    "tf_additional_framework_hdrs",
-    "tf_additional_framework_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
@@ -2003,8 +2001,6 @@ cc_library(
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
             "platform/abi.cc",
-            "platform/variant_coding.cc",
-            "platform/**/variant_cord_coding.cc",
         ],
     ) + tf_additional_lib_srcs(
         exclude = [
@@ -2017,8 +2013,6 @@ cc_library(
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
             "platform/abi.cc",
-            "platform/variant_coding.cc",
-            "platform/**/variant_cord_coding.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
@@ -2268,7 +2262,6 @@ cc_library(
 )
 
 FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
-    "platform/variant_coding.h",
     "graph/edgeset.h",
     "graph/graph.h",
     "graph/graph_def_builder.h",
@@ -2309,14 +2302,13 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
     "framework/variant.h",
-    "platform/variant_coding.h",
     "util/command_line_flags.h",
     "util/env_var.h",
     "util/equal_graph_def.h",
     "util/presized_cuckoo_map.h",
     "util/tensor_slice_set.h",
     "util/tensor_slice_util.h",
-] + tf_additional_framework_hdrs()
+]
 
 tf_cuda_library(
     name = "framework_internal",
@@ -2358,9 +2350,7 @@ cc_header_only_library(
 
 tf_cuda_library(
     name = "framework_internal_impl",
-    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + [
-        "platform/variant_coding.cc",
-    ] + glob(
+    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + glob(
         [
             "example/**/*.cc",
             "framework/**/*.cc",
@@ -2394,7 +2384,7 @@ tf_cuda_library(
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + tf_additional_framework_srcs(),
+    }),
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
