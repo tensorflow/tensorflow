@@ -25,8 +25,6 @@ using namespace poplar;
       out[0] = v;                               \
       return true;                              \
     }                                           \
-                                                \
-    int getCycleEstimate() const { return 1; }  \
   };                                            \
                                                 \
   template class NAME<float>;                   \
@@ -57,8 +55,6 @@ REDUCTION_ELEMENTWISE(ReductionMul, 1.0, v* a[i])
       out[0] = v;                                      \
       return out[0];                                   \
     }                                                  \
-                                                       \
-    int getCycleEstimate() const { return 1; }         \
   };                                                   \
                                                        \
   template class NAME<bool>;
@@ -87,8 +83,6 @@ LOGICAL_REDUCTION_ELEMENTWISE(ReductionOr, false, v || a[i])
       }                                           \
       return true;                                \
     }                                             \
-                                                  \
-    int getCycleEstimate() const { return 1; }    \
   };                                              \
                                                   \
   template class NAME<float>;                     \

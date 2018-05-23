@@ -329,6 +329,7 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
                                {{"a", w}, {"out", out_flat.slice(i, i + 1)}});
       graph.setTileMapping(v, (i / graph.getTarget().getNumWorkerContexts()) %
                                   graph.getTarget().getNumTiles());
+      graph.setCycleEstimate(v, 1);
 
       // Advance the window
       for (int d = dim_count - 1; d >= 0; d--) {
@@ -584,6 +585,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
                              {{"a", w_in}, {"b", s}, {"out", w_par}});
     TF_RETURN_IF_ERROR(SetVertexField(graph, v["initval"], identity_literal));
     graph.setTileMapping(v, tile_with_max_elements);
+    graph.setCycleEstimate(v, 1);
 
     // Advance the window
     for (int d = dim_count - 1; d >= 0; d--) {
