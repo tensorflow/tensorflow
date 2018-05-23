@@ -136,6 +136,23 @@ class EagerTest(XLATestCase):
       grads = backprop.implicit_grad(f)()
     self.assertEqual(2., grads[0][0].numpy())
 
+  def testMultipleVariableReads(self):
+    # TODO(b/79715516): Currently, whenever we read a variable by going
+    # through XLA, we create a copy. This leads large memory usage.
+    self.skipTest('When variable is read through XLA, a copy is created.')
+
+    with self.test_scope():
+      # Create 128MiB variables
+      var = resource_variable_ops.ResourceVariable(
+          array_ops.ones([32, 1024, 1024]))
+
+      # Read the same variable 100 times. If the underlying tensor
+      # is not copied, this is a trivial operation. If it is copied,
+      # this will eat over 13GB and OOM.
+      values = []
+      for _ in range(100):
+        values.append(var.value())
+
 
 class EagerFunctionTest(XLATestCase):
 
