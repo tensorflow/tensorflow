@@ -1804,7 +1804,7 @@ class MklDnnData {
   }
 };
 
-/// Base class for operations with reuse of  primitives
+/// Base class for operations with reuse of primitives
 ///
 class MklPrimitive {
  public:
@@ -1890,12 +1890,12 @@ class FactoryKeyCreator {
 static inline memory::format get_desired_format(int channel) {
     memory::format fmt_desired = memory::format::any;
 
-    if (port::TestCPUFeature(port::CPUFeature::AVX512F) &&
-      (channel % 16) == 0) {
-        fmt_desired = memory::format::nChw16c;
-    } else if (port::TestCPUFeature(port::CPUFeature::AVX2) &&
-      (channel % 8) == 0) {
-        fmt_desired = memory::format::nChw8c;
+    if (port::TestCPUFeature(port::CPUFeature::AVX512F)
+        && (channel % 16) == 0) {
+      fmt_desired = memory::format::nChw16c;
+    } else if (port::TestCPUFeature(port::CPUFeature::AVX2)
+        && (channel % 8) == 0) {
+      fmt_desired = memory::format::nChw8c;
     } else {
         fmt_desired = memory::format::nchw;
     }
