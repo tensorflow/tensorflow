@@ -2035,103 +2035,9 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     }
   }
 
-  // Switch(x, x) will always feed false to its false branch and true to
-  // its true branch. By rewriting the graph a bit, we can propagate these
-  // constants down the two output branches, and just use control dependencies
-  // to trigger the selected one at runtime. For example,
-  //
-  //     +------+
-  // x-->|Switch|-->a  (in practice there may be multiple consumers of each
-  // x-->|      |-->b   output branch.)
-  //     +------+
-  //
-  // Is rewritten as
-  //
-  //     +------+
-  // x-->|Switch|-->Identity--^>Const(false)-->a
-  // x-->|      |-->Identity--^>Const(true)-->b
-  //     +------+
-  if (node->op() == "Switch" && node->input(0) == node->input(1) &&
-      !OptimizedNodeExists(*node, "_const_false") &&
-      !OptimizedNodeExists(*node, "_const_true")) {
-    bool already_optimized = true;
-    // If the optimization was already applied, the switch would have exactly
-    // one Identity node consuming each of its outputs, each without any
-    // non-control outputs.
-    auto fanouts = node_map_->GetOutputs(node->name());
-    if (fanouts.size() == 2) {
-      for (NodeDef* fanout : fanouts) {
-        if (!IsIdentity(*fanout) ||
-            NumNonControlOutputs(*fanout, *node_map_) > 0) {
-          already_optimized = false;
-          break;
-        }
-      }
-    }
-    Tensor false_t(DT_BOOL, TensorShape({}));
-    Tensor true_t(DT_BOOL, TensorShape({}));
-    // Make sure we don't proceed if this switch node was already optimized.
-    if (!already_optimized && SetTensorValue(DT_BOOL, true, &true_t).ok() &&
-        SetTensorValue(DT_BOOL, false, &false_t).ok()) {
-      // Copy the set of consumers of the switch as they will be manipulated
-      // below.
-      const std::set<NodeDef*>& consumer_set =
-          node_map_->GetOutputs(node->name());
-      std::vector<NodeDef*> consumers(consumer_set.begin(), consumer_set.end());
-      std::sort(consumers.begin(), consumers.end(),
-                [](const NodeDef* n1, const NodeDef* n2) {
-                  return n1->name() < n2->name();
-                });
-      // Create constant false & true nodes.
-      NodeDef* false_node = optimized_graph->add_node();
-      false_node->set_name(OptimizedNodeName(*node, "_const_false"));
-      if (!CreateNodeDef(false_node->name(), TensorValue(&false_t), false_node)
-               .ok()) {
-        return Status::OK();
-      }
-      false_node->set_device(node->device());
-
-      NodeDef* true_node = optimized_graph->add_node();
-      true_node->set_name(OptimizedNodeName(*node, "_const_true"));
-      if (!CreateNodeDef(true_node->name(), TensorValue(&true_t), true_node)
-               .ok()) {
-        return Status::OK();
-      }
-      true_node->set_device(node->device());
-
-      // Add controls from the switch ports to the constants, and connect the
-      // constants to the original switch outputs.
-      const string false_port = node->name();
-      const string true_port = strings::StrCat(node->name(), ":1");
-      const string false_ctrl_dep =
-          AddControlDependency(false_port, optimized_graph, node_map_.get());
-      false_node->add_input(false_ctrl_dep);
-      const string true_ctrl_dep =
-          AddControlDependency(true_port, optimized_graph, node_map_.get());
-      true_node->add_input(true_ctrl_dep);
-
-      node_map_->AddNode(false_node->name(), false_node);
-      node_map_->AddNode(true_node->name(), true_node);
-      node_map_->AddOutput(NodeName(false_ctrl_dep), false_node->name());
-      node_map_->AddOutput(NodeName(true_ctrl_dep), true_node->name());
-
-      for (NodeDef* consumer : consumers) {
-        for (int i = 0; i < consumer->input_size(); ++i) {
-          const string& input = consumer->input(i);
-          if (input == false_port) {
-            consumer->set_input(i, false_node->name());
-            node_map_->UpdateInput(consumer->name(), false_port,
-                                   false_node->name());
-          } else if (input == true_port) {
-            consumer->set_input(i, true_node->name());
-            node_map_->UpdateInput(consumer->name(), true_port,
-                                   true_node->name());
-          }
-        }
-      }
-      graph_modified_ = true;
-      return Status::OK();
-    }
+  if (SimplifySwitch(optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
   }
 
   if (SimplifyReduction(*properties, node)) {
@@ -2186,6 +2092,91 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   }
 
   return Status::OK();
+}
+
+bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
+  if (node->op() == "Switch" && node->input(0) == node->input(1) &&
+      !OptimizedNodeExists(*node, "_const_false") &&
+      !OptimizedNodeExists(*node, "_const_true")) {
+    bool already_optimized = true;
+    // If the optimization was already applied, the switch would have exactly
+    // one Identity node consuming each of its outputs, each without any
+    // non-control outputs.
+    auto fanouts = node_map_->GetOutputs(node->name());
+    if (fanouts.size() == 2) {
+      for (NodeDef* fanout : fanouts) {
+        if (!IsIdentity(*fanout) ||
+            NumNonControlOutputs(*fanout, *node_map_) > 0) {
+          already_optimized = false;
+          break;
+        }
+      }
+    }
+    Tensor false_t(DT_BOOL, TensorShape({}));
+    Tensor true_t(DT_BOOL, TensorShape({}));
+    // Make sure we don't proceed if this switch node was already optimized.
+    if (!already_optimized && SetTensorValue(DT_BOOL, true, &true_t).ok() &&
+        SetTensorValue(DT_BOOL, false, &false_t).ok()) {
+      // Copy the set of consumers of the switch as they will be manipulated
+      // below.
+      const std::set<NodeDef*>& consumer_set =
+          node_map_->GetOutputs(node->name());
+      std::vector<NodeDef*> consumers(consumer_set.begin(), consumer_set.end());
+      std::sort(consumers.begin(), consumers.end(),
+                [](const NodeDef* n1, const NodeDef* n2) {
+                  return n1->name() < n2->name();
+                });
+      // Create constant false & true nodes.
+      NodeDef* false_node = optimized_graph->add_node();
+      false_node->set_name(OptimizedNodeName(*node, "_const_false"));
+      if (!CreateNodeDef(false_node->name(), TensorValue(&false_t), false_node)
+               .ok()) {
+        return false;
+      }
+      false_node->set_device(node->device());
+
+      NodeDef* true_node = optimized_graph->add_node();
+      true_node->set_name(OptimizedNodeName(*node, "_const_true"));
+      if (!CreateNodeDef(true_node->name(), TensorValue(&true_t), true_node)
+               .ok()) {
+        return false;
+      }
+      true_node->set_device(node->device());
+
+      // Add controls from the switch ports to the constants, and connect the
+      // constants to the original switch outputs.
+      const string false_port = node->name();
+      const string true_port = strings::StrCat(node->name(), ":1");
+      const string false_ctrl_dep =
+          AddControlDependency(false_port, optimized_graph, node_map_.get());
+      false_node->add_input(false_ctrl_dep);
+      const string true_ctrl_dep =
+          AddControlDependency(true_port, optimized_graph, node_map_.get());
+      true_node->add_input(true_ctrl_dep);
+
+      node_map_->AddNode(false_node->name(), false_node);
+      node_map_->AddNode(true_node->name(), true_node);
+      node_map_->AddOutput(NodeName(false_ctrl_dep), false_node->name());
+      node_map_->AddOutput(NodeName(true_ctrl_dep), true_node->name());
+
+      for (NodeDef* consumer : consumers) {
+        for (int i = 0; i < consumer->input_size(); ++i) {
+          const string& input = consumer->input(i);
+          if (input == false_port) {
+            consumer->set_input(i, false_node->name());
+            node_map_->UpdateInput(consumer->name(), false_port,
+                                   false_node->name());
+          } else if (input == true_port) {
+            consumer->set_input(i, true_node->name());
+            node_map_->UpdateInput(consumer->name(), true_port,
+                                   true_node->name());
+          }
+        }
+      }
+      return true;
+    }
+  }
+  return false;
 }
 
 bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,

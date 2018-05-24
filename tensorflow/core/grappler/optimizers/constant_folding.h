@@ -146,6 +146,24 @@ class ConstantFolding : public GraphOptimizer {
   // Simplifies a Reduction operation to an Identity operation if applicable.
   bool SimplifyReduction(const GraphProperties& properties, NodeDef* node);
 
+  // Switch(x, x) will always feed false to its false branch and true to
+  // its true branch. By rewriting the graph a bit, we can propagate these
+  // constants down the two output branches, and just use control dependencies
+  // to trigger the selected one at runtime. For example,
+  //
+  //     +------+
+  // x-->|Switch|-->a  (in practice there may be multiple consumers of each
+  // x-->|      |-->b   output branch.)
+  //     +------+
+  //
+  // Is rewritten as
+  //
+  //     +------+
+  // x-->|Switch|-->Identity--^>Const(false)-->a
+  // x-->|      |-->Identity--^>Const(true)-->b
+  //     +------+
+  bool SimplifySwitch(GraphDef* optimized_graph, NodeDef* node);
+
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
