@@ -707,7 +707,7 @@ class MatrixMatrixBlockPanelEmitter {
                      llvm::Value* k_end, llvm::Value* n_start,
                      llvm::Value* n_end, VectorSupportLibrary* vsl);
 
-  llvm::Value* getInt64(int64 value) { return ir_builder_->getInt64(value); }
+  llvm::Value* GetInt64(int64 value) { return ir_builder_->getInt64(value); }
 
   Config config() const { return config_; }
   Dimensions dims() const { return config().dims(); }
@@ -741,7 +741,7 @@ void MatrixMatrixBlockPanelEmitter::EmitChunkedLoopOverN() {
     if (n_start != n_end) {
       VectorSupportLibrary vsl(scalar_type(), current_vectorization_width,
                                ir_builder_, "gebp");
-      EmitLoopOverK(&vsl, getInt64(n_start), getInt64(n_end));
+      EmitLoopOverK(&vsl, GetInt64(n_start), GetInt64(n_end));
       n_start = n_end;
     }
     current_vectorization_width /= 2;
@@ -763,13 +763,13 @@ void MatrixMatrixBlockPanelEmitter::EmitLoopOverK(VectorSupportLibrary* vsl,
   int64 k_start = 0;
   int64 k_end = dims().k() - (dims().k() % k_tiling_factor());
   if (k_end != k_start) {
-    EmitInnerLoop(k_tiling_factor(), getInt64(k_start), getInt64(k_end),
+    EmitInnerLoop(k_tiling_factor(), GetInt64(k_start), GetInt64(k_end),
                   n_start, n_end, vsl);
     k_start = k_end;
   }
 
   if (k_start != dims().k()) {
-    EmitInnerLoop(dims().k() - k_start, getInt64(k_start), getInt64(dims().k()),
+    EmitInnerLoop(dims().k() - k_start, GetInt64(k_start), GetInt64(dims().k()),
                   n_start, n_end, vsl);
   }
 }
@@ -841,7 +841,7 @@ void MatrixMatrixBlockPanelEmitter::EmitInnerLoop(
       broadcasted_a.reserve(k_tiling_factor);
       for (int i = 0; i < k_tiling_factor; i++) {
         broadcasted_a.push_back(vsl->LoadBroadcast(
-            lhs_row_begin, ir_builder_->CreateAdd(getInt64(i), k_i)));
+            lhs_row_begin, ir_builder_->CreateAdd(GetInt64(i), k_i)));
       }
 
       // rhs_loader will be used to load the tile off of the RHS, denoted as
