@@ -1691,8 +1691,10 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   const int filter_width = ArraySize(filter_dims, 1);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
+#ifdef USE_NEON
   const bool shift_left = (output_shift <= 0);
   const int32 multiplier_power_of_two = shift_left ? (1 << -output_shift) : 1;
+#endif
   TFLITE_DCHECK(output_depth == input_depth * depth_multiplier);
 
 #ifdef __aarch64__
