@@ -78,6 +78,7 @@ bool IsLogicalNot(const NodeDef& node);
 bool IsLogicalOr(const NodeDef& node);
 bool IsMax(const NodeDef& node);
 bool IsMaximum(const NodeDef& node);
+bool IsMaxPoolGrad(const NodeDef& node);
 bool IsMean(const NodeDef& node);
 bool IsMerge(const NodeDef& node);
 bool IsMin(const NodeDef& node);

@@ -203,6 +203,8 @@ bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
 
 bool IsMaximum(const NodeDef& node) { return node.op() == "Maximum"; }
 
+bool IsMaxPoolGrad(const NodeDef& node) { return node.op() == "MaxPoolGrad"; }
+
 bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
 bool IsMerge(const NodeDef& node) {
