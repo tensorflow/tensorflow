@@ -1428,7 +1428,15 @@ class Network(base_layer.Layer):
             It will be called on each line of the summary.
             You can set it to a custom function
             in order to capture the string summary.
+
+    Raises:
+        ValueError: if `summary()` is called before the model is built.
     """
+    if not self.built:
+      raise ValueError('This model has never been called, thus its weights '
+                       'have not yet been created, so no summary can be '
+                       'displayed. Build the model first '
+                       '(e.g. by calling it on some data).')
     print_layer_summary(self,
                         line_length=line_length,
                         positions=positions,
