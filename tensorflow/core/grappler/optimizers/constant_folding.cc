@@ -2133,20 +2133,8 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
       return Status::OK();
     }
   }
-  if (IsSimplifiableReduction(*node, *properties)) {
-    // Replace the reduction node with an identity node, that can be further
-    // optimized by the model pruner.
-    DataType output_type;
-    if (node->attr().count("T") > 0) {
-      output_type = node->attr().at("T").type();
-    } else {
-      // This is an 'any' or 'all' reduction. The output is always boolean.
-      output_type = DT_BOOL;
-    }
-    node->set_op("Identity");
-    node->clear_attr();
-    (*node->mutable_attr())["T"].set_type(output_type);
-    *node->mutable_input(1) = AsControlDependency(node->input(1));
+
+  if (SimplifyReduction(*properties, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2198,6 +2186,27 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   }
 
   return Status::OK();
+}
+
+bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,
+                                        NodeDef* node) {
+  if (IsSimplifiableReduction(*node, properties)) {
+    // Replace the reduction node with an identity node, that can be further
+    // optimized by the model pruner.
+    DataType output_type;
+    if (node->attr().count("T") > 0) {
+      output_type = node->attr().at("T").type();
+    } else {
+      // This is an 'any' or 'all' reduction. The output is always boolean.
+      output_type = DT_BOOL;
+    }
+    node->set_op("Identity");
+    node->clear_attr();
+    (*node->mutable_attr())["T"].set_type(output_type);
+    *node->mutable_input(1) = AsControlDependency(node->input(1));
+    return true;
+  }
+  return false;
 }
 
 bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,

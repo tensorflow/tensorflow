@@ -139,10 +139,12 @@ class ConstantFolding : public GraphOptimizer {
                                       GraphDef* optimized_graph, NodeDef* node,
                                       bool* success);
 
-  // Simplifies a Reshape operation to an Identity operation if the input node
-  // to the operation is a constant.
+  // Simplifies a Reshape operation to an Identity operation if applicable.
   bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
                        NodeDef* node);
+
+  // Simplifies a Reduction operation to an Identity operation if applicable.
+  bool SimplifyReduction(const GraphProperties& properties, NodeDef* node);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
