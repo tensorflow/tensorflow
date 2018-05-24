@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 
+#include <Python.h>
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include <Python.h>
 
 typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4>
     TFE_InputTensorHandles;

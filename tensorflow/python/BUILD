@@ -256,7 +256,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -269,7 +269,7 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -293,7 +293,7 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/core:lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -316,7 +316,7 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -338,7 +338,7 @@ cc_library(
         "//tensorflow/core:script_ops_op_lib",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -349,7 +349,7 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -379,7 +379,7 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -390,7 +390,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -3437,7 +3437,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -3508,6 +3508,7 @@ tf_py_wrap_cc(
         ":py_record_writer_lib",
         ":python_op_gen",
         ":tf_session_helper",
+        "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
@@ -3530,7 +3531,6 @@ tf_py_wrap_cc(
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +

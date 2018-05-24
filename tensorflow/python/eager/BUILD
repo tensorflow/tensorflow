@@ -31,7 +31,7 @@ cc_library(
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:safe_ptr",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
