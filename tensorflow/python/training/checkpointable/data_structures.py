@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import collections
 
+import six
+
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.training.checkpointable import base as checkpointable_lib
 from tensorflow.python.training.checkpointable import data_structures_base
@@ -198,21 +200,52 @@ class List(CheckpointableDataStructure, collections.Sequence):
   def __repr__(self):
     return "List(%s)" % (repr(self._storage),)
 
-  @property
-  def updates(self):
-    """Aggregate updates from any `Layer` instances."""
-    # Updates and conditional losses are forwarded as-is rather than being
-    # filtered based on inputs, since this is just a container and won't ever
-    # have any inputs.
-    aggregated = []
-    for layer in self.layers:
-      aggregated += layer.updates
-    return aggregated
 
-  @property
-  def losses(self):
-    """Aggregate losses from any `Layer` instances."""
-    aggregated = []
-    for layer in self.layers:
-      aggregated += layer.losses
-    return aggregated
+class Mapping(CheckpointableDataStructure, collections.Mapping):
+  """An append-only checkpointable mapping data structure with string keys.
+
+  Maintains checkpoint dependencies on its contents (which must also be
+  checkpointable), named based on its keys.
+
+  Note that once a key has been added, it may not be deleted or replaced. If
+  names may not be unique, see `tf.contrib.checkpoint.UniqueNameTracker`.
+  """
+
+  def __init__(self, *args, **kwargs):
+    """Construct a new sequence. Arguments are passed to `dict()`."""
+    super(Mapping, self).__init__()
+    self._storage = dict(*args, **kwargs)
+    for key, value in self._storage.items():
+      self._track_value(value, name=self._name_element(key))
+
+  def _name_element(self, key):
+    if not isinstance(key, six.string_types):
+      raise TypeError(
+          "Mapping accepts only string keys, but got a key %s."
+          % repr(key))
+    return str(key)
+
+  def __setitem__(self, key, value):
+    current_value = self._storage.setdefault(key, value)
+    if current_value is not value:
+      raise ValueError(
+          ("Mappings are an append-only data structure. Tried to overwrite the "
+           "key '%s' with value %s, but it already contains %s")
+          % (key, value, current_value))
+    self._track_value(value, name=self._name_element(key))
+
+  def update(self, *args, **kwargs):
+    for key, value in dict(*args, **kwargs).items():
+      self[key] = value
+
+  def __getitem__(self, key):
+    return self._storage[key]
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __repr__(self):
+    return "Mapping(%s)" % (repr(self._storage),)
+
+  def __iter__(self):
+    return iter(self._storage)

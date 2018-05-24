@@ -26,6 +26,7 @@ Managing dependencies:
 
 Checkpointable data structures:
 @@List
+@@Mapping
 @@UniqueNameTracker
 """
 
@@ -40,8 +41,10 @@ from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import Checkpointa
 from tensorflow.python.training.checkpointable.base import Checkpointable
 from tensorflow.python.training.checkpointable.base import NoDependency
 from tensorflow.python.training.checkpointable.data_structures import List
+from tensorflow.python.training.checkpointable.data_structures import Mapping
 from tensorflow.python.training.checkpointable.util import object_metadata
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 remove_undocumented(module_name=__name__)
+

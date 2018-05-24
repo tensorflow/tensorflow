@@ -18,6 +18,8 @@ from __future__ import print_function
 
 import os
 
+import numpy
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
@@ -137,6 +139,81 @@ class ListTests(test.TestCase):
           outer.variables[0],
           resource_variable_ops.ResourceVariable)
 
+  def testHashing(self):
+    has_sequences = set([data_structures.List(),
+                         data_structures.List()])
+    self.assertEqual(2, len(has_sequences))
+    self.assertNotIn(data_structures.List(), has_sequences)
+
+
+class HasMapping(training.Model):
+
+  def __init__(self):
+    super(HasMapping, self).__init__()
+    self.layer_dict = data_structures.Mapping(output=core.Dense(7))
+    self.layer_dict["norm"] = data_structures.List()
+    self.layer_dict["dense"] = data_structures.List()
+    self.layer_dict["dense"].extend(
+        [core.Dense(5),
+         core.Dense(6, kernel_regularizer=math_ops.reduce_sum)])
+    self.layer_dict["norm"].append(
+        normalization.BatchNormalization())
+    self.layer_dict["norm"].append(
+        normalization.BatchNormalization())
+
+  def call(self, x):
+    aggregation = 0.
+    for norm, dense in zip(self.layer_dict["norm"], self.layer_dict["dense"]):
+      x = norm(dense(x))
+      aggregation += math_ops.reduce_sum(x)
+    return self.layer_dict["output"](x) / aggregation
+
+
+class MappingTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTracking(self):
+    model = HasMapping()
+    output = model(array_ops.ones([32, 2]))
+    self.assertAllEqual([32, 7], output.shape)
+    self.assertEqual(1, len(model.layers))
+    self.assertIs(model.layer_dict, model.layers[0])
+    self.assertEqual(3, len(model.layers[0].layers))
+    self.assertEqual(1, len(model._checkpoint_dependencies))
+    self.assertIs(model.layer_dict, model._checkpoint_dependencies[0].ref)
+    self.evaluate([v.initializer for v in model.variables])
+    test_var = model.layer_dict["output"].kernel
+    self.evaluate(test_var.assign(array_ops.ones([6, 7])))
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    model.save_weights(save_path)
+    self.evaluate(test_var.assign(array_ops.zeros([6, 7])))
+    model.load_weights(save_path)
+    self.assertAllEqual(numpy.ones([6, 7]),
+                        self.evaluate(test_var))
+
+  def testNoOverwrite(self):
+    mapping = data_structures.Mapping()
+    original = data_structures.List()
+    mapping["a"] = original
+    with self.assertRaises(ValueError):
+      mapping["a"] = data_structures.List()
+    self.assertIs(original, mapping["a"])
+    with self.assertRaises(AttributeError):
+      del mapping["a"]
+    mapping.update(b=data_structures.Mapping())
+    with self.assertRaises(ValueError):
+      mapping.update({"b": data_structures.Mapping()})
+
+  def testNonStringKeys(self):
+    mapping = data_structures.Mapping()
+    with self.assertRaises(TypeError):
+      mapping[1] = data_structures.List()
+
+  def testHashing(self):
+    has_mappings = set([data_structures.Mapping(),
+                        data_structures.Mapping()])
+    self.assertEqual(2, len(has_mappings))
+    self.assertNotIn(data_structures.Mapping(), has_mappings)
 
 if __name__ == "__main__":
   test.main()

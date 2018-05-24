@@ -20,7 +20,10 @@ py_library(
     srcs = ["containers.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/python/training/checkpointable:base"],
+    deps = [
+        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/checkpointable:data_structures",
+    ],
 )
 
 py_test(
