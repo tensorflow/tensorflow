@@ -2323,7 +2323,7 @@ cuda_py_test(
     ],
     shard_count = 2,
     tags = [
-        "nogpu",  #  Flaky: b/80127739
+        "no_gpu",  #  Flaky: b/80127739
     ],
 )
 
