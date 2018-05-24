@@ -58,8 +58,11 @@ XlaTransferManager::XlaTransferManager(
 
 Status XlaTransferManager::TransferLiteralToDevice(
     const Tensor& host_tensor, Tensor* device_tensor) const {
-  xla::Literal literal;
-  TF_RETURN_IF_ERROR(HostTensorToLiteral(host_tensor, &literal));
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
+                                           host_tensor.shape(), &xla_shape));
+  xla::BorrowingLiteral literal(
+      static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
 
   const xla::ShapedBuffer& shaped_buffer =
       XlaTensor::FromTensor(device_tensor)->shaped_buffer();
