@@ -179,6 +179,7 @@ def maybe_get_static_value(x, dtype=None):
   if x is None:
     return x
   try:
+    # This returns an np.ndarray.
     x_ = tensor_util.constant_value(x)
   except TypeError:
     x_ = x
