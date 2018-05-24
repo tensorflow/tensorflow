@@ -316,6 +316,8 @@ public:
   // returns The string for this field.
   //
   virtual string toString() const = 0;
+
+  virtual ~AvroField() { }
 };
 
 // Represents a field name which is used to access records' fields.
@@ -523,7 +525,6 @@ void CopyOrMoveBlock(const string* b, const string* e, string* t) {
 Status CheckDefaultsAvailable(const string& key, const size_t n_elements_per_batch,
                               const std::vector<size_t>& end_indices, const Tensor& default_value) {
   const size_t n_batches = end_indices.size();
-  const size_t n_total_elements_be = n_batches * n_elements_per_batch;
   size_t n_total_elements_is = 0;
   const size_t n_default_elements = default_value.NumElements();
   const size_t n_elems_be = n_elements_per_batch;  // per row
@@ -705,9 +706,6 @@ public:
 
     // Get attributes
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
-
-    // Build the compatibility matrix between Avro types and TensorFlow's types
-    BuildCompatibilityMatrix();
   }
 
   // Destructor used for clean-up of avro structures.
@@ -747,10 +745,21 @@ public:
       dense_buffers[i_dense].n_elements = 0;
     }
 
-    std::vector<Tensor> dense_values(attrs_.num_dense);
-    std::vector<Tensor> sparse_values(attrs_.num_sparse);
-    std::vector<Tensor> sparse_indices(attrs_.num_sparse);
-    std::vector<Tensor> sparse_shapes(attrs_.num_sparse);
+    // Get outputs
+    OpOutputList dense_values;
+    OpOutputList sparse_indices;
+    OpOutputList sparse_values;
+    OpOutputList sparse_shapes;
+    OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_indices", &sparse_indices));
+    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_values", &sparse_values));
+    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_shapes", &sparse_shapes));
+
+    // Can we know the sizes of these tensors in advance?
+    // std::vector<Tensor> dense_values(attrs_.num_dense);
+    // std::vector<Tensor> sparse_values(attrs_.num_sparse);
+    // std::vector<Tensor> sparse_indices(attrs_.num_sparse);
+    // std::vector<Tensor> sparse_shapes(attrs_.num_sparse);
 
     // Ensure serialized is a vector
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(serialized->shape()),
@@ -800,11 +809,14 @@ public:
     }
 
     // Parse values into memory
-    OP_REQUIRES_OK(ctx, ParseAndSetValues(&sparse_buffers, &dense_buffers, *serialized, sparse_keys, dense_keys));
+    OP_REQUIRES_OK(ctx, ParseAndSetValues(&sparse_buffers, &dense_buffers,
+                                          *serialized, sparse_keys,
+                                          dense_keys));
 
     // Convert sparse into tensors
     OP_REQUIRES_OK(ctx, ConvertSparseBufferIntoSparseValuesIndicesShapes(
-                          &sparse_values, &sparse_indices, &sparse_shapes, sparse_keys, sparse_buffers, n_serialized));
+                          &sparse_values, &sparse_indices, &sparse_shapes,
+                          sparse_keys, sparse_buffers, n_serialized));
 
     #ifdef DEBUG_LOG_ENABLED
       for (int i_dense = 0; i_dense < static_cast<int>(attrs_.num_dense); ++i_dense) {
@@ -814,59 +826,14 @@ public:
     #endif
 
     // Convert var len dense into tensors
-    OP_REQUIRES_OK(ctx, ConvertVarLenIntoDense(&dense_values, dense_keys, dense_buffers, dense_defaults,
+    OP_REQUIRES_OK(ctx, ConvertVarLenIntoDense(&dense_values, dense_keys,
+                                               dense_buffers, dense_defaults,
                                                n_serialized));
 
     // Convert fixed len dense values into tensors
-    OP_REQUIRES_OK(ctx, ConvertFixedLenIntoDense(&dense_values, dense_keys, dense_buffers, dense_defaults,
+    OP_REQUIRES_OK(ctx, ConvertFixedLenIntoDense(&dense_values, dense_keys,
+                                                 dense_buffers, dense_defaults,
                                                  n_serialized));
-
-    // Get outputs
-    OpOutputList dense_values_out;
-    OpOutputList sparse_indices_out;
-    OpOutputList sparse_values_out;
-    OpOutputList sparse_shapes_out;
-    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_indices", &sparse_indices_out));
-    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_values", &sparse_values_out));
-    OP_REQUIRES_OK(ctx, ctx->output_list("sparse_shapes", &sparse_shapes_out));
-    OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values_out));
-
-    // Set sparse outputs
-    for (int64 i_sparse = 0; i_sparse < attrs_.num_sparse; ++i_sparse) {
-      sparse_indices_out.set(i_sparse, sparse_indices[i_sparse]);
-      sparse_values_out.set(i_sparse, sparse_values[i_sparse]);
-      sparse_shapes_out.set(i_sparse, sparse_shapes[i_sparse]);
-    }
-
-    // Set dense outputs
-    for (int i_dense = 0; i_dense < attrs_.num_dense; ++i_dense) {
-      dense_values_out.set(i_dense, dense_values[i_dense]);
-    }
-  }
-
-  // Get a human readable string representation of the TensorFlow's data type.
-  // I could not find a function in TensorFlow that does this.
-  //
-  // 'data_type' TensorFlow's data type, e.g. DT_INT32.
-  //
-  // returns a string representation of the data type.
-  //
-  static string DataTypeToString(DataType data_type) {
-    switch (data_type) {
-      case DT_STRING:
-        return "string";
-      case DT_DOUBLE:
-        return "double";
-      case DT_FLOAT:
-        return "float32";
-      case DT_INT64:
-        return "int64";
-      case DT_INT32:
-        return "int32";
-      case DT_BOOL:
-        return "bool";
-    }
-    return "unknown";
   }
 
   // Get a human readable string representation of the Avro type.
@@ -978,8 +945,8 @@ private:
   }
 
   // Converts sparse buffer data into sparse values, indices, and shapes.
-  Status ConvertSparseBufferIntoSparseValuesIndicesShapes(std::vector<Tensor>* sparse_values,
-    std::vector<Tensor>* sparse_indices, std::vector<Tensor>* sparse_shapes, const OpInputList& sparse_keys,
+  Status ConvertSparseBufferIntoSparseValuesIndicesShapes(OpOutputList* sparse_values,
+    OpOutputList* sparse_indices, OpOutputList* sparse_shapes, const OpInputList& sparse_keys,
     const std::vector<SparseBuffer>& sparse_buffers, const int64 n_serialized) {
 
     #ifdef DEBUG_LOG_ENABLED
@@ -987,7 +954,7 @@ private:
     #endif
 
     for (int i_sparse = 0; i_sparse < static_cast<int>(attrs_.num_sparse); ++i_sparse) {
-      const size_t n_elements = sparse_buffers[i_sparse].n_elements;
+      const int64 n_elements = static_cast<int64>(sparse_buffers[i_sparse].n_elements);
 
       #ifdef DEBUG_LOG_ENABLED
         LOG(INFO) << "For key '" << sparse_keys[i_sparse].scalar<string>()() << "' found the following end indices.";
@@ -1000,18 +967,18 @@ private:
       #endif
 
       // Sparse shapes
-      Tensor shape(DT_INT64, TensorShape({2}));
+      Tensor *sparse_shapes_ptr;
+      sparse_shapes->allocate(i_sparse, TensorShape({2}), &sparse_shapes_ptr);
+      Tensor& shape = *sparse_shapes_ptr;
+      // Why isn't this a reference type? Is it inferred as one?
       auto shape_data = shape.vec<int64>();
       shape_data(0) = n_serialized;
       shape_data(1) = n_elements;
-      (*sparse_shapes)[i_sparse] = shape;
 
       // Sparse indices
-      TensorShape indices_shape;
-      indices_shape.AddDim(n_elements);
-      indices_shape.AddDim(2);
-      Tensor indices(DT_INT64, indices_shape);
-      (*sparse_indices)[i_sparse] = indices;
+      Tensor *indices_ptr;
+      sparse_indices->allocate(i_sparse, TensorShape({n_elements, 2}), &indices_ptr);
+      Tensor& indices = *indices_ptr;
 
       int64* index = &indices.matrix<int64>()(0, 0);
       size_t row_index = 0;
@@ -1042,10 +1009,10 @@ private:
       #endif
 
       // Sparse values
-      TensorShape values_shape;
-      values_shape.AddDim(n_elements);
-      Tensor values(attrs_.sparse_types[i_sparse], values_shape);
-      (*sparse_values)[i_sparse] = values;
+      TensorShape values_shape({static_cast<int64>(n_elements)});
+      Tensor *values_ptr;
+      sparse_values->allocate(i_sparse, values_shape, &values_ptr);
+      Tensor &values = *values_ptr;
 
       #ifdef DEBUG_LOG_ENABLED
         LOG(INFO) << "Created values " << values.DebugString();
@@ -1092,8 +1059,11 @@ private:
   }
 
   // Converts variable length dense buffers into dense tensors filling in from defaults if necessary.
-  Status ConvertVarLenIntoDense(std::vector<Tensor>* dense_values, const OpInputList& dense_keys,
-    const std::vector<SparseBuffer>& dense_buffers, const OpInputList& dense_defaults, const int64 n_serialized) {
+  Status ConvertVarLenIntoDense(OpOutputList* dense_values,
+                                const OpInputList& dense_keys,
+                                const std::vector<SparseBuffer>& dense_buffers,
+                                const OpInputList& dense_defaults,
+                                const int64 n_serialized) {
 
     for (int i_dense = 0; i_dense < static_cast<int>(attrs_.num_dense); ++i_dense) {
 
@@ -1136,7 +1106,9 @@ private:
         #endif
 
         // Create the dense values for the shape and compute the number of elements per batch
-        Tensor values(dense_info.type, out_shape);
+        Tensor *values_ptr;
+        dense_values->allocate(i_dense, out_shape, &values_ptr);
+        Tensor& values = *values_ptr;
         const size_t n_elements = values.NumElements();
         const size_t n_elements_per_batch = n_max_elements * dense_info.elements_per_stride;
 
@@ -1187,15 +1159,16 @@ private:
             CHECK(false) << "Should not happen."; // Error when avro type does not match with tf type
 
         }
-        (*dense_values)[i_dense] = values;
     }
-
     return Status::OK();
   }
 
   // Convert fixed length dense buffers into dense tensors filling in from defaults if necessary.
-  Status ConvertFixedLenIntoDense(std::vector<Tensor>* dense_values, const OpInputList& dense_keys,
-    const std::vector<SparseBuffer>& dense_buffers, const OpInputList& dense_defaults, const int64 n_serialized) {
+  Status ConvertFixedLenIntoDense(OpOutputList* dense_values,
+                                  const OpInputList& dense_keys,
+                                  const std::vector<SparseBuffer>& dense_buffers,
+                                  const OpInputList& dense_defaults,
+                                  const int64 n_serialized) {
 
     for (int i_dense = 0; i_dense < static_cast<int>(attrs_.num_dense); ++i_dense) {
 
@@ -1215,7 +1188,9 @@ private:
         }
 
         // Create the output tensor
-        Tensor values(dense_info.type, out_shape);
+        Tensor *values_ptr;
+        dense_values->allocate(i_dense, out_shape, &values_ptr);
+        Tensor& values = *values_ptr;
 
         // Get the number of values overall and per batch
         size_t n_elements = values.NumElements();
@@ -1273,8 +1248,6 @@ private:
           default:
             CHECK(false) << "Should not happen."; /// Error when avro type does not match with tf type
         }
-
-        (*dense_values)[i_dense] = values;
     }
 
     return Status::OK();
@@ -1343,53 +1316,32 @@ private:
     avro_fields.clear();
   }
 
-  // Builds the type compatibility matrix for primitive TensorFlow types to primitive Avro types.
-  //
-  void BuildCompatibilityMatrix() {
-    // The primitive TensorFlow types
-    DataType data_types[] = {DT_STRING, DT_DOUBLE, DT_FLOAT, DT_INT64, DT_INT32, DT_BOOL};
-    // The primitive Avro types
-    avro_type_t avro_types[] = {AVRO_STRING, AVRO_BYTES, AVRO_INT32, AVRO_INT64, AVRO_FLOAT, AVRO_DOUBLE, AVRO_BOOLEAN,
-                        AVRO_NULL, AVRO_RECORD, AVRO_ENUM, AVRO_FIXED, AVRO_MAP, AVRO_ARRAY, AVRO_UNION, AVRO_LINK};
-    int max_data_types = 0;
-    for (size_t i_data_types = 0; i_data_types < sizeof(data_types)/sizeof(DataType); ++i_data_types) {
-      max_data_types = std::max(max_data_types, (int)data_types[i_data_types]);
+  // TODO: Put this some place better
+  struct EnumClassHash
+  {
+    template <typename T>
+    std::size_t operator()(T t) const
+    {
+      return static_cast<std::size_t>(t);
     }
-    int max_avro_types = 0;
-    for (size_t i_avro_types = 0; i_avro_types < sizeof(avro_types)/sizeof(avro_type_t); ++i_avro_types) {
-      max_avro_types = std::max(max_avro_types, (int)avro_types[i_avro_types]);
-    }
-    max_data_types++; // +1 because we start from 0
-    max_avro_types++; // +1 because we start from 0
-    compatibility_matrix.resize(max_data_types);
-    for (size_t i_data_types = 0; i_data_types < max_data_types; ++i_data_types) {
-      compatibility_matrix[i_data_types].resize(max_avro_types, false);
-    }
+  };
 
-    // These are the compatible types
-    compatibility_matrix[DT_STRING][AVRO_STRING] = true;
-    compatibility_matrix[DT_DOUBLE][AVRO_DOUBLE] = true;
-    compatibility_matrix[DT_FLOAT][AVRO_FLOAT] = true;
-    compatibility_matrix[DT_INT64][AVRO_INT64] = true;
-    compatibility_matrix[DT_INT32][AVRO_INT32] = true;
-    compatibility_matrix[DT_BOOL][AVRO_BOOLEAN] = true;
-    compatibility_matrix[DT_STRING][AVRO_BYTES] = true;
-
-    // Add support for union types
-    compatibility_matrix[DT_STRING][AVRO_UNION] = true;
-    compatibility_matrix[DT_DOUBLE][AVRO_UNION] = true;
-    compatibility_matrix[DT_FLOAT][AVRO_UNION] = true;
-    compatibility_matrix[DT_INT64][AVRO_UNION] = true;
-    compatibility_matrix[DT_INT32][AVRO_UNION] = true;
-    compatibility_matrix[DT_BOOL][AVRO_UNION] = true;
-
-    // Add support for null types
-    compatibility_matrix[DT_STRING][AVRO_NULL] = true;
-    compatibility_matrix[DT_DOUBLE][AVRO_NULL] = true;
-    compatibility_matrix[DT_FLOAT][AVRO_NULL] = true;
-    compatibility_matrix[DT_INT64][AVRO_NULL] = true;
-    compatibility_matrix[DT_INT32][AVRO_NULL] = true;
-    compatibility_matrix[DT_BOOL][AVRO_NULL] = true;
+  static std::unordered_map<DataType, std::unordered_set<avro_type_t, EnumClassHash>, EnumClassHash>
+  CreateCompatibilityTable() {
+    std::unordered_map<DataType, std::unordered_set<avro_type_t, EnumClassHash>, EnumClassHash> table;
+    table.insert(std::make_pair(DT_STRING, std::unordered_set<avro_type_t, EnumClassHash>
+                                {AVRO_STRING, AVRO_BYTES, AVRO_UNION, AVRO_NULL}));
+    table.insert(std::make_pair(DT_DOUBLE, std::unordered_set<avro_type_t, EnumClassHash>
+                                {AVRO_DOUBLE, AVRO_UNION, AVRO_NULL}));
+    table.insert(std::make_pair(DT_FLOAT, std::unordered_set<avro_type_t, EnumClassHash>
+                                {AVRO_FLOAT, AVRO_UNION, AVRO_NULL}));
+    table.insert(std::make_pair(DT_INT64, std::unordered_set<avro_type_t, EnumClassHash>
+                                {AVRO_INT64, AVRO_UNION, AVRO_NULL}));
+    table.insert(std::make_pair(DT_INT32, std::unordered_set<avro_type_t, EnumClassHash>
+                                {AVRO_INT32, AVRO_UNION, AVRO_NULL}));
+    table.insert(std::make_pair(DT_BOOL, std::unordered_set<avro_type_t, EnumClassHash>
+                                {AVRO_BOOLEAN, AVRO_UNION, AVRO_NULL}));
+    return table;
   }
 
   // Checks the compatibility between data types.
@@ -1401,7 +1353,10 @@ private:
   // returns True if the types are compatible otherwise false.
   //
   bool Compatible(const DataType data_type, const avro_type_t avro_type) const {
-    return compatibility_matrix[data_type][avro_type];
+    static const std::unordered_map<DataType, std::unordered_set<avro_type_t, EnumClassHash>, EnumClassHash> table =
+      CreateCompatibilityTable();
+    const auto& compatible_avro_types = table.at(data_type);
+    return compatible_avro_types.find(avro_type) != compatible_avro_types.end();
   }
 
   // Resolves union(s).
@@ -1446,7 +1401,7 @@ private:
 
     // Check for type compatibility
     TF_RETURN_IF_ERROR(Compatible(data_type, field_type) ? Status::OK() : errors::InvalidArgument(
-      "Incompatible types! User defined type ", DataTypeToString(data_type), " but avro contains type ",
+      "Incompatible types! User defined type ", DataTypeString(data_type), " but avro contains type ",
       AvroTypeToString(field_type)));
 
     // Add one for the element that we will added in the switch statement (if no element is added an error will occur)
@@ -1459,7 +1414,7 @@ private:
         // Note: Can't add default types because these are not fully supported by TF python classes we use here!
         // For now throw an error!
         TF_RETURN_IF_ERROR(errors::InvalidArgument("Could not parse avro null type into tensorflow type'",
-                                                   DataTypeToString(data_type), "'."));
+                                                   DataTypeString(data_type), "'."));
         break;
       }
       case AVRO_STRING: {
@@ -1761,7 +1716,6 @@ private:
 
     return Status::OK();
   }
-  std::vector<std::vector<bool>> compatibility_matrix; // Type compatibility matrix
   int max_data_types; // Maximum integer for TensorFlow's data types (notice that is not the number of types)
   int max_avro_types; // Maximum integer for Avro types (notice that is not the number of Avro types)
   avro_schema_t reader_schema_; // The Avro reader schema
