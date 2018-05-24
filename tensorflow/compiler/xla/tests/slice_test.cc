@@ -197,9 +197,10 @@ class SliceR1Test : public ClientLibraryTestBase,
     // vector<bool>.
     tensorflow::gtl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());
+    auto literal = Literal::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());
-    auto original = builder.ConstantR1<NativeT>(input);
+    auto original = builder.Parameter(0, literal->shape(), "p0");
     builder.Slice(original, {spec.slice_start}, {spec.slice_limit},
                   {spec.slice_stride});
 
@@ -210,7 +211,9 @@ class SliceR1Test : public ClientLibraryTestBase,
       expected.push_back(i);
     }
 
-    ComputeAndCompareR1<NativeT>(&builder, expected, {});
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
+                            client_->TransferToServer(*literal));
+    ComputeAndCompareR1<NativeT>(&builder, expected, {arg.get()});
   }
 };
 
