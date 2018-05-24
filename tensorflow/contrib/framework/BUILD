@@ -31,8 +31,8 @@ tf_custom_op_py_library(
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
-        "python/ops/condition_variable_ops.py",
         "python/ops/critical_section_ops.py",
+        "python/ops/notification_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
         "python/ops/script_ops.py",
@@ -185,9 +185,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "condition_variable_test",
+    name = "notification_test",
     size = "medium",
-    srcs = ["python/ops/condition_variable_test.py"],
+    srcs = ["python/ops/notification_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
         ":framework_py",

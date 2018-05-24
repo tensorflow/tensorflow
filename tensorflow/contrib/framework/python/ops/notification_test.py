@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.contrib.framework.python.ops import condition_variable_ops
+from tensorflow.contrib.framework.python.ops import notification_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
@@ -30,28 +30,28 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
-# TODO(ebrevdo): Re-enable once ConditionVariable is in core.
+# TODO(ebrevdo): Re-enable once Notification is in core.
 # from tensorflow.python.training import saver as saver_lib
 
 
-class ConditionVariableTest(test.TestCase):
+class NotificationTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
-  def testCreateConditionVariable(self):
-    cv = condition_variable_ops.ConditionVariable(shared_name="cv")
-    notify = cv.notify()
-    self.evaluate(notify)
+  def testCreateNotification(self):
+    n = notification_ops.Notification(shared_name="notification")
+    notifier = n.notifier()
+    self.evaluate(notifier)
 
   @test_util.run_in_graph_and_eager_modes()
-  def testConditionVariableWaitTimesOut(self):
-    cv = condition_variable_ops.ConditionVariable(shared_name="cv")
+  def testNotificationWaitTimesOut(self):
+    n = notification_ops.Notification(shared_name="notification")
     for timeout in (0, 1, 5, 10, 1e2, 1e3, 1e6):
-      notified = cv.wait(timeout_in_us=int(timeout))
+      notified = n.wait(timeout_in_us=int(timeout))
       self.assertFalse(self.evaluate(notified))
 
-  def testConditionVariableWaitTimesOutInParallelThreads(self):
-    cv = condition_variable_ops.ConditionVariable(shared_name="cv")
-    w = cv.wait(10)
+  def testNotificationWaitTimesOutInParallelThreads(self):
+    n = notification_ops.Notification(shared_name="notification")
+    w = n.wait(10)
     s = session.Session()
     h = lambda s_: self.assertFalse(s_.run(w))
     ts = [threading.Thread(target=h, args=(s,)) for _ in range(100)]
@@ -60,42 +60,42 @@ class ConditionVariableTest(test.TestCase):
     for t in ts:
       t.join()
 
-  def testConditionVariableWaitCanBeCancelled(self):
-    cv = condition_variable_ops.ConditionVariable(shared_name="cv")
+  def testNotificationWaitCanBeCancelled(self):
+    n = notification_ops.Notification(shared_name="notification")
     options = config_pb2.RunOptions(timeout_in_ms=100)
     for timeout in (None, int(1e6)):
-      notified = cv.wait(timeout_in_us=timeout)
+      notified = n.wait(timeout_in_us=timeout)
       with self.test_session() as sess:
         with self.assertRaisesOpError("Timed out"):
           sess.run(notified, options=options)
 
     options = config_pb2.RunOptions(timeout_in_ms=1000)
     for timeout in (1, 10, 100):
-      notified = cv.wait(timeout_in_us=timeout)
+      notified = n.wait(timeout_in_us=timeout)
       with self.test_session() as sess:
         # Run to completion.
         self.assertFalse(sess.run(notified, options=options))
 
-  def testConditionVariableNotification(self):
-    cv = condition_variable_ops.ConditionVariable()
-    cv_wait = condition_variable_ops.ConditionVariable()
+  def testNotificationNotifier(self):
+    n = notification_ops.Notification()
+    n_wait = notification_ops.Notification()
     flag = resource_variable_ops.ResourceVariable(True, name="v")
     t1 = logging_ops.timestamp()
-    with ops.control_dependencies([cv.wait()]):
+    with ops.control_dependencies([n.wait()]):
       with ops.control_dependencies([flag.assign(False)]):
         diff = logging_ops.timestamp() - t1
 
-    # Create a while_loop that runs cv.notify() approx every 10ms.
+    # Create a while_loop that runs n.notifier() approx every 10ms.
     def _notify_cond(c):
       with ops.control_dependencies([c]):
         return flag.value()
 
     def _notify_body(c):
-      with ops.control_dependencies([c, cv_wait.wait(int(1e4))]):  # 10ms
-        with ops.control_dependencies([cv.notify()]):
+      with ops.control_dependencies([c, n_wait.wait(int(1e4))]):  # 10ms
+        with ops.control_dependencies([n.notifier()]):
           return c + 1
 
-    # Count the number of times cv.notify() was called.
+    # Count the number of times n.notifier() was called.
     notifications = control_flow_ops.while_loop(
         _notify_cond, _notify_body, [0], parallel_iterations=1)
 
@@ -111,30 +111,45 @@ class ConditionVariableTest(test.TestCase):
     self.assertGreaterEqual(notifications_v, 1)
     self.assertLess(notifications_v, 5)
 
-  def testConditionVariableManySequentialNotifications(self):
-    cv = condition_variable_ops.ConditionVariable()
-    cv_wait = condition_variable_ops.ConditionVariable()
+  @test_util.run_in_graph_and_eager_modes()
+  def testNotificationDoNotResetImmediately(self):
+    n = notification_ops.Notification()
+    notifier = n.notifier(immediately_reset=False)
+    with ops.control_dependencies([notifier]):
+      notified = n.wait(timeout_in_us=0)
+    self.assertTrue(self.evaluate(notified))
+    # Notification has been set.  Re-execute it.
+    notified_again = n.wait(timeout_in_us=1)
+    self.assertTrue(self.evaluate(notified_again))
+    reset = n.resetter()
+    with ops.control_dependencies([reset]):
+      not_notified = n.wait(timeout_in_us=1)
+      self.assertFalse(self.evaluate(not_notified))
+
+  def testNotificationManySequentialNotifications(self):
+    n = notification_ops.Notification()
+    n_wait = notification_ops.Notification()
     flag = resource_variable_ops.ResourceVariable(True, name="v")
 
     t1 = logging_ops.timestamp()
     waiter = []
     for _ in range(20):
       with ops.control_dependencies(waiter):
-        waiter = [cv.wait()]
+        waiter = [n.wait()]
     with ops.control_dependencies(waiter):
       with ops.control_dependencies([flag.assign(False)]):
         diff = logging_ops.timestamp() - t1
 
-    # Create a while_loop that runs cv.notify() approx every 10ms.
+    # Create a while_loop that runs n.notifier() approx every 10ms.
     def _notify_cond(_):
       return flag.value()
 
     def _notify_body(c):
-      with ops.control_dependencies([c, cv_wait.wait(int(1e4))]):
-        with ops.control_dependencies([cv.notify()]):
+      with ops.control_dependencies([c, n_wait.wait(int(1e4))]):
+        with ops.control_dependencies([n.notifier()]):
           return c + 1
 
-    # Count the number of times cv.notify() was called.
+    # Count the number of times n.notifier() was called.
     notifications = control_flow_ops.while_loop(
         _notify_cond, _notify_body, [0], parallel_iterations=1)
 
@@ -146,27 +161,27 @@ class ConditionVariableTest(test.TestCase):
     self.assertGreaterEqual(notifications_v, 20)
     self.assertLess(notifications_v, 40)
 
-  def testConditionVariableManyParallelNotifications(self):
-    cv = condition_variable_ops.ConditionVariable()
-    cv_wait = condition_variable_ops.ConditionVariable()
+  def testNotificationManyParallelNotifications(self):
+    n = notification_ops.Notification()
+    n_wait = notification_ops.Notification()
     flag = resource_variable_ops.ResourceVariable(True, name="v")
 
     t1 = logging_ops.timestamp()
-    waiters = [cv.wait() for _ in range(100)]
+    waiters = [n.wait() for _ in range(100)]
     with ops.control_dependencies(waiters):
       with ops.control_dependencies([flag.assign(False)]):
         diff = logging_ops.timestamp() - t1
 
-    # Create a while_loop that runs cv.notify() approx every 10ms.
+    # Create a while_loop that runs n.notifier() approx every 10ms.
     def _notify_cond(_):
       return flag.value()
 
     def _notify_body(c):
-      with ops.control_dependencies([c, cv_wait.wait(int(1e4))]):
-        with ops.control_dependencies([cv.notify()]):
+      with ops.control_dependencies([c, n_wait.wait(int(1e4))]):
+        with ops.control_dependencies([n.notifier()]):
           return c + 1
 
-    # Count the number of times cv.notify() was called.
+    # Count the number of times n.notifier() was called.
     notifications = control_flow_ops.while_loop(
         _notify_cond, _notify_body, [0], parallel_iterations=1)
 

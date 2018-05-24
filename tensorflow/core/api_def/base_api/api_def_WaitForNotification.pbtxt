@@ -1,9 +1,9 @@
 op {
-  graph_op_name: "WaitForConditionVariable"
+  graph_op_name: "WaitForNotification"
   in_arg {
-    name: "condition_variable"
+    name: "notification"
     description: <<END
-The condition variable to wait for.
+The notification to wait for.
 END
   }
   in_arg {
@@ -17,9 +17,9 @@ END
     name: "notified"
     description: <<END
 0-D.  Whether the waiter was notified or not.  If a notification arrives from
-the condition variable before the timeout, this value is `true`.  Otherwise
+the notification before the timeout, this value is `true`.  Otherwise
 the value is `false`.
 END
   }
-  summary: "Wait until the condition variable is notified, or timeout."
+  summary: "Wait until the notification is notified, or timeout."
 }

@@ -1,0 +1,18 @@
+op {
+  graph_op_name: "NotifyNotification"
+  in_arg {
+    name: "notification"
+    description: <<END
+The notification resource to notify.
+END
+  }
+  attr {
+    name: "immediately_reset"
+    description: <<END
+Whether to immediately reset the notification after notifying all waiters on
+the notification.  If `false`, the notification stays notified and any
+incoming waiters return immediately.
+END
+  }
+  summary: "Notifies all waiters waiting on a notification."
+}

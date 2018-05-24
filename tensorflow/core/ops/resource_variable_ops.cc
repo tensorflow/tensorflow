@@ -269,7 +269,7 @@ REGISTER_OP("ConsumeMutexLock")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
 
-REGISTER_OP("ConditionVariable")
+REGISTER_OP("Notification")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Output("resource: resource")
@@ -279,13 +279,19 @@ REGISTER_OP("ConditionVariable")
       return Status::OK();
     });
 
-REGISTER_OP("NotifyConditionVariable")
-    .Input("condition_variable: resource")
+REGISTER_OP("NotifyNotification")
+    .Input("notification: resource")
+    .Attr("immediately_reset: bool = true")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
 
-REGISTER_OP("WaitForConditionVariable")
-    .Input("condition_variable: resource")
+REGISTER_OP("ResetNotification")
+    .Input("notification: resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+
+REGISTER_OP("WaitForNotification")
+    .Input("notification: resource")
     .Input("timeout_in_us: int64")
     .Output("notified: bool")
     .SetIsStateful()
