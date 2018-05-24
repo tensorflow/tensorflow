@@ -460,8 +460,8 @@ class GradientBoostedDecisionTreeModel(object):
 
       # Determine whether the local ensemble is stale and update it if needed.
       def _refresh_local_ensemble_fn():
-        # Serialize the model from parameter server after reading all inputs.
-        with ops.control_dependencies(input_deps):
+        # Serialize the model from parameter server after reading the inputs.
+        with ops.control_dependencies([input_deps[0]]):
           (ensemble_stamp, serialized_model) = (
               model_ops.tree_ensemble_serialize(self._ensemble_handle))
 
@@ -915,7 +915,6 @@ class GradientBoostedDecisionTreeModel(object):
         "DecisionTreeEnsembleResourceHandleOp",
         "StatsAccumulatorScalarResourceHandleOp",
         "StatsAccumulatorTensorResourceHandleOp",
-        "QuantileStreamResourceHandleOp",
     ]
     ps_strategy = _OpRoundRobinStrategy(ps_ops, ps_tasks)
     return device_setter.replica_device_setter(

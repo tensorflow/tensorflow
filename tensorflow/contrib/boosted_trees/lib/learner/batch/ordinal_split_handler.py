@@ -134,11 +134,14 @@ class InequalitySplitHandler(base_split_handler.BaseSplitHandler):
         gradient_shape,
         hessian_shape,
         name="StatsAccumulator/{}".format(self._name))
-    self._quantile_accumulator = quantile_ops.QuantileAccumulator(
-        init_stamp_token,
-        epsilon=epsilon,
-        num_quantiles=num_quantiles,
-        name="QuantileAccumulator/{}".format(self._name))
+    # Allocate both stats accumulator and quantile accumulator on the same
+    # device so that we can build splits with fewer RPCs.
+    with ops.colocate_with(self._stats_accumulator.resource()):
+      self._quantile_accumulator = quantile_ops.QuantileAccumulator(
+          init_stamp_token,
+          epsilon=epsilon,
+          num_quantiles=num_quantiles,
+          name="QuantileAccumulator/{}".format(self._name))
 
 
 class DenseSplitHandler(InequalitySplitHandler):
