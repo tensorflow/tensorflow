@@ -170,6 +170,10 @@ class ConstantFolding : public GraphOptimizer {
   // Simplifies Pack operation if applicable.
   bool SimplifyPack(GraphDef* optimized_graph, NodeDef* node);
 
+  // Simplifies a Squeeze operation to an Identity operation if applicable.
+  bool SimplifySqueeze(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node);
+
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
