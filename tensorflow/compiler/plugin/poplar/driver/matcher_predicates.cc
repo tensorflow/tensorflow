@@ -151,20 +151,17 @@ bool IsForwardMatMul(const HloInstruction *inst) {
 }
 
 bool IsGradientMatMul(const HloInstruction *inst) {
-  //  const HloInstruction* lh = inst->operand(0);
-  //  const HloInstruction* rh = inst->operand(1);
-  //  return (lh->opcode() != HloOpcode::kTranspose &&
-  //          rh->opcode() == HloOpcode::kTranspose);
-  return false;
+  const HloInstruction* lh = inst->operand(0);
+  const HloInstruction* rh = inst->operand(1);
+  return (lh->opcode() != HloOpcode::kTranspose &&
+          rh->opcode() == HloOpcode::kTranspose);
 }
 
 bool IsWeightUpdateMatMul(const HloInstruction *inst) {
-  //  const HloInstruction* lh = inst->operand(0);
-  //  const HloInstruction* rh = inst->operand(1);
-  //  return (lh->opcode() == HloOpcode::kTranspose &&
-  //          rh->opcode() != HloOpcode::kTranspose);
-  // Cannot mark as MATMUL WU until poplibs T2934 fixed
-  return false;
+  const HloInstruction* lh = inst->operand(0);
+  const HloInstruction* rh = inst->operand(1);
+  return (lh->opcode() == HloOpcode::kTranspose &&
+          rh->opcode() != HloOpcode::kTranspose);
 }
 
 bool IsTfReluGradOp(const HloInstruction *inst) {
