@@ -20,6 +20,7 @@ limitations under the License.
 namespace tflite {
 
 enum class FusedActivationFunctionType : uint8 { kNone, kRelu6, kRelu1, kRelu };
+enum class PaddingType { kNone, kSame, kValid };
 
 // Quantization parameters, determining the mapping of quantized values
 // to real values (i.e. determining how quantized values are mathematically
