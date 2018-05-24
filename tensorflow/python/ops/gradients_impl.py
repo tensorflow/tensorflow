@@ -1020,7 +1020,6 @@ def _AggregateIndexedSlicesGradients(grads):
   elif len(grads) == 1:
     return grads[0]
   else:
-    assert isinstance(grads[0], ops.IndexedSlices)
     grads = math_ops._as_indexed_slices_list(  # pylint: disable=protected-access
         [g for g in grads if g is not None])
     grads = [_HandleNestedIndexedSlices(x) for x in grads]  # pylint: disable=protected-access

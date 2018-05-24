@@ -343,7 +343,7 @@ def unpack_small_tensors(tower_grads, packing):
 
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
-  if isinstance(values[0], ops.IndexedSlices):
+  if any(isinstance(v, ops.IndexedSlices) for v in values):
     return gradients_impl._AggregateIndexedSlicesGradients(values)  # pylint: disable=protected-access
   else:
     return accumulation_fn(values)
