@@ -42,32 +42,67 @@ def currentframe():
   return _inspect.stack()[1][0]
 
 
-def getargspec(object):  # pylint: disable=redefined-builtin
+def getargspec(obj):
   """TFDecorator-aware replacement for inspect.getargspec.
 
   Args:
-    object: A callable (function or partial function), possibly decorated.
+    obj: A function, partial function, or callable object, possibly
+    decorated.
 
   Returns:
     The `ArgSpec` that describes the signature of the outermost decorator that
     changes the callable's signature. If the callable is not decorated,
-    `inspect.getargspec()` will be called directly on the callable.
+    `inspect.getargspec()` will be called directly on the object.
 
   Raises:
-    ValueError: When callable's function signature can not be expressed with
-    ArgSpec.
+    ValueError: When callable's signature can not be expressed with
+      ArgSpec.
+    TypeError: For objects of unsupported types.
   """
+  if isinstance(obj, functools.partial):
+    return _get_argspec_for_partial(obj)
 
-  def get_argspec_with_decorator(obj):
-    decorators, target = tf_decorator.unwrap(obj)
-    return next((d.decorator_argspec
-                 for d in decorators
-                 if d.decorator_argspec is not None),
-                _inspect.getargspec(target))
+  decorators, target = tf_decorator.unwrap(obj)
 
-  if not isinstance(object, functools.partial):
-    return get_argspec_with_decorator(object)
+  spec = next((d.decorator_argspec
+               for d in decorators
+               if d.decorator_argspec is not None), None)
+  if spec:
+    return spec
 
+  try:
+    # Python3 will handle most callables here (not partial).
+    return _inspect.getargspec(target)
+  except TypeError:
+    pass
+
+  if isinstance(target, type):
+    try:
+      return _inspect.getargspec(target.__init__)
+    except TypeError:
+      pass
+
+    try:
+      return _inspect.getargspec(target.__new__)
+    except TypeError:
+      pass
+
+  # The `type(target)` ensures that if a class is received we don't return
+  # the signature of it's __call__ method.
+  return _inspect.getargspec(type(target).__call__)
+
+
+def _get_argspec_for_partial(obj):
+  """Implements `getargspec` for `functools.partial` objects.
+
+  Args:
+    obj: The `functools.partial` obeject
+  Returns:
+    An `inspect.ArgSpec`
+  Raises:
+    ValueError: When callable's signature can not be expressed with
+      ArgSpec.
+  """
   # When callable is a functools.partial object, we construct its ArgSpec with
   # following strategy:
   # - If callable partial contains default value for positional arguments (ie.
@@ -97,10 +132,10 @@ def getargspec(object):  # pylint: disable=redefined-builtin
   # value and ensures all following arguments also have default values. When
   # this is not true, a ValueError is raised.
 
-  n_prune_args = len(object.args)
-  partial_keywords = object.keywords or {}
+  n_prune_args = len(obj.args)
+  partial_keywords = obj.keywords or {}
 
-  args, varargs, keywords, defaults = get_argspec_with_decorator(object.func)
+  args, varargs, keywords, defaults = getargspec(obj.func)
 
   # Pruning first n_prune_args arguments.
   args = args[n_prune_args:]
@@ -137,11 +172,34 @@ def getargspec(object):  # pylint: disable=redefined-builtin
   return ArgSpec(args, varargs, keywords, tuple(all_defaults[first_default:]))
 
 
-def getfullargspec(obj):  # pylint: disable=redefined-builtin
-  """TFDecorator-aware replacement for `inspect.getfullargspec`/`getargspec`.
+if hasattr(_inspect, 'getfullargspec'):
+  _getfullargspec = _inspect.getfullargspec
+else:
 
-  This wrapper uses `inspect.getfullargspec` if available and falls back to
-  `inspect.getargspec` in Python 2.
+  def _getfullargspec(target):
+    """A python2 version of getfullargspec.
+
+    Args:
+      target: the target object to inspect.
+    Returns:
+      A FullArgSpec with empty kwonlyargs, kwonlydefaults and annotations.
+    """
+    argspecs = _inspect.getargspec(target)
+    fullargspecs = FullArgSpec(
+        args=argspecs.args,
+        varargs=argspecs.varargs,
+        varkw=argspecs.keywords,
+        defaults=argspecs.defaults,
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
+    return fullargspecs
+
+
+def getfullargspec(obj):
+  """TFDecorator-aware replacement for `inspect.getfullargspec`.
+
+  This wrapper emulates `inspect.getfullargspec` in[^)]* Python2.
 
   Args:
     obj: A callable, possibly decorated.
@@ -152,34 +210,10 @@ def getfullargspec(obj):  # pylint: disable=redefined-builtin
     callable is not decorated, `inspect.getfullargspec()` will be called
     directly on the callable.
   """
-  if hasattr(_inspect, 'getfullargspec'):
-    spec_fn = _inspect.getfullargspec
-  else:
-    def spec_fn(target):
-      """Spec function that adding default value from FullArgSpec.
-
-      It is used when getfullargspec is not available (eg in PY2).
-
-      Args:
-        target: the target object to inspect.
-      Returns:
-        The full argument specs with empty kwonlyargs, kwonlydefaults and
-        annotations.
-      """
-      argspecs = _inspect.getargspec(target)
-      fullargspecs = FullArgSpec(
-          args=argspecs.args,
-          varargs=argspecs.varargs,
-          varkw=argspecs.keywords,
-          defaults=argspecs.defaults,
-          kwonlyargs=[],
-          kwonlydefaults=None,
-          annotations={})
-      return fullargspecs
-
   decorators, target = tf_decorator.unwrap(obj)
-  return next((d.decorator_argspec for d in decorators
-               if d.decorator_argspec is not None), spec_fn(target))
+  return next((d.decorator_argspec
+               for d in decorators
+               if d.decorator_argspec is not None), _getfullargspec(target))
 
 
 def getcallargs(func, *positional, **named):
