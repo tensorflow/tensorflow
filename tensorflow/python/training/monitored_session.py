@@ -90,8 +90,6 @@ class Scaffold(object):
     from and stored into the `LOCAL_INIT_OP` collection in the graph by default.
   * `summary_op`: An op to run and merge the summaries in the graph.  Picked
     from and stored into the `SUMMARY_OP` collection in the graph by default.
-  * `global_step`: A tensor containing the global step counter.  Picked
-    from and stored into the `GLOBAL_STEP` collection in the graph by default.
 
   You can also pass the following additional pieces to the constructor:
 
