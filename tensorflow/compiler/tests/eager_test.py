@@ -117,6 +117,15 @@ class EagerTest(XLATestCase):
       v.assign_add(2.0)
     self.assertEqual(3.0, v.numpy())
 
+  def testReadAssignRead(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      val1 = v.read_value()
+      v.assign_add(2.0)
+      val2 = v.read_value()
+    self.assertEqual(1.0, val1.numpy())
+    self.assertEqual(3.0, val2.numpy())
+
   def testGradient(self):
     def f(x):
       return x
@@ -137,10 +146,8 @@ class EagerTest(XLATestCase):
     self.assertEqual(2., grads[0][0].numpy())
 
   def testMultipleVariableReads(self):
-    # TODO(b/79715516): Currently, whenever we read a variable by going
-    # through XLA, we create a copy. This leads large memory usage.
-    self.skipTest('When variable is read through XLA, a copy is created.')
-
+    # This test makes sure consecutive variable reads don't copy
+    # the underlying memory.
     with self.test_scope():
       # Create 128MiB variables
       var = resource_variable_ops.ResourceVariable(
