@@ -2018,11 +2018,23 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   }
 
   const int gemm_input_rows = gemm_input_dims->sizes[0];
-  const int gemm_input_cols = FlatSizeSkipDim(*gemm_input_dims, 0);
+  // Using FlatSizeSkipDim causes segfault in some contexts (see b/79927784).
+  // The root cause has not yet been identified though. Same applies below for
+  // the other calls commented out. This is a partial rollback of cl/196819423.
+  // const int gemm_input_cols = FlatSizeSkipDim(*gemm_input_dims, 0);
+  const int gemm_input_cols = gemm_input_dims->sizes[1] *
+                              gemm_input_dims->sizes[2] *
+                              gemm_input_dims->sizes[3];
   const int filter_rows = filter_dims.sizes[3];
-  const int filter_cols = FlatSizeSkipDim(filter_dims, 3);
+  // See b/79927784.
+  // const int filter_cols = FlatSizeSkipDim(filter_dims, 3);
+  const int filter_cols =
+      filter_dims.sizes[0] * filter_dims.sizes[1] * filter_dims.sizes[2];
   const int output_rows = output_dims.sizes[0];
-  const int output_cols = FlatSizeSkipDim(output_dims, 0);
+  // See b/79927784.
+  // const int output_cols = FlatSizeSkipDim(output_dims, 0);
+  const int output_cols =
+      output_dims.sizes[1] * output_dims.sizes[2] * output_dims.sizes[3];
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
