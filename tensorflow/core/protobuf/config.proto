@@ -170,7 +170,11 @@ message IPUOptions {
     RandomType random_type = 5;
 
     // Options to control Poplar compilation
-    repeated string compilation_options = 4;
+    message CompilationOption {
+      string option = 1;
+      string value = 2;
+    };
+    repeated CompilationOption compilation_options = 4;
   };
 
   // Options controlling the configuration of each IPU device

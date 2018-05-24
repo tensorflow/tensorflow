@@ -407,7 +407,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     try {
       VLOG(1) << "Compile engine " << module->name();
 
-      engine.reset(new poplar::Engine(dev, graph, progs));
+      auto opts = poplarExecutor->GetOptionsFlags();
+      engine.reset(new poplar::Engine(dev, graph, progs, opts));
     } catch (std::logic_error e) {
       return Status(tensorflow::error::UNKNOWN,
                     StrCat("[Poplar Engine] ", e.what()));

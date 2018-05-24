@@ -306,6 +306,11 @@ Status PoplarExecutor::InitializePoplarDevice(
 
   random_type_ = cfg.random_type();
 
+  option_flags_ = poplar::OptionFlags();
+  for (const auto& opt : cfg.compilation_options()) {
+    option_flags_.set(opt.option(), opt.value());
+  }
+
   active_xla_device_ = device;
   return Status::OK();
 }

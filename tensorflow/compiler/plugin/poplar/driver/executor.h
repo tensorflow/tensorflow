@@ -44,6 +44,7 @@ limitations under the License.
 
 #include <poplar/Device.hpp>
 #include <poplar/Engine.hpp>
+#include <poplar/OptionFlags.hpp>
 #include <poplar/Tensor.hpp>
 
 #include <poprand/RandomGen.hpp>
@@ -235,6 +236,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   const poprand::RandomGenMode GetRandomGenMode() const;
 
+  const poplar::OptionFlags& GetOptionsFlags() const {
+    return option_flags_;
+  }
+
   bool CompilerReportingEnabled() const { return profile_compilation_; }
 
   void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
@@ -309,6 +314,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   std::shared_ptr<poplar::Engine> current_engine_;
 
   poplar::Device poplar_device_;
+
+  poplar::OptionFlags option_flags_;
 
   void *active_xla_device_;
 

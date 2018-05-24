@@ -169,5 +169,30 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         except tf.errors.InternalError:
             pass
 
+    def testEngineCompilationOptions(self):
+        with tf.device("/device:IPU:0"):
+            pa = tf.placeholder(tf.float32, [480], name="a")
+            pb = tf.placeholder(tf.float32, [480], name="b")
+            output = pa + pb
+
+        opts = config_pb2.IPUOptions()
+        dev = opts.device_config.add()
+        dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+        dev.profiling.enable_compilation_trace = True
+        dev.profiling.enable_io_trace = False
+        dev.profiling.enable_execution_trace = True
+        dev.ipu_model_config.num_ipus = 2
+
+        opt = dev.compilation_options.add()
+        opt.option = "some_option"
+        opt.value = "some_value"
+
+        try:
+            with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
+                fd = {pa: np.zeros([480]), pb: np.zeros([480])}
+                sess.run(output, fd)
+        except tf.errors.UnknownError:
+            pass
+
 if __name__ == "__main__":
     googletest.main()
