@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -329,10 +330,10 @@ def _random_flip(image, flip_index, seed, scope_name):
     elif shape.ndims == 4:
       uniform_random = random_ops.random_uniform([shape[0]], 0, 1.0, seed=seed)
       mirror_cond = math_ops.less(uniform_random, .5)
-      return tf.where(
+      return array_ops.where(
         mirror_cond,
         image,
-        tf.map_fn(lambda x: array_ops.reverse(x, [flip_index]), image, dtype=image.dtype)
+        functional_ops.map_fn(lambda x: array_ops.reverse(x, [flip_index]), image, dtype=image.dtype)
       )
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
