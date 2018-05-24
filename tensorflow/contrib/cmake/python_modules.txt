@@ -183,6 +183,8 @@ tensorflow/contrib/graph_editor/examples
 tensorflow/contrib/grid_rnn
 tensorflow/contrib/grid_rnn/python
 tensorflow/contrib/grid_rnn/python/ops
+tensorflow/contrib/hadoop/python
+tensorflow/contrib/hadoop/python/ops
 tensorflow/contrib/hooks
 tensorflow/contrib/hooks/python
 tensorflow/contrib/image
