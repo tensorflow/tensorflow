@@ -1917,6 +1917,37 @@ class TestTrainingWithDataset(test.TestCase):
                                    'you should specify the `steps` argument'):
         model.predict(dataset, verbose=0)
 
+  def test_dataset_input_shape_validation(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      # User forgets to batch the dataset
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      targets = np.zeros((10, 4), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(100)
+
+      with self.assertRaisesRegexp(ValueError,
+                                   'expected input to have 2 dimensions'):
+        model.train_on_batch(dataset)
+
+      # Wrong input shape
+      inputs = np.zeros((10, 5), dtype=np.float32)
+      targets = np.zeros((10, 4), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+
+      with self.assertRaisesRegexp(ValueError,
+                                   'expected input to have shape'):
+        model.train_on_batch(dataset)
+
 
 if __name__ == '__main__':
   test.main()

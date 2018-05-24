@@ -166,10 +166,16 @@ def standardize_input_data(data,
   # Check shapes compatibility.
   if shapes:
     for i in range(len(names)):
-      if shapes[i] is not None and not tensor_util.is_tensor(data[i]):
-        data_shape = data[i].shape
+      if shapes[i] is not None:
+        if tensor_util.is_tensor(data[i]):
+          tensorshape = data[i].get_shape()
+          if not tensorshape:
+            continue
+          data_shape = tuple(tensorshape.as_list())
+        else:
+          data_shape = data[i].shape
         shape = shapes[i]
-        if data[i].ndim != len(shape):
+        if len(data_shape) != len(shape):
           raise ValueError('Error when checking ' + exception_prefix +
                            ': expected ' + names[i] + ' to have ' +
                            str(len(shape)) + ' dimensions, but got array '
@@ -178,7 +184,7 @@ def standardize_input_data(data,
           data_shape = data_shape[1:]
           shape = shape[1:]
         for dim, ref_dim in zip(data_shape, shape):
-          if ref_dim != dim and ref_dim:
+          if ref_dim != dim and ref_dim is not None and dim is not None:
             raise ValueError(
                 'Error when checking ' + exception_prefix + ': expected ' +
                 names[i] + ' to have shape ' + str(shape) +

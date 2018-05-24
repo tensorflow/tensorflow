@@ -846,7 +846,8 @@ class Model(Network):
     # in the case where all inputs are value arrays.
 
     if context.executing_eagerly():
-      # In eager mode, do not do shape validation.
+      # In eager mode, do not do shape validation
+      # since the network has no input nodes (placeholders) to be fed.
       feed_input_names = self.input_names
       feed_input_shapes = None
     elif not self._is_graph_network:
