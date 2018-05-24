@@ -110,7 +110,7 @@ TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
                                     //will have batch size x num classes as its shape
   auto logits = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logitsShape)); //estimation
   auto labels = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logitsShape)); //truth
-  auto y = SoftmaxCrossEntropyWithLogits(scope_, logits, labels);
+  auto y = tensorflow::ops::SoftmaxCrossEntropyWithLogits(scope_, logits, labels);
   // Please note the reversal of the backprop and loss orders. A separate issue has been opened
   // for this. 
   RunTest({logits, labels}, {logitsShape, logitsShape}, 
