@@ -374,7 +374,7 @@ def contains_indexed_slices(value):
   """Check whether the value is `IndexedSlices` or contains `IndexedSlices`."""
   if isinstance(value, ops.IndexedSlices):
     return True
-  elif isinstance(value, (list, tuple, pycoll.Sequence)) and value:
+  elif isinstance(value, (list, tuple)) and value:
     return any(contains_indexed_slices(v) for v in value)
   elif isinstance(value, value_lib.DistributedValues):
     return contains_indexed_slices(list(value._index.values()))  # pylint: disable=protected-access
