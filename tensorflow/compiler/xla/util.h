@@ -492,6 +492,12 @@ bool c_is_sorted(const C& c) {
   return std::is_sorted(std::begin(c), std::end(c));
 }
 
+template <typename C, typename Compare>
+bool c_is_sorted(const C& c, Compare&& comp) {
+  return std::is_sorted(std::begin(c), std::end(c),
+                        std::forward<Compare>(comp));
+}
+
 template <typename C>
 auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
   return std::adjacent_find(std::begin(c), std::end(c));
@@ -524,6 +530,11 @@ template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
   auto it = c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
+}
+
+template <typename C, typename Value>
+void InsertAt(C* c, int64 index, Value&& value) {
+  c->insert(c->begin() + index, std::forward<Value>(value));
 }
 
 // Returns true if `x` fits in 32-bits.
