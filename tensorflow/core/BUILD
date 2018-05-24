@@ -441,6 +441,7 @@ cc_library(
         "env.cc",
         "load_library.cc",
     ]) + tf_platform_hdrs([
+        "wide_char.h",
     ]) + [
         "platform/env.cc",
         "platform/file_system.cc",
