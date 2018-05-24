@@ -106,17 +106,6 @@ Step-by-step Windows build
 
 1. Install the prerequisites detailed above, and set up your environment.
 
-   * The following commands assume that you are using the Windows Command
-     Prompt (`cmd.exe`). You will need to set up your environment to use the
-     appropriate toolchain, i.e. the 64-bit tools. (Some of the binary targets
-     we will build are too large for the 32-bit tools, and they will fail with
-     out-of-memory errors.) The typical command to do set up your
-     environment is:
-
-     ```
-     D:\temp> "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvarsall.bat"
-     ```
-
    * When building with GPU support after installing the CUDNN zip file from NVidia, append its
      bin directory to your PATH environment variable.
      In case TensorFlow fails to find the CUDA dll's during initialization, check your PATH environment variable.
@@ -168,7 +157,7 @@ Step-by-step Windows build
    and must be the last character on each line.
 
    ```
-   D:\...\build> cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release ^
+   D:\...\build> cmake .. -A x64 -Thost=x64 -DCMAKE_BUILD_TYPE=Release ^
    More? -DSWIG_EXECUTABLE=C:/tools/swigwin-3.0.10/swig.exe ^
    More? -DPYTHON_EXECUTABLE=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/python.exe ^
    More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib
@@ -196,6 +185,10 @@ Step-by-step Windows build
    values are `Release` and `RelWithDebInfo`. The `Debug` build type is
    not currently supported, because it relies on a `Debug` library for
    Python (`python35d.lib`) that is not distributed by default.
+
+   The `-Thost=x64` flag will ensure that the 64 bit compiler and linker
+   is used when building. Without this flag, MSBuild will use the 32 bit
+   toolchain which is prone to compile errors such as "compiler out of heap space".
 
    There are various options that can be specified when generating the
    solution and project files:
@@ -262,6 +255,11 @@ Step-by-step Windows build
 
 
 4. Invoke MSBuild to build TensorFlow.
+
+   Set up the path to find MSbuild:
+   ```
+   D:\temp> "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvarsall.bat"
+   ```
 
    To build the C++ example program, which will be created as a `.exe`
    executable in the subdirectory `.\Release`:
