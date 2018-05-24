@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import functools
 import operator
-import threading
 
 import six
 
@@ -94,8 +93,8 @@ class _MockOp(object):
     )
 
 
-def _magic_gradient_function(op_name, attr_tuple, num_inputs,
-                             inputs, outputs, out_grads):
+def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
+                       out_grads):
   """Calls the gradient function of the op.
 
   Args:
@@ -117,8 +116,7 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs,
   return grad_fn(mock_op, *out_grads)
 
 
-_gradient_functions = {}
-_gradient_functions_lock = threading.Lock()
+pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
 _tracing = False
@@ -140,22 +138,6 @@ _grad_fn_accepts_none_for_indices = {
     "SoftmaxCrossEntropyWithLogits": [1],
     "FusedBatchNorm": [1, 2, 3, 4]
 }
-
-
-def _get_backward_fn(op_name, attrs, num_inputs, op_inputs, op_outputs):
-
-  def grad_fn(*orig_outputs):
-    result = _magic_gradient_function(op_name, attrs, num_inputs,
-                                      op_inputs, op_outputs, orig_outputs)
-    if _tracing:
-      print("Gradient for", op_name, "inputs", op_inputs, "output_grads",
-            orig_outputs, "gradients", result)
-    return nest.flatten(result)
-
-  return grad_fn
-
-
-pywrap_tensorflow.TFE_Py_RegisterBackwardFunctionGetter(_get_backward_fn)
 
 
 def _record_gradient(op_name, inputs, attrs, results, name):

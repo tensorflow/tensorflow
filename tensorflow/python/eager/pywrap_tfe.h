@@ -67,14 +67,15 @@ PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 
-// Registers e as the backward_function_getter.
-// The registered function creates a backward function (a function that can
-// return the gradient of the inputs an op given the gradient of it's outputs).
-// The registered function will be passed the following arguments:
-//    op_name, attrs, num_inputs, op_inputs, op_outputs
+// Registers e as the gradient_function.
+// The registered function takes
+// (op_name, attrs, num_inputs, inputs, outputs, output_gradients) and returns
+// the input gradients. This function will not correctly be able to generate
+// gradients for functional ops - the gradients for those ops are calculated
+// through a different codepath (see function.py for additional information).
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_RegisterBackwardFunctionGetter(PyObject* e);
+PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via

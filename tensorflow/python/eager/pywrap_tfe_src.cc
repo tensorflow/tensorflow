@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/util/util.h"
 
 using tensorflow::string;
 using tensorflow::strings::Printf;
@@ -44,6 +45,9 @@ struct InputInfo {
   int i;
   bool is_list = false;
 };
+
+// Takes in output gradients, returns input gradients.
+typedef std::function<PyObject*(PyObject*)> PyBackwardFunction;
 
 using AttrToInputsMap =
     tensorflow::gtl::FlatMap<string,
@@ -640,8 +644,8 @@ PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
 // Python subclass of Exception that is created to signal fallback.
 PyObject* fallback_exception_class = nullptr;
 
-// Python function that returns a backward_function.
-PyObject* backward_function_getter = nullptr;
+// Python function that returns input gradients given output gradients.
+PyObject* gradient_function = nullptr;
 
 PyTypeObject* resource_variable_type = nullptr;
 
@@ -734,19 +738,19 @@ PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e) {
   }
 }
 
-PyObject* TFE_Py_RegisterBackwardFunctionGetter(PyObject* e) {
-  if (backward_function_getter != nullptr) {
-    Py_DECREF(backward_function_getter);
+PyObject* TFE_Py_RegisterGradientFunction(PyObject* e) {
+  if (gradient_function != nullptr) {
+    Py_DECREF(gradient_function);
   }
   if (!PyCallable_Check(e)) {
-    backward_function_getter = nullptr;
+    gradient_function = nullptr;
     PyErr_SetString(PyExc_TypeError,
                     "TFE_Py_RegisterBackwardFunctionGetter: "
                     "Registered object should be function.");
     return nullptr;
   } else {
     Py_INCREF(e);
-    backward_function_getter = e;
+    gradient_function = e;
     Py_RETURN_NONE;
   }
 }
@@ -870,10 +874,11 @@ static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
 }
 
 class GradientTape
-    : public tensorflow::eager::GradientTape<PyObject, PyObject> {
+    : public tensorflow::eager::GradientTape<PyObject, PyBackwardFunction> {
  public:
   explicit GradientTape(bool persistent)
-      : tensorflow::eager::GradientTape<PyObject, PyObject>(persistent) {}
+      : tensorflow::eager::GradientTape<PyObject, PyBackwardFunction>(
+            persistent) {}
 
   virtual ~GradientTape() {
     for (PyObject* v : watched_variables_) {
@@ -1226,11 +1231,13 @@ void TapeSetRecordOperation(
     PyObject* op_type, PyObject* output_tensors,
     const std::vector<tensorflow::int64>& input_ids,
     const std::vector<tensorflow::DataType>& input_dtypes,
-    PyObject* backward_function) {
+    const std::function<PyBackwardFunction*()>& backward_function_getter,
+    const std::function<void(PyBackwardFunction*)>& backward_function_killer) {
   std::vector<tensorflow::eager::TapeTensor> output_info;
   PyObject* seq = PySequence_Fast(output_tensors,
                                   "expected a sequence of integer tensor ids");
   int len = PySequence_Size(output_tensors);
+  if (PyErr_Occurred()) return;
   output_info.reserve(len);
   for (int i = 0; i < len; ++i) {
     output_info.push_back(
@@ -1259,10 +1266,10 @@ void TapeSetRecordOperation(
   }
 
   for (TFE_Py_Tape* tape : SafeTapeSet()) {
-    Py_INCREF(backward_function);
-    tape->tape->RecordOperation(
-        op_type_str, output_info, input_ids, input_dtypes, backward_function,
-        [backward_function]() { Py_DECREF(backward_function); });
+    auto* function = backward_function_getter();
+    tape->tape->RecordOperation(op_type_str, output_info, input_ids,
+                                input_dtypes, function,
+                                backward_function_killer);
   }
 }
 }  // namespace
@@ -1279,8 +1286,21 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
   std::vector<tensorflow::DataType> input_dtypes =
       MakeTensorDtypeList(input_tensors);
   if (PyErr_Occurred()) return;
-  TapeSetRecordOperation(op_type, output_tensors, input_ids, input_dtypes,
-                         backward_function);
+
+  TapeSetRecordOperation(
+      op_type, output_tensors, input_ids, input_dtypes,
+      [backward_function]() {
+        Py_INCREF(backward_function);
+        PyBackwardFunction* function =
+            new PyBackwardFunction([backward_function](PyObject* out_grads) {
+              return PyObject_CallObject(backward_function, out_grads);
+            });
+        return function;
+      },
+      [backward_function](PyBackwardFunction* py_backward_function) {
+        Py_DECREF(backward_function);
+        delete py_backward_function;
+      });
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
@@ -1289,7 +1309,8 @@ void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
   }
 }
 
-class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
+class PyVSpace
+    : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction> {
  public:
   explicit PyVSpace(PyObject* py_vspace) : py_vspace_(py_vspace) {}
 
@@ -1382,7 +1403,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
   }
 
   tensorflow::Status CallBackwardFunction(
-      PyObject* backward_function,
+      PyBackwardFunction* backward_function,
       tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
       std::vector<PyObject*>* result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
@@ -1395,8 +1416,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
                          reinterpret_cast<PyObject*>(output_gradients[i]));
       }
     }
-    PyObject* py_result = PyEval_CallObject(
-        reinterpret_cast<PyObject*>(backward_function), grads);
+    PyObject* py_result = (*backward_function)(grads);
     Py_DECREF(grads);
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
@@ -1423,10 +1443,6 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     Py_DECREF(seq);
     Py_DECREF(py_result);
     return tensorflow::Status::OK();
-  }
-
-  void ReleaseBackwardFunction(PyObject* backward_function) const final {
-    Py_DECREF(backward_function);
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
@@ -1587,12 +1603,12 @@ bool CheckInputsOk(PyObject* seq, int start_index,
       for (Py_ssize_t j = 0; j < PySequence_Fast_GET_SIZE(item); j++) {
         PyObject* inner_item = PySequence_Fast_GET_ITEM(item, j);
         if (!CheckOneInput(inner_item)) {
-          VLOG(1)
-              << "Falling back to slow path for Op \"" << op_def.name()
-              << "\", Input \"" << op_def.input_arg(i).name() << "\", Index "
-              << j
-              << " since we expected an EagerTensor/ResourceVariable, but got "
-              << inner_item->ob_type->tp_name;
+          VLOG(1) << "Falling back to slow path for Op \"" << op_def.name()
+                  << "\", Input \"" << op_def.input_arg(i).name()
+                  << "\", Index " << j
+                  << " since we expected an EagerTensor/ResourceVariable, "
+                     "but got "
+                  << inner_item->ob_type->tp_name;
           return false;
         }
       }
@@ -1799,18 +1815,41 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   }
 
   PyObject* num_inputs = PyLong_FromLong(PySequence_Size(inputs));
-  PyObject* callback_args =
-      Py_BuildValue("OOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs);
 
-  PyObject* backward_function =
-      PyObject_CallObject(backward_function_getter, callback_args);
-  Py_DECREF(callback_args);
-  if (backward_function == nullptr) return nullptr;
+  TapeSetRecordOperation(
+      op_name, results, input_ids, input_dtypes,
+      [op_name, attrs, num_inputs, op_inputs, op_outputs]() {
+        Py_INCREF(op_name);
+        Py_INCREF(attrs);
+        Py_INCREF(num_inputs);
+        Py_INCREF(op_inputs);
+        Py_INCREF(op_outputs);
+        PyBackwardFunction* function =
+            new PyBackwardFunction([op_name, attrs, num_inputs, op_inputs,
+                                    op_outputs](PyObject* output_grads) {
+              tensorflow::Safe_PyObjectPtr callback_args(
+                  Py_BuildValue("OOOOOO", op_name, attrs, num_inputs, op_inputs,
+                                op_outputs, output_grads));
 
-  TapeSetRecordOperation(op_name, results, input_ids, input_dtypes,
-                         backward_function);
+              tensorflow::Safe_PyObjectPtr result(
+                  PyObject_CallObject(gradient_function, callback_args.get()));
 
-  Py_DECREF(backward_function);
+              if (PyErr_Occurred()) return static_cast<PyObject*>(nullptr);
+
+              return tensorflow::swig::Flatten(result.get());
+            });
+        return function;
+      },
+      [op_name, attrs, num_inputs, op_inputs,
+       op_outputs](PyBackwardFunction* backward_function) {
+        Py_DECREF(op_name);
+        Py_DECREF(attrs);
+        Py_DECREF(num_inputs);
+        Py_DECREF(op_inputs);
+        Py_DECREF(op_outputs);
+
+        delete backward_function;
+      });
 
   Py_RETURN_NONE;
 }
@@ -1881,8 +1920,8 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
 
 // Supports only 2 cases at the moment:
 //  i) input is an EagerTensor
-//  ii) input is a ResourceVariable - in this case, the is_variable param is set
-//  to true.
+//  ii) input is a ResourceVariable - in this case, the is_variable param is
+//  set to true.
 //
 //  NOTE: dtype_hint_getter must *always* return a PyObject that can be
 //  decref'd. So if no hint is found, Py_RETURN_NONE (which correctly
