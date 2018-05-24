@@ -95,6 +95,13 @@ class StatSummarizer {
                                                num_stats);
   }
 
+  int num_runs() const { return stats_calculator_->num_runs(); }
+
+  // Returns stats of total microseconds spent by all nodes in each run.
+  const Stat<int64_t>& run_total_us() const {
+    return stats_calculator_->run_total_us();
+  }
+
  private:
   void Validate(const std::vector<TensorDescription>* outputs,
                 const NodeExecStats& ns) const;
