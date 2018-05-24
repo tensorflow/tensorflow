@@ -72,7 +72,6 @@ poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
 Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
                        const poplar::Tensor& tensor);
 
-
 /* Returns a pair of numbers representing the half-open range of indicies
  * which a particular input to a tuple represents in the flattened output.
  *
@@ -125,11 +124,9 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateMatMulOp(poplar::Graph& graph,
-                                                  CompilerResources& res,
-                                                  const HloInstruction* inst,
-                                                  const xla::Shape& output,
-                                                  TensorMap& tensor_map);
+StatusOr<poplar::program::Program> CreateMatMulForDotOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreateSelectOp(poplar::Graph& graph,
                                                   CompilerResources& res,

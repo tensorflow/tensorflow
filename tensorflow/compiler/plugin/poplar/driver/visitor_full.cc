@@ -71,8 +71,9 @@ Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
 Status FullVisitor::HandleDot(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog, CreateMatMulOp(graph_, resources_, inst,
-                                           GetOutputShape(inst), tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      prog, CreateMatMulForDotOp(graph_, resources_, inst, GetOutputShape(inst),
+                                 tensor_map));
   sequence.add(prog);
   return Status::OK();
 }

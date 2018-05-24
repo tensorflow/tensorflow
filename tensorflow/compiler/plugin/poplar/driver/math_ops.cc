@@ -273,10 +273,11 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
   }
 }
 
-StatusOr<poplar::program::Program> CreateMatMulOp(
+StatusOr<poplar::program::Program> CreateMatMulForDotOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   // Find the input tensors
+  CHECK_EQ(inst->opcode(), HloOpcode::kDot);
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0));
 
@@ -292,12 +293,37 @@ StatusOr<poplar::program::Program> CreateMatMulOp(
         se::port::StrCat("Unsupported Dot operation on ", inst->name()));
   }
 
+  const DotDimensionNumbers& dot_dims = inst->dot_dimension_numbers();
+  if (dot_dims.lhs_contracting_dimensions_size() != 1 ||
+      dot_dims.rhs_contracting_dimensions_size() != 1) {
+    return Status(
+        tensorflow::error::FAILED_PRECONDITION,
+        se::port::StrCat(
+            "Unsupported Dot with multiple contracting dimensions on ",
+            inst->name()));
+  }
+
+  int64 lhs_reduction_dimension = dot_dims.lhs_contracting_dimensions(0);
+  int64 rhs_reduction_dimension = dot_dims.rhs_contracting_dimensions(0);
+
   if (in0.rank() == 1) {
     in0 = in0.reshape({1, in0.dim(0)});
+    // force the reduction dimension due to reshaping
+    lhs_reduction_dimension = 1;
   }
 
   if (in1.rank() == 1) {
     in1 = in1.reshape({in1.dim(0), 1});
+    // force the reduction dimension due to reshaping
+    rhs_reduction_dimension = 0;
+  }
+
+  if (lhs_reduction_dimension != 1) {
+    in0 = in0.transpose();
+  }
+
+  if (rhs_reduction_dimension != 0) {
+    in1 = in1.transpose();
   }
 
   poplar::OptionFlags opts;
