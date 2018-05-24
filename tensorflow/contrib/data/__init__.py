@@ -30,6 +30,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@assert_element_shape
 @@batch_and_drop_remainder
 @@bucket_by_sequence_length
+@@choose_from_datasets
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@group_by_window
