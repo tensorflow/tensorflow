@@ -445,6 +445,10 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
       return false;
     }
   }
+  // Queue ops modify the queue which is a side effect.
+  if (node.op().find("Queue") != std::string::npos) {
+    return false;
+  }
   return !ModifiesInputsInPlace(node);
 }
 
