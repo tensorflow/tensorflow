@@ -71,13 +71,14 @@ class GANHeadTest(test.TestCase):
     return {}
 
   def _test_modes_helper(self, mode):
-    self.gan_head.create_estimator_spec(
+    return self.gan_head.create_estimator_spec(
         features=None,
         mode=mode,
         logits=get_gan_model())
 
   def test_modes_predict(self):
-    self._test_modes_helper(model_fn_lib.ModeKeys.PREDICT)
+    spec = self._test_modes_helper(model_fn_lib.ModeKeys.PREDICT)
+    self.assertItemsEqual(('predict',), spec.export_outputs.keys())
 
   def test_modes_eval(self):
     self._test_modes_helper(model_fn_lib.ModeKeys.EVAL)
