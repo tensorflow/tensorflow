@@ -8,6 +8,7 @@
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -34,6 +35,9 @@ std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape);
 
 StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
     const xla::Literal& lit);
+
+StatusOr<std::vector<int64>> WideConstToInt64Vector(
+    const xla::HloInstruction* bcast, const xla::HloInstruction* constant);
 
 }  // namespace poplarplugin
 }  // namespace xla

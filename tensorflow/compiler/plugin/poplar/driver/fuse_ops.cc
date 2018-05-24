@@ -24,6 +24,8 @@ namespace poplarplugin {
 
 static FusedGraphInfo fuse_info[] = {
     {"const_slice_update", 0},
+    {"const_slice_update", 0},
+    {"const_slice", 0},
     {"const_slice", 0},
     {"relu", 0},
     {"relu", 0},
@@ -71,9 +73,22 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
+    // dynamic update slice with wide constant coordinate
+    {{HloOpcode::kDynamicUpdateSlice, true, 0, nullptr, {3, 4, 1}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
+     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+
     // dynamic slice with constant coordinate
     {{HloOpcode::kDynamicSlice, true, 0, nullptr, {2, 1}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+
+    // dynamic slice with wide constant coordinate
+    {{HloOpcode::kDynamicSlice, true, 0, nullptr, {3, 1}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
+     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
     // Relu

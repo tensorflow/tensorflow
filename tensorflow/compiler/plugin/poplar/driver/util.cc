@@ -3,6 +3,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
@@ -47,6 +48,21 @@ StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
 
   const int64* start = static_cast<const int64*>(s64_lit->untyped_data());
   return std::vector<int64>(start, start + s64_lit->shape().dimensions(0));
+}
+
+StatusOr<std::vector<int64>> WideConstToInt64Vector(
+    const xla::HloInstruction* bcast, const xla::HloInstruction* constant) {
+  CHECK_EQ(bcast->opcode(), HloOpcode::kBroadcast);
+  if (bcast->shape().dimensions_size() != 1) {
+    return Status(tensorflow::error::FAILED_PRECONDITION, "Literal rank != 1");
+  }
+  CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
+
+  std::unique_ptr<Literal> s64_lit;
+  TF_ASSIGN_OR_RETURN(s64_lit, constant->literal().Convert(S64));
+
+  const int64 val = *static_cast<const int64*>(s64_lit->untyped_data());
+  return std::vector<int64>(bcast->shape().dimensions(0), val);
 }
 
 }  // namespace poplarplugin
