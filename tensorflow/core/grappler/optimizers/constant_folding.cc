@@ -1955,35 +1955,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     }
   }
 
-  if (IsPack(*node) && NumNonControlInputs(*node) == 1 &&
-      !OptimizedNodeExists(*node, "_const_axis")) {
-    // Create constant axis node.
-    Tensor axis_t(DT_INT32, TensorShape({}));
-    NodeDef* axis_node = optimized_graph->add_node();
-    axis_node->set_name(OptimizedNodeName(*node, "_const_axis"));
-    const int axis = node->attr().at("axis").i();
-    if (!SetTensorValue(DT_INT32, axis, &axis_t).ok() ||
-        !CreateNodeDef(axis_node->name(), TensorValue(&axis_t), axis_node)
-             .ok()) {
-      return Status::OK();
-    }
-    // Add a control dependency to make sure axis_node is in the right frame.
-    const string ctrl_dep = ConstantFolding::AddControlDependency(
-        node->input(0), graph_, node_map_.get());
-    axis_node->add_input(ctrl_dep);
-    axis_node->set_device(node->device());
-    node->set_op("ExpandDims");
-    if (node->attr().count("axis") != 0) {
-      node->mutable_attr()->erase("axis");
-    }
-    if (node->attr().count("N") != 0) {
-      node->mutable_attr()->erase("N");
-    }
-    (*node->mutable_attr())["Tdim"].set_type(DT_INT32);
-    node->add_input(axis_node->name());
-    if (node->input_size() > 2) {
-      node->mutable_input()->SwapElements(1, node->input_size() - 1);
-    }
+  if (SimplifyPack(optimized_graph, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2050,6 +2022,41 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   }
 
   return Status::OK();
+}
+
+bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
+  if (IsPack(*node) && NumNonControlInputs(*node) == 1 &&
+      !OptimizedNodeExists(*node, "_const_axis")) {
+    // Create constant axis node.
+    Tensor axis_t(DT_INT32, TensorShape({}));
+    NodeDef* axis_node = optimized_graph->add_node();
+    axis_node->set_name(OptimizedNodeName(*node, "_const_axis"));
+    const int axis = node->attr().at("axis").i();
+    if (!SetTensorValue(DT_INT32, axis, &axis_t).ok() ||
+        !CreateNodeDef(axis_node->name(), TensorValue(&axis_t), axis_node)
+             .ok()) {
+      return false;
+    }
+    // Add a control dependency to make sure axis_node is in the right frame.
+    const string ctrl_dep = ConstantFolding::AddControlDependency(
+        node->input(0), graph_, node_map_.get());
+    axis_node->add_input(ctrl_dep);
+    axis_node->set_device(node->device());
+    node->set_op("ExpandDims");
+    if (node->attr().count("axis") != 0) {
+      node->mutable_attr()->erase("axis");
+    }
+    if (node->attr().count("N") != 0) {
+      node->mutable_attr()->erase("N");
+    }
+    (*node->mutable_attr())["Tdim"].set_type(DT_INT32);
+    node->add_input(axis_node->name());
+    if (node->input_size() > 2) {
+      node->mutable_input()->SwapElements(1, node->input_size() - 1);
+      return true;
+    }
+  }
+  return false;
 }
 
 bool ConstantFolding::MoveConstantsPastEnter(GraphDef* optimized_graph,

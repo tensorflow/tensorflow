@@ -164,8 +164,11 @@ class ConstantFolding : public GraphOptimizer {
   //     +------+
   bool SimplifySwitch(GraphDef* optimized_graph, NodeDef* node);
 
-  // Move constants past Enter node if applicable.
+  // Moves constants past Enter node if applicable.
   bool MoveConstantsPastEnter(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies Pack operation if applicable.
+  bool SimplifyPack(GraphDef* optimized_graph, NodeDef* node);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
