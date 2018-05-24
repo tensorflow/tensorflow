@@ -333,6 +333,23 @@ TfLiteStatus AddOpsAndParams(
       return check_and_add_activation(builtin->activation);
     };
 
+    auto add_resize_bilinear_params = [&add_scalar_int32, &interpreter, &augmented_inputs](void* data) {
+      auto builtin = reinterpret_cast<TfLiteResizeBilinearParams*>(data);
+      if  (builtin->align_corners) {
+        FATAL("Resize bilinear does not support align corners in NNAPI");
+      }
+
+      TfLiteTensor* tensor = interpreter->tensor(augmented_inputs.back());
+      assert(tensor->type == kTfLiteInt32);
+      assert(tensor->bytes == sizeof(int)*2);
+      augmented_inputs.pop_back();
+
+      int height = ((int*)(tensor->data.raw))[1];
+      int width = ((int*)(tensor->data.raw))[0];
+      add_scalar_int32(height);
+      add_scalar_int32(width);
+    };
+
     auto add_concatenation_params = [&add_scalar_int32](void* data) {
       auto builtin = reinterpret_cast<TfLiteConcatenationParams*>(data);
       add_scalar_int32(builtin->axis);
@@ -494,6 +511,10 @@ TfLiteStatus AddOpsAndParams(
         nn_op_type = ANEURALNETWORKS_RESHAPE;
         // add_reshape_params(node.builtin_data);
         break;
+      case tflite::BuiltinOperator_RESIZE_BILINEAR:
+        add_resize_bilinear_params(node.builtin_data);
+        nn_op_type = ANEURALNETWORKS_RESIZE_BILINEAR;
+        break;
       case tflite::BuiltinOperator_SPACE_TO_DEPTH:
         add_space_to_depth_params(node.builtin_data);
         nn_op_type = ANEURALNETWORKS_SPACE_TO_DEPTH;
@@ -598,7 +619,6 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION:
       case tflite::BuiltinOperator_PADV2:
-      case tflite::BuiltinOperator_RESIZE_BILINEAR:
       case tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       case tflite::BuiltinOperator_CALL:
       case tflite::BuiltinOperator_SKIP_GRAM:
