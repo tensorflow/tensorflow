@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -64,7 +65,6 @@ namespace {
 struct Options {
   string fake_infeed_shape;
   bool generate_fake_infeed = false;
-  int num_infeeds = 10;
   bool use_fake_data = false;
   bool print_result = true;
   int num_runs = 1;
@@ -126,22 +126,26 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(const HloSnapshot& module,
   // --generate_fake_infeed is passed and there exists an infeed operation in
   // the HloSnapshot.
   tensorflow::gtl::optional<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<Literal> data;
+  if (provide_infeed) {
+    data = std::move(MakeFakeLiteral(infeed_shape)).ValueOrDie();
+  }
+  auto transfer_infeed = [&data, client]() {
+    TF_CHECK_OK(client->TransferToInfeed(*data));
+  };
   if (provide_infeed) {
     pool.emplace(tensorflow::Env::Default(), "infeed",
                  /*num_threads=*/1);
-    pool->Schedule([opts, infeed_shape, client]() {
-      StatusOr<std::unique_ptr<Literal>> data_status =
-          MakeFakeLiteral(infeed_shape);
-      TF_CHECK_OK(data_status.status());
-      std::unique_ptr<Literal> data = std::move(data_status).ValueOrDie();
+    pool->Schedule([transfer_infeed]() {
       // There may be several infeed buffers needed, however we don't know how
       // many. If we proactively transfer too many infeed buffers, we may run
       // out of memory. If we transfer too few infeed buffers, the program will
-      // hang.
-      // TODO(akuegel): Figure out a better way to handle this.
-      for (int i = 0; i < opts.num_infeeds; ++i) {
-        TF_CHECK_OK(client->TransferToInfeed(*data));
-      }
+      // hang. Therefore, we register a callback that is called when the infeed
+      // becomes empty, and in this callback we will transfer another fake
+      // infeed.
+      auto infeed_manager = xla::gpu::GetOrCreateInfeedManager();
+      infeed_manager->RegisterOnEmptyCallback(transfer_infeed);
+      transfer_infeed();
     });
   }
 
@@ -234,8 +238,6 @@ int main(int argc, char** argv) {
                        "Print the result of the computation to stdout"),
       tensorflow::Flag("num_runs", &opts.num_runs,
                        "Number of times to run each computation"),
-      tensorflow::Flag("num_infeeds", &opts.num_infeeds,
-                       "Number of times we transfer the fake infeed data"),
       tensorflow::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
                        "Shape of fake data to construct for (infinite) infeed"),
       tensorflow::Flag("generate_fake_infeed", &opts.generate_fake_infeed,
