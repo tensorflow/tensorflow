@@ -1827,7 +1827,7 @@ def non_max_suppression(boxes,
                         scores,
                         max_output_size,
                         iou_threshold=0.5,
-                        score_threshold=0.0,
+                        score_threshold=float('-inf'),
                         name=None):
   """Greedily selects a subset of bounding boxes in descending order of score.
 
