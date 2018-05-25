@@ -58,6 +58,7 @@ py_test(
     srcs = ["lite_test.py"],
     data = [":interpreter_test_data"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":lite",
     ],
