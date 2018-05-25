@@ -33,12 +33,17 @@ class MultipleAdditiveTrees {
  public:
   // Predict runs tree ensemble on the given batch and updates
   // output predictions accordingly, for the given list of trees.
+  // output_leaf_indices is a pointer to a 2 dimensional tensor. If it is not
+  // null, this method fills output_leaf_indices with a per-tree leaf id where
+  // each of the instances from 'features' ended up in. Its shape is num
+  // examples X num of trees. When nullptr, leaf ids are not output of trees.
   static void Predict(
       const boosted_trees::trees::DecisionTreeEnsembleConfig& config,
       const std::vector<int32>& trees_to_include,
       const boosted_trees::utils::BatchFeatures& features,
       tensorflow::thread::ThreadPool* const worker_threads,
-      tensorflow::TTypes<float>::Matrix output_predictions);
+      tensorflow::TTypes<float>::Matrix output_predictions,
+      Tensor* output_leaf_indices);
 };
 
 }  // namespace models

@@ -58,6 +58,7 @@ NUM_LAYERS_ATTEMPTED = "num_layers"
 NUM_TREES_ATTEMPTED = "num_trees"
 NUM_USED_HANDLERS = "num_used_handlers"
 USED_HANDLERS_MASK = "used_handlers_mask"
+LEAF_INDEX = "leaf_index"
 _FEATURE_NAME_TEMPLATE = "%s_%d"
 
 
@@ -71,18 +72,25 @@ def _get_column_by_index(tensor, indices):
   return array_ops.reshape(array_ops.gather(p_flat, i_flat), [shape[0], -1])
 
 
-def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats,
-                           used_handlers):
+def _make_predictions_dict(stamp,
+                           logits,
+                           partition_ids,
+                           ensemble_stats,
+                           used_handlers,
+                           output_leaf_index=False,
+                           leaf_index=None):
   """Returns predictions for the given logits and n_classes.
 
   Args:
     stamp: The ensemble stamp.
-    logits: A rank 2 `Tensor` with shape [batch_size, n_classes - 1].
-        that contains predictions when no dropout was applied.
+    logits: A rank 2 `Tensor` with shape [batch_size, n_classes - 1]. that
+      contains predictions when no dropout was applied.
     partition_ids: A rank 1 `Tensor` with shape [batch_size].
     ensemble_stats: A TreeEnsembleStatsOp result tuple.
     used_handlers: A TreeEnsembleUsedHandlerOp result tuple of an int and a
-        boolean mask..
+      boolean mask.
+    leaf_index: A boolean variable indicating whether to output leaf index into
+      predictions dictionary.
 
   Returns:
     A dict of predictions.
@@ -95,6 +103,8 @@ def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats,
   result[NUM_TREES_ATTEMPTED] = ensemble_stats.attempted_trees
   result[NUM_USED_HANDLERS] = used_handlers.num_used_handlers
   result[USED_HANDLERS_MASK] = used_handlers.used_handlers_mask
+  if output_leaf_index:
+    result[LEAF_INDEX] = leaf_index
   return result
 
 
@@ -268,7 +278,8 @@ class GradientBoostedDecisionTreeModel(object):
                features,
                logits_dimension,
                feature_columns=None,
-               use_core_columns=False):
+               use_core_columns=False,
+               output_leaf_index=False):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
     Args:
@@ -276,13 +287,15 @@ class GradientBoostedDecisionTreeModel(object):
       num_ps_replicas: Number of parameter server replicas, can be 0.
       ensemble_handle: A handle to the ensemble variable.
       center_bias: Whether to center the bias before growing trees.
-      examples_per_layer: Number of examples to accumulate before growing
-        a tree layer. It can also be a function that computes the number of
-        examples based on the depth of the layer that's being built.
+      examples_per_layer: Number of examples to accumulate before growing a tree
+        layer. It can also be a function that computes the number of examples
+        based on the depth of the layer that's being built.
       learner_config: A learner config.
       features: `dict` of `Tensor` objects.
       logits_dimension: An int, the dimension of logits.
       feature_columns: A list of feature columns.
+      output_leaf_index: A boolean variable indicating whether to output leaf
+        index into predictions dictionary.
 
     Raises:
       ValueError: if inputs are not valid.
@@ -359,6 +372,7 @@ class GradientBoostedDecisionTreeModel(object):
         self._learner_config.multi_class_strategy ==
         learner_pb2.LearnerConfig.TREE_PER_CLASS and
         learner_config.num_classes == 2)
+    self._output_leaf_index = output_leaf_index
 
   def _predict_and_return_dict(self, ensemble_handle, ensemble_stamp, mode):
     """Runs prediction and returns a dictionary of the prediction results.
@@ -388,22 +402,44 @@ class GradientBoostedDecisionTreeModel(object):
     # Make sure ensemble stats run. This will check that the ensemble has
     # the right stamp.
     with ops.control_dependencies(ensemble_stats):
-      predictions, _ = prediction_ops.gradient_trees_prediction(
-          ensemble_handle,
-          seed,
-          self._dense_floats,
-          self._sparse_float_indices,
-          self._sparse_float_values,
-          self._sparse_float_shapes,
-          self._sparse_int_indices,
-          self._sparse_int_values,
-          self._sparse_int_shapes,
-          learner_config=self._learner_config_serialized,
-          apply_dropout=apply_dropout,
-          apply_averaging=mode != learn.ModeKeys.TRAIN,
-          use_locking=True,
-          center_bias=self._center_bias,
-          reduce_dim=self._reduce_dim)
+      leaf_matrix = []
+      # Only used in infer (predict), not used in train and eval.
+      if self._output_leaf_index and mode == learn.ModeKeys.INFER:
+        predictions, _, leaf_matrix = (
+            prediction_ops).gradient_trees_prediction_verbose(
+                ensemble_handle,
+                seed,
+                self._dense_floats,
+                self._sparse_float_indices,
+                self._sparse_float_values,
+                self._sparse_float_shapes,
+                self._sparse_int_indices,
+                self._sparse_int_values,
+                self._sparse_int_shapes,
+                learner_config=self._learner_config_serialized,
+                apply_dropout=apply_dropout,
+                apply_averaging=mode != learn.ModeKeys.TRAIN,
+                use_locking=True,
+                center_bias=self._center_bias,
+                reduce_dim=self._reduce_dim)
+
+      else:
+        predictions, _ = prediction_ops.gradient_trees_prediction(
+            ensemble_handle,
+            seed,
+            self._dense_floats,
+            self._sparse_float_indices,
+            self._sparse_float_values,
+            self._sparse_float_shapes,
+            self._sparse_int_indices,
+            self._sparse_int_values,
+            self._sparse_int_shapes,
+            learner_config=self._learner_config_serialized,
+            apply_dropout=apply_dropout,
+            apply_averaging=mode != learn.ModeKeys.TRAIN,
+            use_locking=True,
+            center_bias=self._center_bias,
+            reduce_dim=self._reduce_dim)
       partition_ids = prediction_ops.gradient_trees_partition_examples(
           ensemble_handle,
           self._dense_floats,
@@ -416,7 +452,8 @@ class GradientBoostedDecisionTreeModel(object):
           use_locking=True)
 
     return _make_predictions_dict(ensemble_stamp, predictions, partition_ids,
-                                  ensemble_stats, used_handlers)
+                                  ensemble_stats, used_handlers,
+                                  self._output_leaf_index, leaf_matrix)
 
   def predict(self, mode):
     """Returns predictions given the features and mode.
@@ -521,7 +558,7 @@ class GradientBoostedDecisionTreeModel(object):
         aggregation_method=None)[0]
     strategy = self._learner_config.multi_class_strategy
 
-    class_id = constant_op.constant(-1, dtype=dtypes.int32)
+    class_id = -1
     # Handle different multiclass strategies.
     if strategy == learner_pb2.LearnerConfig.TREE_PER_CLASS:
       # We build one vs rest trees.
@@ -575,39 +612,31 @@ class GradientBoostedDecisionTreeModel(object):
     # Get the weights for each example for quantiles calculation,
     weights = self._get_weights(hessian_shape, squeezed_hessians)
 
+    regularization_config = self._learner_config.regularization
+    min_node_weight = self._learner_config.constraints.min_node_weight
     # Create all handlers ensuring resources are evenly allocated across PS.
     fc_name_idx = 0
     handlers = []
     init_stamp_token = constant_op.constant(0, dtype=dtypes.int64)
-    l1_regularization = constant_op.constant(
-        self._learner_config.regularization.l1, dtypes.float32)
-    l2_regularization = constant_op.constant(
-        self._learner_config.regularization.l2, dtypes.float32)
-    tree_complexity_regularization = constant_op.constant(
-        self._learner_config.regularization.tree_complexity, dtypes.float32)
-    min_node_weight = constant_op.constant(
-        self._learner_config.constraints.min_node_weight, dtypes.float32)
-    epsilon = 0.01
-    num_quantiles = 100
-    strategy_tensor = constant_op.constant(strategy)
     with ops.device(self._get_replica_device_setter(worker_device)):
       # Create handlers for dense float columns
       for dense_float_column_idx in range(len(self._dense_floats)):
         fc_name = self._fc_names[fc_name_idx]
         handlers.append(
             ordinal_split_handler.DenseSplitHandler(
-                l1_regularization=l1_regularization,
-                l2_regularization=l2_regularization,
-                tree_complexity_regularization=tree_complexity_regularization,
+                l1_regularization=regularization_config.l1,
+                l2_regularization=regularization_config.l2,
+                tree_complexity_regularization=(
+                    regularization_config.tree_complexity),
                 min_node_weight=min_node_weight,
                 feature_column_group_id=dense_float_column_idx,
-                epsilon=epsilon,
-                num_quantiles=num_quantiles,
+                epsilon=0.01,
+                num_quantiles=100,
                 dense_float_column=self._dense_floats[dense_float_column_idx],
                 name=fc_name,
                 gradient_shape=gradient_shape,
                 hessian_shape=hessian_shape,
-                multiclass_strategy=strategy_tensor,
+                multiclass_strategy=strategy,
                 init_stamp_token=init_stamp_token))
         fc_name_idx += 1
 
@@ -616,13 +645,14 @@ class GradientBoostedDecisionTreeModel(object):
         fc_name = self._fc_names[fc_name_idx]
         handlers.append(
             ordinal_split_handler.SparseSplitHandler(
-                l1_regularization=l1_regularization,
-                l2_regularization=l2_regularization,
-                tree_complexity_regularization=tree_complexity_regularization,
+                l1_regularization=regularization_config.l1,
+                l2_regularization=regularization_config.l2,
+                tree_complexity_regularization=(
+                    regularization_config.tree_complexity),
                 min_node_weight=min_node_weight,
                 feature_column_group_id=sparse_float_column_idx,
-                epsilon=epsilon,
-                num_quantiles=num_quantiles,
+                epsilon=0.01,
+                num_quantiles=100,
                 sparse_float_column=sparse_tensor.SparseTensor(
                     self._sparse_float_indices[sparse_float_column_idx],
                     self._sparse_float_values[sparse_float_column_idx],
@@ -630,7 +660,7 @@ class GradientBoostedDecisionTreeModel(object):
                 name=fc_name,
                 gradient_shape=gradient_shape,
                 hessian_shape=hessian_shape,
-                multiclass_strategy=strategy_tensor,
+                multiclass_strategy=strategy,
                 init_stamp_token=init_stamp_token))
         fc_name_idx += 1
 
@@ -639,9 +669,10 @@ class GradientBoostedDecisionTreeModel(object):
         fc_name = self._fc_names[fc_name_idx]
         handlers.append(
             categorical_split_handler.EqualitySplitHandler(
-                l1_regularization=l1_regularization,
-                l2_regularization=l2_regularization,
-                tree_complexity_regularization=tree_complexity_regularization,
+                l1_regularization=regularization_config.l1,
+                l2_regularization=regularization_config.l2,
+                tree_complexity_regularization=(
+                    regularization_config.tree_complexity),
                 min_node_weight=min_node_weight,
                 feature_column_group_id=sparse_int_column_idx,
                 sparse_int_column=sparse_tensor.SparseTensor(
@@ -651,7 +682,7 @@ class GradientBoostedDecisionTreeModel(object):
                 name=fc_name,
                 gradient_shape=gradient_shape,
                 hessian_shape=hessian_shape,
-                multiclass_strategy=strategy_tensor,
+                multiclass_strategy=strategy,
                 init_stamp_token=init_stamp_token))
         fc_name_idx += 1
 
@@ -773,7 +804,6 @@ class GradientBoostedDecisionTreeModel(object):
     empty_hessians = constant_op.constant(
         [], dtype=dtypes.float32, shape=empty_hess_shape)
 
-    active_handlers = array_ops.unstack(active_handlers, axis=0)
     for handler_idx in range(len(handlers)):
       handler = handlers[handler_idx]
       is_active = active_handlers[handler_idx]
@@ -984,7 +1014,7 @@ class GradientBoostedDecisionTreeModel(object):
       # This is a workaround for the slowness of graph building in tf.cond.
       # See (b/36554864).
       split_sizes = array_ops.reshape(
-          array_ops.shape_n(partition_ids_list), [len(partition_ids_list)])
+          array_ops.shape_n(partition_ids_list), [-1])
       partition_ids = array_ops.concat(partition_ids_list, axis=0)
       gains = array_ops.concat(gains_list, axis=0)
       split_infos = array_ops.concat(split_info_list, axis=0)
@@ -1049,11 +1079,8 @@ class GradientBoostedDecisionTreeModel(object):
 
       # Update ensemble.
       update_ops = [are_all_splits_ready]
-      if self._center_bias:
-        update_model = control_flow_ops.cond(continue_centering,
-                                             _center_bias_fn, _grow_ensemble_fn)
-      else:
-        update_model = _grow_ensemble_fn()
+      update_model = control_flow_ops.cond(continue_centering, _center_bias_fn,
+                                           _grow_ensemble_fn)
       update_ops.append(update_model)
 
       # Update ensemble stats.
