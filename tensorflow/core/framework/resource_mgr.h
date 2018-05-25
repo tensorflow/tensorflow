@@ -131,6 +131,10 @@ class ResourceMgr {
   // "*resource". Otherwise, invokes creator() to create the resource.
   // The caller takes the ownership of one ref on "*resource".
   //
+  // WARNING: creator() must not call any methods on ResourceMgr during its
+  // execution, because a non-reentrant lock is held during the creator() call
+  // in order to guarantee atomicity of LookupOrCreate().
+  //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr
   template <typename T>
