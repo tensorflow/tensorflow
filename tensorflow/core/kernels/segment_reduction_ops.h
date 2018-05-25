@@ -130,4 +130,4 @@ struct Highest {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_

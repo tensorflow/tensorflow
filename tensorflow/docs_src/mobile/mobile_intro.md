@@ -212,7 +212,7 @@ handle the task then it will be difficult to train a computer to do better.
 
 After you’ve solved any fundamental issues with your use case, you need to
 create a labeled dataset to define what problem you’re trying to solve. This
-step is extremely important, moreso than picking which model to use. You want it
+step is extremely important, more than picking which model to use. You want it
 to be as representative as possible of your actual use case, since the model
 will only be effective at the task you teach it. It’s also worth investing in
 tools to make labeling the data as efficient and accurate as possible. For

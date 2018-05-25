@@ -31,7 +31,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.8.0-rc1'
+_VERSION = '1.8.0'
 
 _SHORT_DESCRIPTION = ('TensorFlow is an open source machine learning framework '
                       'for everyone.')
@@ -55,7 +55,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
-    'tensorboard >= 1.7.0, < 1.8.0',
+    'tensorboard >= 1.8.0, < 1.9.0',
     'termcolor >= 1.1.0',
 ]
 

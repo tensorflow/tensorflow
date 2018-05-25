@@ -52,7 +52,7 @@ namespace {
 
 // Creates an Event proto representing a chunk of a Tensor. This method only
 // populates the field of the Event proto that represent the envelope
-// informaion (e.g., timestmap, device_name, num_chunks, chunk_index, dtype,
+// information (e.g., timestamp, device_name, num_chunks, chunk_index, dtype,
 // shape). It does not set the value.tensor field, which should be set by the
 // caller separately.
 Event PrepareChunkEventProto(const DebugNodeKey& debug_node_key,

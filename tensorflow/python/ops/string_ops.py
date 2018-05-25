@@ -39,6 +39,8 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
+# Expose regex_full_match in strings namespace
+tf_export("strings.regex_full_match")(regex_full_match)
 
 @tf_export("string_split")
 def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name

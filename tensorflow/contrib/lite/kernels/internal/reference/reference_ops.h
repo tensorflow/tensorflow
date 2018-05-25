@@ -1789,7 +1789,7 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
                           const int32 output_zeropoint,
                           const float output_scale) {
   // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization paramaters for all the inputs to the concat
+  // that have the quantization parameters for all the inputs to the concat
   // operator.
   TFLITE_DCHECK_GT(inputs_count, 1);
   int64_t concat_size = 0;
@@ -1975,7 +1975,7 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // requiring a power-of-two representation interval. Thus, we should right
 // away quantize this array to a power-of-two interval; otherwise,
 // implementation will need to rescale that, losing any benefit that a tighter
-// representation interval might otherwise yield, while introducting some
+// representation interval might otherwise yield, while introducing some
 // numerical error and computational overhead.
 //
 // Now, Logistic and Tanh

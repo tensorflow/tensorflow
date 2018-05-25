@@ -109,7 +109,7 @@ KNOWN_BUGS = {
 
 
 class ExtraTocoOptions(object):
-  """Additonal toco options besides input, output, shape."""
+  """Additional toco options besides input, output, shape."""
 
   def __init__(self):
     # Whether to ignore control dependency nodes.
@@ -2016,7 +2016,7 @@ def make_lstm_tests(zip_path):
     return inputs_after_split, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    """Feed inputs, assign vairables, and freeze graph."""
+    """Feed inputs, assign variables, and freeze graph."""
 
     with tf.variable_scope("", reuse=True):
       kernel = tf.get_variable("rnn/basic_lstm_cell/kernel")

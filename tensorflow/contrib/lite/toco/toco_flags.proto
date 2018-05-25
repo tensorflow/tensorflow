@@ -127,7 +127,7 @@ message TocoFlags {
   // transformations that are necessary in order to generate inference
   // code for these graphs. Such graphs should be fixed, but as a
   // temporary work-around, setting this reorder_across_fake_quant flag
-  // allows toco to perform necessary graph transformaitons on them,
+  // allows toco to perform necessary graph transformations on them,
   // at the cost of no longer faithfully matching inference and training
   // arithmetic.
   optional bool reorder_across_fake_quant = 8;

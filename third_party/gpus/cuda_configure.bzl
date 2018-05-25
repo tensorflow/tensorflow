@@ -604,7 +604,7 @@ def _find_cupti_header_dir(repository_ctx, cuda_config):
   for relative_path in CUPTI_HEADER_PATHS:
     if repository_ctx.path("%s/%scupti.h" % (cuda_toolkit_path, relative_path)).exists:
         return ("%s/%s" % (cuda_toolkit_path, relative_path))[:-1]
-  auto_configure_fail("Cannot find cupti.h under %s" % cuda_toolkit_path)
+  auto_configure_fail("Cannot find cupti.h under %s" % ", ".join([cuda_toolkit_path + "/" + s for s in CUPTI_HEADER_PATHS]))
 
 
 def _find_cupti_lib(repository_ctx, cuda_config):

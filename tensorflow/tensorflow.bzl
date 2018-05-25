@@ -1300,7 +1300,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
     native.cc_library(
         name=basename + "_gpu",
         srcs=gpu_srcs,
-        copts=_cuda_copts(),
+        copts=_cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
         deps=deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
 
@@ -1483,7 +1483,7 @@ def tf_py_wrap_cc(name,
 # This macro is for running python tests against system installed pip package
 # on Windows.
 #
-# py_test is built as an exectuable python zip file on Windows, which contains all
+# py_test is built as an executable python zip file on Windows, which contains all
 # dependencies of the target. Because of the C++ extensions, it would be very
 # inefficient if the py_test zips all runfiles, plus we don't need them when running
 # tests against system installed pip package. So we'd like to get rid of the deps

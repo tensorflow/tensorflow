@@ -209,7 +209,6 @@ for two-dimensional image data expect input tensors to have a shape of
 *   _`channels`_. Number of color channels in the example images. For color
     images, the number of channels is 3 (red, green, blue). For monochrome
     images, there is just 1 channel (black).
-*   _`image_height`_. Height of the example images.
 *   _`data_format`_. A string, one of `channels_last` (default) or `channels_first`.
       `channels_last` corresponds to inputs with shape
       `(batch, ..., channels)` while `channels_first` corresponds to

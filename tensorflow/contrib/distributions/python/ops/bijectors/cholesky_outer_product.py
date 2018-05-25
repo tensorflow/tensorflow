@@ -53,7 +53,7 @@ class CholeskyOuterProduct(bijector.Bijector):
   its spectrum), and that the product of two positive-diagonal lower-triangular
   matrices is another positive-diagonal lower-triangular matrix.
 
-  A simple inductive argument (proceding one column of L_3 at a time) shows
+  A simple inductive argument (proceeding one column of L_3 at a time) shows
   that, if `I = L_3 @ L_3.T`, with L_3 being lower-triangular with positive-
   diagonal, then `L_3 = I`. Thus, `L_1 = L_2`, proving injectivity of g.
 

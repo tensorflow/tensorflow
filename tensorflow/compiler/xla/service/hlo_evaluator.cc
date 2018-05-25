@@ -135,6 +135,7 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
 
 }  // namespace
 
+
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] = MakeUnique<HloEvaluatorTypedVisitor<bool>>(this);

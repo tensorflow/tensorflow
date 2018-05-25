@@ -4248,6 +4248,7 @@ cc_library(
         ":as_string_op",
         ":base64_ops",
         ":reduce_join_op",
+        ":regex_full_match_op",
         ":regex_replace_op",
         ":string_join_op",
         ":string_split_op",
@@ -4282,6 +4283,12 @@ tf_kernel_library(
     name = "string_join_op",
     prefix = "string_join_op",
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "regex_full_match_op",
+    prefix = "regex_full_match_op",
+    deps = STRING_DEPS + ["@com_googlesource_code_re2//:re2"],
 )
 
 tf_kernel_library(
@@ -5174,6 +5181,7 @@ filegroup(
             "debug_ops.*",
             "mutex_ops.*",
             "batch_kernels.*",
+            "regex_full_match_op.cc",
             "regex_replace_op.cc",
         ],
     ),

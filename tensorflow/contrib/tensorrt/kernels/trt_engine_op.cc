@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,38 +33,40 @@ namespace tensorrt {
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // read serialized_engine
-  string serialized_engine;
   OP_REQUIRES_OK(context,
-                 context->GetAttr("serialized_engine", &serialized_engine));
+                 context->GetAttr("serialized_engine", &serialized_engine_));
 
   // register input output node name in trt_sub_graph
   OP_REQUIRES_OK(context, context->GetAttr("input_nodes", &input_nodes_));
   OP_REQUIRES_OK(context, context->GetAttr("output_nodes", &output_nodes_));
-
-  // TODO(samikama) runtime should be taken from a resourcemanager as well.
-  // Only engine should be in the op and context and runtime should be taken
-  // from resourcemanager
-  // TODO(jie): cudaSetDevice make sure trt engine is allocated on the same
-  // gpu where the input/output is also located.
-  int gpu_id = context->device()->tensorflow_gpu_device_info()->gpu_id;
-  cudaSetDevice(gpu_id);
-  int device;
-  cudaGetDevice(&device);
-  if (gpu_id != device) LOG(FATAL) << "set device failed!";
-
-  // TODO(samikama) runtime should be taken from a resourcemanager as well.
-  // Only engine should be in the op and context and runtime should be taken
-  // from resourcemanager
-
-  IRuntime* infer = nvinfer1::createInferRuntime(logger);
-  trt_engine_ptr_.reset(infer->deserializeCudaEngine(
-      serialized_engine.c_str(), serialized_engine.size(), nullptr));
-  trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
-  // Runtime is safe to delete after engine creation
-  infer->destroy();
 }
 
 void TRTEngineOp::Compute(OpKernelContext* context) {
+  // TODO(samikama) runtime should be taken from a resourcemanager as well.
+  // Only engine should be in the op and context and runtime should be taken
+  // from resourcemanager
+
+  if (!trt_execution_context_ptr_) {
+    IRuntime* infer = nvinfer1::createInferRuntime(logger);
+#if NV_TENSORRT_MAJOR > 3
+    auto device = context->device();
+    auto dev_allocator =
+        device->GetAllocator(tensorflow::AllocatorAttributes());
+    if (!dev_allocator) {
+      LOG(FATAL) << "Can't find device allocator for gpu device "
+                 << device->name();
+    }
+    allocator_ = std::make_shared<TRTDeviceAllocator>(dev_allocator);
+    infer->setGpuAllocator(allocator_.get());
+#endif
+    trt_engine_ptr_.reset(infer->deserializeCudaEngine(
+        serialized_engine_.c_str(), serialized_engine_.size(),
+        PluginFactoryTensorRT::GetInstance()));
+    trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
+    // Runtime is safe to delete after engine creation
+    infer->destroy();
+    serialized_engine_.clear();
+  }
   int num_binding = context->num_inputs() + context->num_outputs();
   std::vector<void*> buffers(num_binding);
 
@@ -154,7 +157,12 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
   VLOG(2) << "enqueue returns: " << ret;
   // sync should be done by TF.
 }
-
+TRTEngineOp::~TRTEngineOp() {
+  // Order matters!
+  trt_execution_context_ptr_.reset();
+  trt_engine_ptr_.reset();
+  allocator_.reset();
+}
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
 
 }  // namespace tensorrt
