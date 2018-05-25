@@ -21,6 +21,7 @@ set(tf_c_srcs
     "${tensorflow_source_dir}/tensorflow/c/c_api_function.cc"
     "${tensorflow_source_dir}/tensorflow/c/eager/c_api.cc"
     "${tensorflow_source_dir}/tensorflow/c/eager/c_api.h"
+    "${tensorflow_source_dir}/tensorflow/c/eager/c_api_debug.cc"
     "${tensorflow_source_dir}/tensorflow/c/eager/tape.h"
     "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.cc"
     "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.h"

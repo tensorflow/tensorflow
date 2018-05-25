@@ -115,6 +115,15 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 // newly created type, or nullptr on error.
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 
+// Sets `profiler` as the current profiler to receive callbacks about events
+// on eager tensors. Currently, the only reported event is creation.
+// `profiler` is expected to have a `created(self, eager_tensor)` method that
+// takes the created tensor as its single argument.
+// Previous profiler, if any, is unset and will not receive any more
+// callbacks.
+// To unset the profiler, pass Py_None as the value of `profiler`.
+PyObject* TFE_Py_SetEagerTensorProfiler(PyObject* profiler);
+
 // Creates a new tape and adds it to the active set. `persistent` must be a
 // PyBool_Type, i.e either Py_True or Py_False
 PyObject* TFE_Py_TapeSetNew(PyObject* persistent);
@@ -202,5 +211,9 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 // REQUIRES: `slice_dim` is non-negative and smaller than the rank of all
 //   tensors in `tensors`.
 PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
+
+// Returns the shape of this tensor's on-device representation.
+// The shape is represented as a Python tuple of integers.
+PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

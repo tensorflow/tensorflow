@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 
 #include <string.h>
+#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -31,122 +32,6 @@ limitations under the License.
 using tensorflow::string;
 
 namespace {
-
-TFE_TensorHandle* DoubleTestMatrixTensorHandle() {
-  int64_t dims[] = {2, 2};
-  double data[] = {1.0, 2.0, 3.0, 4.0};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_DOUBLE, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
-  TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-  return th;
-}
-
-TFE_TensorHandle* TestMatrixTensorHandle() {
-  int64_t dims[] = {2, 2};
-  float data[] = {1.0f, 2.0f, 3.0f, 4.0f};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_FLOAT, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
-  TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-  return th;
-}
-
-TFE_TensorHandle* TestMatrixTensorHandle3X2() {
-  int64_t dims[] = {3, 2};
-  double data[] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_FLOAT, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
-  TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-  return th;
-}
-
-TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
-  TF_Status* status = TF_NewStatus();
-
-  TFE_Op* op = TFE_NewOp(ctx, "MatMul", status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpAddInput(op, a, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpAddInput(op, b, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-  TFE_OpSetAttrBool(op, "transpose_a", 0);
-  TFE_OpSetAttrBool(op, "transpose_b", 0);
-  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(a));
-
-  return op;
-}
-
-TFE_TensorHandle* TestAxisTensorHandle() {
-  int64_t dims[] = {1};
-  int data[] = {1};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_INT32, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
-  TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-  return th;
-}
-
-TFE_Op* MinOp(TFE_Context* ctx, TFE_TensorHandle* input,
-              TFE_TensorHandle* axis) {
-  TF_Status* status = TF_NewStatus();
-
-  TFE_Op* op = TFE_NewOp(ctx, "Min", status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpAddInput(op, input, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpAddInput(op, axis, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpSetAttrBool(op, "keep_dims", 1);
-  TFE_OpSetAttrType(op, "Tidx", TF_INT32);
-  TF_DeleteStatus(status);
-  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(input));
-
-  return op;
-}
-
-// If there is a GPU device, returns true and sets 'gpu_device_name'
-// accordingly.
-bool GetGPUDeviceName(TFE_Context* ctx, string* gpu_device_name) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
-  CHECK_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-
-  const int num_devices = TF_DeviceListCount(devices);
-  for (int i = 0; i < num_devices; ++i) {
-    const string device_type(TF_DeviceListType(devices, i, status.get()));
-    CHECK_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-    const string device_name(TF_DeviceListName(devices, i, status.get()));
-    CHECK_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-    if (device_type == "GPU") {
-      *gpu_device_name = device_name;
-      LOG(INFO) << "Found GPU device " << device_name;
-      TF_DeleteDeviceList(devices);
-      return true;
-    }
-  }
-  TF_DeleteDeviceList(devices);
-  return false;
-}
 
 void BM_InitOp(int iters) {
   tensorflow::testing::StopTiming();
@@ -536,7 +421,7 @@ void TensorHandleSilentCopy(bool async) {
 
   // Disable the test if no GPU is present.
   string gpu_device_name;
-  if (GetGPUDeviceName(ctx, &gpu_device_name)) {
+  if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
     TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
         hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
@@ -583,7 +468,7 @@ void TensorHandleSilentCopyLocal(bool async) {
 
   // Disable the test if no GPU is present.
   string gpu_device_name;
-  if (GetGPUDeviceName(ctx, &gpu_device_name)) {
+  if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
     TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
         hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
@@ -624,7 +509,7 @@ void SetAndGetOpDevices(bool async) {
 
   // Disable the test if no GPU is present.
   string gpu_device_name;
-  if (GetGPUDeviceName(ctx, &gpu_device_name)) {
+  if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
     TFE_OpSetDevice(matmul, "GPU:0", status);
     ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
     const char* device_name = TFE_OpGetDevice(matmul, status);
@@ -688,7 +573,7 @@ void Execute_MatMul_CPU_Runtime_Error(bool async) {
   TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m1 = TestMatrixTensorHandle();
-  TFE_TensorHandle* m2 = TestMatrixTensorHandle3X2();
+  TFE_TensorHandle* m2 = DoubleTestMatrixTensorHandle3X2();
   TFE_Op* matmul = MatMulOp(ctx, m1, m2);
   TFE_OpSetDevice(matmul, "/job:localhost/replica:0/task:0/device:CPU:0",
                   status);

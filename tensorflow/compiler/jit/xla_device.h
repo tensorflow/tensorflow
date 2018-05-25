@@ -45,13 +45,19 @@ namespace tensorflow {
 
 class XlaDevice : public LocalDevice {
  public:
+  // Given a tensor, sets `xla::Shape*` the shape of tensor's representation
+  // on device, fully padded. On error, the contents of `xla::Shape*`
+  // are undefined.
+  typedef std::function<Status(const Tensor&, xla::Shape*)> PaddedShapeFn;
+
   // Wrapper class to store metadata about the XlaDevice, where it can be
   // retrieved e.g., when lazily creating the XlaCompilationCache device.
   class Metadata {
    public:
     Metadata(int device_ordinal, se::Platform* platform,
              const DeviceType& device_type,
-             XlaCompiler::ShapeRepresentationFn shape_representation_fn);
+             XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+             PaddedShapeFn padded_shape_fn);
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -62,12 +68,14 @@ class XlaDevice : public LocalDevice {
     const XlaCompiler::ShapeRepresentationFn& shape_representation_fn() const {
       return shape_representation_fn_;
     }
+    const PaddedShapeFn& padded_shape_fn() const { return padded_shape_fn_; }
 
    private:
     const int device_ordinal_;
     const DeviceType device_type_;
     se::Platform* platform_;  // Not owned.
     XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+    PaddedShapeFn padded_shape_fn_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
   };
@@ -81,6 +89,8 @@ class XlaDevice : public LocalDevice {
   // 'transfer_as_literal' is true if device<->host transfers must be done using
   // XLA's TransferLiteral{To,From}Device interface. If false, we can use
   // ThenMemcpy instead.
+  // If padded_shape_fn is empty, a default implementation that returns
+  // the on-host shape is used.
   static Status Create(
       const string& platform_name, const string& device_name,
       int device_ordinal, const string& jit_device_name,
@@ -88,12 +98,16 @@ class XlaDevice : public LocalDevice {
       const XlaOpRegistry::DeviceRegistration& registration,
       bool transfer_as_literal,
       const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
-      std::unique_ptr<XlaDevice>* device);
+      const PaddedShapeFn& padded_shape_fn, std::unique_ptr<XlaDevice>* device);
 
+  // Creates a new XLA Device.
+  // If padded_shape_fn is empty, a default implementation that returns
+  // the logical on-device shape without padding is used.
   XlaDevice(const SessionOptions& options, const DeviceAttributes& attrs,
             int device_ordinal, const DeviceType& jit_device_name,
             se::Platform* platform, bool transfer_as_literal,
-            const XlaCompiler::ShapeRepresentationFn& shape_representation_fn);
+            const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
+            const PaddedShapeFn& padded_shape_fn);
   ~XlaDevice() override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
@@ -110,6 +124,7 @@ class XlaDevice : public LocalDevice {
                              Tensor* tensor) override;
 
   xla::LocalClient* client() const;
+  const Metadata& metadata() { return xla_metadata_; }
   xla::StatusOr<se::Stream*> GetStream();
 
   // If not already set, create and set GpuDeviceInfo.
