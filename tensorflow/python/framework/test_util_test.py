@@ -619,6 +619,7 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
     ReferenceCycleTest().test_has_no_cycle()
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_no_leaked_tensor_decorator(self):
 
     class LeakedTensorTest(object):
@@ -628,11 +629,11 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
       @test_util.assert_no_new_tensors
       def test_has_leak(self):
-        self.a = constant_op.constant([3.])
+        self.a = constant_op.constant([3.], name="leak")
 
       @test_util.assert_no_new_tensors
       def test_has_no_leak(self):
-        constant_op.constant([3.])
+        constant_op.constant([3.], name="no-leak")
 
     with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
       LeakedTensorTest().test_has_leak()

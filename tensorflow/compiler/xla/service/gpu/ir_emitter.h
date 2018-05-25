@@ -120,10 +120,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
     return bindings_.GetBasePointer(inst);
   }
-  // A convenient helper for calling BufferAssignment::GetUniqueTopLevelSlice.
-  BufferAllocation::Slice GetAllocationSlice(const HloInstruction& hlo) const {
+  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
+  BufferAllocation::Slice GetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
     return ir_emitter_context_->buffer_assignment()
-        .GetUniqueTopLevelSlice(&hlo)
+        .GetUniqueSlice(&hlo, index)
         .ConsumeValueOrDie();
   }
 

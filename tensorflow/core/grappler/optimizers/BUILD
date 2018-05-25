@@ -517,6 +517,7 @@ cc_library(
         ":memory_optimizer",
         ":model_pruner",
         ":remapper",
+        ":scoped_allocator_optimizer",
         ":shape_optimizer",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -695,6 +696,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
@@ -759,5 +761,49 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
+    name = "scoped_allocator_optimizer",
+    srcs = ["scoped_allocator_optimizer.cc"],
+    hdrs = [
+        "scoped_allocator_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:scoped_allocator_ops_op_lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
+    ],
+)
+
+tf_cc_test(
+    name = "scoped_allocator_optimizer_test",
+    size = "small",
+    srcs = ["scoped_allocator_optimizer_test.cc"],
+    deps = [
+        ":scoped_allocator_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )

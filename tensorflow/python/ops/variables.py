@@ -123,6 +123,30 @@ class Variable(checkpointable.CheckpointableBase):
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
 
+  WARNING: tf.Variable objects have a non-intuitive memory model. A Variable is
+  represented internally as a mutable Tensor which can non-deterministically
+  alias other Tensors in a graph. The set of operations which consume a Variable
+  and can lead to aliasing is undetermined and can change across TensorFlow
+  versions. Avoid writing code which relies on the value of a Variable either
+  changing or not changing as other operations happen. For example, using
+  Variable objects or simple functions thereof as predicates in a `tf.cond` is
+  dangerous and error-prone:
+
+  ```
+  v = tf.Variable(True)
+  tf.cond(v, lambda: v.assign(False), my_false_fn)  # Note: this is broken.
+  ```
+
+  Here replacing tf.Variable with tf.contrib.eager.Variable will fix any
+  nondeterminism issues.
+
+  To use the replacement for variables which does
+  not have these issues:
+
+  * Replace `tf.Variable` with `tf.contrib.eager.Variable`;
+  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
+    `tf.variable_scope` before the `tf.get_variable()` call.
+
   @compatibility(eager)
   `tf.Variable` is not compatible with eager execution.  Use
   `tf.contrib.eager.Variable` instead which is compatible with both eager
@@ -235,7 +259,7 @@ class Variable(checkpointable.CheckpointableBase):
           constraint=constraint)
 
   def __repr__(self):
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not self._in_graph_mode:
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
           self.name, self.get_shape(), self.dtype.name,
           ops.numpy_text(self.read_value(), is_repr=True))

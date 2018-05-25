@@ -308,6 +308,23 @@ class CsvDatasetOpTest(test.TestCase):
         record_defaults=record_defaults,
     )
 
+  def testMakeCsvDataset_fieldOrder(self):
+    data = [[
+        '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19',
+        '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19'
+    ]]
+    file_path = self.setup_files(data)
+
+    with ops.Graph().as_default() as g:
+      ds = readers.make_csv_dataset(
+          file_path, batch_size=1, shuffle=False, num_epochs=1)
+      next_batch = ds.make_one_shot_iterator().get_next()
+
+    with self.test_session(graph=g) as sess:
+      result = list(sess.run(next_batch).values())
+
+    self.assertEqual(result, sorted(result))
+
 
 class CsvDatasetBenchmark(test.Benchmark):
   """Benchmarks for the various ways of creating a dataset from CSV files.

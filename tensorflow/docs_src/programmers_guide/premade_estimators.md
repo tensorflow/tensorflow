@@ -177,13 +177,11 @@ other features so you can concentrate on your model. For more details see
 
 An Estimator is any class derived from @{tf.estimator.Estimator}. TensorFlow
 provides a collection of
-[pre-made Estimators](https://developers.google.com/machine-learning/glossary/#premade_Estimator)
+@{tf.estimator$pre-made Estimators}
 (for example, `LinearRegressor`) to implement common ML algorithms. Beyond
 those, you may write your own
-[custom Estimators](https://developers.google.com/machine-learning/glossary/#custom_Estimator).
-We recommend using pre-made Estimators when just getting started with
-TensorFlow. After gaining expertise with the pre-made Estimators, we recommend
-optimizing your model by creating your own custom Estimators.
+@{$custom_estimators$custom Estimators}.
+We recommend using pre-made Estimators when just getting started.
 
 To write a TensorFlow program based on pre-made Estimators, you must perform the
 following tasks:
@@ -289,7 +287,7 @@ for key in train_x.keys():
 ```
 
 Feature columns can be far more sophisticated than those we're showing here.  We
-detail feature columns @{$get_started/feature_columns$later on} in our Getting
+detail feature columns @{$feature_columns$later on} in our Getting
 Started guide.
 
 Now that we have the description of how we want the model to represent the raw
@@ -425,11 +423,10 @@ Pre-made Estimators are an effective way to quickly create standard models.
 Now that you've gotten started writing TensorFlow programs, consider the
 following material:
 
-* @{$get_started/checkpoints$Checkpoints} to learn how to save and restore
-  models.
+* @{$checkpoints$Checkpoints} to learn how to save and restore models.
 * @{$get_started/datasets_quickstart$Datasets} to learn more about importing
   data into your
   model.
-* @{$get_started/custom_estimators$Creating Custom Estimators} to learn how to
+* @{$custom_estimators$Creating Custom Estimators} to learn how to
   write your own Estimator, customized for a particular problem.
 

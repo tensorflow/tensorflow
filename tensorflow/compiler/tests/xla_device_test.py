@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.platform import test
 
 
@@ -45,6 +46,12 @@ class XlaDeviceTest(XLATestCase):
           inputs = np.random.randint(-100, 100, shape).astype(dtype)
           result = sess.run(z, {x: inputs})
         self.assertAllCloseAccordingToType(result, inputs + inputs)
+
+  def testControlTrigger(self):
+    with self.test_session() as sess:
+      with self.test_scope():
+        x = gen_control_flow_ops.control_trigger()
+      sess.run(x)
 
 
 if __name__ == "__main__":

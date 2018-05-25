@@ -716,9 +716,11 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
   }
 
   return AppendStatus(result,
-                      tensorflow::strings::Printf("expected: %s\nactual:   %s",
-                                                  expected.ToString().c_str(),
-                                                  actual.ToString().c_str()));
+                      tensorflow::strings::Printf(
+                          "\nat index: %s\nexpected: %s\nactual:   %s",
+                          Literal::MultiIndexAsString(multi_index).c_str(),
+                          ToStringTruncated(expected).c_str(),
+                          ToStringTruncated(actual).c_str()));
 }
 
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,

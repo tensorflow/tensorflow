@@ -107,6 +107,14 @@ struct TFE_TensorHandle {
   tensorflow::TensorHandle* handle;
 };
 
+struct TFE_TensorDebugInfo {
+  TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
+      : dev_dims(dims) {}
+
+  // Fully-padded, minor-to-major.
+  std::vector<tensorflow::int64> dev_dims;
+};
+
 struct TFE_Op {
   // t is NULL iff the TFE_Op corresponds to a TensorFlow function instead of a
   // primitive operation.

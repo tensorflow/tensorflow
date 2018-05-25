@@ -27,6 +27,14 @@ tf_class {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "EXPERIMENTAL_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "Experimental"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
   }

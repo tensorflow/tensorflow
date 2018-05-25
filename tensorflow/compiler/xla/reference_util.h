@@ -265,9 +265,9 @@ class ReferenceUtil {
                                               const Array3D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 3);
-    std::vector<int64> lhs_dims = {lhs.n1(), lhs.n2(), lhs.n3()};
-    std::vector<int64> rhs_dims = {rhs.n1(), rhs.n2(), rhs.n3()};
-    std::vector<int64> out_dims = {rhs.n1(), rhs.n2(), rhs.n3()};
+    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3()};
+    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
+    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
     for (int i = 0; i < 3; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -299,9 +299,9 @@ class ReferenceUtil {
                                               const Array4D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 4);
-    std::vector<int64> lhs_dims = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
-    std::vector<int64> rhs_dims = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
-    std::vector<int64> out_dims = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
+    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
     for (int i = 0; i < 4; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -553,12 +553,11 @@ class ReferenceUtil {
                                      const NativeT pad) {
     CHECK_EQ(padding.dimensions_size(), 3);
 
-    const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
-                                             operand.n3()};
-    std::vector<int64> pad_low(3);
-    std::vector<int64> pad_high(3);
-    std::vector<int64> pad_interior(3);
-    std::vector<int64> output_bounds(3);
+    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3()};
+    int64 pad_low[3];
+    int64 pad_high[3];
+    int64 pad_interior[3];
+    int64 output_bounds[3];
     for (int64 i = 0; i < 3; ++i) {
       pad_low[i] = padding.dimensions(i).edge_padding_low();
       pad_high[i] = padding.dimensions(i).edge_padding_high();
@@ -574,7 +573,7 @@ class ReferenceUtil {
 
     Array3D<NativeT> result(output_bounds[0], output_bounds[1],
                             output_bounds[2]);
-    std::vector<int> indices = {0, 0, 0};
+    int indices[] = {0, 0, 0};
     for (indices[0] = 0; indices[0] < output_bounds[0]; ++indices[0]) {
       for (indices[1] = 0; indices[1] < output_bounds[1]; ++indices[1]) {
         for (indices[2] = 0; indices[2] < output_bounds[2]; ++indices[2]) {
@@ -612,12 +611,12 @@ class ReferenceUtil {
                                      const NativeT pad) {
     CHECK_EQ(padding.dimensions_size(), 4);
 
-    const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
-                                             operand.n3(), operand.n4()};
-    std::vector<int64> pad_low(4);
-    std::vector<int64> pad_high(4);
-    std::vector<int64> pad_interior(4);
-    std::vector<int64> output_bounds(4);
+    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3(),
+                                  operand.n4()};
+    int64 pad_low[4];
+    int64 pad_high[4];
+    int64 pad_interior[4];
+    int64 output_bounds[4];
     for (int64 i = 0; i < 4; ++i) {
       pad_low[i] = padding.dimensions(i).edge_padding_low();
       pad_high[i] = padding.dimensions(i).edge_padding_high();

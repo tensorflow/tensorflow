@@ -1482,11 +1482,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             // Evaluate computation with specified literal operands.
             auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
             auto result_val_literal = Literal::CreateR0<ReturnT>(result_val);
-            std::vector<const Literal*> args = {result_val_literal.get(),
-                                                curr_val_literal.get()};
 
             std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                embedded_evaluator
+                    .Evaluate<const Literal*>(
+                        *function,
+                        {result_val_literal.get(), curr_val_literal.get()})
                     .ConsumeValueOrDie();
             // Clear visit states so that we can use the evaluator again on
             // the same computation.
@@ -1685,10 +1686,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                     Literal::CreateR0<ReturnT>(curr_val);
                 const auto result_val_literal =
                     Literal::CreateR0<ReturnT>(result_val);
-                const std::vector<const Literal*> args = {
-                    result_val_literal.get(), curr_val_literal.get()};
                 std::unique_ptr<Literal> computed_result =
-                    embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                    embedded_evaluator
+                        .Evaluate<const Literal*>(
+                            *function,
+                            {result_val_literal.get(), curr_val_literal.get()})
                         .ConsumeValueOrDie();
 
                 // Clear visit states so that the we can use the evaluate again
