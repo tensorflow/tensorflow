@@ -1885,32 +1885,14 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     }
   }
 
-  if (use_shape_info && IsTile(*node) &&
-      properties->GetInputProperties(node->name()).size() == 2) {
-    const auto& m = properties->GetInputProperties(node->name())[1];
-    if (TensorShape::IsValid(m.shape()) && m.has_value()) {
-      Tensor multiplies(m.dtype(), m.shape());
-      if (!multiplies.FromProto(m.value())) {
-        return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       m.value().DebugString());
-      }
-      // The node is replaceable iff all values in multiplies are 1.
-      bool replaceable = true;
-      if (multiplies.dtype() == DT_INT32) {
-        for (int j = 0; replaceable && j < multiplies.vec<int>().size(); ++j) {
-          replaceable &= multiplies.vec<int>()(j) == 1;
-        }
-      } else {
-        for (int j = 0; replaceable && j < multiplies.vec<int64>().size();
-             ++j) {
-          replaceable &= multiplies.vec<int64>()(j) == 1;
-        }
-      }
-      if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
-        return Status::OK();
-      }
-    }
+  bool simplify_tile_successful = false;
+  Status simplify_tile_status =
+      SimplifyTile(*properties, use_shape_info, optimized_graph, node,
+                   &simplify_tile_successful);
+  if (!simplify_tile_status.ok()) {
+    return simplify_tile_status;
+  } else if (simplify_tile_successful) {
+    return Status::OK();
   }
 
   bool simplify_pad_successful = false;
@@ -1993,6 +1975,42 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
+  return Status::OK();
+}
+
+Status ConstantFolding::SimplifyTile(const GraphProperties& properties,
+                                     bool use_shape_info,
+                                     GraphDef* optimized_graph, NodeDef* node,
+                                     bool* success) {
+  if (use_shape_info && IsTile(*node) &&
+      properties.GetInputProperties(node->name()).size() == 2) {
+    const auto& m = properties.GetInputProperties(node->name())[1];
+    if (TensorShape::IsValid(m.shape()) && m.has_value()) {
+      Tensor multiplies(m.dtype(), m.shape());
+      if (!multiplies.FromProto(m.value())) {
+        return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                       m.value().DebugString());
+      }
+      // The node is replaceable iff all values in multiplies are 1.
+      bool replaceable = true;
+      if (multiplies.dtype() == DT_INT32) {
+        for (int j = 0; replaceable && j < multiplies.vec<int>().size(); ++j) {
+          replaceable &= multiplies.vec<int>()(j) == 1;
+        }
+      } else {
+        for (int j = 0; replaceable && j < multiplies.vec<int64>().size();
+             ++j) {
+          replaceable &= multiplies.vec<int64>()(j) == 1;
+        }
+      }
+      if (replaceable) {
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
+        return Status::OK();
+      }
+    }
+  }
+  *success = false;
   return Status::OK();
 }
 
