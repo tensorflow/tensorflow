@@ -181,7 +181,8 @@ def combine(**kwargs):
   can be computed using `times()`.
 
   Args:
-    **kwargs: keyword arguments of form `option=[possibilities, ...]`.
+    **kwargs: keyword arguments of form `option=[possibilities, ...]`
+         or `option=the_only_possibility`.
 
   Returns:
     a list of dictionaries for each combination. Keys in the dictionaries are
@@ -200,6 +201,8 @@ def combine(**kwargs):
 
   key = first[0]
   values = first[1]
+  if not isinstance(values, list):
+    values = [values]
 
   return [
       OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))

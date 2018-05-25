@@ -196,9 +196,11 @@ tf_xla_py_test(
     name = "oom_test",
     size = "medium",
     srcs = ["oom_test.py"],
+    # TODO(b/80081500): Re-enable on GPU. Disabled on 2018-05-21.
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
+        "gpu",
     ],
     tags = [
         # Allocates very large amounts of memory and does not work under TSAN.
