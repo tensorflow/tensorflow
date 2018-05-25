@@ -151,8 +151,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
-    QuantizeMultiplierSmallerThanOne(real_multiplier, &data->output_multiplier,
-                                     &data->output_shift);
+    int exponent;
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
+    data->output_shift = -exponent;
     CalculateActivationRangeUint8(params->activation, output,
                                   &data->output_activation_min,
                                   &data->output_activation_max);
@@ -247,7 +248,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  bias, output);
       break;
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

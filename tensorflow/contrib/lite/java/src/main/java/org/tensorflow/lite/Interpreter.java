@@ -16,7 +16,7 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.io.File;
-import java.nio.MappedByteBuffer;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -81,24 +81,26 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file.
    *
-   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
-   * Interpreter}.
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    */
-  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
-    wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
+  public Interpreter(@NonNull ByteBuffer byteBuffer) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer);
   }
 
   /**
-   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
-   * specifies the number of threads used for inference.
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and specifies the
+   * number of threads used for inference.
    *
-   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
-   * Interpreter}.
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    */
-  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
-    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
+  public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer, numThreads);
   }
 
   /**
@@ -215,11 +217,11 @@ public final class Interpreter implements AutoCloseable {
     }
   }
 
-  public void setNumThreads(int num_threads) {
+  public void setNumThreads(int numThreads) {
     if (wrapper == null) {
       throw new IllegalStateException("The interpreter has already been closed.");
     }
-    wrapper.setNumThreads(num_threads);
+    wrapper.setNumThreads(numThreads);
   }
 
   /** Release resources associated with the {@code Interpreter}. */

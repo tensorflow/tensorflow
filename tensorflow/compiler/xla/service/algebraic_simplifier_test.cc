@@ -143,6 +143,39 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
   EXPECT_EQ(root, param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
+  HloComputation::Builder builder(TestName());
+  // Create add computation.
+  HloComputation* add_computation = nullptr;
+  {
+    HloComputation::Builder builder(TestName() + ".add");
+    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    HloInstruction* p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
+    add_computation = module().AddEmbeddedComputation(builder.Build());
+  }
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {32, 1});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+  builder.AddInstruction(
+      HloInstruction::CreateMap(r2f32, {param0, zero}, add_computation));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kMap);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Add(param0, zero));
+}
+
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 2});
   HloComputation::Builder builder(TestName());

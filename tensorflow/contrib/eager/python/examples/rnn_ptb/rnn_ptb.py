@@ -50,7 +50,7 @@ class RNN(tf.keras.Model):
   def __init__(self, hidden_dim, num_layers, keep_ratio):
     super(RNN, self).__init__()
     self.keep_ratio = keep_ratio
-    self.cells = self._add_cells([
+    self.cells = tf.contrib.checkpoint.List([
         tf.nn.rnn_cell.BasicLSTMCell(num_units=hidden_dim)
         for _ in range(num_layers)
     ])
@@ -73,14 +73,6 @@ class RNN(tf.keras.Model):
     # in PTBModel.call works for both this RNN and CudnnLSTM (which returns a
     # tuple (output, output_states).
     return [input_seq]
-
-  def _add_cells(self, cells):
-    # "Magic" required for keras.Model classes to track all the variables in
-    # a list of Layer objects.
-    # TODO(ashankar): Figure out API so user code doesn't have to do this.
-    for i, c in enumerate(cells):
-      setattr(self, "cell-%d" % i, c)
-    return cells
 
 
 class Embedding(layers.Layer):
@@ -304,7 +296,7 @@ def test_model(use_cudnn_rnn):
 
 
 def main(_):
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   if not FLAGS.data_path:
     raise ValueError("Must specify --data-path")

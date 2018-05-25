@@ -86,6 +86,23 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectAtMostTwoBoxesFromThreeClusters) {
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
 }
 
+TEST_F(NonMaxSuppressionOpTest, TestSelectWithNegativeScores) {
+  MakeOp(.5);
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(
+      TensorShape({6}), {.9f - 10.0f, .75f - 10.0f, .6f - 10.0f, .95f - 10.0f,
+                         .5f - 10.0f, .3f - 10.0f});
+  AddInputFromArray<int>(TensorShape({}), {6});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_INT32, TensorShape({3}));
+  test::FillValues<int>(&expected, {3, 0, 5});
+  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+}
+
 TEST_F(NonMaxSuppressionOpTest, TestSelectAtMostThirtyBoxesFromThreeClusters) {
   MakeOp(.5);
   AddInputFromArray<float>(
@@ -390,6 +407,27 @@ TEST_F(NonMaxSuppressionV3OpTest,
 
   Tensor expected(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected, {3, 0});
+  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+}
+
+TEST_F(NonMaxSuppressionV3OpTest,
+       TestSelectFromThreeClustersWithScoreThresholdZeroScores) {
+  MakeOp();
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.1, 0, 0, .3, .2, -5.0});
+  // If we ask for more boxes than we actually expect to get back;
+  // should still only get 2 boxes back.
+  AddInputFromArray<int>(TensorShape({}), {6});
+  AddInputFromArray<float>(TensorShape({}), {0.5f});
+  AddInputFromArray<float>(TensorShape({}), {-3.0f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_INT32, TensorShape({2}));
+  test::FillValues<int>(&expected, {3, 0});
+
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
 }
 

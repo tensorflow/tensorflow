@@ -246,7 +246,8 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
                                         output);
       break;
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -267,7 +268,8 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       MaxEvalQuantized<kernel_type>(context, node, params, data, input, output);
       break;
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -288,7 +290,8 @@ TfLiteStatus L2Eval(TfLiteContext* context, TfLiteNode* node) {
     // We don't have a quantized implementation, so just fall through to the
     // 'default' case.
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
