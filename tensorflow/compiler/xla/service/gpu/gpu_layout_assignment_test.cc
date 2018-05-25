@@ -69,7 +69,8 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
         *computation_layout.mutable_result_layout() =
             ShapeLayout(result_shape_with_layout);
 
-        GpuLayoutAssignment layout_assignment(&computation_layout);
+        GpuLayoutAssignment layout_assignment(
+            &computation_layout, backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
@@ -156,7 +157,8 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
         *computation_layout.mutable_result_layout() = ShapeLayout(result_shape);
       }
 
-      GpuLayoutAssignment layout_assignment(&computation_layout);
+      GpuLayoutAssignment layout_assignment(
+          &computation_layout, backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -225,7 +227,8 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
                 {result_shape, offset_scale_shape, offset_scale_shape}));
       }
 
-      GpuLayoutAssignment layout_assignment(&computation_layout);
+      GpuLayoutAssignment layout_assignment(
+          &computation_layout, backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -305,7 +308,8 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
                   {result_shape, scale_shape, scale_shape}));
         }
 
-        GpuLayoutAssignment layout_assignment(&computation_layout);
+        GpuLayoutAssignment layout_assignment(
+            &computation_layout, backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         // The first and fourth operands to the batchnorm call should have the

@@ -192,7 +192,7 @@ tf_py_wrap_cc(
         ":trt_conversion",
         ":trt_engine_op_kernel",
         "//tensorflow/core:framework_lite",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -303,7 +303,7 @@ tf_cuda_library(
     ],
     deps = [
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core:platform_base",
+        "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),

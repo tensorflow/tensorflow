@@ -15,7 +15,7 @@ cc_library(
         "//tensorflow/contrib/lite/toco:toco_port",
         "//tensorflow/contrib/lite/toco:toco_tooling",
         "//tensorflow/core:lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -26,7 +26,7 @@ tf_py_wrap_cc(
         ":toco_python_api",
         "//tensorflow/contrib/lite/toco:model_flags_proto_cc",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_cc",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
     ],
 )

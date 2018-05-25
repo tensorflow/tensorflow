@@ -83,7 +83,7 @@ bool ParseModelFlagsFromCommandLineFlags(
            "Deprecated: use --input_data_types instead. Input array type, if "
            "not already provided in the graph. "
            "Typically needs to be specified when passing arbitrary arrays "
-           "to --input_array."),
+           "to --input_arrays."),
       Flag("input_data_types", parsed_flags.input_data_types.bind(),
            parsed_flags.input_data_types.default_value(),
            "Input arrays types, comma-separated, if not already provided in "

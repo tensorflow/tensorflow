@@ -1154,6 +1154,20 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   return Join(lines, "<br/>");
 }
 
+// Gets the total number of array elements in the given shape.  For tuples, this
+// is the sum of all the sizes of all of the array elements recursively in the
+// tuple.
+static int64 TotalElementsInShape(const Shape& shape) {
+  int64 elems = 0;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (ShapeUtil::IsArray(subshape)) {
+          elems += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  return elems;
+}
+
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
                       int64 operand_num, bool control_edge = false) {
@@ -1173,9 +1187,16 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     } else if (control_edge) {
       edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
-    const char* kEdgeFmt = R"(%s -> %s [tooltip="%s -> %s" %s];)";
+
+    // We print "small" arrays using a hollow arrowhead and "large" arrays using
+    // a filled arrowhead.  For now, we use an arbitrary cutoff for what "big"
+    // means.
+    bool is_big_array = TotalElementsInShape(from->shape()) >= 4096;
+
+    const char* kEdgeFmt = R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
     edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
-                            from->name(), to->name(), edge_label));
+                            (is_big_array ? "normal" : "empty"), from->name(),
+                            to->name(), edge_label));
   };
 
   // Add edges from instr's operands to instr.  Parameters within fusion

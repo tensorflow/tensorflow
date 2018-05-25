@@ -22,8 +22,9 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops_gen",
-        "//tensorflow/python:ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:saveable_object",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
@@ -37,6 +38,42 @@ py_test(
     deps = [
         ":base",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "data_structures_base",
+    srcs = ["data_structures_base.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
+    ],
+)
+
+py_library(
+    name = "data_structures",
+    srcs = ["data_structures.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
+        ":data_structures_base",
+    ],
+)
+
+py_test(
+    name = "data_structures_test",
+    srcs = ["data_structures_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":data_structures",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
     ],
 )
 

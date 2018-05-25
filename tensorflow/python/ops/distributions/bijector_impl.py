@@ -1021,7 +1021,7 @@ class Bijector(object):
         axis=self._get_event_reduce_dims(min_event_ndims, event_ndims))
     # The multiplication by ones can change the inferred static shape so we try
     # to recover as much as possible.
-    event_ndims_ = self._maybe_get_event_ndims_statically(event_ndims)
+    event_ndims_ = self._maybe_get_static_event_ndims(event_ndims)
     if (event_ndims_ is not None and
         y.shape.ndims is not None and
         ildj.shape.ndims is not None):
@@ -1036,7 +1036,7 @@ class Bijector(object):
 
   def _get_event_reduce_dims(self, min_event_ndims, event_ndims):
     """Compute the reduction dimensions given event_ndims."""
-    event_ndims_ = self._maybe_get_event_ndims_statically(event_ndims)
+    event_ndims_ = self._maybe_get_static_event_ndims(event_ndims)
 
     if event_ndims_ is not None:
       return [-index for index in range(1, event_ndims_ - min_event_ndims + 1)]
@@ -1046,9 +1046,18 @@ class Bijector(object):
 
   def _check_valid_event_ndims(self, min_event_ndims, event_ndims):
     """Check whether event_ndims is atleast min_event_ndims."""
-    event_ndims_ = self._maybe_get_event_ndims_statically(event_ndims)
+    event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
+    event_ndims_ = tensor_util.constant_value(event_ndims)
     assertions = []
+
+    if not event_ndims.dtype.is_integer:
+      raise ValueError("Expected integer dtype, got dtype {}".format(
+          event_ndims.dtype))
+
     if event_ndims_ is not None:
+      if event_ndims.shape.ndims != 0:
+        raise ValueError("Expected scalar event_ndims, got shape {}".format(
+            event_ndims.shape))
       if min_event_ndims > event_ndims_:
         raise ValueError("event_ndims ({}) must be larger than "
                          "min_event_ndims ({})".format(
@@ -1056,17 +1065,29 @@ class Bijector(object):
     elif self.validate_args:
       assertions += [
           check_ops.assert_greater_equal(event_ndims, min_event_ndims)]
+
+    if event_ndims.shape.is_fully_defined():
+      if event_ndims.shape.ndims != 0:
+        raise ValueError("Expected scalar shape, got ndims {}".format(
+            event_ndims.shape.ndims))
+
+    elif self.validate_args:
+      assertions += [
+          check_ops.assert_rank(event_ndims, 0, message="Expected scalar.")]
     return assertions
 
-  def _maybe_get_event_ndims_statically(self, event_ndims):
+  def _maybe_get_static_event_ndims(self, event_ndims):
     """Helper which returns tries to return an integer static value."""
     event_ndims_ = distribution_util.maybe_get_static_value(event_ndims)
 
-    if isinstance(event_ndims_, np.ndarray):
-      if (event_ndims_.dtype not in (np.int32, np.int64) or
-          len(event_ndims_.shape)):
+    if isinstance(event_ndims_, (np.generic, np.ndarray)):
+      if event_ndims_.dtype not in (np.int32, np.int64):
+        raise ValueError("Expected integer dtype, got dtype {}".format(
+            event_ndims_.dtype))
+
+      if isinstance(event_ndims_, np.ndarray) and len(event_ndims_.shape):
         raise ValueError("Expected a scalar integer, got {}".format(
             event_ndims_))
-      event_ndims_ = event_ndims_.tolist()
+      event_ndims_ = int(event_ndims_)
 
     return event_ndims_

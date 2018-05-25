@@ -49,15 +49,17 @@ def random_batch(batch_size, data_format):
   return images, one_hot
 
 
-def train_one_step(model, images, labels, optimizer):
-
+def compute_gradients(model, images, labels):
   with tf.GradientTape() as tape:
     logits = model(images, training=True)
     loss = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
     tf.contrib.summary.scalar(name='loss', tensor=loss)
-  grads = tape.gradient(loss, model.variables)
-  optimizer.apply_gradients(zip(grads, model.variables))
+  return tape.gradient(loss, model.variables)
+
+
+def apply_gradients(model, optimizer, gradients):
+  optimizer.apply_gradients(zip(gradients, model.variables))
 
 
 class ResNet50Test(tf.test.TestCase):
@@ -114,7 +116,8 @@ class ResNet50Test(tf.test.TestCase):
       with tf.device(device), tfe.execution_mode(execution_mode):
         optimizer = tf.train.GradientDescentOptimizer(0.1)
         images, labels = random_batch(2, data_format)
-        train_one_step(model, images, labels, optimizer)
+        apply_gradients(model, optimizer,
+                        compute_gradients(model, images, labels))
         self.assertEqual(320, len(model.variables))
         tfe.async_wait()
     events = summary_test_util.events_from_logdir(logdir)
@@ -138,14 +141,16 @@ class ResNet50Test(tf.test.TestCase):
       # garbage to be collected. The hope is that this is a build-only effect,
       # and a subsequent training loop will create nothing which needs to be
       # collected.
-      train_one_step(model, images, labels, optimizer)
+      apply_gradients(model, optimizer,
+                      compute_gradients(model, images, labels))
       gc.collect()
       previous_gc_debug_flags = gc.get_debug()
       gc.set_debug(gc.DEBUG_SAVEALL)
       for _ in range(2):
         # Run twice to ensure that garbage that is created on the first
         # iteration is no longer accessible.
-        train_one_step(model, images, labels, optimizer)
+        apply_gradients(model, optimizer,
+                        compute_gradients(model, images, labels))
       gc.collect()
       # There should be no garbage requiring collection.
       self.assertEqual(0, len(gc.garbage))
@@ -180,9 +185,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           return (16, 32, 64)
 
       if tf.DeviceSpec.from_string(device.name).device_type == 'TPU':
-        # TODO(iga): Training fails with batch size of 16, probably because of
-        # no layout optimizations with op-by-op mode. Investigate more.
-        return (8,)
+        return (32,)
     return (16, 32)
 
   def _report(self, label, start, num_iters, device, batch_size, data_format):
@@ -248,18 +251,21 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       device, data_format = device_and_format
       for batch_size in self._train_batch_sizes():
         (images, labels) = random_batch(batch_size, data_format)
-        num_burn = 3
-        num_iters = 10
         model = resnet50.ResNet50(data_format)
+        optimizer = tf.train.GradientDescentOptimizer(0.1)
+        apply_grads = apply_gradients
         if defun:
           model.call = tfe.defun(model.call, compiled=compiled)
-        optimizer = tf.train.GradientDescentOptimizer(0.1)
+          apply_grads = tfe.defun(apply_gradients, compiled=compiled)
 
+        num_burn = 3
+        num_iters = 10
         with tf.device(device):
           iterator = make_iterator((images, labels))
           for _ in xrange(num_burn):
             (images, labels) = iterator.next()
-            train_one_step(model, images, labels, optimizer)
+            apply_grads(model, optimizer,
+                        compute_gradients(model, images, labels))
           if execution_mode:
             tfe.async_wait()
           self._force_device_sync()
@@ -268,7 +274,8 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           start = time.time()
           for _ in xrange(num_iters):
             (images, labels) = iterator.next()
-            train_one_step(model, images, labels, optimizer)
+            apply_grads(model, optimizer,
+                        compute_gradients(model, images, labels))
           if execution_mode:
             tfe.async_wait()
           self._force_device_sync()
