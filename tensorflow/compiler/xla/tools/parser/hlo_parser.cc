@@ -56,6 +56,11 @@ class HloParser {
   // Returns the error information.
   string GetError() const { return Join(error_, "\n"); }
 
+  // Stand alone parsing for sharding. The parser string is supposed to
+  // contain the body of the sharding, i.e. just the rhs of the "sharding={...}"
+  // attribute string.
+  StatusOr<HloSharding> ParseShardingOnly();
+
  private:
   // ParseXXX returns false if an error occurred.
   bool ParseHloModule();
@@ -2673,6 +2678,18 @@ bool HloParser::AddComputation(const string& name, HloComputation* computation,
   return true;
 }
 
+StatusOr<HloSharding> HloParser::ParseShardingOnly() {
+  lexer_.Lex();
+  OpSharding op_sharding;
+  if (!ParseSharding(&op_sharding)) {
+    return InvalidArgument("Syntax error:\n%s", GetError().c_str());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after sharding");
+  }
+  return HloSharding::FromProto(op_sharding);
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> Parse(StringPiece str,
@@ -2687,6 +2704,12 @@ StatusOr<std::unique_ptr<HloModule>> Parse(StringPiece str,
 StatusOr<std::unique_ptr<HloModule>> Parse(StringPiece str) {
   HloModuleConfig config;
   return Parse(str, config);
+}
+
+StatusOr<HloSharding> ParseSharding(tensorflow::StringPiece str) {
+  HloModuleConfig config;
+  HloParser parser(str, config);
+  return parser.ParseShardingOnly();
 }
 
 }  // namespace tools

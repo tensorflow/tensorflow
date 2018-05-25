@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
@@ -21,8 +22,12 @@ namespace tensorflow {
 namespace test {
 
 // ErrorOp::Compute returns an error.
-REGISTER_OP("Error").Input("in: T").Output("out: T").Attr("T: type").Attr(
-    "message: string");
+REGISTER_OP("Error")
+    .Input("in: T")
+    .Output("out: T")
+    .Attr("T: type")
+    .Attr("message: string")
+    .SetShapeFn(shape_inference::UnknownShape);
 class ErrorOp : public OpKernel {
  public:
   explicit ErrorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -41,7 +46,8 @@ REGISTER_KERNEL_BUILDER(Name("Error").Device(DEVICE_CPU), ErrorOp);
 REGISTER_OP("InvalidRefType")
     .Output("out: Ref(TIn)")
     .Attr("TIn: type")
-    .Attr("TOut: type");
+    .Attr("TOut: type")
+    .SetShapeFn(shape_inference::UnknownShape);
 class InvalidRefType : public OpKernel {
  public:
   explicit InvalidRefType(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -63,8 +69,12 @@ REGISTER_KERNEL_BUILDER(Name("InvalidRefType").Device(DEVICE_CPU),
 
 // DelayOp::AsyncCompute sleeps for "micros"-econd and then returns
 // its input.
-REGISTER_OP("Delay").Input("in: T").Output("out: T").Attr("T: type").Attr(
-    "micros: int");
+REGISTER_OP("Delay")
+    .Input("in: T")
+    .Output("out: T")
+    .Attr("T: type")
+    .Attr("micros: int")
+    .SetShapeFn(shape_inference::UnchangedShape);
 class DelayOp : public AsyncOpKernel {
  public:
   explicit DelayOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {

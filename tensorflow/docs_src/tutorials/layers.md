@@ -190,7 +190,7 @@ def cnn_model_fn(features, labels, mode):
 The following sections (with headings corresponding to each code block above)
 dive deeper into the `tf.layers` code used to create each layer, as well as how
 to calculate loss, configure the training op, and generate predictions. If
-you're already experienced with CNNs and @{$get_started/custom_estimators$TensorFlow `Estimator`s},
+you're already experienced with CNNs and @{$custom_estimators$TensorFlow `Estimator`s},
 and find the above code intuitive, you may want to skim these sections or just
 skip ahead to ["Training and Evaluating the CNN MNIST Classifier"](#train_eval_mnist).
 
@@ -534,8 +534,8 @@ if mode == tf.estimator.ModeKeys.TRAIN:
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
-> functions, see @{$get_started/custom_estimators#defining-the-training-op-for-the-model$"Defining the training op for the model"}
-> in the @{$get_started/custom_estimators$"Creating Estimations in tf.estimator"} tutorial.
+> functions, see @{$custom_estimators#defining-the-training-op-for-the-model$"Defining the training op for the model"}
+> in the @{$custom_estimators$"Creating Estimations in tf.estimator"} tutorial.
 
 
 ### Add evaluation metrics
@@ -600,7 +600,7 @@ be saved (here, we specify the temp directory `/tmp/mnist_convnet_model`, but
 feel free to change to another directory of your choice).
 
 > Note: For an in-depth walkthrough of the TensorFlow `Estimator` API, see the
-> tutorial @{$get_started/custom_estimators$"Creating Estimators in tf.estimator."}
+> tutorial @{$custom_estimators$"Creating Estimators in tf.estimator."}
 
 ### Set Up a Logging Hook {#set_up_a_logging_hook}
 
@@ -719,7 +719,7 @@ Here, we've achieved an accuracy of 97.3% on our test data set.
 To learn more about TensorFlow Estimators and CNNs in TensorFlow, see the
 following resources:
 
-*   @{$get_started/custom_estimators$Creating Estimators in tf.estimator}
+*   @{$custom_estimators$Creating Estimators in tf.estimator}
     provides an introduction to the TensorFlow Estimator API. It walks through
     configuring an Estimator, writing a model function, calculating loss, and
     defining a training op.

@@ -16,8 +16,6 @@ limitations under the License.
 
 #include <cmath>
 #include <memory>
-#include <set>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/strings/str_replace.h"
@@ -304,7 +302,15 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
   constexpr char kRNNBackEdgeFormat[] =
       "\t \"%s\" -> \"%s\" [color=\"#0F9D58\"];\n";
 
-  std::set<string> already_added_arrays;
+  for (const auto& array_kv : model.GetArrayMap()) {
+    // Add node for array.
+    const string& array_name = array_kv.first;
+    const auto& array_properties = GetPropertiesForArray(model, array_name);
+    AppendF(output_file_contents, kNodeFormat, array_name,
+            array_properties.label, "octagon",
+            array_properties.color.FillColorString().c_str(),
+            array_properties.color.TextColorString().c_str());
+  }
   for (int op_index = 0; op_index < model.operators.size(); op_index++) {
     const Operator& op = *model.operators[op_index];
     // Add node for operator.
@@ -313,20 +319,13 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
     AppendF(output_file_contents, kNodeFormat, operator_id, op_properties.label,
             "box", op_properties.color.FillColorString().c_str(),
             op_properties.color.TextColorString().c_str());
-    // Add nodes and edges for all inputs of the operator.
+    // Add edges for all inputs of the operator.
     for (const auto& input : op.inputs) {
       if (!model.HasArray(input)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }
       auto array_properties = GetPropertiesForArray(model, input);
-      if (!already_added_arrays.count(input)) {
-        AppendF(output_file_contents, kNodeFormat, input,
-                array_properties.label, "octagon",
-                array_properties.color.FillColorString().c_str(),
-                array_properties.color.TextColorString().c_str());
-      }
-
       // Draw lines that transport more data thicker (Otherwise, where would the
       // data fit? right?).
       float line_width =
@@ -342,22 +341,14 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
       }
       AppendF(output_file_contents, kEdgeFormat, input, operator_id, line_width,
               weight);
-      already_added_arrays.insert(input);
     }
-    // Add nodes and edges for all outputs of the operator.
+    // Add edges for all outputs of the operator.
     for (const auto& output : op.outputs) {
       if (!model.HasArray(output)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }
       auto array_properties = GetPropertiesForArray(model, output);
-      if (!already_added_arrays.count(output)) {
-        AppendF(output_file_contents, kNodeFormat, output,
-                array_properties.label, "octagon",
-                array_properties.color.FillColorString().c_str(),
-                array_properties.color.TextColorString().c_str());
-      }
-
       // See comments above regarding weight and line_width calculations.
       float line_width =
           std::max(0.5f, array_properties.log2_buffer_size / 3.0f);
@@ -367,7 +358,6 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
       }
       AppendF(output_file_contents, kEdgeFormat, operator_id, output,
               line_width, weight);
-      already_added_arrays.insert(output);
     }
   }
 

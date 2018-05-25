@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/optimizers/remapper.h"
+#include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
@@ -88,6 +89,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization()));
   MK_OPT("dependency", new DependencyOptimizer(cfg_.dependency_optimization()));
   MK_OPT("debug_stripper", new DebugStripper());
+  MK_OPT("scoped_allocator",
+         new ScopedAllocatorOptimizer(cfg_.scoped_allocator_opts()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -144,6 +147,10 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.auto_parallel().enable()) {
     optimizers->emplace_back(
         new AutoParallel(cfg_.auto_parallel().num_replicas()));
+  }
+  if (cfg_.scoped_allocator_optimization()) {
+    optimizers->emplace_back(
+        new ScopedAllocatorOptimizer(cfg_.scoped_allocator_opts()));
   }
   return Status::OK();
 }
@@ -211,12 +218,32 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   bool is_optimized = false;
   GraphOptimizationResult optimization_result(item.id);
 
+  // ScopedAllocatorOptimizer must run last, so move it to the
+  // end of optimizers and run only on the last iteration.
+  {
+    int sa_index = 0;
+    for (; sa_index < optimizers.size(); ++sa_index) {
+      if (optimizers[sa_index]->name() == "scoped_allocator_optimizer") {
+        break;
+      }
+    }
+    const int last_index = optimizers.size() - 1;
+    if (sa_index < last_index) {
+      optimizers[last_index].swap(optimizers[sa_index]);
+    }
+  }
+
+  const int last_iteration = NumIterations(cfg_) - 1;
   for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
     VLOG(4) << "Starting optimization iteration " << iteration + 1;
 
     for (const auto& optimizer : optimizers) {
       // Some optimizers can run only once.
       if (iteration > 0 && IsRunOnceOptimizer(optimizer->name())) continue;
+      // Some must run only on the last iteration.
+      if (optimizer->name() == "scoped_allocator_optimizer" &&
+          iteration != last_iteration)
+        continue;
 
       uint64 start_us = Env::Default()->NowMicros();
       // This swaps the current optimized_graph into optimized item and
@@ -361,6 +388,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
+         cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
          !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 

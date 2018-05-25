@@ -34,10 +34,9 @@ class XlaTensor {
  public:
   // Downcast from a Tensor to an XlaTensor. Return nullptr if the downcast
   // fails.
-  static XlaTensor* FromTensor(Tensor* tensor);
-  // Downcast from a Tensor to an XlaTensor. Return nullptr if the downcast
-  // fails.
-  static const XlaTensor* FromTensor(const Tensor* tensor);
+  static XlaTensor* FromTensor(const Tensor* tensor);
+
+  static bool RefCountIsOne(const Tensor& tensor);
 
   // Create a DeviceMemoryBase from a Tensor. The Tensor can be an XlaTensor, in
   // which case the returned value is shaped_buffer()->root_buffer(), or a
@@ -59,6 +58,10 @@ class XlaTensor {
   // Return the contained ShapedBuffer.
   // REQUIRES: has_shaped_buffer()
   const xla::ShapedBuffer& shaped_buffer() const {
+    CHECK(has_shaped_buffer());
+    return *shaped_buffer_;
+  }
+  xla::ShapedBuffer& shaped_buffer() {
     CHECK(has_shaped_buffer());
     return *shaped_buffer_;
   }
