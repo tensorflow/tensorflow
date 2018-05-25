@@ -610,6 +610,9 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       // Turn input placeholders into identity nodes.
       CHECK_EQ(0, func_body_node.input_size());
       func_body_node.set_op("Identity");
+      (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
+      func_body_node.mutable_attr()->erase("dtype");
+      func_body_node.mutable_attr()->erase("shape");
       int input_idx = input_placeholders_idx[func_body_node.name()];
       func_body_node.add_input(
           strings::StrCat(func_inputs->name(), ":", input_idx));

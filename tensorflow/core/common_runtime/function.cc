@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -809,6 +810,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->cancellation_manager = run_opts.cancellation_manager;
   exec_args->step_container = run_opts.step_container;
   exec_args->runner = *run_opts.runner;
+  exec_args->collective_executor = run_opts.collective_executor;
 
   Item* item = nullptr;
   Status s = GetOrCreateItem(handle, &item);
@@ -896,6 +898,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
+  exec_args->collective_executor = run_opts.collective_executor;
   exec_args->step_container = run_opts.step_container;
   exec_args->runner = *run_opts.runner;
   exec_args->call_frame = frame;

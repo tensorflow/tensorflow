@@ -302,7 +302,7 @@ class Estimator(object):
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 
@@ -398,7 +398,7 @@ class Estimator(object):
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 
@@ -477,7 +477,7 @@ class Estimator(object):
       input_fn: A function that constructs the features. Prediction continues
         until `input_fn` raises an end-of-input exception (`OutOfRangeError` or
         `StopIteration`).
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 
@@ -1616,6 +1616,7 @@ class _DatasetInitializerHook(training.SessionRunHook):
     session.run(self._initializer)
 
 VocabInfo = warm_starting_util.VocabInfo  # pylint: disable=invalid-name
+tf_export('estimator.VocabInfo', allow_multiple_exports=True)(VocabInfo)
 
 
 @tf_export('estimator.WarmStartSettings')
@@ -1745,10 +1746,19 @@ class WarmStartSettings(
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    vars_to_warm_start: [Optional] A regular expression that captures which
-      variables to warm-start (see tf.get_collection).  Defaults to `'.*'`,
-      which warm-starts all variables.  If `None` is explicitly given, only
-      variables specified in `var_name_to_vocab_info` will be warm-started.
+    vars_to_warm_start: [Optional] One of the following:
+
+      - A regular expression (string) that captures which variables to
+        warm-start (see tf.get_collection).  This expression will only consider
+        variables in the TRAINABLE_VARIABLES collection.
+      - A list of Variables to warm-start.
+      - A list of strings, each representing a full variable name to warm-start.
+      - `None`, in which case only variables specified in
+        `var_name_to_vocab_info` will be warm-started.
+
+      Defaults to `'.*'`, which warm-starts all variables in the
+      TRAINABLE_VARIABLES collection.  Note that this excludes variables such as
+      accumulators and moving statistics from batch norm.
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
       VocabInfo. The variable names should be "full" variables, not the names
       of the partitions.  If not explicitly provided, the variable is assumed to

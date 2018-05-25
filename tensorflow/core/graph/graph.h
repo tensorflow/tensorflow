@@ -163,6 +163,7 @@ class Node {
   bool IsHostSend() const { return class_ == NC_HOST_SEND; }
   bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
   bool IsScopedAllocator() const { return class_ == NC_SCOPED_ALLOCATOR; }
+  bool IsCollective() const { return class_ == NC_COLLECTIVE; }
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
 
@@ -235,6 +236,7 @@ class Node {
     NC_DELETE_SESSION_TENSOR,
     NC_METADATA,
     NC_SCOPED_ALLOCATOR,
+    NC_COLLECTIVE,
     NC_OTHER  // Not a special kind of node
   };
 

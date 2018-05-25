@@ -48,7 +48,7 @@ struct OpTapeEntry {
 
   // Should be called before deleting the backward function. TODO(apassos) use
   // unique_ptrs to ensure this happens.
-  std::function<void()> backward_function_deleter;
+  std::function<void(BackwardFunction*)> backward_function_deleter;
 };
 
 // Map from tensor_id to internally-defined operation-id of the operation which
@@ -104,14 +104,12 @@ class VSpace {
       gtl::ArraySlice<Gradient*> output_gradients,
       std::vector<Gradient*>* result) const = 0;
 
+  // Marks the following gradient as a result so it's not consumed by backward
+  // functions.
+  virtual void MarkAsResult(Gradient* gradient) const = 0;
+
   // Deletes the input tensor.
   virtual void DeleteGradient(Gradient* gradient) const = 0;
-
-  // Lets this VSpace know that it can release resources held by the
-  // `backward_function`, It will not be called again.
-  // `backward_function` must not be null.
-  virtual void ReleaseBackwardFunction(
-      BackwardFunction* backward_function) const = 0;
 };
 
 // Traces the execution of operations, doing eager garbage collection, and
@@ -126,7 +124,7 @@ class GradientTape {
   GradientTape(bool persistent) : persistent_(persistent) {}
   ~GradientTape() {
     for (const auto& pair : op_tape_) {
-      pair.second.backward_function_deleter();
+      pair.second.backward_function_deleter(pair.second.backward_function);
     }
   }
 
@@ -135,12 +133,12 @@ class GradientTape {
 
   void Watch(int64 tensor_id);
 
-  void RecordOperation(const string& op_type,
-                       gtl::ArraySlice<TapeTensor> output_tensors,
-                       gtl::ArraySlice<int64> input_tensor_id,
-                       gtl::ArraySlice<tensorflow::DataType> input_dtypes,
-                       BackwardFunction* backward_function,
-                       const std::function<void()>& backward_function_deleter);
+  void RecordOperation(
+      const string& op_type, gtl::ArraySlice<TapeTensor> output_tensors,
+      gtl::ArraySlice<int64> input_tensor_id,
+      gtl::ArraySlice<tensorflow::DataType> input_dtypes,
+      BackwardFunction* backward_function,
+      const std::function<void(BackwardFunction*)>& backward_function_deleter);
 
   void DeleteTrace(int64 tensor_id);
 
@@ -214,9 +212,9 @@ void GradientTape<Gradient, BackwardFunction>::RecordOperation(
     gtl::ArraySlice<int64> input_tensor_id,
     gtl::ArraySlice<tensorflow::DataType> input_dtypes,
     BackwardFunction* backward_function,
-    const std::function<void()>& backward_function_deleter) {
+    const std::function<void(BackwardFunction*)>& backward_function_deleter) {
   if (!ShouldRecord(input_tensor_id, input_dtypes)) {
-    backward_function_deleter();
+    backward_function_deleter(backward_function);
     return;
   }
   std::vector<int64> ids;
@@ -271,7 +269,7 @@ void GradientTape<Gradient, BackwardFunction>::DeleteTrace(int64 tensor_id) {
   for (int64 id : op_it->second.input_tensor_id) {
     DeleteTrace(id);
   }
-  op_it->second.backward_function_deleter();
+  op_it->second.backward_function_deleter(op_it->second.backward_function);
   op_tape_.erase(op_it);
 }
 
@@ -356,8 +354,7 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
         count_it->second++;
       } else {
         result.tensor_usage_counts[it] = 1;
-        if (sources_set.find(it) == sources_set.end() &&
-            tensor_tape.find(it) != tensor_tape.end()) {
+        if (tensor_tape.find(it) != tensor_tape.end()) {
           tensor_stack.push_back(it);
         }
       }
@@ -378,7 +375,8 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
     // backward functions that will be used for gradient computation
     // has been transferred to `result`.
     for (const auto& op_pair : *op_tape) {
-      op_pair.second.backward_function_deleter();
+      op_pair.second.backward_function_deleter(
+          op_pair.second.backward_function);
     }
     op_tape->clear();
   }
@@ -470,7 +468,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
     if (!persistent_) {
       // Release all backprop functions
       for (const auto& pair : state.op_tape) {
-        pair.second.backward_function_deleter();
+        pair.second.backward_function_deleter(pair.second.backward_function);
       }
     }
   };
@@ -522,10 +520,15 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
         }
       } else {
         any_gradient_nonzero = true;
-        out_gradients.push_back(vspace.AggregateGradients(grad_it->second));
+        auto new_gradients = vspace.AggregateGradients(grad_it->second);
         if (sources_set.find(grad_it->first) == sources_set.end()) {
           gradients.erase(grad_it);
+        } else {
+          grad_it->second.clear();
+          grad_it->second.push_back(new_gradients);
+          vspace.MarkAsResult(new_gradients);
         }
+        out_gradients.push_back(new_gradients);
       }
     }
     std::vector<Gradient*> in_gradients;
@@ -533,7 +536,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
       Status s = vspace.CallBackwardFunction(trace.backward_function,
                                              out_gradients, &in_gradients);
       if (!persistent_) {
-        vspace.ReleaseBackwardFunction(trace.backward_function);
+        trace.backward_function_deleter(trace.backward_function);
       }
       if (!s.ok()) {
         cleanup();
@@ -542,7 +545,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
     } else {
       in_gradients.resize(trace.input_tensor_id.size());
       if (!persistent_) {
-        vspace.ReleaseBackwardFunction(trace.backward_function);
+        trace.backward_function_deleter(trace.backward_function);
       }
       for (Gradient* grad : out_gradients) {
         if (grad != nullptr) {

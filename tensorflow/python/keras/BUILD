@@ -135,6 +135,7 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/data",
+        "//tensorflow/python/training/checkpointable:data_structures_base",
         "@six_archive//:six",
     ],
 )

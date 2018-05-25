@@ -58,6 +58,7 @@ NUM_LAYERS_ATTEMPTED = "num_layers"
 NUM_TREES_ATTEMPTED = "num_trees"
 NUM_USED_HANDLERS = "num_used_handlers"
 USED_HANDLERS_MASK = "used_handlers_mask"
+LEAF_INDEX = "leaf_index"
 _FEATURE_NAME_TEMPLATE = "%s_%d"
 
 
@@ -71,18 +72,25 @@ def _get_column_by_index(tensor, indices):
   return array_ops.reshape(array_ops.gather(p_flat, i_flat), [shape[0], -1])
 
 
-def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats,
-                           used_handlers):
+def _make_predictions_dict(stamp,
+                           logits,
+                           partition_ids,
+                           ensemble_stats,
+                           used_handlers,
+                           output_leaf_index=False,
+                           leaf_index=None):
   """Returns predictions for the given logits and n_classes.
 
   Args:
     stamp: The ensemble stamp.
-    logits: A rank 2 `Tensor` with shape [batch_size, n_classes - 1].
-        that contains predictions when no dropout was applied.
+    logits: A rank 2 `Tensor` with shape [batch_size, n_classes - 1]. that
+      contains predictions when no dropout was applied.
     partition_ids: A rank 1 `Tensor` with shape [batch_size].
     ensemble_stats: A TreeEnsembleStatsOp result tuple.
     used_handlers: A TreeEnsembleUsedHandlerOp result tuple of an int and a
-        boolean mask..
+      boolean mask.
+    leaf_index: A boolean variable indicating whether to output leaf index into
+      predictions dictionary.
 
   Returns:
     A dict of predictions.
@@ -95,6 +103,8 @@ def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats,
   result[NUM_TREES_ATTEMPTED] = ensemble_stats.attempted_trees
   result[NUM_USED_HANDLERS] = used_handlers.num_used_handlers
   result[USED_HANDLERS_MASK] = used_handlers.used_handlers_mask
+  if output_leaf_index:
+    result[LEAF_INDEX] = leaf_index
   return result
 
 
@@ -180,8 +190,7 @@ def extract_features(features, feature_columns, use_core_columns):
         elif isinstance(fc, feature_column_lib._EmbeddingColumn):
           # pylint: enable=protected-access
           transformed_features[fc.name] = fc_core.input_layer(
-              features, [fc],
-              weight_collections=[scope])
+              features, [fc], weight_collections=[scope])
         else:
           result = feature_column_ops.transform_features(features, [fc])
           if len(result) > 1:
@@ -269,7 +278,8 @@ class GradientBoostedDecisionTreeModel(object):
                features,
                logits_dimension,
                feature_columns=None,
-               use_core_columns=False):
+               use_core_columns=False,
+               output_leaf_index=False):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
     Args:
@@ -277,13 +287,15 @@ class GradientBoostedDecisionTreeModel(object):
       num_ps_replicas: Number of parameter server replicas, can be 0.
       ensemble_handle: A handle to the ensemble variable.
       center_bias: Whether to center the bias before growing trees.
-      examples_per_layer: Number of examples to accumulate before growing
-        a tree layer. It can also be a function that computes the number of
-        examples based on the depth of the layer that's being built.
+      examples_per_layer: Number of examples to accumulate before growing a tree
+        layer. It can also be a function that computes the number of examples
+        based on the depth of the layer that's being built.
       learner_config: A learner config.
       features: `dict` of `Tensor` objects.
       logits_dimension: An int, the dimension of logits.
       feature_columns: A list of feature columns.
+      output_leaf_index: A boolean variable indicating whether to output leaf
+        index into predictions dictionary.
 
     Raises:
       ValueError: if inputs are not valid.
@@ -334,10 +346,12 @@ class GradientBoostedDecisionTreeModel(object):
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
     self._attempted_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        initial_value=array_ops.zeros([], dtypes.int64),
+        trainable=False,
         name="attempted_trees")
     self._finalized_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        initial_value=array_ops.zeros([], dtypes.int64),
+        trainable=False,
         name="finalized_trees")
     if not features:
       raise ValueError("Features dictionary must be specified.")
@@ -354,9 +368,11 @@ class GradientBoostedDecisionTreeModel(object):
     self._sparse_int_indices = sparse_int_indices
     self._sparse_int_values = sparse_int_values
     self._sparse_int_shapes = sparse_int_shapes
-    self._reduce_dim = (self._learner_config.multi_class_strategy ==
-                        learner_pb2.LearnerConfig.TREE_PER_CLASS and
-                        learner_config.num_classes == 2)
+    self._reduce_dim = (
+        self._learner_config.multi_class_strategy ==
+        learner_pb2.LearnerConfig.TREE_PER_CLASS and
+        learner_config.num_classes == 2)
+    self._output_leaf_index = output_leaf_index
 
   def _predict_and_return_dict(self, ensemble_handle, ensemble_stamp, mode):
     """Runs prediction and returns a dictionary of the prediction results.
@@ -374,8 +390,8 @@ class GradientBoostedDecisionTreeModel(object):
     ensemble_stats = training_ops.tree_ensemble_stats(ensemble_handle,
                                                       ensemble_stamp)
     num_handlers = (
-        len(self._dense_floats) + len(self._sparse_float_shapes) +
-        len(self._sparse_int_shapes))
+        len(self._dense_floats) + len(self._sparse_float_shapes) + len(
+            self._sparse_int_shapes))
     # Used during feature selection.
     used_handlers = model_ops.tree_ensemble_used_handlers(
         ensemble_handle, ensemble_stamp, num_all_handlers=num_handlers)
@@ -386,22 +402,44 @@ class GradientBoostedDecisionTreeModel(object):
     # Make sure ensemble stats run. This will check that the ensemble has
     # the right stamp.
     with ops.control_dependencies(ensemble_stats):
-      predictions, _ = prediction_ops.gradient_trees_prediction(
-          ensemble_handle,
-          seed,
-          self._dense_floats,
-          self._sparse_float_indices,
-          self._sparse_float_values,
-          self._sparse_float_shapes,
-          self._sparse_int_indices,
-          self._sparse_int_values,
-          self._sparse_int_shapes,
-          learner_config=self._learner_config_serialized,
-          apply_dropout=apply_dropout,
-          apply_averaging=mode != learn.ModeKeys.TRAIN,
-          use_locking=True,
-          center_bias=self._center_bias,
-          reduce_dim=self._reduce_dim)
+      leaf_matrix = []
+      # Only used in infer (predict), not used in train and eval.
+      if self._output_leaf_index and mode == learn.ModeKeys.INFER:
+        predictions, _, leaf_matrix = (
+            prediction_ops).gradient_trees_prediction_verbose(
+                ensemble_handle,
+                seed,
+                self._dense_floats,
+                self._sparse_float_indices,
+                self._sparse_float_values,
+                self._sparse_float_shapes,
+                self._sparse_int_indices,
+                self._sparse_int_values,
+                self._sparse_int_shapes,
+                learner_config=self._learner_config_serialized,
+                apply_dropout=apply_dropout,
+                apply_averaging=mode != learn.ModeKeys.TRAIN,
+                use_locking=True,
+                center_bias=self._center_bias,
+                reduce_dim=self._reduce_dim)
+
+      else:
+        predictions, _ = prediction_ops.gradient_trees_prediction(
+            ensemble_handle,
+            seed,
+            self._dense_floats,
+            self._sparse_float_indices,
+            self._sparse_float_values,
+            self._sparse_float_shapes,
+            self._sparse_int_indices,
+            self._sparse_int_values,
+            self._sparse_int_shapes,
+            learner_config=self._learner_config_serialized,
+            apply_dropout=apply_dropout,
+            apply_averaging=mode != learn.ModeKeys.TRAIN,
+            use_locking=True,
+            center_bias=self._center_bias,
+            reduce_dim=self._reduce_dim)
       partition_ids = prediction_ops.gradient_trees_partition_examples(
           ensemble_handle,
           self._dense_floats,
@@ -414,7 +452,8 @@ class GradientBoostedDecisionTreeModel(object):
           use_locking=True)
 
     return _make_predictions_dict(ensemble_stamp, predictions, partition_ids,
-                                  ensemble_stats, used_handlers)
+                                  ensemble_stats, used_handlers,
+                                  self._output_leaf_index, leaf_matrix)
 
   def predict(self, mode):
     """Returns predictions given the features and mode.
@@ -432,8 +471,9 @@ class GradientBoostedDecisionTreeModel(object):
     # Use the current ensemble to predict on the current batch of input.
     # For faster prediction we check if the inputs are on the same device
     # as the model. If not, we create a copy of the model on the worker.
-    input_deps = (self._dense_floats + self._sparse_float_indices +
-                  self._sparse_int_indices)
+    input_deps = (
+        self._dense_floats + self._sparse_float_indices +
+        self._sparse_int_indices)
     if not input_deps:
       raise ValueError("No input tensors for prediction.")
 
@@ -457,8 +497,8 @@ class GradientBoostedDecisionTreeModel(object):
 
       # Determine whether the local ensemble is stale and update it if needed.
       def _refresh_local_ensemble_fn():
-        # Serialize the model from parameter server after reading all inputs.
-        with ops.control_dependencies(input_deps):
+        # Serialize the model from parameter server after reading the inputs.
+        with ops.control_dependencies([input_deps[0]]):
           (ensemble_stamp, serialized_model) = (
               model_ops.tree_ensemble_serialize(self._ensemble_handle))
 
@@ -500,8 +540,9 @@ class GradientBoostedDecisionTreeModel(object):
       ValueError: if inputs are not valid.
     """
     # Get the worker device from input dependencies.
-    input_deps = (self._dense_floats + self._sparse_float_indices +
-                  self._sparse_int_indices)
+    input_deps = (
+        self._dense_floats + self._sparse_float_indices +
+        self._sparse_int_indices)
     worker_device = input_deps[0].device
 
     # Get tensors relevant for training and form the loss.
@@ -694,11 +735,11 @@ class GradientBoostedDecisionTreeModel(object):
         name="continue_centering",
         trainable=False)
     stats_update_ops.append(
-        control_flow_ops.cond(continue_centering,
-                              self._make_update_bias_stats_fn(
-                                  ensemble_stamp, predictions, gradients,
-                                  bias_stats_accumulator),
-                              control_flow_ops.no_op))
+        control_flow_ops.cond(
+            continue_centering,
+            self._make_update_bias_stats_fn(ensemble_stamp, predictions,
+                                            gradients, bias_stats_accumulator),
+            control_flow_ops.no_op))
 
     # Update handler stats.
     handler_reads = collections.OrderedDict()
@@ -720,8 +761,8 @@ class GradientBoostedDecisionTreeModel(object):
           shape=[len(handlers)], seed=[seed + 1, 1])
       active_handlers = array_ops.stack(
           [active_handlers_current_layer, active_handlers_next_layer], axis=1)
-      active_handlers = (active_handlers <
-                         self._learner_config.feature_fraction_per_level)
+      active_handlers = (
+          active_handlers < self._learner_config.feature_fraction_per_level)
     elif subsampling_type == "feature_fraction_per_tree":
       seed = predictions_dict[NUM_TREES_ATTEMPTED]
       active_handlers_current_layer = stateless.stateless_random_uniform(
@@ -729,9 +770,12 @@ class GradientBoostedDecisionTreeModel(object):
       active_handlers_current_layer = (
           active_handlers_current_layer <
           self._learner_config.feature_fraction_per_tree)
-      active_handlers = array_ops.stack([
-          active_handlers_current_layer,
-          array_ops.ones([len(handlers)], dtype=dtypes.bool)], axis=1)
+      active_handlers = array_ops.stack(
+          [
+              active_handlers_current_layer,
+              array_ops.ones([len(handlers)], dtype=dtypes.bool)
+          ],
+          axis=1)
     else:
       active_handlers = array_ops.ones([len(handlers), 2], dtype=dtypes.bool)
 
@@ -901,7 +945,6 @@ class GradientBoostedDecisionTreeModel(object):
         "DecisionTreeEnsembleResourceHandleOp",
         "StatsAccumulatorScalarResourceHandleOp",
         "StatsAccumulatorTensorResourceHandleOp",
-        "QuantileStreamResourceHandleOp",
     ]
     ps_strategy = _OpRoundRobinStrategy(ps_ops, ps_tasks)
     return device_setter.replica_device_setter(

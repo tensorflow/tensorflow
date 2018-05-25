@@ -59,8 +59,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_EQ(context, NumDimensions(input), 1);
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32 and string types are supported");
+      context->ReportError(
+          context, "Only float32 and string types are supported, got %d",
+          input->type);
       return kTfLiteError;
   }
   const int num_dimensions =

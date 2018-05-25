@@ -169,6 +169,8 @@ class ScopedShapedBuffer : public ShapedBuffer {
   TF_MUST_USE_RESULT ShapedBuffer release();
 
  protected:
+  void Deallocate();
+
   DeviceMemoryAllocator* allocator_;
 };
 

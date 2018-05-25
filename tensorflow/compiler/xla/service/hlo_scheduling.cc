@@ -299,6 +299,8 @@ class ListScheduler {
       auto best_it = ready_queue.end();
       --best_it;
       const HloInstruction* best = best_it->second.instruction;
+      VLOG(2) << "Schedule instruction: " << best->ToShortString()
+              << " Bytes freed: " << best_it->first.first;
       ready_queue.erase(best_it);
       ready_instructions.erase(best);
       schedule.push_back(best);
@@ -457,6 +459,13 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
       extra_users[hlo] += extra_users[operand];
       total_sizes[hlo] += total_sizes[operand];
     }
+    // total_sizes[hlo] transitively includes the sizes of all nodes that
+    // lead to it. But computation is a DAG, so we are double-counting nodes,
+    // which can lead to overflows for large programs.
+    // cumulative_total_size caps the size to prevent overflows.
+    // NOTE(dimvar): this is quite ugly and should be changed. It's unclear
+    // why we care about transitive sizes; when scheduling a node, its input
+    // and output buffers should be all that matters, not its "history".
     total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
@@ -512,13 +521,14 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     const LogicalBuffer::SizeFunction& size_function,
     const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
         memory_by_computation) {
-  // We try both a list-scheduler based ordering and a DFS based ordering, and
-  // choose whichever returns a lower min-memory, not accounting for
-  // fragmentation.
-  //
-  // Note that this is just a heuristic. One obvious inaccuracy is that the
-  // memory required for sub-computations might be different when considered
-  // within the caller's context. But it's good enough for now.
+  // We try a few schedulers and choose whichever returns a lower min-memory,
+  // not accounting for fragmentation.
+  // - List is a scheduler that uses greedy heuristics.
+  // - DFS visits HLOs in postorder, with a heuristic to decide the order of
+  //   children.
+  // - Postorder does not use any heuristics.
+  // List wins for most of our benchmarks; postorder-based schedulers win for
+  // some RNNs.
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
       ListMemoryScheduler(computation, points_to_analysis, size_function,

@@ -31,6 +31,9 @@ limitations under the License.
 %unignore tensorflow::swig::RegisterSequenceClass;
 %noexception tensorflow::swig::RegisterSequenceClass;
 
+%unignore tensorflow::swig::RegisterSparseTensorValueClass;
+%noexception tensorflow::swig::RegisterSparseTensorValueClass;
+
 %unignore tensorflow::swig::IsSequence;
 %noexception tensorflow::swig::IsSequence;
 
@@ -45,6 +48,12 @@ limitations under the License.
 
 %unignore tensorflow::swig::Flatten;
 %noexception tensorflow::swig::Flatten;
+
+%unignore tensorflow::swig::IsSequenceForData;
+%noexception tensorflow::swig::IsSequenceForData;
+
+%unignore tensorflow::swig::FlattenForData;
+%noexception tensorflow::swig::FlattenForData;
 
 %include "tensorflow/python/util/util.h"
 

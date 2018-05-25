@@ -132,6 +132,9 @@ class ShapeIndexView {
     return ShapeIndexView(new_begin, end_);
   }
 
+  bool operator==(const ShapeIndexView& other) const;
+  bool operator!=(const ShapeIndexView& other) const;
+
   string ToString() const;
 
  private:

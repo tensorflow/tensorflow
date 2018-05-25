@@ -57,11 +57,10 @@ from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
 
-def _OpsBetween(graph, to_ops, from_ops):
+def _OpsBetween(to_ops, from_ops):
   """Build the list of operations between two lists of Operations.
 
   Args:
-    graph: a Graph.
     to_ops: list of Operations.
     from_ops: list of Operations.
 
@@ -72,13 +71,12 @@ def _OpsBetween(graph, to_ops, from_ops):
     TODO(touts): Think about returning an empty list if from_ops are not
     reachable from to_ops.  Presently it returns to_ops in that case.
   """
-  # List of booleans, indexed by operation id, indicating if
-  # an op is reached from the output of "input_ops".
-  reached_ops = [False] * (graph._last_id + 1)
+  # Ops that are reachable from the output of "input_ops".
+  reached_ops = set()
   # We only care to reach up to "output_ops" so we mark the
   # output ops as reached to avoid recursing past them.
   for op in to_ops:
-    reached_ops[op._id] = True
+    reached_ops.add(op)
   gradients_impl._MarkReachedOps(from_ops, reached_ops)
   between_ops = gradients_impl._GatherInputs(to_ops, reached_ops)
   between_ops.sort(key=lambda x: -x._id)
@@ -95,18 +93,18 @@ class GradientsTest(test_util.TensorFlowTestCase):
     self.assertEquals(self._OpNames(ops1), self._OpNames(ops2))
 
   def testOpsBetweenSimple(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
     # Full graph
     self._assertOpListEqual([t3.op, t2.op, t1.op],
-                            _OpsBetween(g, [t3.op], [t1.op, t2.op]))
+                            _OpsBetween([t3.op], [t1.op, t2.op]))
     # Only t1, t3.
-    self._assertOpListEqual([t3.op, t1.op], _OpsBetween(g, [t3.op], [t1.op]))
+    self._assertOpListEqual([t3.op, t1.op], _OpsBetween([t3.op], [t1.op]))
 
   def testOpsBetweenUnreachable(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       _ = array_ops.stack([t1, t2])
@@ -114,10 +112,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t5 = constant(2.0)
       t6 = array_ops.stack([t4, t5])
     # Elements of to_ops are always listed.
-    self._assertOpListEqual([t6.op], _OpsBetween(g, [t6.op], [t1.op]))
+    self._assertOpListEqual([t6.op], _OpsBetween([t6.op], [t1.op]))
 
   def testOpsBetweenCut(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
@@ -126,10 +124,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t6 = constant([2.0])
       t7 = array_ops.concat([t5, t6], 0)
     self._assertOpListEqual([t7.op, t5.op, t4.op],
-                            _OpsBetween(g, [t7.op], [t4.op]))
+                            _OpsBetween([t7.op], [t4.op]))
 
   def testOpsBetweenCycle(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
@@ -138,11 +136,11 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t6 = array_ops.concat([t4, t5], 0)
       t7 = array_ops.concat([t6, t3], 0)
     self._assertOpListEqual([t6.op, t4.op, t3.op],
-                            _OpsBetween(g, [t6.op], [t3.op]))
+                            _OpsBetween([t6.op], [t3.op]))
     self._assertOpListEqual([t7.op, t6.op, t5.op, t4.op, t3.op, t1.op],
-                            _OpsBetween(g, [t7.op], [t1.op, t5.op]))
+                            _OpsBetween([t7.op], [t1.op, t5.op]))
     self._assertOpListEqual([t6.op, t5.op, t4.op, t3.op, t2.op],
-                            _OpsBetween(g, [t6.op], [t2.op, t5.op]))
+                            _OpsBetween([t6.op], [t2.op, t5.op]))
 
   def testGradients(self):
     with ops.Graph().as_default():
@@ -946,6 +944,54 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       variables.global_variables_initializer().run()
       self.assertAllEqual(g.eval(), [2.0])
       self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
+
+
+class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+
+  def _assert_indexed_slices_equal(self, left, right):
+    self.assertAllEqual(
+        self.evaluate(ops.convert_to_tensor(left)),
+        self.evaluate(ops.convert_to_tensor(right)))
+
+  def testNoGradients(self):
+    self.assertIsNone(gradients_impl._AggregateIndexedSlicesGradients([]))
+
+  def testOneGradient(self):
+    t = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    result = gradients_impl._AggregateIndexedSlicesGradients([t])
+    self._assert_indexed_slices_equal(t, result)
+
+  def testMultipleGradients(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]]))
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMultipleGradientsWithNones(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]]))
+    t3 = None
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1, t3])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMixedTensorAndIndexedSlices(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]])
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
 
 
 if __name__ == "__main__":

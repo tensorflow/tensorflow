@@ -125,7 +125,7 @@ class JitLaunchTest(test.TestCase):
           for (x, y) in zip(compiled, direct):
             self.assertAllClose(x, y, rtol=1e-1)
         else:
-          self.assertAllClose(compiled, direct)
+          self.assertAllClose(compiled, direct, rtol=1e-2)
 
   def testNoOutputs(self):
     with session_lib.Session() as sess:

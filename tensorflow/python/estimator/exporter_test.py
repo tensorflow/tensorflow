@@ -62,7 +62,7 @@ class BestExporterTest(test.TestCase):
         exports_to_keep=5)
     estimator = test.mock.Mock(spec=estimator_lib.Estimator)
     estimator.export_savedmodel.return_value = "export_result_path"
-    estimator.model_dir.return_value = export_dir_base
+    estimator.model_dir = export_dir_base
 
     export_result = exporter.export(estimator, export_dir_base,
                                     "checkpoint_path", {}, False)
@@ -94,7 +94,7 @@ class BestExporterTest(test.TestCase):
         exports_to_keep=1)
     estimator = test.mock.Mock(spec=estimator_lib.Estimator)
     estimator.export_savedmodel.return_value = "export_result_path"
-    estimator.model_dir.return_value = export_dir_base
+    estimator.model_dir = export_dir_base
 
     export_result = exporter.export(estimator, export_dir_base,
                                     "checkpoint_path", {"loss": 0.5}, False)
@@ -133,7 +133,7 @@ class BestExporterTest(test.TestCase):
         exports_to_keep=1)
 
     estimator = test.mock.Mock(spec=estimator_lib.Estimator)
-    estimator.model_dir.return_value = export_dir_base
+    estimator.model_dir = export_dir_base
     estimator.export_savedmodel.return_value = "export_result_path"
 
     export_result = exporter.export(estimator, export_dir_base,
@@ -172,7 +172,7 @@ class BestExporterTest(test.TestCase):
         serving_input_receiver_fn=_serving_input_receiver_fn,
         exports_to_keep=2)
     estimator = test.mock.Mock(spec=estimator_lib.Estimator)
-    estimator.model_dir.return_value = export_dir_base
+    estimator.model_dir = export_dir_base
     # Garbage collect all but the most recent 2 exports,
     # where recency is determined based on the timestamp directory names.
     exporter.export(estimator, export_dir_base, None, None, False)

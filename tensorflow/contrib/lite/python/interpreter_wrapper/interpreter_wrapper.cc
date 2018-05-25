@@ -42,6 +42,8 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
     return nullptr;
   }
 
+  tensorflow::ImportNumpy();
+
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (interpreter) {

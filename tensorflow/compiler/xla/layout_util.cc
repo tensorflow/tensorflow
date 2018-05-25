@@ -65,6 +65,16 @@ void SetDefaultLayoutToContainer(
   return layout;
 }
 
+/* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
+    tensorflow::gtl::ArraySlice<int64> major_to_minor) {
+  Layout layout;
+  layout.set_format(DENSE);
+  for (int i = major_to_minor.size() - 1; i >= 0; i--) {
+    layout.add_minor_to_major(major_to_minor[i]);
+  }
+  return layout;
+}
+
 /* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
   Layout layout;
   layout.set_format(SPARSE);

@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>>&& thunks,
+SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>> thunks,
                                  const HloInstruction* hlo)
     : Thunk(Kind::kSequential, hlo), thunks_(std::move(thunks)) {}
 
