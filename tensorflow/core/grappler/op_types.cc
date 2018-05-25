@@ -78,6 +78,12 @@ bool IsCheckNumerics(const NodeDef& node) {
   return node.op() == "CheckNumerics";
 }
 
+bool IsCollective(const NodeDef& node) {
+  return node.op() == "CollectiveReduce" ||
+         node.op() == "CollectiveBcastSend" ||
+         node.op() == "CollectiveBcastRecv";
+}
+
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }

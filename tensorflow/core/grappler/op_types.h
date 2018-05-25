@@ -38,6 +38,7 @@ bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
 bool IsCast(const NodeDef& node);
 bool IsCheckNumerics(const NodeDef& node);
+bool IsCollective(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConj(const NodeDef& node);
