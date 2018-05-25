@@ -181,6 +181,11 @@ class ConstantFolding : public GraphOptimizer {
   // Simplifies a Tile operation to an Identity operation if applicable.
   Status SimplifyTile(const GraphProperties& properties, bool use_shape_info,
                       GraphDef* optimized_graph, NodeDef* node, bool* success);
+
+  // Simplifies a StridedSlice operation to an Identity operation if applicable.
+  Status SimplifyStridedSlice(const GraphProperties& properties,
+                              bool use_shape_info, GraphDef* optimized_graph,
+                              NodeDef* node, bool* success);
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
