@@ -2042,6 +2042,21 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(g1.get_operations()), 0)
     self.assertEqual(len(g0.get_operations()), 1)
 
+  def testPreservesDevices(self):
+    g0 = ops.Graph()
+    with g0.as_default(), ops.device("CPU:0"):
+      g1 = ops.Graph()
+      g1._building_function = True  # pylint: disable=protected-access
+      with g1.as_default(), ops.device("GPU:0"):
+        with ops.init_scope():
+          # init_scope should preserve device set under `g1`.
+          on_gpu = constant_op.constant(1.0)
+          self.assertEqual(on_gpu.device, "/device:GPU:0")
+        still_on_gpu = constant_op.constant(1.0)
+        self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+      on_cpu = constant_op.constant(1.0)
+      self.assertEqual(on_cpu.device, "/device:CPU:0")
+
   def testComposes(self):
     g0 = ops.Graph()
     g1 = ops.Graph()

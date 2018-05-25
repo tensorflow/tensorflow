@@ -615,6 +615,18 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(self.evaluate(grad), 2.0)
 
   @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes()
+  def testNestedGradients(self):
+    x = constant_op.constant(3.0)
+    with backprop.GradientTape() as g:
+      g.watch(x)
+      y = x * x
+      z = y * y
+    dz_dx, dz_dy = g.gradient(z, [x, y])
+    self.assertEqual(self.evaluate(dz_dx), 108.0)
+    self.assertEqual(self.evaluate(dz_dy), 18.0)
+
+  @test_util.assert_no_new_tensors
   def testEmptyParamsForValueAndGradFunction(self):
     def fn(a, b):
       return a * b

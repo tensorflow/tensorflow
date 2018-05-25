@@ -357,7 +357,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalQuantized<kernel_type>(context, node, params, data, input,
                                         filter, bias, output);
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

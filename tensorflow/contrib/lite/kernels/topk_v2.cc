@@ -214,7 +214,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
            output_values->data.i64);
       break;
     default:
-      context->ReportError(context, "Type is currently not supported by TopK.");
+      context->ReportError(context,
+                           "Type %d is currently not supported by TopK.",
+                           output_values->type);
       return kTfLiteError;
   }
 

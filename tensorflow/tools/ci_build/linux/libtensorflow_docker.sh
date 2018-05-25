@@ -21,7 +21,12 @@
 # See libtensorflow_cpu.sh and libtensorflow_gpu.sh
 
 set -ex
+
+# Current script directory
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/../builds/builds_common.sh"
 DOCKER_CONTEXT_PATH="$(realpath ${SCRIPT_DIR}/..)"
 ROOT_DIR="$(realpath ${SCRIPT_DIR}/../../../../)"
 
