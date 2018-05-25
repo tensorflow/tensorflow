@@ -559,6 +559,51 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = clean_dep("//third_party:aws.BUILD"),
   )
 
+  tf_http_archive(
+      name = "arrow",
+      urls = [
+          "https://mirror.bazel.build/github.com/apache/arrow/archive/apache-arrow-0.9.0.tar.gz",
+          "https://github.com/apache/arrow/archive/apache-arrow-0.9.0.tar.gz",
+      ],
+      sha256 = "65f89a3910b6df02ac71e4d4283db9b02c5b3f1e627346c7b6a5982ae994af91",
+      strip_prefix = "arrow-apache-arrow-0.9.0",
+      build_file = clean_dep("//third_party:arrow.BUILD"),
+  )
+
+  tf_http_archive(
+      name = "boost",
+      urls = [
+          "https://mirror.bazel.build/dl.bintray.com/boostorg/release/1.67.0/source/boost_1_67_0.tar.gz",
+          "https://dl.bintray.com/boostorg/release/1.67.0/source/boost_1_67_0.tar.gz"
+       ],
+      sha256 = "8aa4e330c870ef50a896634c931adf468b21f8a69b77007e45c444151229f665",
+      strip_prefix = "boost_1_67_0",
+      build_file = clean_dep("//third_party:boost.BUILD"),
+  )
+
+  tf_http_archive(
+      name = "thrift",
+      urls = [
+          "https://mirror.bazel.build/github.com/apache/thrift/archive/0.11.0.tar.gz",
+          "https://github.com/apache/thrift/archive/0.11.0.tar.gz",
+      ],
+      sha256 = "0e324569321a1b626381baabbb98000c8dd3a59697292dbcc71e67135af0fefd",
+      strip_prefix = "thrift-0.11.0",
+      build_file = clean_dep("//third_party:thrift.BUILD"),
+  )
+
+  tf_http_archive(
+      name = "parquet",
+      urls = [
+          "https://mirror.bazel.build/github.com/apache/parquet-cpp/archive/apache-parquet-cpp-1.4.0.tar.gz",
+          "https://github.com/apache/parquet-cpp/archive/apache-parquet-cpp-1.4.0.tar.gz",
+      ],
+      sha256 = "52899be6c9dc49a14976d4ad84597243696c3fa2882e5c802b56e912bfbcc7ce",
+      strip_prefix = "parquet-cpp-apache-parquet-cpp-1.4.0",
+      build_file = clean_dep("//third_party:parquet.BUILD"),
+      delete = ["src/parquet/util/windows_compatibility.h"],
+  )
+
   java_import_external(
       name = "junit",
       jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
