@@ -458,10 +458,14 @@ def model_to_estimator(keras_model=None,
   @{$programmers_guide/estimators$creating_estimators_from_keras_models}.
 
   Args:
-    keras_model: Keras model in memory.
-    keras_model_path: Directory to a keras model on disk.
+    keras_model: A compiled Keras model object. This argument is mutually
+      exclusive with `keras_model_path`.
+    keras_model_path: Path to a compiled Keras model saved on disk, in HDF5
+      format, which can be generated with the `save()` method of a Keras model.
+      This argument is mutually exclusive with `keras_model`.
     custom_objects: Dictionary for custom objects.
-    model_dir: Directory to save Estimator model parameters, graph and etc.
+    model_dir: Directory to save Estimator model parameters, graph, summary
+      files for TensorBoard, etc.
     config: Configuration object.
 
   Returns:
@@ -473,7 +477,7 @@ def model_to_estimator(keras_model=None,
     ValueError: if the keras_model_path is a GCS URI.
     ValueError: if keras_model has not been compiled.
   """
-  if (not keras_model) and (not keras_model_path):
+  if not (keras_model or keras_model_path):
     raise ValueError(
         'Either `keras_model` or `keras_model_path` needs to be provided.')
   if keras_model and keras_model_path:
@@ -495,8 +499,9 @@ def model_to_estimator(keras_model=None,
 
   if not hasattr(keras_model, 'optimizer') or not keras_model.optimizer:
     raise ValueError(
-        'The given keras model has not been compiled yet. Please compile first '
-        'before calling `model_to_estimator`.')
+        'The given keras model has not been compiled yet. '
+        'Please compile the model with `model.compile()` '
+        'before calling `model_to_estimator()`.')
 
   if isinstance(config, dict):
     config = run_config_lib.RunConfig(**config)
