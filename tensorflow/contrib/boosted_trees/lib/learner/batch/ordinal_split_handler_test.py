@@ -67,9 +67,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessian_shape = tensor_shape.scalar()
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=10,
           feature_column_group_id=0,
@@ -203,10 +203,10 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessian_shape = tensor_shape.TensorShape([2, 2])
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=3,
           feature_column_group_id=0,
@@ -291,10 +291,10 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessian_shape = tensor_shape.TensorShape([2])
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
-          l1_regularization=0,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l1_regularization=0.,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=3,
           feature_column_group_id=0,
@@ -376,9 +376,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
-          tree_complexity_regularization=0,
-          min_node_weight=0,
+          l2_regularization=1.,
+          tree_complexity_regularization=0.,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=10,
           feature_column_group_id=0,
@@ -451,9 +451,9 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
+          l2_regularization=1.,
           tree_complexity_regularization=0.5,
-          min_node_weight=0,
+          min_node_weight=0.,
           epsilon=0.001,
           num_quantiles=10,
           feature_column_group_id=0,
@@ -585,7 +585,7 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
-          l2_regularization=1,
+          l2_regularization=1.,
           tree_complexity_regularization=0.5,
           min_node_weight=1.5,
           epsilon=0.001,
