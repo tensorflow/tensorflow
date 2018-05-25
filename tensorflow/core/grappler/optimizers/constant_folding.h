@@ -186,6 +186,10 @@ class ConstantFolding : public GraphOptimizer {
   Status SimplifyStridedSlice(const GraphProperties& properties,
                               bool use_shape_info, GraphDef* optimized_graph,
                               NodeDef* node, bool* success);
+
+  // Simplifies a Slice operation to an Identity operation if applicable.
+  Status SimplifySlice(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node, bool* success);
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;

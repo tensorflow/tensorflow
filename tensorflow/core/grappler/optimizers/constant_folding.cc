@@ -1752,45 +1752,14 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     }
   }
 
-  if (use_shape_info && IsSlice(*node) &&
-      properties->GetInputProperties(node->name()).size() == 3) {
-    const auto& input = properties->GetInputProperties(node->name())[0];
-    const auto& b = properties->GetInputProperties(node->name())[1];
-    const auto& s = properties->GetInputProperties(node->name())[2];
-    if (TensorShape::IsValid(b.shape()) && b.has_value() &&
-        TensorShape::IsValid(s.shape()) && s.has_value()) {
-      Tensor begin(b.dtype(), b.shape());
-      if (!begin.FromProto(b.value())) {
-        return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       b.value().DebugString());
-      }
-      Tensor size(s.dtype(), s.shape());
-      if (!size.FromProto(s.value())) {
-        return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       s.value().DebugString());
-      }
-      // The node is replaceable iff unknown_rank == false &&
-      // begin == 0 && (size == -1 || size == input_shape) for all dimensions
-      bool replaceable = !input.shape().unknown_rank();
-      for (int j = 0; replaceable && j < input.shape().dim_size(); ++j) {
-        if (begin.dtype() == DT_INT32) {
-          replaceable &= begin.vec<int>()(j) == 0;
-        } else {
-          replaceable &= begin.vec<int64>()(j) == 0;
-        }
-        if (size.dtype() == DT_INT32) {
-          replaceable &= (size.vec<int>()(j) == -1 ||
-                          size.vec<int>()(j) == input.shape().dim(j).size());
-        } else {
-          replaceable &= (size.vec<int64>()(j) == -1 ||
-                          size.vec<int64>()(j) == input.shape().dim(j).size());
-        }
-      }
-      if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
-        return Status::OK();
-      }
-    }
+  bool simplify_slice_successful = false;
+  Status simplify_slice_status =
+      SimplifySlice(*properties, use_shape_info, optimized_graph, node,
+                    &simplify_slice_successful);
+  if (!simplify_slice_status.ok()) {
+    return simplify_slice_status;
+  } else if (simplify_slice_successful) {
+    return Status::OK();
   }
 
   bool simplify_strided_slice_successful = false;
@@ -1893,6 +1862,55 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
+  return Status::OK();
+}
+
+Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
+                                      bool use_shape_info,
+                                      GraphDef* optimized_graph, NodeDef* node,
+                                      bool* success) {
+  if (use_shape_info && IsSlice(*node) &&
+      properties.GetInputProperties(node->name()).size() == 3) {
+    const auto& input = properties.GetInputProperties(node->name())[0];
+    const auto& b = properties.GetInputProperties(node->name())[1];
+    const auto& s = properties.GetInputProperties(node->name())[2];
+    if (TensorShape::IsValid(b.shape()) && b.has_value() &&
+        TensorShape::IsValid(s.shape()) && s.has_value()) {
+      Tensor begin(b.dtype(), b.shape());
+      if (!begin.FromProto(b.value())) {
+        return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                       b.value().DebugString());
+      }
+      Tensor size(s.dtype(), s.shape());
+      if (!size.FromProto(s.value())) {
+        return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                       s.value().DebugString());
+      }
+      // The node is replaceable iff unknown_rank == false &&
+      // begin == 0 && (size == -1 || size == input_shape) for all dimensions
+      bool replaceable = !input.shape().unknown_rank();
+      for (int j = 0; replaceable && j < input.shape().dim_size(); ++j) {
+        if (begin.dtype() == DT_INT32) {
+          replaceable &= begin.vec<int>()(j) == 0;
+        } else {
+          replaceable &= begin.vec<int64>()(j) == 0;
+        }
+        if (size.dtype() == DT_INT32) {
+          replaceable &= (size.vec<int>()(j) == -1 ||
+                          size.vec<int>()(j) == input.shape().dim(j).size());
+        } else {
+          replaceable &= (size.vec<int64>()(j) == -1 ||
+                          size.vec<int64>()(j) == input.shape().dim(j).size());
+        }
+      }
+      if (replaceable) {
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
+        return Status::OK();
+      }
+    }
+  }
+  *success = false;
   return Status::OK();
 }
 
