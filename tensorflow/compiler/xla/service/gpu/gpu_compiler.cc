@@ -202,18 +202,28 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddInvariantChecker<HloVerifier>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
     pipeline.AddPass<PadInsertion>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("layout_assignment");
+    pipeline.AddPass<GpuLayoutAssignment>(
+        hlo_module->mutable_device_entry_computation_layout(), stream_exec);
+
+    // The LayoutAssignment pass may leave behind kCopy instructions which are
+    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        /*is_layout_sensitive=*/true,
+        /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
+          return true;
+        });
 
     // Choose the fastest algorithm for each conv.
     //
-    // In theory doing this here is way too early: It needs to happen after
-    // layout assignment, because the layout of the inputs/outputs affects the
-    // speed of the conv.  But currently we only allow only one input/output
-    // layout when calling cudnn, so there's no ambiguity.
-    //
-    // We pick the algorithm at this early stage so we can generate better HLO.
-    // After CudnnConvolutionRewriter, our convolutions are CustomCalls which
-    // return a tuple (conv_result, scratch_memory), and the each conv uses 0
-    // bytes of scratch:
+    // We pick the algorithm before fusion so we can generate better HLO. After
+    // CudnnConvolutionRewriter, our convolutions are CustomCalls which return a
+    // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
+    // scratch:
     //
     //   customcall = (f32[...], f32[0])
     //   return gte(customcall, 0)
@@ -229,35 +239,15 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // The new tuple and gte instructions then be simplified away, because
     // nobody is expected to use the scratch value.
     //
-    // However, if we were to run CudnnConvolutionAlgorithmPicker after layout
-    // assignment, fusion would already have run, and the gte(customcall, 0)
-    // would probably already be into a fusion node.  We can't simplify across
-    // HloComputation boundaries, so in this case we wouldn't be able to
-    // simplify away the new_tuple bits.
-    //
-    // We'll need to revisit this if we ever allow multiple layouts for the
-    // inputs/outputs of a cudnn convolution.
+    // However, if we were to run CudnnConvolutionAlgorithmPicker after fusion
+    // the gte(customcall, 0) would probably already be into a fusion node.  We
+    // can't simplify across HloComputation boundaries, so in this case we
+    // wouldn't be able to simplify away the new_tuple bits.
     pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
                                                       device_allocator);
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
-    pipeline.AddPass<HloDCE>();
 
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  {
-    HloPassPipeline pipeline("layout_assignment");
-    pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_device_entry_computation_layout());
-
-    // The LayoutAssignment pass may leave behind kCopy instructions which are
-    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        /*is_layout_sensitive=*/true,
-        /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
-          return true;
-        });
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
