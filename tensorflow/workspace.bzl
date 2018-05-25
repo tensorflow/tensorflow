@@ -601,6 +601,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "52899be6c9dc49a14976d4ad84597243696c3fa2882e5c802b56e912bfbcc7ce",
       strip_prefix = "parquet-cpp-apache-parquet-cpp-1.4.0",
       build_file = clean_dep("//third_party:parquet.BUILD"),
+      delete = ["src/parquet/util/windows_compatibility.h"],
   )
 
   java_import_external(
