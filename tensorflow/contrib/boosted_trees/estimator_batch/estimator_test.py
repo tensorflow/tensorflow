@@ -62,33 +62,11 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         examples_per_layer=3,
         model_dir=model_dir,
         config=config,
-        feature_columns=[contrib_feature_column.real_valued_column("x")],
-        output_leaf_index=False)
+        feature_columns=[contrib_feature_column.real_valued_column("x")])
 
     classifier.fit(input_fn=_train_input_fn, steps=15)
     classifier.evaluate(input_fn=_eval_input_fn, steps=1)
     classifier.export(self._export_dir_base)
-
-  def testThatLeafIndexIsInPredictions(self):
-    learner_config = learner_pb2.LearnerConfig()
-    learner_config.num_classes = 2
-    learner_config.constraints.max_tree_depth = 1
-    model_dir = tempfile.mkdtemp()
-    config = run_config.RunConfig()
-
-    classifier = estimator.GradientBoostedDecisionTreeClassifier(
-        learner_config=learner_config,
-        num_trees=1,
-        examples_per_layer=3,
-        model_dir=model_dir,
-        config=config,
-        feature_columns=[contrib_feature_column.real_valued_column("x")],
-        output_leaf_index=True)
-
-    classifier.fit(input_fn=_train_input_fn, steps=15)
-    result_dict = classifier.predict(input_fn=_eval_input_fn)
-    for prediction_item in result_dict:
-      self.assertTrue("leaf_index" in prediction_item)
 
   def testFitAndEvaluateDontThrowExceptionWithCoreForEstimator(self):
     learner_config = learner_pb2.LearnerConfig()
@@ -109,8 +87,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         model_dir=model_dir,
         config=config,
         feature_columns=[core_feature_column.numeric_column("x")],
-        use_core_libs=True,
-        output_leaf_index=False)
+        use_core_libs=True)
 
     model.fit(input_fn=_train_input_fn, steps=15)
     model.evaluate(input_fn=_eval_input_fn, steps=1)
@@ -130,8 +107,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         model_dir=model_dir,
         config=config,
         feature_columns=[core_feature_column.numeric_column("x")],
-        use_core_libs=True,
-        output_leaf_index=False)
+        use_core_libs=True)
 
     classifier.fit(input_fn=_train_input_fn, steps=15)
     classifier.evaluate(input_fn=_eval_input_fn, steps=1)
@@ -151,8 +127,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         model_dir=model_dir,
         config=config,
         feature_columns=[core_feature_column.numeric_column("x")],
-        use_core_libs=True,
-        output_leaf_index=False)
+        use_core_libs=True)
 
     regressor.fit(input_fn=_train_input_fn, steps=15)
     regressor.evaluate(input_fn=_eval_input_fn, steps=1)
