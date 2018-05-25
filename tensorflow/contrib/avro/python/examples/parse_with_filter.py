@@ -3,9 +3,8 @@ Example of parsing Avro data with filtering.
 """
 
 import tensorflow as tf
-
-from avro_serialization import AvroSerializer
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
+from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
 
 schema = '''{"doc": "Test filtering",
              "namespace": "com.linkedin.test.filtering",

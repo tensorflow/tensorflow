@@ -1,11 +1,11 @@
 """
 Example of parse Avro data and fill in with default values.
 """
+
 import tensorflow as tf
 
-from avro_serialization import AvroSerializer
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
-
+from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
 
 schema = '''{"doc": "Fixed length lists.",
                    "namespace": "com.linkedin.test.lists.fixed",

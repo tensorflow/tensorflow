@@ -3,9 +3,9 @@ Example of parsing Avro data with a simple schema.
 """
 
 import tensorflow as tf
-from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
-from avro_serialization import AvroSerializer
 
+from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
+from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
 
 schema = '''{"doc": "Simple example.",
              "namespace": "com.linkedin.demo.person",

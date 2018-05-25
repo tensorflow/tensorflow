@@ -14,9 +14,11 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 py_library(
     name = "avro_utils",
     srcs = [
+        # TODO: Check for unused dependencies and remove them here
         "numerr.py",
         "avro_record_utilities.py",
         "tensor_utilities.py",
+        "avro_serialization.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

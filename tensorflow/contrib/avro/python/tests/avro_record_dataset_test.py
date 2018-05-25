@@ -9,17 +9,15 @@ import shutil
 import tempfile
 
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import OpError, OutOfRangeError
-from tensorflow.python.framework import ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.contrib.avro.python.avro_record_dataset import AvroRecordDataset
 from tensorflow.contrib.avro.python.utils.avro_record_utilities import read_schema, parse_schema, \
     read_records_resolved, deserialize, write_records_to_file
 
-import tensorflow.contrib.avro.python.utils.numerr as nr
 
-
-class AvroRecordDatasetTest(test.TestCase):
+class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
 
     def __init__(self, *args, **kwargs):
         super(AvroRecordDatasetTest, self).__init__(*args, **kwargs)
@@ -136,7 +134,7 @@ class AvroRecordDatasetTest(test.TestCase):
         :param schema: The schema used for the dataset.
         :return:
         """
-        with ops.Graph().as_default() as g, self.test_session(graph=g) as sess:
+        with self.test_session() as sess:
             dataset = AvroRecordDataset(filenames=filename, schema=schema)
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
@@ -171,7 +169,7 @@ class AvroRecordDatasetTest(test.TestCase):
         logging.info("Taking records to be in files '{}' with those that are in '{}'.".format(filenames_be, filenames_is))
         config = config_pb2.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
 
-        with ops.Graph().as_default() as g, self.test_session(graph=g, config=config) as sess:
+        with self.test_session() as sess:
 
             dataset = AvroRecordDataset(filenames=filenames_is, schema=schema_resolved)
             iterator = dataset.make_initializable_iterator()
@@ -194,24 +192,21 @@ class AvroRecordDatasetTest(test.TestCase):
                     # If no schema is supplied use the full schema to deserialize
                     record_is = deserialize(sess.run(next_element), schema_object=schema_resolved_object)
                     record_be = records_be[record_is['index']]
-                    for name, value_is in record_is.iteritems():
+                    for name, value_actual in record_is.iteritems():
                         # The field must be present in the read record
                         assert name in record_be, "Could not find {0} in read record.".format(name)
-                        value_be = record_be[name]
+                        value_expected = record_be[name]
                         # The types of the fields must be the same
-                        assert type(value_be) == type(value_is), "The field {0} has type {1} but should be type {2}" \
-                            .format(name, type(value_is), type(value_be))
+                        assert type(value_expected) == type(value_actual), \
+                            "The field {} has type {} but should be type {}" \
+                            .format(name, type(value_actual), type(value_expected))
                         # For floating points use approximate equality
-                        if type(value_be) is float:
-                            assert nr.almost_equal_value(value_is, value_be), \
-                                "The field '{}' is {} but should approximately be {}. " \
-                                "The relative difference is {} but should be smaller than {}.".format(
-                                    name, value_is, value_be, nr.relative_error_for_value(value_is, value_be),
-                                    nr.ALMOST_EQUALS_THRESHOLD)
+                        if type(value_expected) is float:
+                            self.assertAllClose(value_expected, value_actual)
                         # Anything except floating points need to match exactly
                         else:
-                            assert value_is == value_be, "The field {} in record {} is {} but should be {}." \
-                                .format(name, i_record, value_is, value_be)
+                            assert value_expected == value_actual, "The field {} in record {} is {} but should be {}." \
+                                .format(name, i_record, value_actual, value_expected)
                     i_record += 1
                 except OutOfRangeError:
                     logging.info("Done")

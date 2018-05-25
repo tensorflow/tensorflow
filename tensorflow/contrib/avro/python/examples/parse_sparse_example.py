@@ -4,9 +4,8 @@ Example of parsing Avro data with sparse data.
 
 import tensorflow as tf
 
-from avro_serialization import AvroSerializer
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
-
+from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
 
 schema = '''{"doc": "Sparse features.",
              "namespace": "com.linkedin.test.sparse",
