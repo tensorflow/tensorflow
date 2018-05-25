@@ -318,7 +318,7 @@ class SparseConditionalAccumulator
     // No need to copy shape, since shape remains the same after sum.
   }
 
-  void DivideAccumGradByCounter(OpKernelContext* ctx) override
+  void DivideAccumGradByCounter(OpKernelContext* ctx, int average_option) override
       EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     const int64 nnz = count_element_->size();
     auto accum_flat = accum_val_->flat_outer_dims<T>();
@@ -327,21 +327,25 @@ class SparseConditionalAccumulator
                    std::back_inserter(count_typet),
                    TypeConverter<T, int>::ConvertUToT);
 
-    // Option 1: divide all by counter
-    /*
-    std::transform(
-        &accum_flat(0,0), &accum_flat(nnz,0), &accum_flat(0,0),
-        std::bind2nd(std::divides<T>(),
-                     TypeConverter<T, int>::ConvertUToT(this->counter_)));
-    */
-
-    // Option 2: average element-wise
-    Eigen::DSizes<Eigen::DenseIndex, 1> slice_shape(accum_flat.dimension(1));
-    for (int64 i = 0; i < nnz; i++) {
-      T* accum_slice_ptr = &accum_flat(i, 0);
-      SliceT accum_slice(accum_slice_ptr, slice_shape);
-      accum_slice.device(ctx->template eigen_device<Device>()) =
-          accum_slice / count_typet[i];
+    switch(average_option) {
+      case 1:
+        // Option 1: divide all by counter
+    
+        std::transform(
+          &accum_flat(0,0), &accum_flat(nnz,0), &accum_flat(0,0),
+          std::bind2nd(std::divides<T>(),
+                       TypeConverter<T, int>::ConvertUToT(this->counter_)));
+      break;
+      case 2:    
+        // Option 2: average element-wise
+        Eigen::DSizes<Eigen::DenseIndex, 1> slice_shape(accum_flat.dimension(1));
+        for (int64 i = 0; i < nnz; i++) {
+        T* accum_slice_ptr = &accum_flat(i, 0);
+        SliceT accum_slice(accum_slice_ptr, slice_shape);
+        accum_slice.device(ctx->template eigen_device<Device>()) =
+            accum_slice / count_typet[i];
+        }
+      break;
     }
   }
 

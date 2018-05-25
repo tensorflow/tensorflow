@@ -58,7 +58,8 @@ Status ConditionalAccumulatorBase::SetGlobalStep(int64 new_global_step) {
  */
 void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
                                              OpKernelContext* ctx,
-                                             DoneCallback callback) {
+                                             DoneCallback callback,
+                                             int average_option) {
   if (num_required <= 0) {
     ctx->CtxFailureWithWarning(errors::InvalidArgument(
         "Argument num_required must be positive, but was ", num_required));
@@ -77,7 +78,7 @@ void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
             [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
               if (counter_ >= attempt->elements_requested) {
                 bool successful_take_grad = TakeGradLockedHelper(
-                    attempt->context, attempt->done_callback);
+                    attempt->context, attempt->done_callback, attempt->average_option);
                 if (successful_take_grad) {
                   return kComplete;
                 } else {
@@ -87,7 +88,7 @@ void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
               } else {
                 return kNoProgress;
               }
-            });
+            }, average_option);
       }
     }
     if (!already_cancelled) {
@@ -183,14 +184,15 @@ void ConditionalAccumulatorBase::FlushUnlocked() {
 }
 
 bool ConditionalAccumulatorBase::TakeGradLockedHelper(OpKernelContext* ctx,
-                                                      DoneCallback callback) {
+                                                      DoneCallback callback,
+                                                      int average_option) {
   // At this point, the conditional should have been passed
 
   // Implicitly increment global_step
   current_global_step_++;
 
   // Average the accumulated gradient
-  DivideAccumGradByCounter(ctx);
+  DivideAccumGradByCounter(ctx, average_option);
 
   // Set output for accumulated gradient tensor
   bool successful_set_output = SetOutput(ctx);

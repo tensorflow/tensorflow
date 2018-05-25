@@ -99,7 +99,7 @@ class ConditionalAccumulator
         grad->flat<T>();
   }
 
-  void DivideAccumGradByCounter(OpKernelContext* ctx) override
+  void DivideAccumGradByCounter(OpKernelContext* ctx, int average_option) override
       EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     Tensor c(DataTypeToEnum<T>::value, {});
     c.scalar<T>()() = TypeConverter<T, int>::ConvertUToT(this->counter_);

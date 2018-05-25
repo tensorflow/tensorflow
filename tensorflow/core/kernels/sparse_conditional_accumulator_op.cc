@@ -95,9 +95,12 @@ class SparseAccumulatorTakeGradientOp
     : public ConditionalAccumulatorBaseTakeGradientOp {
  public:
   explicit SparseAccumulatorTakeGradientOp(OpKernelConstruction* context)
-      : ConditionalAccumulatorBaseTakeGradientOp(context) {}
+      : ConditionalAccumulatorBaseTakeGradientOp(context) {
+    context->GetAttr("average_option", &average_option_);
+  }
 
  protected:
+  int average_option_;
   void CheckSignature(OpKernelContext* ctx,
                       ConditionalAccumulatorBase* accumulator,
                       DoneCallback callback) override {
@@ -108,6 +111,28 @@ class SparseAccumulatorTakeGradientOp
                             {DT_INT64, accumulator->dtype(), DT_INT64}),
         callback);
   }
+  void ComputeAsync(OpKernelContext* ctx,
+                    ConditionalAccumulatorBase* accumulator,
+                    DoneCallback callback) override {
+    // Check signature
+    CheckSignature(ctx, accumulator, callback);
+
+    // Get input num_required
+    const Tensor* num_required_tensor;
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("num_required", &num_required_tensor),
+                         callback);
+    if (!TensorShapeUtils::IsScalar(num_required_tensor->shape())) {
+      ctx->CtxFailureWithWarning(errors::InvalidArgument(
+          "Argument num_required must be scalar, but had bad shape ",
+          num_required_tensor->shape().DebugString()));
+      callback();
+    }
+
+    // Actually try to take gradient now
+    accumulator->TryTakeGrad(num_required_tensor->scalar<int32>()(), ctx,
+                             callback, average_option_);
+  }
+
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(SparseAccumulatorTakeGradientOp);

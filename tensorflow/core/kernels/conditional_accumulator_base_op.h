@@ -228,7 +228,7 @@ class ConditionalAccumulatorBaseTakeGradientOp
 
     // Actually try to take gradient now
     accumulator->TryTakeGrad(num_required_tensor->scalar<int32>()(), ctx,
-                             callback);
+                             callback, 0);
   }
 };
 

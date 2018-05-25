@@ -28,6 +28,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.protobuf import gradients_info_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -65,6 +66,128 @@ cond_v2_impl._gradients_impl = sys.modules[__name__]  # pylint: disable=protecte
 # least this number of elements.
 _LARGE_SPARSE_NUM_ELEMENTS = 100000000
 
+class GradientsInfo(object):
+  """Gradients Information.
+  """
+  def __init__(self, target=None, grad=None, gradients_info_def=None, import_scope=None):
+    """Create a GradientsInfo.
+
+    Args:
+      target: Optional tensor which is used for differentiation.
+      grad : Optional gradient tensor of target.
+      gradients_info_def: Optional `GradientsInfoDef` protocol buffer. If specified,
+        recreates the GradientsInfo from its contents. `gradients_info_def` and the
+        other arguments are mutually exclusive.
+      import_scope: Optional `string`. Name scope to add. Only used when
+        initializing from protocol buffer.
+
+    Raises:
+      ValueError: If both `gradients_info_def` and `target` are both specified.
+    """
+    if gradients_info_def and target is not None:
+      raise ValueError("gradients_info_def and target are "
+                       "mutually exclusive.")
+    if gradients_info_def:
+      self._init_from_proto(gradients_info_def, import_scope=import_scope)
+    else:
+      self._init_from_args(target, grad)
+
+  def _get_tensor_from_proto(self, tensor_info, import_scope):
+    g = ops.get_default_graph()
+    tensor_type = tensor_info.tensor_type
+    values = g.as_graph_element(
+        ops.prepend_name_scope(tensor_info.values_tensor_name, import_scope))
+    if tensor_type == gradients_info_pb2.GradientsInfoDef.TensorInfoDef.TENSOR:
+      return values
+    else:
+      indices = g.as_graph_element(
+        ops.prepend_name_scope(tensor_info.indices_tensor_name, import_scope))
+      dense_shape = None
+      if len(tensor_info.dense_shape_tensor_name) > 0:
+        dense_shape = g.as_graph_element(
+          ops.prepend_name_scope(tensor_info.dense_shape_tensor_name, import_scope))
+      assert tensor_type == gradients_info_pb2.GradientsInfoDef.TensorInfoDef.INDEXED_SLICES
+      return ops.IndexedSlices(values=values, indices=indices, dense_shape=dense_shape)
+
+  def _init_from_proto(self, gradients_info_def, import_scope=None):
+    """Creates a GradientsInfo from 'GradientsInfoDef'.
+
+    Args:
+      gradients_info_def: Optional `GradientsInfoDef` protocol buffer. If specified,
+        recreates the GradientsInfo from its contents. `gradients_info_def` and the
+        other arguments are mutually exclusive.
+      import_scope: Optional `string`. Name scope to add. Only used when
+        initializing from protocol buffer.
+
+    Raises:
+      ValueError: If the numbers of target_tensor_info and grad_tensor_info are different.
+    """
+    assert isinstance(
+        gradients_info_def, gradients_info_pb2.GradientsInfoDef)
+
+    # Create from gradients_info_def.
+    self._target = self._get_tensor_from_proto(gradients_info_def.target_tensor_info, import_scope)
+    self._grad = self._get_tensor_from_proto(gradients_info_def.grad_tensor_info, import_scope)
+
+  def _init_from_args(self, target, grad):
+    """Create a GradientsInfo from arguments.
+
+    Args:
+      target: Optional tensor which is used for differentiation.
+      grad : Optional gradient tensor of target.
+
+    Raises:
+      ValueError: If the numbers of target_tensor_name and grad_tensor_name are different.
+    """
+    self._target = target
+    self._grad = grad
+
+  def _set_tensor_info_from_tensor(self, tensor_info_def, tensor, export_scope):
+    if isinstance(tensor, ops.Tensor):
+      tensor_info_def.tensor_type = gradients_info_pb2.GradientsInfoDef.TensorInfoDef.TENSOR
+      tensor_info_def.values_tensor_name = ops.strip_name_scope(tensor.name, export_scope)
+    else:
+      assert isinstance(tensor, ops.IndexedSlices)
+      tensor_info_def.tensor_type = gradients_info_pb2.GradientsInfoDef.TensorInfoDef.INDEXED_SLICES
+      tensor_info_def.indices_tensor_name = ops.strip_name_scope(tensor.indices.name, export_scope)
+      tensor_info_def.values_tensor_name = ops.strip_name_scope(tensor.values.name, export_scope)
+      if tensor.dense_shape != None:
+        tensor_info_def.dense_shape_tensor_name = ops.strip_name_scope(tensor.dense_shape.name, export_scope)
+
+  def to_proto(self, export_scope=None):
+    """Converts this `GradientsInfo` to a `GradientsInfoDef` protocol buffer.
+
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
+
+    Returns:
+      A `GradientsInfoDef` protocol buffer, or `None` if the `Variable` is not in
+      the specified name scope.
+    """
+
+    gradients_info_def = gradients_info_pb2.GradientsInfoDef()
+    target = self._target
+    grad = self._grad
+    if (export_scope is not None and
+      (not target.name.startswith(export_scope) or not grad.name.startswith(export_scope))):
+      return None
+    target_tensor_info_def = gradients_info_def.target_tensor_info
+    self._set_tensor_info_from_tensor(target_tensor_info_def, target, export_scope)
+    grad_tensor_info_def = gradients_info_def.grad_tensor_info
+    self._set_tensor_info_from_tensor(grad_tensor_info_def, grad, export_scope)
+    return gradients_info_def
+
+  @staticmethod
+  def from_proto(gradients_info_def, import_scope=None):
+    """Returns a `GradientsInfo` object created from `gradients_info_def`."""
+    return GradientsInfo(gradients_info_def=gradients_info_def,
+                       import_scope=import_scope)
+
+ops.register_proto_function(
+    ops.GraphKeys.GRADIENTS_INFO,
+    proto_type=gradients_info_pb2.GradientsInfoDef,
+    to_proto=GradientsInfo.to_proto,
+    from_proto=GradientsInfo.from_proto)
 
 def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
   """Converts an IndexedSlices object `value` to a Tensor.
@@ -817,8 +940,11 @@ def _GradientsHelper(ys,
 
   if loop_state:
     loop_state.PostProcessing()
-  return [_GetGrad(grads, x) for x in xs]
-
+  res_grads = [_GetGrad(grads, x) for x in xs]
+  for (x, grad) in zip(xs, res_grads):
+    gi = GradientsInfo(target=x, grad=grad)
+    ops.add_to_collection(ops.GraphKeys.GRADIENTS_INFO, gi)
+  return res_grads
 
 def _HasAnyNotNoneGrads(grads, op):
   """Return true iff op has real gradient."""

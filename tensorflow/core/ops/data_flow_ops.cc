@@ -483,6 +483,7 @@ REGISTER_OP("SparseAccumulatorTakeGradient")
     .Output("values: dtype")
     .Output("shape: int64")
     .Attr("dtype: numbertype")
+    .Attr("average_option: int")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));

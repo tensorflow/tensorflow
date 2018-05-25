@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "GradientsInfoProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+// Protocol buffer representing a GradientsInfo.
+message GradientsInfoDef {
+
+  // Protocol buffer representing a tensor.
+  message TensorInfoDef {
+
+    enum TensorType {
+      // Tensor
+      TENSOR = 0;
+
+      // IndexedSlices
+      INDEXED_SLICES = 1;
+
+      // SparseTensor
+      SPARSE_TENSOR = 2;
+    }
+
+    // Tensor type(TENSOR, INDEXED_SLICES, SPARSE_TENSOR)
+    TensorType tensor_type = 1;
+
+    // Indices of tensor for INDEXED_SLICES and SPARSE_TENSOR
+    string indices_tensor_name = 2;
+
+    // Values of tensor for all of the tensor types
+    string values_tensor_name = 3;
+
+    // Dense shape of tensor for INDEXED_SLICES and SPARSE_TENSOR
+    string dense_shape_tensor_name = 4;
+  }
+
+  TensorInfoDef target_tensor_info = 1;
+
+  TensorInfoDef grad_tensor_info = 2;
+}

@@ -1396,7 +1396,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         has_known_shape=(grad_shape is not None),
         name=name)
 
-  def take_grad(self, num_required, name=None):
+  def take_grad(self, num_required, average_option=2, name=None):
     """Attempts to extract the average gradient from the accumulator.
 
     The operation blocks until sufficient number of gradients have been
@@ -1418,9 +1418,9 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       InvalidArgumentError: If num_required < 1
     """
     return gen_data_flow_ops.sparse_accumulator_take_gradient(
-        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+        self._accumulator_ref, num_required, average_option=average_option, dtype=self._dtype, name=name)
 
-  def take_indexed_slices_grad(self, num_required, name=None):
+  def take_indexed_slices_grad(self, num_required, average_option=2, name=None):
     """Attempts to extract the average gradient from the accumulator.
 
     The operation blocks until sufficient number of gradients have been
@@ -1442,7 +1442,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
       InvalidArgumentError: If num_required < 1
     """
     return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
-        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+        self._accumulator_ref, num_required, average_option=average_option, dtype=self._dtype, name=name)
     return ops.IndexedSlices(
         indices=return_val.indices,
         values=return_val.values,

@@ -58,7 +58,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
 
   virtual void TryApplyGrad(int64 local_step, OpKernelContext* ctx) = 0;
   void TryTakeGrad(int num_required, OpKernelContext* ctx,
-                   DoneCallback callback);
+                   DoneCallback callback, int average_option);
 
   // Accessor methods
   uint32 num_accumulated() {
@@ -80,7 +80,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
  protected:
   // Virtual methods to be implemented by sub-classes for different datatypes.
   // Implements arithmetic operations specific to datatype.
-  virtual void DivideAccumGradByCounter(OpKernelContext* ctx)
+  virtual void DivideAccumGradByCounter(OpKernelContext* ctx, int average_option)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;
   virtual bool SetOutput(OpKernelContext* ctx) = 0;
 
@@ -97,17 +97,20 @@ class ConditionalAccumulatorBase : public ResourceBase {
     CancellationToken cancellation_token;
     RunCallback run_callback;  // must be run while holding mu_
     bool is_cancelled;
+    int average_option;
 
     Attempt(int elements_requested, DoneCallback done_callback,
             OpKernelContext* context, CancellationManager* cancellation_manager,
-            CancellationToken cancellation_token, RunCallback run_callback)
+            CancellationToken cancellation_token, RunCallback run_callback,
+            int average_option)
         : elements_requested(elements_requested),
           done_callback(std::move(done_callback)),
           context(context),
           cancellation_manager(cancellation_manager),
           cancellation_token(cancellation_token),
           run_callback(std::move(run_callback)),
-          is_cancelled(false) {}
+          is_cancelled(false),
+          average_option(average_option) {}
   };
 
   // Helper struct for deregistration of a cancellation token and executing a
@@ -152,7 +155,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
 
   // Helper methods
   //  void DeepCopy(Tensor* dst);
-  bool TakeGradLockedHelper(OpKernelContext* ctx, DoneCallback callback)
+  bool TakeGradLockedHelper(OpKernelContext* ctx, DoneCallback callback, int average_option)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 };
 
