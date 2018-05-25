@@ -42,14 +42,14 @@ using llvm_ir::SetToFirstInsertPoint;
 namespace cpu {
 
 namespace {
-// Loads a tile of values from a 2D tensor.
-class TileLoader {
+// Provides tiled access to an in-memory rank 2 array.
+class MemoryTile {
  public:
-  // Constructs a TileLoader that will load a tile consisting of
+  // Constructs a MemoryTile that can operate on tiles consisting of
   // `tile_size_along_major_dim` vectors from the matrix `matrix`, starting at
   // `major_dim_offset` in the major dimension.  The tile size along the minor
   // dimension is the vector size, and that is implicitly determined by `vsl`.
-  TileLoader(VectorSupportLibrary* vsl, llvm::IRBuilder<>* ir_builder,
+  MemoryTile(VectorSupportLibrary* vsl, llvm::IRBuilder<>* ir_builder,
              llvm::Value* matrix, int64 matrix_size_along_minor_dim,
              llvm::Value* major_dim_offset, int64 tile_size_along_major_dim)
       : vsl_(vsl) {
@@ -236,8 +236,8 @@ class ColumnMajorMatrixVectorProductEmitter
   void EmitOuterLoopBody(llvm::Value* column, int64 column_count,
                          bool is_first_column);
 
-  TileLoader GetLhsTileLoader(llvm::Value* column_start, int64 column_count) {
-    return TileLoader(&vsl_, ir_builder_, /*matrix=*/lhs_,
+  MemoryTile GetLhsMemoryTile(llvm::Value* column_start, int64 column_count) {
+    return MemoryTile(&vsl_, ir_builder_, /*matrix=*/lhs_,
                       /*matrix_size_along_minor_dim=*/m(),
                       /*major_dim_offset=*/column_start,
                       /*tile_size_along_major_dim=*/column_count);
@@ -255,7 +255,7 @@ class ColumnMajorMatrixVectorProductEmitter
     return result;
   }
 
-  void EmitInnerLoopTiled(TileLoader* lhs_tile_loader,
+  void EmitInnerLoopTiled(MemoryTile* lhs_memory_tile,
                           const std::vector<llvm::Value*>& rhs_tile,
                           int64 columns, bool is_first_column);
 
@@ -274,12 +274,12 @@ class ColumnMajorMatrixVectorProductEmitter
 
 void ColumnMajorMatrixVectorProductEmitter::EmitOuterLoopBody(
     llvm::Value* column, int64 column_count, bool is_first_column) {
-  TileLoader lhs_tile_loader = GetLhsTileLoader(/*column_start=*/column,
+  MemoryTile lhs_memory_tile = GetLhsMemoryTile(/*column_start=*/column,
                                                 /*column_count=*/column_count);
 
   std::vector<llvm::Value*> rhs_tile =
       LoadRhsTile(column, /*count=*/column_count);
-  EmitInnerLoopTiled(&lhs_tile_loader, rhs_tile,
+  EmitInnerLoopTiled(&lhs_memory_tile, rhs_tile,
                      /*columns=*/column_count, is_first_column);
   EmitInnerLoopEpilogue(column, /*columns=*/column_count, is_first_column);
 }
@@ -302,14 +302,14 @@ void ColumnMajorMatrixVectorProductEmitter::Emit() {
 }
 
 void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
-    TileLoader* lhs_tile_loader, const std::vector<llvm::Value*>& rhs_tile,
+    MemoryTile* lhs_memory_tile, const std::vector<llvm::Value*>& rhs_tile,
     int64 columns, bool is_first_column) {
   int64 row_limit = m() - (m() % tile_rows());
 
   ksl_.For("dot.inner.tiled", /*start=*/0, /*end=*/row_limit,
            /*step=*/tile_rows(), [&](llvm::Value* row) {
              std::vector<llvm::Value*> lhs_tile =
-                 lhs_tile_loader->LoadTile(/*minor_dim_offset=*/row);
+                 lhs_memory_tile->LoadTile(/*minor_dim_offset=*/row);
              llvm::Value* accumulator =
                  is_first_column ? (addend_ ? vsl_.LoadVector(addend_, row)
                                             : vsl_.GetZeroVector())
@@ -461,8 +461,8 @@ class RowMajorMatrixVectorProductEmitter
   const Config& config() const { return config_; }
 
  private:
-  TileLoader GetLhsTileLoader(llvm::Value* row_start, int64 row_count) {
-    return TileLoader(&vsl_, ir_builder_, /*matrix=*/lhs_,
+  MemoryTile GetLhsMemoryTile(llvm::Value* row_start, int64 row_count) {
+    return MemoryTile(&vsl_, ir_builder_, /*matrix=*/lhs_,
                       /*matrix_size_along_minor_dim=*/k(),
                       /*major_dim_offset=*/row_start,
                       /*tile_size_along_major_dim=*/row_count);
@@ -470,7 +470,7 @@ class RowMajorMatrixVectorProductEmitter
 
   void EmitOuterLoopBody(llvm::Value* row, int64 row_count);
 
-  void EmitInnerLoopTiled(TileLoader* lhs_tile_loader, int64 rows,
+  void EmitInnerLoopTiled(MemoryTile* lhs_memory_tile, int64 rows,
                           std::vector<VectorVariable>* vector_accumulators);
 
   void EmitInnerLoopEpilogue(llvm::Value* current_tile_row, int64 rows,
@@ -488,7 +488,7 @@ class RowMajorMatrixVectorProductEmitter
 
 void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
                                                            int64 row_count) {
-  TileLoader lhs_tile_loader = GetLhsTileLoader(/*row_start=*/row,
+  MemoryTile lhs_memory_tile = GetLhsMemoryTile(/*row_start=*/row,
                                                 /*row_count=*/row_count);
   std::vector<VectorVariable> vector_accumulators;
   std::vector<ScalarVariable> scalar_accumulators;
@@ -496,7 +496,7 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
     vector_accumulators.emplace_back(&vsl_, vsl_.GetZeroVector());
     scalar_accumulators.emplace_back(&vsl_, vsl_.GetZeroScalar());
   }
-  EmitInnerLoopTiled(&lhs_tile_loader, /*rows=*/row_count,
+  EmitInnerLoopTiled(&lhs_memory_tile, /*rows=*/row_count,
                      &vector_accumulators);
   EmitInnerLoopEpilogue(/*current_tile_row=*/row, /*rows=*/row_count,
                         &scalar_accumulators);
@@ -546,14 +546,14 @@ void RowMajorMatrixVectorProductEmitter::Emit() {
 }
 
 void RowMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
-    TileLoader* lhs_tile_loader, int64 rows,
+    MemoryTile* lhs_memory_tile, int64 rows,
     std::vector<VectorVariable>* vector_accumulators) {
   int64 column_limit = k() - (k() % tile_cols());
 
   ksl_.For("dot.inner.tiled", /*start=*/0, /*end=*/column_limit,
            /*step=*/tile_cols(), [&](llvm::Value* col) {
              std::vector<llvm::Value*> lhs_tile =
-                 lhs_tile_loader->LoadTile(/*minor_dim_offset=*/col);
+                 lhs_memory_tile->LoadTile(/*minor_dim_offset=*/col);
              llvm::Value* rhs_value = vsl_.LoadVector(rhs_, col);
              for (int i = 0; i < rows; i++) {
                llvm::Value* old_sum = (*vector_accumulators)[i].Get();
@@ -846,7 +846,7 @@ void MatrixMatrixBlockPanelEmitter::EmitInnerLoop(
 
       // rhs_loader will be used to load the tile off of the RHS, denoted as
       // <<p0,p1,p2,p3>,<q0,q1,q2,q3> ...> in the diagram.
-      TileLoader rhs_loader(vsl, ir_builder_, rhs_, dims().n(), k_i,
+      MemoryTile rhs_loader(vsl, ir_builder_, rhs_, dims().n(), k_i,
                             k_tiling_factor);
       ksl_.For(
           "dot.n", n_start, n_end, vsl->vector_size(), [&](llvm::Value* n_i) {
