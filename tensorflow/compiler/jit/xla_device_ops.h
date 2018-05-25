@@ -79,7 +79,11 @@ class XlaDeviceDummyOp : public OpKernel {
       Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
       ReadVariableOp);                                                         \
   REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE),               \
-                          ControlTriggerOp);
+                          ControlTriggerOp);                                   \
+  REGISTER_KERNEL_BUILDER(Name("Switch").Device(DEVICE).HostMemory("pred"),    \
+                          SwitchOp);                                           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Merge").Device(DEVICE).HostMemory("value_index"), MergeOp);
 
 }  // namespace tensorflow
 
