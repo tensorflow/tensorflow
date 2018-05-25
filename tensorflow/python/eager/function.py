@@ -1215,6 +1215,9 @@ class AutomaticControlDependencies(object):
     # test that it works. Support while loops. Support init_scope escaping from
     # this.
     for op in new_operations:
+      # TODO(apassos) make this code safely support while loops.
+      if isinstance(op._control_flow_context, control_flow_ops.WhileContext):  # pylint: disable=protected-access
+        continue
       control_inputs = set()
       # Ensure stateful ops run
       if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
