@@ -309,6 +309,35 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
   return result;
 }
 
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseBinaryOp(
+    HloOpcode opcode, const Literal& lhs, const Literal& rhs) {
+  std::unique_ptr<HloInstruction> lhs_instr =
+      HloInstruction::CreateConstant(lhs.CloneToUnique());
+  std::unique_ptr<HloInstruction> rhs_instr =
+      HloInstruction::CreateConstant(rhs.CloneToUnique());
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateBinary(lhs.shape(), opcode, lhs_instr.get(),
+                                   rhs_instr.get());
+  auto result = Evaluate(cloned_instruction.get());
+
+  cloned_instruction->DetachFromOperands();
+  return result;
+}
+
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseUnaryOp(
+    HloOpcode opcode, const Literal& operand) {
+  std::unique_ptr<HloInstruction> operand_instr =
+      HloInstruction::CreateConstant(operand.CloneToUnique());
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateUnary(operand.shape(), opcode, operand_instr.get());
+  auto result = Evaluate(cloned_instruction.get());
+
+  cloned_instruction->DetachFromOperands();
+  return result;
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];

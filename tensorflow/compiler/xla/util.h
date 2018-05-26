@@ -537,6 +537,11 @@ void InsertAt(C* c, int64 index, Value&& value) {
   c->insert(c->begin() + index, std::forward<Value>(value));
 }
 
+template <typename C>
+void EraseAt(C* c, int64 index) {
+  c->erase(c->begin() + index);
+}
+
 // Returns true if `x` fits in 32-bits.
 template <typename T>
 bool IsInt32(T x) {

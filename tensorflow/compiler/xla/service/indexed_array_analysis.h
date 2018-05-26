@@ -223,7 +223,7 @@ class IndexedArrayAnalysis {
   Array* GetArrayFor(const HloInstruction* instr);
 
   // Pretty-prints the expression rooted at `root`.
-  string ToString(Array* root);
+  string ToString(Array* root, bool print_constants = false);
 
  private:
   // Helper function that ensures that every HLO instruction that is
@@ -267,6 +267,11 @@ class IndexedArrayAnalysis {
       tensorflow::gtl::ArraySlice<int64> output_dims, Shape shape);
 
   Array* ComputeArrayForReshape(const Shape& shape, Array* operand);
+
+  Array* ComputeArrayForElementwiseBinaryOp(const HloInstruction* instr,
+                                            Array* lhs, Array* rhs);
+  Array* ComputeArrayForElementwiseUnaryOp(const HloInstruction* instr,
+                                           Array* operand);
 
   template <typename T, typename... Args>
   T* Construct(Args&&... args) {

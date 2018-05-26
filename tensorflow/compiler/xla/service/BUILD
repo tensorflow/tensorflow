@@ -2927,6 +2927,7 @@ cc_library(
     hdrs = ["indexed_array_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_evaluator",
         ":hlo_pass",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",

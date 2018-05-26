@@ -109,6 +109,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const std::unordered_map<const HloInstruction*, const Literal*>&
           substitutions);
 
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseBinaryOp(
+      HloOpcode opcode, const Literal& lhs, const Literal& rhs);
+
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseUnaryOp(
+      HloOpcode opcode, const Literal& operand);
+
  protected:
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.

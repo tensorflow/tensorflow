@@ -23,12 +23,27 @@ class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {
+    AssertArrayForRootExpressionIsImpl(hlo_text, root_expression,
+                                       /*print_constants=*/false);
+  }
+
+  void AssertArrayWithConstantsForRootExpressionIs(
+      const string& hlo_text, const string& root_expression) {
+    AssertArrayForRootExpressionIsImpl(hlo_text, root_expression,
+                                       /*print_constants=*/true);
+  }
+
+ private:
+  void AssertArrayForRootExpressionIsImpl(const string& hlo_text,
+                                          const string& root_expression,
+                                          bool print_constants) {
     IndexedArrayAnalysis indexed_tensor_analysis;
     ParseAndVerifyModule(hlo_text);
 
-    string result =
-        indexed_tensor_analysis.ToString(indexed_tensor_analysis.GetArrayFor(
-            module().entry_computation()->root_instruction()));
+    string result = indexed_tensor_analysis.ToString(
+        indexed_tensor_analysis.GetArrayFor(
+            module().entry_computation()->root_instruction()),
+        print_constants);
     LOG(INFO) << result;
     ASSERT_EQ(result, root_expression);
   }
@@ -297,6 +312,163 @@ ENTRY main {
 )";
 
   AssertArrayForRootExpressionIs(hlo_text, "%reshape");
+}
+
+TEST_F(IndexedArrayAnalysisTest, UnaryOpOfGather) {
+  string hlo_text = R"(
+HloModule UnaryOpOfGather
+
+ENTRY main {
+  operand = f32[3,4] constant(f32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  indices = s32[5] parameter(0)
+  gather = f32[5,4] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1,4}
+  ROOT tanh = f32[5,4] tanh(gather)
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+(scalar-indexed-const (constant f32[3,4] f32[3,4] {
+  { 0.761594176, 0.964027584, 0.995054781, 0.999329329 },
+  { 0.761594176, 0.995054781, 0.964027584, 0.999329329 },
+  { 0.999329329, 0.995054781, 0.964027584, 0.761594176 }
+}) %indices 0->[0]))");
+}
+
+TEST_F(IndexedArrayAnalysisTest, AddBroadcastedScalarWithGather) {
+  string hlo_text = R"(
+HloModule AddBroadcastedScalarWithGather
+
+ENTRY main {
+  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  constant = s32[] constant(5)
+  constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
+  indices = s32[5] parameter(0)
+  gather = s32[5,4] gather(gather_operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1,4}
+  ROOT add = s32[5,4] add(gather, constant_broadcasted)
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+(scalar-indexed-const (constant s32[3,4] s32[3,4] {
+  { 6, 7, 8, 9 },
+  { 6, 8, 7, 9 },
+  { 9, 8, 7, 6 }
+}) %indices 0->[0]))");
+}
+
+TEST_F(IndexedArrayAnalysisTest,
+       SubtractBroadcastedScalarWithGather_GatherIsLhs) {
+  string hlo_text = R"(
+HloModule SubtractBroadcastedScalarWithGather
+
+ENTRY main {
+  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  constant = s32[] constant(5)
+  constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
+  indices = s32[5] parameter(0)
+  gather = s32[5,4] gather(gather_operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1,4}
+  ROOT sub = s32[5,4] subtract(gather, constant_broadcasted)
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+(scalar-indexed-const (constant s32[3,4] s32[3,4] {
+  { -4, -3, -2, -1 },
+  { -4, -2, -3, -1 },
+  { -1, -2, -3, -4 }
+}) %indices 0->[0]))");
+}
+
+TEST_F(IndexedArrayAnalysisTest,
+       SubtractBroadcastedScalarWithGather_GatherIsRhs) {
+  string hlo_text = R"(
+HloModule SubtractBroadcastedScalarWithGather
+
+ENTRY main {
+  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  constant = s32[] constant(5)
+  constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
+  indices = s32[5] parameter(0)
+  gather = s32[5,4] gather(gather_operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1,4}
+  ROOT sub = s32[5,4] subtract(constant_broadcasted, gather)
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+(scalar-indexed-const (constant s32[3,4] s32[3,4] {
+  { 4, 3, 2, 1 },
+  { 4, 2, 3, 1 },
+  { 1, 2, 3, 4 }
+}) %indices 0->[0]))");
+}
+
+TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather) {
+  string hlo_text = R"(
+HloModule AddBroadcastedVectorWithGather
+
+ENTRY main {
+  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  constant_vect = s32[4] constant({10,11,12,13})
+  constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={1}
+  indices = s32[5] parameter(0)
+  gather = s32[5,4] gather(gather_operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1,4}
+  ROOT add = s32[5,4] add(gather, constant_broadcasted)
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, 1 + R"(
+(scalar-indexed-const (constant s32[3,4] s32[3,4] {
+  { 11, 13, 15, 17 },
+  { 11, 14, 14, 17 },
+  { 14, 14, 14, 14 }
+}) %indices 0->[0]))");
+}
+
+TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather_Negative) {
+  string hlo_text = R"(
+HloModule AddBroadcastedVectorWithGather
+
+ENTRY main {
+  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  constant_vect = s32[5] constant({10,11,12,13,14})
+  constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={0}
+  indices = s32[5] parameter(0)
+  gather = s32[5,4] gather(gather_operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1,4}
+  ROOT add = s32[5,4] add(gather, constant_broadcasted)
+}
+)";
+
+  AssertArrayForRootExpressionIs(hlo_text, "%add");
 }
 }  // namespace
 }  // namespace xla
