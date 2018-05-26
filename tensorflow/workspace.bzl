@@ -625,6 +625,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:arrow.BUILD"),
     )
 
+    tf_http_archive(
+        name = "thrift",
+        urls = [
+            "https://mirror.bazel.build/github.com/apache/thrift/archive/0.11.0.tar.gz",
+            "https://github.com/apache/thrift/archive/0.11.0.tar.gz",
+        ],
+        sha256 = "0e324569321a1b626381baabbb98000c8dd3a59697292dbcc71e67135af0fefd",
+        strip_prefix = "thrift-0.11.0",
+        build_file = clean_dep("//third_party:thrift.BUILD"),
+    )
+
     java_import_external(
         name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",

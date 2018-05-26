@@ -147,6 +147,7 @@ filegroup(
         "@jpeg//:LICENSE.md",
         "@arrow//:LICENSE.txt",
         "@boost//:LICENSE_1_0.txt",
+        "@thrift//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
