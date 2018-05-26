@@ -1467,6 +1467,7 @@ def main():
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_KAFKA'] = '0'
+    environ_cp['TF_NEED_PARQUET'] = '0'
     environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
     environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
@@ -1502,6 +1503,8 @@ def main():
                 'with_aws_support', True, 'aws')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
                 'with_kafka_support', True, 'kafka')
+  set_build_var(environ_cp, 'TF_NEED_PARQUET', 'Apache Parquet Format',
+                'with_parquet_support', True, 'parquet')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
