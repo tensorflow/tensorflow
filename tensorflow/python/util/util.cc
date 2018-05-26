@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/util.h"
 
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
