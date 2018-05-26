@@ -148,6 +148,7 @@ filegroup(
         "@arrow//:LICENSE.txt",
         "@boost//:LICENSE_1_0.txt",
         "@thrift//:LICENSE",
+        "@parquet//:LICENSE.txt",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
