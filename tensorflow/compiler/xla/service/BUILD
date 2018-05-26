@@ -2862,6 +2862,7 @@ tf_cc_test(
         ":while_loop_invariant_code_motion",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
         "//tensorflow/core:test",
     ],
 )

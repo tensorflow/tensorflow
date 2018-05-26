@@ -73,6 +73,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
+#include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -176,6 +178,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
       pass.AddPass<TupleSimplifier>();
+      pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
@@ -273,6 +276,15 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // fuse the new ReducePrecision operations.
       TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
     }
+  }
+
+  {
+    // Do an aggressive LICM pass over while loops.  In particular, this hoists
+    // constants that were sunk by WhileLoopConstantSinking.  Leaving them in
+    // the while loop may result in unnecessary copies.
+    HloPassPipeline pipeline("while-loop-licm");
+    pipeline.AddPass<WhileLoopInvariantCodeMotion>(true);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return Status::OK();
 }
