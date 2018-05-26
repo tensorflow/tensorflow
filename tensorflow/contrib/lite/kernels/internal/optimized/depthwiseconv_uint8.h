@@ -1697,7 +1697,9 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
 #endif
   TFLITE_DCHECK(output_depth == input_depth * depth_multiplier);
 
-#ifdef __aarch64__
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
   if (Fast3x3FilterKernelSupported(

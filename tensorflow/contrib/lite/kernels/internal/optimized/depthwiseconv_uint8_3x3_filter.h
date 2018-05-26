@@ -23,7 +23,9 @@ limitations under the License.
 namespace tflite {
 namespace optimized_ops {
 
-#ifdef __aarch64__
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 
 // clang-format gets confused with this file and ends up formatting lines to
 // be larger than 80 characters. Turn off here and back on at the end of the
