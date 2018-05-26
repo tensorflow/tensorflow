@@ -321,13 +321,11 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
-               const DebugOptions& debug_options, bool show_metadata,
-               bool show_backend_config, const HloExecutionProfile* profile,
-               NodeFilter filter)
+               const DebugOptions& debug_options, bool show_backend_config,
+               const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
         label_(std::string(label)),
         debug_options_(debug_options),
-        show_metadata_(show_metadata),
         show_backend_config_(show_backend_config),
         profile_(profile),
         filter_(std::move(filter)) {}
@@ -395,7 +393,6 @@ class HloDotDumper {
   const HloComputation* computation_;  // never null
   const string label_;                 // overall name for the graph
   const DebugOptions& debug_options_;
-  const bool show_metadata_;
   const bool show_backend_config_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
@@ -798,9 +795,9 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     }
   }
 
-  return Printf(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
+  return Printf(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
                 "\n",
-                InstructionId(instr), node_body, node_shape,
+                InstructionId(instr), node_body, node_shape, node_metadata,
                 NodeColorAttributes(color));
 }
 
@@ -1068,10 +1065,6 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
 }
 
 string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
-  if (!show_metadata_) {
-    return "";
-  }
-
   std::vector<string> lines;
   if (!instr->metadata().op_name().empty()) {
     lines.push_back(HtmlLikeStringSanitize(instr->metadata().op_name()));
@@ -1446,7 +1439,7 @@ string ExportGraph(const string& graph,
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,
-                 bool show_metadata, bool show_backend_config) {
+                 bool show_backend_config) {
   GraphRendererInterface::GraphKind graph_kind;
   string graph;
   if (debug_options.xla_hlo_dump_as_graphdef()) {
@@ -1457,8 +1450,8 @@ string DumpGraph(const HloComputation& computation, const string& label,
     graph_kind = GraphRendererInterface::TF_GRAPHDEF;
   } else {
     graph =
-        HloDotDumper(&computation, label, debug_options, show_metadata,
-                     show_backend_config, hlo_execution_profile, NodeFilter())
+        HloDotDumper(&computation, label, debug_options, show_backend_config,
+                     hlo_execution_profile, NodeFilter())
             .Dump();
     graph_kind = GraphRendererInterface::DOT_GRAPH;
   }
@@ -1470,15 +1463,15 @@ string DumpGraph(const HloComputation& computation, const string& label,
 }
 
 string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_metadata, bool show_backend_config) {
+                              bool show_backend_config) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
   NodeFilter filter = MakeNodeFilter(&node, radius);
-  string graph = HloDotDumper(node.parent(), label, debug_options,
-                              show_metadata, show_backend_config,
-                              /*profile=*/nullptr, filter)
-                     .Dump();
+  string graph =
+      HloDotDumper(node.parent(), label, debug_options, show_backend_config,
+                   /*profile=*/nullptr, filter)
+          .Dump();
   return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);
 }
 
