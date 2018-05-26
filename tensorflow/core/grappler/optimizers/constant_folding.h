@@ -194,6 +194,11 @@ class ConstantFolding : public GraphOptimizer {
   // Removes Reverse op over dimensions with size 1.
   Status RemoveReverse(const GraphProperties& properties, bool use_shape_info,
                        GraphDef* optimized_graph, NodeDef* node, bool* success);
+
+  // Removes RandomShuffle op if it is scalar or first dimension is of size 1.
+  bool RemoveRandomShuffle(const GraphProperties& properties,
+                           bool use_shape_info, GraphDef* optimized_graph,
+                           NodeDef* node);
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
