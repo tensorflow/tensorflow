@@ -34,7 +34,6 @@ from tensorflow.python.ops import nn_ops as nn_ops
 from tensorflow.python.platform import googletest
 
 
-@test_util.with_c_api
 class IntegrationTest(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration."""
 

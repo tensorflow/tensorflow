@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -165,6 +166,28 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleSelect(HloInstruction* select) override;
 
+  // Returns the already-evaluated literal result for the instruction.
+  // A Constant instruction is considered evaluated and its literal will be
+  // returned directly without looking up the cache.
+  // Crash with log if the given instruction has not been evaluated previously.
+  const Literal& GetEvaluatedLiteralFor(const HloInstruction* hlo) {
+    if (hlo->IsConstant()) {
+      return hlo->literal();
+    }
+    auto it = evaluated_.find(hlo);
+    CHECK(it != evaluated_.end())
+        << "could not find evaluated value for: " << hlo->ToString();
+    return *(it->second);
+  }
+
+  // Tracks the HLO instruction and its evaluated literal result.
+  // TODO(b/35950897): have better memory management here to free instructions
+  // that are no longer a parent for any other subsequent instruction in
+  // post-orderring.
+  // Must be cleared for each evaluation.
+  tensorflow::gtl::FlatMap<const HloInstruction*, std::unique_ptr<Literal>>
+      evaluated_;
+
  private:
   template <typename ReturnT, typename NativeT>
   static StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
@@ -184,27 +207,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
           ShapeUtil::HumanString(operand->shape()).c_str());
     }
 
-    auto result = Literal::CreateFromShape(shape);
-
+    auto result = MakeUnique<Literal>(shape);
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           return unary_op(operand_literal.Get<NativeT>(multi_index));
         }));
     return std::move(result);
-  }
-
-  // Returns the already-evaluated literal result for the instruction.
-  // A Constant instruction is considered evaluated and its literal will be
-  // returned directly without looking up the cache.
-  // Crash with log if the given instruction has not been evaluated previously.
-  const Literal& GetEvaluatedLiteralFor(const HloInstruction* hlo) {
-    if (hlo->IsConstant()) {
-      return hlo->literal();
-    }
-    auto it = evaluated_.find(hlo);
-    CHECK(it != evaluated_.end())
-        << "could not find evaluated value for: " << hlo->ToString();
-    return *(it->second);
   }
 
   // Map from a primitive type to its associated (templated) DfsHloVisitor.
@@ -214,14 +222,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   tensorflow::gtl::FlatMap<PrimitiveType, std::unique_ptr<DfsHloVisitor>,
                            std::hash<int>>
       typed_visitors_;
-
-  // Tracks the HLO instruction and its evaluated literal result.
-  // TODO(b/35950897): have better memory management here to free instructions
-  // that are no longer a parent for any other subsequent instruction in
-  // post-orderring.
-  // Must be cleared for each evaluation.
-  tensorflow::gtl::FlatMap<const HloInstruction*, std::unique_ptr<Literal>>
-      evaluated_;
 
   // Caches pointers to input literals, assuming they are in post-order.
   // Literals are not owned by this class, and they must outlive the lifetime of

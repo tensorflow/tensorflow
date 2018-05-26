@@ -52,12 +52,11 @@ namespace xla {
 namespace {
 
 using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::FlatSet;
 
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
-                                           const Literal& lhs_literal,
-                                           const Literal& rhs_literal) {
+                                           LiteralSlice lhs_literal,
+                                           LiteralSlice rhs_literal) {
   std::function<bool(OperandT, OperandT)> compare_op;
   switch (opcode) {
     case HloOpcode::kEq:
@@ -95,7 +94,7 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                  << HloOpcodeString(opcode);
   }
 
-  auto result = Literal::CreateFromShape(shape);
+  auto result = MakeUnique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<OperandT>(multi_index),
                       rhs_literal.Get<OperandT>(multi_index));
@@ -106,8 +105,8 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
 
 template <>
 StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
-    const Shape& shape, HloOpcode opcode, const Literal& lhs_literal,
-    const Literal& rhs_literal) {
+    const Shape& shape, HloOpcode opcode, LiteralSlice lhs_literal,
+    LiteralSlice rhs_literal) {
   std::function<bool(complex64, complex64)> compare_op;
   switch (opcode) {
     case HloOpcode::kEq:
@@ -125,7 +124,7 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
                  << HloOpcodeString(opcode);
   }
 
-  auto result = Literal::CreateFromShape(shape);
+  auto result = MakeUnique<Literal>(shape);
   TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
     return compare_op(lhs_literal.Get<complex64>(multi_index),
                       rhs_literal.Get<complex64>(multi_index));
@@ -952,8 +951,8 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   auto* true_computation = conditional->true_computation();
   auto* false_computation = conditional->false_computation();
 
-  auto result = Literal::CreateFromShape(conditional->shape());
   HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result;
   if (pred.Get<bool>({})) {
     result = embedded_evaluator
                  .Evaluate<const Literal*>(*true_computation,

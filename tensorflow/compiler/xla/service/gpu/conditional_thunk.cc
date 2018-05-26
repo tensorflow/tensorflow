@@ -35,9 +35,10 @@ ConditionalThunk::ConditionalThunk(
       true_thunk_(std::move(true_thunk_sequence), hlo),
       false_thunk_(std::move(false_thunk_sequence), hlo) {}
 
-Status ConditionalThunk::Initialize(const GpuExecutable& executable) {
-  TF_RETURN_IF_ERROR(true_thunk_.Initialize(executable));
-  TF_RETURN_IF_ERROR(false_thunk_.Initialize(executable));
+Status ConditionalThunk::Initialize(const GpuExecutable& executable,
+                                    se::StreamExecutor* executor) {
+  TF_RETURN_IF_ERROR(true_thunk_.Initialize(executable, executor));
+  TF_RETURN_IF_ERROR(false_thunk_.Initialize(executable, executor));
   return Status::OK();
 }
 

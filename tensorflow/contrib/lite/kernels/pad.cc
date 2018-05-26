@@ -45,9 +45,9 @@ struct PadContext {
     output = GetOutput(context, node, 0);
     dims = NumDimensions(input);
   }
-  TfLiteTensor* constant_values;
-  TfLiteTensor* input;
-  TfLiteTensor* paddings;
+  const TfLiteTensor* constant_values;
+  const TfLiteTensor* input;
+  const TfLiteTensor* paddings;
   TfLiteTensor* output;
   int dims;
 };
@@ -199,7 +199,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     default:
-      context->ReportError(context, "Type is currently not supported by Pad.");
+      context->ReportError(context,
+                           "Type %d is currently not supported by Pad.",
+                           op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_PAD

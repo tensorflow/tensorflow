@@ -17,13 +17,20 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_EMISSION_UTILS_H_
 
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace cpu {
 
 bool PotentiallyImplementedAsEigenConvolution(
-    const HloInstruction& convolution);
+    const HloInstruction& convolution,
+    const TargetMachineFeatures& target_machine_features);
+
+// Computes the minimum alignment guaranteed for a tensor of shape `shape` on
+// the target machine.
+int64 GetMinimumAlignmentForArray(
+    const Shape& shape, const TargetMachineFeatures& target_machine_features);
 
 // Dynamic loop bounds are specified as an array of dimension index
 // [start, limit) pairs of ir values (one for each partitioned outer dimension).

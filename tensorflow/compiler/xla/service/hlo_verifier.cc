@@ -106,9 +106,7 @@ Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
                                           reduce_precision->mantissa_bits()));
 }
 
-Status ShapeVerifier::HandleInfeed(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleInfeed(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
   // Outfeed has a separate shape field for the value which is outfed to the
@@ -127,12 +125,10 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
 }
 
 Status ShapeVerifier::HandleHostCompute(HloInstruction*) {
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-Status ShapeVerifier::HandleRng(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleRng(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
   return CheckShape(
@@ -164,7 +160,7 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
@@ -183,7 +179,7 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
                  operand_shape.dimensions(operand_dimension))
         << broadcast->ToString() << " operand shape " << operand_shape;
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
@@ -191,7 +187,7 @@ Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   TF_RETURN_IF_ERROR(CheckShape(reshape, reshape->shape()));
   TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
                ShapeUtil::ElementsIn(reshape->operand(0)->shape()));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleTranspose(HloInstruction* transpose) {
@@ -201,21 +197,17 @@ Status ShapeVerifier::HandleTranspose(HloInstruction* transpose) {
 }
 
 Status ShapeVerifier::HandleParameter(HloInstruction* hlo) {
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-Status ShapeVerifier::HandleFusion(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleFusion(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleCall(HloInstruction* call) {
   // The shape of kCall should match the shape of the computation it calls.
   return CheckShape(call, call->to_apply()->ComputeProgramShape().result());
 }
 
-Status ShapeVerifier::HandleCustomCall(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleCustomCall(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
   return CheckShape(slice,
@@ -497,7 +489,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
         ShapeUtil::HumanString(instruction->shape()).c_str(),
         instruction->ToString().c_str());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
@@ -547,7 +539,7 @@ Status ShapeVerifier::CheckSameChannel(const HloInstruction* instr1,
         instr1->ToString().c_str(), instr1->channel_id(),
         instr2->ToString().c_str(), instr2->channel_id());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 string ComputationsToString(
@@ -612,7 +604,7 @@ Status VerifyHloStructure(HloModule* module) {
       }
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
@@ -728,7 +720,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
   // TODO(b/65423525): We'd like to check that all operands are distinct.
   // This is currently disabled due to the invariant being violated by
   // multi-output fusion.
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
@@ -777,7 +769,7 @@ Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
         "init: %s, body: %s",
         init->ToString().c_str(), body_root->ToString().c_str());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
@@ -795,7 +787,7 @@ Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
           ShapeUtil::HumanString(operand_shape).c_str());
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {

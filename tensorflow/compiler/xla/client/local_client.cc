@@ -48,7 +48,7 @@ LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
       << "Must have a valid device ordinal that the executable was built for.";
 }
 
-tensorflow::Status LocalExecutable::ValidateExecutionOptions(
+Status LocalExecutable::ValidateExecutionOptions(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutableRunOptions& run_options, const Backend& backend) {
   const ComputationLayout& host_computation_layout =
@@ -207,7 +207,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
   return std::move(result);
 }
 
-tensorflow::Status LocalExecutable::RecordArguments(
+Status LocalExecutable::RecordArguments(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     SessionModule* session_module) {
   session_module->clear_arguments();
@@ -219,8 +219,8 @@ tensorflow::Status LocalExecutable::RecordArguments(
   return Status::OK();
 }
 
-tensorflow::Status LocalExecutable::RecordResult(
-    const ShapedBuffer* result, SessionModule* session_module) {
+Status LocalExecutable::RecordResult(const ShapedBuffer* result,
+                                     SessionModule* session_module) {
   session_module->clear_result();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                       LiteralFromShapedBuffer(*result));
@@ -259,25 +259,6 @@ const Backend& LocalClient::backend() const {
 
 Backend* LocalClient::mutable_backend() {
   return local_service_->mutable_backend();
-}
-
-StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
-    const Computation& computation,
-    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const ExecutableBuildOptions& options) {
-  ExecutableBuildOptions updated_options = options;
-  if (options.device_ordinal() == -1) {
-    updated_options.set_device_ordinal(default_device_ordinal());
-    VLOG(3) << "Set device ordinal to default value of: "
-            << updated_options.device_ordinal();
-  }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      local_service_->CompileExecutable(computation.handle(), argument_layouts,
-                                        updated_options));
-  return WrapUnique(new LocalExecutable(std::move(executable),
-                                        local_service_->mutable_backend(),
-                                        updated_options));
 }
 
 StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(

@@ -15,34 +15,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 
-#include <algorithm>
 #include <memory>
-#include <numeric>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+
+namespace {
 
 // BatchNormExpanderVisitor traverses the HLO computation and rewrites BatchNorm
 // operations into smaller operations.
@@ -80,17 +77,25 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
         rewrite_grad_op_(rewrite_grad_op),
         use_fusion_(use_fusion) {}
 
-  HloComputation* GetScalarBinaryComputation(PrimitiveType primitive_type,
-                                             HloOpcode opcode) {
-    HloComputation::Builder b("scalar_computation");
-    auto scalar_lhs = b.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(primitive_type, {}), "scalar_lhs"));
-    auto scalar_rhs = b.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(primitive_type, {}), "scalar_rhs"));
-    auto scalar_op = b.AddInstruction(
-        HloInstruction::CreateBinary(ShapeUtil::MakeShape(primitive_type, {}),
-                                     opcode, scalar_lhs, scalar_rhs));
-    return computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
+  HloComputation* GetOrCreateScalarAddComputation(
+      PrimitiveType primitive_type) {
+    HloComputation** scalar_add_computation =
+        &scalar_add_computations_[primitive_type];
+    if (*scalar_add_computation) {
+      return *scalar_add_computation;
+    }
+
+    HloComputation::Builder b("scalar_add_computation");
+    Shape shape = ShapeUtil::MakeShape(primitive_type, {});
+    auto scalar_lhs = b.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "scalar_lhs"));
+    auto scalar_rhs = b.AddInstruction(
+        HloInstruction::CreateParameter(1, shape, "scalar_rhs"));
+    auto scalar_op = b.AddInstruction(HloInstruction::CreateBinary(
+        shape, HloOpcode::kAdd, scalar_lhs, scalar_rhs));
+    *scalar_add_computation =
+        computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
+    return *scalar_add_computation;
   }
 
   // Current HloComputation instance the BatchNormExpander is
@@ -104,6 +109,10 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
 
   // Whether rewrite has occurred.
   bool changed_ = false;
+
+  // Cached computations for adding two scalars.
+  tensorflow::gtl::FlatMap<PrimitiveType, HloComputation*>
+      scalar_add_computations_;
 
   // Replaces the existing HLO instruction old_instruction, with
   // new_instruction, and marks the optimizer status as changed.
@@ -128,6 +137,8 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 };
+
+}  // namespace
 
 bool BatchNormExpanderVisitor::Run(HloComputation* computation,
                                    bool rewrite_training_op,
@@ -199,7 +210,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
 
   HloComputation* add_reduce_computation =
-      GetScalarBinaryComputation(ptype, HloOpcode::kAdd);
+      GetOrCreateScalarAddComputation(ptype);
 
   // X^2.
   auto operand_squared = add(HloInstruction::CreateBinary(
@@ -500,7 +511,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
                                        grad_output, activation_minus_mean));
 
   HloComputation* add_reduce_computation =
-      GetScalarBinaryComputation(ptype, HloOpcode::kAdd);
+      GetOrCreateScalarAddComputation(ptype);
 
   // sum(Grad[Y] * (X - E[X])).
   auto sum_grad_output_times_activiation_minus_mean =

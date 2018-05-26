@@ -141,7 +141,7 @@ std::string ExpandPath(const std::string& path_string) {
     return path_string;
   }
 
-  const char* home = NULL;
+  const char* home = nullptr;
   std::string::size_type prefix = path_string.find_first_of('/');
   if (path_string.length() == 1 || prefix == 1) {
     // The value of $HOME, e.g., ~/foo

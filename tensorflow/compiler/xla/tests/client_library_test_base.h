@@ -188,11 +188,11 @@ class ClientLibraryTestBase : public ::testing::Test {
       const Shape* shape_with_layout = nullptr);
 
   // ComputeAndCompare variant which returns an error status.
-  tensorflow::Status ComputeAndCompareLiteralWithStatus(
+  Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_layout = nullptr);
-  tensorflow::Status ComputeAndCompareLiteralWithStatus(
+  Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
       const Shape* shape_with_layout = nullptr);
@@ -378,12 +378,12 @@ class ClientLibraryTestBase : public ::testing::Test {
   ExecutionOptions execution_options_;
 
  private:
-  tensorflow::Status ComputeAndCompareLiteralWithAllOutputLayouts(
+  Status ComputeAndCompareLiteralWithAllOutputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output);
-  tensorflow::Status ComputeAndCompareLiteralWithAllInputLayouts(
+  Status ComputeAndCompareLiteralWithAllInputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const std::function<void(const Literal& actual,
@@ -541,7 +541,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
     XlaBuilder* builder, XlaOp* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR0(value);
   if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+    literal = Literal::ConvertF32ToBF16(*literal);
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
@@ -555,7 +555,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR1(values);
   if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+    literal = Literal::ConvertF32ToBF16(*literal);
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
@@ -569,7 +569,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR2FromArray2D(array_2d);
   if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+    literal = Literal::ConvertF32ToBF16(*literal);
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
@@ -583,7 +583,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR3FromArray3D(array_3d);
   if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+    literal = Literal::ConvertF32ToBF16(*literal);
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();

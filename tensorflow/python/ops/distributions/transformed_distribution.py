@@ -252,7 +252,7 @@ class TransformedDistribution(distribution_lib.Distribution):
       name: Python `str` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     name = name or (("" if bijector is None else bijector.name) +
                     distribution.name)
     with ops.name_scope(name, values=[event_shape, batch_shape]) as name:

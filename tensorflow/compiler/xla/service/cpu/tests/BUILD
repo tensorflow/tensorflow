@@ -32,7 +32,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

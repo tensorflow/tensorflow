@@ -24,7 +24,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.keras._impl.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import init_ops
@@ -33,8 +33,8 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.training import checkpointable as checkpointable_lib
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import base as checkpointable_lib
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"

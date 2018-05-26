@@ -330,7 +330,7 @@ tf_cc_binary(
         "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
-            LINKER_EXPORTED_SYMBOLS,
+            "$(location {})".format(LINKER_EXPORTED_SYMBOLS),
         ],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
@@ -338,7 +338,7 @@ tf_cc_binary(
             "-z defs",
             "-s",
             "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
-            LINKER_VERSION_SCRIPT,
+            "$(location {})".format(LINKER_VERSION_SCRIPT),
         ],
     }),
     linkshared = 1,
