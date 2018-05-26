@@ -132,7 +132,7 @@ class SinhArcsinh(transformed_distribution.TransformedDistribution):
         if one or more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
 
     with ops.name_scope(name,
                         values=[loc, scale, skewness, tailweight]) as name:

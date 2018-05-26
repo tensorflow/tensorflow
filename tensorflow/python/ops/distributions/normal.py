@@ -32,7 +32,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import special_math
-from tensorflow.python.ops.distributions import util as distribution_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -132,7 +131,7 @@ class Normal(distribution.Distribution):
     Raises:
       TypeError: if `loc` and `scale` have different `dtype`.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
@@ -244,7 +243,7 @@ class NormalWithSoftplusScale(Normal):
                validate_args=False,
                allow_nan_stats=True,
                name="NormalWithSoftplusScale"):
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[scale]) as name:
       super(NormalWithSoftplusScale, self).__init__(
           loc=loc,
