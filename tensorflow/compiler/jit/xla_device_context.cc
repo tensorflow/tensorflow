@@ -54,7 +54,13 @@ XlaTransferManager::XlaTransferManager(
       client_(client),
       transfer_manager_(client->backend().transfer_manager()),
       transfer_as_literal_(transfer_as_literal),
-      shape_representation_fn_(std::move(shape_representation_fn)) {}
+      shape_representation_fn_(std::move(shape_representation_fn)) {
+  if (!shape_representation_fn_) {
+    shape_representation_fn_ = [](const TensorShape& shape, DataType dtype) {
+      return shape;
+    };
+  }
+}
 
 Status XlaTransferManager::TransferLiteralToDevice(
     const Tensor& host_tensor, Tensor* device_tensor) const {
@@ -113,13 +119,8 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
     CHECK(xla_tensor);
 
-    TensorShape shape;
-    if (shape_representation_fn_) {
-      shape = shape_representation_fn_(device_tensor->shape(),
-                                       device_tensor->dtype());
-    } else {
-      shape = device_tensor->shape();
-    }
+    TensorShape shape = shape_representation_fn_(device_tensor->shape(),
+                                                 device_tensor->dtype());
     if (!xla_tensor->has_shaped_buffer()) {
       Status s = xla_tensor->AllocateShapedBuffer(
           device_tensor->dtype(), shape, client_,
@@ -203,6 +204,42 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   done(Status::OK());
 }
 
+void XlaTransferManager::CopyDeviceTensorToDevice(const Tensor& src_tensor,
+                                                  Tensor* dst_tensor,
+                                                  const StatusCallback& done) {
+  // TODO(phawkins): replace this code with an asynchronous implementation.
+  auto body = [&]() {
+    if (src_tensor.NumElements() == 0) {
+      return Status::OK();
+    }
+    XlaTensor* xla_src = XlaTensor::FromTensor(&src_tensor);
+    XlaTensor* xla_dst = XlaTensor::FromTensor(dst_tensor);
+    CHECK(xla_src && xla_dst)
+        << "Missing destination tensor for device-to-device copy";
+    if (!xla_dst->has_shaped_buffer()) {
+      TensorShape shape =
+          shape_representation_fn_(src_tensor.shape(), src_tensor.dtype());
+      TF_RETURN_IF_ERROR(
+          xla_dst->AllocateShapedBuffer(src_tensor.dtype(), shape, client_,
+                                        stream_->parent()->device_ordinal()));
+    }
+    TF_RETURN_IF_ERROR(
+        xla_dst->shaped_buffer().buffers().ForEachMutableElementWithStatus(
+            [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+              const se::DeviceMemoryBase& from_buffer =
+                  xla_src->shaped_buffer().buffers().element(index);
+              CHECK_EQ(buffer->size(), from_buffer.size());
+              if (!stream_->parent()->SynchronousMemcpy(buffer, from_buffer,
+                                                        buffer->size())) {
+                return errors::Internal("Device to device memcpy failed");
+              }
+              return Status::OK();
+            }));
+    return Status::OK();
+  };
+  done(body());
+}
+
 XlaDeviceContext::XlaDeviceContext(
     se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
     XlaCompiler::ShapeRepresentationFn shape_representation_fn)
@@ -222,6 +259,12 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                              StatusCallback done) {
   manager_.CopyDeviceTensorToCPU(device_tensor, tensor_name, device, cpu_tensor,
                                  done);
+}
+
+void XlaDeviceContext::CopyDeviceTensorToDevice(const Tensor& src_tensor,
+                                                Tensor* dst_tensor,
+                                                const StatusCallback& done) {
+  manager_.CopyDeviceTensorToDevice(src_tensor, dst_tensor, done);
 }
 
 }  // namespace tensorflow

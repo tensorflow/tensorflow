@@ -67,7 +67,7 @@ class AssignVariableOp : public XlaOpKernel {
                    ctx->AssignVariable(0, ctx->input_type(1), ctx->Input(1)));
   }
 };
-REGISTER_XLA_OP(Name("AssignVariableOp"), AssignVariableOp);
+REGISTER_XLA_OP(Name("AssignVariableOp").CompilationOnly(), AssignVariableOp);
 
 class AssignAddVariableOp : public XlaOpKernel {
  public:

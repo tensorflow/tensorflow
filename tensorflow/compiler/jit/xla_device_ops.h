@@ -42,6 +42,15 @@ class XlaDeviceDummyOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 };
 
+class XlaAssignVariableOp : public AsyncOpKernel {
+ public:
+  explicit XlaAssignVariableOp(OpKernelConstruction* c);
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override;
+
+ private:
+  DataType dtype_;
+};
+
 #define REGISTER_XLA_LAUNCH_KERNEL(DEVICE, KERNEL, TYPES) \
   REGISTER_KERNEL_BUILDER(Name("XlaLaunch")               \
                               .Device(DEVICE)             \
@@ -78,6 +87,9 @@ class XlaDeviceDummyOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
       ReadVariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AssignVariableOp").Device(DEVICE).HostMemory("resource"),          \
+      XlaAssignVariableOp);                                                    \
   REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE),               \
                           ControlTriggerOp);                                   \
   REGISTER_KERNEL_BUILDER(Name("Switch").Device(DEVICE).HostMemory("pred"),    \
