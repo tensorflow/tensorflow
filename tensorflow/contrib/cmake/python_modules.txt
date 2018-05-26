@@ -332,6 +332,8 @@ tensorflow/contrib/opt
 tensorflow/contrib/opt/python
 tensorflow/contrib/opt/python/training
 tensorflow/contrib/optimizer_v2
+tensorflow/contrib/parquet/python
+tensorflow/contrib/parquet/python/ops
 tensorflow/contrib/pi_examples
 tensorflow/contrib/pi_examples/camera
 tensorflow/contrib/pi_examples/label_image
