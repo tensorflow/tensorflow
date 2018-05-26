@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -623,6 +624,28 @@ class ShapeUtil {
                            tensorflow::gtl::ArraySlice<int64> incr,
                            const FnType& visitor_function) {
     ForEachIndexWithStatus(shape, base, count, incr,
+                           [&](tensorflow::gtl::ArraySlice<int64> indices) {
+                             return StatusOr<bool>(visitor_function(indices));
+                           })
+        .IgnoreError();
+  }
+
+  // These convenience wrappers don't take `base`, `count` and `incr`
+  // explicitly, but iterate over every element in `shape` instead.
+
+  template <typename FnType>
+  static Status ForEachIndexWithStatus(const Shape& shape,
+                                       const FnType& visitor_function) {
+    std::vector<int64> base(shape.dimensions_size());
+    std::vector<int64> incr(shape.dimensions_size(), 1);
+    return ForEachIndexWithStatus(shape, base,
+                                  /*count=*/AsInt64Slice(shape.dimensions()),
+                                  incr, visitor_function);
+  }
+
+  template <typename FnType>
+  static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
+    ForEachIndexWithStatus(shape,
                            [&](tensorflow::gtl::ArraySlice<int64> indices) {
                              return StatusOr<bool>(visitor_function(indices));
                            })

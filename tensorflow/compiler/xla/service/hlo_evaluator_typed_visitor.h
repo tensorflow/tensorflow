@@ -161,36 +161,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleRound<ReturnT>(round);
   }
 
-  Status HandleBroadcast(HloInstruction* broadcast) override {
-    const Literal& operand_to_broadcast =
-        parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
-    std::vector<int64> broadcast_indices(
-        ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
-
-    TF_RET_CHECK(broadcast->dimensions().size() ==
-                 ShapeUtil::Rank(operand_to_broadcast.shape()))
-        << "broadcast dimensions is of size: " << broadcast->dimensions().size()
-        << " and rank of operand_to_broadcast is: "
-        << ShapeUtil::Rank(operand_to_broadcast.shape());
-    // Checks that operand's dimensions are the same as the broadcast's
-    // dimensions along the dimensions to be broadcasted.
-    for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
-      TF_RET_CHECK(broadcast->shape().dimensions(broadcast->dimensions(i)) ==
-                   operand_to_broadcast.shape().dimensions(i));
-    }
-
-    auto output = MakeUnique<Literal>(broadcast->shape());
-    TF_RETURN_IF_ERROR(output->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-          for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
-            broadcast_indices[i] = multi_index[broadcast->dimensions(i)];
-          }
-          return operand_to_broadcast.Get<ReturnT>(broadcast_indices);
-        }));
-    parent_->evaluated_[broadcast] = std::move(output);
-    return Status::OK();
-  }
-
   template <
       typename NativeT,
       typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
