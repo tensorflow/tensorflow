@@ -1171,9 +1171,13 @@ Status IrEmitterUnnested::EmitColumnReduction(
   //   4567  // Numbers indicate tile IDs.
   //
   // Each tile is first partially reduced to a scalar by a thread, and then the
-  // scalar is accumulated to the output vector using atomic operations. We
-  // choose 16 as the tile size, which matches Eigen's ColumnReduceKernel.
-  constexpr int64 kTileSize = 16;
+  // scalar is accumulated to the output vector using atomic operations.
+  //
+  // We choose 128 as the tile size based on empirical evidence. It's big enough
+  // to reduce the amount of atomic adds in the end, maximizing the memory
+  // bandwidth.
+  constexpr int64 kTileSize = 128;
+
   // If the height is not a multiple of the tile size, we pad the bottom of the
   // input matrix.
   const int64 height_in_tiles = CeilOfRatio(height, kTileSize);

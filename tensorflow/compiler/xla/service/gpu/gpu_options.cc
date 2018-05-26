@@ -20,8 +20,8 @@ namespace xla {
 namespace gpu {
 
 bool ConvUseLayoutHeuristic(const HloModuleConfig& config) {
-  return config.debug_options().xla_backend_extra_options().count(
-      "xla_gpu_experimental_conv_use_layout_heuristic");
+  return !config.debug_options().xla_backend_extra_options().count(
+      "xla_gpu_experimental_conv_disable_layout_heuristic");
 }
 
 }  // namespace gpu
