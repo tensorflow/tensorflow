@@ -145,6 +145,7 @@ filegroup(
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
         "@jpeg//:LICENSE.md",
+        "@boost//:LICENSE_1_0.txt",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",

@@ -603,6 +603,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:aws.BUILD"),
     )
 
+    tf_http_archive(
+        name = "boost",
+        urls = [
+            "https://mirror.bazel.build/dl.bintray.com/boostorg/release/1.67.0/source/boost_1_67_0.tar.gz",
+            "https://dl.bintray.com/boostorg/release/1.67.0/source/boost_1_67_0.tar.gz"
+        ],
+        sha256 = "8aa4e330c870ef50a896634c931adf468b21f8a69b77007e45c444151229f665",
+        strip_prefix = "boost_1_67_0",
+        build_file = clean_dep("//third_party:boost.BUILD"),
+    )
+
     java_import_external(
         name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
