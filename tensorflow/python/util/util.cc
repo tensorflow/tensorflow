@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <unordered_map>
 #include <vector>
+#include <functional>
 
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
