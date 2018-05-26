@@ -118,6 +118,11 @@ def _tf_http_archive(ctx):
         ctx.template("BUILD.bazel", ctx.attr.build_file, {
             "%prefix%": ".." if _repos_are_siblings() else "external",
         }, False)
+    for src in ctx.attr.extra:
+        dest = ctx.attr.extra[src]
+        ctx.template(dest, src, {
+            "%prefix%": ".." if _repos_are_siblings() else "external",
+        }, False)
 
 tf_http_archive = repository_rule(
     implementation = _tf_http_archive,
@@ -130,6 +135,7 @@ tf_http_archive = repository_rule(
         "patch_file": attr.label(),
         "build_file": attr.label(),
         "system_build_file": attr.label(),
+        "extra": attr.label_keyed_string_dict(),
     },
     environ = [
         "TF_SYSTEM_LIBS",
