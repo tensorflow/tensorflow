@@ -614,6 +614,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:boost.BUILD"),
     )
 
+    tf_http_archive(
+        name = "arrow",
+        urls = [
+            "https://mirror.bazel.build/github.com/apache/arrow/archive/apache-arrow-0.9.0.tar.gz",
+            "https://github.com/apache/arrow/archive/apache-arrow-0.9.0.tar.gz",
+        ],
+        sha256 = "65f89a3910b6df02ac71e4d4283db9b02c5b3f1e627346c7b6a5982ae994af91",
+        strip_prefix = "arrow-apache-arrow-0.9.0",
+        build_file = clean_dep("//third_party:arrow.BUILD"),
+    )
+
     java_import_external(
         name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
