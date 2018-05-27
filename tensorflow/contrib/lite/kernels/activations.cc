@@ -191,7 +191,8 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context, "Only float32 supported currently.");
+      context->ReportError(context, "Only float32 supported currently, got %d.",
+                           input->type);
       return kTfLiteError;
   }
 }
@@ -211,7 +212,8 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context, "Only float32 supported currently.");
+      context->ReportError(context, "Only float32 supported currently, got %d.",
+                           input->type);
       return kTfLiteError;
   }
 }
@@ -229,7 +231,8 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context, "Only float32 supported currently.");
+      context->ReportError(context, "Only float32 supported currently, got %d.",
+                           input->type);
       return kTfLiteError;
   }
 }
@@ -256,7 +259,8 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context, "Only float32 supported currently.");
+      context->ReportError(context, "Only float32 supported currently, got %d.",
+                           input->type);
       return kTfLiteError;
   }
 }
@@ -285,7 +289,8 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Only float32 supported currently.");
+      context->ReportError(context, "Only float32 supported currently, got %d.",
+                           input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -377,8 +382,9 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DFloat(input, output, params);
         return kTfLiteOk;
       }
-      context->ReportError(context,
-                           "Only 2D and 4D tensors supported currently.");
+      context->ReportError(
+          context, "Only 2D and 4D tensors supported currently, got %dD.",
+          NumDimensions(input));
       return kTfLiteError;
     }
     case kTfLiteUInt8: {
@@ -390,13 +396,15 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DQuantized(input, output, params, data);
         return kTfLiteOk;
       }
-      context->ReportError(context,
-                           "Only 2D and 4D tensors supported currently.");
+      context->ReportError(
+          context, "Only 2D and 4D tensors supported currently, got %dD.",
+          NumDimensions(input));
       return kTfLiteError;
     }
     default:
-      context->ReportError(context,
-                           "Only float32 and uint8_t supported currently.");
+      context->ReportError(
+          context, "Only float32 and uint8_t supported currently, got %d.",
+          input->type);
       return kTfLiteError;
   }
 }
@@ -411,7 +419,8 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorData<float>(output), GetTensorDims(output));
       return kTfLiteOk;
     default:
-      context->ReportError(context, "Only float32 supported currently.");
+      context->ReportError(context, "Only float32 supported currently., got %d",
+                           input->type);
       return kTfLiteError;
   }
 }
@@ -422,7 +431,8 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* output = GetOutput(context, node, 0);
 
   if (input->type != kTfLiteFloat32) {
-    context->ReportError(context, "Only float32 supported currently.");
+    context->ReportError(context, "Only float32 supported currently, got %d.",
+                         input->type);
     return kTfLiteError;
   }
   TF_LITE_ENSURE_EQ(context, input->dims->size, 4);

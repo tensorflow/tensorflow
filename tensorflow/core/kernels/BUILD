@@ -360,7 +360,6 @@ cc_library(
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
     deps = [
-        ":batch_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -382,7 +381,6 @@ cc_library(
     srcs = ["priority_queue.cc"],
     hdrs = ["priority_queue.h"],
     deps = [
-        ":batch_util",
         ":queue_base",
         ":typed_queue",
         "//tensorflow/core:framework",
@@ -1697,7 +1695,6 @@ tf_kernel_library(
     name = "random_shuffle_queue_op",
     prefix = "random_shuffle_queue_op",
     deps = DATA_FLOW_DEPS + [
-        ":batch_util",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -1890,7 +1887,6 @@ cc_library(
     hdrs = ["fifo_queue.h"],
     visibility = ["//visibility:private"],
     deps = [
-        ":batch_util",
         ":queue_base",
         ":typed_queue",
         "//tensorflow/core:framework",
@@ -1905,7 +1901,6 @@ cc_library(
     hdrs = ["padding_fifo_queue.h"],
     visibility = ["//visibility:private"],
     deps = [
-        ":batch_util",
         ":fifo_queue",
         ":queue_base",
         ":typed_queue",
@@ -5011,7 +5006,6 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
-        "batch_util.cc",
         "batchtospace_op.cc",
         "ctc_decoder_ops.cc",
         "decode_bmp_op.cc",
@@ -6138,9 +6132,10 @@ tf_mkl_kernel_library(
     ],
 )
 
+# NOTE(lespeholt): This rule is deprecated, please use:
+# tensorflow/core/util/batch_util.h
 cc_library(
     name = "batch_util",
-    srcs = ["batch_util.cc"],
     hdrs = ["batch_util.h"],
     deps = [
         "//tensorflow/core:framework",

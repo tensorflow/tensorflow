@@ -140,9 +140,7 @@ toolchain {
       flag_group {
         # All warnings are enabled. Maybe enable -Werror as well?
         flag: "-Wall"
-        # Some parts of the codebase set -Werror and hit this warning, so
-        # switch it off for now.
-        flag: "-Wno-invalid-partial-specialization"
+        %{host_compiler_warnings}
       }
     }
   }
@@ -278,7 +276,7 @@ toolchain {
   }
 
   # Set clang as a C/C++ compiler.
-  tool_path { name: "gcc" path: "%{clang_path}" }
+  tool_path { name: "gcc" path: "%{host_compiler_path}" }
 
   # Use the default system toolchain for everything else.
   tool_path { name: "ar" path: "/usr/bin/ar" }

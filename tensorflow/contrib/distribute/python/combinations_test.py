@@ -41,6 +41,15 @@ class TestingCombinationsTest(test.TestCase):
         "b": 3
     }], combinations.combine(a=[1, 2], b=[2, 3]))
 
+  def test_combine_single_parameter(self):
+    self.assertEqual([{
+        "a": 1,
+        "b": 2
+    }, {
+        "a": 2,
+        "b": 2
+    }], combinations.combine(a=[1, 2], b=2))
+
   def test_add(self):
     self.assertEqual(
         [{

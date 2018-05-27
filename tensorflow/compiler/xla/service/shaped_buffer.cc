@@ -123,6 +123,8 @@ ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
 }
 
 ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
+  Deallocate();
+
   *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));
   allocator_ = s.allocator_;
   // Null out s.allocator_ so it doesn't try to free anything in its destructor.
@@ -130,7 +132,15 @@ ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
   return *this;
 }
 
-ScopedShapedBuffer::~ScopedShapedBuffer() {
+ScopedShapedBuffer::~ScopedShapedBuffer() { Deallocate(); }
+
+ShapedBuffer ScopedShapedBuffer::release() {
+  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
+  buffers_ = ShapeTree<se::DeviceMemoryBase>();
+  return shaped_buffer;
+}
+
+void ScopedShapedBuffer::Deallocate() {
   // allocator_ will be null if we were moved-from.
   if (allocator_ == nullptr) {
     return;
@@ -146,12 +156,6 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
       TF_CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
     }
   }
-}
-
-ShapedBuffer ScopedShapedBuffer::release() {
-  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
-  buffers_ = ShapeTree<se::DeviceMemoryBase>();
-  return shaped_buffer;
 }
 
 }  // namespace xla
