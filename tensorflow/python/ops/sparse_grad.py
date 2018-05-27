@@ -128,14 +128,20 @@ def _SparseReduceMinOrMaxGrad(op, out_grad):
   # reduction dimension. If there are multiple minimum or maximum elements
   # then the gradient will be divided between them. 
   # (same as for MaxGrad)
-  sp_indicators = sparse_tensor.SparseTensor(sp_indices, indicators, sp_shape)
+  sp_indicators = sparse_tensor.SparseTensor(sp_indices,
+                                             indicators,
+                                             sp_shape)
   num_selected = array_ops.gather_nd(
-      sparse_ops.sparse_reduce_sum(sp_indicators, axis=reduction_axes, keep_dims=True),
+      sparse_ops.sparse_reduce_sum(sp_indicators,
+                                   axis=reduction_axes,
+                                   keep_dims=True),
       scaled_indices
   )
     
   # (input_indices, input_values, input_shape, reduction_axes)
-  return [None, math_ops.div(indicators, math_ops.maximum(num_selected, 1)) * grad_values, None, None]
+  return [None,
+          math_ops.div(indicators, math_ops.maximum(num_selected, 1)) * grad_values,
+          None, None]
 
 
 @ops.RegisterGradient("SparseReduceMin")
