@@ -788,8 +788,8 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   }
   // Build the text that will be displayed inside the node.
   string node_body = node_label;
-  for (const string& s : {trivial_subcomputation, node_metadata,
-                          node_backend_config, extra_info, inlined_constants}) {
+  for (const string& s : {trivial_subcomputation, node_backend_config,
+                          extra_info, inlined_constants}) {
     if (!s.empty()) {
       StrAppend(&node_body, "<br/>", s);
     }
