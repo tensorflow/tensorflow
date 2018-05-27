@@ -85,7 +85,8 @@ TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -109,7 +110,8 @@ TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -133,7 +135,8 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -157,7 +160,8 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

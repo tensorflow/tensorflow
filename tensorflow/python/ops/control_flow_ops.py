@@ -1192,20 +1192,18 @@ class ControlFlowState(object):
       to backprop.
     """
     loop_exits = []
-    for _, grad_state in self._map.items():
-      # pylint: disable=protected-access
+    for grad_state in self._map.values():
       for y in grad_state.forward_loop_exits:
-        if pending_count[y.op._id] == 0:
+        if pending_count[y.op] == 0:
           grad_state.pending_exits_count -= 1
-          if y.op._id not in to_ops_set:
+          if y.op not in to_ops_set:
             grad_state.unused_exits.append(y)
           if grad_state.pending_exits_count == 0:
             loop_exits.extend(grad_state.unused_exits)
       # Need to include Enters in backprop for higher-order gradients.
       for y in grad_state.forward_context.loop_enters:
-        if pending_count[y.op._id] == 0:
-          pending_count[y.op._id] = 1
-      # pylint: enable=protected-access
+        if pending_count[y.op] == 0:
+          pending_count[y.op] = 1
     return loop_exits
 
   def EnterGradWhileContext(self, op, before):
@@ -1243,8 +1241,8 @@ class ControlFlowState(object):
 
       # We need to include all exits of a loop for backprop.
       for loop_exit in grad_state.forward_loop_exits:
-        if not between_ops[loop_exit.op._id]:
-          between_ops[loop_exit.op._id] = True
+        if loop_exit.op not in between_ops:
+          between_ops.add(loop_exit.op)
           between_op_list.append(loop_exit.op)
 
   def ZerosLikeForExit(self, val):

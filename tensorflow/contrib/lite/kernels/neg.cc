@@ -59,7 +59,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(
-          context, "Neg only currently supports int64, int32, and float32.",
+          context,
+          "Neg only currently supports int64, int32, and float32, got %d.",
           input->type);
       return kTfLiteError;
   }

@@ -250,7 +250,7 @@ class _PandasFeedFn(object):
                num_epochs=None):
     if len(placeholders) != len(dataframe.columns) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
-          len(dataframe.columns), len(placeholders)))
+          len(dataframe.columns) + 1, len(placeholders)))
     self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
     self._dataframe = dataframe
