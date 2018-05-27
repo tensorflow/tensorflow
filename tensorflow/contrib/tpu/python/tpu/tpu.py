@@ -330,6 +330,7 @@ def outside_compilation(computation, args=None):
   Returns:
     The Tensors returned by computation.
   """
+  args = [] if args is None else args
   graph = ops.get_default_graph()
 
   # If we are in a TPUReplicateContext, signal that we are now

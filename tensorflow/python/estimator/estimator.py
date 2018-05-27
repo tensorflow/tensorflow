@@ -212,8 +212,8 @@ class Estimator(object):
     else:
       self._session_config = self._config.session_config
 
-    self._device_fn = self._config.device_fn or \
-                      _get_replica_device_setter(self._config)
+    self._device_fn = (
+        self._config.device_fn or _get_replica_device_setter(self._config))
 
     if model_fn is None:
       raise ValueError('model_fn must be provided to Estimator.')
@@ -564,7 +564,8 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names', '_validate_features_in_predict_input'
+        '_tf_api_names', '_validate_features_in_predict_input',
+        '_call_model_fn', '_add_meta_graph_for_mode'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
@@ -828,10 +829,14 @@ class Estimator(object):
       gfile.Rename(temp_export_dir, export_dir)
       return export_dir
 
-  def _add_meta_graph_for_mode(
-      self, builder, input_receiver_fn_map, checkpoint_path,
-      strip_default_attrs, save_variables=True,
-      mode=model_fn_lib.ModeKeys.PREDICT):
+  def _add_meta_graph_for_mode(self,
+                               builder,
+                               input_receiver_fn_map,
+                               checkpoint_path,
+                               strip_default_attrs,
+                               save_variables=True,
+                               mode=model_fn_lib.ModeKeys.PREDICT,
+                               export_tags=None):
     # pylint: disable=line-too-long
     """Loads variables and adds them along with a MetaGraphDef for saving.
 
@@ -850,9 +855,14 @@ class Estimator(object):
         True for the first call to this function, and the SavedModelBuilder will
         raise an error if that is not the case.
       mode: tf.estimator.ModeKeys value indicating which mode will be exported.
+      export_tags: The set of tags with which to save `MetaGraphDef`. If None,
+        a default set will be selected to matched the passed mode.
     """
     # pylint: enable=line-too-long
+    if export_tags is None:
+      export_tags = model_fn_lib.EXPORT_TAG_MAP[mode]
     input_receiver_fn = input_receiver_fn_map[mode]
+
     with ops.Graph().as_default() as g:
       self._create_and_assert_global_step(g)
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -876,8 +886,6 @@ class Estimator(object):
           serving_only=(mode == model_fn_lib.ModeKeys.PREDICT))
 
       with tf_session.Session(config=self._session_config) as session:
-
-        export_tags = model_fn_lib.EXPORT_TAG_MAP[mode]
 
         local_init_op = (
             estimator_spec.scaffold.local_init_op or
