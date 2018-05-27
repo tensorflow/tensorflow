@@ -104,6 +104,10 @@ class VSpace {
       gtl::ArraySlice<Gradient*> output_gradients,
       std::vector<Gradient*>* result) const = 0;
 
+  // Marks the following gradient as a result so it's not consumed by backward
+  // functions.
+  virtual void MarkAsResult(Gradient* gradient) const = 0;
+
   // Deletes the input tensor.
   virtual void DeleteGradient(Gradient* gradient) const = 0;
 
@@ -130,13 +134,15 @@ class GradientTape {
     }
   }
 
-  bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids);
+  bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids,
+                    gtl::ArraySlice<tensorflow::DataType> dtypes);
 
   void Watch(int64 tensor_id);
 
   void RecordOperation(const string& op_type,
                        gtl::ArraySlice<TapeTensor> output_tensors,
                        gtl::ArraySlice<int64> input_tensor_id,
+                       gtl::ArraySlice<tensorflow::DataType> input_dtypes,
                        BackwardFunction* backward_function,
                        const std::function<void()>& backward_function_deleter);
 
@@ -170,12 +176,32 @@ class GradientTape {
 
 // Template instantiations here
 
+inline bool IsDtypeTrainable(DataType dtype) {
+  switch (dtype) {
+    case DT_HALF:
+    case DT_BFLOAT16:
+    case DT_FLOAT:
+    case DT_DOUBLE:
+    case DT_COMPLEX64:
+    case DT_COMPLEX128:
+    case DT_RESOURCE:
+    case DT_VARIANT:
+      return true;
+    default:
+      return false;
+  }
+}
+
 template <typename Gradient, typename BackwardFunction>
 bool GradientTape<Gradient, BackwardFunction>::ShouldRecord(
-    gtl::ArraySlice<int64> tensor_ids) {
-  for (int64 i : tensor_ids) {
-    if (tensor_tape_.find(i) != tensor_tape_.end()) {
-      return true;
+    gtl::ArraySlice<int64> tensor_ids,
+    gtl::ArraySlice<tensorflow::DataType> dtypes) {
+  CHECK_EQ(tensor_ids.size(), dtypes.size());
+  for (int i = 0; i < tensor_ids.size(); ++i) {
+    if (tensor_tape_.find(tensor_ids[i]) != tensor_tape_.end()) {
+      if (IsDtypeTrainable(dtypes[i])) {
+        return true;
+      }
     }
   }
   return false;
@@ -189,9 +215,11 @@ void GradientTape<Gradient, BackwardFunction>::Watch(int64 tensor_id) {
 template <typename Gradient, typename BackwardFunction>
 void GradientTape<Gradient, BackwardFunction>::RecordOperation(
     const string& op_type, gtl::ArraySlice<TapeTensor> output_tensors,
-    gtl::ArraySlice<int64> input_tensor_id, BackwardFunction* backward_function,
+    gtl::ArraySlice<int64> input_tensor_id,
+    gtl::ArraySlice<tensorflow::DataType> input_dtypes,
+    BackwardFunction* backward_function,
     const std::function<void()>& backward_function_deleter) {
-  if (!ShouldRecord(input_tensor_id)) {
+  if (!ShouldRecord(input_tensor_id, input_dtypes)) {
     backward_function_deleter();
     return;
   }
@@ -332,8 +360,7 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
         count_it->second++;
       } else {
         result.tensor_usage_counts[it] = 1;
-        if (sources_set.find(it) == sources_set.end() &&
-            tensor_tape.find(it) != tensor_tape.end()) {
+        if (tensor_tape.find(it) != tensor_tape.end()) {
           tensor_stack.push_back(it);
         }
       }
@@ -498,10 +525,15 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
         }
       } else {
         any_gradient_nonzero = true;
-        out_gradients.push_back(vspace.AggregateGradients(grad_it->second));
+        auto new_gradients = vspace.AggregateGradients(grad_it->second);
         if (sources_set.find(grad_it->first) == sources_set.end()) {
           gradients.erase(grad_it);
+        } else {
+          grad_it->second.clear();
+          grad_it->second.push_back(new_gradients);
+          vspace.MarkAsResult(new_gradients);
         }
+        out_gradients.push_back(new_gradients);
       }
     }
     std::vector<Gradient*> in_gradients;

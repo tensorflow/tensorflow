@@ -119,7 +119,7 @@ TEST(EventMgr, DelayedPolling) {
   EXPECT_EQ(0, th.queue_size());
   TensorReferenceVector* v = nullptr;
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream.get());
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     v = new TensorReferenceVector;
@@ -151,7 +151,7 @@ TEST(EventMgr, FlushLargeTensorImmediately) {
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, live_tensor_bytes);
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream.get());
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     TensorReferenceVector v;
@@ -168,7 +168,7 @@ TEST(EventMgr, ManySmallTensorsFlushedImmediately) {
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, live_tensor_bytes);
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream.get());
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     TensorReferenceVector v;
@@ -209,7 +209,7 @@ TEST(EventMgr, ManySmallTensorsSeparateCallsFlushed) {
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, live_tensor_bytes);
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream.get());
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     for (int i = 0; i < 1000; i++) {
@@ -232,7 +232,7 @@ TEST(EventMgr, NonEmptyShutdown) {
   EXPECT_EQ(0, th.queue_size());
   EXPECT_EQ(0, th.free_size());
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream.get());
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     TensorReferenceVector* v = new TensorReferenceVector;

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
 #define TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
 
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,6 +90,7 @@ class TestRunner {
 
   // Invalidate the test runner, preventing it from executing any further.
   void Invalidate(const string& error_message) {
+    cerr << error_message << std::endl;
     error_message_ = error_message;
   }
   bool IsValid() const { return error_message_.empty(); }

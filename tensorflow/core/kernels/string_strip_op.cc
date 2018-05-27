@@ -43,7 +43,7 @@ class StringStripOp : public OpKernel {
     for (int64 i = 0; i < input.size(); ++i) {
       StringPiece entry(input(i));
       str_util::RemoveWhitespaceContext(&entry);
-      output(i) = entry.ToString();
+      output(i) = std::string(entry);
     }
   }
 };

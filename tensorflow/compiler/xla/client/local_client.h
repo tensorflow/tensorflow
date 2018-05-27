@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -59,7 +58,7 @@ class LocalExecutable {
 
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
-  tensorflow::Status ValidateExecutionOptions(
+  Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
@@ -71,13 +70,13 @@ class LocalExecutable {
 
   // Records the arguments used to invoke the computation in a SessionModule
   // proto.
-  tensorflow::Status RecordArguments(
+  Status RecordArguments(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       SessionModule* session_module);
 
   // Records the result of the computation in a SessionModule proto.
-  tensorflow::Status RecordResult(const ShapedBuffer* result,
-                                  SessionModule* session_module);
+  Status RecordResult(const ShapedBuffer* result,
+                      SessionModule* session_module);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
@@ -109,16 +108,7 @@ class LocalClient : public Client {
   void operator=(const LocalClient&) = delete;
 
   // Build and return a LocalExecutable object. The executable is compiled using
-  // the given argument layouts and options.
-  StatusOr<std::unique_ptr<LocalExecutable>> Compile(
-      const Computation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const ExecutableBuildOptions& options);
-
-  // Build and return a LocalExecutable object. The executable is compiled using
   // the given XlaComputation, argument layouts and options.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,

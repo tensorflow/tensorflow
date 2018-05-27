@@ -38,19 +38,19 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.python.estimator import estimator as core_estimator
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 
 __all__ = ["Experiment"]
 
 
 def _get_standardized_predicate_fn(predicate_fn):
-  pred_fn_args = estimator_util.fn_args(predicate_fn)
+  pred_fn_args = function_utils.fn_args(predicate_fn)
   if "checkpoint_path" not in pred_fn_args:
     # pylint: disable=unused-argument
     def _pred_fn_wrapper(eval_results, checkpoint_path):
@@ -468,10 +468,15 @@ class Experiment(object):
         on which that evaluation was based.
         At the beginning of evaluation, the passed `eval_results` will be None
         so it's expected that the predicate function handles that gracefully.
-        When `predicate_fn` is not specified, continuous eval will run in an
-        infinite loop (if `train_steps` is None). or exit once global step
-        reaches `train_steps`.
-
+        Continuous eval behavior under different conditions:
+          * When `predicate_fn` is specified:
+            + if `train_steps` is None, run until `predicate_fn` returns False.
+            + if `train_steps` is specified, run until either global step
+              reaches `train_steps` or `predicate_fn` returns False.
+          * When `predicate_fn` is not specified:
+            + if `train_steps` is None, run in an infinite loop.
+            + if `train_steps` is specified, run until global step reaches
+              `train_steps`.
       export: Whether to export from this step. Default is 'True'.
 
     Raises:

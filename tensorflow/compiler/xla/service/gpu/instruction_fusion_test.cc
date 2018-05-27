@@ -108,8 +108,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(S32, {1, 1}), HloOpcode::kDot, param0, param0));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
+      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto reshape2 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {1, 1, 1}), dot1));
 
@@ -125,8 +125,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(S32, {1, 1}), HloOpcode::kDot, param0, param0));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
+      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto transpose2 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {1, 1}), dot1, {0, 1}));
 
@@ -232,12 +232,13 @@ TEST_F(InstructionFusionTest, DotOutputFusion) {
   auto module = tools::Parse(R"(
   HloModule test_module
   ENTRY OutputFusion {
-    constant = f32[] constant(3)
+    alpha = f32[] constant(3)
+    broadcast = f32[4,4]{1,0} broadcast(alpha), dimensions={}
     p0 = f32[4,3]{1,0} parameter(0)
     p1 = f32[4,3]{1,0} parameter(1)
     transpose = f32[3,4]{1,0} transpose(p1), dimensions={1, 0}
-    dot = f32[4,4]{1,0} dot(p0, transpose)
-    ROOT mul = f32[4,4] multiply(constant, dot)
+    dot = f32[4,4]{1,0} dot(p0, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ROOT mul = f32[4,4] multiply(dot, broadcast)
   })")
                     .ValueOrDie();
 
@@ -247,10 +248,93 @@ TEST_F(InstructionFusionTest, DotOutputFusion) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kOutput);
   EXPECT_THAT(
       root->fused_expression_root(),
-      op::Multiply(op::Parameter(),
-                   op::Dot(op::Parameter(), op::Transpose(op::Parameter()))));
+      op::Multiply(op::Dot(op::Parameter(), op::Transpose(op::Parameter())),
+                   op::Broadcast(op::Parameter())));
+}
+
+// Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
+// duplicated and fused into both reduces.
+TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  Add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = f32[] constant(0)
+    one = f32[] constant(1)
+    p0 = f32[100] parameter(0)
+    recip = f32[100] divide(one, p0)
+    sum1 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT root = (f32[], f32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()));
+}
+
+// Compute sum(100/p0), where p0 has type s32, twice.  Check that the division
+// is *not* duplicated and fused into both reduces, because we say that integer
+// division is not cheap.
+TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  Add {
+    lhs = s32[] parameter(0)
+    rhs = s32[] parameter(1)
+    ROOT add = s32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = s32[] constant(0)
+    one_hundred = s32[] constant(100)
+    p0 = s32[100] parameter(0)
+    recip = s32[100] divide(one_hundred, p0)
+    sum1 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = s32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT mul = (s32[], s32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY NoOutputFusion {
+    alpha = f32[] constant(3)
+    broadcast = f32[4,4]{1,0} broadcast(alpha), dimensions={}
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[3,4]{1,0} parameter(1)
+    dot = f32[4,4]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    d = f32[4,4]{1,0} multiply(dot, dot)
+    ROOT mul = f32[4,4] multiply(d, broadcast)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Multiply(op::Multiply(op::Parameter(), op::Parameter()),
+                           op::Broadcast(op::Parameter())));
 }
 
 }  // namespace gpu

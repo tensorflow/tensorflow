@@ -90,6 +90,9 @@ class Worker : public WorkerInterface {
   void TracingAsync(const TracingRequest* request, TracingResponse* response,
                     StatusCallback done) override;
 
+  void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                    RecvBufResponse* response, StatusCallback done) override;
+
   void CompleteGroupAsync(CallOptions* opts,
                           const CompleteGroupRequest* request,
                           CompleteGroupResponse* response,

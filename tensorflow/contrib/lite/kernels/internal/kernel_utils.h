@@ -35,6 +35,23 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
                   TfLiteFusedActivation activation,
                   float* hidden_state_ptr_batch, float* output_ptr_batch);
 
+// Performs a quantized RNN batch inference step. Same as above, but for
+// quantization purposes, we also pass in quantized_hidden_state_ptr_batch and
+// quantized_input_ptr_batch pointers for temporary storage of the quantized
+// values of hidden_state_ptr_batch and input_ptr_batch, respectively.
+// These temporary storages are expected to be preallocated to the same size as
+// the respective pointers.
+// {input,recurrent}_weights_scale params are used for dequantization/recovery.
+void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
+                  float input_weights_scale,
+                  const int8_t* recurrent_weights_ptr,
+                  float recurrent_weights_scale, const float* bias_ptr,
+                  int input_size, int num_units, int batch_size,
+                  TfLiteFusedActivation activation,
+                  int8_t* quantized_input_ptr_batch,
+                  int8_t* quantized_hidden_state_ptr_batch,
+                  float* hidden_state_ptr_batch, float* output_ptr_batch);
+
 // Performs an LSTM batch inference step for input specified by input_ptr_batch.
 // The LSTM cell is specified by the pointers to its weights (*_weights_ptr) and
 // biases (*_bias_ptr), and buffers (*_scratch), along with additional

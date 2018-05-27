@@ -1379,7 +1379,7 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
         }
         post_pruned_nodes_meta {
           new_node_id: 0
-          logit_change: -24.0143
+          logit_change: -24.014299
         }
       }
       tree_metadata {

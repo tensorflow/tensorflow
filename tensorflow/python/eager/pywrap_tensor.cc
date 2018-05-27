@@ -299,7 +299,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
         GetContext(context), handle.get(), handle_dtype,
         static_cast<TF_DataType>(desired_dtype), self->status));
     if (TF_GetCode(self->status) != TF_OK) {
-      PyErr_SetString(PyExc_ValueError,
+      PyErr_SetString(PyExc_TypeError,
                       tensorflow::strings::StrCat(
                           "Error while casting from DataType ", handle_dtype,
                           " to ", desired_dtype, ". ", TF_Message(self->status))
@@ -648,6 +648,12 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
 tensorflow::int64 EagerTensor_id(const PyObject* tensor) {
   CHECK(EagerTensor_CheckExact(tensor));
   return reinterpret_cast<const EagerTensor*>(tensor)->id;
+}
+
+tensorflow::DataType EagerTensor_dtype(const PyObject* tensor) {
+  CHECK(EagerTensor_CheckExact(tensor));
+  return static_cast<tensorflow::DataType>(TFE_TensorHandleDataType(
+      reinterpret_cast<const EagerTensor*>(tensor)->handle));
 }
 
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {

@@ -97,6 +97,10 @@ class SquareLinearOperatorKroneckerTest(
         build_info((3, 6, 6), factors=[(3, 1, 1), (1, 2, 2), (1, 3, 3)]),
     ]
 
+  @property
+  def _tests_to_skip(self):
+    return ["det", "solve", "solve_with_broadcast"]
+
   def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     expected_factors = build_info.__dict__["factors"]

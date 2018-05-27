@@ -148,10 +148,11 @@ TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
   NodeDef node;
   BuildConstNode({1, 2, 2, 2}, GetParam(), 0, &node);
   auto status = ImportNode(node);
-  EXPECT_THAT(status.error_message(),
-              ::testing::MatchesRegex(
-                  "Neither input_content nor .*_val have the right dimensions "
-                  "for this .* tensor .while processing node 'Node1'."));
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::MatchesRegex(
+          "Neither input_content .0. nor .*_val .0. have the right "
+          "dimensions .8. for this .* tensor .while processing node 'Node1'."));
 }
 INSTANTIATE_TEST_CASE_P(ValidShapeButZeroElements, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));

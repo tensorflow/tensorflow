@@ -36,7 +36,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-@test_util.with_c_api
 class SubscribeTest(test_util.TensorFlowTestCase):
 
   def _ExpectSubscribedIdentities(self, container):

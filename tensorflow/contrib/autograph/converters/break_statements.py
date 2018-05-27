@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gast
+
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
 from tensorflow.contrib.autograph.pyct import transformer
@@ -52,8 +54,13 @@ class BreakStatementTransformer(transformer.Base):
 
   def _guard_if_present(self, block, var_name):
     """Prevents the block from executing if var_name is set."""
+
+    # If we don't have statements that immediately depend on the break
+    # we still need to make sure that the break variable remains
+    # used, in case the break becomes useful in later stages of transformation.
+    # Not having this broke the break_in_inner_loop test.
     if not block:
-      return block
+      block = [gast.Pass()]
     template = """
         if not var_name:
           block

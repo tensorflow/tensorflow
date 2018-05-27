@@ -47,7 +47,7 @@ std::unordered_set<string> BuildNodeSetFromNodeNamesAndPorts(
   std::unordered_set<string> retval;
   for (const string& node_name_and_port : node_names_and_ports) {
     const TensorId tid = ParseTensorName(node_name_and_port);
-    retval.emplace(tid.first.ToString());
+    retval.emplace(std::string(tid.first));
   }
   return retval;
 }
@@ -64,7 +64,7 @@ Node* FindMutableNodeByName(const string& name, Graph* graph) {
 const NodeDef* FindNodeDefByName(const string& input,
                                  const GraphDef& graph_def) {
   const TensorId tid = ParseTensorName(input);
-  const string name = tid.first.ToString();
+  const string name = std::string(tid.first);
   for (const NodeDef& node_def : graph_def.node()) {
     if (node_def.name() == name) {
       return &node_def;
@@ -77,7 +77,7 @@ bool IsSameNodeName(const NodeDef& node_def, const string& node_name_and_port,
                     TensorId* tid) {
   CHECK_NOTNULL(tid);
   *tid = ParseTensorName(node_name_and_port);
-  if (node_def.name() == tid->first.ToString()) {
+  if (node_def.name() == tid->first) {
     return true;
   }
   return false;
@@ -326,7 +326,7 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
     const string& node_name) {
   for (const std::pair<string, Tensor>& pair : input_tensor_vector) {
     const TensorId tid = ParseTensorName(pair.first);
-    if (node_name == tid.first.ToString()) {
+    if (node_name == tid.first) {
       return true;
     }
   }
@@ -423,7 +423,7 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
   std::vector<DataType> data_types;
   std::vector<TensorShape> shapes;
   const TensorId tid = ParseTensorName(name_and_port);
-  const string node_name = tid.first.ToString();
+  const string node_name = std::string(tid.first);
   const int port = tid.second;
   const NodeDef* node_def = FindNodeDefByName(node_name, graph_def);
   CHECK_NOTNULL(node_def);
@@ -522,7 +522,7 @@ RemoteFusedGraphExecuteUtils::GetTensorShapeType(
     const TensorShapeMap& tensor_shape_map, const string& node_name) {
   if (node_name.find(':') != string::npos) {
     const TensorId tid = ParseTensorName(node_name);
-    return GetTensorShapeType(tensor_shape_map, tid.first.ToString(),
+    return GetTensorShapeType(tensor_shape_map, std::string(tid.first),
                               tid.second);
   } else {
     return GetTensorShapeType(tensor_shape_map, node_name, 0);
@@ -570,7 +570,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
   const TensorId tid = ParseTensorName(name);
   CHECK_EQ(tensor_shape_map->count(name), 0);
   tensor_shape_map->emplace(
-      tid.first.ToString(),
+      std::string(tid.first),
       std::make_pair(tid.second,
                      std::make_pair(tensor.dtype(), tensor.shape())));
 }
@@ -692,7 +692,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
   std::vector<NodeBuilder::NodeOut> node_out_list;
   for (const string& input : inputs) {
     const TensorId tid = ParseTensorName(input);
-    Node* node = FindMutableNodeByName(tid.first.ToString(), graph);
+    Node* node = FindMutableNodeByName(std::string(tid.first), graph);
     CHECK_NOTNULL(node);
     node_out_list.emplace_back(node, tid.second);
   }
@@ -848,7 +848,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
 
   for (const string& subgraph_input : std::get<1>(cluster)) {
     const TensorId tid = ParseTensorName(subgraph_input);
-    const string subgraph_input_name = tid.first.ToString();
+    const string subgraph_input_name = std::string(tid.first);
     const int subgraph_input_port = tid.second;
     const NodeDef* node_def = FindNodeDefByName(subgraph_input_name, graph_def);
     CHECK_NOTNULL(node_def);
@@ -895,7 +895,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
   std::deque<const Node*> queue;
   for (const string& output : border_outputs) {
     const TensorId tid = ParseTensorName(output);
-    const string& output_node_name = tid.first.ToString();
+    const string& output_node_name = std::string(tid.first);
     for (const Node* node : graph.nodes()) {
       if (output_node_name == node->name()) {
         queue.push_back(node);
@@ -916,8 +916,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       bool input_found = false;
       for (const string& input : border_inputs) {
         const TensorId tid = ParseTensorName(input);
-        if (tid.first.ToString() == src_node->name() &&
-            tid.second == src_port) {
+        if (tid.first == src_node->name() && tid.second == src_port) {
           input_found = true;
           border_input_nodes.insert(src_node);
         }
@@ -976,7 +975,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       for (int j = 0; j < border_outputs.size(); ++j) {
         const string& output = border_outputs.at(j);
         const TensorId tid = ParseTensorName(output);
-        const string output_name = tid.first.ToString();
+        const string output_name = std::string(tid.first);
         Node* src_node = edge->src();
         if (src_node != nullptr && src_node->name() == output_name &&
             edge->src_output() == tid.second) {
@@ -996,11 +995,12 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
   // RemoteFusedGraphExecuteOpNode
   for (const string& output : outputs) {
     const TensorId output_tid = ParseTensorName(output);
-    const string output_name = output_tid.first.ToString();
+    const string output_name = std::string(output_tid.first);
     for (size_t i = 0; i < border_outputs.size(); ++i) {
       const TensorId subgraph_output_tid =
           ParseTensorName(border_outputs.at(i));
-      const string& subgraph_output_name = subgraph_output_tid.first.ToString();
+      const string& subgraph_output_name =
+          std::string(subgraph_output_tid.first);
       if (output_name == subgraph_output_name) {
         LOG(INFO) << "As graph output and subgraph output are same, "
                   << "the graph output node is replaced by identity node";
@@ -1435,7 +1435,7 @@ RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpsDefinitions(
     GraphDef* graph_def) {
   const TensorId tid = ParseTensorName(input);
   CHECK_EQ(0, tid.second);
-  const string node_name = tid.first.ToString();
+  const string node_name = std::string(tid.first);
   for (NodeDef& node : *graph_def->mutable_node()) {
     if (node.name() != node_name) {
       continue;
