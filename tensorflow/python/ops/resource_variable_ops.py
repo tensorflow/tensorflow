@@ -19,12 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
-from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,7 +40,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
 
 
@@ -47,13 +48,11 @@ def get_resource_handle_data(graph_op):
   assert ops._USE_C_SHAPES  # pylint: disable=protected-access
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
-  with c_api_util.tf_buffer() as buf:
-    pywrap_tensorflow.TFE_GetResourceHandleShapeAndType(
-        graph_op.graph._c_graph, graph_op._as_tf_output(), buf)  # pylint: disable=protected-access
-    data = pywrap_tensorflow.TF_GetBuffer(buf)
+  handle_data = pywrap_tensorflow.GetResourceHandleShapeAndType(
+      graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
-      compat.as_bytes(data))
+      compat.as_bytes(handle_data))
 
 
 def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
@@ -118,6 +117,18 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   return handle
 
 
+@contextlib.contextmanager
+def _handle_graph(handle):
+  # Note: might have an eager tensor but not be executing eagerly when building
+  # functions.
+  if (context.executing_eagerly() or isinstance(handle, ops.EagerTensor)
+      or ops.has_default_graph()):
+    yield
+  else:
+    with handle.graph.as_default():
+      yield
+
+
 class EagerResourceDeleter(object):
   """An object which cleans up a resource handle.
 
@@ -162,7 +173,8 @@ class EagerResourceDeleter(object):
 
 def shape_safe_assign_variable_handle(handle, shape, value, name=None):
   """Helper that checks shape compatibility and assigns variable."""
-  value_tensor = ops.convert_to_tensor(value)
+  with _handle_graph(handle):
+    value_tensor = ops.convert_to_tensor(value)
   shape.assert_is_compatible_with(value_tensor.shape)
   return gen_resource_variable_ops.assign_variable_op(handle,
                                                       value_tensor,
@@ -853,8 +865,10 @@ class ResourceVariable(variables.Variable):
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    assign_sub_op = gen_resource_variable_ops.assign_sub_variable_op(
-        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    with _handle_graph(self.handle):
+      assign_sub_op = gen_resource_variable_ops.assign_sub_variable_op(
+          self.handle, ops.convert_to_tensor(delta, dtype=self.dtype),
+          name=name)
     if read_value:
       return self._lazy_read(assign_sub_op)
     return assign_sub_op
@@ -875,8 +889,10 @@ class ResourceVariable(variables.Variable):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    assign_add_op = gen_resource_variable_ops.assign_add_variable_op(
-        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    with _handle_graph(self.handle):
+      assign_add_op = gen_resource_variable_ops.assign_add_variable_op(
+          self.handle, ops.convert_to_tensor(delta, dtype=self.dtype),
+          name=name)
     if read_value:
       return self._lazy_read(assign_add_op)
     return assign_add_op
@@ -905,30 +921,32 @@ class ResourceVariable(variables.Variable):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
-    self._shape.assert_is_compatible_with(value_tensor.shape)
-    assign_op = gen_resource_variable_ops.assign_variable_op(
-        self.handle, value_tensor, name=name)
-    if read_value:
-      return self._lazy_read(assign_op)
+    with _handle_graph(self.handle):
+      value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
+      self._shape.assert_is_compatible_with(value_tensor.shape)
+      assign_op = gen_resource_variable_ops.assign_variable_op(
+          self.handle, value_tensor, name=name)
+      if read_value:
+        return self._lazy_read(assign_op)
     return assign_op
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
-    return self._lazy_read(
-        gen_array_ops.resource_strided_slice_assign(
-            ref=self.handle,
-            begin=begin,
-            end=end,
-            strides=strides,
-            value=value,
-            name=name,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            ellipsis_mask=ellipsis_mask,
-            new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask))
+    with _handle_graph(self.handle):
+      return self._lazy_read(
+          gen_array_ops.resource_strided_slice_assign(
+              ref=self.handle,
+              begin=begin,
+              end=end,
+              strides=strides,
+              value=ops.convert_to_tensor(value, dtype=self.dtype),
+              name=name,
+              begin_mask=begin_mask,
+              end_mask=end_mask,
+              ellipsis_mask=ellipsis_mask,
+              new_axis_mask=new_axis_mask,
+              shrink_axis_mask=shrink_axis_mask))
 
   def __int__(self):
     if self.dtype != dtypes.int32 and self.dtype != dtypes.int64:

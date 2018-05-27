@@ -78,10 +78,12 @@ enum class OperatorType {
   kFloor,
   kGather,
   kResizeBilinear,
+  kSin,
   kSpaceToBatchND,
   kStack,
   kBatchToSpaceND,
   kPad,
+  kPadV2,
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -132,6 +134,7 @@ enum class OperatorType {
   // instead of being given as plain constant arrays. So we need to insert
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
+  kSelect,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -616,6 +619,17 @@ struct TanhOperator : Operator {
   TanhOperator() : Operator(OperatorType::kTanh) {}
 };
 
+// Element-wise Sin operator:
+//   x -> Sin(x) = sin(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Sin
+struct SinOperator : Operator {
+  SinOperator() : Operator(OperatorType::kSin) {}
+};
+
 // Element-wise addition operator.
 //
 // Inputs:
@@ -820,6 +834,29 @@ struct TensorFlowMatMulOperator : Operator {
 // TensorFlow equivalent: Pad
 struct PadOperator : Operator {
   PadOperator() : Operator(OperatorType::kPad) {}
+
+  std::vector<int> left_padding;
+  std::vector<int> right_padding;
+};
+
+// PaddingV2 operator. Pads a tensor with the given constant value.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the padding array
+//   inputs[2]: required: the scalar constant_values
+//
+// This operation pads input according to the paddings and constant_values you
+// specify. paddings is an integer tensor with shape [Dn, 2], where n is the
+// rank of input. For each dimension D of input, paddings[D, 0] indicates how
+// many padding values to add before the contents of input in that dimension,
+// and paddings[D, 1] indicates how many padding values to add after the
+// contents of input in that dimension. constant_values is a scalar tensor of
+// the same type as input that indicates the value to use for padding input.
+//
+// TensorFlow equivalent: PadV2
+struct PadV2Operator : Operator {
+  PadV2Operator() : Operator(OperatorType::kPadV2) {}
 
   std::vector<int> left_padding;
   std::vector<int> right_padding;
@@ -1061,6 +1098,18 @@ struct RankOperator : Operator {
 // TensorFlow equivalent: Neg
 struct NegOperator : Operator {
   NegOperator() : Operator(OperatorType::kNeg) {}
+};
+
+// Element-wise select operator choosing elements from inputs[1] or input[2]
+//
+// Inputs:
+//  inputs[0]: required: boolean mask per index
+//  inputs[1]: required: tensor of values if true
+//  inputs[2]: required: tensor of values if false
+//
+//  TensorFlow equivalent: Select
+struct SelectOperator : Operator {
+  SelectOperator() : Operator(OperatorType::kSelect) {}
 };
 
 // Element-wise reciprocal-square-root (x^-0.5) operator.
@@ -1780,6 +1829,8 @@ class Model {
   }
   const ArrayMap& GetArrayMap() const { return arrays; }
 
+  int64 ArithmeticOpsCount() const { return ops_count; }
+
   // Optional arrays are used for optional tensors,
   // these tensors do not have data, but with reserved names as op inputs.
   std::set<string> optional_arrays;
@@ -1796,6 +1847,8 @@ class Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
+  // Arithmatic operations performed in the model.
+  int64 ops_count = 0;
 
  private:
   // The associative array mapping names to Array's.

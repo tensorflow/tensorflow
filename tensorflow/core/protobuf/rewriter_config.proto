@@ -5,6 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 
 import "tensorflow/core/framework/attr_value.proto";
 
@@ -31,7 +32,7 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
-  // Enum controling the number of times to run optimizers. The default is to
+  // Enum controlling the number of times to run optimizers. The default is to
   // run them once.
   enum NumIterationsType {
     DEFAULT_NUM_ITERS = 0;
@@ -46,6 +47,12 @@ message RewriterConfig {
   // Statically infer the value of tensors when possible, and materialize the
   // result using constants.
   Toggle constant_folding = 3;
+  // Shape optimizations (default is ON)
+  // Simplify computations made on shapes.
+  Toggle shape_optimization = 13;
+  // Remapping (default is ON)
+  // Remap subgraphs onto more efficient implementations.
+  Toggle remapping = 14;
   // Arithmetic optimizations (default is ON)
   // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
   Toggle arithmetic_optimization = 7;

@@ -26,6 +26,41 @@ limitations under the License.
 
 namespace tensorflow {
 
+// XlaLocalLaunchBase is almost the same as XlaLocalLaunchOp.
+// The only difference is that it does not require arguments to follow
+// the "constants, then regular args, then resources" order.
+// It takes vectors of constant and resource arguments explicitly.
+// It does not have corresponding OpDef because it is never present
+// in the GraphDef.
+// Currently, it is used by eager runtime. FunctionLibraryRuntime creates
+// this kernel when asked to create a kernel for an XLA-compiled function.
+class XlaLocalLaunchBase : public OpKernel {
+ public:
+  XlaLocalLaunchBase(OpKernelConstruction* ctx,
+                     const std::vector<int>& constants,
+                     const std::vector<int>& resources,
+                     const NameAttrList& function);
+  XlaLocalLaunchBase(const XlaLocalLaunchBase&) = delete;
+  XlaLocalLaunchBase& operator=(const XlaLocalLaunchBase&) = delete;
+  ~XlaLocalLaunchBase() override = default;
+
+  void Compute(OpKernelContext* ctx) override;
+
+ protected:
+  // Builds a XlaCompilationCache class suitable for the current device.
+  Status BuildCompilationCache(OpKernelContext* ctx,
+                               XlaCompilationCache** cache);
+
+  // Indexes of compile-time constant inputs
+  std::vector<int> constants_;
+  // Indexes of resource inputs
+  std::vector<int> resources_;
+
+  DeviceType device_type_;
+  NameAttrList function_;
+  se::Platform::Id platform_id_;
+};
+
 // XlaLocalLaunchOp is used to replace a region of the TensorFlow graph
 // which will be compiled and executed using XLA.  The XlaLocalLaunchOp is
 // responsible for handling interactions with the TensorFlow executor.
@@ -35,26 +70,12 @@ namespace tensorflow {
 // XlaLocalLaunchOp uses xla::LocalClient::Compile() and
 // xla::LocalExecutable::Run(), and passes arguments into/out of XLA in device
 // memory.
-class XlaLocalLaunchOp : public OpKernel {
+class XlaLocalLaunchOp : public XlaLocalLaunchBase {
  public:
   explicit XlaLocalLaunchOp(OpKernelConstruction* ctx);
   ~XlaLocalLaunchOp() override;
 
-  void Compute(OpKernelContext* ctx) override;
-
  private:
-  // Builds a XlaCompilationCache class suitable for the current device.
-  Status BuildCompilationCache(OpKernelContext* ctx,
-                               XlaCompilationCache** compiler);
-
-  DeviceType device_type_;
-  NameAttrList function_;
-  int num_constant_args_;
-  // Number of resource variable arguments.
-  int num_resource_args_;
-
-  perftools::gputools::Platform::Id platform_id_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(XlaLocalLaunchOp);
 };
 

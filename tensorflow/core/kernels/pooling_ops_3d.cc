@@ -748,9 +748,8 @@ struct LaunchPoolingOp<GPUDevice, T, AVG> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -762,9 +761,8 @@ struct LaunchPoolingOp<GPUDevice, T, MAX> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -778,10 +776,10 @@ struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* input_backprop) {
     const TensorShape output_shape = tensor_in.shape();
-    DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, out, data_format, out_backprop, output_shape,
-        &tensor_in, &tensor_out, input_backprop);
+    DnnPooling3dGradOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum,
+                                   window, stride, padding, out, data_format,
+                                   out_backprop, output_shape, &tensor_in,
+                                   &tensor_out, input_backprop);
   }
 };
 
@@ -796,9 +794,8 @@ struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, out, data_format, out_backprop, tensor_in_shape,
-        nullptr, nullptr, output);
+        context, se::dnn::PoolingMode::kAverage, window, stride, padding, out,
+        data_format, out_backprop, tensor_in_shape, nullptr, nullptr, output);
   }
 };
 

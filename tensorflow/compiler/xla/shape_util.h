@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/optional.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -230,7 +231,7 @@ class ShapeUtil {
   }
 
   // Returns the higher-precision element type if a and b are both floating
-  // point types; otherwise, checks that that they have the same element type
+  // point types; otherwise, checks that they have the same element type
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
@@ -648,6 +649,9 @@ class ShapeUtil {
               /*parallel=*/true)
               .ok());
   }
+
+  // Compute a hash for `shape`.
+  static size_t Hash(const Shape& shape);
 
  private:
   // Validates all of the non-layout properties of the shape -- this is a helper

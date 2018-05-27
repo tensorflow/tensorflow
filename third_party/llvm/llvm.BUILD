@@ -8,10 +8,10 @@ exports_files(["LICENSE.TXT"])
 
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
-    "gentbl",
-    "expand_cmake_vars",
-    "llvm_target_cmake_vars",
     "cmake_var_string",
+    "expand_cmake_vars",
+    "gentbl",
+    "llvm_target_cmake_vars",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -264,7 +264,7 @@ genrule(
 # Rules that apply the LLVM tblgen tool.
 gentbl(
     name = "intrinsics_gen",
-    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.gen")],
+    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Intrinsics.td",
     td_srcs = glob([
@@ -275,7 +275,7 @@ gentbl(
 
 gentbl(
     name = "attributes_gen",
-    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.gen")],
+    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Attributes.td",
     td_srcs = ["include/llvm/IR/Attributes.td"],

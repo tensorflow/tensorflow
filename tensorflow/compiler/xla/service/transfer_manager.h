@@ -65,14 +65,14 @@ class TransferManager {
   // of the ShapedBuffer and DeviceShape(literal.shape()) must be compatible,
   // but need not have the same layout
   virtual Status TransferLiteralToDevice(se::StreamExecutor* executor,
-                                         const Literal& literal,
+                                         const LiteralSlice& literal,
                                          const ShapedBuffer& device_buffer) = 0;
 
   // Convenience methods for transferring an array to or from the device at a
   // known address. This avoids having to construct a ShapedBuffer just to
   // transfer an array at a known address.
   Status TransferArrayToDevice(se::StreamExecutor* executor,
-                               const Literal& literal,
+                               const LiteralSlice& literal,
                                const se::DeviceMemoryBase& dest);
   StatusOr<std::unique_ptr<Literal>> TransferArrayFromDevice(
       se::StreamExecutor* executor, const Shape& shape,
@@ -81,7 +81,7 @@ class TransferManager {
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
   virtual Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                         const Literal& literal) = 0;
+                                         const LiteralSlice& literal) = 0;
 
   // Transfers the given literal from the Outfeed interface of the device,
   // using the given executor.
@@ -104,12 +104,9 @@ class TransferManager {
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) const = 0;
 
-  // Allocate a ShapedBuffer which can hold data with the given on-host
+  // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
-  StatusOr<ShapedBuffer> AllocateShapedBuffer(const Shape& on_host_shape,
-                                              DeviceMemoryAllocator* allocator,
-                                              int device_ordinal);
   StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
       int device_ordinal);

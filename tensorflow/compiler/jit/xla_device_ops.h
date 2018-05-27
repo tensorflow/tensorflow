@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/kernels/control_flow_ops.h"
+#include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/sendrecv_ops.h"
@@ -32,7 +33,7 @@ namespace tensorflow {
 
 // Dummy OpKernel, used for kernels assigned to an XLA device that should be
 // compiled. Should never be called at runtime since such ops should be
-// rewritten to a _XlaLaunch op. If it is called, it means the placer placed an
+// rewritten to a XlaLaunch op. If it is called, it means the placer placed an
 // operator on an XLA device but the compiler did not compile it.
 class XlaDeviceDummyOp : public OpKernel {
  public:
@@ -41,7 +42,7 @@ class XlaDeviceDummyOp : public OpKernel {
 };
 
 #define REGISTER_XLA_LAUNCH_KERNEL(DEVICE, KERNEL, TYPES) \
-  REGISTER_KERNEL_BUILDER(Name("_XlaLaunch")              \
+  REGISTER_KERNEL_BUILDER(Name("XlaLaunch")               \
                               .Device(DEVICE)             \
                               .HostMemory("constants")    \
                               .HostMemory("resources"),   \
@@ -63,6 +64,9 @@ class XlaDeviceDummyOp : public OpKernel {
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("IdentityN").Device(DEVICE).TypeConstraint("T", TYPES),             \
+      IdentityNOp);                                                            \
   REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
                           PlaceholderOp);                                      \

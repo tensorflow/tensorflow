@@ -29,7 +29,7 @@ limitations under the License.
 // interface. Sample API usage:
 //
 //   port::StatusOr<Platform*> platform_status =
-//      gpu::MultiPlatformManager::PlatformWithName("OpenCL");
+//      se::MultiPlatformManager::PlatformWithName("OpenCL");
 //   if (!platform_status.ok()) { ... }
 //   Platform* platform = platform_status.ValueOrDie();
 //   LOG(INFO) << platform->VisibleDeviceCount() << " devices visible";
@@ -68,6 +68,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -181,5 +182,10 @@ class MultiPlatformManager {
 };
 
 }  // namespace stream_executor
+
+// multi_platform_manager.cc will define this instance. Includers of this header
+// should use
+// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_platform, multi_platform_manager);
+DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_

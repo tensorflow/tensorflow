@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-# Bijectors must be directly imported because `remove_undocumented` prevents
-# individual file imports.
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -254,7 +252,7 @@ class TransformedDistribution(distribution_lib.Distribution):
       name: Python `str` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     name = name or (("" if bijector is None else bijector.name) +
                     distribution.name)
     with ops.name_scope(name, values=[event_shape, batch_shape]) as name:

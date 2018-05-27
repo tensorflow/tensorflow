@@ -55,12 +55,12 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<ShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<ShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
@@ -92,7 +92,7 @@ class CpuExecutable : public Executable {
   // buffer is assigned for this element.
   Status AllocateBuffers(DeviceMemoryAllocator* memory_allocator,
                          int device_ordinal,
-                         std::vector<se::DeviceMemoryBase>* buffers);
+                         std::vector<OwningDeviceMemory>* buffers);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
@@ -102,16 +102,12 @@ class CpuExecutable : public Executable {
       tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
-  // Creates a ShapedBuffer for holding the result of the computation. The
-  // addresses (DeviceMemoryBases) are set according to buffer assignment.
-  // 'buffers_in_result' should point to a vector of the same size as
-  // 'allocated_buffers'. An element in buffers_in_result is set to true if the
-  // corresponding buffer is live out of the computation (and thus contained in
-  // the returned ShapedBuffer).
-  StatusOr<ShapedBuffer> CreateResultShapedBuffer(
+  // Creates a ScopedShapedBuffer for holding the result of the computation,
+  // moving buffers out of allocated_buffers and into the result as appropriate.
+  // The addresses are set according to buffer assignment.
+  StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
-      std::vector<bool>* buffers_in_result);
+      tensorflow::gtl::MutableArraySlice<OwningDeviceMemory> buffers);
 
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.

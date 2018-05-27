@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "re2/re2.h"
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
@@ -142,6 +143,10 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
     for (auto& input : op->inputs) {
       if (input == array_name) {
         count++;
+        // Breaking here is important: some graphs have ops that use the
+        // same array as more than one of their inputs, and in that case
+        // we want it counted only once.
+        break;
       }
     }
   }
@@ -259,6 +264,23 @@ Operator* GetFirstOpWithInput(const Model& model, const string& array_name) {
   return it == model.operators.end() ? nullptr : it->get();
 }
 
+void ReplaceArrayUsage(Model* model, const string& old_array_name,
+                       const string& new_array_name) {
+  for (auto& op_it : model->operators) {
+    Operator* op = op_it.get();
+    for (size_t i = 0; i < op->inputs.size(); ++i) {
+      if (op->inputs[i] == old_array_name) {
+        op->inputs[i] = new_array_name;
+      }
+    }
+    for (size_t i = 0; i < op->outputs.size(); ++i) {
+      if (op->outputs[i] == old_array_name) {
+        op->outputs[i] = new_array_name;
+      }
+    }
+  }
+}
+
 string FormatArraysList(const Model& model, const std::vector<string>& list) {
   if (list.empty()) {
     return "[]";
@@ -315,6 +337,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LogSoftmax)
     HANDLE_OPERATORTYPENAME_CASE(Div)
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
+    HANDLE_OPERATORTYPENAME_CASE(Sin)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAssert)
     HANDLE_OPERATORTYPENAME_CASE(ExpandDims)
@@ -334,6 +357,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
     HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
+    HANDLE_OPERATORTYPENAME_CASE(PadV2)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
     HANDLE_OPERATORTYPENAME_CASE(Stack)
     HANDLE_OPERATORTYPENAME_CASE(Range)
@@ -368,6 +392,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Exp)
     HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
+    HANDLE_OPERATORTYPENAME_CASE(Select)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -648,6 +673,65 @@ bool IsConstantParameterArray(const Model& model, const string& name) {
 }
 
 namespace {
+template <ArrayDataType A>
+bool CompareArrayBuffers(const Array& lhs_array, const Array& rhs_array) {
+  CHECK(lhs_array.data_type == rhs_array.data_type) << "Data types must match";
+  CHECK(lhs_array.buffer) << "LHS must be constant";
+  CHECK(rhs_array.buffer) << "RHS must be constant";
+  const auto& lhs_data = lhs_array.GetBuffer<A>().data;
+  const auto& rhs_data = rhs_array.GetBuffer<A>().data;
+  CHECK_EQ(lhs_data.size(), rhs_data.size())
+      << "Buffer sizes must match in element count";
+  for (int i = 0; i < lhs_data.size(); ++i) {
+    if (lhs_data[i] != rhs_data[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
+bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array) {
+  bool attrs_equal =
+      lhs_array.shape() == rhs_array.shape() &&
+      lhs_array.data_type == rhs_array.data_type &&
+      lhs_array.final_data_type == rhs_array.final_data_type &&
+      lhs_array.minmax == rhs_array.minmax &&
+      lhs_array.quantization_params == rhs_array.quantization_params;
+  if (!attrs_equal) {
+    return false;
+  }
+  switch (lhs_array.data_type) {
+    case ArrayDataType::kBool:
+      return CompareArrayBuffers<ArrayDataType::kBool>(lhs_array, rhs_array);
+    case ArrayDataType::kFloat:
+      return CompareArrayBuffers<ArrayDataType::kFloat>(lhs_array, rhs_array);
+    case ArrayDataType::kInt8:
+      return CompareArrayBuffers<ArrayDataType::kInt8>(lhs_array, rhs_array);
+    case ArrayDataType::kUint8:
+      return CompareArrayBuffers<ArrayDataType::kUint8>(lhs_array, rhs_array);
+    case ArrayDataType::kInt16:
+      return CompareArrayBuffers<ArrayDataType::kInt16>(lhs_array, rhs_array);
+    case ArrayDataType::kUint16:
+      return CompareArrayBuffers<ArrayDataType::kUint16>(lhs_array, rhs_array);
+    case ArrayDataType::kInt32:
+      return CompareArrayBuffers<ArrayDataType::kInt32>(lhs_array, rhs_array);
+    case ArrayDataType::kUint32:
+      return CompareArrayBuffers<ArrayDataType::kUint32>(lhs_array, rhs_array);
+    case ArrayDataType::kInt64:
+      return CompareArrayBuffers<ArrayDataType::kInt64>(lhs_array, rhs_array);
+    case ArrayDataType::kUint64:
+      return CompareArrayBuffers<ArrayDataType::kUint64>(lhs_array, rhs_array);
+    case ArrayDataType::kString:
+      return CompareArrayBuffers<ArrayDataType::kString>(lhs_array, rhs_array);
+    default:
+      LOG(FATAL) << "Unsupported data type: "
+                 << ArrayDataTypeName(lhs_array.data_type);
+      return false;
+  }
+}
+
+namespace {
 // Take an array name, which may be something like "name:3_5" and make it
 // acceptable as a TF node name, say "name_3_5";
 string SanitizeNameForTFNode(const string& array_name) {
@@ -825,11 +909,6 @@ void FixNoOrphanedArray(Model* model) {
 void CheckEachArray(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = array_entry.second;
-    if (array->has_shape()) {
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
-      }
-    }
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
     CHECK(!array->buffer || !array->alloc);
@@ -839,6 +918,10 @@ void CheckEachArray(const Model& model) {
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
       CHECK(array->has_shape());
+      // Constant buffer should has a valid shape.
+      for (int d : array->shape().dims()) {
+        CHECK_GE(d, 1);
+      }
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
                RequiredBufferSizeForShape(array->shape()));
@@ -904,7 +987,7 @@ void FixOperatorOrdering(Model* model) {
     for (auto i : remaining) {
       bool can_insert = true;
       auto& op = old_operators[i];
-      CHECK(op.get());
+      CHECK(op);
       for (const auto& input : op->inputs) {
         if (!IsConstantParameterArray(*model, input) &&
             !arrays_behind_us.count(input)) {
@@ -1068,6 +1151,60 @@ void FixEdgeArrays(Model* model) {
           AvailableArrayName(*model, output_array_name + "_copy");
       CloneArray(model, output_array_name, intermediate_array_name);
       InsertCopyOperator(model, intermediate_array_name, output_array_name);
+    }
+  }
+}
+
+void DedupeConstantArrays(Model* model, size_t min_size) {
+  // Walk all 0..N and compare with the remaining n+1..N.
+  // This lets us avoid N^2 comparisions and erase duplicate arrays while
+  // iterating.
+  const auto& array_map = model->GetArrayMap();
+  for (auto lhs_array_it = array_map.begin(); lhs_array_it != array_map.end();
+       ++lhs_array_it) {
+    const auto& lhs_array_name = lhs_array_it->first;
+    const auto& lhs_array = *lhs_array_it->second;
+    if (!IsConstantParameterArray(*model, lhs_array_name)) {
+      // Not a constant array; skip.
+      continue;
+    }
+    ArrayDataType final_data_type =
+        lhs_array.final_data_type != ArrayDataType::kNone
+            ? lhs_array.final_data_type
+            : lhs_array.data_type;
+    size_t array_byte_size =
+        lhs_array.buffer->Length() * ElementSize(final_data_type);
+    if (array_byte_size < min_size) {
+      // Too small; skip.
+      continue;
+    }
+
+    auto next_lhs_array_it = lhs_array_it;
+    ++next_lhs_array_it;
+    for (auto rhs_array_it = next_lhs_array_it;
+         rhs_array_it != array_map.end();) {
+      const auto& rhs_array_name = rhs_array_it->first;
+      const auto& rhs_array = *rhs_array_it->second;
+      ++rhs_array_it;
+      if (!IsConstantParameterArray(*model, rhs_array_name)) {
+        // Not a constant array; skip.
+        continue;
+      }
+      if (!IsDiscardableArray(*model, rhs_array_name)) {
+        // Can't remove the array as it's not discardable (such as an IO edge).
+        continue;
+      }
+      if (!CompareConstantArrays(lhs_array, rhs_array)) {
+        // Arrays aren't equal; skip.
+        continue;
+      }
+
+      // Arrays can be deduped!
+      VLOG(1) << "Deduplicating arrays; using " << lhs_array_name
+              << " in place of " << rhs_array_name;
+      ReplaceArrayUsage(model, rhs_array_name, lhs_array_name);
+      // Note: rhs_array_it above is already incremented so this is safe.
+      model->EraseArray(rhs_array_name);
     }
   }
 }
@@ -1405,20 +1542,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     }
     input_minmax.min = (qmin - mean_value) / std_value;
     input_minmax.max = (qmax - mean_value) / std_value;
-    if (input_array.minmax) {
-      if (input_array_proto.has_mean_value() ||
-          input_array_proto.has_std_value()) {
-        const double width = input_minmax.max - input_minmax.min;
-        const double kMinMaxAllowedDiff = 1e-6 * width;
-        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
-                  kMinMaxAllowedDiff &&
-              std::abs(input_minmax.max - input_array.minmax->max) <
-                  kMinMaxAllowedDiff)
-            << input_minmax.min << ", " << input_minmax.max
-            << " != " << input_array.minmax->min << ", "
-            << input_array.minmax->max;
-      }
-    } else {
+    if (!input_array.minmax) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
@@ -1950,15 +2074,21 @@ bool ReshapeIsEquivalentToTranspose(const Model& model,
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
+    if (array.data_type == ArrayDataType::kBool) {
+      // Boolean values are never quantized.
+      continue;
+    }
+
     // If the final data type is int16, the data type may be float, for example
     // after dequantization.
     if (array.final_data_type != ArrayDataType::kNone &&
         array.final_data_type != ArrayDataType::kInt16) {
-      CHECK(array.final_data_type == array.data_type)
+      CHECK(array.data_type == array.final_data_type)
           << "Array \"" << array_entry.first
-          << "\" has mis-matching actual and final data types ("
-          << ArrayDataTypeName(array.data_type) << ","
-          << ArrayDataTypeName(array.final_data_type) << ").";
+          << "\" has mis-matching actual and final data types (data_type="
+          << ArrayDataTypeName(array.data_type)
+          << ", final_data_type=" << ArrayDataTypeName(array.final_data_type)
+          << ").";
     }
   }
 }
@@ -1975,6 +2105,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt32;
     case INT64:
       return ArrayDataType::kInt64;
+    case BOOL:
+      return ArrayDataType::kBool;
     default:
       return ArrayDataType::kNone;
   }
@@ -1997,38 +2129,58 @@ void FinishBuildingRNNStates(Model* model) {
   }
 }
 
-void UseArraysExtraInfo(Model* model, bool quantize_output) {
-  for (const auto& entry : model->flags.arrays_extra_info().entries()) {
-    if (!model->HasArray(entry.name())) {
-      continue;
-    }
-    auto& array = model->GetArray(entry.name());
-    if (entry.has_min() || entry.has_max()) {
-      CHECK_EQ(entry.has_min(), entry.has_max());
-      auto& minmax = array.GetOrCreateMinMax();
-      minmax.min = entry.min();
-      minmax.max = entry.max();
-    }
-    if (entry.has_data_type() && quantize_output) {
-      array.final_data_type =
-          ConvertIODataTypeToArrayDataType(entry.data_type());
-    }
-    if (entry.has_shape()) {
-      array.clear_shape();
-      // Make sure to create the shape even if there are no dims, to
-      // correctly record 0-D shapes.
-      array.mutable_shape();
-      for (int dim : entry.shape().dims()) {
-        array.mutable_shape()->mutable_dims()->push_back(dim);
+// Returns the array names that match the ArraysExtraInfo's name and
+// name_regexp. The regexp match is for a full match.
+std::unordered_set<string> ScanArrayNames(
+    const Model& model, const toco::ArraysExtraInfo_Entry& entry) {
+  std::unordered_set<string> matches;
+  if (model.HasArray(entry.name())) {
+    matches.insert(entry.name());
+  }
+  if (!entry.name_regexp().empty()) {
+    const auto& arrays = model.GetArrayMap();
+    const RE2 name_regexp = {entry.name_regexp()};
+    for (auto it = arrays.begin(); it != arrays.end(); ++it) {
+      if (RE2::FullMatch(it->first, name_regexp)) {
+        matches.insert(it->first);
       }
     }
-    if (entry.has_constant_float_value()) {
-      CHECK(array.has_shape());
-      if (array.data_type == ArrayDataType::kFloat) {
-        auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
-        data.resize(RequiredBufferSizeForShape(array.shape()));
-        for (float& f : data) {
-          f = entry.constant_float_value();
+  }
+  return matches;
+}
+
+void UseArraysExtraInfo(Model* model, bool quantize_output) {
+  for (const auto& entry : model->flags.arrays_extra_info().entries()) {
+    const auto matches = ScanArrayNames(*model, entry);
+    for (const auto& matched_name : matches) {
+      auto& array = model->GetArray(matched_name);
+      if (entry.has_min() || entry.has_max()) {
+        CHECK_EQ(entry.has_min(), entry.has_max());
+        auto& minmax = array.GetOrCreateMinMax();
+        minmax.min = entry.min();
+        minmax.max = entry.max();
+      }
+      if (entry.has_data_type() && quantize_output) {
+        array.final_data_type =
+            ConvertIODataTypeToArrayDataType(entry.data_type());
+      }
+      if (entry.has_shape()) {
+        array.clear_shape();
+        // Make sure to create the shape even if there are no dims, to
+        // correctly record 0-D shapes.
+        array.mutable_shape();
+        for (int dim : entry.shape().dims()) {
+          array.mutable_shape()->mutable_dims()->push_back(dim);
+        }
+      }
+      if (entry.has_constant_float_value()) {
+        CHECK(array.has_shape());
+        if (array.data_type == ArrayDataType::kFloat) {
+          auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
+          data.resize(RequiredBufferSizeForShape(array.shape()));
+          for (float& f : data) {
+            f = entry.constant_float_value();
+          }
         }
       }
     }

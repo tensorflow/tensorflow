@@ -138,7 +138,7 @@ The model will represent the buckets as follows:
 |< 1960               | [1, 0, 0, 0] |
 |>= 1960 but < 1980   | [0, 1, 0, 0] |
 |>= 1980 but < 2000   | [0, 0, 1, 0] |
-|> 2000               | [0, 0, 0, 1] |
+|>= 2000              | [0, 0, 0, 1] |
 
 Why would you want to split a number—a perfectly valid input to your
 model—into a categorical value? Well, notice that the categorization splits a
@@ -364,7 +364,7 @@ def make_dataset(latitude, longitude, labels):
     return tf.data.Dataset.from_tensor_slices((features, labels))
 
 
-# Bucketize the latitude and longitude usig the `edges`
+# Bucketize the latitude and longitude using the `edges`
 latitude_bucket_fc = tf.feature_column.bucketized_column(
     tf.feature_column.numeric_column('latitude'),
     list(atlanta.latitude.edges))
@@ -528,10 +528,10 @@ suggested by the following snippet:
 categorical_column = ... # Create any categorical column
 
 # Represent the categorical column as an embedding column.
-# This means creating a one-hot vector with one element for each category.
+# This means creating an embedding vector lookup table with one element for each category.
 embedding_column = tf.feature_column.embedding_column(
     categorical_column=categorical_column,
-    dimension=dimension_of_embedding_vector)
+    dimension=embedding_dimensions)
 ```
 
 @{$programmers_guide/embedding$Embeddings} is a significant topic within machine

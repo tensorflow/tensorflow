@@ -31,7 +31,22 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.8.0-rc1'
+_VERSION = '1.8.0'
+
+_SHORT_DESCRIPTION = ('TensorFlow is an open source machine learning framework '
+                      'for everyone.')
+
+_LONG_DESCRIPTION = ('TensorFlow is an open source software library for high '
+                     'performance numerical computation. Its flexible '
+                     'architecture allows easy deployment of computation across'
+                     ' a variety of platforms (CPUs, GPUs, TPUs), and from '
+                     'desktops to clusters of servers to mobile and edge '
+                     'devices. Originally developed by researchers and '
+                     'engineers from the Google Brain team within Google\'s AI '
+                     'organization, it comes with strong support for machine '
+                     'learning and deep learning and the flexible numerical '
+                     'computation core is used across many other scientific '
+                     'domains.')
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -40,7 +55,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
-    'tensorboard >= 1.7.0, < 1.8.0',
+    'tensorboard >= 1.8.0, < 1.9.0',
     'termcolor >= 1.1.0',
 ]
 
@@ -69,7 +84,7 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.8.0a0, < 1.9.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.9.0a0, < 1.10.0a0'
       break
 
 # weakref.finalize and enum were introduced in Python 3.4
@@ -214,8 +229,8 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
 setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
-    description='TensorFlow helps the tensors flow',
-    long_description='',
+    description=_SHORT_DESCRIPTION,
+    long_description=_LONG_DESCRIPTION,
     url='https://www.tensorflow.org/',
     author='Google Inc.',
     author_email='opensource@google.com',
@@ -261,4 +276,5 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     license='Apache 2.0',
-    keywords='tensorflow tensor machine learning',)
+    keywords='tensorflow tensor machine learning',
+)

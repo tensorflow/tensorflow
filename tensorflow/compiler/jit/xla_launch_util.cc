@@ -32,21 +32,19 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
+namespace tensorflow {
 namespace {
-namespace gpu = perftools::gputools;
 using xla::ScopedShapedBuffer;
 using xla::ShapedBuffer;
 }  // anonymous namespace
 
-namespace tensorflow {
-std::map<int, OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
-                                                        int num_variables) {
+std::map<int, OptionalTensor> SnapshotResourceVariables(
+    OpKernelContext* ctx, const std::vector<int>& variables) {
   std::map<int, OptionalTensor> snapshot;
-  int first_variable = ctx->num_inputs() - num_variables;
-  for (int i = 0; i < num_variables; ++i) {
+  for (int i : variables) {
     Var* variable = nullptr;
-    ResourceHandle handle = HandleFromInput(ctx, first_variable + i);
-    OptionalTensor& tensor = snapshot[first_variable + i];
+    ResourceHandle handle = HandleFromInput(ctx, i);
+    OptionalTensor& tensor = snapshot[i];
     if (LookupResource(ctx, handle, &variable).ok()) {
       tf_shared_lock lock(*variable->mu());
       tensor.name = handle.name();
@@ -57,38 +55,40 @@ std::map<int, OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
   return snapshot;
 }
 
-XlaAllocator::XlaAllocator(const gpu::Platform* platform, Allocator* wrapped)
+XlaAllocator::XlaAllocator(const se::Platform* platform, Allocator* wrapped)
     : xla::DeviceMemoryAllocator(platform), wrapped_(wrapped) {}
 
 XlaAllocator::~XlaAllocator() {}
 
-xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
+xla::StatusOr<xla::OwningDeviceMemory> XlaAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
-  void* data = wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size);
+  AllocationAttributes attrs;
+  attrs.no_retry_on_failure = !retry_on_failure;
+  void* data =
+      wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size, attrs);
   if (data == nullptr) {
     return errors::ResourceExhausted("Out of memory while trying to allocate ",
                                      size, " bytes.");
-  } else {
-    return gpu::DeviceMemoryBase(data, size);
   }
+  return xla::OwningDeviceMemory(se::DeviceMemoryBase(data, size),
+                                 device_ordinal, this);
 }
 
-Status XlaAllocator::Deallocate(int device_ordinal,
-                                gpu::DeviceMemoryBase* mem) {
-  wrapped_->DeallocateRaw(mem->opaque());
+Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
+  wrapped_->DeallocateRaw(mem.opaque());
   return Status::OK();
 }
 
-namespace {
+namespace internal {
 // Return the 'index''th subtree of the given ShapedBuffer as a
 // ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
 // subtree, and sets the input's buffer pointers to nullptr for the subtree.
 ScopedShapedBuffer ExtractSubShapedBuffer(
     ShapedBuffer* shaped_buffer, int index,
     xla::DeviceMemoryAllocator* allocator) {
-  xla::Shape on_host_shape = xla::ShapeUtil::GetTupleElementShape(
+  const xla::Shape& on_host_shape = xla::ShapeUtil::GetTupleElementShape(
       shaped_buffer->on_host_shape(), index);
-  xla::Shape on_device_shape = xla::ShapeUtil::GetTupleElementShape(
+  const xla::Shape& on_device_shape = xla::ShapeUtil::GetTupleElementShape(
       shaped_buffer->on_device_shape(), index);
 
   ShapedBuffer sub_shaped_buffer(on_host_shape, on_device_shape,
@@ -100,20 +100,23 @@ ScopedShapedBuffer ExtractSubShapedBuffer(
   sub_shape_tree.CopySubtreeFrom(shape_tree,
                                  /*source_base_index=*/{index},
                                  /*target_base_index=*/{});
-  for (auto& index_to_buffer : shape_tree) {
-    if (!index_to_buffer.first.empty() && index_to_buffer.first[0] == index) {
-      index_to_buffer.second = gpu::DeviceMemoryBase(nullptr, 0);
-    }
-  }
+  shape_tree.ForEachMutableElement(
+      [index](const xla::ShapeIndex& shape_index,
+              tensorflow::se::DeviceMemoryBase* data) {
+        // shape_index is empty for the root node. Ignore that.
+        if (!shape_index.empty() && shape_index[0] == index) {
+          *data = tensorflow::se::DeviceMemoryBase(nullptr, 0);
+        }
+      });
   return ScopedShapedBuffer(std::move(sub_shaped_buffer), allocator);
 }
-}  // namespace
+}  // namespace internal
+using internal::ExtractSubShapedBuffer;
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
-    int64 num_resource_args, xla::LocalClient* client,
-    xla::DeviceMemoryAllocator* xla_allocator, bool allocate_xla_tensors)
-    : num_resource_args_(num_resource_args),
-      client_(client),
+    xla::LocalClient* client, xla::DeviceMemoryAllocator* xla_allocator,
+    bool allocate_xla_tensors)
+    : client_(client),
       xla_allocator_(xla_allocator),
       allocate_xla_tensors_(allocate_xla_tensors) {}
 
@@ -149,7 +152,7 @@ void XlaComputationLaunchContext::PopulateInputs(
           << xla::ShapeUtil::HumanStringWithLayout(on_device_shape)
           << " not the same as on-host shape "
           << xla::ShapeUtil::HumanStringWithLayout(shape);
-      gpu::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
+      se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
       arg_buffers_[i] = xla::MakeUnique<ShapedBuffer>(
           /*on_host_shape=*/shape, /*on_device_shape=*/shape,
           client_->platform(), client_->default_device_ordinal());
@@ -162,7 +165,7 @@ void XlaComputationLaunchContext::PopulateInputs(
 void XlaComputationLaunchContext::PopulateOutputs(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
     ScopedShapedBuffer output) {
-  gpu::Stream* stream =
+  se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
   // Computation output should always be a tuple.
@@ -192,11 +195,6 @@ void XlaComputationLaunchContext::PopulateOutputs(
 
         OP_REQUIRES_OK(
             ctx, ctx->allocate_output(i, const_tensor.shape(), &output_tensor));
-        if (XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor)) {
-          OP_REQUIRES_OK(ctx, xla_tensor->AllocateShapedBuffer(
-                                  const_tensor.dtype(), const_tensor.shape(),
-                                  client_, stream->parent()->device_ordinal()));
-        }
 
         Device* device = dynamic_cast<Device*>(ctx->device());
         OP_REQUIRES(ctx, device != nullptr,
@@ -227,7 +225,7 @@ void XlaComputationLaunchContext::PopulateOutputs(
       const TensorShape& shape = kernel->outputs[i].shape;
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString();
 
-      gpu::DeviceMemoryBase buffer = output.buffer({output_num});
+      se::DeviceMemoryBase buffer = output.buffer({output_num});
       if (allocate_xla_tensors_) {
         Tensor* output_tensor;
         OP_REQUIRES_OK(ctx, ctx->allocate_output(i, shape, &output_tensor));
@@ -238,7 +236,7 @@ void XlaComputationLaunchContext::PopulateOutputs(
       } else {
         Tensor output_tensor = XlaTensorBuffer::MakeTensor(
             ctx->expected_output_dtype(i), shape, buffer, allocator);
-        output.set_buffer(gpu::DeviceMemoryBase(nullptr, 0), {output_num});
+        output.set_buffer(xla::OwningDeviceMemory(), {output_num});
         ctx->set_output(i, output_tensor);
       }
       ++output_num;
@@ -258,7 +256,7 @@ void XlaComputationLaunchContext::PopulateOutputs(
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
                 errors::Internal("Invalid input index for variable write."));
 
-    gpu::DeviceMemoryBase buffer = output.buffer({output_num});
+    se::DeviceMemoryBase buffer = output.buffer({output_num});
 
     Var* variable = nullptr;
     // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor,
@@ -288,7 +286,7 @@ void XlaComputationLaunchContext::PopulateOutputs(
     } else {
       Tensor output_tensor = XlaTensorBuffer::MakeTensor(
           write.type, write.shape, buffer, allocator);
-      output.set_buffer(gpu::DeviceMemoryBase(nullptr, 0), {output_num});
+      output.set_buffer(xla::OwningDeviceMemory(), {output_num});
       *variable->tensor() = output_tensor;
     }
     ++output_num;

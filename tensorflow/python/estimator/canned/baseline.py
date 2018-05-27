@@ -344,7 +344,7 @@ class BaselineRegressor(estimator.Estimator):
       A `BaselineRegressor` estimator.
     """
 
-    head = head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
+    head = head_lib._regression_head(  # pylint: disable=protected-access
         label_dimension=label_dimension,
         weight_column=weight_column,
         loss_reduction=loss_reduction)

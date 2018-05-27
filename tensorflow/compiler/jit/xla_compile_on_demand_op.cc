@@ -48,17 +48,16 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                  const XlaCompiler::CompilationResult* result,
                                  xla::LocalExecutable* executable) {
   std::map<int, OptionalTensor> variables = GetVariables(ctx);
-  int64 num_resource_args = variables.size();
 
   xla::LocalClient* client = metadata.client();
 
   // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
-      num_resource_args, client, client->backend().memory_allocator(), true);
+      client, client->backend().memory_allocator(), true);
 
   launch_context.PopulateInputs(ctx, result, variables);
 
-  perftools::gputools::Stream* stream =
+  se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   TF_RET_CHECK(stream);
 
@@ -157,11 +156,14 @@ Status XlaCompileOnDemandOp::Compile(
   options.client = metadata.client();
   options.flib_def =
       new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
+  options.shape_representation_fn = metadata.shape_representation_fn();
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable,
-                                /*compile_options=*/nullptr);
+                                result, executable, &compile_options);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

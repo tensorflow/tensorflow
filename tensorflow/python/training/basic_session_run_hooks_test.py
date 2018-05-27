@@ -466,8 +466,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener_counts)
 
@@ -490,8 +490,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener_counts)
 
@@ -523,8 +523,8 @@ class CheckpointSaverHookTest(test.TestCase):
     self.assertEqual(2, global_step_val)
     self.assertEqual({
         'begin': 1,
-        'before_save': 2,
-        'after_save': 2,
+        'before_save': 3,
+        'after_save': 3,
         'end': 1
     }, listener1_counts)
     self.assertEqual(listener1_counts, listener2_counts)
@@ -706,6 +706,7 @@ class CheckpointSaverHookTest(test.TestCase):
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
+        hook.after_create_session(sess, None)
         mon_sess.run(self.train_op)
       summary_writer.assert_summaries(
           test_case=self,
@@ -717,6 +718,31 @@ class CheckpointSaverHookTest(test.TestCase):
           ])
 
     fake_summary_writer.FakeSummaryWriter.uninstall()
+
+  def test_save_checkpoint_before_first_train_step(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        sess.run(self.scaffold.init_op)
+        hook.after_create_session(sess, None)
+        # Verifies that checkpoint is saved at step 0.
+        self.assertEqual(0,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        # Verifies that no checkpoint is saved after one training step.
+        mon_sess.run(self.train_op)
+        self.assertEqual(0,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        # Verifies that checkpoint is saved after save_steps.
+        mon_sess.run(self.train_op)
+        self.assertEqual(2,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
 
 
 class CheckpointSaverHookMultiStepTest(test.TestCase):
@@ -738,8 +764,8 @@ class CheckpointSaverHookMultiStepTest(test.TestCase):
       hook = basic_session_run_hooks.CheckpointSaverHook(
           self.model_dir,
           save_steps=2*self.steps_per_run,
-          scaffold=self.scaffold,
-          steps_per_run=self.steps_per_run)
+          scaffold=self.scaffold)
+      hook._set_steps_per_run(self.steps_per_run)
       hook.begin()
       self.scaffold.finalize()
       with session_lib.Session() as sess:
@@ -755,8 +781,8 @@ class CheckpointSaverHookMultiStepTest(test.TestCase):
       hook = basic_session_run_hooks.CheckpointSaverHook(
           self.model_dir,
           save_steps=2*self.steps_per_run,
-          scaffold=self.scaffold,
-          steps_per_run=self.steps_per_run)
+          scaffold=self.scaffold)
+      hook._set_steps_per_run(self.steps_per_run)
       hook.begin()
       self.scaffold.finalize()
       with session_lib.Session() as sess:
@@ -797,8 +823,8 @@ class CheckpointSaverHookMultiStepTest(test.TestCase):
       hook = basic_session_run_hooks.CheckpointSaverHook(
           self.model_dir,
           save_steps=2*self.steps_per_run,
-          scaffold=self.scaffold,
-          steps_per_run=self.steps_per_run)
+          scaffold=self.scaffold)
+      hook._set_steps_per_run(self.steps_per_run)
       hook.begin()
       self.scaffold.finalize()
       with session_lib.Session() as sess:
@@ -970,6 +996,87 @@ class StepCounterHookTest(test.TestCase):
             str(mock_log.call_args),
             'global step.*has not been increased')
       hook.end(sess)
+
+  def _setup_steps_per_run_test(self,
+                                every_n_steps,
+                                steps_per_run,
+                                graph,
+                                sess):
+    variables.get_or_create_global_step()
+    self.train_op = training_util._increment_global_step(steps_per_run)
+    self.summary_writer = fake_summary_writer.FakeSummaryWriter(
+        self.log_dir, graph)
+    self.hook = basic_session_run_hooks.StepCounterHook(
+        summary_writer=self.summary_writer, every_n_steps=every_n_steps)
+    self.hook._set_steps_per_run(steps_per_run)
+    self.hook.begin()
+    sess.run(variables_lib.global_variables_initializer())
+    self.mon_sess = monitored_session._HookedSession(sess, [self.hook])
+
+  def test_steps_per_run_less_than_every_n_steps(self):
+    with ops.Graph().as_default() as g, session_lib.Session() as sess:
+      self._setup_steps_per_run_test(10, 5, g, sess)
+
+      # Logs at 15, 25
+      for _ in range(5):
+        time.sleep(0.01)
+        self.mon_sess.run(self.train_op)
+
+      self.hook.end(sess)
+      self.summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      self.assertItemsEqual([15, 25], self.summary_writer.summaries.keys())
+      for step in [15, 25]:
+        summary_value = self.summary_writer.summaries[step][0].value[0]
+        self.assertEqual('global_step/sec', summary_value.tag)
+        self.assertGreater(summary_value.simple_value, 0)
+
+  def test_steps_per_run_equal_every_n_steps(self):
+    with ops.Graph().as_default() as g, session_lib.Session() as sess:
+      self._setup_steps_per_run_test(5, 5, g, sess)
+
+      # Logs at 10, 15, 20, 25
+      for _ in range(5):
+        time.sleep(0.01)
+        self.mon_sess.run(self.train_op)
+
+      self.hook.end(sess)
+      self.summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      self.assertItemsEqual([10, 15, 20, 25],
+                            self.summary_writer.summaries.keys())
+      for step in [10, 15, 20, 25]:
+        summary_value = self.summary_writer.summaries[step][0].value[0]
+        self.assertEqual('global_step/sec', summary_value.tag)
+        self.assertGreater(summary_value.simple_value, 0)
+
+  def test_steps_per_run_greater_than_every_n_steps(self):
+    with ops.Graph().as_default() as g, session_lib.Session() as sess:
+      self._setup_steps_per_run_test(5, 10, g, sess)
+
+      # Logs at 20, 30, 40, 50
+      for _ in range(5):
+        time.sleep(0.01)
+        self.mon_sess.run(self.train_op)
+
+      self.hook.end(sess)
+      self.summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      self.assertItemsEqual([20, 30, 40, 50],
+                            self.summary_writer.summaries.keys())
+      for step in [20, 30, 40, 50]:
+        summary_value = self.summary_writer.summaries[step][0].value[0]
+        self.assertEqual('global_step/sec', summary_value.tag)
+        self.assertGreater(summary_value.simple_value, 0)
 
 
 class SummarySaverHookTest(test.TestCase):

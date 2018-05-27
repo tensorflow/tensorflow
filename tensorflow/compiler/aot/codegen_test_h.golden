@@ -10,6 +10,7 @@
 #define TFCOMPILE_GENERATED_entry_point_H_  // NOLINT(build/header_guard)
 
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -22,6 +23,7 @@ extern "C" void entry_point(
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
 extern "C" char __tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[];
+
 
 namespace foo {
 namespace bar {
@@ -54,9 +56,9 @@ namespace bar {
 //
 // Memory stats:
 //   arg bytes total:    104
-//   arg bytes aligned:  128
+//   arg bytes aligned:  192
 //   temp bytes total:   126
-//   temp bytes aligned: 224
+//   temp bytes aligned: 320
 class MyClass : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.
@@ -82,6 +84,8 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
       data->arg_names = StaticArgNames();
       data->result_names = StaticResultNames();
       data->program_shape = StaticProgramShape();
+      data->hlo_profile_printer_data = StaticHloProfilePrinterData();
+      
       return data;
     }();
     return *kStaticData;
@@ -242,6 +246,13 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
     return proto;
   }();
     return kShape;
+  }
+
+  // Metadata that can be used to pretty-print profile counters.
+  static const xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+    static const xla::HloProfilePrinterData* kHloProfilePrinterData =
+      nullptr;
+    return kHloProfilePrinterData;
   }
 };
 

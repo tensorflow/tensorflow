@@ -37,7 +37,7 @@ TransferManager::GetPlatformTransferManagers() {
 }
 
 Status TransferManager::TransferArrayToDevice(
-    se::StreamExecutor* executor, const Literal& literal,
+    se::StreamExecutor* executor, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest) {
   const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
   TF_RET_CHECK(ShapeUtil::IsArray(on_device_shape))
@@ -175,7 +175,7 @@ Status TransferManager::TransferBufferToDevice(
   return Status::OK();
 }
 
-StatusOr<ShapedBuffer> TransferManager::AllocateShapedBuffer(
+StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
     int device_ordinal) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
@@ -187,8 +187,8 @@ StatusOr<ShapedBuffer> TransferManager::AllocateShapedBuffer(
   const Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);
   TF_RET_CHECK(LayoutUtil::HasLayout(on_device_shape));
 
-  ShapedBuffer shaped_buffer(on_host_shape, on_device_shape,
-                             allocator->platform(), device_ordinal);
+  ScopedShapedBuffer shaped_buffer(on_host_shape, on_device_shape, allocator,
+                                   device_ordinal);
 
   // Allocate an appropriate sized buffer for each element in the shape
   // including the tuple pointer arrays.
@@ -196,21 +196,14 @@ StatusOr<ShapedBuffer> TransferManager::AllocateShapedBuffer(
     const ShapeIndex& index = pair.first;
     se::DeviceMemoryBase& memory_base = pair.second;
     const Shape& subshape = ShapeUtil::GetSubshape(on_device_shape, index);
-    TF_ASSIGN_OR_RETURN(memory_base,
+    TF_ASSIGN_OR_RETURN(auto memory,
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape)));
+    // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
+    memory_base = memory.Forget();
   }
 
   return std::move(shaped_buffer);
-}
-
-StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
-    const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
-    int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(
-      ShapedBuffer unscoped_buffer,
-      AllocateShapedBuffer(on_host_shape, allocator, device_ordinal));
-  return ScopedShapedBuffer(std::move(unscoped_buffer), allocator);
 }
 
 }  // namespace xla

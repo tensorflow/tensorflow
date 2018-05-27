@@ -32,7 +32,6 @@ from six import iteritems
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -41,6 +40,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -422,7 +422,7 @@ class _VariableStore(object):
           "use_resource": use_resource,
       }
       # `fn_args` can handle functions, `functools.partial`, `lambda`.
-      if "constraint" in estimator_util.fn_args(custom_getter):
+      if "constraint" in function_utils.fn_args(custom_getter):
         custom_getter_kwargs["constraint"] = constraint
       return custom_getter(**custom_getter_kwargs)
     else:
@@ -840,7 +840,8 @@ class _VariableStore(object):
       initializing_from_value = False
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
-    elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
+    elif (dtype.is_integer or dtype.is_unsigned or dtype.is_bool
+          or dtype == dtypes.string):
       initializer = init_ops.zeros_initializer()
       initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
@@ -1175,7 +1176,7 @@ class _VariableScopeStore(threading.local):
 
   def close_variable_subscopes(self, scope_name):
     for k in list(self.variable_scopes_count.keys()):
-      if not scope_name or k.startswith(scope_name + "/"):
+      if scope_name is None or k.startswith(scope_name + "/"):
         self.variable_scopes_count[k] = 0
 
   def variable_scope_count(self, scope_name):
@@ -1364,7 +1365,9 @@ Args:
   name: The name of the new or existing variable.
   shape: Shape of the new or existing variable.
   dtype: Type of the new or existing variable (defaults to `DT_FLOAT`).
-  initializer: Initializer for the variable if one is created.
+  initializer: Initializer for the variable if one is created. Can either be
+    an initializer object or a Tensor. If it's a Tensor, its shape must be known
+    unless validate_shape is False.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
     @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
@@ -1380,7 +1383,8 @@ Args:
     partitions for each axis (currently only one axis can be partitioned).
   validate_shape: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
-      must be known.
+      must be known. For this to be used the initializer must be a Tensor and
+      not an initializer object.
   use_resource: If False, creates a regular Variable. If true, creates an
     experimental ResourceVariable instead with well-defined semantics.
     Defaults to False (will later change to True). When eager execution is

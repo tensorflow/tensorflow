@@ -19,7 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_REDUCTION_OPS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -28,35 +28,33 @@ namespace tensorflow {
 // to override: description is a textual description of the mapped
 // function; InitialValue constructs the base case for the reduction;
 // BuildReducer adds the implementation of the reduction lambda to a
-// xla::ComputationBuilder and BuildFinalizer adds the
+// xla::XlaBuilder and BuildFinalizer adds the
 // implementation of the finalizer lambda (if there is one) to a
-// xla::ComputationBuilder.
+// xla::XlaBuilder.
 class XlaReductionOp : public XlaOpKernel {
  public:
   XlaReductionOp(OpKernelConstruction* ctx, DataType reduction_type);
   ~XlaReductionOp() override {}
 
   // Return the base case for the reduction.
-  virtual xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder) = 0;
+  virtual xla::XlaOp InitialValue(xla::XlaBuilder* builder) = 0;
 
   // Implement the (scalar,scalar)->scalar lambda that should be
   // applied to each pair of elements to be reduced. The desired
   // computation should be added to 'builder' and
   // '(scalar_lhs,scalar_rhs)' are the function's inputs.
-  virtual void BuildReducer(xla::ComputationBuilder* builder,
-                            const xla::ComputationDataHandle& scalar_lhs,
-                            const xla::ComputationDataHandle& scalar_rhs) = 0;
+  virtual void BuildReducer(xla::XlaBuilder* builder,
+                            const xla::XlaOp& scalar_lhs,
+                            const xla::XlaOp& scalar_rhs) = 0;
 
   // Applies a transformation to the output of the reduction. The desired
   // computation should be added to 'builder'. Argument 'reduce_output' is the
   // output of the reduction. 'num_elements_reduced' is the number of elements
   // that contributed to the reduction. Returns the transformed reduction
   // output, Defaults to returning 'reduce_output' unchanged.
-  virtual xla::ComputationDataHandle BuildFinalizer(
-      xla::ComputationBuilder* builder,
-      const xla::ComputationDataHandle& reduce_output,
-      int64 num_elements_reduced);
+  virtual xla::XlaOp BuildFinalizer(xla::XlaBuilder* builder,
+                                    const xla::XlaOp& reduce_output,
+                                    int64 num_elements_reduced);
 
   void Compile(XlaOpKernelContext* ctx) override;
 

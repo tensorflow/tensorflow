@@ -93,17 +93,16 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
 }
 
 /* static */
-std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
-  HloModuleConfig config;
-  config.set_debug_options(GetDebugOptionsForTest());
-  return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
-                               config);
+std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
+  return MakeUnique<HloModule>(name, VersionedComputationHandle(),
+                               GetModuleConfigForTest());
 }
 
 /*static*/ DebugOptions HloTestBase::GetDebugOptionsForTest() {
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
+  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   return debug_options;
 }
 

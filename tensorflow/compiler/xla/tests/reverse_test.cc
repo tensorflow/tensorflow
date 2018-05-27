@@ -114,7 +114,7 @@ class ReverseTest : public ClientLibraryTestBase {};
 
 // Tests the reverse operation on a 4D U8 array on dimension 0 and 3.
 XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   // Input shape is U8[1x2x3x4].
   // clang-format off
   Array4D<uint8> input({{
@@ -144,7 +144,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
 
 // Tests the reverse operation on a 4D float array on dimension 0 and 1.
 TEST_F(ReverseTest, Reverse4DFloatArrayOnDim01) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   // Input shape is float[4x3x2x1].
   // clang-format off
   Array4D<float> input({

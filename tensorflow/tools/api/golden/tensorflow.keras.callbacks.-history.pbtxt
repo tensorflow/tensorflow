@@ -1,7 +1,7 @@
 path: "tensorflow.keras.callbacks.History"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.callbacks.History\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.callbacks.Callback\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.History\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.Callback\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

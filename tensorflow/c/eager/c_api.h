@@ -81,6 +81,16 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
 
+// A tensorflow.ServerDef specifies remote workers (in addition to the current
+// workers name). Operations created on this context can then be executed on
+// any of these remote workers by setting an appropriate device.
+//
+// If the following is set, all servers identified by the
+// ServerDef must be up when the context is created.
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetServerDef(
+    TFE_ContextOptions* options, const void* proto, size_t proto_len,
+    TF_Status* status);
+
 // Destroy an options object.
 TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
@@ -328,20 +338,6 @@ TF_CAPI_EXPORT extern void TFE_ContextDisableRunMetadata(TFE_Context* ctx);
 TF_CAPI_EXPORT extern void TFE_ContextExportRunMetadata(TFE_Context* ctx,
                                                         TF_Buffer* buf,
                                                         TF_Status* status);
-
-// Returns the serialized CppShapeInferenceResult::HandleData proto for
-// `output` if its a resource tensor, or otherwise returns an empty buffer.
-TF_CAPI_EXPORT extern void TFE_GetResourceHandleShapeAndType(
-    TF_Graph* graph, TF_Output output, TF_Buffer* output_proto,
-    TF_Status* status);
-
-// Sets `output` based on `proto`, which should be a serialized
-// CppShapeInferenceResult::HandleData proto.
-TF_CAPI_EXPORT extern void TFE_SetResourceHandleShapeAndType(TF_Graph* graph,
-                                                             TF_Output output,
-                                                             const void* proto,
-                                                             size_t proto_len,
-                                                             TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

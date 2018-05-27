@@ -396,14 +396,19 @@ class Pruning(object):
                        self._block_pooling_function)
 
     with ops.name_scope(weights.op.name + '_pruning_ops'):
-      abs_weights = math_ops.abs(
-          array_ops.reshape(weights, [
-              1,
-              squeezed_weights.get_shape()[0],
-              squeezed_weights.get_shape()[1], 1
-          ]))
+      abs_weights = math_ops.abs(squeezed_weights)
+
       pool_window = [self._block_dim[0], self._block_dim[1]]
-      pooled_weights = nn_ops.pool(
+      pool_fn = pruning_utils.factorized_pool
+
+      if not self._spec.use_tpu:
+        pool_fn = nn_ops.pool
+        abs_weights = array_ops.reshape(
+            abs_weights,
+            [1, abs_weights.get_shape()[0],
+             abs_weights.get_shape()[1], 1])
+
+      pooled_weights = pool_fn(
           abs_weights,
           window_shape=pool_window,
           pooling_type=self._block_pooling_function,
@@ -411,19 +416,18 @@ class Pruning(object):
           padding='SAME',
           name=weights.op.name + '_pooled')
 
+      if pooled_weights.get_shape().ndims != 2:
+        pooled_weights = array_ops.squeeze(pooled_weights)
+
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)
-
-      reshaped_mask = array_ops.reshape(
-          new_mask,
-          [pooled_weights.get_shape()[1],
-           pooled_weights.get_shape()[2]])
       updated_mask = pruning_utils.kronecker_product(
-          reshaped_mask, array_ops.ones(self._block_dim))
+          new_mask, array_ops.ones(self._block_dim))
       sliced_mask = array_ops.slice(
           updated_mask, [0, 0],
           [squeezed_weights.get_shape()[0],
            squeezed_weights.get_shape()[1]])
+
     return smoothed_threshold, array_ops.reshape(sliced_mask,
                                                  array_ops.shape(weights))
 

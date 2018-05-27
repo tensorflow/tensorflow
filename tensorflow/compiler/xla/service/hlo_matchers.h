@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 namespace testing {
@@ -86,6 +87,71 @@ class HloCustomCallMatcher : public HloMatcher {
   ::testing::Matcher<string> call_target_matcher_;
 };
 
+class HloShapeMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloShapeMatcher(const Shape& shape) : shape_(shape) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  Shape shape_;
+};
+
+class HloShapeAndLayoutMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloShapeAndLayoutMatcher(const Shape& shape) : shape_(shape) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  Shape shape_;
+};
+
+// Verify the sharding of an instruction against the provided HloSharding. If a
+// nullopt is provided for the expected sharding then it checks that no sharding
+// is present for an instruction.
+class HloShardingMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloShardingMatcher(
+      const tensorflow::gtl::optional<HloSharding>& sharding)
+      : sharding_(sharding) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  tensorflow::gtl::optional<HloSharding> sharding_;
+};
+
+// Matches a Dot HLO instruction with specific LHS and RHS contracting
+// dimensions.
+class HloDotWithContractingDimsMatcher : public HloMatcher {
+ public:
+  explicit HloDotWithContractingDimsMatcher(
+      ::testing::Matcher<const HloInstruction*> lhs,
+      ::testing::Matcher<const HloInstruction*> rhs, int64 lhs_contracting_dim,
+      int64 rhs_contracting_dim)
+      : HloMatcher(HloOpcode::kDot, /*operands=*/{lhs, rhs}),
+        lhs_contracting_dim_(lhs_contracting_dim),
+        rhs_contracting_dim_(rhs_contracting_dim) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  int64 lhs_contracting_dim_;
+  int64 rhs_contracting_dim_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -113,7 +179,6 @@ HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
 HLO_MATCHER(CrossReplicaSum);
 HLO_MATCHER(Divide);
-HLO_MATCHER(Dot);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
 HLO_MATCHER(Eq);
@@ -229,6 +294,64 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
 inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloMatcher(HloOpcode::kCustomCall, {}));
+}
+
+// Verifies the shape or the shape and the layout of an HLO instruction against
+// the provided shape object.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
+    const class Shape& shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(shape));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
+    tensorflow::StringPiece shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(
+      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
+    const class Shape& shape) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShapeAndLayoutMatcher(shape));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
+    tensorflow::StringPiece shape) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
+      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+}
+
+// Verifies the value of the HloSharing against the provided sharding object.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
+    const HloSharding& sharding) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShardingMatcher(sharding));
+}
+// Verifies that no HloSharding is set for an HLO instruction.
+inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShardingMatcher(tensorflow::gtl::nullopt));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
+    ::testing::Matcher<const HloInstruction*> lhs_matcher,
+    ::testing::Matcher<const HloInstruction*> rhs_matcher) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+      ::xla::HloOpcode::kDot, {lhs_matcher, rhs_matcher}));
+}
+
+// Matches a Dot HLO instruction if it has exactly one lhs contracting dimension
+// equal to `lhs_contracting_dim` and exactly one rhs contracting dimension
+// equal to `rhs_contracting_dim`.
+//
+// Currently the HLO verifier rejects Dot operations with more than one
+// contracting dimension (even though we can represent these in the
+// DotDimensionNumbers proto) so there is no need to generalize this to support
+// multiple contracting dimensions.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
+    ::testing::Matcher<const HloInstruction*> lhs_matcher,
+    ::testing::Matcher<const HloInstruction*> rhs_matcher,
+    int64 lhs_contracting_dim, int64 rhs_contracting_dim) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloDotWithContractingDimsMatcher(
+          lhs_matcher, rhs_matcher, lhs_contracting_dim, rhs_contracting_dim));
 }
 
 #undef HLO_MATCHER

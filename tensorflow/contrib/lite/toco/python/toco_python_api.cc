@@ -37,7 +37,7 @@ namespace toco {
 // sure we input and output bytes rather than unicode strings for Python3.
 PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* toco_flags_proto_txt_raw,
-                      PyObject* input_contents_txt_raw) {
+                      PyObject* input_contents_txt_raw, bool extended_return) {
   // Use Python C API to validate and convert arguments. In py3 (bytes),
   // in py2 (str).
   auto ConvertArg = [&](PyObject* obj, bool* error) {
@@ -78,6 +78,16 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   Export(toco_flags, *model, toco_flags.allow_custom_ops(),
          &output_file_contents_txt);
 
+  if (extended_return) {
+    PyObject* dict = PyDict_New();
+    PyDict_SetItemString(
+        dict, "flatbuffer",
+        TOCO_FROM_CPPSTRING_TO_PY(output_file_contents_txt.data(),
+                                  output_file_contents_txt.size()));
+    PyDict_SetItemString(dict, "arithmetic_ops",
+                         PyLong_FromLong(model->ArithmeticOpsCount()));
+    return dict;
+  }
   // Convert arguments back to byte (py3) or str (py2)
   return TOCO_FROM_CPPSTRING_TO_PY(output_file_contents_txt.data(),
                                    output_file_contents_txt.size());

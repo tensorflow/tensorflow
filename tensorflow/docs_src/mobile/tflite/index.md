@@ -11,7 +11,7 @@ optimizing the kernels for mobile apps, pre-fused activations, and quantized
 kernels that allow smaller and faster (fixed-point math) models.
 
 Most of our TensorFlow Lite documentation is [on
-Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite)
+GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite)
 for the time being.
 
 ## What does TensorFlow Lite contain?
@@ -155,7 +155,7 @@ retraining for both floating point and quantized inference.
 
 The following diagram shows the architectural design of TensorFlow Lite:
 
-<img src="/images/tflite-architecture.jpg"
+<img src="https://www.tensorflow.org/images/tflite-architecture.jpg"
      alt="TensorFlow Lite architecture diagram"
      style="max-width:600px;">
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/soc_interface.h"
@@ -167,7 +168,7 @@ bool HexagonControlWrapper::SetupGraph() {
     new_output_node_info.set_output_count(0);
 
     const TensorId tid = ParseTensorName(graph_output.name());
-    const string node_name = tid.first.ToString();
+    const string node_name = std::string(tid.first);
     const int port = tid.second;
     // Register node input for the new output node
     const GraphTransferNodeInfo* node_info =

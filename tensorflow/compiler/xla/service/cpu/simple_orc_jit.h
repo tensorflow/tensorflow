@@ -95,6 +95,12 @@ class SimpleOrcJIT {
     return &external_constant_pool_;
   }
 
+  // Creates an llvm::TargetMachine suitable for JITting code that will run on
+  // the current machine.
+  static std::unique_ptr<llvm::TargetMachine> InferTargetMachineForJIT(
+      const llvm::TargetOptions& target_options,
+      llvm::CodeGenOpt::Level opt_level);
+
  private:
   llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
 

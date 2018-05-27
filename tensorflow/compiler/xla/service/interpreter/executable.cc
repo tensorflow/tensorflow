@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -32,20 +31,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace interpreter {
 
 InterpreterExecutable::InterpreterExecutable(
-    std::unique_ptr<const HloModule> hlo_module)
+    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<HloEvaluator> evaluator)
     : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
-                 /*hlo_profile_index_map=*/nullptr) {}
+                 /*hlo_profile_index_map=*/nullptr),
+      evaluator_(std::move(evaluator)) {}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
-StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -82,14 +82,17 @@ StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   }
 
   // Execute the graph using the HloEvaluator.
-  HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Literal> result_literal,
-      evaluator.Evaluate<std::unique_ptr<Literal>>(*computation, arg_literals));
+  std::unique_ptr<Literal> result_literal;
+  {
+    tensorflow::mutex_lock lock(evaluator_lock_);
+    TF_ASSIGN_OR_RETURN(result_literal,
+                        evaluator_->Evaluate<std::unique_ptr<Literal>>(
+                            *computation, arg_literals));
+  }
 
   // Transform the result literal back into a ShapedBuffer.
-  TF_ASSIGN_OR_RETURN(ShapedBuffer result,
-                      transfer_manager->AllocateShapedBuffer(
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                      transfer_manager->AllocateScopedShapedBuffer(
                           result_literal->shape(), run_options->allocator(),
                           executor->device_ordinal()));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
@@ -106,7 +109,7 @@ StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   return std::move(result);
 }
 
-StatusOr<ShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   return tensorflow::errors::Unimplemented(

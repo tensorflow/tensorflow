@@ -706,15 +706,48 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
   return output_tensor;
 }
 #else
+using mkldnn::stream;
+template <typename T> class MklDnnData;
+
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
                              const MklDnnShape& mkl_shape) {
   Tensor output_tensor;
-  TensorShape output_shape;
+  try {
+    if (!mkl_shape.IsMklTensor())
+      return mkl_tensor;  // return input since it is already TF tensor
 
-  TF_CHECK_OK(
-      Status(error::Code::UNIMPLEMENTED, "Unimplemented conversion function"));
+    TensorShape output_shape = mkl_shape.GetTfShape();;
 
+    // Allocate output tensor.
+    context->allocate_temp(DataTypeToEnum<T>::v(),
+        output_shape, &output_tensor);
+
+    auto cpu_engine = engine(engine::cpu, 0);
+    MklDnnData<T> input(&cpu_engine);
+
+    // Get Mkl layout of input tensor.
+    auto input_mkl_md = mkl_shape.GetMklLayout();
+    auto output_tf_md = mkl_shape.GetTfLayout();
+    auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
+    input.SetUsrMem(input_mkl_md, &mkl_tensor);
+
+    // reorder
+    if (input.IsReorderNeeded(output_tf_pd)) {
+      std::vector<primitive> net;
+      CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net),
+             true);
+      stream(stream::kind::eager).submit(net).wait();
+    } else {
+      // If not, just forward input tensor to output tensor.
+      CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
+    }
+  } catch (mkldnn::error& e) {
+    string error_msg = "Status: " + std::to_string(e.status) +
+                       ", message: " + string(e.message) + ", in file " +
+                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    LOG(FATAL) << "Operation received an exception: " << error_msg;
+  }
   return output_tensor;
 }
 #endif
@@ -1359,7 +1392,7 @@ inline memory::dims MklDnnDimsInNCHW(const memory::dims& in_dims,
 /// Map MklDnn memory::dims object into TensorShape object.
 ///
 /// This function will simply map input shape in MKL-DNN memory::dims format
-/// in Tensorflow's TensorShape object by perserving dimension order.
+/// in Tensorflow's TensorShape object by preserving dimension order.
 ///
 /// @input MKL-DNN memory::dims object
 /// @output TensorShape corresponding to memory::dims

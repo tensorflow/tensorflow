@@ -244,4 +244,21 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
   }
   return result;
 }
+
+/*static*/ std::vector<HloInstruction*> WhileUtil::GetInvariantGTEsForWhileBody(
+    const HloComputation& while_body) {
+  std::vector<HloInstruction*> result;
+  const HloInstruction::InstructionVector root_operands =
+      while_body.root_instruction()->operands();
+  for (int i = 0; i < root_operands.size(); i++) {
+    HloInstruction* instr = root_operands[i];
+    if (instr->opcode() == HloOpcode::kGetTupleElement &&
+        instr->tuple_index() == i &&
+        instr->operand(0) == while_body.parameter_instruction(0)) {
+      result.push_back(instr);
+    }
+  }
+  return result;
+}
+
 }  // namespace xla

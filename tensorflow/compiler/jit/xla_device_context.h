@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -45,16 +46,16 @@ class XlaDeviceAllocator : public Allocator {
 // Helper class for managing data transfers between host and XLA devices.
 class XlaTransferManager {
  public:
-  explicit XlaTransferManager(perftools::gputools::Stream* stream,
-                              xla::LocalClient* client,
-                              bool transfer_as_literal);
+  explicit XlaTransferManager(
+      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done);
-  perftools::gputools::Stream* stream() const { return stream_; }
+  se::Stream* stream() const { return stream_; }
 
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
@@ -64,13 +65,14 @@ class XlaTransferManager {
 
   // Stream obtained from a Device, used to transfer tensors between
   // CPU and device.
-  perftools::gputools::Stream* stream_;
+  se::Stream* stream_;
   // For the underlying memory allocator and XLA's TransferManager.
   xla::LocalClient* client_;
   // Transfer manager, for marshalling data to and from the device.
   xla::TransferManager* transfer_manager_;
   // True if we must use XLA's TransferManager for correct device transfers.
-  bool transfer_as_literal_;
+  const bool transfer_as_literal_;
+  const XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -78,8 +80,9 @@ class XlaTransferManager {
 // wraps the methods in XlaTransferManager.
 class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaDeviceContext(perftools::gputools::Stream* stream,
-                            xla::LocalClient* client, bool transfer_as_literal);
+  explicit XlaDeviceContext(
+      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,
@@ -87,9 +90,7 @@ class XlaDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
-  perftools::gputools::Stream* stream() const override {
-    return manager_.stream();
-  }
+  se::Stream* stream() const override { return manager_.stream(); }
 
  private:
   XlaTransferManager manager_;

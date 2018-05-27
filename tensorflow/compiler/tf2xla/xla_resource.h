@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -37,8 +37,7 @@ class XlaResource {
   };
 
   XlaResource(Kind kind, int arg_num, string name, DataType type,
-              TensorShape shape,
-              const xla::ComputationDataHandle& initial_value,
+              TensorShape shape, const xla::XlaOp& initial_value,
               int64 tensor_array_size,
               const std::set<string>& tensor_array_gradients);
 
@@ -69,16 +68,14 @@ class XlaResource {
   // this is the shape of each entry in the TensorArray/Stack.
   const TensorShape& shape() const { return shape_; }
 
-  const xla::ComputationDataHandle& value() const { return value_; }
+  const xla::XlaOp& value() const { return value_; }
 
   // Value of the resource at computation entry. Used to detect which
   // variables have new values that need to be written back.
-  const xla::ComputationDataHandle& initial_value() const {
-    return initial_value_;
-  }
+  const xla::XlaOp& initial_value() const { return initial_value_; }
 
   // A variable is initialized if it has a value.
-  bool initialized() const { return value_.handle() > 0; }
+  bool initialized() const { return value_.builder() != nullptr; }
 
   // Sets the type and shape of the resource. The type and shape of a resource
   // must not change once the variable has been initialized.
@@ -86,17 +83,17 @@ class XlaResource {
 
   // Sets the current value of the resource. Returns an error if the type is not
   // set to a valid value.
-  Status SetValue(const xla::ComputationDataHandle& value);
+  Status SetValue(const xla::XlaOp& value);
 
   // Sets the current value of the resource to an all-zero value.
-  Status SetZeroValue(xla::ComputationBuilder* builder);
+  Status SetZeroValue(xla::XlaBuilder* builder);
 
   // Looks up the gradient for `source`, or creates it if it does not already
   // exist. The call target must be an initialized TensorArray resource. A
   // TensorArray can have multiple named gradients; see the operator
   // documentation for TensorArrayGradV3 for details.
   Status GetOrCreateTensorArrayGradient(const string& source,
-                                        xla::ComputationBuilder* builder,
+                                        xla::XlaBuilder* builder,
                                         XlaResource** gradient_out);
 
   // Packs a resource into a single XLA value `pack`, suitable for use as
@@ -104,8 +101,7 @@ class XlaResource {
   // gradients, sets `*pack` to `value`.
   // For TensorArrays with gradients, packs the value and its gradient values in
   // a tuple; the gradients values are packed in order by source name.
-  Status Pack(xla::ComputationDataHandle* pack,
-              xla::ComputationBuilder* builder) const;
+  Status Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const;
 
   // Updates the resource with values from `pack`. If `gradient_sources` is
   // non-empty, treats `pack` as a tuple that represents a TensorArray and
@@ -114,8 +110,7 @@ class XlaResource {
   // values.
   // Opposite of Pack().
   Status SetFromPack(const std::set<string>& gradient_sources,
-                     const xla::ComputationDataHandle& pack,
-                     xla::ComputationBuilder* builder);
+                     const xla::XlaOp& pack, xla::XlaBuilder* builder);
 
   // TensorArray and Stack specific fields
 
@@ -144,8 +139,8 @@ class XlaResource {
 
   DataType type_;
   TensorShape shape_;
-  xla::ComputationDataHandle value_;
-  xla::ComputationDataHandle initial_value_;
+  xla::XlaOp value_;
+  xla::XlaOp initial_value_;
 
   int64 tensor_array_size_ = -1;
 

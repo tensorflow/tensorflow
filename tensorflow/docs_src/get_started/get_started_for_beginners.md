@@ -233,7 +233,7 @@ The Iris program requires the data from the following two .csv files:
 *   `http://download.tensorflow.org/data/iris_training.csv`, which contains
     the training set.
 *   `http://download.tensorflow.org/data/iris_test.csv`, which contains the
-    the test set.
+    test set.
 
 The **training set** contains the examples that we'll use to train the model;
 the **test set** contains the examples that we'll use to evaluate the trained

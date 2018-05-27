@@ -16,21 +16,6 @@
 """Tensor summaries for exporting information about a model.
 
 See the @{$python/summary} guide.
-
-@@FileWriter
-@@FileWriterCache
-@@tensor_summary
-@@scalar
-@@histogram
-@@audio
-@@image
-@@text
-@@merge
-@@merge_all
-@@get_summary_description
-@@PluginAsset
-@@get_plugin_asset
-@@get_all_plugin_assets
 """
 
 from __future__ import absolute_import
@@ -74,7 +59,6 @@ from tensorflow.python.summary.writer.writer_cache import FileWriterCache
 # pylint: enable=unused-import
 
 from tensorflow.python.util import compat as _compat
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -361,10 +345,3 @@ def get_summary_description(node_def):
   summary_description = SummaryDescription()
   _json_format.Parse(description_str, summary_description)
   return summary_description
-
-
-_allowed_symbols = [
-    'Summary', 'SummaryDescription', 'Event', 'TaggedRunMetadata', 'SessionLog',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

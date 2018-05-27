@@ -81,7 +81,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -94,7 +93,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -107,7 +105,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -116,6 +113,20 @@ tf_kernel_library(
     srcs = ["dense_to_sparse_batch_dataset_op.cc"],
     deps = [
         ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "group_by_reducer_dataset_op",
+    srcs = ["group_by_reducer_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -429,7 +440,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -442,7 +452,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -455,7 +464,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -550,6 +558,7 @@ tf_kernel_library(
         ":filter_dataset_op",
         ":flat_map_dataset_op",
         ":generator_dataset_op",
+        ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",

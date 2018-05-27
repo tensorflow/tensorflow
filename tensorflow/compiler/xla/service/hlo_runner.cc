@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -126,16 +125,12 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
   }
 
   TF_ASSIGN_OR_RETURN(
-      ShapedBuffer result,
+      ScopedShapedBuffer result,
       executable->ExecuteOnStreamWrapper(
           &service_run_options, /*profile=*/nullptr, argument_buffer_ptrs));
 
-  // Create a ScopedShapedBuffer of the result to manage deallocation. This will
-  // deallocate all the device memory when it goes out of scope.
-  ScopedShapedBuffer scoped_result(std::move(result), run_options.allocator());
-
   auto result_literal = backend().transfer_manager()->TransferLiteralFromDevice(
-      stream.parent(), scoped_result);
+      stream.parent(), result);
   if (result_literal.ok()) {
     VLOG(4) << "Executed binary and got result: "
             << result_literal.ValueOrDie()->ToString();
@@ -175,7 +170,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
     int64 device = device_assignment(i, 0);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
-    streams.push_back(absl::make_unique<se::Stream>(executor));
+    streams.push_back(MakeUnique<se::Stream>(executor));
     streams.back()->Init();
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
         device, streams.back().get(), &device_assignment));
@@ -202,7 +197,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
     num_threads += options.num_replicas;
   }
   if (num_threads > 0) {
-    pool = absl::make_unique<tensorflow::thread::ThreadPool>(
+    pool = MakeUnique<tensorflow::thread::ThreadPool>(
         tensorflow::Env::Default(), "infeed_outfeed",
         /*num_threads=*/num_threads);
   }
@@ -233,7 +228,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64 step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
-          auto literal = absl::make_unique<Literal>();
+          auto literal = MakeUnique<Literal>();
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
               executor, options.outfeed_shape, literal.get()));
           if (options.outfeed_values != nullptr) {
@@ -248,18 +243,16 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
   }
 
   LOG(INFO) << "Replicated execution started";
-  TF_ASSIGN_OR_RETURN(std::vector<ShapedBuffer> results,
+  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> results,
                       executable->ExecuteOnStreams(service_run_options,
                                                    argument_buffer_slices));
   LOG(INFO) << "Replicated execution terminated";
 
   std::vector<std::unique_ptr<Literal>> exec_results;
   for (int64 i = 0; i < options.num_replicas; ++i) {
-    ScopedShapedBuffer result(std::move(results[i]),
-                              backend().memory_allocator());
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
-                            streams[i]->parent(), result));
+                            streams[i]->parent(), results[i]));
     exec_results.push_back(std::move(literal));
   }
   return std::move(exec_results);
@@ -284,14 +277,14 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
   run_options.set_device_ordinal(device);
   run_options.set_stream(stream);
   run_options.set_allocator(backend().memory_allocator());
-  run_options.set_inter_op_thread_pool(backend().inter_op_thread_pool());
   run_options.set_intra_op_thread_pool(
       backend().eigen_intra_op_thread_pool_device());
   if (device_assignment != nullptr) {
     run_options.set_device_assignment(device_assignment);
   }
-  return ServiceExecutableRunOptions(run_options, backend().StreamBorrower(),
-                                     backend().inter_op_thread_pool());
+  return ServiceExecutableRunOptions(
+      run_options, backend().StreamBorrower(),
+      /*xla_intra_op_thread_pool=*/backend().eigen_intra_op_thread_pool());
 }
 
 Backend& HloRunner::backend() {

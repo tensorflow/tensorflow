@@ -84,8 +84,13 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
       for (int64 i = 0; i < hlo->operand_count() - 2; ++i) {
         TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
       }
-    } else if (ImplementedAsLibraryCall(*hlo)) {
-      // For all other library calls, materialize all the operands into memory.
+    } else if (ImplementedAsLibraryCall(*hlo) ||
+               hlo->opcode() == HloOpcode::kCrossReplicaSum) {
+      // For all other library calls and cross-replica-sum, materialize all the
+      // operands into memory.  (Cross-replica-sum gets its constant args
+      // materialized even if it's not implemented as a libcall to simplify the
+      // implementation.  It's slower, but we can constant fold away constant
+      // args *anyway*, so we just need to make it work.)
       for (int64 i = 0; i < hlo->operand_count(); ++i) {
         TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
       }
