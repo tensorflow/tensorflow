@@ -1031,12 +1031,6 @@ def resize_image_with_pad(image, target_height, target_width,
       else:
         return max(x, y)
 
-    def equal_(x, y):
-      if _is_tensor(x) or _is_tensor(y):
-        return math_ops.equal(x, y)
-      else:
-        return x == y
-
     _, height, width, _ = _ImageDimensions(image, rank=4)
 
     # convert values to float, to ease divisions
