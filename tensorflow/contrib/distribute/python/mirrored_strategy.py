@@ -80,6 +80,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         dict((d, i) for i, d in enumerate(devices)))
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
+    # TODO(yuefengz): consider setting the default device.
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -110,10 +111,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
             kwargs["name"] = "%s/replica_%d" % (var0name, i)
             # Initialize replicas with the same value:
             if context.executing_eagerly():
-              initial_value = index[devices[0]].value()
+              kwargs["initial_value"] = array_ops.identity(
+                  index[devices[0]].value())
             else:
-              initial_value = index[devices[0]].initial_value
-            kwargs["initial_value"] = array_ops.identity(initial_value)
+              def initial_value_fn(device=d):
+                with ops.device(device):
+                  return array_ops.identity(index[devices[0]].initial_value)
+              kwargs["initial_value"] = initial_value_fn
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.DistributedVariable)

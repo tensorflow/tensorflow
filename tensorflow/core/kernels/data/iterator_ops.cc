@@ -1051,7 +1051,7 @@ class DeserializeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-
+    core::ScopedUnref unref_iterator(iterator_resource);
     Variant variant = ctx->input(1).scalar<Variant>()();
     auto* wrapper = variant.get<IteratorStateVariant>();
     OP_REQUIRES(ctx, wrapper != nullptr,

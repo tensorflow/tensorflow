@@ -31,7 +31,6 @@ using ops::AddN;
 using ops::BatchMatMul;
 using ops::Const;
 using ops::Div;
-using ops::Greater;
 using ops::MatMul;
 using ops::Max;
 using ops::Maximum;

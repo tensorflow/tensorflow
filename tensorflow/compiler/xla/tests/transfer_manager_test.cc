@@ -175,7 +175,7 @@ XLA_TEST_F(TransferManagerTest, TransferTuple) {
                           transfer_manager_->TransferLiteralFromDevice(
                               stream_executor_, device_buffer));
 
-  LiteralTestUtil::ExpectEqual(*literal, *result);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
 
 XLA_TEST_F(TransferManagerTest, TransferEmptyTuple) {
@@ -189,7 +189,7 @@ XLA_TEST_F(TransferManagerTest, TransferEmptyTuple) {
                           transfer_manager_->TransferLiteralFromDevice(
                               stream_executor_, device_buffer));
 
-  LiteralTestUtil::ExpectEqual(*literal, *result);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
 
 XLA_TEST_F(TransferManagerTest, TransferNestedTuple) {
@@ -209,7 +209,7 @@ XLA_TEST_F(TransferManagerTest, TransferNestedTuple) {
                           transfer_manager_->TransferLiteralFromDevice(
                               stream_executor_, device_buffer));
 
-  LiteralTestUtil::ExpectEqual(*literal, *result);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
 
 XLA_TEST_F(TransferManagerTest, TransferComplexValue) {
@@ -224,7 +224,7 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValue) {
                           transfer_manager_->TransferLiteralFromDevice(
                               stream_executor_, device_buffer));
 
-  LiteralTestUtil::ExpectEqual(*literal, *result);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
 
 XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
@@ -243,7 +243,7 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
                           transfer_manager_->TransferLiteralFromDevice(
                               stream_executor_, device_buffer));
 
-  LiteralTestUtil::ExpectEqual(*literal, *result);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
 
 }  // namespace

@@ -29,11 +29,6 @@ namespace xla {
 namespace gpu {
 
 using se::dnn::AlgorithmDesc;
-using se::dnn::BatchDescriptor;
-using se::dnn::ConvolutionDescriptor;
-using se::dnn::DataLayout;
-using se::dnn::FilterDescriptor;
-using se::dnn::FilterLayout;
 
 ConvolutionThunk::ConvolutionThunk(
     CudnnConvKind convolution_kind, const BufferAllocation::Slice& input_buffer,

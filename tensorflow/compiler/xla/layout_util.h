@@ -20,9 +20,9 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -61,12 +61,12 @@ class LayoutUtil {
   static void SetToDefaultLayout(ProgramShape* program_shape);
 
   // Validates that the layout within the given shape is correct.
-  static tensorflow::Status ValidateLayoutInShape(const Shape& shape);
+  static Status ValidateLayoutInShape(const Shape& shape);
 
   // Validates that the provided layout satisfies invariants for the given
   // shape.
-  static tensorflow::Status ValidateLayoutForShape(const Layout& layout,
-                                                   const Shape& shape);
+  static Status ValidateLayoutForShape(const Layout& layout,
+                                       const Shape& shape);
 
   // Clears the layout in the given Shape. After this function is called,
   // HasLayout will return false for the shape.
@@ -179,8 +179,7 @@ class LayoutUtil {
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must
   // have the same tuple structure (if any) and arrays must have the same
   // rank. within the shapes must have the same number of dimensions.
-  static tensorflow::Status CopyLayoutBetweenShapes(const Shape& src,
-                                                    Shape* dst);
+  static Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
 
   // Returns true if the layouts of lhs and rhs are equal, false
   // otherwise. Recursively compares layouts of tuples.

@@ -26,13 +26,13 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-void ExternalConstantPool::Insert(string name, const Literal& literal,
+void ExternalConstantPool::Insert(string name, const LiteralSlice& literal,
                                   int64 alignment) {
   CHECK(!ShapeUtil::IsTuple(literal.shape()));
   CHECK(alignment > 0 && IsPowerOfTwo(static_cast<uint64>(alignment)));
   CHECK(entries_.find(name) == entries_.end());
 
-  int64 literal_size = ShapeUtil::ByteSizeOf(literal.shape());
+  const int64 literal_size = ShapeUtil::ByteSizeOf(literal.shape());
   void* raw_pointer = tensorflow::port::AlignedMalloc(
       literal_size, std::max<size_t>(alignment, sizeof(void*)));
   CHECK(raw_pointer != nullptr) << "failed to allocate " << literal_size

@@ -32,7 +32,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -151,6 +150,20 @@ tf_cc_test(
 tf_cc_test(
     name = "cpu_literal_caching_test",
     srcs = ["cpu_literal_caching_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_outfeed_test",
+    srcs = ["cpu_outfeed_test.cc"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",

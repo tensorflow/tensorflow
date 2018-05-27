@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
@@ -50,8 +49,8 @@ class CompilationCacheTest : public ClientLibraryTestBase {
                                  /*execution_options=*/&execution_options_,
                                  &execution_profile)
             .ConsumeValueOrDie();
-    LiteralTestUtil::ExpectNear(*Literal::CreateR0<float>(expected_result),
-                                *result, error_spec_);
+    EXPECT_TRUE(LiteralTestUtil::Near(
+        *Literal::CreateR0<float>(expected_result), *result, error_spec_));
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
 
@@ -67,8 +66,8 @@ class CompilationCacheTest : public ClientLibraryTestBase {
                            .ConsumeValueOrDie();
     std::unique_ptr<Literal> result =
         client_->Transfer(*data_handle).ConsumeValueOrDie();
-    LiteralTestUtil::ExpectNear(*Literal::CreateR2<float>(expected_result),
-                                *result, error_spec_);
+    EXPECT_TRUE(LiteralTestUtil::Near(
+        *Literal::CreateR2<float>(expected_result), *result, error_spec_));
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
 

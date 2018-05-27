@@ -287,8 +287,7 @@ struct FieldInfo {
 // It is more complex and provides better motivation for the API here.
 class CountCollector {
  public:
-  // Default constructor allows the collector to be a vector element.
-  CountCollector() = default;
+  CountCollector() = delete;
 
   // The count may be stored inside an Eigen Tensor to eliminate copying.
   explicit CountCollector(int32* count) : count_ptr_(count) {}
@@ -517,8 +516,7 @@ class CountCollector {
 // the user requests it.
 class DenseCollector {
  public:
-  // Default constructor allows the collector to be a vector element.
-  DenseCollector() = default;
+  DenseCollector() = delete;
 
   // A DenseCollector applies to one field of a serialized message.
   // Note that default_value.dtype is the type of the output tensor.

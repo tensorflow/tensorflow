@@ -106,6 +106,8 @@ bool IsConv2DBackpropInput(const NodeDef& node) {
   return node.op() == "Conv2DBackpropInput";
 }
 
+bool IsConv3D(const NodeDef& node) { return node.op() == "Conv3D"; }
+
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
   return node.op() == "DepthwiseConv2dNative";
 }
@@ -262,6 +264,8 @@ bool IsRandomShuffle(const NodeDef& node) {
   return node.op() == "RandomShuffle";
 }
 
+bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }
@@ -317,7 +321,11 @@ bool IsShuffle(const NodeDef& node) { return node.op() == "Shuffle"; }
 
 bool IsSigmoidGrad(const NodeDef& node) { return node.op() == "SigmoidGrad"; }
 
+bool IsSize(const NodeDef& node) { return node.op() == "Size"; }
+
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
+
+bool IsSnapshot(const NodeDef& node) { return node.op() == "Snapshot"; }
 
 bool IsSoftplusGrad(const NodeDef& node) { return node.op() == "SoftplusGrad"; }
 
@@ -402,6 +410,21 @@ bool IsPersistent(const NodeDef& node) {
   return IsConstant(node) || IsVariable(node);
 }
 
+bool MaybeHasRefInput(const NodeDef& node) {
+  const OpDef* op_def;
+  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (!status.ok()) {
+    return true;
+  }
+  // Nodes such as Assign or AssignAdd modify one of their inputs.
+  for (const auto& input : op_def->input_arg()) {
+    if (input.is_ref()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool IsFreeOfSideEffect(const NodeDef& node) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
@@ -472,28 +495,39 @@ bool IsInvolution(const NodeDef& node) {
   return involution_ops->count(node.op()) > 0;
 }
 
+bool IsValueAndOrderAndShapePreserving(const NodeDef& node) {
+  if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
+    return true;
+  }
+  static const std::unordered_set<string>*
+      value_and_order_and_shape_preserving_ops =
+          CHECK_NOTNULL((new const std::unordered_set<string>{
+              "CheckNumerics",
+              "DebugGradientIdentity",
+              "DeepCopy"
+              "Enter",
+              "Exit",
+              "PreventGradient",
+              "Print",
+              "Snapshot",
+              "StopGradient",
+          }));
+  return value_and_order_and_shape_preserving_ops->count(node.op()) > 0 ||
+         IsIdentity(node);
+}
+
 bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
   static const std::unordered_set<string>* value_and_order_preserving_ops =
       CHECK_NOTNULL((new const std::unordered_set<string>{
-          "CheckNumerics",
-          "DebugGradientIdentity",
-          "DeepCopy"
-          "Enter",
-          "Exit",
           "ExpandDims",
-          "Identity",
-          "IdentityN",
-          "PreventGradient",
-          "Print",
           "Reshape",
-          "Snapshot",
           "Squeeze",
-          "StopGradient",
       }));
-  return value_and_order_preserving_ops->count(node.op()) > 0;
+  return value_and_order_preserving_ops->count(node.op()) > 0 ||
+         IsValueAndOrderAndShapePreserving(node);
 }
 
 bool IsValuePreserving(const NodeDef& node) {
@@ -560,12 +594,16 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Tanh",
       }));
   return element_wise_ops->count(node.op()) > 0 ||
-         (!IsIdentityN(node) && IsValueAndOrderPreserving(node));
+         IsValueAndOrderAndShapePreserving(node);
 }
 
 bool HasOpDef(const NodeDef& node) {
   const OpDef* op_def = nullptr;
   return OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok();
+}
+
+bool IsIdempotent(const NodeDef& node) {
+  return IsValueAndOrderAndShapePreserving(node) && IsFreeOfSideEffect(node);
 }
 
 }  // namespace grappler

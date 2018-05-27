@@ -498,10 +498,6 @@ def set_cc_opt_flags(environ_cp):
   if not is_ppc64le() and not is_windows():
     write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
-  # TODO(mikecase): Remove these default defines once we are able to get
-  # TF Lite targets building without them.
-  write_to_bazelrc('build --copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
-  write_to_bazelrc('build --host_copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
 
 def set_tf_cuda_clang(environ_cp):
   """set TF_CUDA_CLANG action_env.
@@ -845,8 +841,8 @@ def reformat_version_sequence(version_str, sequence_count):
 def set_tf_cuda_version(environ_cp):
   """Set CUDA_TOOLKIT_PATH and TF_CUDA_VERSION."""
   ask_cuda_version = (
-      'Please specify the CUDA SDK version you want to use, '
-      'e.g. 7.0. [Leave empty to default to CUDA %s]: ') % _DEFAULT_CUDA_VERSION
+      'Please specify the CUDA SDK version you want to use. '
+      '[Leave empty to default to CUDA %s]: ') % _DEFAULT_CUDA_VERSION
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     # Configure the Cuda SDK version to use.

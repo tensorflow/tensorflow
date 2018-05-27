@@ -188,6 +188,32 @@ bool HardcodeMinMaxFromFirstInput(Model* model, Operator* op) {
   return true;
 }
 
+bool HardcodeMinMaxForSelect(Model* model, Operator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.minmax) {
+    return false;
+  }
+  const auto& input_array_1 = model->GetArray(op->inputs[1]);
+  if (!input_array_1.minmax) {
+    return false;
+  }
+  const auto& input_array_2 = model->GetArray(op->inputs[2]);
+  if (!input_array_2.minmax) {
+    return false;
+  }
+
+  const auto& input_minmax_1 = input_array_1.GetMinMax();
+  const auto& input_minmax_2 = input_array_2.GetMinMax();
+
+  CHECK_EQ(input_minmax_1.min, input_minmax_2.min);
+  CHECK_EQ(input_minmax_1.max, input_minmax_2.max);
+  CHECK(!output_array.minmax);
+  auto& output_minmax = output_array.GetOrCreateMinMax();
+  output_minmax.min = input_minmax_1.min;
+  output_minmax.max = input_minmax_1.max;
+  return true;
+}
+
 bool HardcodeMinMaxForOutput(Model* model, Operator* op, double min,
                              double max) {
   CHECK_EQ(op->outputs.size(), 1);
@@ -345,7 +371,9 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
-
+    case OperatorType::kSelect:
+      changed = HardcodeMinMaxForSelect(model, op);
+      break;
     case OperatorType::kLogistic:
       // We hardcode quantization_params to: zero_point=0, scale=1/256.
       // This choice of minmax is the one that is equivalent to that.

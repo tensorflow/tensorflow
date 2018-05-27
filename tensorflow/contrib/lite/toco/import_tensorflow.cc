@@ -189,6 +189,7 @@ Status ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
       output_array->GetMutableBuffer<ArrayDataType::kFloat>().data;
   output_float_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                            0.f);
+  CHECK_GE(output_float_data.size(), input_flat_size);
   if (input_tensor.float_val_size() == 1) {
     for (int i = 0; i < input_flat_size; i++) {
       output_float_data[i] = input_tensor.float_val(0);
@@ -202,9 +203,13 @@ Status ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_float_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor float_val have the right "
-                  "dimensions for this float tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(float),
+                     ") nor float_val (", input_tensor.float_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this float tensor"));
   }
   return Status::OK();
 }
@@ -221,6 +226,7 @@ Status ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
   if (input_tensor.int_val_size()) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
@@ -230,9 +236,13 @@ Status ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor int_val have the right dimensions "
-                  "for this uint8 tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(uint8_t),
+                     ") nor int_val (", input_tensor.int_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this uint8 tensor"));
   }
   return Status::OK();
 }
@@ -249,6 +259,7 @@ Status ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt32>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
   if (input_tensor.int_val_size()) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
@@ -258,9 +269,13 @@ Status ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor int_val have the right dimensions "
-                  "for this int32 tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(int32),
+                     ") nor int_val (", input_tensor.int_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this int32 tensor"));
   }
   return Status::OK();
 }
@@ -277,6 +292,7 @@ Status ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
   if (input_tensor.int64_val_size()) {
     for (int i = 0; i < input_tensor.int64_val_size(); i++) {
       output_int_data[i] = input_tensor.int64_val(i);
@@ -286,9 +302,13 @@ Status ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(false,
-                  "Neither input_content nor int64_val have the right "
-                  "dimensions for this int64 tensor");
+    return Status(
+        false,
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(int64),
+                     ") nor int64_val (", input_tensor.int64_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this int64 tensor"));
   }
   return Status::OK();
 }
@@ -306,6 +326,7 @@ Status ImportBoolArray(const TensorProto& input_tensor, Array* output_array) {
       output_array->GetMutableBuffer<ArrayDataType::kBool>().data;
   output_bool_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                           false);
+  CHECK_GE(output_bool_data.size(), input_flat_size);
   if (input_tensor.bool_val_size()) {
     for (int i = 0; i < input_tensor.bool_val_size(); i++) {
       output_bool_data[i] = input_tensor.bool_val(i);
@@ -322,9 +343,12 @@ Status ImportBoolArray(const TensorProto& input_tensor, Array* output_array) {
     // So far only encountered that in an array with 1 entry, let's
     // require that until we encounter a graph where that's not the case.
     if (output_bool_data.size() != 1) {
-      return Status(false,
-                    "Neither input_content nor bool_val have the right "
-                    "dimensions for this bool tensor");
+      return Status(
+          false, absl::StrCat("Neither input_content (",
+                              input_tensor.tensor_content().size(),
+                              ") nor bool_val (", input_tensor.bool_val_size(),
+                              ") have the right dimensions (", input_flat_size,
+                              ") for this bool tensor"));
     }
     output_bool_data[0] = false;
   }
@@ -340,13 +364,16 @@ Status ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
                             output_array->mutable_shape());
   if (!status.ok()) return status;
 
+  if (input_flat_size != input_tensor.string_val_size()) {
+    return Status(false,
+                  "Input_content string_val doesn't have the right dimensions "
+                  "for this string tensor");
+  }
+
   auto& output_string_data =
       output_array->GetMutableBuffer<ArrayDataType::kString>().data;
   output_string_data.resize(RequiredBufferSizeForShape(output_array->shape()));
-  if (input_flat_size != input_tensor.string_val_size()) {
-    LOG(FATAL) << "Input_content string_val doesn't have the right "
-                  "dimensions for this string tensor.";
-  }
+  CHECK_GE(output_string_data.size(), input_flat_size);
   for (int i = 0; i < input_flat_size; ++i) {
     output_string_data[i] = input_tensor.string_val(i);
   }
@@ -925,6 +952,19 @@ void ConvertPadOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertPadV2Operator(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "PadV2");
+  CheckInputsCount(node, tf_import_flags, 3);
+  auto* op = new PadV2Operator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertShapeOperator(const NodeDef& node,
                           const TensorFlowImportFlags& tf_import_flags,
                           Model* model) {
@@ -1227,6 +1267,19 @@ void ConvertLessEqualOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertSinOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Sin");
+  auto* op = new SinOperator;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertGreaterOperator(const NodeDef& node,
                             const TensorFlowImportFlags& tf_import_flags,
                             Model* model) {
@@ -1328,7 +1381,23 @@ void ConvertUnsupportedOperator(const NodeDef& node,
     for (int i = 0; i < output_types.type_size(); ++i) {
       op->output_data_types.push_back(ConvertDataType(output_types.type(i)));
     }
+  } else if (HasAttr(node, "Tout")) {
+    const auto& output_type = GetDataTypeAttr(node, "Tout");
+    op->output_data_types.push_back(ConvertDataType(output_type));
   }
+}
+
+void ConvertSelectOperator(const NodeDef& node,
+                           const TensorFlowImportFlags& tf_import_flags,
+                           Model* model) {
+  CheckInputsCount(node, tf_import_flags, 3);
+
+  auto* op = new SelectOperator;
+  for (const auto& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
 }
 
 void ConvertStridedSliceOperator(const NodeDef& node,
@@ -2169,6 +2238,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertMergeOperator(node, tf_import_flags, model);
   } else if (node.op() == "Pad") {
     ConvertPadOperator(node, tf_import_flags, model);
+  } else if (node.op() == "PadV2") {
+    ConvertPadV2Operator(node, tf_import_flags, model);
   } else if (node.op() == "StridedSlice") {
     ConvertStridedSliceOperator(node, tf_import_flags, model);
   } else if (node.op() == "Shape") {
@@ -2239,6 +2310,10 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertDynamicStitchOperator(node, tf_import_flags, model);
   } else if (node.op() == "RandomUniform") {
     ConvertRandomUniform(node, tf_import_flags, model);
+  } else if (node.op() == "Sin") {
+    ConvertSinOperator(node, tf_import_flags, model);
+  } else if (node.op() == "Select") {
+    ConvertSelectOperator(node, tf_import_flags, model);
   } else {
     ConvertUnsupportedOperator(node, tf_import_flags, model);
   }

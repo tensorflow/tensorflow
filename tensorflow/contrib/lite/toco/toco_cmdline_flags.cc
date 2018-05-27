@@ -148,6 +148,11 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "Some fast uint8 GEMM kernels require uint8 weights to avoid the "
            "value 0. This flag allows nudging them to 1 to allow proceeding, "
            "with moderate inaccuracy."),
+      Flag("dedupe_array_min_size_bytes",
+           parsed_flags.dedupe_array_min_size_bytes.bind(),
+           parsed_flags.dedupe_array_min_size_bytes.default_value(),
+           "Minimum size of constant arrays to deduplicate; arrays smaller "
+           "will not be deduplicated."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -239,6 +244,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(propagate_fake_quant_num_bits, FlagRequirement::kNone);
   READ_TOCO_FLAG(allow_nudging_weights_to_use_fast_gemm_kernel,
                  FlagRequirement::kNone);
+  READ_TOCO_FLAG(dedupe_array_min_size_bytes, FlagRequirement::kNone);
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {

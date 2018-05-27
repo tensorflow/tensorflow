@@ -41,7 +41,7 @@ class RoundTripTransferTest : public ClientLibraryTestBase {
         client_->TransferToServer(original).ConsumeValueOrDie();
     std::unique_ptr<Literal> result =
         client_->Transfer(*data).ConsumeValueOrDie();
-    LiteralTestUtil::ExpectEqual(original, *result);
+    EXPECT_TRUE(LiteralTestUtil::Equal(original, *result));
   }
 };
 

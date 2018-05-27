@@ -30,8 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class MetricsTest(test.TestCase):
@@ -146,8 +146,6 @@ class MetricsTest(test.TestCase):
     self.assertAllEqual(2.0, m2.result())
 
   def testNamesWithSpaces(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
     m1 = metrics.Mean("has space")
     m1(0)
     self.assertEqual(m1.name, "has space")
@@ -186,8 +184,8 @@ class MetricsTest(test.TestCase):
     self.assertEqual(self.evaluate(value), 2.5)
 
   def testTwoMeansGraph(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
+    # Verify two metrics with the same name in the same graph raises a
+    # ValueError.
     with context.graph_mode():
       m1 = metrics.Mean()
       m1(0)

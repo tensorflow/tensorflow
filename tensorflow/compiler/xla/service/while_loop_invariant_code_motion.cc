@@ -115,25 +115,6 @@ static bool NotWorthHoistingIndividually(const HloInstruction& instruction) {
   }
 }
 
-// Populates `gte_set` with the GetTupleElement instructions in `while_body`
-// that access elements in the parameter tuple that don't change across
-// iterations.  Assumes `while_body` is the body computation of the while loop
-// in question.
-static void GatherInvariantGTEs(HloComputation* while_body,
-                                FlatSet<HloInstruction*>* gte_set) {
-  const HloInstruction::InstructionVector root_operands =
-      while_body->root_instruction()->operands();
-  for (int i = 0; i < root_operands.size(); i++) {
-    HloInstruction* instr = root_operands[i];
-    if (instr->opcode() == HloOpcode::kGetTupleElement &&
-        instr->tuple_index() == i &&
-        instr->operand(0) == while_body->parameter_instruction(0) &&
-        ShapeUtil::IsArray(instr->shape())) {
-      InsertOrDie(gte_set, instr);
-    }
-  }
-}
-
 static StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
@@ -172,7 +153,13 @@ static StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
   // unhoisted_invariant_instructions -- they can be legally hoisted, but there
   // is no benefit to hoisting them unless something that uses it is also
   // hoisted.
-  GatherInvariantGTEs(while_body, &unhoisted_invariant_instructions);
+  for (auto* instr : WhileUtil::GetInvariantGTEsForWhileBody(*while_body)) {
+    if (ShapeUtil::IsArray(instr->shape())) {
+      // TODO(b/79147885): We should try to generalize this to tuples for
+      // uniformity's sake, if nothing else.
+      InsertOrDie(&unhoisted_invariant_instructions, instr);
+    }
+  }
 
   if (unhoisted_invariant_instructions.empty()) {
     // There are no obviously loop invariant elements in the state being
