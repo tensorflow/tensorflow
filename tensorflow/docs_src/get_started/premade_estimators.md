@@ -177,7 +177,7 @@ other features so you can concentrate on your model. For more details see
 
 An Estimator is any class derived from @{tf.estimator.Estimator}. TensorFlow
 provides a collection of
-[pre-made Estimators](https://developers.google.com/machine-learning/glossary/#pre-made_Estimator)
+[pre-made Estimators](https://developers.google.com/machine-learning/glossary/#premade_Estimator)
 (for example, `LinearRegressor`) to implement common ML algorithms. Beyond
 those, you may write your own
 [custom Estimators](https://developers.google.com/machine-learning/glossary/#custom_Estimator).

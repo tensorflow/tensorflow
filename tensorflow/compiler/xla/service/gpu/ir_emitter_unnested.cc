@@ -1927,6 +1927,52 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
   return IrEmitter::HandleSelect(select);
 }
 
+Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
+  if (hlo_module_config_.replica_count() != 1) {
+    // TODO(b/33011107): Support nontrivial cross replica sum on GPU.
+    return Unimplemented(
+        "CrossReplicaSum with >1 replica is not implemented on GPU.");
+  }
+
+  // CRS with one operand and one replica is simply the identity function.
+  // Buffer assignment expects a copy, so that's what we do.
+  //
+  // TODO(b/80100934): We would like to eliminate one-replica CRS nodes entirely
+  // in algebraic-simplifier, but currently on some platforms
+  // HloModuleConfig::num_replicas changes between when the module is compiled
+  // and when it's run.
+  if (crs->operand_count() == 1) {
+    CHECK(ShapeUtil::IsArray(crs->operand(0)->shape()))
+        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+    thunk_sequence_->push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/GetAllocationSlice(*crs->operand(0)),
+        /*destination_buffer=*/GetAllocationSlice(*crs),
+        /*mem_size=*/ShapeUtil::ByteSizeOf(crs->shape()), crs));
+    return Status::OK();
+  }
+
+  // One-replica CRS with multiple operands produces a tuple of the inputs.
+  // Again, buffer assignment expects us to copy each.
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  std::vector<BufferAllocation::Slice> tuple_element_buffers;
+  for (int64 i = 0; i < crs->operand_count(); ++i) {
+    tuple_element_buffers.push_back(ir_emitter_context_->buffer_assignment()
+                                        .GetUniqueSlice(crs, {i})
+                                        .ValueOrDie());
+    thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/GetAllocationSlice(*crs->operand(i)),
+        /*destination_buffer=*/tuple_element_buffers.back(),
+        /*mem_size=*/ShapeUtil::ByteSizeOf(crs->operand(i)->shape()), crs));
+  }
+
+  // Output a tuple of the buffers above.
+  thunks.push_back(MakeUnique<TupleThunk>(tuple_element_buffers,
+                                          GetAllocationSlice(*crs), crs));
+  thunk_sequence_->push_back(
+      MakeUnique<SequentialThunk>(std::move(thunks), crs));
+  return Status::OK();
+}
+
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* infeed) {
   thunk_sequence_->emplace_back(BuildInfeedThunk(infeed));
   return Status::OK();

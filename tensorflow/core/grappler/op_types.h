@@ -48,6 +48,7 @@ bool IsConstant(const NodeDef& node);
 bool IsConv2D(const NodeDef& node);
 bool IsConv2DBackpropFilter(const NodeDef& node);
 bool IsConv2DBackpropInput(const NodeDef& node);
+bool IsConv3D(const NodeDef& node);
 bool IsDepthwiseConv2dNative(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropFilter(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropInput(const NodeDef& node);

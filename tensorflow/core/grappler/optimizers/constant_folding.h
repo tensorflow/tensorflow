@@ -93,7 +93,8 @@ class ConstantFolding : public GraphOptimizer {
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output);
 
-  bool IsSimplifiableReduction(const NodeDef& node) const;
+  bool IsSimplifiableReduction(const NodeDef& node,
+                               const GraphProperties& properties) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
@@ -121,6 +122,10 @@ class ConstantFolding : public GraphOptimizer {
   // Pushes down constants on '+' and '*' operators if applicable. Returns true
   // the transformation applied successfully.
   bool ConstantPushDown(NodeDef* node);
+
+  // Aggregate constants present around a conv operator. Returns true if the
+  // transformation was applied successfully.
+  bool MulConvPushDown(NodeDef* node, const GraphProperties& properties);
 
   // Strength reduces floating point division by a constant Div(x, const) to
   // multiplication by the reciprocal Mul(x, Reciprocal(const)).

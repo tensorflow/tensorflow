@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/batch_util.h"
+#include "tensorflow/core/util/batch_util.h"
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
