@@ -244,6 +244,10 @@ ifeq ($(TARGET),ANDROID)
 # You need to have an Android version of the protobuf libraries compiled to link
 # in. The compile_android_protobuf.sh script may help.
 
+	ifndef ANDROID_API_VERSION
+		ANDROID_API_VERSION := 27
+	endif
+
 	ANDROID_HOST_OS_ARCH :=
 	ifeq ($(HOST_OS),LINUX)
 		ANDROID_HOST_OS_ARCH=linux
@@ -314,7 +318,7 @@ ifeq ($(TARGET),ANDROID)
 	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++
 	CC := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-gcc
 	CXXFLAGS +=\
---sysroot $(NDK_ROOT)/platforms/android-21/arch-$(SYSROOT_ARCH) \
+--sysroot $(NDK_ROOT)/platforms/android-$(ANDROID_API_VERSION)/arch-$(SYSROOT_ARCH) \
 -Wno-narrowing \
 -fomit-frame-pointer \
 $(MARCH_OPTION) \
@@ -392,7 +396,7 @@ $(MARCH_OPTION) \
 -march=armv8-a \
 -fPIE \
 -D__ANDROID_TYPES_FULL__ \
---sysroot $(NDK_ROOT)/platforms/android-21/arch-arm64
+--sysroot $(NDK_ROOT)/platforms/android-$(ANDROID_API_VERSION)/arch-arm64
 
 		CXXFLAGS +=\
 -DGOOGLE_CUDA=1 \

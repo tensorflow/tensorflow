@@ -30,6 +30,11 @@ arm64-v8a armeabi armeabi-v7a mips mips64 x86 x86_64 tegra)"
   exit 1
 }
 
+# Pass ANDROID_API_VERSION as an environment variable to support
+# a different version of API.
+android_api_version="${ANDROID_API_VERSION:-27}"
+echo "Using Android API Version: ${android_api_version}"
+
 if [[ -z "${NDK_ROOT}" ]]; then
     echo "NDK_ROOT should be set as an environment variable" 1>&2
     exit 1
@@ -122,7 +127,7 @@ fi
 
 if [[ -z "${BUILD_TARGET}" ]]; then
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-         TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" ANDROID_ARCH="${ARCH}" \
+         TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" ANDROID_ARCH="${ARCH}" ANDROID_API_VERSION="${android_api_version}" \
          CC_PREFIX="${CC_PREFIX}" \
          HOST_NSYNC_LIB="$HOST_NSYNC_LIB" TARGET_NSYNC_LIB="$TARGET_NSYNC_LIB" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
@@ -131,7 +136,7 @@ else
     # BUILD_TARGET explicitly uncommented to allow multiple targets to be
     # passed to make in a single build_all_android.sh invocation.
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-         TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" ANDROID_ARCH="${ARCH}" \
+         TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" ANDROID_ARCH="${ARCH}" ANDROID_API_VERSION="${android_api_version}" \
          CC_PREFIX="${CC_PREFIX}" \
          HOST_NSYNC_LIB="$HOST_NSYNC_LIB" TARGET_NSYNC_LIB="$TARGET_NSYNC_LIB" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
