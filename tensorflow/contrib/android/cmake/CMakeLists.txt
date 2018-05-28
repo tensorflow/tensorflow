@@ -21,18 +21,21 @@ include(ExternalProject)
 #    used for shared source files and pre-built libs
 get_filename_component(TENSORFLOW_ROOT_DIR ../../../.. ABSOLUTE)
 set(PREBUILT_DIR ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/gen)
+set(TARGET_NSYNC_LIB ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/downloads/nsync)
 
 add_library(lib_proto STATIC IMPORTED )
 set_target_properties(lib_proto PROPERTIES IMPORTED_LOCATION
-    ${PREBUILT_DIR}/protobuf/lib/libprotobuf.a)
+    ${PREBUILT_DIR}/protobuf_android/armeabi-v7a/lib/libprotobuf.a)
 
 add_library(lib_nsync STATIC IMPORTED )
 set_target_properties(lib_nsync PROPERTIES IMPORTED_LOCATION
-    ${TARGET_NSYNC_LIB}/lib/libnsync.a)
+    ${TARGET_NSYNC_LIB}/builds/armeabi-v7a.android.c++11/libnsync.a)
 
 add_library(lib_tf STATIC IMPORTED )
 set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
-        ${PREBUILT_DIR}/lib/libtensorflow-core.a)
+        ${PREBUILT_DIR}/lib/android_armeabi-v7a/libtensorflow-core.a)
+
+
 # Change to compile flags should be replicated into bazel build file
 # TODO: Consider options other than -O2 for binary size.
 #       e.g. -Os for gcc, and -Oz for clang.
@@ -74,7 +77,8 @@ target_link_libraries(tensorflow_inference
 
 include_directories(
     ${PREBUILT_DIR}/proto
-    ${PREBUILT_DIR}/protobuf/include
+    ${PREBUILT_DIR}/proto_text
+    ${PREBUILT_DIR}/protobuf_android/armeabi-v7a/include
     ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/downloads/eigen
     ${TENSORFLOW_ROOT_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..)
