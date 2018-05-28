@@ -30,12 +30,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras._impl.keras import backend as K
-from tensorflow.python.keras._impl.keras import models
-from tensorflow.python.keras._impl.keras import optimizers
-from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
-from tensorflow.python.keras._impl.keras.engine.network import Network
-from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import models
+from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.network import Network
+from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
@@ -68,7 +68,7 @@ def _convert_tensor(x):
   return x
 
 
-def _any_variable_initalized():
+def _any_variable_initialized():
   """Check if any variable has been initialized in the Keras model.
 
   Returns:
@@ -493,7 +493,7 @@ def model_to_estimator(keras_model=None,
       keras_model_fn, model_dir=model_dir, config=config)
 
   # Check if we need to call get_weights:
-  if _any_variable_initalized():
+  if _any_variable_initialized():
     keras_weights = keras_model.get_weights()
     # Warn if config passed to estimator tries to update GPUOptions. If a
     # session has already been created, the GPUOptions passed to the first

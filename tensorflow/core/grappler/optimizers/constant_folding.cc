@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -1329,21 +1331,55 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
 // Returns true iff this reduction can be reduced to an identity (i.e if the set
 // of dimensions to reduce along is empty). This happens often in the gradient
 // graphs.
-bool ConstantFolding::IsSimplifiableReduction(const NodeDef& node) const {
+bool ConstantFolding::IsSimplifiableReduction(
+    const NodeDef& node, const GraphProperties& properties) const {
   if (IsReduction(node)) {
     CHECK_LE(2, node.input_size());
     const NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
     if (IsReallyConstant(*reductions_indices)) {
       TensorVector output;
+      auto outputs_cleanup = gtl::MakeCleanup([&output] {
+        for (const auto& out : output) {
+          delete out.tensor;
+        }
+      });
       Status s = EvaluateNode(*reductions_indices, TensorVector(), &output);
       if (!s.ok()) {
         return false;
       }
       CHECK_EQ(1, output.size());
       int output_size = output[0]->NumElements();
-      delete output[0].tensor;
       if (output_size == 0) {
         return true;
+      }
+      if (node.attr().count("keep_dims") > 0 &&
+          node.attr().at("keep_dims").b()) {
+        const auto& props = properties.GetInputProperties(node.name());
+        if (!props.empty()) {
+          const TensorShapeProto& input_shape = props[0].shape();
+          if (!input_shape.unknown_rank()) {
+            bool simplifiable = true;
+            for (int i = 0; i < output[0]->NumElements(); ++i) {
+              int64 dim;
+              if (output[0]->dtype() == DT_INT32) {
+                dim = output[0]->flat<int32>()(i);
+              } else {
+                dim = output[0]->flat<int64>()(i);
+              }
+              if (dim < 0) {
+                dim += input_shape.dim_size();
+              }
+              if (dim < 0 || dim >= input_shape.dim_size() ||
+                  input_shape.dim(dim).size() != 1) {
+                simplifiable = false;
+                break;
+              }
+            }
+            if (simplifiable) {
+              return true;
+            }
+          }
+        }
       }
     }
   }
@@ -1516,10 +1552,7 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
     GraphDef* graph) {
   // If the graph contains no ops that mutate their inputs, we can
   // use Identity insted of Snapshot.
-
-  // TODO(rmlarsen): Enable in regular mode after May 15, 2018.
-  if (opt_level_ == RewriterConfig::AGGRESSIVE &&
-      !graph_contains_assign_or_inplace_op_) {
+  if (!graph_contains_assign_or_inplace_op_) {
     ReplaceOperationWithIdentity(input_to_forward, properties, node, graph);
     return;
   }
@@ -1569,9 +1602,13 @@ void ConstantFolding::ReplaceSubtractionFromZeroByNegation(NodeDef* node,
 
 Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const GraphProperties& properties,
-    const TensorShapeProto& shape, NodeDef* node, GraphDef* graph) {
+    const TensorShapeProto& shape, NodeDef* node, GraphDef* graph,
+    bool* success) {
   const DataType dtype = GetDataTypeFromNodeOrProps(*node, properties);
-  if (dtype == DT_INVALID) return Status::OK();
+  if (dtype == DT_INVALID) {
+    *success = false;
+    return Status::OK();
+  }
 
   AttrValue tensor_attr;
   TF_RETURN_IF_ERROR(
@@ -1590,7 +1627,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
     node->set_input(i, ctrl_dep);
   }
-  graph_modified_ = true;
+  *success = true;
   return Status::OK();
 }
 
@@ -1608,7 +1645,6 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
 Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
                                      GraphProperties* properties,
                                      bool use_shape_info) {
-  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
     ReplaceOperationWithIdentity(1, *properties, node, optimized_graph);
     return Status::OK();
@@ -1749,6 +1785,98 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
           replaceable &= (size.vec<int64>()(j) == -1 ||
                           size.vec<int64>()(j) == input.shape().dim(j).size());
         }
+      }
+      if (replaceable) {
+        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        return Status::OK();
+      }
+    }
+  }
+
+  if (use_shape_info && IsStridedSlice(*node) &&
+      properties->GetInputProperties(node->name()).size() == 4) {
+    if (node->attr().at("new_axis_mask").i() != 0 ||
+        node->attr().at("shrink_axis_mask").i() != 0) {
+      // Skip nodes with new/shrink axis mask, since they involve dimension
+      // changes.
+      return Status::OK();
+    }
+    const auto& input = properties->GetInputProperties(node->name())[0];
+    for (int j = 0; j < input.shape().dim_size(); ++j) {
+      // Skip if input shape is not fully determined.
+      if (input.shape().dim(j).size() < 0) {
+        return Status::OK();
+      }
+    }
+    const auto& b = properties->GetInputProperties(node->name())[1];
+    const auto& e = properties->GetInputProperties(node->name())[2];
+    const auto& s = properties->GetInputProperties(node->name())[3];
+    if (TensorShape::IsValid(b.shape()) && b.has_value() &&
+        TensorShape::IsValid(e.shape()) && e.has_value() &&
+        TensorShape::IsValid(s.shape()) && s.has_value()) {
+      Tensor begin(b.dtype(), b.shape());
+      if (!begin.FromProto(b.value())) {
+        return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                       b.value().DebugString());
+      }
+      Tensor end(e.dtype(), e.shape());
+      if (!end.FromProto(e.value())) {
+        return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                       e.value().DebugString());
+      }
+      Tensor strides(s.dtype(), s.shape());
+      if (!strides.FromProto(s.value())) {
+        return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                       s.value().DebugString());
+      }
+      int begin_mask = node->attr().at("begin_mask").i();
+      int end_mask = node->attr().at("end_mask").i();
+      std::set<int> expanded_ellipsis_indices;
+      int ellipsis_index = -1;
+      for (int j = 0; j < input.shape().dim_size(); ++j) {
+        // find the ellipsis_mask. If not found, insert one in the end if
+        // necessary.
+        if (node->attr().at("ellipsis_mask").i() & 1 << j ||
+            (ellipsis_index == -1 && j >= strides.NumElements())) {
+          ellipsis_index = j;
+        }
+        // insert the indices that are immediately after ellipsis_index if
+        // necessary.
+        if (ellipsis_index != -1 &&
+            input.shape().dim_size() >
+                strides.NumElements() + j - ellipsis_index) {
+          expanded_ellipsis_indices.insert(j);
+        }
+      }
+
+      // The node is replaceable iff unknown_rank == false &&
+      // ((begin_mask is set || begin == 0) && (end_mask is set || end == dim)
+      //  && strides == 1) for all dimensions.
+      bool replaceable = !input.shape().unknown_rank();
+      for (int j = 0; replaceable && j < input.shape().dim_size(); ++j) {
+        if (expanded_ellipsis_indices.find(j) !=
+            expanded_ellipsis_indices.end()) {
+          // ellipsis_mask is effective on current dimension.
+          continue;
+        }
+        // when we have ellipsis_mask in between, input.shape().dim_size() will
+        // be greater than strides.NumElements(), since we will insert
+        // as many as expanded_ellipsis_indices.size() axes during computation.
+        // We need to subtract this number from j.
+        int i = j;
+        if (ellipsis_index != -1 &&
+            j >= ellipsis_index + expanded_ellipsis_indices.size()) {
+          i = j - expanded_ellipsis_indices.size();
+        }
+        int b = begin.dtype() == DT_INT32 ? begin.vec<int>()(i)
+                                          : begin.vec<int64>()(i);
+        int e =
+            end.dtype() == DT_INT32 ? end.vec<int>()(i) : end.vec<int64>()(i);
+        int s = strides.dtype() == DT_INT32 ? strides.vec<int>()(i)
+                                            : strides.vec<int64>()(i);
+        replaceable &=
+            (begin_mask & 1 << i || b == 0) &&
+            (end_mask & 1 << i || e == input.shape().dim(j).size()) && s == 1;
       }
       if (replaceable) {
         ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
@@ -2005,7 +2133,7 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
       return Status::OK();
     }
   }
-  if (IsSimplifiableReduction(*node)) {
+  if (IsSimplifiableReduction(*node, *properties)) {
     // Replace the reduction node with an identity node, that can be further
     // optimized by the model pruner.
     DataType output_type;
@@ -2032,6 +2160,53 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
     return Status::OK();
   }
 
+  bool arithmetic_simplification_succeed = false;
+  Status simplify_arithmetic_status = SimplifyArithmeticOperations(
+      optimized_graph, properties, node, use_shape_info,
+      &arithmetic_simplification_succeed);
+  if (!simplify_arithmetic_status.ok()) {
+    return simplify_arithmetic_status;
+  } else if (arithmetic_simplification_succeed) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (ReduceDivToReciprocalMul(optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (ConstantPushDown(node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (MulConvPushDown(node, *properties)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (PartialConstPropThroughIdentityN(node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (PartialAssocOpConstFolding(optimized_graph, properties, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (PartialConcatConstFolding(optimized_graph, properties, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  return Status::OK();
+}
+
+Status ConstantFolding::SimplifyArithmeticOperations(
+    GraphDef* optimized_graph, GraphProperties* properties, NodeDef* node,
+    bool use_shape_info, bool* success) {
   const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
@@ -2062,12 +2237,14 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
         ((is_mul && x_is_one) || (is_add && x_is_zero))) {
       // 1 * y = y or 0 + y = y.
       ReplaceOperationWithSnapshot(1, *properties, node, optimized_graph);
+      *success = true;
       return Status::OK();
     }
 
     if (y_matches_output_shape && (is_sub && x_is_zero)) {
       // Replace 0 - y with Neg(y).
       ReplaceSubtractionFromZeroByNegation(node, optimized_graph);
+      *success = true;
       return Status::OK();
     }
 
@@ -2076,6 +2253,7 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
       DataType type = node->attr().at("T").type();
       if (DataTypeIsFloating(type) || DataTypeIsComplex(type)) {
         ReplaceDivisionOfOnesByReciprocal(node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
@@ -2089,40 +2267,68 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
                                    ((is_add || is_sub) && y_is_zero))) {
       // x * 1 = x or x / 1 = x or x +/- 0 = x
       ReplaceOperationWithSnapshot(0, *properties, node, optimized_graph);
+      *success = true;
       return Status::OK();
     }
 
     // x OR true = true OR y = true.
+    bool updated_graph = false;
     const PartialTensorShape shp(output_shape);
     if (shp.IsFullyDefined() && IsLogicalOr(*node) && (y_is_one || x_is_one)) {
-      TF_RETURN_IF_ERROR(ReplaceOperationWithConstant(
-          1, *properties, output_shape, node, optimized_graph));
+      bool replace_succeed = false;
+      Status replace_op_status =
+          ReplaceOperationWithConstant(1, *properties, output_shape, node,
+                                       optimized_graph, &replace_succeed);
+      if (!replace_op_status.ok()) {
+        return replace_op_status;
+      } else if (replace_succeed) {
+        updated_graph = true;
+      }
     }
 
     // Simplify multiplication and matmul by zeros.
     // Also optimize zeros divided by a tensor, but only if we are in
     // aggressive mode, since we might get rid of divisions by zero.
+    const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
     bool optimize_zeros_divided_by_y = is_any_div && x_is_zero && is_aggressive;
     if ((x_is_zero || y_is_zero) &&
         (is_mul || is_matmul || optimize_zeros_divided_by_y)) {
       if (shp.IsFullyDefined()) {
-        TF_RETURN_IF_ERROR(ReplaceOperationWithConstant(
-            0, *properties, output_shape, node, optimized_graph));
-        return Status::OK();
+        bool replace_succeed = false;
+        Status replace_op_status =
+            ReplaceOperationWithConstant(0, *properties, output_shape, node,
+                                         optimized_graph, &replace_succeed);
+        if (!replace_op_status.ok()) {
+          return replace_op_status;
+        } else if (replace_succeed) {
+          *success = true;
+          return Status::OK();
+        }
       }
       // Even if an input shape is only partially known, we may known that it
       // matches the output shape and thus forward the corresponding zero
       // input.
       if ((is_mul || is_any_div) && x_is_zero && x_matches_output_shape) {
         ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       } else if (is_mul && y_is_zero && y_matches_output_shape) {
         ReplaceOperationWithIdentity(1, *properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
+    if (updated_graph) {
+      *success = true;
+      return Status::OK();
+    }
   }
+  *success = false;
+  return Status::OK();
+}
 
+bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
+                                               NodeDef* node) {
   // Strength reduce floating point division by a constant Div(x, const) to
   // multiplication by the reciprocal Mul(x, Reciprocal(const)). This in turn
   // will be constant folded to Mul(x, 1.0/const).
@@ -2131,15 +2337,15 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
     const NodeDef* denom = node_map_->GetNode(const_input);
     CHECK(denom != nullptr);
     if (!IsReallyConstant(*denom)) {
-      return Status::OK();
+      return false;
     }
     if (node->attr().count("T") == 0) {
-      return Status::OK();
+      return false;
     }
     DataType type = node->attr().at("T").type();
     if (IsDiv(*node) &&
         !(DataTypeIsFloating(type) || DataTypeIsComplex(type))) {
-      return Status::OK();
+      return false;
     }
     // Insert new reciprocal op and change node from Div to Mul.
     NodeDef* reciprocal_node = optimized_graph->add_node();
@@ -2153,31 +2359,10 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
     node->set_input(1, reciprocal_node->name());
     node_map_->AddNode(reciprocal_node->name(), reciprocal_node);
     node_map_->UpdateOutput(node->name(), const_input, reciprocal_node->name());
-    graph_modified_ = true;
-    return Status::OK();
+    return true;
   }
 
-  if (ConstantPushDown(node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (PartialConstPropThroughIdentityN(node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (PartialAssocOpConstFolding(optimized_graph, properties, node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (PartialConcatConstFolding(optimized_graph, properties, node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  return Status::OK();
+  return false;
 }
 
 bool ConstantFolding::ConstantPushDown(NodeDef* node) {
@@ -2262,6 +2447,127 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
                            node->input(parent_const_input));
     std::swap(*node->mutable_input(parent_const_input),
               *op_child_node->mutable_input(non_const_leaf_input));
+    return true;
+  }
+  return false;
+}
+
+bool ConstantFolding::MulConvPushDown(NodeDef* node,
+                                      const GraphProperties& properties) {
+  // Push down multiplication on ConvND.
+  //                       *                  ConvND
+  //                     /   \                /    \
+  //                 ConvND  C2    -- >      X      *
+  //                  / \                          / \
+  //                 X  C1                       C1  C2
+  //
+  // where C1 and C2 are constants and X is non-constant.
+  if (IsMul(*node) && NumNonControlInputs(*node) == 2) {
+    NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
+    NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
+    // One child must be constant, and the second must be Conv op.
+    const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
+    const bool right_child_is_constant = IsReallyConstant(*mul_right_child);
+    if (!left_child_is_constant && !right_child_is_constant) {
+      return false;
+    }
+    NodeDef* conv_node =
+        left_child_is_constant ? mul_right_child : mul_left_child;
+    if (!IsConv2D(*conv_node) && !IsConv3D(*conv_node)) {
+      return false;
+    }
+    if (node->device() != mul_left_child->device() ||
+        node->device() != mul_right_child->device()) {
+      return false;
+    }
+
+    // Make sure that it is safe to change the value of the convolution
+    // output.
+    if (conv_node->input_size() < 2 ||
+        NumNonControlOutputs(*conv_node, *node_map_) > 1 ||
+        nodes_to_preserve_.find(conv_node->name()) !=
+            nodes_to_preserve_.end()) {
+      return false;
+    }
+
+    // Identify the nodes to swap.
+    NodeDef* conv_left_child = node_map_->GetNode(conv_node->input(0));
+    NodeDef* conv_right_child = node_map_->GetNode(conv_node->input(1));
+    const bool conv_left_is_constant = IsReallyConstant(*conv_left_child);
+    const bool conv_right_is_constant = IsReallyConstant(*conv_right_child);
+    if (!conv_left_is_constant && !conv_right_is_constant) {
+      // At least one of the convolution inputs should be constant.
+      return false;
+    }
+    if (conv_left_is_constant && conv_right_is_constant) {
+      // Leverage regular constant folding to handle this.
+      return false;
+    }
+    const auto& mul_props = properties.GetOutputProperties(node->name());
+    const auto& conv_props = properties.GetOutputProperties(conv_node->name());
+    if (mul_props.empty() || conv_props.empty()) {
+      return false;
+    }
+    const auto& mul_shape = mul_props[0].shape();
+    const auto& conv_shape = conv_props[0].shape();
+    if (!ShapesSymbolicallyEqual(mul_shape, conv_shape)) {
+      return false;
+    }
+
+    const auto& input_props = properties.GetInputProperties(conv_node->name());
+    if (input_props.size() < 2) {
+      return false;
+    }
+    const auto& filter_shape = input_props[1].shape();
+
+    NodeDef* const_node =
+        left_child_is_constant ? mul_left_child : mul_right_child;
+    const auto& const_props =
+        properties.GetOutputProperties(const_node->name());
+    if (const_props.empty()) {
+      return false;
+    }
+    const auto& const_shape = const_props[0].shape();
+
+    TensorShapeProto new_filter_shape;
+    if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
+      return false;
+    }
+    if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
+      return false;
+    }
+
+    string mul_new_name =
+        AddPrefixToNodeName("merged_input", conv_node->name());
+    if (node_map_->NodeExists(mul_new_name)) {
+      return false;
+    }
+    // Make sure we don't introduce loops in the graph by removing control
+    // dependencies from the conv2d node to c2.
+    NodeDef* conv_const_node =
+        conv_left_is_constant ? conv_left_child : conv_right_child;
+    if (MaybeRemoveControlInput(conv_node->name(), const_node, graph_,
+                                node_map_.get())) {
+      // Add a control dep from c1 to c2 to ensure c2 is in the right frame
+      *const_node->add_input() = AsControlDependency(*conv_const_node);
+    }
+
+    conv_node->set_name(node->name());
+    node->set_name(mul_new_name);
+    if (conv_left_is_constant) {
+      node_map_->UpdateInput(conv_node->name(), node->input(0), mul_new_name);
+      conv_node->set_input(0, mul_new_name);
+    } else {
+      node_map_->UpdateInput(conv_node->name(), node->input(1), mul_new_name);
+      conv_node->set_input(1, mul_new_name);
+    }
+    if (left_child_is_constant) {
+      node->set_input(1, conv_const_node->name());
+    } else {
+      node->set_input(0, conv_const_node->name());
+    }
+    node_map_->AddNode(mul_new_name, node);
+
     return true;
   }
   return false;
@@ -2571,13 +2877,10 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   graph_contains_assign_or_inplace_op_ = false;
-  // TODO(rmlarsen): Enable in regular mode after May 15, 2018.
-  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-    for (const NodeDef& node : item.graph.node()) {
-      if (ModifiesInputsInPlace(node) || MaybeHasRefInput(node)) {
-        graph_contains_assign_or_inplace_op_ = true;
-        break;
-      }
+  for (const NodeDef& node : item.graph.node()) {
+    if (ModifiesInputsInPlace(node) || MaybeHasRefInput(node)) {
+      graph_contains_assign_or_inplace_op_ = true;
+      break;
     }
   }
 

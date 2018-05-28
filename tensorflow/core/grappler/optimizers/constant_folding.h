@@ -88,11 +88,13 @@ class ConstantFolding : public GraphOptimizer {
   Status ReplaceOperationWithConstant(double value,
                                       const GraphProperties& properties,
                                       const TensorShapeProto& shape,
-                                      NodeDef* node, GraphDef* graph);
+                                      NodeDef* node, GraphDef* graph,
+                                      bool* success);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output);
 
-  bool IsSimplifiableReduction(const NodeDef& node) const;
+  bool IsSimplifiableReduction(const NodeDef& node,
+                               const GraphProperties& properties) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
@@ -120,6 +122,22 @@ class ConstantFolding : public GraphOptimizer {
   // Pushes down constants on '+' and '*' operators if applicable. Returns true
   // the transformation applied successfully.
   bool ConstantPushDown(NodeDef* node);
+
+  // Aggregate constants present around a conv operator. Returns true if the
+  // transformation was applied successfully.
+  bool MulConvPushDown(NodeDef* node, const GraphProperties& properties);
+
+  // Strength reduces floating point division by a constant Div(x, const) to
+  // multiplication by the reciprocal Mul(x, Reciprocal(const)).
+  bool ReduceDivToReciprocalMul(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies arithmetic operations with ones or zeros. Returns the status,
+  // and updates the success input argument that denotes if any simplification
+  // was applied.
+  Status SimplifyArithmeticOperations(GraphDef* optimized_graph,
+                                      GraphProperties* properties,
+                                      NodeDef* node, bool use_shape_info,
+                                      bool* success);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;

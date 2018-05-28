@@ -939,8 +939,8 @@ std::unique_ptr<Literal> LiteralBase::Transpose(
   for (auto index : LayoutUtil::MinorToMajor(shape())) {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
-  std::unique_ptr<Literal> new_literal = CreateFromShape(permuted_shape);
-  DCHECK_GE(ShapeUtil::ByteSizeOf(new_literal->shape()),
+  auto new_literal = MakeUnique<Literal>(permuted_shape);
+  DCHECK_EQ(ShapeUtil::ByteSizeOf(new_literal->shape()),
             ShapeUtil::ByteSizeOf(shape()));
   std::memcpy(new_literal->untyped_data(), untyped_data(), size_bytes());
   return new_literal;

@@ -356,12 +356,8 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> input_dims(6, 8);
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
-  std::unique_ptr<Literal> arg_literal = Literal::CreateFromShape(shape);
-  auto generator = [&](tensorflow::gtl::ArraySlice<int64> indexes) -> float {
-    return 1.0f;
-  };
-  TF_EXPECT_OK(arg_literal->Populate<float>(generator));
-
+  auto arg_literal = MakeUnique<Literal>(shape);
+  arg_literal->PopulateWithValue(1.0f);
   const auto input = CreateConstantFromLiteral(*arg_literal, &builder_);
 
   Padding padding = Padding::kValid;
@@ -371,13 +367,8 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
       ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
-  std::unique_ptr<Literal> expected = Literal::CreateFromShape(result_shape);
-  auto out_generator =
-      [&](tensorflow::gtl::ArraySlice<int64> indexes) -> float {
-    return 27.0f;
-  };
-  TF_EXPECT_OK(expected->Populate<float>(out_generator));
-
+  auto expected = MakeUnique<Literal>(result_shape);
+  expected->PopulateWithValue(27.0f);
   ComputeAndCompareLiteral(&builder_, *expected, {}, DefaultErrorSpec());
 }
 

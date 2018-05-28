@@ -221,6 +221,21 @@ class BackpropTest(test.TestCase):
     self.assertTrue(ordered_variables[0] is v0)
     self.assertTrue(ordered_variables[1] is v1)
 
+  def testTapeStopRecording(self):
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      with t.stop_recording():
+        y = x * x
+    self.assertEqual(t.gradient(y, x), None)
+
+  def testTapeReset(self):
+    with backprop.GradientTape() as t:
+      v = resource_variable_ops.ResourceVariable(1.0)
+      loss = v * v
+      t.reset()
+      loss += v * v
+    self.assertAllEqual(t.gradient(loss, v), 2.0)
+
   @test_util.assert_no_new_tensors
   def testGradientNone(self):
 
@@ -598,6 +613,18 @@ class BackpropTest(test.TestCase):
       y = v * v
     grad = g.gradient(y, [v])[0]
     self.assertAllEqual(self.evaluate(grad), 2.0)
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes()
+  def testNestedGradients(self):
+    x = constant_op.constant(3.0)
+    with backprop.GradientTape() as g:
+      g.watch(x)
+      y = x * x
+      z = y * y
+    dz_dx, dz_dy = g.gradient(z, [x, y])
+    self.assertEqual(self.evaluate(dz_dx), 108.0)
+    self.assertEqual(self.evaluate(dz_dy), 18.0)
 
   @test_util.assert_no_new_tensors
   def testEmptyParamsForValueAndGradFunction(self):

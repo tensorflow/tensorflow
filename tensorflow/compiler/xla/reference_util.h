@@ -330,13 +330,14 @@ class ReferenceUtil {
     return result;
   }
 
-  // Slices with modulo-wrapping.
+  // Slices with index clamping
   template <typename T>
-  static std::vector<T> ModSlice1D(const tensorflow::gtl::ArraySlice<T>& input,
-                                   int64 start, int64 size) {
+  static std::vector<T> ClampSlice1D(
+      const tensorflow::gtl::ArraySlice<T>& input, int64 start, int64 size) {
+    start = std::min<int64>(std::max<int64>(0, start), input.size() - size);
     std::vector<T> result;
     for (int64 i = 0; i < size; ++i) {
-      result.push_back(input[(start + i) % input.size()]);
+      result.push_back(input[(start + i)]);
     }
     return result;
   }

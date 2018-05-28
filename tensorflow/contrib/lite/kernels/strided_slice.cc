@@ -235,8 +235,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Type is currently not supported "
-                           "by StridedSlice.");
+                           "Type %d is currently not supported "
+                           "by StridedSlice.",
+                           op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_STRIDED_SLICE

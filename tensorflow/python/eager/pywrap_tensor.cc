@@ -299,7 +299,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
         GetContext(context), handle.get(), handle_dtype,
         static_cast<TF_DataType>(desired_dtype), self->status));
     if (TF_GetCode(self->status) != TF_OK) {
-      PyErr_SetString(PyExc_ValueError,
+      PyErr_SetString(PyExc_TypeError,
                       tensorflow::strings::StrCat(
                           "Error while casting from DataType ", handle_dtype,
                           " to ", desired_dtype, ". ", TF_Message(self->status))

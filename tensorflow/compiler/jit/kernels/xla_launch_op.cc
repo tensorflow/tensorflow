@@ -256,10 +256,9 @@ XlaLocalLaunchOp::~XlaLocalLaunchOp() {
   VLOG(1) << "XlaLocalLaunchOp destroyed";
 }
 
-REGISTER_KERNEL_BUILDER(Name("_XlaLaunch").Device(DEVICE_CPU),
-                        XlaLocalLaunchOp);
+REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
 
-REGISTER_KERNEL_BUILDER(Name("_XlaLaunch")
+REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
                             .Device(DEVICE_GPU)
                             .HostMemory("constants")
                             .HostMemory("resources"),

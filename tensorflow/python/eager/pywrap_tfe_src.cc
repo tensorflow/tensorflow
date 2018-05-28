@@ -174,6 +174,8 @@ bool IsInteger(PyObject* py_value) {
 #endif
 }
 
+// This function considers a Dimension._value of None to be valid, and sets the
+// value to be -1 in that case.
 bool ParseDimensionValue(const string& key, PyObject* py_value,
                          TF_Status* status, int64_t* value) {
   if (IsInteger(py_value)) {
@@ -189,6 +191,11 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
                                     ", got ", py_value->ob_type->tp_name)
             .c_str());
     return false;
+  }
+
+  if (dimension_value.get() == Py_None) {
+    *value = -1;
+    return true;
   }
 
   return ParseInt64Value(key, dimension_value.get(), status, value);
@@ -1009,6 +1016,14 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent) {
   return reinterpret_cast<PyObject*>(tape);
 }
 
+void TFE_Py_TapeSetAdd(PyObject* tape) {
+  Py_INCREF(tape);
+  if (!GetTapeSet()->insert(reinterpret_cast<TFE_Py_Tape*>(tape)).second) {
+    // Already exists in the tape set.
+    Py_DECREF(tape);
+  }
+}
+
 PyObject* TFE_Py_TapeSetIsEmpty() {
   if (*ThreadTapeIsStopped() || GetTapeSet()->empty()) {
     Py_RETURN_TRUE;
@@ -1332,6 +1347,8 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     Py_DECREF(list);
     return result;
   }
+
+  void MarkAsResult(PyObject* gradient) const final { Py_INCREF(gradient); }
 
   PyObject* Zeros(tensorflow::TensorShape shape,
                   tensorflow::DataType dtype) const final {

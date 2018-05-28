@@ -1066,7 +1066,7 @@ TEST_F(LiteralUtilTest, Populate) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = Literal::CreateFromShape(shape);
+    auto literal = MakeUnique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
@@ -1108,7 +1108,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = Literal::CreateFromShape(shape);
+    auto literal = MakeUnique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.

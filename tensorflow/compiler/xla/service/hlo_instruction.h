@@ -648,6 +648,10 @@ class HloInstruction {
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
 
+  // Returns true if this instruction has a side effect, irrespective of whether
+  // any called computations may contain an instruction with side effects.
+  bool HasSideEffectNoRecurse() const;
+
   // Returns true if this instruction has a side effect. An instruction has a
   // side effect if it uses certain opcodes or calls a computation with a side
   // effect.
@@ -742,10 +746,8 @@ class HloInstruction {
     if (opcode() != other.opcode()) {
       return false;
     }
-    using EqShapeFuncType = bool (*)(const Shape&, const Shape&);
-    EqShapeFuncType eq_shapes =
-        layout_sensitive ? ShapeUtil::Equal : ShapeUtil::Compatible;
-    if (!eq_shapes(shape(), other.shape())) {
+    if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
+                           : ShapeUtil::Compatible(shape(), other.shape()))) {
       return false;
     }
     if (operands().size() != other.operands().size()) {
@@ -760,7 +762,7 @@ class HloInstruction {
       }
     }
 
-    return IdenticalSlowPath(other, eq_computations, eq_shapes);
+    return IdenticalSlowPath(other, eq_computations);
   }
 
   // Returns whether the instruction has a constant operand.
@@ -1106,6 +1108,14 @@ class HloInstruction {
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
+  // Checks whether the instruction has compatible sharding with the other
+  // instruction.
+  bool has_compatible_sharding(const HloInstruction* other) const {
+    if (!has_sharding()) {
+      return !other->has_sharding();
+    }
+    return other->has_sharding() ? sharding() == other->sharding() : false;
+  }
 
   // When creating a new instruction which either replaces, or shifts up (kCopy
   // insertion case), another instruction, we need to make sure the certain
@@ -1493,14 +1503,10 @@ class HloInstruction {
   class FusionReusesParamElements;
 
   // See comments on Identical().
-  // eq_shapes() is used to check shapes for equality, and would normally be
-  // expected to be ShapeUtil::Equals or ShapeUtil::Compatible, depending on
-  // whether we want a layout-sensitive check or not.
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations,
-      const std::function<bool(const Shape&, const Shape&)>& eq_shapes) const;
+          eq_computations) const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(

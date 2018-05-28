@@ -1164,7 +1164,13 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
       {int8_ptr_type, int8_ptr_type, int8_ptr_type, int32_type, int32_type,
        int64_type, int64_type, int64_type, int64_type},
       /*isVarArg=*/false);
-  const char* fn_name = runtime::kEigenFftSymbolName;
+
+  bool multi_threaded_eigen =
+      hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
+  const char* fn_name = multi_threaded_eigen
+                            ? runtime::kEigenFftSymbolName
+                            : runtime::kEigenSingleThreadedFftSymbolName;
+
   llvm::Function* fft_func = llvm::cast<llvm::Function>(
       module_->getOrInsertFunction(fn_name, fft_type));
   fft_func->setCallingConv(llvm::CallingConv::C);
@@ -1186,16 +1192,45 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
 }
 
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
-  if (hlo_module_config_.replica_count() == 1) {
-    // When there is a single replica, a cross replica sum is the identity
-    // function, and the buffer assignment expects a copy (we could eliminate
-    // these at the HLO level as an optimization).
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
+  if (hlo_module_config_.replica_count() != 1) {
+    // TODO(b/33011107): Support nontrivial cross replica sum on CPU.
+    return Unimplemented(
+        "CrossReplicaSum with >1 replica is not implemented on CPU.");
+  }
+
+  // When there is a single replica, a cross replica sum is the identity
+  // function, and the buffer assignment expects a copy.
+  //
+  // TODO(b/80100934): We would like to eliminate one-replica CRS nodes entirely
+  // in algebraic-simplifier, but currently on some platforms
+  // HloModuleConfig::num_replicas changes between when the module is compiled
+  // and when it's run.
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
+
+  // CRS with one operand and one replica is simply the identity function.
+  if (crs->operand_count() == 1) {
     return EmitMemcpy(*crs->operand(0), *crs);
   }
 
-  // TODO(b/33011107): Support cross replica sum on CPU.
-  return Unimplemented("CrossReplicaSum is not implemented on CPU.");
+  // CRS with multiple operands and one replica produces a (one-deep) tuple.
+  std::vector<llvm::Value*> operand_ptrs;
+  for (int64 i = 0; i < crs->operand_count(); ++i) {
+    llvm::Value* in_ptr = GetEmittedValueFor(crs->operand(i));
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+                        assignment_.GetUniqueSlice(crs, {i}));
+
+    const Shape& operand_shape = crs->operand(i)->shape();
+    CHECK(ShapeUtil::IsArray(operand_shape))
+        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+    operand_ptrs.push_back(EmitTempBufferPointer(out_slice, operand_shape));
+
+    // TODO(b/63762267): Be more aggressive about specifying alignment.
+    ir_builder_.CreateMemCpy(operand_ptrs.back(), /*DstAlign=*/1, in_ptr,
+                             /*SrcAlign=*/1,
+                             ShapeUtil::ByteSizeOf(operand_shape));
+  }
+  llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &ir_builder_, module_);
+  return Status::OK();
 }
 
 // Fills up the free variables in 'index_with_free_var' with values from

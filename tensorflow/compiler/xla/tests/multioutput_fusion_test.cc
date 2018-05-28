@@ -215,27 +215,28 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
     HloModule m
 
     fused_computation {
-      p = f32[] parameter(0)
-      multiply = f32[] multiply(p, p)
-      less-than = pred[] less-than(p, multiply)
-      ROOT tuple = (pred[], f32[]) tuple(less-than, multiply)
+      p = f32[4] parameter(0)
+      multiply = f32[4] multiply(p, p)
+      less-than = pred[4] less-than(p, multiply)
+      ROOT tuple = (pred[4], f32[4]) tuple(less-than, multiply)
     }
 
     ENTRY PredFloatMOF {
-      p0 = f32[] parameter(0)
-      fusion = (pred[], f32[]) fusion(p0), kind=kLoop, calls=fused_computation
-      gte0 = pred[] get-tuple-element(fusion), index=0
-      gte1 = f32[] get-tuple-element(fusion), index=1
-      const = f32[] constant(0)
-      ROOT select = f32[] select(gte0, gte1, const)
+      p0 = f32[4] parameter(0)
+      fusion = (pred[4], f32[4]) fusion(p0), kind=kLoop, calls=fused_computation
+      gte0 = pred[4] get-tuple-element(fusion), index=0
+      gte1 = f32[4] get-tuple-element(fusion), index=1
+      const = f32[4] constant({0, 0, 0, 0})
+      ROOT select = f32[4] select(gte0, gte1, const)
     })";
   auto module =
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
-  auto param = Literal::CreateR0<float>(2.0);
+  auto param = Literal::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           Execute(std::move(module), {param.get()}));
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *Literal::CreateR0<float>(4.0)));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::CreateR1<float>({0.0, 4.0, 9.0, 1.0})));
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {

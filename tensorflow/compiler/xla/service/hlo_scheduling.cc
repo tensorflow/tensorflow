@@ -426,16 +426,17 @@ StatusOr<int64> MinimumMemoryForComputation(
   return result.heap_size;
 }
 
-StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerImpl(
+StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function, bool reverse_heuristics) {
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
   // This ordering is based on DFS post-order, with a heuristic to decide which
   // operand to visit first.  The heuristic is based on 'extra_users', which is
   // simply users-1 for each instruction.  By subtracting 1, we're saying that
   // instructions with no users or a single user don't count; instructions with
   // lots of fan-out will be visited earlier.
-  int64 cumulative_total_size = 0;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
@@ -448,14 +449,12 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerImpl(
     int64 logical_buffer_size = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
     total_sizes[hlo] = logical_buffer_size;
-    cumulative_total_size += logical_buffer_size;
     tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
       extra_users[hlo] += extra_users[operand];
       total_sizes[hlo] += total_sizes[operand];
     }
-    total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
   CHECK_EQ(total_sizes.size(), computation.instruction_count());
@@ -469,16 +468,15 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerImpl(
     return Status::OK();
   });
   TF_RETURN_IF_ERROR(computation.AcceptWithOperandOrder(
-      &visitor, [&extra_users, &total_sizes, reverse_heuristics](
-                    const HloInstruction* a, const HloInstruction* b) {
-        auto lhs = std::tuple<int64, int64, string>(extra_users[a],
-                                                    total_sizes[a], b->name());
-        auto rhs = std::tuple<int64, int64, string>(extra_users[b],
-                                                    total_sizes[b], a->name());
-
-        // Reverse heuristics. This helps some cases as a different starting
-        // point of gradient descent, see b/78906799 for more context.
-        return reverse_heuristics ? rhs > lhs : lhs > rhs;
+      &visitor, [&extra_users, &total_sizes](const HloInstruction* a,
+                                             const HloInstruction* b) {
+        if (extra_users[a] != extra_users[b]) {
+          return extra_users[a] > extra_users[b];
+        }
+        if (total_sizes[a] != total_sizes[b]) {
+          return total_sizes[a] > total_sizes[b];
+        }
+        return a->name() < b->name();
       }));
   CHECK_EQ(sequence.size(), computation.instruction_count());
   return sequence;
@@ -505,39 +503,20 @@ StatusOr<std::vector<const HloInstruction*>> PostOrderMemoryScheduler(
                                             post_order.end()};
 }
 
-StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
-    const HloComputation& computation,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
-        memory_by_computation) {
-  return DFSMemorySchedulerImpl(computation, points_to_analysis, size_function,
-                                /*reverse_heuristics=*/false);
-}
-
-StatusOr<std::vector<const HloInstruction*>> DFSMemorySchedulerReverse(
-    const HloComputation& computation,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
-        memory_by_computation) {
-  return DFSMemorySchedulerImpl(computation, points_to_analysis, size_function,
-                                /*reverse_heuristics=*/true);
-}
-
 StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
         memory_by_computation) {
-  // We try both a list-scheduler based ordering and a DFS based ordering, and
-  // choose whichever returns a lower min-memory, not accounting for
-  // fragmentation.
-  //
-  // Note that this is just a heuristic. One obvious inaccuracy is that the
-  // memory required for sub-computations might be different when considered
-  // within the caller's context. But it's good enough for now.
+  // We try a few schedulers and choose whichever returns a lower min-memory,
+  // not accounting for fragmentation.
+  // - List is a scheduler that uses greedy heuristics.
+  // - DFS visits HLOs in postorder, with a heuristic to decide the order of
+  //   children.
+  // - Postorder does not use any heuristics.
+  // List wins for most of our benchmarks; postorder-based schedulers win for
+  // some RNNs.
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
       ListMemoryScheduler(computation, points_to_analysis, size_function,
@@ -568,18 +547,7 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<const HloInstruction*> reverse_dfs,
-      DFSMemorySchedulerReverse(computation, points_to_analysis, size_function,
-                                memory_by_computation));
-  TF_ASSIGN_OR_RETURN(
-      const int64 reverse_dfs_memory,
-      MinimumMemoryForComputation(computation, reverse_dfs, points_to_analysis,
-                                  size_function));
-  VLOG(2) << "Min-memory reverse_dfs sequence: "
-          << HumanReadableNumBytes(reverse_dfs_memory);
-  auto min_memory = std::min(
-      {dfs_memory, post_order_memory, reverse_dfs_memory, list_memory});
+  auto min_memory = std::min({dfs_memory, post_order_memory, list_memory});
 
   if (min_memory == list_memory) {
     VLOG(2) << "Chose min-memory list sequence: "
@@ -589,10 +557,6 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     VLOG(2) << "Chose min-memory dfs sequence: "
             << HumanReadableNumBytes(dfs_memory);
     return dfs_sequence;
-  } else if (min_memory == reverse_dfs_memory) {
-    VLOG(2) << "Chose min-memory reverse_dfs memory: "
-            << HumanReadableNumBytes(reverse_dfs_memory);
-    return reverse_dfs;
   } else {
     VLOG(2) << "Chose min-memory post_order sequence: "
             << HumanReadableNumBytes(post_order_memory);

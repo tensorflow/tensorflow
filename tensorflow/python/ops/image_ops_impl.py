@@ -1727,7 +1727,7 @@ def sample_distorted_bounding_box(image_size,
       width / height within this range.
     area_range: An optional list of `floats`. Defaults to `[0.05, 1]`.
       The cropped area of the image must contain a fraction of the
-      supplied image within in this range.
+      supplied image within this range.
     max_attempts: An optional `int`. Defaults to `100`.
       Number of attempts at generating a cropped region of the image
       of the specified constraints. After `max_attempts` failures, return the

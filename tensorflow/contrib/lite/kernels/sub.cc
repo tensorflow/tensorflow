@@ -174,8 +174,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
                                output);
   } else {
-    context->ReportError(context,
-                         "Inputs and outputs not all float|uint8 types.");
+    context->ReportError(
+        context, "output type %d is not support, requires float|uint8 types.",
+        output->type);
     return kTfLiteError;
   }
 
