@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
+#include <vector>
+
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -45,7 +47,7 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     // only square matrix is supported for now.
     return TensorShapes({TensorShape({m, m}), 
                          TensorShape({m, m}),
-                         TensorShape({1, m})});
+                         TensorShape({m, m})}); // 1, m
   }
 
 
@@ -68,23 +70,27 @@ class LuOp : public LinearAlgebraOp<Scalar> {
         lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
     outputs->at(1) =
         lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();        
-    outputs->at(2) = lu_decomposition.permutationP();//.indices().data();    
+    //outputs->at(2) = lu_decomposition.permutationP();//.indices().data();    
+    Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> 
+        perm(input.rows(), input.rows());
+    outputs->at(2) = perm;
+    
+    auto & indices = lu_decomposition.permutationP().indices();    
+    for(int i = 0; i < indices.size(); i++){
+        perm(i) = indices(i);
+    }
 
-    //using std::cout;
-    //using std::endl;
+    
+    //lu_decomposition.permutationP();//.indices().data();    
+    //outputs->at(2) = lu_decomposition.permutationP().indices().array();        
+    //using namespace std;
+    //cout<<"permutation matrix"<<endl;
+    //cout<<lu_decomposition.permutationP().indices()<<endl;//.cast<int>().array();
+    //int n = input.rows();
+    //Tensor perm_vec;//(n, 1);
+    //outputs->at(2) = perm_vec;    
     //Eigen::ArrayXi perm = lu_decomposition.permutationP().indices().cast<int>().array();
     //for(const auto & it:perm) cout<<it<<" ";
-
-    //using namespace std;
-    //cout<<lu_decomposition.permutationP();
-    //cout<<endl;
-    /*
-    using namespace std;
-    cout<<outputs->at(0)<<endl;
-    cout<<outputs->at(1)<<endl;
-    cout<<outputs->at(2)<<endl;
-    */
-    
   }
 };
 

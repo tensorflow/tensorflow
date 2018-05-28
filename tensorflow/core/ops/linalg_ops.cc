@@ -156,9 +156,9 @@ Status LuShapeFn(InferenceContext* c) {
   //DimensionHandle m = c->Dim(input, -2);
   //c->set_output(2, c->Vector(m));
   //c->set_output(2, uniq);
-  //c->set_output(2, c->input(0));
+  c->set_output(2, c->input(0));
   //c->set_output(2, c->Matrix(c->Dim(c->input(0), 0), c->Dim(c->input(0), 0)));
-  c->set_output(2, c->Matrix(1, c->Dim(c->input(0), 0)));
+  //c->set_output(2, c->Matrix(1, c->Dim(c->input(0), 0)));
   return Status::OK();
 }
 
