@@ -873,6 +873,22 @@ static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
   return static_cast<tensorflow::DataType>(id);
 }
 
+static tensorflow::int64 FastHandleId(PyObject* variable) {
+  PyObject* handle = PyObject_GetAttrString(variable, "handle");
+  if (handle == nullptr) {
+    return -1;
+  }
+  tensorflow::int64 id = FastTensorId(handle);
+  Py_DECREF(handle);
+  return id;
+}
+
+struct CompareByHandleId {
+  bool operator()(PyObject* lhs, PyObject* rhs) {
+    return FastHandleId(lhs) < FastHandleId(rhs);
+  }
+};
+
 class GradientTape
     : public tensorflow::eager::GradientTape<PyObject, PyBackwardFunction> {
  public:
@@ -904,12 +920,12 @@ class GradientTape
     }
   }
 
-  const std::unordered_set<PyObject*> WatchedVariables() {
+  const std::set<PyObject*, CompareByHandleId> WatchedVariables() {
     return watched_variables_;
   }
 
  private:
-  std::unordered_set<PyObject*> watched_variables_;
+  std::set<PyObject*, CompareByHandleId> watched_variables_;
 };
 
 typedef struct {
@@ -1201,11 +1217,13 @@ void TFE_Py_TapeSetWatchVariable(PyObject* variable) {
 }
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
-  const std::unordered_set<PyObject*>& watched_variables =
+  const auto& watched_variables =
       reinterpret_cast<TFE_Py_Tape*>(tape)->tape->WatchedVariables();
-  PyObject* result = PySet_New(nullptr);
+  PyObject* result = PyTuple_New(watched_variables.size());
+  Py_ssize_t pos = 0;
   for (PyObject* variable : watched_variables) {
-    PySet_Add(result, variable);
+    PyTuple_SET_ITEM(result, pos++, variable);
+    Py_INCREF(variable);
   }
   return result;
 }

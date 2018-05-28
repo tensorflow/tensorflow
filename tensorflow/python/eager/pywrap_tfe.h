@@ -197,7 +197,8 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
                                 PyObject* attrs, PyObject* results,
                                 PyObject* name);
 
-// Returns the set of variables watched by the given tape.
+// Returns all variables watched by the given tape in the order those variables
+// were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing

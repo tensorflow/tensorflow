@@ -207,16 +207,14 @@ def implicit_val_and_grad(f):
                              f.__name__))
     finally:
       tape.pop_tape(this_tape)
-    # Sorting variables by id, which is monotonically increasing in construction
-    # order. This ensures unique order across executions.
-    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
-    variables = list(sorted(this_tape.watched_variables(),
-                            key=lambda v: v.handle._id))  # pylint: disable=protected-access
-    sources = [x.handle for x in variables]
-
-    if not sources:
+    # Note: variables are returned in construction order. This ensures unique
+    # order across executions.
+    variables = this_tape.watched_variables()
+    if not variables:
       raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
+
+    sources = [v.handle for v in variables]
     grad = imperative_grad.imperative_grad(_default_vspace,
                                            this_tape,
                                            nest.flatten(end_node),
@@ -801,11 +799,8 @@ class GradientTape(object):
     self._push_tape()
 
   def watched_variables(self):
-    # Sorting variables by id, which is monotonically increasing in construction
-    # order. This ensures unique order across executions.
-    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
-    return list(sorted(self._tape.watched_variables(),
-                       key=lambda v: v.handle._id))  # pylint: disable=protected-access
+    """Returns variables watched by this tape in order of construction."""
+    return self._tape.watched_variables()
 
   def gradient(self, target, sources, output_gradients=None):
     """Computes the gradient using operations recorded in context of this tape.
