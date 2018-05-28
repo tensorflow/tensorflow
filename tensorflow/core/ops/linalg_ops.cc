@@ -150,9 +150,15 @@ Status LuShapeFn(InferenceContext* c) {
   //c->set_output(1, u_shape);
   c->set_output(1, c->input(0));
   //c->set_output(2, p_shape);  
-  auto uniq = c->Vector(InferenceContext::kUnknownDim);
-  c->set_output(2, c->input(0));
+  //auto uniq = c->Vector(InferenceContext::kUnknownDim);  
+  //ShapeHandle input;
+  //TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));  
+  //DimensionHandle m = c->Dim(input, -2);
+  //c->set_output(2, c->Vector(m));
   //c->set_output(2, uniq);
+  //c->set_output(2, c->input(0));
+  //c->set_output(2, c->Matrix(c->Dim(c->input(0), 0), c->Dim(c->input(0), 0)));
+  c->set_output(2, c->Matrix(1, c->Dim(c->input(0), 0)));
   return Status::OK();
 }
 

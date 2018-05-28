@@ -38,14 +38,16 @@ class LuOp : public LinearAlgebraOp<Scalar> {
 
   explicit LuOp(OpKernelConstruction* context) : Base(context) {}
 
+
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
     int64 m = input_matrix_shapes[0].dim_size(0);  
     // only square matrix is supported for now.
     return TensorShapes({TensorShape({m, m}), 
                          TensorShape({m, m}),
-                         TensorShape({m, m})});
+                         TensorShape({1, m})});
   }
+
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
@@ -67,6 +69,15 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     outputs->at(1) =
         lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();        
     outputs->at(2) = lu_decomposition.permutationP();//.indices().data();    
+
+    //using std::cout;
+    //using std::endl;
+    //Eigen::ArrayXi perm = lu_decomposition.permutationP().indices().cast<int>().array();
+    //for(const auto & it:perm) cout<<it<<" ";
+
+    //using namespace std;
+    //cout<<lu_decomposition.permutationP();
+    //cout<<endl;
     /*
     using namespace std;
     cout<<outputs->at(0)<<endl;
