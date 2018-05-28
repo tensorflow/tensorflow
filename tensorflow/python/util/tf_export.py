@@ -59,13 +59,19 @@ class tf_export(object):  # pylint: disable=invalid-name
 
     Args:
       *args: API names in dot delimited format.
-      **kwargs: Optional keyed arguments. Currently only supports 'overrides'
-        argument. overrides: List of symbols that this is overriding
-        (those overrided api exports will be removed). Note: passing overrides
-        has no effect on exporting a constant.
+      **kwargs: Optional keyed arguments.
+          overrides: List of symbols that this is overriding
+          (those overrided api exports will be removed). Note: passing overrides
+          has no effect on exporting a constant.
+          allow_multiple_exports: Allows exporting the same symbol multiple
+          times with multiple `tf_export` usages. Prefer however, to list all
+          of the exported names in a single `tf_export` usage when possible.
+
     """
     self._names = args
     self._overrides = kwargs.get('overrides', [])
+    self._allow_multiple_exports = kwargs.get(
+        'allow_multiple_exports', False)
 
   def __call__(self, func):
     """Calls this decorator.
@@ -77,7 +83,8 @@ class tf_export(object):  # pylint: disable=invalid-name
       The input function with _tf_api_names attribute set.
 
     Raises:
-      SymbolAlreadyExposedError: Raised when a symbol already has API names.
+      SymbolAlreadyExposedError: Raised when a symbol already has API names
+        and kwarg `allow_multiple_exports` not set.
     """
     # Undecorate overridden names
     for f in self._overrides:
@@ -90,16 +97,14 @@ class tf_export(object):  # pylint: disable=invalid-name
     # __dict__ instead of using hasattr to verify that subclasses have
     # their own _tf_api_names as opposed to just inheriting it.
     if '_tf_api_names' in undecorated_func.__dict__:
-      # pylint: disable=protected-access
-      raise SymbolAlreadyExposedError(
-          'Symbol %s is already exposed as %s.' %
-          (undecorated_func.__name__, undecorated_func._tf_api_names))
-      # pylint: enable=protected-access
-
-    # Complete the export by creating/overriding attribute
-    # pylint: disable=protected-access
-    undecorated_func._tf_api_names = self._names
-    # pylint: enable=protected-access
+      if self._allow_multiple_exports:
+        undecorated_func._tf_api_names += self._names  # pylint: disable=protected-access
+      else:
+        raise SymbolAlreadyExposedError(
+            'Symbol %s is already exposed as %s.' %
+            (undecorated_func.__name__, undecorated_func._tf_api_names))  # pylint: disable=protected-access
+    else:
+      undecorated_func._tf_api_names = self._names  # pylint: disable=protected-access
     return func
 
   def export_constant(self, module_name, name):

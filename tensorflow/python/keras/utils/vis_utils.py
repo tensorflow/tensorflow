@@ -77,7 +77,6 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   if isinstance(model, Sequential):
     if not model.built:
       model.build()
-    model = model.model
   layers = model.layers
 
   # Create graph nodes.

@@ -1496,6 +1496,30 @@ xla_test(
 )
 
 xla_test(
+    name = "cross_replica_sum_test",
+    srcs = ["cross_replica_sum_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
     tags = [

@@ -681,8 +681,8 @@ class GradientTape(object):
 
   ```python
   x = tf.constant(3.0)
-  with tfe.GradientTape() as g:
-    with tfe.GradientTape() as gg:
+  with tf.GradientTape() as g:
+    with tf.GradientTape() as gg:
       gg.watch(x)
       y = x * x
     dy_dx = gg.gradient(y, x)     # Will compute to 6.0

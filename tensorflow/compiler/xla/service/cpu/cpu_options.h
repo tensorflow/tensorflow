@@ -26,6 +26,7 @@ namespace options {
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
+bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
 tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
     const HloModuleConfig& config);
 

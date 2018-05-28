@@ -35,7 +35,7 @@ namespace {
 bool FLAGS_ignore_known_bugs = true;
 // TODO(b/71769302) zip_files_dir should have a more accurate default, if
 // possible
-string* FLAGS_zip_files_dir = new string("./");
+string* FLAGS_zip_file_path = new string("./");
 string* FLAGS_unzip_binary_path = new string("/usr/bin/unzip");
 }  // namespace
 
@@ -137,7 +137,10 @@ class ZipEnvironment : public ::testing::Environment {
       *out_dir = dir;
       return tensorflow::Status::OK();
     } else {
-      return tensorflow::Status(tensorflow::error::UNKNOWN, "unzip failed");
+      return tensorflow::Status(tensorflow::error::UNKNOWN,
+                                "unzip failed. "
+                                "stdout:\n" +
+                                    out + "\nstderr:\n" + err);
     }
   }
 
@@ -191,8 +194,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
 }
 
 // Get a list of tests from a zip file `zip_file_name`.
-std::vector<string> UnarchiveZipAndFindTestNames(const string& zip_file_name) {
-  string zip_file = *FLAGS_zip_files_dir + "/" + zip_file_name;
+std::vector<string> UnarchiveZipAndFindTestNames(const string& zip_file) {
   string decompress_tmp_dir;
   TF_CHECK_OK(zip_environment()->UnZip(zip_file, &decompress_tmp_dir));
   std::vector<string> stuff;
@@ -251,67 +253,10 @@ struct ZipPathParamName {
   }
 };
 
-// Instantiate a test. This assumes `zip_base`.zip is a declared data file
-// of this test.
-#define INSTANTIATE_TESTS(zip_base)                                        \
-  INSTANTIATE_TEST_CASE_P(                                                 \
-      zip_base, OpsTest,                                                   \
-      ::testing::ValuesIn(UnarchiveZipAndFindTestNames(#zip_base ".zip")), \
-      ZipPathParamName());
-
-INSTANTIATE_TESTS(add)
-INSTANTIATE_TESTS(arg_max)
-INSTANTIATE_TESTS(avg_pool)
-INSTANTIATE_TESTS(batch_to_space_nd)
-INSTANTIATE_TESTS(concat)
-INSTANTIATE_TESTS(constant)
-INSTANTIATE_TESTS(control_dep)
-INSTANTIATE_TESTS(conv)
-INSTANTIATE_TESTS(depthwiseconv)
-INSTANTIATE_TESTS(div)
-INSTANTIATE_TESTS(exp)
-INSTANTIATE_TESTS(floor)
-INSTANTIATE_TESTS(fully_connected)
-INSTANTIATE_TESTS(fused_batch_norm)
-INSTANTIATE_TESTS(gather)
-INSTANTIATE_TESTS(global_batch_norm)
-INSTANTIATE_TESTS(greater)
-INSTANTIATE_TESTS(greater_equal)
-INSTANTIATE_TESTS(l2_pool)
-INSTANTIATE_TESTS(l2norm)
-INSTANTIATE_TESTS(less)
-INSTANTIATE_TESTS(less_equal)
-INSTANTIATE_TESTS(local_response_norm)
-INSTANTIATE_TESTS(log_softmax)
-INSTANTIATE_TESTS(max_pool)
-INSTANTIATE_TESTS(maximum)
-INSTANTIATE_TESTS(mean)
-INSTANTIATE_TESTS(minimum)
-INSTANTIATE_TESTS(mul)
-INSTANTIATE_TESTS(neg)
-INSTANTIATE_TESTS(pad)
-INSTANTIATE_TESTS(padv2)
-// INSTANTIATE_TESTS(prelu)
-INSTANTIATE_TESTS(relu)
-INSTANTIATE_TESTS(relu1)
-INSTANTIATE_TESTS(relu6)
-INSTANTIATE_TESTS(reshape)
-INSTANTIATE_TESTS(resize_bilinear)
-INSTANTIATE_TESTS(sigmoid)
-INSTANTIATE_TESTS(sin)
-INSTANTIATE_TESTS(slice)
-INSTANTIATE_TESTS(softmax)
-INSTANTIATE_TESTS(space_to_batch_nd)
-INSTANTIATE_TESTS(space_to_depth)
-INSTANTIATE_TESTS(split)
-INSTANTIATE_TESTS(squeeze)
-INSTANTIATE_TESTS(strided_slice)
-INSTANTIATE_TESTS(strided_slice_1d_exhaustive)
-INSTANTIATE_TESTS(sub)
-INSTANTIATE_TESTS(topk)
-INSTANTIATE_TESTS(transpose)
-INSTANTIATE_TESTS(transpose_conv)
-INSTANTIATE_TESTS(where)
+INSTANTIATE_TEST_CASE_P(
+    tests, OpsTest,
+    ::testing::ValuesIn(UnarchiveZipAndFindTestNames(*FLAGS_zip_file_path)),
+    ZipPathParamName());
 
 }  // namespace testing
 }  // namespace tflite
@@ -324,8 +269,8 @@ int main(int argc, char** argv) {
           "ignore_known_bugs", &tflite::testing::FLAGS_ignore_known_bugs,
           "If a particular model is affected by a known bug, the "
           "corresponding test should expect the outputs to not match."),
-      tensorflow::Flag("zip_files_dir", tflite::testing::FLAGS_zip_files_dir,
-                       "Required: Location of the test zips."),
+      tensorflow::Flag("zip_file_path", tflite::testing::FLAGS_zip_file_path,
+                       "Required: Location of the test zip file."),
       tensorflow::Flag("unzip_binary_path",
                        tflite::testing::FLAGS_unzip_binary_path,
                        "Required: Location of a suitable unzip binary.")};
