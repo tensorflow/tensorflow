@@ -120,6 +120,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             IMAGE_STD,
             INPUT_NAME,
             OUTPUT_NAME);
+    
+    classifier.enableStatLogging(true); 
 
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
@@ -171,6 +173,10 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
               resultsView = (ResultsView) findViewById(R.id.results);
             }
             resultsView.setResults(results);
+            
+            String statString = classifier.getStatString();
+            LOGGER.i("statString: \n %s", statString);
+            
             requestRender();
             readyForNextImage();
           }
