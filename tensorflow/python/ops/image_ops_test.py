@@ -582,13 +582,13 @@ class FlipImageBenchmark(test.Benchmark):
     self._benchmarkRandomFlipLeftRight(test.gpu_device_name(), None)
 
   def benchmarkBatchedRandomFlipLeftRightCpu1(self):
-    self._benchmarkRandomFlipLeftRight("/cpu:0", 1)
+    self._benchmarkBatchedRandomFlipLeftRight("/cpu:0", 1)
 
   def benchmarkBatchedRandomFlipLeftRightCpuAll(self):
-    self._benchmarkRandomFlipLeftRight("/cpu:0", None)
+    self._benchmarkBatchedRandomFlipLeftRight("/cpu:0", None)
 
   def benchmarkBatchedRandomFlipLeftRightGpu(self):
-    self._benchmarkRandomFlipLeftRight(test.gpu_device_name(), None)
+    self._benchmarkBatchedRandomFlipLeftRight(test.gpu_device_name(), None)
 
 
 class AdjustHueBenchmark(test.Benchmark):
