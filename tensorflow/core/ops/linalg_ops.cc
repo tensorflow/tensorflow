@@ -149,8 +149,10 @@ Status LuShapeFn(InferenceContext* c) {
   c->set_output(0, c->input(0));
   //c->set_output(1, u_shape);
   c->set_output(1, c->input(0));
-  //c->set_output(2, p_shape);
+  //c->set_output(2, p_shape);  
+  auto uniq = c->Vector(InferenceContext::kUnknownDim);
   c->set_output(2, c->input(0));
+  //c->set_output(2, uniq);
   return Status::OK();
 }
 
@@ -349,7 +351,9 @@ REGISTER_OP("Lu")
     .Output("l: T")
     .Output("u: T")
     .Output("p: T")
+    //.Output("p: Tperm")
     .Attr("T: {double, float, complex64, complex128}")
+    //.Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(LuShapeFn);
 
 REGISTER_OP("Svd")
