@@ -10622,7 +10622,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 // SampleDistortedBoundingBoxAreaRange sets the optional area_range attribute to value.
 //
 // value: The cropped area of the image must contain a fraction of the
-// supplied image within in this range.
+// supplied image within this range.
 // If not specified, defaults to <f:0.05 f:1 >
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
@@ -23591,7 +23591,7 @@ func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistort
 // SampleDistortedBoundingBoxV2AreaRange sets the optional area_range attribute to value.
 //
 // value: The cropped area of the image must contain a fraction of the
-// supplied image within in this range.
+// supplied image within this range.
 // If not specified, defaults to <f:0.05 f:1 >
 func SampleDistortedBoundingBoxV2AreaRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
