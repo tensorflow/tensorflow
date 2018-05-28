@@ -34,7 +34,7 @@ def _def_file_filter_configure_impl(repository_ctx):
 
   undname = find_msvc_tool(repository_ctx, vc_path, "undname.exe")
   if undname == None:
-    auto_configure_fail("Couldn't find undname.exe under %s, please checkout your VC installation and set the correct BAZEL_VC." % vc_path)
+    auto_configure_fail("Couldn't find undname.exe under %s, please check your VC installation and set BAZEL_VC environment variable correctly." % vc_path)
   undname_bin_path = undname.replace("\\", "\\\\")
 
   repository_ctx.template(
