@@ -1,12 +1,21 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.1.2'
+    }
+}
+
 apply plugin: 'com.android.library'
 
 // TensorFlow repo root dir on local machine
 def TF_SRC_DIR = projectDir.toString() + "/../../../.."
 
 android {
-    compileSdkVersion 24
+    compileSdkVersion 27
     // Check local build_tools_version as this is liable to change within Android Studio.
-    buildToolsVersion '25.0.2'
+    buildToolsVersion '27.0.3'
 
     // for debugging native code purpose
     publishNonDefault true
@@ -14,7 +23,7 @@ android {
     defaultConfig {
         archivesBaseName = "Tensorflow-Android-Inference"
         minSdkVersion 21
-        targetSdkVersion 23
+        targetSdkVersion 27
         versionCode 1
         versionName "1.0"
         ndk {
@@ -101,5 +110,5 @@ if(! Os.isFamily(Os.FAMILY_WINDOWS)) {
 }
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
 }

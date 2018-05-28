@@ -20,7 +20,7 @@
 
 # Pass ANDROID_API_VERSION as an environment variable to support
 # a different version of API.
-android_api_version="${ANDROID_API_VERSION:-21}"
+android_api_version="${ANDROID_API_VERSION:-27}"
 # Pass cc prefix to set the prefix for cc (e.g. ccache)
 cc_prefix="${CC_PREFIX}"
 
@@ -161,9 +161,11 @@ fi
 --with-protoc="${PROTOC_PATH}" \
 CFLAGS="${march_option}" \
 CXXFLAGS="-frtti -fexceptions ${march_option} \
--I${NDK_ROOT}/sources/android/support/include \
+-I${NDK_ROOT}/sysroot/usr/include/${bin_prefix} \
+-I${NDK_ROOT}/sysroot/usr/include \
 -I${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/include \
 -I${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ARCHITECTURE}/include" \
+CPPFLAGS="-I${NDK_ROOT}/sysroot/usr/include/${bin_prefix} -I${NDK_ROOT}/sysroot/usr/include" \
 LDFLAGS="-L${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ARCHITECTURE}" \
 LIBS="-llog -lz -lgnustl_static"
 

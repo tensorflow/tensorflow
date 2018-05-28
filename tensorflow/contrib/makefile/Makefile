@@ -321,7 +321,8 @@ $(MARCH_OPTION) \
 -fPIE \
 -fPIC
 	INCLUDES = \
--I$(NDK_ROOT)/sources/android/support/include \
+-I${NDK_ROOT}/sysroot/usr/include \
+-I${NDK_ROOT}/sysroot/usr/include/$(BIN_PREFIX) \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/$(ANDROID_ARCH)/include \
 -I. \

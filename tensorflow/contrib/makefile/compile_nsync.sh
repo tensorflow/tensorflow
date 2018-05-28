@@ -20,7 +20,7 @@
 set -e
 
 prog=compile_nsync.sh
-android_api_version=21
+android_api_version=27
 default_android_arch=armeabi-v7a
 default_ios_arch="i386 x86_64 armv7 armv7s arm64"
 
@@ -256,14 +256,16 @@ for arch in $archs; do
                 esac
 
                 makefile='
+                        AR := ${NDK_ROOT}/toolchains/'"$toolchain"'/prebuilt/'"$android_os_arch"'/bin/'"$bin_prefix"'-ar
                         CC=${CC_PREFIX} \
                            ${NDK_ROOT}/toolchains/'"$toolchain"'/prebuilt/'"$android_os_arch"'/bin/'"$bin_prefix"'-g++
                         PLATFORM_CPPFLAGS=--sysroot \
                                           $(NDK_ROOT)/platforms/android-'"$android_api_version"'/arch-'"$sysroot_arch"' \
                                           -DNSYNC_USE_CPP11_TIMEPOINT -DNSYNC_ATOMIC_CPP11 \
-                                          -I$(NDK_ROOT)/sources/android/support/include \
                                           -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \
                                           -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/'"$arch"'/include \
+                                          -I$(NDK_ROOT)/sysroot/usr/include/'"$bin_prefix"' \
+                                          -I$(NDK_ROOT)/sysroot/usr/include \
                                           -I../../platform/c++11 -I../../platform/gcc \
                                           -I../../platform/posix -pthread
                         PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE -fPIC
