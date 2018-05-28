@@ -158,13 +158,15 @@ def _get_bash_bin(repository_ctx):
   bash_bin = repository_ctx.os.environ.get(_BAZEL_SH)
   if bash_bin != None:
     return bash_bin
-  bash_bin_path = repository_ctx.which("bash")
-  if bash_bin_path != None:
-    return str(bash_bin_path)
-  _fail("Cannot find bash in PATH, please make sure " +
-        "bash is installed and add its directory in PATH, or --define " +
-        "%s='/something/else'.\nPATH=%s" % (
-            _BAZEL_SH, repository_ctx.os.environ.get("PATH", "")))
+  else:
+    bash_bin_path = repository_ctx.which("bash")
+    if bash_bin_path != None:
+      return str(bash_bin_path)
+    else:
+      _fail("Cannot find bash in PATH, please make sure " +
+            "bash is installed and add its directory in PATH, or --define " +
+            "%s='/path/to/bash'.\nPATH=%s" % (
+                _BAZEL_SH, repository_ctx.os.environ.get("PATH", "")))
 
 
 def _get_python_lib(repository_ctx, python_bin):
