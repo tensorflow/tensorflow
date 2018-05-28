@@ -43,8 +43,8 @@ def ipu_compile_summary(name, op, collections=None):
         plugin_data=summary_pb2.SummaryMetadata.PluginData(
           plugin_name="ipu"))
 
-      t_summary = tensor_summary(name=name, tensor=reports,
+      t_summary = tensor_summary(name='ipu_trace', tensor=reports,
                                  summary_metadata=summary_metadata,
-                                 collections=collections)
+                                 collections=collections, display_name=name)
 
   return t_summary
