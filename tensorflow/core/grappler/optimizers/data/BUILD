@@ -32,3 +32,45 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "map_and_batch_fusion",
+    srcs = ["map_and_batch_fusion.cc"],
+    hdrs = [
+        "map_and_batch_fusion.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "map_and_batch_fusion_test",
+    srcs = ["map_and_batch_fusion_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":map_and_batch_fusion",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "data",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":map_and_batch_fusion",
+    ],
+    alwayslink = 1,
+)
