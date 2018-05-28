@@ -380,16 +380,6 @@ GrapplerFunctionItem& GrapplerFunctionItem::SwapFunctionBody(GraphDef&& other) {
   return *this;
 }
 
-std::vector<string> OutputTensors(const GrapplerFunctionItem& item) {
-  std::vector<string> output_tensors;
-  for (const OutputArgExpansion& output : item.outputs()) {
-    for (const string& tensor : output.output_tensors) {
-      output_tensors.push_back(tensor);
-    }
-  }
-  return output_tensors;
-}
-
 bool HasParametrizedType(const FunctionDef& func) {
   const auto is_type_parametrized = [](const OpDef::ArgDef& arg) {
     return !arg.type_attr().empty() || !arg.number_attr().empty() ||
@@ -415,6 +405,63 @@ bool HasParametrizedBody(const FunctionDef& func) {
 
 bool IsParametrized(const FunctionDef& func) {
   return HasParametrizedType(func) || HasParametrizedBody(func);
+}
+
+Status InstantiationTypeParameters(
+    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    std::unordered_map<string, DataType>* type_parameters) {
+  if (!type_parameters->empty()) {
+    return errors::InvalidArgument("Type parameters output map must be empty");
+  }
+
+  GrapplerFunctionItemInstantiation instantiation(&func_instantiation_attr);
+
+  const auto resolve_type_attr = [&](const OpDef::ArgDef& arg) {
+    // Check if it's unknown and unresolved type.
+    if (arg.type() == DT_INVALID &&
+        type_parameters->find(arg.type_attr()) == type_parameters->end()) {
+      DataType data_type;
+      TF_RETURN_IF_ERROR(instantiation.GetArgType(arg, &data_type));
+      type_parameters->insert({arg.type_attr(), data_type});
+    }
+    return Status::OK();
+  };
+
+  for (const auto& input : func.signature().input_arg())
+    TF_RETURN_IF_ERROR(resolve_type_attr(input));
+  for (const auto& output : func.signature().output_arg())
+    TF_RETURN_IF_ERROR(resolve_type_attr(output));
+
+  return Status::OK();
+}
+
+Status InstantiationBodyParameters(
+    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    std::unordered_map<string, AttrValue>* body_parameters) {
+  if (!body_parameters->empty()) {
+    return errors::InvalidArgument("Body parameters output map must be empty");
+  }
+
+  for (const NodeDef& func_body_node : func.node_def()) {
+    for (auto& attr : func_body_node.attr()) {
+      const string& placeholder = attr.second.placeholder();
+
+      if (placeholder.empty() ||
+          body_parameters->find(placeholder) != body_parameters->end()) {
+        continue;
+      }
+
+      auto it = func_instantiation_attr.find(placeholder);
+      if (it != func_instantiation_attr.end()) {
+        body_parameters->emplace(placeholder, it->second);
+      } else {
+        return errors::InvalidArgument("Can't resolve placeholder: ",
+                                       placeholder);
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 Status MakeGrapplerFunctionItem(const FunctionDef& func,

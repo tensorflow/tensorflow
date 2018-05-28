@@ -629,8 +629,8 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
       client_->ExecuteParallel(computation_instances));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           client_->Transfer(*(result_data[0])));
-  LiteralTestUtil::ExpectEqual(
-      *result_literal, *Literal::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result_literal, *Literal::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}})));
 }
 }  // namespace
 }  // namespace xla

@@ -18,15 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.applications import densenet
-from tensorflow.python.keras.applications import inception_resnet_v2
-from tensorflow.python.keras.applications import inception_v3
-from tensorflow.python.keras.applications import mobilenet
-from tensorflow.python.keras.applications import nasnet
-from tensorflow.python.keras.applications import resnet50
-from tensorflow.python.keras.applications import vgg16
-from tensorflow.python.keras.applications import vgg19
-from tensorflow.python.keras.applications import xception
 from tensorflow.python.keras.applications.densenet import DenseNet121
 from tensorflow.python.keras.applications.densenet import DenseNet169
 from tensorflow.python.keras.applications.densenet import DenseNet201

@@ -119,7 +119,7 @@ def synthetic_dataset_helper(w, b, num_features, noise_level, batch_size,
 
 
 def main(_):
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
   # Ground-truth constants.
   true_w = [[-2.0], [4.0], [1.0]]
   true_b = [0.5]

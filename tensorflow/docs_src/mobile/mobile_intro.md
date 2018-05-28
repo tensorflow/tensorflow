@@ -80,7 +80,7 @@ tracking is especially important for applications where you’re trying to count
 how many objects are present over time, since it gives you a good idea when a
 new object enters or leaves the scene. We have some sample code for this
 available for Android [on
-Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android),
+GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android),
 and also a [more general object detection
 model](https://github.com/tensorflow/models/tree/master/research/object_detection/README.md)
 available as well.
@@ -231,7 +231,7 @@ process.
 The next step is to pick an effective model to use. You might be able to avoid
 training a model from scratch if someone else has already implemented a model
 similar to what you need; we have a repository of models implemented in
-TensorFlow [on Github](https://github.com/tensorflow/models) that you can look
+TensorFlow [on GitHub](https://github.com/tensorflow/models) that you can look
 through. Lean towards the simplest model you can find, and try to get started as
 soon as you have even a small amount of labelled data, since you’ll get the best
 results when you’re able to iterate quickly. The shorter the time it takes to

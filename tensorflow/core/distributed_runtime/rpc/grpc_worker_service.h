@@ -43,6 +43,9 @@ class GrpcWorker : public Worker {
   virtual void LoggingAsync(const LoggingRequest* request,
                             LoggingResponse* response, StatusCallback done);
 
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response, StatusCallback done);
+
   WorkerEnv* env();
 
  private:

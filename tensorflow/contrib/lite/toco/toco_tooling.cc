@@ -86,6 +86,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSlice);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
@@ -106,6 +107,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
+  transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
@@ -345,6 +347,11 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
 
+  // Deduplicate large constant arrays.
+  if (toco_flags.has_dedupe_array_min_size_bytes()) {
+    DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
+  }
+
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 
   if (output_format != GRAPHVIZ_DOT && output_format != TFLITE) {
@@ -366,6 +373,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     LOG(INFO) << "Estimated count of arithmetic ops: " << 1e-9 * ops_count
               << " billion (note that a multiply-add is counted as 2 ops).";
   }
+  model->ops_count = ops_count;
 }
 
 void Export(const TocoFlags& toco_flags, const Model& model,

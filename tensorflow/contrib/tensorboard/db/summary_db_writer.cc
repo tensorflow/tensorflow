@@ -1182,14 +1182,20 @@ class SummaryDbWriter : public SummaryWriterInterface {
     // See tensorboard/plugins/histogram/summary.py and data_compat.py
     Tensor t{DT_DOUBLE, {k, 3}};
     auto data = t.flat<double>();
-    for (int i = 0; i < k; ++i) {
-      double left_edge = ((i - 1 >= 0) ? histo.bucket_limit(i - 1)
-                                       : std::numeric_limits<double>::min());
-      double right_edge = ((i + 1 < k) ? histo.bucket_limit(i + 1)
-                                       : std::numeric_limits<double>::max());
-      data(i + 0) = left_edge;
-      data(i + 1) = right_edge;
-      data(i + 2) = histo.bucket(i);
+    for (int i = 0, j = 0; i < k; ++i) {
+      // TODO(nickfelt): reconcile with TensorBoard's data_compat.py
+      // From summary.proto
+      // Parallel arrays encoding the bucket boundaries and the bucket values.
+      // bucket(i) is the count for the bucket i.  The range for
+      // a bucket is:
+      //   i == 0:  -DBL_MAX .. bucket_limit(0)
+      //   i != 0:  bucket_limit(i-1) .. bucket_limit(i)
+      double left_edge = (i == 0) ? std::numeric_limits<double>::min()
+                                  : histo.bucket_limit(i - 1);
+
+      data(j++) = left_edge;
+      data(j++) = histo.bucket_limit(i);
+      data(j++) = histo.bucket(i);
     }
     int64 tag_id;
     PatchPluginName(s->mutable_metadata(), kHistogramPluginName);

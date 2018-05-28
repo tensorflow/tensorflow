@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import gamma
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
@@ -83,7 +84,7 @@ class Chi2(gamma.Gamma):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     # Even though all stats of chi2 are defined for valid parameters, this is
     # not true in the parent class "gamma."  therefore, passing
     # allow_nan_stats=True
@@ -119,7 +120,7 @@ class Chi2WithAbsDf(Chi2):
                validate_args=False,
                allow_nan_stats=True,
                name="Chi2WithAbsDf"):
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     with ops.name_scope(name, values=[df]) as name:
       super(Chi2WithAbsDf, self).__init__(
           df=math_ops.floor(

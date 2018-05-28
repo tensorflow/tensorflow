@@ -214,7 +214,7 @@ xla::StatusOr<xla::XlaOp> Cholesky(xla::XlaBuilder* builder, xla::XlaOp a,
                                           /*lower=*/true,
                                           /*transpose_a=*/true,
                                           /*conjugate_a=*/false,
-                                          /*block_size=*/8));
+                                          /*block_size=*/block_size));
       TF_ASSIGN_OR_RETURN(
           l, UpdateSliceInMinorDims(builder, l, update, {i + k, i}));
     }

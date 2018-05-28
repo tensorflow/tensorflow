@@ -60,6 +60,7 @@ class HloModuleGroupMetadata {
     kWhileBody,
     kConditionalTrue,
     kConditionalFalse,
+    kCallFunction,
   };
 
   // Tracks the instruction mapped to a given computation, and the computation
@@ -147,9 +148,6 @@ class HloModuleGroupMetadata {
   // the module in the module vector.
   int64 GetModuleId(const HloModule* module) const;
 
-  // Returns the number of modules for devices (excluding the host module).
-  int64 GetDeviceModulesCount() const;
-
   // Returns the companion instructions for the given instruction.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
@@ -204,6 +202,15 @@ class HloModuleGroupMetadata {
   // Adds metadata that the given two instructions are companions.
   Status AddCompanion(HloInstruction* instruction1,
                       HloInstruction* instruction2);
+
+  // Checks whether a communicating instruction is placed in a valid position
+  // within the graph.
+  Status CheckCommunicatingInstruction(HloInstruction* instruction) const;
+
+  // Performs a consistency check on the companion sets built for the input
+  // modules. Check that a companion set does not include instructions from the
+  // same module/device.
+  Status VerifyCompanionSets() const;
 
   // Retrieves a pointer to the stored TrackedInstruction associated with a
   // tracked computation, or nullptr in case such computation is not tracked.

@@ -68,7 +68,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
-Status VerifyHloModule(const se::Platform& platform, HloModule* const module,
+Status VerifyHloModule(HloModule* const module,
                        bool allow_mixed_precision = false);
 
 }  // namespace xla

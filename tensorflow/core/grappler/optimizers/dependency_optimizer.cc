@@ -126,9 +126,9 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
     return false;
   }
   const std::unordered_set<string> do_not_rewrite_ops{
-      "Assert",      "CheckNumerics",         "_Retval",
-      "_Arg",        "_ParallelConcatUpdate", "_TPUExecute",
-      "_TPUCompile", "ControlTrigger"};
+      "Assert",     "CheckNumerics",         "_Retval",
+      "_Arg",       "_ParallelConcatUpdate", "TPUExecute",
+      "TPUCompile", "ControlTrigger"};
   if (do_not_rewrite_ops.find(node.op()) != do_not_rewrite_ops.end()) {
     return false;
   }

@@ -69,6 +69,12 @@ xla::StatusOr<xla::XlaOp> TriangularSolveLeftLooking(xla::XlaBuilder* builder,
                                                      bool transpose_a,
                                                      bool conjugate_a);
 
+xla::StatusOr<xla::XlaOp> TriangularSolveRightLooking(xla::XlaBuilder* builder,
+                                                      const xla::XlaOp& a,
+                                                      const xla::XlaOp& b,
+                                                      bool transpose_a,
+                                                      bool conjugate_a);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_TRIANGULAR_SOLVE_H_

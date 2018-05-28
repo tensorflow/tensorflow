@@ -50,31 +50,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_linux",
       urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz",
-          "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_lnx_2018.0.2.20180127.tgz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.14/mklml_lnx_2018.0.3.20180406.tgz",
+          "https://github.com/intel/mkl-dnn/releases/download/v0.14/mklml_lnx_2018.0.3.20180406.tgz"
       ],
-      sha256 = "74844bd77294742bf2396ff040369d1aa4cdd9e826fcd38cf8398ae83564d146",
-      strip_prefix = "mklml_lnx_2018.0.2.20180127",
+      sha256 = "d2305244fdc9b87db7426ed4496e87a4b3977ad3374d73b8000e8b7a5b7aa725",
+      strip_prefix = "mklml_lnx_2018.0.3.20180406",
       build_file = clean_dep("//third_party/mkl:mkl.BUILD")
   )
   mkl_repository(
       name = "mkl_windows",
       urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.13/mklml_win_2018.0.2.20180127.zip",
-          "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_win_2018.0.2.20180127.zip"
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.14/mklml_win_2018.0.3.20180406.zip",
+          "https://github.com/intel/mkl-dnn/releases/download/v0.14/mklml_win_2018.0.3.20180406.zip"
       ],
-      sha256 = "d8fbf0faa0684bffa3548005d05fe5cfe56ff9dbc0e15e7612d7ac01055a6ded",
-      strip_prefix = "mklml_win_2018.0.2.20180127",
+      sha256 = "a584a5bf1c8d2ad70b90d12b52652030e9a338217719064fdb84b7ad0d693694",
+      strip_prefix = "mklml_win_2018.0.3.20180406",
       build_file = clean_dep("//third_party/mkl:mkl.BUILD")
   )
   mkl_repository(
       name = "mkl_darwin",
       urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.13/mklml_mac_2018.0.2.20180127.tgz",
-          "https://github.com/intel/mkl-dnn/releases/download/v0.13/mklml_mac_2018.0.2.20180127.tgz"
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.14/mklml_mac_2018.0.3.20180406.tgz",
+          "https://github.com/intel/mkl-dnn/releases/download/v0.14/mklml_mac_2018.0.3.20180406.tgz"
       ],
-      sha256 = "aa740d71e14562bfea56e6829e6dc186e7487cbcf6748a88dec73826b7ec1943",
-      strip_prefix = "mklml_mac_2018.0.2.20180127",
+      sha256 = "094e3dfd61c816136dc8d12a45cc611ce26c5f4828176a3644cd0b0efa15a25b",
+      strip_prefix = "mklml_mac_2018.0.3.20180406",
       build_file = clean_dep("//third_party/mkl:mkl.BUILD")
   )
 
@@ -85,22 +85,22 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "mkl_dnn",
       urls = [
-          "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/v0.13.tar.gz",
-          "https://github.com/intel/mkl-dnn/archive/v0.13.tar.gz",
+          "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/v0.14.tar.gz",
+          "https://github.com/intel/mkl-dnn/archive/v0.14.tar.gz",
       ],
-      sha256 = "d2cfd93a70cfe86ebe054477c530c9b5c1218b70f75856eb6d1956c68ee89e8f",
-      strip_prefix = "mkl-dnn-0.13",
+      sha256 = "efebc53882856afec86457a2da644693f5d59c68772d41d640d6b60a8efc4eb0",
+      strip_prefix = "mkl-dnn-0.14",
       build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
   )
 
   tf_http_archive(
       name = "com_google_absl",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
-          "https://github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/9613678332c976568272c8f4a78631a29159271d.tar.gz",
+          "https://github.com/abseil/abseil-cpp/archive/9613678332c976568272c8f4a78631a29159271d.tar.gz",
       ],
-     sha256 = "5996380e3e8b981f55d1c8d58e709c00dbb4806ba367be75d0925a68cc2f6478",
-     strip_prefix = "abseil-cpp-720c017e30339fd1786ce4aac68bc8559736e53f",
+     sha256 = "1273a1434ced93bc3e703a48c5dced058c95e995c8c009e9bdcb24a69e2180e9",
+     strip_prefix = "abseil-cpp-9613678332c976568272c8f4a78631a29159271d",
      build_file = clean_dep("//third_party:com_google_absl.BUILD"),
   )
 
@@ -167,8 +167,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "gemmlowp",
       urls = [
-          # TODO (yongtang): uncomment once mirror.bazel.build is propagated.
-          # "https://mirror.bazel.build/github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
+          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
           "https://github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
       ],
       sha256 = "b87faa7294dfcc5d678f22a59d2c01ca94ea1e2a3b488c38a95a67889ed0a658",
@@ -189,11 +188,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "highwayhash",
       urls = [
-          "https://mirror.bazel.build/github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
-          "https://github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
+          "http://mirror.bazel.build/github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
+          "https://github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
       ],
-      sha256 = "0f30a15b1566d93f146c8d149878a06e91d9bb7ec2cfd76906df62a82be4aac9",
-      strip_prefix = "highwayhash-dfcb97ca4fe9277bf9dc1802dd979b071896453b",
+      sha256 = "9c3e0e87d581feeb0c18d814d98f170ff23e62967a2bd6855847f0b2fe598a37",
+      strip_prefix = "highwayhash-fd3d9af80465e4383162e4a7c5e2f406e82dd968",
       build_file = clean_dep("//third_party:highwayhash.BUILD"),
   )
 
@@ -228,6 +227,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "e45ce5f68b1d80e2cb9a2b601605b374bdf51e1798ef1c2c2bd62131dfcf9eef",
       strip_prefix = "libpng-1.6.34",
       build_file = clean_dep("//third_party:png.BUILD"),
+      patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
   )
 
   tf_http_archive(
@@ -299,11 +299,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "absl_py",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
-          "https://github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/ea8c4d2ddbf3fba610c4d613260561699b776db8.tar.gz",
+          "https://github.com/abseil/abseil-py/archive/ea8c4d2ddbf3fba610c4d613260561699b776db8.tar.gz",
       ],
-      sha256 = "29e4584e778bee13aa4093824133d131d927cc160561892880118d9ff7b95a6a",
-      strip_prefix = "abseil-py-acec853355ef987eae48a8d87a79351c15dff593",
+      sha256 = "c30b48e0d2580ef1412e55c5c0e1dab8db2ee4ab56e2075eccff29c90c7c7059",
+      strip_prefix = "abseil-py-ea8c4d2ddbf3fba610c4d613260561699b776db8",
   )
 
   tf_http_archive(
@@ -316,7 +316,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "backports.weakref-1.0rc1/src",
       build_file = clean_dep("//third_party:backports_weakref.BUILD"),
   )
-  
+
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0
@@ -452,11 +452,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/068c967842b83d22007eee4515b57e8d9aaccb82.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/068c967842b83d22007eee4515b57e8d9aaccb82.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/638915a37f90f26599941977846408864f70ab35.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/638915a37f90f26599941977846408864f70ab35.tar.gz",
       ],
-      sha256 = "4950432fb5cc68e5bf1f87a30b17dfdc69a5b93dac1e89d5274242d3ce7dae7c",
-      strip_prefix = "llvm-068c967842b83d22007eee4515b57e8d9aaccb82",
+      sha256 = "aae3cacefa318cef030b4ca1e81ee9906752bbd89013cf9d47e156b5ad04b3a5",
+      strip_prefix = "llvm-638915a37f90f26599941977846408864f70ab35",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
@@ -742,6 +742,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip"
       ],
       build_file = clean_dep("//third_party:tflite_smartreply.BUILD"),
+  )
+
+  tf_http_archive(
+      name = "tflite_ovic_testdata",
+      sha256 = "a9a705d8d519220178e2e65d383fdb21da37fdb31d1e909b0a1acdac46479e9c",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+      ],
+      build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
+      strip_prefix = "ovic",
   )
 
   ##############################################################################

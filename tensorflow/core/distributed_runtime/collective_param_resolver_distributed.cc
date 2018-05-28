@@ -284,7 +284,6 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
     const GroupRecCallback& done) {
   VLOG(1) << "CompleteGroupDistributed group_key=" << cp->group.group_key
           << " dev: " << device << " is_leader=" << (group_leader_.empty());
-  VLOG(0) << "cp: " << cp->ToString();
   if (group_leader_.empty()) {
     // This is the group leader, so resolution is local.
     return CompleteGroupLocal(device, cp, done);

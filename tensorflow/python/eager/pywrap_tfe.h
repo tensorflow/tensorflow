@@ -120,6 +120,9 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent);
 // Removes the passed tape from the set of active tapes.
 void TFE_Py_TapeSetRemove(PyObject* tape);
 
+// Adds the passed tape to the set of active tapes.
+void TFE_Py_TapeSetAdd(PyObject* tape);
+
 // Returns true if the tape stack is empty.
 PyObject* TFE_Py_TapeSetIsEmpty();
 

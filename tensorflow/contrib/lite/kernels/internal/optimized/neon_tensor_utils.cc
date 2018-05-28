@@ -56,9 +56,12 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       m_cols - (m_cols & (kFloatWeightsPerNeonLane - 1));
 
   // The arrays used to cache the vector.
+  void* aligned_vector_cache_free = nullptr;
   float32x4_t* vector_cache_float32x4 =
-      new float32x4_t[(m_cols / kFloatWeightsPerNeonLane) *
-                      sizeof(float32x4_t)];
+      reinterpret_cast<float32x4_t*>(aligned_alloc(
+          sizeof(float32x4_t), (postamble_start >> 2) * sizeof(float32x4_t),
+          &aligned_vector_cache_free));
+
   const int kUnrollSize = 2;
   for (int b = 0; b < n_batch; b++) {
     float* result_in_batch = result + b * m_rows * result_stride;
@@ -71,7 +74,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       matrix_ptr1 = matrix + m_cols;
     }
 
-    // Cahce the vector.
+    // Cache the vector.
     for (int c = 0; c < postamble_start; c += kFloatWeightsPerNeonLane) {
       vector_cache_float32x4[c >> 2] = vld1q_f32(vector_in_batch + c);
     }
@@ -128,7 +131,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       result_in_batch += result_stride;
     }
   }
-  delete[] vector_cache_float32x4;
+  free(aligned_vector_cache_free);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -294,9 +297,12 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
       v_size - (v_size & (kFloatWeightsPerNeonLane - 1));
 
   // The arrays used to cache the vector.
+  void* aligned_vector_cache_free = nullptr;
   float32x4_t* vector_cache_float32x4 =
-      new float32x4_t[(v_size / kFloatWeightsPerNeonLane) *
-                      sizeof(float32x4_t)];
+      reinterpret_cast<float32x4_t*>(aligned_alloc(
+          sizeof(float32x4_t), (postamble_start >> 2) * sizeof(float32x4_t),
+          &aligned_vector_cache_free));
+
   for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
     vector_cache_float32x4[v >> 2] = vld1q_f32(vector + v);
   }
@@ -322,7 +328,7 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
     result_ptr += v_size;
     batch_vector_ptr += v_size;
   }
-  delete[] vector_cache_float32x4;
+  free(aligned_vector_cache_free);
 }
 
 void NeonSub1Vector(const float* vector, int v_size, float* result) {

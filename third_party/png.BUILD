@@ -28,7 +28,14 @@ cc_library(
         "pngwrite.c",
         "pngwtran.c",
         "pngwutil.c",
-    ],
+    ] + select({
+        "@org_tensorflow//tensorflow:linux_ppc64le": [
+            "powerpc/powerpc_init.c",
+            "powerpc/filter_vsx_intrinsics.c",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     hdrs = [
         "png.h",
         "pngconf.h",

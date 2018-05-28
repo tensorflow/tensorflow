@@ -98,8 +98,8 @@ class AbstractMetricDef {
                     const std::vector<string>& label_descriptions)
       : kind_(kind),
         value_type_(value_type),
-        name_(name.ToString()),
-        description_(description.ToString()),
+        name_(std::string(name)),
+        description_(std::string(description)),
         label_descriptions_(std::vector<string>(label_descriptions.begin(),
                                                 label_descriptions.end())) {}
 

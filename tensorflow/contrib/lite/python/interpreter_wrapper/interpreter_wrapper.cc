@@ -116,7 +116,7 @@ PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
 PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
   PyObject* result = PyTuple_New(2);
   PyTuple_SET_ITEM(result, 0, PyFloat_FromDouble(param.scale));
-  PyTuple_SET_ITEM(result, 1, PyInt_FromLong(param.zero_point));
+  PyTuple_SET_ITEM(result, 1, PyLong_FromLong(param.zero_point));
   return result;
 }
 
