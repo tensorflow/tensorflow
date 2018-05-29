@@ -1645,13 +1645,7 @@ Status ConstantFolding::SimplifyGraph(bool use_shape_info,
 Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
                                      GraphDef* optimized_graph,
                                      GraphProperties* properties) {
-  if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
-    ReplaceOperationWithIdentity(1, *properties, node, optimized_graph);
-    return Status::OK();
-  }
-
-  if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
-    ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+  if (RemoveSplitOrSplitV(*properties, optimized_graph, node)) {
     return Status::OK();
   }
 
@@ -1790,6 +1784,21 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   }
 
   return Status::OK();
+}
+
+bool ConstantFolding::RemoveSplitOrSplitV(const GraphProperties& properties,
+                                          GraphDef* optimized_graph,
+                                          NodeDef* node) {
+  if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
+    ReplaceOperationWithIdentity(1, properties, node, optimized_graph);
+    return true;
+  }
+
+  if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
+    ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+    return true;
+  }
+  return false;
 }
 
 Status ConstantFolding::RemoveShuffleOrTranspose(
