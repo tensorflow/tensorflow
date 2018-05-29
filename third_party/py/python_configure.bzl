@@ -311,6 +311,7 @@ def _python_autoconf_impl(repository_ctx):
 python_configure = repository_rule(
     implementation = _python_autoconf_impl,
     environ = [
+        _BAZEL_SH,
         _PYTHON_BIN_PATH,
         _PYTHON_LIB_PATH,
         _TF_PYTHON_CONFIG_REPO,
