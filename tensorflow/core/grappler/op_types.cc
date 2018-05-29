@@ -78,6 +78,12 @@ bool IsCheckNumerics(const NodeDef& node) {
   return node.op() == "CheckNumerics";
 }
 
+bool IsCollective(const NodeDef& node) {
+  return node.op() == "CollectiveReduce" ||
+         node.op() == "CollectiveBcastSend" ||
+         node.op() == "CollectiveBcastRecv";
+}
+
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }
@@ -202,6 +208,8 @@ bool IsMatMul(const NodeDef& node) {
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
 
 bool IsMaximum(const NodeDef& node) { return node.op() == "Maximum"; }
+
+bool IsMaxPoolGrad(const NodeDef& node) { return node.op() == "MaxPoolGrad"; }
 
 bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
@@ -444,6 +452,10 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     if (input.is_ref()) {
       return false;
     }
+  }
+  // Queue ops modify the queue which is a side effect.
+  if (node.op().find("Queue") != std::string::npos) {
+    return false;
   }
   return !ModifiesInputsInPlace(node);
 }

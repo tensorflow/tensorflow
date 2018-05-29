@@ -317,7 +317,15 @@ class NearComparator {
       rel_error = std::numeric_limits<float>::infinity();
     } else {
       abs_error = FpAbsoluteValue(actual - expected);
-      rel_error = abs_error / FpAbsoluteValue(expected);
+      // If the expected result is exactly zero, don't compute relative error;
+      // that's meaningless.
+      //
+      // TODO(b/80321728): Come up with a better way to handle this case.
+      if (expected == NativeT{}) {
+        rel_error = 0;
+      } else {
+        rel_error = abs_error / FpAbsoluteValue(expected);
+      }
     }
     const bool is_abs_mismatch = abs_error > error_.abs;
     const bool is_rel_mismatch = rel_error > error_.rel;
@@ -716,9 +724,11 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
   }
 
   return AppendStatus(result,
-                      tensorflow::strings::Printf("expected: %s\nactual:   %s",
-                                                  expected.ToString().c_str(),
-                                                  actual.ToString().c_str()));
+                      tensorflow::strings::Printf(
+                          "\nat index: %s\nexpected: %s\nactual:   %s",
+                          Literal::MultiIndexAsString(multi_index).c_str(),
+                          ToStringTruncated(expected).c_str(),
+                          ToStringTruncated(actual).c_str()));
 }
 
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,

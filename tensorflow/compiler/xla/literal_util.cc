@@ -807,6 +807,47 @@ std::unique_ptr<Literal> LiteralBase::Relayout(
   return result;
 }
 
+StatusOr<std::unique_ptr<Literal>> LiteralBase::Broadcast(
+    const Shape& result_shape,
+    tensorflow::gtl::ArraySlice<int64> dimensions) const {
+  if (!ShapeUtil::IsArray(shape())) {
+    return InvalidArgument("Broadcast only supports arrays.");
+  }
+
+  for (int64 i = 0; i < dimensions.size(); i++) {
+    TF_RET_CHECK(shape().dimensions(i) ==
+                 result_shape.dimensions(dimensions[i]));
+  }
+
+  std::unique_ptr<Literal> result = MakeUnique<Literal>(result_shape);
+
+  // scratch_source_index is temporary storage space for the computed index into
+  // the input literal.  We put it here to avoid allocating an std::vector in
+  // every iteration of ShapeUtil::ForEachIndex.
+  std::vector<int64> scratch_source_index(shape().dimensions_size());
+
+  char* dest_data = static_cast<char*>(result->untyped_data());
+  const char* source_data = static_cast<const char*>(untyped_data());
+  const int64 primitive_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+
+  ShapeUtil::ForEachIndex(
+      result_shape, [&](tensorflow::gtl::ArraySlice<int64> output_index) {
+        for (int64 i = 0; i < dimensions.size(); ++i) {
+          scratch_source_index[i] = output_index[dimensions[i]];
+        }
+        int64 dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+            result_shape, output_index);
+        int64 source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+            shape(), scratch_source_index);
+        memcpy(dest_data + primitive_size * dest_index,
+               source_data + primitive_size * source_index, primitive_size);
+        return true;
+      });
+
+  return std::move(result);
+}
+
 StatusOr<std::unique_ptr<Literal>> LiteralBase::Reshape(
     tensorflow::gtl::ArraySlice<int64> dimensions) const {
   if (!ShapeUtil::IsArray(shape())) {

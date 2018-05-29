@@ -1006,19 +1006,30 @@ def _AggregatedGrads(grads,
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:
-        out_grad = math_ops._as_indexed_slices_list(
-            [g for g in out_grad if g is not None])
-        out_grad = [_HandleNestedIndexedSlices(x) for x in out_grad]
-        # Form IndexedSlices out of the concatenated values and
-        # indices.
-        out_grads[i] = ops.IndexedSlices(
-            array_ops.concat([x.values for x in out_grad], 0),
-            array_ops.concat([x.indices for x in out_grad], 0),
-            out_grad[0].dense_shape)
+        out_grads[i] = _AggregateIndexedSlicesGradients(out_grad)
     else:  # not out_grad
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None
   return out_grads
+
+
+def _AggregateIndexedSlicesGradients(grads):
+  """Aggregates gradients of type `IndexedSlices` by concatenation."""
+  if len(grads) < 1:
+    return None
+  elif len(grads) == 1:
+    return grads[0]
+  else:
+    grads = math_ops._as_indexed_slices_list(  # pylint: disable=protected-access
+        [g for g in grads if g is not None])
+    grads = [_HandleNestedIndexedSlices(x) for x in grads]  # pylint: disable=protected-access
+    # Form IndexedSlices out of the concatenated values and indices.
+    concat_grad = ops.IndexedSlices(
+        array_ops.concat([x.values for x in grads], axis=0),
+        array_ops.concat([x.indices for x in grads], axis=0),
+        grads[0].dense_shape)
+
+    return concat_grad
 
 
 # TODO(vrv): Make this available when we want to make it public.

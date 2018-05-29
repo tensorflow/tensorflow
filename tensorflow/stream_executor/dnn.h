@@ -349,6 +349,8 @@ enum class FilterLayout : int64 {
   kOutputInputYX = 0,  // cuDNN's default filter layout, laid out as:
                        // (major) output feature maps >> input feature maps >>
                        // rows >> columns (minor).
+  kOutputYXInput,      // major to minor:
+                       //   (output features, row, columns, input features)
   kOutputInputYX4,  // laid out the same as kOutputInputYX but each element is a
                     // vector of 4 feature maps.
   kInputYXOutput,   // Same as dist_belief's default filter layout.

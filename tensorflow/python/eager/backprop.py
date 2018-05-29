@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import functools
 import operator
-import threading
 
 import six
 
@@ -94,8 +93,8 @@ class _MockOp(object):
     )
 
 
-def _magic_gradient_function(op_name, attr_tuple, num_inputs,
-                             inputs, outputs, out_grads):
+def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
+                       out_grads):
   """Calls the gradient function of the op.
 
   Args:
@@ -117,8 +116,7 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs,
   return grad_fn(mock_op, *out_grads)
 
 
-_gradient_functions = {}
-_gradient_functions_lock = threading.Lock()
+pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
 _tracing = False
@@ -140,22 +138,6 @@ _grad_fn_accepts_none_for_indices = {
     "SoftmaxCrossEntropyWithLogits": [1],
     "FusedBatchNorm": [1, 2, 3, 4]
 }
-
-
-def _get_backward_fn(op_name, attrs, num_inputs, op_inputs, op_outputs):
-
-  def grad_fn(*orig_outputs):
-    result = _magic_gradient_function(op_name, attrs, num_inputs,
-                                      op_inputs, op_outputs, orig_outputs)
-    if _tracing:
-      print("Gradient for", op_name, "inputs", op_inputs, "output_grads",
-            orig_outputs, "gradients", result)
-    return nest.flatten(result)
-
-  return grad_fn
-
-
-pywrap_tensorflow.TFE_Py_RegisterBackwardFunctionGetter(_get_backward_fn)
 
 
 def _record_gradient(op_name, inputs, attrs, results, name):
@@ -225,16 +207,14 @@ def implicit_val_and_grad(f):
                              f.__name__))
     finally:
       tape.pop_tape(this_tape)
-    # Sorting variables by id, which is monotonically increasing in construction
-    # order. This ensures unique order across executions.
-    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
-    variables = list(sorted(this_tape.watched_variables(),
-                            key=lambda v: v.handle._id))  # pylint: disable=protected-access
-    sources = [x.handle for x in variables]
-
-    if not sources:
+    # Note: variables are returned in construction order. This ensures unique
+    # order across executions.
+    variables = this_tape.watched_variables()
+    if not variables:
       raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
+
+    sources = [v.handle for v in variables]
     grad = imperative_grad.imperative_grad(_default_vspace,
                                            this_tape,
                                            nest.flatten(end_node),
@@ -819,11 +799,8 @@ class GradientTape(object):
     self._push_tape()
 
   def watched_variables(self):
-    # Sorting variables by id, which is monotonically increasing in construction
-    # order. This ensures unique order across executions.
-    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
-    return list(sorted(self._tape.watched_variables(),
-                       key=lambda v: v.handle._id))  # pylint: disable=protected-access
+    """Returns variables watched by this tape in order of construction."""
+    return self._tape.watched_variables()
 
   def gradient(self, target, sources, output_gradients=None):
     """Computes the gradient using operations recorded in context of this tape.

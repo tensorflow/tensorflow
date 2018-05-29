@@ -101,6 +101,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     input_size *= input->dims->data[i];
   }
 
+  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
@@ -109,8 +110,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
 
-  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
-
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
   TfLiteType data_type = input->type;
@@ -118,6 +117,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
+    TF_LITE_ENSURE(context, real_multiplier < 1.0);
     QuantizeMultiplierSmallerThanOne(real_multiplier, &data->output_multiplier,
                                      &data->output_shift);
     CalculateActivationRangeUint8(params->activation, output,
@@ -218,11 +218,8 @@ TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
     tensor_utils::ZeroVector(output->data.f, batch_size * num_units);
   }
 
-  // TODO(mirkov): change std::minmax_element with a vectorized call.
-  auto minmax_element =
-      std::minmax_element(input->data.f, input->data.f + total_input_size);
   // Save matrix multiplication computation for all zero input.
-  if (*minmax_element.first == 0.0 && *minmax_element.second == 0.0) {
+  if (tensor_utils::IsZeroVector(input->data.f, total_input_size)) {
     tensor_utils::ApplyActivationToVector(output->data.f,
                                           batch_size * num_units,
                                           params->activation, output->data.f);

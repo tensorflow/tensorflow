@@ -75,7 +75,6 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
   mse = lambda xs, ys: mean_square_loss(model, xs, ys)
   loss_and_grads = tfe.implicit_value_and_gradients(mse)
 
-  tf.train.get_or_create_global_step()
   if logdir:
     # Support for TensorBoard summaries. Once training has started, use:
     #   tensorboard --logdir=<logdir>
@@ -87,12 +86,13 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
     if verbose:
       print("Iteration %d: loss = %s" % (i, loss.numpy()))
 
-    optimizer.apply_gradients(grads, global_step=tf.train.get_global_step())
+    optimizer.apply_gradients(grads)
 
     if logdir:
       with summary_writer.as_default():
         with tf.contrib.summary.always_record_summaries():
-          tf.contrib.summary.scalar("loss", loss)
+          tf.contrib.summary.scalar("loss", loss, step=i)
+          tf.contrib.summary.scalar("step", i, step=i)
 
 
 def synthetic_dataset(w, b, noise_level, batch_size, num_batches):

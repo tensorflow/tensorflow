@@ -650,6 +650,26 @@ op {
   }
 }
 op {
+  name: "AnonymousIterator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -5927,7 +5947,7 @@ op {
   name: "Conv3DBackpropInputV2"
   input_arg {
     name: "input_sizes"
-    type: DT_INT32
+    type_attr: "Tshape"
   }
   input_arg {
     name: "filter"
@@ -5992,6 +6012,19 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "Tshape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -21495,6 +21528,21 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "RegexFullMatch"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "pattern"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_BOOL
+  }
+}
+op {
   name: "RegexReplace"
   input_arg {
     name: "input"
@@ -26047,9 +26095,14 @@ op {
         type: DT_UINT8
         type: DT_INT16
         type: DT_INT8
+        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
         type: DT_BFLOAT16
         type: DT_UINT16
+        type: DT_COMPLEX128
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64

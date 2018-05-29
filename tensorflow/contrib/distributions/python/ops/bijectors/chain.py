@@ -234,7 +234,7 @@ class Chain(bijector.Bijector):
     if not self.bijectors:
       return ildj
 
-    event_ndims = self._maybe_get_event_ndims_statically(
+    event_ndims = self._maybe_get_static_event_ndims(
         self.inverse_min_event_ndims)
 
     if _use_static_shape(y, event_ndims):
@@ -248,12 +248,15 @@ class Chain(bijector.Bijector):
 
       if _use_static_shape(y, event_ndims):
         event_shape = b.inverse_event_shape(event_shape)
-        event_ndims = self._maybe_get_event_ndims_statically(
+        event_ndims = self._maybe_get_static_event_ndims(
             event_shape.ndims)
       else:
         event_shape = b.inverse_event_shape_tensor(event_shape)
-        event_ndims = self._maybe_get_event_ndims_statically(
-            array_ops.size(event_shape))
+        event_ndims = array_ops.size(event_shape)
+        event_ndims_ = self._maybe_get_static_event_ndims(event_ndims)
+        if event_ndims_ is not None:
+          event_ndims = event_ndims_
+
       y = b.inverse(y, **kwargs.get(b.name, {}))
     return ildj
 
@@ -270,7 +273,7 @@ class Chain(bijector.Bijector):
     if not self.bijectors:
       return fldj
 
-    event_ndims = self._maybe_get_event_ndims_statically(
+    event_ndims = self._maybe_get_static_event_ndims(
         self.forward_min_event_ndims)
 
     if _use_static_shape(x, event_ndims):
@@ -283,21 +286,14 @@ class Chain(bijector.Bijector):
           x, event_ndims=event_ndims, **kwargs.get(b.name, {}))
       if _use_static_shape(x, event_ndims):
         event_shape = b.forward_event_shape(event_shape)
-        event_ndims = self._maybe_get_event_ndims_statically(event_shape.ndims)
+        event_ndims = self._maybe_get_static_event_ndims(event_shape.ndims)
       else:
         event_shape = b.forward_event_shape_tensor(event_shape)
-        event_ndims = self._maybe_get_event_ndims_statically(
-            array_ops.size(event_shape))
+        event_ndims = array_ops.size(event_shape)
+        event_ndims_ = self._maybe_get_static_event_ndims(event_ndims)
+        if event_ndims_ is not None:
+          event_ndims = event_ndims_
 
       x = b.forward(x, **kwargs.get(b.name, {}))
 
     return fldj
-
-  def _maybe_get_event_ndims_statically(self, event_ndims):
-    event_ndims_ = super(Chain, self)._maybe_get_event_ndims_statically(
-        event_ndims)
-    if event_ndims_ is None:
-      return event_ndims
-    return event_ndims_
-
-

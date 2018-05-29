@@ -111,8 +111,6 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
-    "tf_additional_framework_hdrs",
-    "tf_additional_framework_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
@@ -295,43 +293,18 @@ cc_library(
     ],
 )
 
-PLATFORM_BASE_HDRS = [
-    "platform/env_time.h",
-    "platform/logging.h",
-    "platform/macros.h",
-    "platform/types.h",
-    "platform/byte_order.h",
-]
+filegroup(
+    name = "platform_base_hdrs",
+    srcs = [
+        "platform/byte_order.h",
+        "platform/env_time.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/types.h",
+    ],
+    visibility = ["//visibility:private"],
+)
 
-PLATFORM_OTHER_HDRS = [
-    "platform/abi.h",
-    "platform/stacktrace.h",
-    "platform/stacktrace_handler.h",
-    "platform/context.h",
-    "platform/cpu_info.h",
-    "platform/cpu_feature_guard.h",
-    "platform/dynamic_annotations.h",
-    "platform/error.h",
-    "platform/env.h",
-    "platform/file_system.h",
-    "platform/file_system_helper.h",
-    "platform/fingerprint.h",
-    "platform/init_main.h",
-    "platform/mem.h",
-    "platform/mutex.h",
-    "platform/net.h",
-    "platform/notification.h",
-    "platform/null_file_system.h",
-    "platform/prefetch.h",
-    "platform/profile_utils/clock_cycle_profiler.h",
-    "platform/profile_utils/cpu_utils.h",
-    "platform/protobuf.h",
-    "platform/strong_hash.h",
-    "platform/subprocess.h",
-    "platform/thread_annotations.h",
-]
-
-# Smaller platform libraries that don't depend on "lib" or "lib_internal".
 cc_library(
     name = "platform_base",
     srcs = tf_platform_hdrs([
@@ -343,13 +316,259 @@ cc_library(
     ]) + [
         "platform/env_time.cc",
     ],
-    hdrs = PLATFORM_BASE_HDRS,
+    hdrs = [":platform_base_hdrs"],
     copts = tf_copts(),
-    # TODO(ahentz): remove use of this library so we can move it into 'platform'
     tags = ["avoid_dep"],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
+    ],
+)
+
+filegroup(
+    name = "platform_port_hdrs",
+    srcs = [
+        "platform/cpu_info.h",
+        "platform/dynamic_annotations.h",
+        "platform/init_main.h",
+        "platform/mem.h",
+        "platform/mutex.h",
+        "platform/thread_annotations.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+# Headers that are not exported as part of ":lib".
+filegroup(
+    name = "platform_port_internal_hdrs",
+    srcs = [
+        "platform/demangle.h",
+        "platform/host_info.h",
+        "platform/snappy.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "platform_port",
+    srcs = tf_platform_hdrs([
+        "cpu_info.h",
+        "dynamic_annotations.h",
+        "thread_annotations.h",
+        "mutex.h",
+    ]) + tf_platform_srcs([
+        "port.cc",
+    ]) + [
+        "platform/cpu_info.cc",
+    ],
+    hdrs = [
+        ":platform_port_hdrs",
+        ":platform_port_internal_hdrs",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":lib_platform",
+        ":platform_base",
+        "//tensorflow/core/platform/default/build_config:port",
+        "@snappy",
+    ],
+)
+
+filegroup(
+    name = "platform_protobuf_hdrs",
+    srcs = [
+        "platform/protobuf.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+# Headers that are not exported as part of ":lib".
+filegroup(
+    name = "platform_protobuf_internal_hdrs",
+    srcs = [
+        "platform/protobuf_internal.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "platform_protobuf",
+    srcs = tf_platform_hdrs([
+        "protobuf.h",
+    ]) + tf_platform_srcs([
+        "protobuf.cc",
+    ]) + [
+        "platform/protobuf_util.cc",
+    ],
+    hdrs = [
+        ":platform_protobuf_hdrs",
+        ":platform_protobuf_internal_hdrs",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":lib_platform",
+        ":platform_base",
+        ":platform_port",
+        "//tensorflow/core/platform/default/build_config:protobuf",
+        "@protobuf_archive//:protobuf",
+    ],
+)
+
+filegroup(
+    name = "platform_env_hdrs",
+    srcs = [
+        "platform/env.h",
+        "platform/file_statistics.h",
+        "platform/file_system.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+# Headers that are not exported as part of ":lib".
+filegroup(
+    name = "platform_env_internal_hdrs",
+    srcs = [
+        "platform/load_library.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "platform_env",
+    srcs = tf_platform_srcs([
+        "env.cc",
+        "load_library.cc",
+    ]) + tf_platform_hdrs([
+        "wide_char.h",
+    ]) + [
+        "platform/env.cc",
+        "platform/file_system.cc",
+    ],
+    hdrs = [
+        ":platform_env_hdrs",
+        ":platform_env_internal_hdrs",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":error_codes_proto_cc",
+        ":lib",
+        ":lib_internal",
+        ":lib_platform",
+        ":platform_base",
+        ":platform_port",
+        ":platform_protobuf",
+        "//tensorflow/core/platform/default/build_config:env",
+    ],
+)
+
+filegroup(
+    name = "platform_file_system_hdrs",
+    srcs = [
+        "platform/file_system_helper.h",
+        "platform/null_file_system.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "platform_file_system",
+    srcs = tf_platform_srcs([
+    ]) + tf_platform_hdrs([
+        "windows_file_system.h",
+    ]) + [
+        "platform/file_system_helper.cc",
+    ],
+    hdrs = [
+        ":platform_file_system_hdrs",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":lib",
+        ":lib_platform",
+        ":platform_env",
+    ],
+)
+
+filegroup(
+    name = "platform_other_hdrs",
+    srcs = [
+        "platform/abi.h",
+        "platform/context.h",
+        "platform/cpu_feature_guard.h",
+        "platform/error.h",
+        "platform/fingerprint.h",
+        "platform/net.h",
+        "platform/notification.h",
+        "platform/prefetch.h",
+        "platform/profile_utils/android_armv7a_cpu_utils_helper.h",
+        "platform/profile_utils/clock_cycle_profiler.h",
+        "platform/profile_utils/cpu_utils.h",
+        "platform/profile_utils/i_cpu_utils_helper.h",
+        "platform/stacktrace.h",
+        "platform/stacktrace_handler.h",
+        "platform/strong_hash.h",
+        "platform/subprocess.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+# Headers that are not exported as part of ":lib".
+filegroup(
+    name = "platform_other_internal_hdrs",
+    srcs = [
+        "platform/denormal.h",
+        "platform/setround.h",
+        "platform/tracing.h",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "platform_other",
+    srcs = tf_platform_srcs([
+        "subprocess.cc",
+        "net.cc",
+        "tracing.cc",
+    ]) + tf_platform_hdrs([
+        "tracing.h",
+        "error.h",
+        "context.h",
+        "fingerprint.h",
+        "notification.h",
+        "stacktrace.h",
+        "strong_hash.h",
+        "subprocess.h",
+        "tracing_impl.h",
+    ]) + [
+        "platform/cpu_feature_guard.cc",
+        "platform/setround.cc",
+        "platform/tracing.cc",
+        "platform/denormal.cc",
+        "platform/profile_utils/android_armv7a_cpu_utils_helper.cc",
+        "platform/profile_utils/clock_cycle_profiler.cc",
+        "platform/profile_utils/cpu_utils.cc",
+    ],
+    hdrs = [
+        ":platform_other_hdrs",
+        ":platform_other_internal_hdrs",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":lib",
+        ":lib_platform",
+        ":platform_base",
+        ":platform_env",
+        ":platform_port",
+        ":platform_protobuf",
+        "//tensorflow/core/platform/default/build_config:other",
+        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:port",
     ],
 )
 
@@ -386,8 +605,7 @@ cc_library(
 # tf_cc_test and tf_cc_binary will include the necessary symbols.
 cc_library(
     name = "lib",
-    hdrs = PLATFORM_BASE_HDRS +
-           PLATFORM_OTHER_HDRS + [
+    hdrs = [
         "lib/bfloat16/bfloat16.h",
         "lib/core/arena.h",
         "lib/core/bitmap.h",
@@ -434,6 +652,12 @@ cc_library(
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
+        ":platform_base_hdrs",
+        ":platform_env_hdrs",
+        ":platform_file_system_hdrs",
+        ":platform_other_hdrs",
+        ":platform_port_hdrs",
+        ":platform_protobuf_hdrs",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -607,6 +831,8 @@ tf_cuda_library(
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
+        "util/stat_summarizer_options.h",
+        "util/stats_calculator.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -629,6 +855,16 @@ tf_cuda_library(
     ]),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
+)
+
+cc_library(
+    name = "stats_calculator_portable",
+    srcs = ["util/stats_calculator.cc"],
+    hdrs = [
+        "util/stat_summarizer_options.h",
+        "util/stats_calculator.h",
+    ],
+    deps = [":platform_base"],
 )
 
 cc_library(
@@ -1111,11 +1347,24 @@ cc_library(
         ":shape_inference_testutil",
         ":tensor_testutil",
         ":test",
+        ":testlib_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
     ],
+)
+
+cc_library(
+    name = "testlib_ops",
+    testonly = 1,
+    srcs = ["common_runtime/testlib_ops.cc"],
+    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
 )
 
 # This is a link-only library to provide a DirectSession
@@ -1768,8 +2017,6 @@ cc_library(
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
             "platform/abi.cc",
-            "platform/variant_coding.cc",
-            "platform/**/variant_cord_coding.cc",
         ],
     ) + tf_additional_lib_srcs(
         exclude = [
@@ -1782,8 +2029,6 @@ cc_library(
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
             "platform/abi.cc",
-            "platform/variant_coding.cc",
-            "platform/**/variant_cord_coding.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
@@ -2033,7 +2278,6 @@ cc_library(
 )
 
 FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
-    "platform/variant_coding.h",
     "graph/edgeset.h",
     "graph/graph.h",
     "graph/graph_def_builder.h",
@@ -2074,14 +2318,13 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
     "framework/variant.h",
-    "platform/variant_coding.h",
     "util/command_line_flags.h",
     "util/env_var.h",
     "util/equal_graph_def.h",
     "util/presized_cuckoo_map.h",
     "util/tensor_slice_set.h",
     "util/tensor_slice_util.h",
-] + tf_additional_framework_hdrs()
+]
 
 tf_cuda_library(
     name = "framework_internal",
@@ -2123,9 +2366,7 @@ cc_header_only_library(
 
 tf_cuda_library(
     name = "framework_internal_impl",
-    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + [
-        "platform/variant_coding.cc",
-    ] + glob(
+    srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + glob(
         [
             "example/**/*.cc",
             "framework/**/*.cc",
@@ -2159,7 +2400,7 @@ tf_cuda_library(
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + tf_additional_framework_srcs(),
+    }),
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
@@ -2524,6 +2765,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
     ],
     deps = [":lib_internal"],
@@ -3757,6 +3999,31 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_executor_test",
+    size = "small",
+    srcs = ["common_runtime/executor_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:state",
     ],
 )
 
