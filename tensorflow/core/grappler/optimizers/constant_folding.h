@@ -199,6 +199,12 @@ class ConstantFolding : public GraphOptimizer {
   bool RemoveRandomShuffle(const GraphProperties& properties,
                            bool use_shape_info, GraphDef* optimized_graph,
                            NodeDef* node);
+
+  // Removes Shuffle or Transpose op over dimensions of size 1.
+  Status RemoveShuffleOrTranspose(const GraphProperties& properties,
+                                  bool use_shape_info,
+                                  GraphDef* optimized_graph, NodeDef* node,
+                                  bool* success);
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
