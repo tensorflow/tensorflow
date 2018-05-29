@@ -47,10 +47,10 @@ class LuOpTest(test.TestCase):
       l, u, p = linalg_ops.lu(a)      
       pl = math_ops.matmul(l, u)
       #print(p)
-      pinv = linalg_ops.matrix_inverse(p)
-      # pinv = array_ops.invert_permutation(p);
-      # plu = arrays_ops.gather(pl, pinv)      
-      plu = math_ops.matmul(pinv, pl)      
+      #pinv = linalg_ops.matrix_inverse(p)
+      pinv = array_ops.invert_permutation(p);
+      plu = array_ops.gather(pl, pinv)      
+      #plu = math_ops.matmul(pinv, pl)      
       with self.test_session() as sess:
         out = plu.eval()        
         print(p)

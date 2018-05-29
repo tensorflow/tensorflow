@@ -156,9 +156,10 @@ Status LuShapeFn(InferenceContext* c) {
   //DimensionHandle m = c->Dim(input, -2);
   //c->set_output(2, c->Vector(m));
   //c->set_output(2, uniq);
-  c->set_output(2, c->input(0));
+  //c->set_output(2, c->input(0));
   //c->set_output(2, c->Matrix(c->Dim(c->input(0), 0), c->Dim(c->input(0), 0)));
-  //c->set_output(2, c->Matrix(1, c->Dim(c->input(0), 0)));
+  c->set_output(2, c->Vector(c->Dim(c->input(0), 0)));
+  //c->set_output(2, c->Matrix(c->Dim(c->input(0), 0)));
   return Status::OK();
 }
 
@@ -356,10 +357,10 @@ REGISTER_OP("Lu")
     .Input("input: T")
     .Output("l: T")
     .Output("u: T")
-    .Output("p: T")
-    //.Output("p: Tperm")
+    //.Output("p: T")
+    .Output("p: Tperm")
     .Attr("T: {double, float, complex64, complex128}")
-    //.Attr("Tperm: {int32, int64} = DT_INT32")
+    .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(LuShapeFn);
 
 REGISTER_OP("Svd")
