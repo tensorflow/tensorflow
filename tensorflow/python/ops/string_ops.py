@@ -91,6 +91,20 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
 
+@tf_export("strings.split")
+def string_split_v2(source, sep=None):
+  if sep is None:
+    sep = ''
+  sep = ops.convert_to_tensor(sep, dtype=dtypes.string)
+  source = ops.convert_to_tensor(source, dtype=dtypes.string)
+
+  indices, values, shape = gen_string_ops.string_split_v2(
+      source, sep=sep)
+  indices.set_shape([None, 2])
+  values.set_shape([None])
+  shape.set_shape([2])
+  return sparse_tensor.SparseTensor(indices, values, shape)
+
 
 def _reduce_join_reduction_dims(x, axis, reduction_indices):
   """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
