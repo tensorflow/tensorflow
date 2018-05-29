@@ -129,15 +129,40 @@ class StatisticalTestingTest(test.TestCase):
 
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is not 0.4.
-      with self.assertRaisesOpError("Mean confidence interval too high"):
+      with self.assertRaisesOpError("true mean greater than expected"):
         sess.run(st.assert_true_mean_equal_by_dkwm(
             samples, 0., 1., 0.4, false_fail_rate=1e-6))
 
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is not 0.6.
-      with self.assertRaisesOpError("Mean confidence interval too low"):
+      with self.assertRaisesOpError("true mean smaller than expected"):
         sess.run(st.assert_true_mean_equal_by_dkwm(
             samples, 0., 1., 0.6, false_fail_rate=1e-6))
+
+  def test_dkwm_mean_in_interval_one_sample_assertion(self):
+    rng = np.random.RandomState(seed=0)
+    num_samples = 5000
+
+    # Test that the test assertion agrees that the mean of the standard
+    # uniform distribution is between 0.4 and 0.6.
+    samples = rng.uniform(size=num_samples).astype(np.float32)
+    self.evaluate(st.assert_true_mean_in_interval_by_dkwm(
+        samples, 0., 1.,
+        expected_low=0.4, expected_high=0.6, false_fail_rate=1e-6))
+
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is not between 0.2 and 0.4.
+    with self.assertRaisesOpError("true mean greater than expected"):
+      self.evaluate(st.assert_true_mean_in_interval_by_dkwm(
+          samples, 0., 1.,
+          expected_low=0.2, expected_high=0.4, false_fail_rate=1e-6))
+
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is not between 0.6 and 0.8.
+    with self.assertRaisesOpError("true mean smaller than expected"):
+      self.evaluate(st.assert_true_mean_in_interval_by_dkwm(
+          samples, 0., 1.,
+          expected_low=0.6, expected_high=0.8, false_fail_rate=1e-6))
 
   def test_dkwm_mean_two_sample_assertion(self):
     rng = np.random.RandomState(seed=0)
@@ -172,7 +197,7 @@ class StatisticalTestingTest(test.TestCase):
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is different from the mean of beta(2, 1).
       beta_high_samples = rng.beta(2, 1, size=num_samples).astype(np.float32)
-      with self.assertRaisesOpError("samples1 has a smaller mean"):
+      with self.assertRaisesOpError("true mean smaller than expected"):
         sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
             samples1, 0., 1.,
             beta_high_samples, 0., 1.,
@@ -190,7 +215,7 @@ class StatisticalTestingTest(test.TestCase):
       # Test that the test assertion confirms that the mean of the
       # standard uniform distribution is different from the mean of beta(1, 2).
       beta_low_samples = rng.beta(1, 2, size=num_samples).astype(np.float32)
-      with self.assertRaisesOpError("samples2 has a smaller mean"):
+      with self.assertRaisesOpError("true mean greater than expected"):
         sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
             samples1, 0., 1.,
             beta_low_samples, 0., 1.,
