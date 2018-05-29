@@ -268,26 +268,6 @@ REGISTER_OP("ParseAvroRecord")
 template <typename T>
 using SmallVector = gtl::InlinedVector<T, 4>; // Up to 4 items are stored without allocating heap memory
 
-// Splits a string into tokens along the separator.
-// This function is based on: http://stackoverflow.com/questions/236129/split-a-string-in-c.
-//
-// 'str' is the string that we split.
-//
-// 'spe' is the separator used for the split.
-//
-// returns A vector of strings.
-//
-std::vector<string> stringSplit(const string& str, char sep) {
-  std::vector<string> tokens;
-  size_t start = 0, end = 0;
-  while ((end = str.find(sep, start)) != string::npos) {
-    tokens.push_back(str.substr(start, end - start));
-    start = end + 1;
-  }
-  tokens.push_back(str.substr(start));
-  return tokens;
-}
-
 // Parses the str into an positive integer number. Does not support '-'.
 //
 // 'str' is the string that represents a positive integer, e.g. '32482'.
@@ -1261,7 +1241,9 @@ private:
   //
   static Status StringToAvroField(std::vector<AvroField*>& avro_fields, const string& str) {
     // Split into tokens using the separator
-    std::vector<string> tokens = stringSplit(str, '/');
+
+    // TODO: Use str_util for this, and '.'
+    std::vector<string> tokens = str_util::Split(str, "/");
     avro_fields.resize(tokens.size());
 
     // Go through all tokens and get their type depending on the surrounding context, e.g. [], [*], [...=...], ['*'],
@@ -1291,7 +1273,7 @@ private:
         } else if (isNonNegativeInt(token)) {
           avro_fields[t] = new AvroFieldIndex(std::stoi(token));
         } else if (std::count(token.begin(), token.end(), '=') == 1) {
-          std::vector<string> keyValue = stringSplit(token, '=');
+          std::vector<string> keyValue = str_util::Split(token, "=");
           avro_fields[t] = new AvroFieldArrayFilter(keyValue[0], keyValue[1]);
         } else {
           return errors::InvalidArgument("Unable to parse array '", token, "' in '", str, "'.");
