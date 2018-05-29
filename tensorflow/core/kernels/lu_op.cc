@@ -74,13 +74,14 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     //Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>  perm(input.rows());
     Eigen::VectorXd perm(input.rows()); 
     outputs->at(2) = perm.cast<Scalar>();
+    //outputs->at(2) = perm.cast<int32>();
     
     auto & indices = lu_decomposition.permutationP().indices();    
     for(int i = 0; i < indices.size(); i++){
         perm(i) = indices(i);        
     }
-    using namespace std;
-    cout<<perm<<endl;   
+    //using namespace std;
+    //cout<<perm<<endl;   
     //lu_decomposition.permutationP();//.indices().data();    
     //outputs->at(2) = lu_decomposition.permutationP().indices().array();        
     //using namespace std;
