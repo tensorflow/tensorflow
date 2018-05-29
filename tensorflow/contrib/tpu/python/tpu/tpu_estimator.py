@@ -2228,11 +2228,11 @@ class TPUEstimator(estimator_lib.Estimator):
           if shutdown_mode:
             if shutdown_mode == 'shutdown_worker':
               finalizer_hooks = [
-                  session_support.ShutdownLameWorkers(timeout_ms=1000),
+                  session_support.ShutdownLameWorkers(timeout_ms=60*1000),
               ]
             elif shutdown_mode == 'shutdown_computation':
               finalizer_hooks = [
-                  session_support.RestartComputation(timeout_ms=1000),
+                  session_support.RestartComputation(timeout_ms=60*1000),
               ]
             else:
               raise ValueError('Unknown TF_TPU_GRACEFUL_SHUTDOWN_MODE "%s"' %
