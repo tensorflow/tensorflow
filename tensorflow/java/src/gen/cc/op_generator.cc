@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-#include <map>
-#include <vector>
 #include <list>
 #include <map>
 #include <memory>
@@ -26,9 +23,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
 #include "tensorflow/java/src/gen/cc/op_generator.h"
 #include "tensorflow/java/src/gen/cc/op_specs.h"
