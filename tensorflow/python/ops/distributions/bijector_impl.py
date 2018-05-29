@@ -160,12 +160,19 @@ class Bijector(object):
 
   3. `log_det_jacobian(x)`
 
-     "The log of the determinant of the matrix of all first-order partial
-     derivatives of the inverse function."
+     "The log of the absolute value of the determinant of the matrix of all
+     first-order partial derivatives of the inverse function."
 
      Useful for inverting a transformation to compute one probability in terms
      of another. Geometrically, the Jacobian determinant is the volume of the
      transformation and is used to scale the probability.
+
+     We take the absolute value of the determinant before log to avoid NaN
+     values.  Geometrically, a negative determinant corresponds to an
+     orientation-reversing transformation.  It is ok for us to discard the sign
+     of the determinant because we only integrate everywhere-nonnegative
+     functions (probability densities) and the correct orientation is always the
+     one that produces a nonnegative integrand.
 
   By convention, transformations of random variables are named in terms of the
   forward transformation. The forward transformation creates samples, the
