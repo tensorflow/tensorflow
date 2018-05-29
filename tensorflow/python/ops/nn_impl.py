@@ -689,6 +689,9 @@ def moments(
     # Compute true mean while keeping the dims for proper broadcasting.
     mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
     # sample variance, not unbiased variance
+    # Note: stop_gradient does not change the gradient that gets 
+    #       backpropagated to the mean from the variance calculation,
+    #       because that gradient is zero
     variance = math_ops.reduce_mean(
         math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
         axes,
