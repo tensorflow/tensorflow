@@ -210,17 +210,17 @@ def _maximum_mean(samples, envelope, high, name=None):
   separately.
 
   Args:
-    samples: Floating-point tensor of samples from the distribution(s)
+    samples: Floating-point `Tensor` of samples from the distribution(s)
       of interest.  Entries are assumed IID across the 0th dimension.
       The other dimensions must broadcast with `envelope` and `high`.
-    envelope: Floating-point tensor of sizes of admissible CDF
+    envelope: Floating-point `Tensor` of sizes of admissible CDF
       envelopes (i.e., the `eps` above).
-    high: Floating-point tensor of upper bounds on the distributions'
-      supports.
+    high: Floating-point `Tensor` of upper bounds on the distributions'
+      supports.  `samples <= high`.
     name: A name for this operation (optional).
 
   Returns:
-    bound: Floating-point tensor of upper bounds on the true means.
+    bound: Floating-point `Tensor` of upper bounds on the true means.
 
   Raises:
     InvalidArgumentError: If some `sample` is found to be larger than
@@ -255,17 +255,17 @@ def _minimum_mean(samples, envelope, low, name=None):
   separately.
 
   Args:
-    samples: Floating-point tensor of samples from the distribution(s)
+    samples: Floating-point `Tensor` of samples from the distribution(s)
       of interest.  Entries are assumed IID across the 0th dimension.
       The other dimensions must broadcast with `envelope` and `low`.
-    envelope: Floating-point tensor of sizes of admissible CDF
+    envelope: Floating-point `Tensor` of sizes of admissible CDF
       envelopes (i.e., the `eps` above).
-    low: Floating-point tensor of lower bounds on the distributions'
-      supports.
+    low: Floating-point `Tensor` of lower bounds on the distributions'
+      supports.  `samples >= low`.
     name: A name for this operation (optional).
 
   Returns:
-    bound: Floating-point tensor of lower bounds on the true means.
+    bound: Floating-point `Tensor` of lower bounds on the true means.
 
   Raises:
     InvalidArgumentError: If some `sample` is found to be smaller than
@@ -301,12 +301,12 @@ def _dkwm_cdf_envelope(n, error_rate, name=None):
   probability above.
 
   Args:
-    n: Tensor of numbers of samples drawn.
-    error_rate: Floating-point tensor of admissible rates of mistakes.
+    n: `Tensor` of numbers of samples drawn.
+    error_rate: Floating-point `Tensor` of admissible rates of mistakes.
     name: A name for this operation (optional).
 
   Returns:
-    eps: Tensor of maximum distances the true CDF can be from the
+    eps: `Tensor` of maximum distances the true CDF can be from the
       empirical CDF.  This scales as `O(sqrt(-log(error_rate)))` and
       as `O(1 / sqrt(n))`.  The shape is the broadcast of `n` and
       `error_rate`.
@@ -325,8 +325,8 @@ def _check_shape_dominates(samples, parameters):
   sample counts end up inflated.
 
   Args:
-    samples: A Tensor whose shape is to be protected against broadcasting.
-    parameters: A list of Tensors who are parameters for the statistical test.
+    samples: A `Tensor` whose shape is to be protected against broadcasting.
+    parameters: A list of `Tensor`s who are parameters for the statistical test.
 
   Returns:
     samples: Return original `samples` with control dependencies attached
@@ -370,19 +370,23 @@ def true_mean_confidence_interval_by_dkwm(
   members.
 
   Args:
-    samples: Floating-point tensor of samples from the distribution(s)
+    samples: Floating-point `Tensor` of samples from the distribution(s)
       of interest.  Entries are assumed IID across the 0th dimension.
       The other dimensions must broadcast with `low` and `high`.
-    low: Floating-point tensor of lower bounds on the distributions'
+      The support is bounded: `low <= samples <= high`.
+    low: Floating-point `Tensor` of lower bounds on the distributions'
       supports.
-    high: Floating-point tensor of upper bounds on the distributions'
+    high: Floating-point `Tensor` of upper bounds on the distributions'
       supports.
-    error_rate: *Scalar* admissible total rate of mistakes.
+    error_rate: *Scalar* floating-point `Tensor` admissible total rate
+      of mistakes.
     name: A name for this operation (optional).
 
   Returns:
-    low: A floating-point tensor of stochastic lower bounds on the true means.
-    high: A floating-point tensor of stochastic upper bounds on the true means.
+    low: A floating-point `Tensor` of stochastic lower bounds on the
+      true means.
+    high: A floating-point `Tensor` of stochastic upper bounds on the
+      true means.
   """
   with ops.name_scope(
       name, "true_mean_confidence_interval_by_dkwm",
@@ -437,15 +441,17 @@ def assert_true_mean_equal_by_dkwm(
   the assertion will insist on stronger evidence to fail any one member.
 
   Args:
-    samples: Floating-point tensor of samples from the distribution(s)
+    samples: Floating-point `Tensor` of samples from the distribution(s)
       of interest.  Entries are assumed IID across the 0th dimension.
       The other dimensions must broadcast with `low` and `high`.
-    low: Floating-point tensor of lower bounds on the distributions'
+      The support is bounded: `low <= samples <= high`.
+    low: Floating-point `Tensor` of lower bounds on the distributions'
       supports.
-    high: Floating-point tensor of upper bounds on the distributions'
+    high: Floating-point `Tensor` of upper bounds on the distributions'
       supports.
-    expected: Floating-point tensor of expected true means.
-    false_fail_rate: *Scalar* admissible total rate of mistakes.
+    expected: Floating-point `Tensor` of expected true means.
+    false_fail_rate: *Scalar* floating-point `Tensor` admissible total
+      rate of mistakes.
     name: A name for this operation (optional).
 
   Returns:
@@ -476,18 +482,20 @@ def min_discrepancy_of_true_means_detectable_by_dkwm(
   with the same `false_pass_rate`.
 
   Args:
-    n: Tensor of numbers of samples to be drawn from the distributions
+    n: `Tensor` of numbers of samples to be drawn from the distributions
       of interest.
-    low: Floating-point tensor of lower bounds on the distributions'
+    low: Floating-point `Tensor` of lower bounds on the distributions'
       supports.
-    high: Floating-point tensor of upper bounds on the distributions'
+    high: Floating-point `Tensor` of upper bounds on the distributions'
       supports.
-    false_fail_rate: *Scalar* admissible total rate of false failures.
-    false_pass_rate: *Scalar* admissible rate of false passes.
+    false_fail_rate: *Scalar* floating-point `Tensor` admissible total
+      rate of false failures.
+    false_pass_rate: *Scalar* floating-point `Tensor` admissible rate
+      of false passes.
     name: A name for this operation (optional).
 
   Returns:
-    discr: Tensor of lower bounds on the distances between true
+    discr: `Tensor` of lower bounds on the distances between true
        means detectable by a DKWM-based test.
 
   For each batch member `i`, of `K` total, drawing `n[i]` samples from
@@ -550,17 +558,19 @@ def min_num_samples_for_dkwm_mean_test(
   on a scalar distribution supported on `[low, high]`.
 
   Args:
-    discrepancy: Floating-point tensor of desired upper limits on mean
+    discrepancy: Floating-point `Tensor` of desired upper limits on mean
       differences that may go undetected with probability higher than
       `1 - false_pass_rate`.
-    low: Tensor of lower bounds on the distributions' support.
-    high: Tensor of upper bounds on the distributions' support.
-    false_fail_rate: *Scalar* admissible total rate of false failures.
-    false_pass_rate: *Scalar* admissible rate of false passes.
+    low: `Tensor` of lower bounds on the distributions' support.
+    high: `Tensor` of upper bounds on the distributions' support.
+    false_fail_rate: *Scalar* floating-point `Tensor` admissible total
+      rate of false failures.
+    false_pass_rate: *Scalar* floating-point `Tensor` admissible rate
+      of false passes.
     name: A name for this operation (optional).
 
   Returns:
-    n: Tensor of numbers of samples to be drawn from the distributions
+    n: `Tensor` of numbers of samples to be drawn from the distributions
       of interest.
 
   The `discrepancy`, `low`, and `high` tensors must have
@@ -695,23 +705,26 @@ def assert_true_mean_equal_by_dkwm_two_sample(
   the assertion will insist on stronger evidence to fail any one member.
 
   Args:
-    samples1: Floating-point tensor of samples from the
+    samples1: Floating-point `Tensor` of samples from the
       distribution(s) A.  Entries are assumed IID across the 0th
       dimension.  The other dimensions must broadcast with `low1`,
       `high1`, `low2`, and `high2`.
-    low1: Floating-point tensor of lower bounds on the supports of the
+      The support is bounded: `low1 <= samples1 <= high1`.
+    low1: Floating-point `Tensor` of lower bounds on the supports of the
       distributions A.
-    high1: Floating-point tensor of upper bounds on the supports of
+    high1: Floating-point `Tensor` of upper bounds on the supports of
       the distributions A.
-    samples2: Floating-point tensor of samples from the
+    samples2: Floating-point `Tensor` of samples from the
       distribution(s) B.  Entries are assumed IID across the 0th
       dimension.  The other dimensions must broadcast with `low1`,
       `high1`, `low2`, and `high2`.
-    low2: Floating-point tensor of lower bounds on the supports of the
+      The support is bounded: `low2 <= samples2 <= high2`.
+    low2: Floating-point `Tensor` of lower bounds on the supports of the
       distributions B.
-    high2: Floating-point tensor of upper bounds on the supports of
+    high2: Floating-point `Tensor` of upper bounds on the supports of
       the distributions B.
-    false_fail_rate: *Scalar* admissible total rate of mistakes.
+    false_fail_rate: *Scalar* floating-point `Tensor` admissible total
+      rate of mistakes.
     name: A name for this operation (optional).
 
   Returns:
@@ -765,22 +778,24 @@ def min_discrepancy_of_true_means_detectable_by_dkwm_two_sample(
   with the same `false_pass_rate`.
 
   Args:
-    n1: Tensor of numbers of samples to be drawn from the distributions A.
-    low1: Floating-point tensor of lower bounds on the supports of the
+    n1: `Tensor` of numbers of samples to be drawn from the distributions A.
+    low1: Floating-point `Tensor` of lower bounds on the supports of the
       distributions A.
-    high1: Floating-point tensor of upper bounds on the supports of
+    high1: Floating-point `Tensor` of upper bounds on the supports of
       the distributions A.
-    n2: Tensor of numbers of samples to be drawn from the distributions B.
-    low2: Floating-point tensor of lower bounds on the supports of the
+    n2: `Tensor` of numbers of samples to be drawn from the distributions B.
+    low2: Floating-point `Tensor` of lower bounds on the supports of the
       distributions B.
-    high2: Floating-point tensor of upper bounds on the supports of
+    high2: Floating-point `Tensor` of upper bounds on the supports of
       the distributions B.
-    false_fail_rate: *Scalar* admissible total rate of false failures.
-    false_pass_rate: *Scalar* admissible rate of false passes.
+    false_fail_rate: *Scalar* floating-point `Tensor` admissible total
+      rate of false failures.
+    false_pass_rate: *Scalar* floating-point `Tensor` admissible rate
+      of false passes.
     name: A name for this operation (optional).
 
   Returns:
-    discr: Tensor of lower bounds on the distances between true means
+    discr: `Tensor` of lower bounds on the distances between true means
        detectable by a two-sample DKWM-based test.
 
   For each batch member `i`, of `K` total, drawing `n1[i]` samples
@@ -831,24 +846,26 @@ def min_num_samples_for_dkwm_mean_two_sample_test(
   (https://en.wikipedia.org/wiki/CDF-based_nonparametric_confidence_interval).
 
   Args:
-    discrepancy: Floating-point tensor of desired upper limits on mean
+    discrepancy: Floating-point `Tensor` of desired upper limits on mean
       differences that may go undetected with probability higher than
       `1 - false_pass_rate`.
-    low1: Floating-point tensor of lower bounds on the supports of the
+    low1: Floating-point `Tensor` of lower bounds on the supports of the
       distributions A.
-    high1: Floating-point tensor of upper bounds on the supports of
+    high1: Floating-point `Tensor` of upper bounds on the supports of
       the distributions A.
-    low2: Floating-point tensor of lower bounds on the supports of the
+    low2: Floating-point `Tensor` of lower bounds on the supports of the
       distributions B.
-    high2: Floating-point tensor of upper bounds on the supports of
+    high2: Floating-point `Tensor` of upper bounds on the supports of
       the distributions B.
-    false_fail_rate: *Scalar* admissible total rate of false failures.
-    false_pass_rate: *Scalar* admissible rate of false passes.
+    false_fail_rate: *Scalar* floating-point `Tensor` admissible total
+      rate of false failures.
+    false_pass_rate: *Scalar* floating-point `Tensor` admissible rate
+      of false passes.
     name: A name for this operation (optional).
 
   Returns:
-    n1: Tensor of numbers of samples to be drawn from the distributions A.
-    n2: Tensor of numbers of samples to be drawn from the distributions B.
+    n1: `Tensor` of numbers of samples to be drawn from the distributions A.
+    n2: `Tensor` of numbers of samples to be drawn from the distributions B.
 
   For each batch member `i`, of `K` total, drawing `n1[i]` samples
   from scalar distribution A supported on `[low1[i], high1[i]]` and `n2[i]`
