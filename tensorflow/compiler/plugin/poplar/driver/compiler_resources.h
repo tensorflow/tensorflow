@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
@@ -38,6 +39,8 @@ struct CompilerResources {
   uint64 num_resource_variables;
 
   TensorAllocationMap tensor_allocation_map;
+
+  ConvClassification classification_map;
 
   InplaceInstructions inplace_instructions;
 

@@ -361,6 +361,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<AllocationFinder>(resources.tensor_allocation_map);
+    pipeline.AddPass<ConvolutionClassifier>(resources.classification_map);
 
     bool ok;
     TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));
