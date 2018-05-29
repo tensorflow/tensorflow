@@ -44,7 +44,7 @@ std::vector<string> Split(const string& str, const string& delimiter,
   return char_vector;
 }
 
-std::vector<string> SplitV2(const string& str, StringPiece sep) {
+std::vector<string> SplitV2(const string& str, StringPiece sep, int maxsplit) {
   // This SplitV2 method matches the behavior of python's str.split:
   //   If sep is given, consecutive delimiters are not grouped together
   //   and are deemed to delimit empty strings (for example, '1,,2'.split(',')
@@ -59,25 +59,42 @@ std::vector<string> SplitV2(const string& str, StringPiece sep) {
   //   splitting an empty string or a string consisting of just whitespace
   //   with a None separator returns [].
 
-  StringPiece text(str);
-
   std::vector<string> result;
+
+  StringPiece text(str);
+  if (maxsplit == 0) {
+    result.emplace_back(std::string(text));
+    return result;
+  }
+
   if (sep.empty()) {
     StringPiece token;
     // Remove leading whitespaces.
     str_util::RemoveLeadingWhitespace(&text);
+    int split = 0;
     while (str_util::ConsumeNonWhitespace(&text, &token)) {
       result.emplace_back(std::string(token));
       str_util::RemoveLeadingWhitespace(&text);
+      ++split;
+      if (maxsplit > 0 && split == maxsplit) {
+        result.emplace_back(std::string(text));
+        return result;
+      }
     }
     return result;
   }
   auto p = std::search(text.begin(), text.end(), sep.begin(), sep.end());
+  int split = 0;
   while (p != text.end()) {
     StringPiece token = text.substr(0, p - text.begin());
     result.emplace_back(std::string(token));
     text.remove_prefix(token.size());
     text.remove_prefix(sep.size());
+    ++split;
+    if (maxsplit > 0 && split == maxsplit) {
+      result.emplace_back(std::string(text));
+      return result;
+    }
     p = std::search(text.begin(), text.end(), sep.begin(), sep.end());
   }
   result.emplace_back(std::string(text));
@@ -165,7 +182,10 @@ class StringSplitOp : public OpKernel {
 
 class StringSplitV2Op : public OpKernel {
  public:
-  explicit StringSplitV2Op(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit StringSplitV2Op(OpKernelConstruction* context)
+      : OpKernel(context), maxsplit_(-1) {
+    context->GetAttr("maxsplit", &maxsplit_);
+  }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
@@ -193,7 +213,7 @@ class StringSplitV2Op : public OpKernel {
     int64 max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<string> parts = SplitV2(input_vec(i), sep);
+      std::vector<string> parts = SplitV2(input_vec(i), sep, maxsplit_);
       int64 n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
@@ -225,6 +245,9 @@ class StringSplitV2Op : public OpKernel {
       }
     }
   }
+
+ private:
+  int maxsplit_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringSplit").Device(DEVICE_CPU), StringSplitOp);

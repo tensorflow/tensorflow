@@ -140,6 +140,7 @@ REGISTER_OP("StringSplitV2")
     .Output("indices: int64")
     .Output("values: string")
     .Output("shape: int64")
+    .Attr("maxsplit: int = -1")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
