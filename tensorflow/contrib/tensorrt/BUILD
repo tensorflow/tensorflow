@@ -303,7 +303,7 @@ tf_cuda_library(
     ],
     deps = [
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core:platform_base",
+        "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),

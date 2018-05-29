@@ -57,12 +57,8 @@ void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
   tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
                                         output_ptr_batch);
 
-  // TODO(mirkov): change std::minmax_element with a vectorized call.
-  auto minmax_element = std::minmax_element(
-      input_ptr_batch, input_ptr_batch + batch_size * input_size);
-
   // Save quantization and matmul computation for all zero input.
-  if (!(*minmax_element.first == 0.0 && *minmax_element.second == 0.0)) {
+  if (!tensor_utils::IsZeroVector(input_ptr_batch, batch_size * input_size)) {
     // Quantize input from float to uint8 + quantization params (scaling
     // factor).
     float unused_min, unused_max;
@@ -83,10 +79,9 @@ void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
     delete[] scaling_factors;
   }
 
-  minmax_element = std::minmax_element(
-      hidden_state_ptr_batch, hidden_state_ptr_batch + batch_size * num_units);
   // Save quantization and matmul computation for all zero input.
-  if (!(*minmax_element.first == 0.0 && *minmax_element.second == 0.0)) {
+  if (!tensor_utils::IsZeroVector(hidden_state_ptr_batch,
+                                  batch_size * num_units)) {
     // Quantize hidden_state
     float unused_min, unused_max;
     float* scaling_factors = new float[batch_size];

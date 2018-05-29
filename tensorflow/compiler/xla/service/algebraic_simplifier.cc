@@ -157,6 +157,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleSubtract(HloInstruction* sub) override;
 
+  Status HandleMap(HloInstruction* map) override;
+
   Status HandleMaximum(HloInstruction* maximum) override;
   Status HandleMinimum(HloInstruction* minimum) override;
 
@@ -2186,6 +2188,39 @@ bool AlgebraicSimplifierVisitor::TransformToClampIfSameShape(
                                              max_operand, operand, min_operand);
   TF_CHECK_OK(ReplaceWithNewInstruction(root, std::move(clamp)));
   return true;
+}
+
+Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
+  auto* map_computation = map->to_apply();
+  auto* map_root = map_computation->root_instruction();
+  if (map_root->opcode() == HloOpcode::kParameter) {
+    ReplaceInstructionIfSameShape(
+        map, map->mutable_operand(map_root->parameter_number()));
+    return Status::OK();
+  }
+  if (map_root->opcode() == HloOpcode::kConstant) {
+    if (!ShapeUtil::IsScalar(map_root->shape())) {
+      return Status::OK();
+    }
+    auto clone = map_root->CloneWithNewOperands(map_root->shape(), {});
+    if (ShapeUtil::IsScalar(map->shape())) {
+      return ReplaceWithNewInstruction(map, std::move(clone));
+    }
+    return ReplaceWithNewInstruction(
+        map,
+        HloInstruction::CreateBroadcast(
+            map->shape(), computation_->AddInstruction(std::move(clone)), {}));
+  }
+  std::vector<HloInstruction*> new_operands;
+  for (auto* root_operand : map_root->operands()) {
+    if (root_operand->opcode() != HloOpcode::kParameter) {
+      return Status::OK();
+    }
+    new_operands.push_back(
+        map->mutable_operand(root_operand->parameter_number()));
+  }
+  auto clone = map_root->CloneWithNewOperands(map->shape(), new_operands);
+  return ReplaceWithNewInstruction(map, std::move(clone));
 }
 
 Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {

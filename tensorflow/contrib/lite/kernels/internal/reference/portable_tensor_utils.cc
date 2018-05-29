@@ -29,9 +29,18 @@ float PortableClip(float f, float abs_limit) {
   return result;
 }
 
+bool PortableIsZeroVector(const float* vector, int v_size) {
+  for (int i = 0; i < v_size; ++i) {
+    if (*vector++ != 0.0f) return false;
+  }
+  return true;
+}
+
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
-                                     int8_t* quantized_values, float* min,
-                                     float* max, float* scaling_factor) {
+                                     int8_t* quantized_values,
+                                     float* __restrict__ min,
+                                     float* __restrict__ max,
+                                     float* __restrict__ scaling_factor) {
   auto minmax = std::minmax_element(values, values + size);
   *min = *minmax.first;
   *max = *minmax.second;
@@ -71,13 +80,14 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride) {
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride) {
   int batch, row, col;
   for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor_inv = 1.0 / scaling_factors[batch];
     // Get the address of the first row.
-    int8_t* row_ptr = (int8_t*)matrix;  // NOLINT
+    const int8_t* row_ptr = matrix;
     for (row = 0; row < m_rows; ++row, result += result_stride) {
       // Initialize the dot product sum for the row to 0.
       int32_t dotprod = 0;

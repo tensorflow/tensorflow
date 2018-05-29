@@ -463,9 +463,8 @@ class PyFuncTest(test.TestCase):
     a = array_ops.ones((3, 3), dtype=dtypes.int32)
     x = array_ops.ones((3, 1), dtype=dtypes.int32)
     output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.int32)
-    with self.test_session():
-      ret = self.evaluate(output)
-      self.assertAllEqual(ret, [[3], [3], [3]])
+    ret = self.evaluate(output)
+    self.assertAllEqual(ret, [[3], [3], [3]])
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerSingleOutputFloat32(self):

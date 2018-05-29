@@ -309,6 +309,35 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
   return result;
 }
 
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseBinaryOp(
+    HloOpcode opcode, const Literal& lhs, const Literal& rhs) {
+  std::unique_ptr<HloInstruction> lhs_instr =
+      HloInstruction::CreateConstant(lhs.CloneToUnique());
+  std::unique_ptr<HloInstruction> rhs_instr =
+      HloInstruction::CreateConstant(rhs.CloneToUnique());
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateBinary(lhs.shape(), opcode, lhs_instr.get(),
+                                   rhs_instr.get());
+  auto result = Evaluate(cloned_instruction.get());
+
+  cloned_instruction->DetachFromOperands();
+  return result;
+}
+
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseUnaryOp(
+    HloOpcode opcode, const Literal& operand) {
+  std::unique_ptr<HloInstruction> operand_instr =
+      HloInstruction::CreateConstant(operand.CloneToUnique());
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateUnary(operand.shape(), opcode, operand_instr.get());
+  auto result = Evaluate(cloned_instruction.get());
+
+  cloned_instruction->DetachFromOperands();
+  return result;
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
@@ -856,6 +885,28 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
       shape, gather_indices_iteration_space, gather_outer_loop_body));
   evaluated_[gather] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
+  const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
+
+  TF_RET_CHECK(broadcast->dimensions().size() ==
+               ShapeUtil::Rank(operand.shape()))
+      << "broadcast dimensions is of size: " << broadcast->dimensions().size()
+      << " and rank of operand_to_broadcast is: "
+      << ShapeUtil::Rank(operand.shape());
+  // Checks that operand's dimensions are the same as the broadcast's
+  // dimensions along the dimensions to be broadcasted.
+  for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
+    TF_RET_CHECK(broadcast->shape().dimensions(broadcast->dimensions(i)) ==
+                 operand.shape().dimensions(i));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      evaluated_[broadcast],
+      operand.Broadcast(broadcast->shape(), broadcast->dimensions()));
+
   return Status::OK();
 }
 

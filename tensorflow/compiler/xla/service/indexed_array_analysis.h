@@ -143,8 +143,8 @@ class IndexedArrayAnalysis {
   //
   // For example, if source is of shape [11,13,17,19], indices is of shape
   // [23,29], output_dims is [0,2] and source_dim is 2 then the output is of
-  // shape [23,11,29,19] and the output index [A,B,C,D,E] is mapped to the input
-  // index [B,D,indices[A,C],E].
+  // shape [23,11,29,13,19] and the output index [A,B,C,D,E] is mapped to the
+  // input index [B,D,indices[A,C],E].
   class ScalarIndexedArray : public Array {
    public:
     Kind kind() const override { return kScalarIndexed; }
@@ -152,7 +152,15 @@ class IndexedArrayAnalysis {
 
     Array* source() const { return source_; }
     Array* indices() const { return indices_; }
+
+    // `source_dim` is the dimension in the source array that is being indexed
+    // over using indices from the `indices` array.  See the class documentation
+    // and the overview for more details.
     int64 source_dim() const { return source_dim_; }
+
+    // `output_dims` are the dimensions in the output array that are being used
+    // to compute an index into the `indices` array.  See the class
+    // documentation and the overview for more details.
     tensorflow::gtl::ArraySlice<int64> output_dims() const {
       return output_dims_;
     }
@@ -212,26 +220,26 @@ class IndexedArrayAnalysis {
   // NB!  By inspecting the implementation, you may be able to infer a stronger
   // caching guarantee than what is mentioned above.  Nevertheless, what is
   // stated above is the contract.
-  Array* GetArrayFor(const HloInstruction* instr);
+  StatusOr<Array*> GetArrayFor(const HloInstruction* instr);
 
   // Pretty-prints the expression rooted at `root`.
-  string ToString(Array* root);
+  string ToString(Array* root, bool print_constants = false);
 
  private:
   // Helper function that ensures that every HLO instruction that is
   // transitively used by `root` has an entry in `cache_`.
-  void TraverseAndPopulateCache(const HloInstruction* root);
+  Status TraverseAndPopulateCache(const HloInstruction* root);
 
   // Creates an Array instance for `instr` under the assumption that all
   // operations of `instr` are present in `cache_`.
-  Array* ComputeArrayFor(const HloInstruction* instr);
+  StatusOr<Array*> ComputeArrayFor(const HloInstruction* instr);
 
-  Array* ComputeArrayForConstant(const Literal& literal);
+  StatusOr<Array*> ComputeArrayForConstant(const Literal& literal);
 
-  Array* ComputeArrayForGather(const Shape& shape,
-                               const GatherDimensionNumbers& dim_numbers,
-                               tensorflow::gtl::ArraySlice<int64> window_bounds,
-                               Array* source, Array* indices);
+  StatusOr<Array*> ComputeArrayForGather(
+      const Shape& shape, const GatherDimensionNumbers& dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds, Array* source,
+      Array* indices);
 
   // This tries to fold a ScalarIndexedArray which has another
   // ScalarIndexedArray as a source into a ScalarIndexedArray that instead has a
@@ -254,9 +262,16 @@ class IndexedArrayAnalysis {
   //
   //    I2 = [I0[i]  for i in I1]
   //    G1 = [Arr[i] for i in I2]
-  ScalarIndexedArray* FoldGatherOfGather(
+  StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
       ScalarIndexedArray* source, Array* indices, int64 source_dim,
       tensorflow::gtl::ArraySlice<int64> output_dims, Shape shape);
+
+  StatusOr<Array*> ComputeArrayForReshape(const Shape& shape, Array* operand);
+
+  StatusOr<Array*> ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
+                                                      Array* lhs, Array* rhs);
+  StatusOr<Array*> ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
+                                                     Array* operand);
 
   template <typename T, typename... Args>
   T* Construct(Args&&... args) {
@@ -277,6 +292,19 @@ class IndexedArrayAnalysis {
                                            std::move(output_dims),
                                            std::move(shape));
     }
+  }
+
+  Literal* TakeOwnership(std::unique_ptr<Literal> literal) {
+    owned_literals_.push_back(std::move(literal));
+    return owned_literals_.back().get();
+  }
+
+  StatusOr<Literal*> TakeOwnership(
+      StatusOr<std::unique_ptr<Literal>> literal_or_error) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                        std::move(literal_or_error));
+    owned_literals_.push_back(std::move(literal));
+    return owned_literals_.back().get();
   }
 
   std::vector<std::unique_ptr<Array>> owned_tensors_;

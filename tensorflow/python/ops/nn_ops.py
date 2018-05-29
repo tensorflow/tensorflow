@@ -2311,13 +2311,22 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
-    keep_prob = ops.convert_to_tensor(
-        keep_prob, dtype=x.dtype, name="keep_prob")
-    keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
-    # Do nothing if we know keep_prob == 1
-    if tensor_util.constant_value(keep_prob) == 1:
+    # Early return if nothing needs to be dropped.
+    if isinstance(keep_prob, float) and keep_prob == 1:
       return x
+    if context.executing_eagerly():
+      if isinstance(keep_prob, ops.EagerTensor):
+        if keep_prob.numpy() == 1:
+          return x
+    else:
+      keep_prob = ops.convert_to_tensor(
+          keep_prob, dtype=x.dtype, name="keep_prob")
+      keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+
+      # Do nothing if we know keep_prob == 1
+      if tensor_util.constant_value(keep_prob) == 1:
+        return x
 
     noise_shape = _get_noise_shape(x, noise_shape)
 

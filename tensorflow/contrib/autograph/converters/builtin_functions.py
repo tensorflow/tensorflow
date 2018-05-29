@@ -31,9 +31,6 @@ class BuiltinFunctionTransformer(transformer.Base):
   TF equivalent, like `len`.
   """
 
-  def __init__(self, context):
-    super(BuiltinFunctionTransformer, self).__init__(context)
-
   def _convert_builtin(self, node):
     template = """
       ag__.utils.dynamic_builtin(func, args)
