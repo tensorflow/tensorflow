@@ -87,6 +87,8 @@ message StepInfoResult {
   optional uint64 wait_duration_ps = 5;
   // The time spent on cross-replica-sum in picoseconds.
   optional uint64 crs_duration_ps = 6;
+  // Percentage of unit b time spent on infeed.
+  optional double unit_b_infeed_percent = 7;
 }
 
 // Result proto for a sequence of steps.
