@@ -220,7 +220,7 @@ class IndexedArrayAnalysis {
   // NB!  By inspecting the implementation, you may be able to infer a stronger
   // caching guarantee than what is mentioned above.  Nevertheless, what is
   // stated above is the contract.
-  Array* GetArrayFor(const HloInstruction* instr);
+  StatusOr<Array*> GetArrayFor(const HloInstruction* instr);
 
   // Pretty-prints the expression rooted at `root`.
   string ToString(Array* root, bool print_constants = false);
@@ -228,18 +228,18 @@ class IndexedArrayAnalysis {
  private:
   // Helper function that ensures that every HLO instruction that is
   // transitively used by `root` has an entry in `cache_`.
-  void TraverseAndPopulateCache(const HloInstruction* root);
+  Status TraverseAndPopulateCache(const HloInstruction* root);
 
   // Creates an Array instance for `instr` under the assumption that all
   // operations of `instr` are present in `cache_`.
-  Array* ComputeArrayFor(const HloInstruction* instr);
+  StatusOr<Array*> ComputeArrayFor(const HloInstruction* instr);
 
-  Array* ComputeArrayForConstant(const Literal& literal);
+  StatusOr<Array*> ComputeArrayForConstant(const Literal& literal);
 
-  Array* ComputeArrayForGather(const Shape& shape,
-                               const GatherDimensionNumbers& dim_numbers,
-                               tensorflow::gtl::ArraySlice<int64> window_bounds,
-                               Array* source, Array* indices);
+  StatusOr<Array*> ComputeArrayForGather(
+      const Shape& shape, const GatherDimensionNumbers& dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds, Array* source,
+      Array* indices);
 
   // This tries to fold a ScalarIndexedArray which has another
   // ScalarIndexedArray as a source into a ScalarIndexedArray that instead has a
@@ -262,16 +262,16 @@ class IndexedArrayAnalysis {
   //
   //    I2 = [I0[i]  for i in I1]
   //    G1 = [Arr[i] for i in I2]
-  ScalarIndexedArray* FoldGatherOfGather(
+  StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
       ScalarIndexedArray* source, Array* indices, int64 source_dim,
       tensorflow::gtl::ArraySlice<int64> output_dims, Shape shape);
 
-  Array* ComputeArrayForReshape(const Shape& shape, Array* operand);
+  StatusOr<Array*> ComputeArrayForReshape(const Shape& shape, Array* operand);
 
-  Array* ComputeArrayForElementwiseBinaryOp(const HloInstruction* instr,
-                                            Array* lhs, Array* rhs);
-  Array* ComputeArrayForElementwiseUnaryOp(const HloInstruction* instr,
-                                           Array* operand);
+  StatusOr<Array*> ComputeArrayForElementwiseBinaryOp(
+      const HloInstruction* instr, Array* lhs, Array* rhs);
+  StatusOr<Array*> ComputeArrayForElementwiseUnaryOp(
+      const HloInstruction* instr, Array* operand);
 
   template <typename T, typename... Args>
   T* Construct(Args&&... args) {
@@ -295,6 +295,14 @@ class IndexedArrayAnalysis {
   }
 
   Literal* TakeOwnership(std::unique_ptr<Literal> literal) {
+    owned_literals_.push_back(std::move(literal));
+    return owned_literals_.back().get();
+  }
+
+  StatusOr<Literal*> TakeOwnership(
+      StatusOr<std::unique_ptr<Literal>> literal_or_error) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                        std::move(literal_or_error));
     owned_literals_.push_back(std::move(literal));
     return owned_literals_.back().get();
   }

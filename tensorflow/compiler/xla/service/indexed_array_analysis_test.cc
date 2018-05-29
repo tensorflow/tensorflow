@@ -40,12 +40,14 @@ class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
     IndexedArrayAnalysis indexed_tensor_analysis;
     ParseAndVerifyModule(hlo_text);
 
-    string result = indexed_tensor_analysis.ToString(
+    TF_ASSERT_OK_AND_ASSIGN(
+        IndexedArrayAnalysis::Array* const array_result,
         indexed_tensor_analysis.GetArrayFor(
-            module().entry_computation()->root_instruction()),
-        print_constants);
-    LOG(INFO) << result;
-    ASSERT_EQ(result, root_expression);
+            module().entry_computation()->root_instruction()));
+    string string_result =
+        indexed_tensor_analysis.ToString(array_result, print_constants);
+    LOG(INFO) << string_result;
+    ASSERT_EQ(string_result, root_expression);
   }
 };
 
