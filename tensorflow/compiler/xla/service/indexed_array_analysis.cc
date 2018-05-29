@@ -689,7 +689,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
                                                         Array* operand) {
   auto* scalar_indexed_const =
       dynamic_cast<ScalarIndexedConstantArray*>(operand);
-  if (operand == nullptr) {
+  if (scalar_indexed_const == nullptr) {
     return nullptr;
   }
 

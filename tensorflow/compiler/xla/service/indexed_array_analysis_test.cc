@@ -472,5 +472,33 @@ ENTRY main {
 
   AssertArrayForRootExpressionIs(hlo_text, "%add");
 }
+
+TEST_F(IndexedArrayAnalysisTest, RegularUnaryOp) {
+  string hlo_text = R"(
+HloModule RegularUnaryOp
+
+ENTRY main {
+  input = f32[100] parameter(0)
+  ROOT tanh = f32[100] tanh(input)
+}
+)";
+
+  AssertArrayForRootExpressionIs(hlo_text, "%tanh");
+}
+
+TEST_F(IndexedArrayAnalysisTest, RegularBinaryOp) {
+  string hlo_text = R"(
+HloModule RegularUnaryOp
+
+ENTRY main {
+  input0 = f32[100] parameter(0)
+  input1 = f32[100] parameter(1)
+  ROOT add = f32[100] add(input0, input1)
+}
+)";
+
+  AssertArrayForRootExpressionIs(hlo_text, "%add");
+}
+
 }  // namespace
 }  // namespace xla
