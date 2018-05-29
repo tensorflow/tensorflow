@@ -206,6 +206,38 @@ class StringSplitV2OpTest(test.TestCase):
       self.assertAllEqual(values, [b"1", b"2", b"3", b"4", b"5", b"6"])
       self.assertAllEqual(shape, [2, 3])
 
+  def testSplitV2SimpleSeparatorMaxSplit(self):
+    # Match Python behavior:
+    # >>> '1,2,3'.split(',', maxsplit=1)
+    # ['1', '2,3']
+    # >>> '4,5,,6,'.split(',', maxsplit=1)
+    # ['4', '5,,6,']
+    strings = ["1,2,3", "4,5,,6,"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_v2(strings, sep=',', maxsplit=1)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1],
+                                    [1, 0], [1, 1]])
+      self.assertAllEqual(values, [b"1", b"2,3", b"4", b"5,,6,"])
+      self.assertAllEqual(shape, [2, 2])
+
+  def testSplitV2EmptySeparatorMaxSplit(self):
+    # Match Python behavior:
+    # '1 2 3'.split(maxsplit=1)
+    # ['1', '2 3']
+    # >>> "  4  5    6  ".split(maxsplit=1)
+    # ['4', '5    6  ']
+    strings = ["1 2 3", "  4  5    6  "]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_v2(strings, maxsplit=1)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1],
+                                    [1, 0], [1, 1]])
+      self.assertAllEqual(values, [b"1", b"2 3", b"4", b"5    6  "])
+      self.assertAllEqual(shape, [2, 2])
+
 
 if __name__ == "__main__":
   test.main()
