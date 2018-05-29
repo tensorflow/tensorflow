@@ -169,9 +169,11 @@ class StringSplitV2OpTest(test.TestCase):
     with self.test_session() as sess:
       tokens = string_ops.string_split_v2(strings, sep="<>")
       indices, values, shape = sess.run(tokens)
-      self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2],
-                                    [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]])
-      self.assertAllEqual(values, [b"1", b"2", b"3", b"", b"", b"4", b"5", b"", b"6", b""])
+      self.assertAllEqual(
+          indices, [[0, 0], [0, 1], [0, 2],
+                    [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]])
+      self.assertAllEqual(values, [b"1", b"2", b"3",
+                                   b"", b"", b"4", b"5", b"", b"6", b""])
       self.assertAllEqual(shape, [2, 7])
 
   def testSplitV2SimpleSeparator(self):
@@ -187,7 +189,8 @@ class StringSplitV2OpTest(test.TestCase):
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2],
                                     [1, 0], [1, 1], [1, 2], [1, 3], [1, 4]])
-      self.assertAllEqual(values, [b"1", b"2", b"3", b"4", b"5", b"", b"6", b""])
+      self.assertAllEqual(values, [b"1", b"2", b"3",
+                                   b"4", b"5", b"", b"6", b""])
       self.assertAllEqual(shape, [2, 5])
 
   def testSplitV2EmptySeparator(self):
