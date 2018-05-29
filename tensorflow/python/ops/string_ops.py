@@ -92,14 +92,14 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 @tf_export("strings.split")
-def string_split_v2(source, sep=None):
+def string_split_v2(source, sep=None, maxsplit=-1):
   if sep is None:
     sep = ''
   sep = ops.convert_to_tensor(sep, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
   indices, values, shape = gen_string_ops.string_split_v2(
-      source, sep=sep)
+      source, sep=sep, maxsplit=maxsplit)
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
