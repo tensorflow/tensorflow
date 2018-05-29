@@ -268,10 +268,10 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForReshape(const Shape& shape, Array* operand);
 
-  StatusOr<Array*> ComputeArrayForElementwiseBinaryOp(
-      const HloInstruction* instr, Array* lhs, Array* rhs);
-  StatusOr<Array*> ComputeArrayForElementwiseUnaryOp(
-      const HloInstruction* instr, Array* operand);
+  StatusOr<Array*> ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
+                                                      Array* lhs, Array* rhs);
+  StatusOr<Array*> ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
+                                                     Array* operand);
 
   template <typename T, typename... Args>
   T* Construct(Args&&... args) {
