@@ -30,9 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#if TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/rocm_kernel_helper.h"
-#endif
 
 namespace tensorflow {
 

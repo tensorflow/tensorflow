@@ -30,10 +30,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/histogram_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/util/cuda_kernel_helper.h"
-#elif TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/rocm_kernel_helper.h"
 #endif
 
 namespace tensorflow {
