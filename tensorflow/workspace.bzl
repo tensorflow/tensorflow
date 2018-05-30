@@ -300,6 +300,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "ff6d2e2962d834acb125cc4dcc80c54a8c17c253f4cc9d9c43b5102a560bb75d",
       strip_prefix = "astor-0.6.2",
       build_file = clean_dep("//third_party:astor.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:astor.BUILD"),
   )
 
   tf_http_archive(
