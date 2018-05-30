@@ -2699,7 +2699,6 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
