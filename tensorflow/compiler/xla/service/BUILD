@@ -2920,6 +2920,7 @@ tf_cc_test(
     deps = [
         ":while_util",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/compiler/xla/tools/parser:hlo_parser",
