@@ -13,20 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if defined GOOGLE_CUDA || defined TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#if GOOGLE_CUDA
 #include "external/cub_archive/cub/device/device_reduce.cuh"
 #include "external/cub_archive/cub/device/device_segmented_reduce.cuh"
 #include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
 #include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
 #include "external/cub_archive/cub/warp/warp_reduce.cuh"
 #include "cuda/include/cuComplex.h"
+#elif TENSORFLOW_USE_ROCM
+#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#endif
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
 
@@ -44,6 +48,7 @@ struct Sum {
   }
 };
 
+#if GOOGLE_CUDA
 // needed to work around a compiler bug in nvcc - it doesn't seem to like
 // the overloaded addition op for std::complex
 template <>
@@ -65,6 +70,7 @@ struct Sum<std::complex<double>> {
     return std::complex<double>(result.x, result.y);
   }
 };
+#endif
 
 template <typename T>
 struct Prod {
@@ -73,6 +79,7 @@ struct Prod {
   }
 };
 
+#if GOOGLE_CUDA
 // needed to work around a compiler bug in nvcc - it doesn't seem to like
 // the overloaded multiply op for std::complex
 template <>
@@ -94,6 +101,7 @@ struct Prod<std::complex<double>> {
     return std::complex<double>(result.x, result.y);
   }
 };
+#endif
 
 template <typename T, typename outT = T>
 struct DividesBy {
@@ -104,6 +112,7 @@ struct DividesBy {
   __host__ __device__ outT operator()(const T& x) const { return x / divisor; }
 };
 
+#if GOOGLE_CUDA
 // needed to work around a compiler bug in nvcc - it doesn't seem to like
 // the overloaded ops for std::complex
 template <>
@@ -146,6 +155,7 @@ struct DividesBy<float, Eigen::half> {
     return Eigen::half(x / divisor);
   }
 };
+#endif
 
 struct HalfToFloat {
   __host__ __device__ float operator()(const Eigen::half& x) const {
@@ -482,8 +492,8 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   if (in_size <= 4096) {
     const int num_blocks = 1;
     const int num_threads = 256;
-    BlockReduceKernel<IN_T, OUT_T, num_threads>
-        <<<num_blocks, num_threads, 0, cu_stream>>>(in, out, in_size, op, init);
+    GPU_LAUNCH_KERNEL(BlockReduceKernel<IN_T, OUT_T, num_threads>,
+        dim3(num_blocks), dim3(num_threads), 0, cu_stream, in, out, in_size, op, init);
     return;
   } else if (in_size <= 1 << 19) {
     const int num_threads = 256;
@@ -502,16 +512,16 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
             DT_INT8, TensorShape({static_cast<int64>(num_blocks * sizeof(T))}),
             &temp_storage));
 
-    BlockReduceKernel<IN_T, T*, num_threads>
-        <<<num_blocks, num_threads, 0, cu_stream>>>(
+    GPU_LAUNCH_KERNEL(BlockReduceKernel<IN_T, T*, num_threads>,
+        dim3(num_blocks), dim3(num_threads), 0, cu_stream,
             in, (T*)temp_storage.flat<int8_t>().data(), in_size, op, init);
 
     // take care that we only reduce blocks that had some valid elements in them
     // TODO(eriche): CUB currently has a bug in HeadSegmentedReduce that
     // requires it to be used with a full warp.  Can reduce 32 -> num_blocks
     // when this is fixed.
-    CleanupSegments<<<1, 32, 0, cu_stream>>>(
-        (T*)temp_storage.flat<int8_t>().data(), out, 1, 1, num_blocks, op,
+    GPU_LAUNCH_KERNEL(CleanupSegments<T*,OUT_T,Op>, dim3(1), dim3(32), 0, cu_stream,
+        ((T*)temp_storage.flat<int8_t>().data()), out, 1, 1, num_blocks, op,
         init);
     return;
   }
@@ -547,7 +557,7 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
     const int warps_per_block = threads_per_block / 32;
     int num_blocks = (num_rows + warps_per_block - 1) / warps_per_block;
 
-    RowReduceKernel<<<num_blocks, threads_per_block, 0, cu_stream>>>(
+    GPU_LAUNCH_KERNEL(RowReduceKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
         in, out, num_rows, num_cols, op, init);
     return;
   }
@@ -598,7 +608,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    ColumnReduceMax16ColumnsKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
+    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel,grid_dim, block_dim, 0, cu_stream,
         in, out, extent_x, extent_y, op, init);
   } else {
     Tensor temp_storage;
@@ -607,14 +617,14 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                       TensorShape({static_cast<int64>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
-    ColumnReduceMax16ColumnsKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
+    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel, dim3(grid_dim), dim3(block_dim), 0, cu_stream,
         in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
         init);
 
     dim3 new_grid_dim((grid_dim.y * extent_y + 31) / 32, 1, 1);
     dim3 num_threads(128, 1, 1);
-    CleanupSegments<<<new_grid_dim, num_threads, 0, cu_stream>>>(
-        (T*)temp_storage.flat<int8_t>().data(), out, extent_x, extent_y,
+    GPU_LAUNCH_KERNEL(CleanupSegments<T*,OUT_T,Op>,new_grid_dim, num_threads, 0, cu_stream,
+        ((T*)temp_storage.flat<int8_t>().data()), out, extent_x, extent_y,
         grid_dim.y, op, init);
   }
 }
@@ -634,7 +644,7 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    ColumnReduceKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
+    GPU_LAUNCH_KERNEL(ColumnReduceKernel, grid_dim, block_dim, 0, cu_stream,
         in, out, extent_x, extent_y, op, init);
   } else {
     Tensor temp_storage;
@@ -644,14 +654,14 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
-    ColumnReduceKernel<<<grid_dim, block_dim, 0, cu_stream>>>(
+    GPU_LAUNCH_KERNEL(ColumnReduceKernel, dim3(grid_dim), dim3(block_dim), 0, cu_stream,
         in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
         init);
 
     dim3 new_grid_dim((grid_dim.y * extent_y + 31) / 32, 1, 1);
     dim3 num_threads(128, 1, 1);
-    CleanupSegments<<<new_grid_dim, block_dim, 0, cu_stream>>>(
-        (T*)temp_storage.flat<int8_t>().data(), out, extent_x, extent_y,
+     GPU_LAUNCH_KERNEL(CleanupSegments<T*,OUT_T,Op>, new_grid_dim, num_threads, 0, cu_stream,
+        ((T*)temp_storage.flat<int8_t>().data()), out, extent_x, extent_y,
         grid_dim.y, op, init);
   }
 }
@@ -670,7 +680,7 @@ void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     int threads_per_block = 128;
     int num_blocks = Eigen::divup(extent_y, threads_per_block);
 
-    ColumnReduceSimpleKernel<<<num_blocks, threads_per_block, 0, cu_stream>>>(
+    GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
         in, out, 1, extent_x, extent_y, op);
   }
 }
@@ -685,7 +695,7 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
   // TODO(eriche): this won't be very good in the case of small x
   //                small z and large y.
-  ColumnReduceSimpleKernel<<<num_blocks, threads_per_block, 0, cu_stream>>>(
+  GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
       in, out, extent_x, extent_y, extent_z, op);
 }
 
