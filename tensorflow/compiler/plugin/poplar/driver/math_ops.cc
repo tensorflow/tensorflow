@@ -176,14 +176,15 @@ StatusOr<popops_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction* inst) {
                                  HloOpcodeString(opcode)));
 }
 
-static std::string GetMatMulPass(const HloInstruction* inst) {
-  if (IsForwardMatMul(inst)) {
+static std::string GetMatMulPass(const HloInstruction* inst,
+                                 const CompilerAnnotations& annotations) {
+  if (IsForward(inst, annotations)) {
     return "TRAINING_FWD";
   }
-  if (IsGradientMatMul(inst)) {
+  if (IsBackpropInput(inst, annotations)) {
     return "TRAINING_BWD";
   }
-  if (IsWeightUpdateMatMul(inst)) {
+  if (IsBackpropFilter(inst, annotations)) {
     return "TRAINING_WU";
   }
   return "INFERENCE_FWD";
@@ -327,7 +328,7 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   }
 
   poplar::OptionFlags opts;
-  opts.set("fullyConnectedPass", GetMatMulPass(inst));
+  opts.set("fullyConnectedPass", GetMatMulPass(inst, res.annotations));
 
   out =
       poplin::matMul(graph, in0, in1, seq, inst->name(), opts, &res.dot_cache);

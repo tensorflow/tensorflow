@@ -103,14 +103,9 @@ class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
-bool AllocationFinder::CompareConvolutionTargets(const TensorTarget& a,
-                                                 const TensorTarget& b) {
-  return IsForwardConvolution(a.tgt) && !IsForwardConvolution(b.tgt);
-}
-
-bool AllocationFinder::CompareDotTargets(const TensorTarget& a,
-                                         const TensorTarget& b) {
-  return IsForwardMatMul(a.tgt) && !IsForwardMatMul(b.tgt);
+bool AllocationFinder::CompareTargets(const TensorTarget& a,
+                                      const TensorTarget& b) {
+  return IsForward(a.tgt, annotations) && !IsForward(b.tgt, annotations);
 }
 
 void AllocationFinder::FindConsumers(const TensorSource& src,
@@ -125,7 +120,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           auto t = TensorTarget(user, op_index, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
-              CompareConvolutionTargets(t, i->second)) {
+              CompareTargets(t, i->second)) {
             tensor_allocation_map.erase(src);
           }
           tensor_allocation_map.insert(std::make_pair(src, t));
@@ -135,7 +130,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           auto t = TensorTarget(user, op_index, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
-              CompareDotTargets(t, i->second)) {
+              CompareTargets(t, i->second)) {
             tensor_allocation_map.erase(src);
           }
           tensor_allocation_map.insert(std::make_pair(src, t));
@@ -239,7 +234,8 @@ StatusOr<bool> AllocationFinder::Run(HloModule* module) {
 }
 
 AllocationFinder::AllocationFinder(CompilerAnnotations& annotations)
-    : tensor_allocation_map(annotations.tensor_allocation_map) {}
+    : tensor_allocation_map(annotations.tensor_allocation_map),
+      annotations(annotations) {}
 
 }  // namespace poplarplugin
 }  // namespace xla

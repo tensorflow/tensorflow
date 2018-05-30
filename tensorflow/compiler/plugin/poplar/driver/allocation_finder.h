@@ -61,12 +61,12 @@ class AllocationFinder : public HloPassInterface {
   void FindConsumers(const TensorSource&, const HloInstruction* tgt, int64);
 
   // Should return true when target 'a' should be used over 'b'
-  bool CompareConvolutionTargets(const TensorTarget& a, const TensorTarget& b);
-  bool CompareDotTargets(const TensorTarget& a, const TensorTarget& b);
+  bool CompareTargets(const TensorTarget& a, const TensorTarget& b);
 
   std::set<HloInstruction*> visited;
   std::vector<const HloInstruction*> path;
 
+  const CompilerAnnotations& annotations;
   TensorAllocationMap& tensor_allocation_map;
 };
 

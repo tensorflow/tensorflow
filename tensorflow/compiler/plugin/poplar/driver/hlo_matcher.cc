@@ -25,9 +25,11 @@ namespace xla {
 namespace poplarplugin {
 
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
+                       const Annotation& annotations,
                        bool root_computation_only)
     : root_computation_only_(root_computation_only),
-      patterns_(std::move(patterns)) {
+      patterns_(std::move(patterns)),
+      annotations(annotations) {
   matches_.resize(patterns.size());
 }
 
@@ -54,7 +56,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       }
     }
 
-    if (node.verification_fn && !node.verification_fn(inst)) {
+    if (node.verification_fn && !node.verification_fn(inst, annotations)) {
       return false;
     }
 

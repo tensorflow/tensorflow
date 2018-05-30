@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
@@ -28,34 +29,15 @@ static const FusedGraphInfo fuse_info[] = {
     {"pop_convolution", 0},
 };
 
-static bool IsPoplibsFusion(const HloInstruction* inst,
-                            const std::string& type) {
-  const HloComputation* comp = inst->to_apply();
-  if (comp->name().substr(0, 8) == "_pop_op_") {
-    auto end = comp->name().find('.');
-    std::string name = comp->name().substr(8, end - 8);
-    return name == type;
-  }
-  return false;
-}
-
-static bool IsPoplibsBackpropInputConv(const HloInstruction* inst) {
-  return IsPoplibsFusion(inst, "conv_with_reverse");
-}
-
-static bool IsPoplibsDepthwiseConv(const HloInstruction* inst) {
-  return IsPoplibsFusion(inst, "depthwise_conv");
-}
-
 static const std::vector<HloMatcherPattern> patterns = {
 
     // Backprop input convolution
-    {{HloOpcode::kCall, true, 0, IsPoplibsBackpropInputConv, {1, 2}},
+    {{HloOpcode::kCall, true, 0, IsFusedReverseInputConv, {1, 2}},
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
     // Depthwise convolution (forward pass)
-    {{HloOpcode::kCall, true, 0, IsPoplibsDepthwiseConv, {1, 2}},
+    {{HloOpcode::kCall, true, 0, IsFusedDepthwiseConv, {1, 2}},
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
@@ -66,7 +48,8 @@ static const std::vector<HloMatcherPattern> patterns = {
 
 };
 
-Outliner::Outliner() : HloMatcher(patterns, true) {}
+Outliner::Outliner(const CompilerAnnotations& annotations)
+    : HloMatcher(patterns, annotations, true) {}
 
 ReplacedInstructions Outliner::ReplaceNodes(int pattern,
                                             const HloMatcherMatched& match) {

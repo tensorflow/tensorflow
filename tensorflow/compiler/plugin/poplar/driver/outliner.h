@@ -24,9 +24,11 @@ class HloModule;
 
 namespace poplarplugin {
 
+struct CompilerAnnotations;
+
 class Outliner : public HloMatcher {
  public:
-  Outliner();
+  Outliner(const CompilerAnnotations& annotations);
 
   ~Outliner() override = default;
 

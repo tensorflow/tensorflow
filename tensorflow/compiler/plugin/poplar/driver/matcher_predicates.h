@@ -7,29 +7,30 @@ class HloInstruction;
 
 namespace poplarplugin {
 
-bool IsFloatType(const HloInstruction *inst);
-bool IsTruncatedNormalWhile(const HloInstruction *inst);
-bool IsRandomNormal(const HloInstruction *inst);
-bool IsRandomUniform(const HloInstruction *inst);
-bool IsConstantZero(const HloInstruction *inst);
-bool IsConstantHalf(const HloInstruction *inst);
-bool IsConstantOne(const HloInstruction *inst);
-bool IsPoplarConvolution(const HloInstruction *inst);
-bool IsExternalPadding(const HloInstruction *inst);
-bool IsAveragePool(const HloInstruction *inst);
-bool Is2DReductionWindow(const HloInstruction *inst);
-bool IsScalarConstant(const HloInstruction *inst);
-bool IsConvFilterSpatialReverse(const HloInstruction *inst);
-bool IsBiasReduce(const HloInstruction *inst);
-bool IsOutputFeed(const HloInstruction *inst);
-bool IsForwardConvolution(const HloInstruction *inst);
-bool IsGradientConvolution(const HloInstruction *inst);
-bool IsWeightUpdateConvolution(const HloInstruction *inst);
-bool IsForwardMatMul(const HloInstruction *inst);
-bool IsGradientMatMul(const HloInstruction *inst);
-bool IsWeightUpdateMatMul(const HloInstruction *inst);
-bool IsTfReluGradOp(const HloInstruction *inst);
-bool IsTrueParameter(const HloInstruction *inst);
+struct CompilerAnnotations;
+
+bool IsFloatType(const HloInstruction*, const CompilerAnnotations&);
+bool IsTruncatedNormalWhile(const HloInstruction*, const CompilerAnnotations&);
+bool IsRandomNormal(const HloInstruction*, const CompilerAnnotations&);
+bool IsRandomUniform(const HloInstruction*, const CompilerAnnotations&);
+bool IsConstantZero(const HloInstruction*, const CompilerAnnotations&);
+bool IsConstantHalf(const HloInstruction*, const CompilerAnnotations&);
+bool IsConstantOne(const HloInstruction*, const CompilerAnnotations&);
+bool IsPoplarConvolution(const HloInstruction*, const CompilerAnnotations&);
+bool IsExternalPadding(const HloInstruction*, const CompilerAnnotations&);
+bool IsAveragePool(const HloInstruction*, const CompilerAnnotations&);
+bool Is2DReductionWindow(const HloInstruction*, const CompilerAnnotations&);
+bool IsScalarConstant(const HloInstruction*, const CompilerAnnotations&);
+bool IsConvFilterTranspose(const HloInstruction*, const CompilerAnnotations&);
+bool IsBiasReduce(const HloInstruction*, const CompilerAnnotations&);
+bool IsOutputFeed(const HloInstruction*, const CompilerAnnotations&);
+bool IsForward(const HloInstruction*, const CompilerAnnotations&);
+bool IsBackpropInput(const HloInstruction*, const CompilerAnnotations&);
+bool IsBackpropFilter(const HloInstruction*, const CompilerAnnotations&);
+bool IsTfReluGradOp(const HloInstruction*, const CompilerAnnotations&);
+bool IsTrueParameter(const HloInstruction*, const CompilerAnnotations&);
+bool IsFusedReverseInputConv(const HloInstruction*, const CompilerAnnotations&);
+bool IsFusedDepthwiseConv(const HloInstruction*, const CompilerAnnotations&);
 
 }  // namespace poplarplugin
 }  // namespace xla

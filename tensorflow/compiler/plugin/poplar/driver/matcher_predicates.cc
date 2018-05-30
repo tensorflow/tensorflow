@@ -1,49 +1,71 @@
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_MATCHER_PREDICATES_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_MATCHER_PREDICATES_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
 namespace xla {
 namespace poplarplugin {
 
-bool IsFloatType(const HloInstruction *inst) {
+static bool IsPoplibsFusion(const HloInstruction* inst,
+                            const std::string& type) {
+  const HloComputation* comp = inst->to_apply();
+  if (comp->name().substr(0, 8) == "_pop_op_") {
+    auto end = comp->name().find('.');
+    std::string name = comp->name().substr(8, end - 8);
+    return name == type;
+  }
+  return false;
+}
+
+bool IsFloatType(const HloInstruction *inst,
+                 const CompilerAnnotations&) {
   return ShapeUtil::ElementIsFloating(inst->shape());
 }
 
-bool IsTruncatedNormalWhile(const HloInstruction *inst) {
+bool IsTruncatedNormalWhile(const HloInstruction *inst,
+                            const CompilerAnnotations&) {
   return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
 }
 
-bool IsRandomNormal(const HloInstruction *inst) {
+bool IsRandomNormal(const HloInstruction *inst,
+                    const CompilerAnnotations&) {
   return inst->random_distribution() == RandomDistribution::RNG_NORMAL;
 }
 
-bool IsRandomUniform(const HloInstruction *inst) {
+bool IsRandomUniform(const HloInstruction *inst,
+                     const CompilerAnnotations&) {
   return inst->random_distribution() == RandomDistribution::RNG_UNIFORM;
 }
 
-bool IsConstantZero(const HloInstruction *inst) {
+bool IsConstantZero(const HloInstruction *inst,
+                    const CompilerAnnotations&) {
   return !ShapeUtil::HasZeroElements(inst->shape()) && inst->literal().IsAll(0);
 }
 
-bool IsConstantHalf(const HloInstruction *inst) {
+bool IsConstantHalf(const HloInstruction *inst,
+                    const CompilerAnnotations&) {
   return !ShapeUtil::HasZeroElements(inst->shape()) &&
          inst->literal().IsAllFloat(0.5);
 }
 
-bool IsConstantOne(const HloInstruction *inst) {
+bool IsConstantOne(const HloInstruction *inst,
+                   const CompilerAnnotations&) {
   return !ShapeUtil::HasZeroElements(inst->shape()) &&
          inst->literal().IsAllFloat(1.0);
 }
 
-bool IsPoplarConvolution(const HloInstruction *inst) {
+bool IsPoplarConvolution(const HloInstruction *inst,
+                         const CompilerAnnotations&) {
   if (inst->to_apply()->name().substr(0, 15) == "pop_convolution") return true;
   if (inst->to_apply()->name().substr(0, 14) == "pop_depth_conv") return true;
   return false;
 }
 
-bool IsExternalPadding(const HloInstruction *inst) {
+bool IsExternalPadding(const HloInstruction *inst,
+                       const CompilerAnnotations&) {
   const PaddingConfig &cfg(inst->padding_config());
   for (auto &d : cfg.dimensions()) {
     if (d.interior_padding() > 0) return false;
@@ -51,11 +73,13 @@ bool IsExternalPadding(const HloInstruction *inst) {
   return true;
 }
 
-bool IsAveragePool(const HloInstruction *inst) {
+bool IsAveragePool(const HloInstruction *inst,
+                   const CompilerAnnotations&) {
   return inst->metadata().op_type() == "AvgPool";
 }
 
-bool Is2DReductionWindow(const HloInstruction *inst) {
+bool Is2DReductionWindow(const HloInstruction *inst,
+                         const CompilerAnnotations&) {
   const Window &window(inst->window());
   int reduction_count = 0;
   for (int64 i = 0; i < window.dimensions_size(); i++) {
@@ -69,11 +93,13 @@ bool Is2DReductionWindow(const HloInstruction *inst) {
   return reduction_count == 2;
 }
 
-bool IsScalarConstant(const HloInstruction *inst) {
+bool IsScalarConstant(const HloInstruction *inst,
+                      const CompilerAnnotations&) {
   return ShapeUtil::IsScalar(inst->shape());
 }
 
-bool IsConvFilterSpatialReverse(const HloInstruction *inst) {
+bool IsConvFilterTranspose(const HloInstruction *inst,
+                                const CompilerAnnotations&) {
   // If this reverse feeds a convolution and it is reversing the
   // spatial dimensions of the convolution, then we can use the
   // special 'reverse spatial dimensions' feature of the convolution
@@ -92,7 +118,8 @@ bool IsConvFilterSpatialReverse(const HloInstruction *inst) {
   return true;
 }
 
-bool IsBiasReduce(const HloInstruction *inst) {
+bool IsBiasReduce(const HloInstruction *inst,
+                  const CompilerAnnotations&) {
   HloInstruction *root(inst->to_apply()->root_instruction());
   if (!hlo_query::AllOperandsAreParameters(*root)) {
     return false;
@@ -115,7 +142,8 @@ bool IsBiasReduce(const HloInstruction *inst) {
   return true;
 }
 
-bool IsOutputFeed(const HloInstruction *inst) {
+bool IsOutputFeed(const HloInstruction *inst,
+                  const CompilerAnnotations&) {
   HloInstruction *root = inst->parent()->root_instruction();
   if (inst == root) return true;
   if (inst->user_count() != 1) return false;
@@ -123,54 +151,52 @@ bool IsOutputFeed(const HloInstruction *inst) {
   return false;
 }
 
-bool IsForwardConvolution(const HloInstruction *inst) {
-  const std::string &tf_core_op = inst->metadata().op_type();
-  return (tf_core_op == "Conv2D" || tf_core_op == "Conv3D" ||
-          tf_core_op == "DepthwiseConv2dNative");
+bool IsForward(const HloInstruction *inst,
+               const CompilerAnnotations& annotations) {
+  if (annotations.classification_map.count(inst) == 0) {
+    return false;
+  }
+  auto type = annotations.classification_map.at(inst);
+  return type == ClassificationType::FORWARD;
 }
 
-bool IsGradientConvolution(const HloInstruction *inst) {
-  const std::string &tf_core_op = inst->metadata().op_type();
-  return (tf_core_op == "Conv2DBackpropInput" ||
-          tf_core_op == "Conv3DBackpropInputV2" ||
-          tf_core_op == "DepthwiseConv2dNativeBackpropInput");
+bool IsBackpropInput(const HloInstruction *inst,
+                     const CompilerAnnotations& annotations) {
+  if (annotations.classification_map.count(inst) == 0) {
+    return false;
+  }
+  auto type = annotations.classification_map.at(inst);
+  return type == ClassificationType::BACKPROP_INPUT;
 }
 
-bool IsWeightUpdateConvolution(const HloInstruction *inst) {
-  const std::string &tf_core_op = inst->metadata().op_type();
-  return (tf_core_op == "Conv2DBackpropFilter" ||
-          tf_core_op == "Conv3DBackpropFilterV2" ||
-          tf_core_op == "DepthwiseConv2dNativeBackpropFilter");
+bool IsBackpropFilter(const HloInstruction *inst,
+                      const CompilerAnnotations& annotations) {
+  if (annotations.classification_map.count(inst) == 0) {
+    return false;
+  }
+  auto type = annotations.classification_map.at(inst);
+  return type == ClassificationType::BACKPROP_FILTER;
 }
 
-bool IsForwardMatMul(const HloInstruction *inst) {
-  const HloInstruction *lh = inst->operand(0);
-  const HloInstruction *rh = inst->operand(1);
-  return (lh->opcode() != HloOpcode::kTranspose &&
-          rh->opcode() != HloOpcode::kTranspose);
-}
-
-bool IsGradientMatMul(const HloInstruction *inst) {
-  const HloInstruction* lh = inst->operand(0);
-  const HloInstruction* rh = inst->operand(1);
-  return (lh->opcode() != HloOpcode::kTranspose &&
-          rh->opcode() == HloOpcode::kTranspose);
-}
-
-bool IsWeightUpdateMatMul(const HloInstruction *inst) {
-  const HloInstruction* lh = inst->operand(0);
-  const HloInstruction* rh = inst->operand(1);
-  return (lh->opcode() == HloOpcode::kTranspose &&
-          rh->opcode() != HloOpcode::kTranspose);
-}
-
-bool IsTfReluGradOp(const HloInstruction *inst) {
+bool IsTfReluGradOp(const HloInstruction *inst,
+                    const CompilerAnnotations&) {
   const std::string &tf_core_op = inst->metadata().op_type();
   return tf_core_op == "ReluGrad";
 }
 
-bool IsTrueParameter(const HloInstruction *inst) {
+bool IsTrueParameter(const HloInstruction *inst,
+                     const CompilerAnnotations&) {
   return inst->opcode() == HloOpcode::kParameter;
+}
+
+bool IsFusedReverseInputConv(const HloInstruction* inst,
+                                const CompilerAnnotations&) {
+  return IsPoplibsFusion(inst, "conv_with_reverse");
+}
+
+bool IsFusedDepthwiseConv(const HloInstruction* inst,
+                            const CompilerAnnotations&) {
+  return IsPoplibsFusion(inst, "depthwise_conv");
 }
 
 }  // namespace poplarplugin

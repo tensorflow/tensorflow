@@ -224,12 +224,6 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
 
   auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
       conv1_shape, op0_sub1, op1_sub1, GetConv1Window(), GetConvDimensions()));
-  {
-    OpMetadata metadata;
-    metadata.set_op_name("Conv1");
-    metadata.set_op_type("Conv2D");
-    conv1->set_metadata(metadata);
-  }
 
   auto computation_sub1 = builder_sub1.Build();
 
@@ -242,12 +236,6 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
 
   auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
       conv2_shape, op0_sub2, op1_sub2, GetConv1Window(), GetConvDimensions()));
-  {
-    OpMetadata metadata;
-    metadata.set_op_name("Conv2");
-    metadata.set_op_type("Conv2DBackpropInput");
-    conv2->set_metadata(metadata);
-  }
 
   auto computation_sub2 = builder_sub2.Build();
 
@@ -279,6 +267,8 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   hlo_module->AddEntryComputation(std::move(computation_main));
 
   CompilerAnnotations annotations;
+  annotations.classification_map[conv1] = ClassificationType::FORWARD;
+  annotations.classification_map[conv2] = ClassificationType::BACKPROP_INPUT;
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -342,12 +332,6 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
 
   auto conv1 = builder_sub1.AddInstruction(HloInstruction::CreateConvolve(
       conv1_shape, op0_sub1, op1_sub1, GetConv1Window(), GetConvDimensions()));
-  {
-    OpMetadata metadata;
-    metadata.set_op_name("Conv1");
-    metadata.set_op_type("Conv2DBackpropInput");
-    conv1->set_metadata(metadata);
-  }
 
   auto computation_sub1 = builder_sub1.Build();
 
@@ -360,12 +344,6 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
 
   auto conv2 = builder_sub2.AddInstruction(HloInstruction::CreateConvolve(
       conv2_shape, op0_sub2, op1_sub2, GetConv1Window(), GetConvDimensions()));
-  {
-    OpMetadata metadata;
-    metadata.set_op_name("Conv2");
-    metadata.set_op_type("Conv2D");
-    conv2->set_metadata(metadata);
-  }
 
   auto computation_sub2 = builder_sub2.Build();
 
@@ -397,6 +375,8 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   hlo_module->AddEntryComputation(std::move(computation_main));
 
   CompilerAnnotations annotations;
+  annotations.classification_map[conv1] = ClassificationType::BACKPROP_INPUT;
+  annotations.classification_map[conv2] = ClassificationType::FORWARD;
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());

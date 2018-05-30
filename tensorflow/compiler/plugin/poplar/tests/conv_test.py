@@ -169,7 +169,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_{<const>,arg0.*_input,arg1.*_weights}',
+      ok = ['Copy_arg1.*_weights_to',
             'convolution.*clone/Conv_8x8']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -382,7 +382,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_{arg0.*,arg1.*}_to',
+      ok = ['Copy_arg0.*_to',
             'convolution.*.clone/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
@@ -285,7 +286,7 @@ static const std::vector<HloMatcherPattern> patterns = {
 
     // Depthwise convolution (backward pass, input)
     {{HloOpcode::kConvolution, true, 0, nullptr, {15, 1}},
-     {HloOpcode::kReverse, true, 0, IsConvFilterSpatialReverse, {2}},
+     {HloOpcode::kReverse, true, 0, IsConvFilterTranspose, {2}},
      {HloOpcode::kSelect, true, 0, nullptr, {7, 5, 3}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
@@ -304,7 +305,7 @@ static const std::vector<HloMatcherPattern> patterns = {
 
     // Backprop input convolution
     {{HloOpcode::kConvolution, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kReverse, true, 0, IsConvFilterSpatialReverse, {3}},
+     {HloOpcode::kReverse, true, 0, IsConvFilterTranspose, {3}},
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
@@ -322,7 +323,7 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kBroadcast, true, 0, nullptr, {11}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConvolution, true, 0, IsWeightUpdateConvolution, {14, 15}},
+     {HloOpcode::kConvolution, true, 0, nullptr, {14, 15}},
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
@@ -341,7 +342,8 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsScalarConstant, {}}},
 };
 
-FuseOps::FuseOps() : HloMatcher(patterns, false) {}
+FuseOps::FuseOps(const CompilerAnnotations& annotations)
+    : HloMatcher(patterns, annotations, false) {}
 
 ReplacedInstructions FuseOps::ReplaceNodes(int pattern,
                                            const HloMatcherMatched& match) {

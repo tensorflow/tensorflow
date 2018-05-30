@@ -110,17 +110,18 @@ StatusOr<popconv::ConvParams> GetConvolutionParameters(
   return params;
 }
 
-static std::string GetConvolutionPass(const HloInstruction* inst) {
-  if (IsForwardConvolution(inst)) {
+static std::string GetConvolutionPass(const HloInstruction* inst,
+                                      const CompilerAnnotations& annotations) {
+  if (IsForward(inst, annotations)) {
     return "TRAINING_FWD";
   }
-  if (IsGradientConvolution(inst)) {
+  if (IsBackpropInput(inst, annotations)) {
     return "TRAINING_BWD";
   }
-  if (IsWeightUpdateConvolution(inst)) {
+  if (IsBackpropFilter(inst, annotations)) {
     return "TRAINING_WU";
   }
-  return "NONE";
+  return "INFERENCE_FWD";
 }
 
 static bool is_identity_shuffle(const std::vector<unsigned int> shuffle) {
@@ -311,7 +312,7 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::OptionFlags opts;
-  opts.set("pass", GetConvolutionPass(conv));
+  opts.set("pass", GetConvolutionPass(conv, res.annotations));
 
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
@@ -349,7 +350,7 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::OptionFlags opts;
-  opts.set("pass", GetConvolutionPass(inst));
+  opts.set("pass", GetConvolutionPass(inst, res.annotations));
 
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
@@ -389,7 +390,7 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::OptionFlags opts;
-  opts.set("pass", GetConvolutionPass(inst));
+  opts.set("pass", GetConvolutionPass(inst, res.annotations));
 
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));

@@ -22,9 +22,11 @@ namespace xla {
 
 namespace poplarplugin {
 
+struct CompilerAnnotations;
+
 class FuseOps : public HloMatcher {
  public:
-  FuseOps();
+  FuseOps(const CompilerAnnotations&);
 
   ~FuseOps() override = default;
 
