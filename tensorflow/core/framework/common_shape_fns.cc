@@ -40,8 +40,8 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
       const int64 padding_needed =
-          std::max(0LL, (*output_size - 1) * stride + effective_filter_size -
-                            input_size);
+          std::max(int64{0}, (*output_size - 1) * stride +
+                                 effective_filter_size - input_size);
       // For odd values of total padding, add more padding at the 'right'
       // side of the given dimension.
       *padding_before = padding_needed / 2;
