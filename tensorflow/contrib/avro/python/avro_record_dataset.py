@@ -1,10 +1,24 @@
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 import os
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import load_library
 from tensorflow.python.data.ops.dataset_ops import Dataset
+from tensorflow.python.data.util import convert
 from tensorflow.python.framework import tensor_shape
 from tensorflow.contrib.avro.ops.gen_avro_record_dataset import avro_record_dataset
 
@@ -14,28 +28,6 @@ lib_name = os.path.join(this_dir, '_avro_record_dataset.so')
 reader_module = load_library.load_op_library(lib_name)
 
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
-
-
-def _convert_optional_param_to_tensor(argument_name,
-                                      argument_value,
-                                      argument_default,
-                                      argument_dtype=dtypes.int64):
-    """
-    Convert optional parameter to tensor.  This method has been copied from the original TensorFlow code:
-    https://github.com/tensorflow/tensorflow/blob/v1.4.0/tensorflow/python/data/ops/readers.py
-
-    :param argument_name: The argument name.
-    :param argument_value: The value.
-    :param argument_default: The default argument.
-    :param argument_dtype: The type.
-    :return:
-    """
-    if argument_value is not None:
-        return ops.convert_to_tensor(
-            argument_value, dtype=argument_dtype, name=argument_name)
-    else:
-        return constant_op.constant(
-            argument_default, dtype=argument_dtype, name=argument_name)
 
 
 class AvroRecordDataset(Dataset):
@@ -53,12 +45,12 @@ class AvroRecordDataset(Dataset):
 
         # Force the type to string even if filenames is an empty list.
         self._filenames = ops.convert_to_tensor(filenames, dtypes.string, name="filenames")
-        self._schema = _convert_optional_param_to_tensor(
+        self._schema = convert.optional_param_to_tensor(
             "schema",
             schema,
             argument_default="",
             argument_dtype=dtypes.string)
-        self._buffer_size = _convert_optional_param_to_tensor(
+        self._buffer_size = convert.optional_param_to_tensor(
             "buffer_size",
             buffer_size,
             argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)

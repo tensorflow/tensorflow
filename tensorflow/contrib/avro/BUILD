@@ -95,6 +95,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops",
+        "//tensorflow/python/data/util:convert",
     ],
 )
 
