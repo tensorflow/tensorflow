@@ -7,6 +7,7 @@ Legend:
 - O : ROCm ready
 - T : tuned with FIXME
 - X : NOT ROCm ready
+- P : in progress
 
 CUDA kernels under tensorflow/contrib are not considered yet.
 
@@ -79,10 +80,10 @@ Kernels under tensorflow/core/kernels
 |   O    |        | bias_op.h
 |   O    |        | bias_op_gpu.cu.cc
 |   O    |        | bias_op_gpu.h
-|   X    |cub     | bincount_op.cc
-|   X    |cub     | bincount_op.h
-|   X    |cub     | bincount_op_gpu.cu.cc
-|   X    |cub     | bincount_op_test.cc
+|   P    |cub     | bincount_op.cc
+|   P    |cub     | bincount_op.h
+|   P    |cub     | bincount_op_gpu.cu.cc
+|   P    |cub     | bincount_op_test.cc
 |   O    |        | bitcast_op.cc
 |   O    |        | bitcast_op.h
 |   O    |        | boosted_trees
@@ -557,9 +558,9 @@ Kernels under tensorflow/core/kernels
 |   O    |        | hexagon/soc_interface.cc
 |   O    |        | hexagon/soc_interface.h
 |   O    |        | hinge-loss.h
-|   X    |cub     | histogram_op.cc
-|   X    |cub     | histogram_op.h
-|   X    |cub     | histogram_op_gpu.cu.cc
+|   P    |cub     | histogram_op.cc
+|   P    |cub     | histogram_op.h
+|   P    |cub     | histogram_op_gpu.cu.cc
 |   O    |        | i_remote_fused_graph_executor.h
 |   O    |        | i_remote_fused_graph_ops_definitions.cc
 |   O    |        | i_remote_fused_graph_ops_definitions.h
@@ -580,9 +581,9 @@ Kernels under tensorflow/core/kernels
 |   O    |        | inplace_ops.cc
 |   O    |        | inplace_ops_functor.h
 |   O    |        | inplace_ops_functor_gpu.cu.cc
-|   X    |cub     | l2loss_op.cc
-|   X    |cub     | l2loss_op.h
-|   X    |cub     | l2loss_op_gpu.cu.cc
+|   P    |cub     | l2loss_op.cc
+|   P    |cub     | l2loss_op.h
+|   P    |cub     | l2loss_op_gpu.cu.cc
 |   O    |        | linalg_ops_common.cc
 |   O    |        | linalg_ops_common.h
 |   O    |        | list_kernels.cc
@@ -795,26 +796,26 @@ Kernels under tensorflow/core/kernels
 |   O    |        | record_yielder.cc
 |   O    |        | record_yielder.h
 |   O    |        | reduce_join_op.cc
-|   X    |cub     | reduction_gpu_kernels.cu.h
-|   X    |cub     | reduction_ops.h
-|   X    |cub     | reduction_ops_all.cc
-|   X    |cub     | reduction_ops_any.cc
-|   X    |cub     | reduction_ops_common.cc
-|   X    |cub     | reduction_ops_common.h
-|   X    |cub     | reduction_ops_gpu_bool.cu.cc
+|   P    |cub     | reduction_gpu_kernels.cu.h
+|   P    |cub     | reduction_ops.h
+|   P    |cub     | reduction_ops_all.cc
+|   P    |cub     | reduction_ops_any.cc
+|   P    |cub     | reduction_ops_common.cc
+|   P    |cub     | reduction_ops_common.h
+|   P    |cub     | reduction_ops_gpu_bool.cu.cc
 |   X    |cub     | reduction_ops_gpu_complex128.cu.cc
 |   X    |cub     | reduction_ops_gpu_complex64.cu.cc
-|   X    |cub     | reduction_ops_gpu_double.cu.cc
-|   X    |cub     | reduction_ops_gpu_float.cu.cc
-|   X    |cub     | reduction_ops_gpu_int.cu.cc
-|   X    |cub     | reduction_ops_half_mean_sum.cu.cc
-|   X    |cub     | reduction_ops_half_prod_max_min.cu.cc
-|   X    |cub     | reduction_ops_max.cc
-|   X    |cub     | reduction_ops_mean.cc
-|   X    |cub     | reduction_ops_min.cc
-|   X    |cub     | reduction_ops_prod.cc
-|   X    |cub     | reduction_ops_sum.cc
-|   X    |cub     | reduction_ops_test.cc
+|   P    |cub     | reduction_ops_gpu_double.cu.cc
+|   P    |cub     | reduction_ops_gpu_float.cu.cc
+|   P    |cub     | reduction_ops_gpu_int.cu.cc
+|   P    |cub     | reduction_ops_half_mean_sum.cu.cc
+|   P    |cub     | reduction_ops_half_prod_max_min.cu.cc
+|   P    |cub     | reduction_ops_max.cc
+|   P    |cub     | reduction_ops_mean.cc
+|   P    |cub     | reduction_ops_min.cc
+|   P    |cub     | reduction_ops_prod.cc
+|   P    |cub     | reduction_ops_sum.cc
+|   P    |cub     | reduction_ops_test.cc
 |   O    |        | reference_gemm.h
 |   O    |        | regex_replace_op.cc
 |   O    |        | relu_op.cc
