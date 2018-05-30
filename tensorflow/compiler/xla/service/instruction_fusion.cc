@@ -118,6 +118,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDivide:
+    case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:

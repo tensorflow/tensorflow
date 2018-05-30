@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -300,17 +301,11 @@ class HloComputation {
       const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
-  //
-  // If the module pointer is not nullptr, then the cloned computations will be
-  // added to this module in order to support deep cloning. Otherwise the module
-  // of the computation is used.
-  //
-  // If clone_map is not nullptr, then each original instruction that is cloned
-  // will be inserted and map to its clone. clone_map should not already contain
-  // any of the instructions to clone.
-  std::unique_ptr<HloComputation> Clone(
-      const string& suffix = "clone", HloModule* module = nullptr,
-      HloInstruction::CloneMap* clone_map = nullptr);
+  // If the clone context is specified, it will be populated with the cloned
+  // object mappings, and its module() will be used to add new computations
+  // into.
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+                                        HloCloneContext* context = nullptr);
 
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
@@ -320,9 +315,7 @@ class HloComputation {
   std::unique_ptr<HloComputation> CloneWithReplacements(
       std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
           replacements,
-      HloModule* module = nullptr,
-      HloInstruction::CloneMap* clone_map = nullptr,
-      const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const string& suffix = "clone");
 
   // Returns true if the given instruction can be removed from the computation.
   // Parameter instructions cannot be removed without violating invariants of

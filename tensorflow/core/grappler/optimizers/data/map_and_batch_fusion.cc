@@ -97,11 +97,13 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     // Set `f` and `Targuments` attributes.
-    new_node->mutable_attr()->insert(map_node->attr().begin(),
-                                     map_node->attr().end());
+    for (auto key : {"f", "Targuments"}) {
+      (*new_node->mutable_attr())[key] = map_node->attr().at(key);
+    }
     // Set `output_types` and `output_shapes` attributes.
-    new_node->mutable_attr()->insert(batch_node.attr().begin(),
-                                     batch_node.attr().end());
+    for (auto key : {"output_shapes", "output_types"}) {
+      (*new_node->mutable_attr())[key] = batch_node.attr().at(key);
+    }
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());

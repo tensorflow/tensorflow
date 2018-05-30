@@ -1353,12 +1353,6 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_extension_linkopts():
-  return []  # No extension link opts
-
-def tf_extension_copts():
-  return []  # No extension c opts
-
 # In tf_py_wrap_cc generated libraries
 # module init functions are not exported unless
 # they contain one of the keywords in the version file
@@ -1459,10 +1453,10 @@ def tf_py_wrap_cc(name,
   tf_cc_shared_object(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
-      copts=(copts + if_not_windows([
+      copts=copts + if_not_windows([
           "-Wno-self-assign", "-Wno-sign-compare", "-Wno-write-strings"
-      ]) + tf_extension_copts()),
-      linkopts=tf_extension_linkopts() + extra_linkopts,
+      ]),
+      linkopts=extra_linkopts,
       linkstatic=1,
       deps=deps + extra_deps,
       **kwargs)

@@ -112,6 +112,11 @@ class LocalComputation {
 
   const XlaComputation& computation() const;
 
+  // Returns the HloModuleProto contained in the XlaComputation in the
+  // serialized binary format. Logs an internal error and returns an empty
+  // string on failure.
+  string GetSerializedProto() const;
+
   // Returns the return-value shape for this computation.
   StatusOr<Shape> GetReturnValueShape() const;
 

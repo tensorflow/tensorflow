@@ -965,9 +965,10 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   // Attach cloned computation to an empty HLO module so the existing ones are
   // not modified.
   HloModule empty_hlo_module("EmptyModuleForFusion", config);
+  HloCloneContext context(&empty_hlo_module);
   auto cloned_fused_computation =
       fusion->fused_instructions_computation()->Clone(
-          /*suffix=*/"clone_with_layout", &empty_hlo_module);
+          /*suffix=*/"clone_with_layout", &context);
   for (auto* instruction : cloned_fused_computation->instructions()) {
     LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
   }

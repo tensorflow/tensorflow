@@ -56,19 +56,21 @@ class ArithmeticOptimizer : public GraphOptimizer {
   struct ArithmeticOptimizerOptions {
     // TODO(ezhulenev): flag do disable TrySimplifyAndReplaceUses in tests.
     // Remove when all optimizers will be migrated to separate stages.
-    bool dedup_computations = true;
     bool enable_try_simplify_and_replace = true;
+
     bool combine_add_to_addn = true;
+    bool convert_sqrt_div_to_rsqrt_mul = false;
+    bool dedup_computations = true;
     bool hoist_common_factor_out_of_aggregation = true;
+    bool hoist_cwise_unary_chains = false;
     bool minimize_broadcasts = true;
+    bool remove_idempotent = true;
     bool remove_identity_transpose = true;
+    bool remove_involution = true;
+    bool remove_logical_not = true;
+    bool remove_negation = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
-    bool remove_negation = true;
-    bool hoist_cwise_unary_chains = false;
-    bool convert_sqrt_div_to_rsqrt_mul = false;
-    bool remove_idempotent = true;
-    bool remove_logical_not = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.

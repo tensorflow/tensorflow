@@ -154,6 +154,16 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
 // properties, which do invariant checks before / after the operation.
 class ShapeUtil {
  public:
+  // Data structure which describes the coordinates and the shape, of a tuple
+  // shaped sub-shape.
+  struct IndexedShape {
+    IndexedShape() = default;
+    IndexedShape(ShapeIndex index, Shape shape)
+        : index(std::move(index)), shape(std::move(shape)) {}
+    ShapeIndex index;
+    Shape shape;
+  };
+
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1. Note that sparse shapes
   // may not actually be able to store this number of elements. See
@@ -464,6 +474,13 @@ class ShapeUtil {
   // Returns whether the given index in the given shape is a leaf element of the
   // shape.
   static bool IsLeafIndex(const Shape& shape, const ShapeIndex& index);
+
+  // Returns the number of leaves in the shape.
+  static int64 GetLeafCount(const Shape& shape);
+
+  // Retrieves all the leaf shapes and their indexes, in the order walked by
+  // the ForEachSubshape() API.
+  static std::vector<IndexedShape> GetLeafShapes(const Shape& shape);
 
   // Calls the given visitor function for each subshape of the given shape.
   // Subshapes are visited in DFS pre-order starting with the entire shape

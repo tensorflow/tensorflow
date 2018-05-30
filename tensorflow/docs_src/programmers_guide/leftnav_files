@@ -1,6 +1,7 @@
 index.md
 
 ### High Level APIs
+keras.md
 eager.md
 datasets.md
 

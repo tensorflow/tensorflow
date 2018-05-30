@@ -376,6 +376,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:

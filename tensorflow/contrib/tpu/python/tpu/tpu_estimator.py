@@ -1806,7 +1806,7 @@ class TPUEstimator(estimator_lib.Estimator):
       export_outputs['classes'] =
         export_output_lib.ClassificationOutput(classes=classes)
 
-    tpu.outside_compilation(host_call, [logits])
+    tpu.outside_compilation(host_call, logits)
 
     ...
   ```
@@ -1968,13 +1968,18 @@ class TPUEstimator(estimator_lib.Estimator):
                              input_receiver_fn_map[mode]}
     export_tags = [tag_constants.SERVING, tag_constants.TPU]
     mode = _REWRITE_FOR_INFERENCE_MODE
-    super(TPUEstimator, self)._add_meta_graph_for_mode(builder,
-                                                       input_receiver_fn_map,
-                                                       checkpoint_path,
-                                                       strip_default_attrs,
-                                                       save_variables=False,
-                                                       mode=mode,
-                                                       export_tags=export_tags)
+    try:
+      (super(TPUEstimator, self).
+       _add_meta_graph_for_mode(builder,
+                                input_receiver_fn_map,
+                                checkpoint_path,
+                                strip_default_attrs,
+                                save_variables=False,
+                                mode=mode,
+                                export_tags=export_tags))
+    except Exception as error:  # pylint: disable=broad-except
+      logging.warning('Saving meta graph for TPU failed: {}.'
+                      .format(str(error)))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
@@ -2223,11 +2228,11 @@ class TPUEstimator(estimator_lib.Estimator):
           if shutdown_mode:
             if shutdown_mode == 'shutdown_worker':
               finalizer_hooks = [
-                  session_support.ShutdownLameWorkers(timeout_ms=1000),
+                  session_support.ShutdownLameWorkers(timeout_ms=60*1000),
               ]
             elif shutdown_mode == 'shutdown_computation':
               finalizer_hooks = [
-                  session_support.RestartComputation(timeout_ms=1000),
+                  session_support.RestartComputation(timeout_ms=60*1000),
               ]
             else:
               raise ValueError('Unknown TF_TPU_GRACEFUL_SHUTDOWN_MODE "%s"' %
