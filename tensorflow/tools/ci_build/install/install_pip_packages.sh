@@ -21,6 +21,9 @@ set -e
 easy_install -U pip
 easy_install3 -U pip
 
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0
+
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
