@@ -127,6 +127,10 @@ void PortableZeroVector(float* vector, int v_size);
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
+// Check if all entries of a vector are zero.
+bool PortableIsZeroVector(const float* vector, int v_size);
+bool NeonIsZeroVector(const float* vector, int v_size);
+
 // Symmetric quantizer.
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min,

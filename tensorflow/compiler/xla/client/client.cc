@@ -64,7 +64,7 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
-    const Literal& literal, const DeviceHandle* device_handle) {
+    const LiteralSlice& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
   *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
@@ -91,7 +91,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
   return MakeUnique<GlobalData>(stub_, response.data());
 }
 
-Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
+Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
   *request.mutable_literal() = literal.ToProto();

@@ -110,19 +110,12 @@ class HloRunner {
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      bool run_hlo_passes = true);
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
-      bool run_hlo_passes = true) {
-    // Construct a vector of plain pointers for the arguments.
-    std::vector<Literal*> argument_pointers;
-    c_transform(
-        arguments, std::back_inserter(argument_pointers),
-        [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
-    return Execute(std::move(module), argument_pointers, run_hlo_passes);
-  }
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
@@ -137,6 +130,7 @@ class HloRunner {
   // This creates the backend lazily so it's possible to instantiate an
   // HloRunner in a program without any backends linked in.
   Backend& backend();
+  const Backend& backend() const;
 
  private:
   // Creates an executable object given an HLO module. If run_hlo_passes is

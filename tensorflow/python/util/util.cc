@@ -172,17 +172,20 @@ int IsSequenceHelper(PyObject* o) {
   // Try not to return to Python - see if the type has already been seen
   // before.
 
-  // NOTE: It's not clear whether the lock is required (we should be holding the
-  // python GIL in this code already).
-  mutex_lock l(g_type_to_sequence_map);
   auto* type_to_sequence_map = IsTypeSequenceMap();
   auto* type = Py_TYPE(o);
 
-  auto it = type_to_sequence_map->find(type);
-  if (it != type_to_sequence_map->end()) {
-    return it->second;
+  {
+    mutex_lock l(g_type_to_sequence_map);
+    auto it = type_to_sequence_map->find(type);
+    if (it != type_to_sequence_map->end()) {
+      return it->second;
+    }
   }
 
+  // NOTE: We explicitly release the g_type_to_sequence_map mutex,
+  // because PyObject_IsInstance() may release the GIL, allowing another thread
+  // concurrent entry to this function.
   int is_instance = PyObject_IsInstance(o, CollectionsSequenceType);
 
   // Don't cache a failed is_instance check.
@@ -195,7 +198,10 @@ int IsSequenceHelper(PyObject* o) {
   // leak, as there should only be a relatively small number of types in the
   // map, and an even smaller number that are eligible for decref.
   Py_INCREF(type);
-  type_to_sequence_map->insert({type, is_sequence});
+  {
+    mutex_lock l(g_type_to_sequence_map);
+    type_to_sequence_map->insert({type, is_sequence});
+  }
 
   return is_sequence;
 }

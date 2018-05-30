@@ -35,6 +35,7 @@ import unittest
 
 import tensorflow as tf
 
+from google.protobuf import message
 from google.protobuf import text_format
 
 from tensorflow.python.lib.io import file_io
@@ -194,6 +195,25 @@ class ApiCompatibilityTest(test.TestCase):
 
     else:
       logging.info('No differences found between API and golden.')
+
+  def testNoSubclassOfMessage(self):
+
+    def Visit(path, parent, unused_children):
+      """A Visitor that crashes on subclasses of generated proto classes."""
+      # If the traversed object is a proto Message class
+      if not (isinstance(parent, type) and
+              issubclass(parent, message.Message)):
+        return
+      if parent is message.Message:
+        return
+      # Check that it is a direct subclass of Message.
+      if message.Message not in parent.__bases__:
+        raise NotImplementedError(
+            'Object tf.%s is a subclass of a generated proto Message. '
+            'They are not yet supported by the API tools.' % path)
+    visitor = public_api.PublicAPIVisitor(Visit)
+    visitor.do_not_descend_map['tf'].append('contrib')
+    traverse.traverse(tf, visitor)
 
   @unittest.skipUnless(
       sys.version_info.major == 2,
