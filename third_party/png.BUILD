@@ -42,6 +42,7 @@ cc_library(
     ],
     includes = ["."],
     linkopts = ["-lm"],
+    copts = ["-DPNG_ARM_NEON_OPT=0"],
     visibility = ["//visibility:public"],
     deps = ["@zlib_archive//:zlib"],
 )
