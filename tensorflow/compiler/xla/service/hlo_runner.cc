@@ -92,53 +92,58 @@ HloRunner::HloRunner(se::Platform* platform) {
 
 HloRunner::~HloRunner() {}
 
+StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
+    const Literal& literal) {
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
+                      backend().transfer_manager()->AllocateScopedShapedBuffer(
+                          literal.shape(), backend().memory_allocator(),
+                          backend().default_device_ordinal()));
+  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+      backend().default_stream_executor(), literal, buffer));
+  return std::move(buffer);
+}
+
+StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
+    const tensorflow::gtl::ArraySlice<const Literal*> literals) {
+  std::vector<ScopedShapedBuffer> buffers;
+  for (const Literal* literal : literals) {
+    CHECK(literal != nullptr);
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
+                        TransferLiteralToDevice(*literal));
+    buffers.push_back(std::move(buffer));
+  }
+  return std::move(buffers);
+}
+
+StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
+    const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> literals) {
+  std::vector<const Literal*> literal_pointers;
+  literal_pointers.reserve(literals.size());
+  for (const auto& literal : literals) {
+    literal_pointers.push_back(literal.get());
+  }
+  return TransferLiteralsToDevice(literal_pointers);
+}
+
+StatusOr<std::unique_ptr<Literal>> HloRunner::TransferLiteralFromDevice(
+    const ShapedBuffer& buffer) {
+  return backend().transfer_manager()->TransferLiteralFromDevice(
+      backend().default_stream_executor(), buffer);
+}
+
 StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
-    const tensorflow::gtl::ArraySlice<Literal*> arguments, bool run_hlo_passes,
-    ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      CreateExecutable(std::move(module), run_hlo_passes));
-  se::Stream stream(backend().default_stream_executor());
-  stream.Init();
-
-  ServiceExecutableRunOptions service_run_options(GetServiceRunOptionsForDevice(
-      backend().default_device_ordinal(), &stream, nullptr));
-  const ExecutableRunOptions& run_options = service_run_options.run_options();
-
-  // Copy arguments to device.
-  std::vector<ScopedShapedBuffer> argument_buffers;
-  for (Literal* argument : arguments) {
-    TF_ASSIGN_OR_RETURN(
-        ScopedShapedBuffer argument_buffer,
-        backend().transfer_manager()->AllocateScopedShapedBuffer(
-            argument->shape(), run_options.allocator(),
-            run_options.device_ordinal()));
-    TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-        stream.parent(), *argument, argument_buffer));
-    argument_buffers.push_back(std::move(argument_buffer));
-  }
-
-  std::vector<const ShapedBuffer*> argument_buffer_ptrs;
-  argument_buffer_ptrs.reserve(argument_buffers.size());
-  for (const auto& buf : argument_buffers) {
-    argument_buffer_ptrs.push_back(&buf);
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      ScopedShapedBuffer result,
-      executable->ExecuteOnStreamWrapper(
-          &service_run_options, /*profile=*/profile, argument_buffer_ptrs));
-
-  auto result_literal = backend().transfer_manager()->TransferLiteralFromDevice(
-      stream.parent(), result);
-  if (result_literal.ok()) {
-    VLOG(4) << "Executed binary and got result: "
-            << result_literal.ValueOrDie()->ToString();
-  } else {
-    VLOG(4) << "Executed binary and got status: "
-            << result_literal.status().ToString();
-  }
-  return result_literal;
+    const tensorflow::gtl::ArraySlice<const Literal*> arguments,
+    bool run_hlo_passes, ExecutionProfile* profile) {
+  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
+                      TransferLiteralsToDevice(arguments));
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                      ExecuteWithDeviceBuffers(
+                          /*module=*/std::move(module),
+                          /*arguments=*/argument_buffers,
+                          /*run_hlo_passes=*/run_hlo_passes,
+                          /*profile=*/profile));
+  return TransferLiteralFromDevice(result);
 }
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
@@ -146,11 +151,49 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
     const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
     bool run_hlo_passes, ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
-  std::vector<Literal*> argument_pointers;
-  c_transform(
-      arguments, std::back_inserter(argument_pointers),
-      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
-  return Execute(std::move(module), argument_pointers, run_hlo_passes, profile);
+  std::vector<const Literal*> argument_pointers;
+  argument_pointers.reserve(arguments.size());
+  for (const auto& argument : arguments) {
+    argument_pointers.push_back(argument.get());
+  }
+  return Execute(
+      /*module=*/std::move(module),
+      /*arguments=*/argument_pointers,
+      /*run_hlo_passes=*/run_hlo_passes,
+      /*profile=*/profile);
+}
+
+StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
+    std::unique_ptr<HloModule> module,
+    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    bool run_hlo_passes, ExecutionProfile* profile) {
+  // Get service run options.
+  se::Stream stream(backend().default_stream_executor());
+  stream.Init();
+  ServiceExecutableRunOptions service_run_options =
+      GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
+                                    nullptr);
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      CreateExecutable(std::move(module), run_hlo_passes));
+  return executable->ExecuteOnStreamWrapper(&service_run_options,
+                                            /*profile=*/profile, arguments);
+}
+
+StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
+    std::unique_ptr<HloModule> module,
+    const tensorflow::gtl::ArraySlice<ScopedShapedBuffer> arguments,
+    bool run_hlo_passes, ExecutionProfile* profile) {
+  std::vector<const ShapedBuffer*> argument_pointers;
+  argument_pointers.reserve(arguments.size());
+  for (const auto& argument : arguments) {
+    argument_pointers.push_back(&argument);
+  }
+  return ExecuteWithDeviceBuffers(
+      /*module=*/std::move(module),
+      /*arguments=*/argument_pointers,
+      /*run_hlo_passes=*/run_hlo_passes,
+      /*profile=*/profile);
 }
 
 StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
