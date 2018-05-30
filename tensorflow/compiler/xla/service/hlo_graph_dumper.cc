@@ -427,7 +427,8 @@ class HloDotDumper {
 
   // When coloring by sharding information, we track the sharding string
   // representation to color association, by round-robin the color schemes.
-  std::unordered_map<string, ColorScheme> sharding_colors_;
+  std::unordered_map<HloSharding, ColorScheme, HloSharding::Hasher>
+      sharding_colors_;
   int64 next_shard_color_ = 0;
 };
 
@@ -882,14 +883,13 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     if (!instr->has_sharding()) {
       return kDashedBorder;
     }
-    string shard_str = instr->sharding().ToString();
-    auto it = sharding_colors_.find(shard_str);
+    auto it = sharding_colors_.find(instr->sharding());
     if (it != sharding_colors_.end()) {
       return it->second;
     }
     ColorScheme color = static_cast<ColorScheme>(
         kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
-    sharding_colors_.emplace(shard_str, color);
+    sharding_colors_.emplace(instr->sharding(), color);
     return color;
   }
   const auto kParameterColor = kOrange;

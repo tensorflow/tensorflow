@@ -49,9 +49,6 @@ string HloSharding::ToString() const {
     return StrCat("{", tensorflow::str_util::Join(parts, ", "), "}");
   }
 
-  string result = StrCat("{", (replicated_ ? " replicated" : ""),
-                         (maximal_ ? " maximal" : ""));
-
   if (replicated_) {
     return "{replicated}";
   } else if (maximal_) {

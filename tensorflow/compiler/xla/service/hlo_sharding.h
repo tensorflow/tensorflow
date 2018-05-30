@@ -99,6 +99,9 @@ class HloSharding {
   static bool IsReservedDevice(int64 device) { return device < 0; }
 
   OpSharding ToProto() const;
+
+  // Note that this string canonically has outer curly braces, e.g.
+  // "{replicated}".
   string ToString() const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
@@ -207,6 +210,12 @@ class HloSharding {
     }
     return h;
   }
+
+  struct Hasher {
+    size_t operator()(const HloSharding& sharding) const {
+      return sharding.Hash();
+    }
+  };
 
   // Gets the tile shape.
   // REQUIRES: !IsTileMaximal() && !IsTuple()
