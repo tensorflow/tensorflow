@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
@@ -156,7 +155,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
     Raises:
       ValueError: if neither `loc` nor `covariance_matrix` are specified.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
 
     # Convert the covariance_matrix up to a scale_tril and call MVNTriL.
     with ops.name_scope(name) as name:

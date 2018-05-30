@@ -1103,7 +1103,8 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
     }
   };
   GcsFileStat stat;
-  Status s = stat_cache_->LookupOrCompute(dirname, &stat, compute_func);
+  Status s = stat_cache_->LookupOrCompute(MaybeAppendSlash(dirname), &stat,
+                                          compute_func);
   if (s.ok()) {
     *result = stat.base.is_directory;
     return Status::OK();

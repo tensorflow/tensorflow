@@ -46,6 +46,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -61,6 +62,7 @@ from tensorflow.python.ops import summary_ops_v2 as contrib_summary
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import evaluation
@@ -70,6 +72,7 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+
 
 _INITIAL_LOSS = 1e7
 _ZERO_LOSS = 0.
@@ -81,6 +84,7 @@ _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
+_REWRITE_FOR_INFERENCE_MODE = '_rewrite_for_inference'
 
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
@@ -1264,13 +1268,11 @@ class _ModelFnWrapper(object):
             'estimator_spec used by TPU prediction must have type'
             '`TPUEstimatorSpec`. Got {}'.format(type(tpu_estimator_spec)))
 
+      self._verify_tpu_spec_predictions(tpu_estimator_spec.predictions)
+
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
       to_record = {}
       identity_fn = lambda **kwargs: kwargs
-      # TODO(xiejw): Adds validation for prediction dictionrary.
-      # TODO(xiejw): Adds support for single tensor as predictions.
-      if not isinstance(tpu_estimator_spec.predictions, dict):
-        raise TypeError('TPUEstimatorSpec.predictions must be dict of Tensors.')
       to_record['predictions'] = [identity_fn, tpu_estimator_spec.predictions]
       to_record['signals'] = [identity_fn, stopping_signals]
       if tpu_estimator_spec.host_call is not None:
@@ -1281,6 +1283,21 @@ class _ModelFnWrapper(object):
         return _StopSignals.as_scalar_stopping_signal(stopping_signals)
 
     return predict_step, host_calls, captured_scaffold_fn
+
+  def _verify_tpu_spec_predictions(self, predictions):
+    """Validates TPUEstimatorSpec.predictions dict."""
+    # TODO(xiejw): Adds validation for prediction dictionrary.
+    # TODO(xiejw): Adds support for single tensor as predictions.
+    if not isinstance(predictions, dict):
+      raise TypeError('TPUEstimatorSpec.predictions must be dict of Tensors.')
+
+    for (key, tensor) in predictions.items():
+      if tensor.shape[0].value is None:
+        raise ValueError(
+            'The tensor with key ({}) in TPUEstimatorSpec.predictions has '
+            'dynamic shape (should be static). Tensor: {}'.format(
+                key, tensor))
+    return predictions
 
   def _call_model_fn(self, features, labels, is_export_mode=False):
     """Calls the model_fn with required parameters."""
@@ -1760,8 +1777,45 @@ class TPUEstimator(estimator_lib.Estimator):
   Exporting
   =========
 
-  Exporting `SavedModel` support on TPU is not yet implemented. So,
-  `export_savedmodel` is executed on CPU, even if `use_tpu` is true.
+  `export_savedmodel` exports 2 metagraphs, one with `tag_constants.SERVING`,
+  and another with `tag_constants.SERVING` and `tag_constants.TPU`.
+  At serving time, these tags are used to select metagraph to load.
+
+  Before running the graph on TPU, TPU system needs to be initialized. If
+  TensorFlow Serving model-server is used, this is done automatically. If
+  not, please call `session.run(tpu.initialize_system())`.
+
+  `tpu.outside_compilation` can be used to wrap TPU incompatible ops in
+  `model_fn`.
+
+  Example:
+  ----------------
+
+  ```
+  def model_fn(features, labels, mode, config, params):
+    ...
+    logits = ...
+    export_outputs = {
+      'logits': export_output_lib.PredictOutput(
+        {'logits': logits})
+    }
+
+    def host_call(logits):
+      class_ids = math_ops.argmax(logits)
+      classes = string_ops.as_string(class_ids)
+      export_outputs['classes'] =
+        export_output_lib.ClassificationOutput(classes=classes)
+
+    tpu.outside_compilation(host_call, [logits])
+
+    ...
+  ```
+
+  Current limitations:
+  --------------------
+
+  1. Outside compilation does not work yet (b/79991729).
+
   """
 
   def __init__(self,
@@ -1889,6 +1943,103 @@ class TPUEstimator(estimator_lib.Estimator):
         eval_on_tpu)
 
     self._is_input_fn_invoked = None
+
+  def _add_meta_graph_for_mode(self,
+                               builder,
+                               input_receiver_fn_map,
+                               checkpoint_path,
+                               strip_default_attrs,
+                               save_variables=True,
+                               mode=model_fn_lib.ModeKeys.PREDICT,
+                               export_tags=None):
+    if mode != model_fn_lib.ModeKeys.PREDICT:
+      raise NotImplementedError(
+          'TPUEstimator only handles mode PREDICT for export_savedmodel(); '
+          'got {}.'.format(mode))
+
+    super(TPUEstimator, self)._add_meta_graph_for_mode(builder,
+                                                       input_receiver_fn_map,
+                                                       checkpoint_path,
+                                                       strip_default_attrs,
+                                                       save_variables,
+                                                       mode=mode)
+
+    input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
+                             input_receiver_fn_map[mode]}
+    export_tags = [tag_constants.SERVING, tag_constants.TPU]
+    mode = _REWRITE_FOR_INFERENCE_MODE
+    super(TPUEstimator, self)._add_meta_graph_for_mode(builder,
+                                                       input_receiver_fn_map,
+                                                       checkpoint_path,
+                                                       strip_default_attrs,
+                                                       save_variables=False,
+                                                       mode=mode,
+                                                       export_tags=export_tags)
+
+  def _call_model_fn(self, features, labels, mode, config):
+    if mode == _REWRITE_FOR_INFERENCE_MODE:
+      return self._call_model_fn_for_inference(features, labels, mode, config)
+    else:
+      return super(TPUEstimator, self)._call_model_fn(
+          features, labels, mode, config)
+
+  def _call_model_fn_for_inference(self, features, labels, mode, config):
+    """Wraps `_call_model_fn` for `export_savedmodel`."""
+    if mode != _REWRITE_FOR_INFERENCE_MODE:
+      raise ValueError('mode must be {}; '
+                       'got {}.'.format(_REWRITE_FOR_INFERENCE_MODE, mode))
+
+    capture = _CapturedObject()
+
+    def computation():
+      """Compute tpu tensors used in export_outputs.
+
+      Passed to rewrite_for_inference so that model_fn will be called under
+      the rewriting contexts. Only tpu tensors are returned, but export_outputs
+      and scaffold are captured.
+
+      Returns:
+         A list of Tensors used in export_outputs and not marked for
+         outside_compilation.
+      """
+      # We should only call model fn once and it should be inside `computation`
+      # so that building the graph will happen under `rewrite_for_inference`.
+      mode = model_fn_lib.ModeKeys.PREDICT
+      estimator_spec = self._call_model_fn(features, labels, mode, config)
+
+      # We pick the TPU tensors out from `export_output` and later return them
+      # from `computation` for rewriting.
+      tensors_dict = collections.OrderedDict(
+          (k, _export_output_to_tensors(v))
+          for k, v in six.iteritems(estimator_spec.export_outputs)
+      )
+      tensors = nest.flatten(tensors_dict)
+      tpu_tensors = [t for t in tensors if _is_tpu_tensor(t)]
+
+      # We cannot return anything other than `tpu_tensors` here so we capture
+      # the rest for later use.
+      capture.capture((estimator_spec, tensors_dict, tensors))
+      return tpu_tensors
+
+    tpu_tensors_on_cpu = tpu.rewrite_for_inference(computation)
+    estimator_spec, tensors_dict, tensors = capture.get()
+
+    # Reconstruct `tensors`, but with `tpu_tensors` replaced with
+    # `tpu_tensors_on_cpu`.
+    new_tensors = [
+        tpu_tensors_on_cpu.pop(0) if _is_tpu_tensor(t) else t
+        for t in tensors
+    ]
+    # Reconstruct `tensors_dict`.
+    new_tensors_dict = nest.pack_sequence_as(tensors_dict, new_tensors)
+    # Reconstruct `export_outputs`.
+    export_outputs = estimator_spec.export_outputs
+    new_export_outputs = collections.OrderedDict(
+        (k, _clone_export_output_with_tensors(export_outputs[k], v))
+        for k, v in six.iteritems(new_tensors_dict)
+    )
+
+    return estimator_spec._replace(export_outputs=new_export_outputs)
 
   def _create_global_step(self, graph):
     """Creates a global step suitable for TPUs.
@@ -2263,6 +2414,76 @@ class TPUEstimator(estimator_lib.Estimator):
             scaffold=scaffold)
 
     return _model_fn
+
+
+def _is_tpu_tensor(tensor):
+  if not isinstance(tensor, ops.Tensor):
+    return False
+  try:
+    tensor.op.get_attr(tpu._OUTSIDE_COMPILATION_ATTR)  # pylint: disable=protected-access
+  except ValueError:
+    return True
+  else:
+    return False
+
+
+def _export_output_to_tensors(export_output):
+  """Get a list of `Tensors` used in `export_output`.
+
+  Args:
+    export_output: an `ExportOutput` object such as `ClassificationOutput`,
+            `RegressionOutput`, or `PredictOutput`.
+  Returns:
+    a list of tensors used in export_output.
+
+  Raises:
+    ValueError: if `export_output` is not one of `ClassificationOutput`,
+        `RegressionOutput`, or `PredictOutput`.
+  """
+  if isinstance(export_output, export_output_lib.ClassificationOutput):
+    return [export_output.scores, export_output.classes]
+  elif isinstance(export_output, export_output_lib.RegressionOutput):
+    return [export_output.value]
+  elif isinstance(export_output, export_output_lib.PredictOutput):
+    return export_output.outputs.values()
+  else:
+    raise ValueError(
+        '`export_output` must be have type `ClassificationOutput`, '
+        '`RegressionOutput`, or `PredictOutput`; got {}.'.format(export_output))
+
+
+def _clone_export_output_with_tensors(export_output, tensors):
+  """Clones `export_output` but with new `tensors`.
+
+  Args:
+    export_output: an `ExportOutput` object such as `ClassificationOutput`,
+            `RegressionOutput`, or `PredictOutput`.
+    tensors: a list of `Tensors` used to construct a new `export_output`.
+
+  Returns:
+    A dict similar to `export_output` but with `tensors`.
+
+  Raises:
+    ValueError: if `export_output` is not one of `ClassificationOutput`,
+        `RegressionOutput`, or `PredictOutput`.
+  """
+  if isinstance(export_output, export_output_lib.ClassificationOutput):
+    if len(tensors) != 2:
+      raise ValueError('tensors must be of length 2; '
+                       'got {}.'.format(len(tensors)))
+    return export_output_lib.ClassificationOutput(*tensors)
+  elif isinstance(export_output, export_output_lib.RegressionOutput):
+    if len(tensors) != 1:
+      raise ValueError('tensors must be of length 1; '
+                       'got {}'.format(len(tensors)))
+    return export_output_lib.RegressionOutput(*tensors)
+  elif isinstance(export_output, export_output_lib.PredictOutput):
+    return export_output_lib.PredictOutput(
+        dict(zip(export_output.outputs.keys(), tensors)))
+  else:
+    raise ValueError(
+        '`export_output` must be have type `ClassificationOutput`, '
+        '`RegressionOutput`, or `PredictOutput`; got {}.'.format(export_output))
 
 
 def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
@@ -2831,4 +3052,3 @@ def _add_item_to_params(params, key, value):
   else:
     # Now params is Python dict.
     params[key] = value
-

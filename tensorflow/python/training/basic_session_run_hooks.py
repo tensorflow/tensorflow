@@ -336,6 +336,8 @@ class CheckpointSaverListener(object):
 
     def after_save(self, session, global_step_value):
       print('Done writing checkpoint.')
+      if decided_to_stop_training():
+        return True
 
     def end(self, session, global_step_value):
       print('Done with the session.')
@@ -354,6 +356,11 @@ class CheckpointSaverListener(object):
   implementors should implement the `end()` method to handle actions related to
   the last checkpoint save. But the listener should not act twice if
   `after_save()` already handled this last checkpoint save.
+
+  A `CheckpointSaverListener` can request training to be stopped, by returning
+  True in `after_save`. Please note that, in replicated distributed training
+  setting, only `chief` should use this behavior. Otherwise each worker will do
+  their own evaluation, which may be wasteful of resources.
   """
 
   def begin(self):
@@ -453,7 +460,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       global_step = run_context.session.run(self._global_step_tensor)
       if self._timer.should_trigger_for_step(global_step):
         self._timer.update_last_triggered_step(global_step)
-        self._save(run_context.session, global_step)
+        if self._save(run_context.session, global_step):
+          run_context.request_stop()
 
   def end(self, session):
     last_step = session.run(self._global_step_tensor)
@@ -463,7 +471,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       l.end(session, last_step)
 
   def _save(self, session, step):
-    """Saves the latest checkpoint."""
+    """Saves the latest checkpoint, returns should_stop."""
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
 
     for l in self._listeners:
@@ -475,8 +483,14 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
             status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
         step)
 
+    should_stop = False
     for l in self._listeners:
-      l.after_save(session, step)
+      if l.after_save(session, step):
+        logging.info(
+            "A CheckpointSaverListener requested that training be stopped. "
+            "listener: {}".format(l))
+        should_stop = True
+    return should_stop
 
   def _get_saver(self):
     if self._saver is not None:
