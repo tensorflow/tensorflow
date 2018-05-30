@@ -371,6 +371,12 @@ def sequence_numeric_column(
     default_value: A single value compatible with `dtype` that is used for
       padding the sparse data into a dense `Tensor`.
     dtype: The type of values.
+    normalizer_fn: If not `None`, a function that can be used to normalize the
+      value of the tensor after `default_value` is applied for parsing.
+      Normalizer function takes the input `Tensor` as its argument, and returns
+      the output `Tensor`. (e.g. lambda x: (x - 3.0) / 4.2). Please note that
+      even though the most common use case of this function is normalization, it
+      can be used for any kind of Tensorflow transformations.
 
   Returns:
     A `_SequenceNumericColumn`.
