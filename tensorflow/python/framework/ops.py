@@ -59,11 +59,9 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Temporary global switch determining if we should enable the work-in-progress
-# calls to the C API. Currently disabled by default but can be manually enabled
-# in code or via the environment variable. This will be removed once all
-# functionality is supported and there's no performance penalty with it enabled.
-_USE_C_API = os.getenv("TF_C_API_GRAPH_CONSTRUCTION", "1") is not "0"
+# Temporary global switches determining if we should enable the work-in-progress
+# calls to the C API. These will be removed once all functionality is supported.
+_USE_C_API = True
 _USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "0") is not "0"
 
 
