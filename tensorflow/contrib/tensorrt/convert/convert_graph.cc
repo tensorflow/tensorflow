@@ -186,7 +186,10 @@ struct ConvertGraphParams {
 static tensorflow::Status FillSubGraphEdgeSets(ConvertGraphParams* p) {
   GetSubGraphIncomingEdges(p->graph, p->subgraph_node_ids,
                            &p->subgraph_incoming_edges);
+
   std::set<std::pair<int, int>> unique_tensors;
+  // Add only unique input source nodes. If output of an outside node is shared
+  // between multiple nodes inside the engine, only one edge should be created
   for (const tensorflow::Edge* edge : p->subgraph_incoming_edges) {
     unique_tensors.insert({edge->src()->id(), edge->src_output()});
   }
@@ -195,6 +198,9 @@ static tensorflow::Status FillSubGraphEdgeSets(ConvertGraphParams* p) {
   GetSubGraphOutgoingEdges(p->graph, p->subgraph_node_ids,
                            &p->subgraph_outgoing_edges);
   unique_tensors.clear();
+  // Similar to above, if multiple ouside nodes are sharing the output of an
+  // internal node only one output port should be created and shared between
+  // outputs
   for (const tensorflow::Edge* edge : p->subgraph_outgoing_edges) {
     unique_tensors.insert({edge->src()->id(), edge->src_output()});
   }
@@ -222,7 +228,6 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
   for (auto in_edge :
        params->subgraph_incoming_edges) {  // loop over incoming edges and
                                            // attach them to calib node
-    // tensorflow::Node* src_node = in_edge->src();
     auto src_output = in_edge->src_output();
     auto dst_node = in_edge->dst();
     auto dst_input = in_edge->dst_input();
@@ -280,7 +285,6 @@ tensorflow::Status ConvertSubGraphToTensorRT(ConvertGraphParams* params) {
     subgraph_edge_to_output_map.insert({params->subgraph_outputs.at(i), i});
   }
   TF_RETURN_IF_ERROR(status);
-  unique_tensors.clear();
   for (const tensorflow::Edge* edge : params->subgraph_outgoing_edges) {
     std::pair<int, int> old_src = {edge->src()->id(), edge->src_output()};
     int new_src_output = subgraph_edge_to_output_map.at(old_src);
