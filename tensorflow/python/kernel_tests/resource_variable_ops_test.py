@@ -119,6 +119,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           dtype=dtypes.int32, shape=[1], name="foo")
       self.assertGreater(len(handle.eval()), 0)
 
+  def testCachedValueReadBeforeWrite(self):
+    with self.test_session() as sess:
+      v = resource_variable_ops.ResourceVariable(0.0, caching_device="cpu:0")
+      sess.run(v.initializer)
+      value, _ = sess.run([v, v.assign_add(1.0)])
+      self.assertAllEqual(value, 0.0)
+
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(

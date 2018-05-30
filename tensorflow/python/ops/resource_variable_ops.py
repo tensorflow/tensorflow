@@ -576,6 +576,21 @@ class ResourceVariable(variables.Variable):
     self._constraint = None
     self._cached_shape_as_list = None
 
+  @contextlib.contextmanager
+  def _assign_dependencies(self):
+    """Makes assignments depend on the cached value, if any.
+
+    This prevents undefined behavior with reads not ordered wrt writes.
+
+    Yields:
+      None.
+    """
+    if self._cached_value is not None:
+      with ops.control_dependencies([self._cached_value]):
+        yield
+    else:
+      yield
+
   def __nonzero__(self):
     return self.__bool__()
 
@@ -865,7 +880,7 @@ class ResourceVariable(variables.Variable):
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    with _handle_graph(self.handle):
+    with _handle_graph(self.handle), self._assign_dependencies():
       assign_sub_op = gen_resource_variable_ops.assign_sub_variable_op(
           self.handle, ops.convert_to_tensor(delta, dtype=self.dtype),
           name=name)
@@ -889,7 +904,7 @@ class ResourceVariable(variables.Variable):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    with _handle_graph(self.handle):
+    with _handle_graph(self.handle), self._assign_dependencies():
       assign_add_op = gen_resource_variable_ops.assign_add_variable_op(
           self.handle, ops.convert_to_tensor(delta, dtype=self.dtype),
           name=name)
@@ -921,6 +936,8 @@ class ResourceVariable(variables.Variable):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
+    # Note: not depending on the cached value here since this can used to
+    # initialize the variable.
     with _handle_graph(self.handle):
       value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
       self._shape.assert_is_compatible_with(value_tensor.shape)
@@ -933,7 +950,7 @@ class ResourceVariable(variables.Variable):
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
-    with _handle_graph(self.handle):
+    with _handle_graph(self.handle), self._assign_dependencies():
       return self._lazy_read(
           gen_array_ops.resource_strided_slice_assign(
               ref=self.handle,
