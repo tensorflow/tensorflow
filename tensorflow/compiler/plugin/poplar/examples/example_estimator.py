@@ -62,6 +62,7 @@ def my_model(features, labels, mode):
   with tf.device("cpu"):
     if loss is not None:
       tf.contrib.ipu.ops.ipu_compile_summary('ipu_comp', loss)
+      tf.summary.scalar('loss', loss)
 
   return tf.estimator.EstimatorSpec(mode=mode, predictions=pred, loss=loss,
                                     train_op=train)
