@@ -346,7 +346,8 @@ def sequence_numeric_column(
     key,
     shape=(1,),
     default_value=0.,
-    dtype=dtypes.float32):
+    dtype=dtypes.float32,
+    normalizer_fn=None):
   """Returns a feature column that represents sequences of numeric data.
 
   Example:
@@ -383,12 +384,15 @@ def sequence_numeric_column(
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError('dtype must be convertible to float. '
                      'dtype: {}, key: {}'.format(dtype, key))
+  if normalizer_fn is not None and not callable(normalizer_fn):
+    raise TypeError('normalizer_fn must be a callable. Given: {}'.format(normalizer_fn))
 
   return _SequenceNumericColumn(
       key,
       shape=shape,
       default_value=default_value,
-      dtype=dtype)
+      dtype=dtype,
+      normalizer_fn=normalizer_fn)
 
 
 def _assert_all_equal_and_return(tensors, name=None):
@@ -407,7 +411,7 @@ class _SequenceNumericColumn(
     fc._SequenceDenseColumn,
     collections.namedtuple(
         '_SequenceNumericColumn',
-        ['key', 'shape', 'default_value', 'dtype'])):
+        ['key', 'shape', 'default_value', 'dtype', 'normalizer_fn'])):
   """Represents sequences of numeric data."""
 
   @property
@@ -419,7 +423,10 @@ class _SequenceNumericColumn(
     return {self.key: parsing_ops.VarLenFeature(self.dtype)}
 
   def _transform_feature(self, inputs):
-    return inputs.get(self.key)
+    input_tensor = inputs.get(self.key)
+    if self.normalizer_fn is not None:
+      input_tensor = self.normalizer_fn(input_tensor)
+    return input_tensor
 
   @property
   def _variable_shape(self):
