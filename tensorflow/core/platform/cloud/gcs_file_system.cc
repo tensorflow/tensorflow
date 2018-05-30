@@ -965,11 +965,16 @@ Status GcsFileSystem::FileExists(const string& fname) {
       return Status::OK();
     }
   }
-  bool result;
-  TF_RETURN_IF_ERROR(ObjectExists(fname, bucket, object, &result));
-  if (result) {
-    return Status::OK();
+
+  // Check if the object exists.
+  GcsFileStat stat;
+  const Status status = StatForObject(fname, bucket, object, &stat);
+  if (status.code() != errors::Code::NOT_FOUND) {
+    return status;
   }
+
+  // Check if the folder exists.
+  bool result;
   TF_RETURN_IF_ERROR(FolderExists(fname, &result));
   if (result) {
     return Status::OK();
@@ -982,11 +987,11 @@ Status GcsFileSystem::ObjectExists(const string& fname, const string& bucket,
   if (!result) {
     return errors::Internal("'result' cannot be nullptr.");
   }
-  GcsFileStat not_used_stat;
-  const Status status = StatForObject(fname, bucket, object, &not_used_stat);
+  GcsFileStat stat;
+  const Status status = StatForObject(fname, bucket, object, &stat);
   switch (status.code()) {
     case errors::Code::OK:
-      *result = true;
+      *result = !stat.base.is_directory;
       return Status::OK();
     case errors::Code::NOT_FOUND:
       *result = false;
@@ -1040,7 +1045,14 @@ Status GcsFileSystem::UncachedStatForObject(const string& fname,
           << "; mtime_nsec: " << stat->base.mtime_nsec
           << "; updated: " << updated;
 
-  stat->base.is_directory = false;
+  if (str_util::EndsWith(fname, "/")) {
+    // In GCS a path can be both a directory and a file, both it is uncommon for
+    // other file systems. To avoid the ambiguity, if a path ends with "/" in
+    // GCS, we always regard it as a directory mark or a virtual directory.
+    stat->base.is_directory = true;
+  } else {
+    stat->base.is_directory = false;
+  }
   return Status::OK();
 }
 
@@ -1059,11 +1071,7 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
       [this, &bucket, &object](const string& fname, GcsFileStat* stat) {
         return UncachedStatForObject(fname, bucket, object, stat);
       }));
-  if (stat->base.is_directory) {
-    return errors::NotFound(fname, " is a directory.");
-  } else {
-    return Status::OK();
-  }
+  return Status::OK();
 }
 
 Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
