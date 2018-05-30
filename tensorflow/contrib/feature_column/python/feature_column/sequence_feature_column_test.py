@@ -739,7 +739,8 @@ class SequenceNumericColumnTest(test.TestCase):
         [[2.], [1.]],
         [[10.], [2.]],
     ]
-    numeric_column = sfc.sequence_numeric_column('aaa', normalizer_fn=_increment_two)
+    numeric_column = sfc.sequence_numeric_column(
+        'aaa', normalizer_fn=_increment_two)
 
     dense_tensor, _ = numeric_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': sparse_input}))

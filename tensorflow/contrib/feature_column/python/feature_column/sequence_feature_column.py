@@ -391,7 +391,8 @@ def sequence_numeric_column(
     raise ValueError('dtype must be convertible to float. '
                      'dtype: {}, key: {}'.format(dtype, key))
   if normalizer_fn is not None and not callable(normalizer_fn):
-    raise TypeError('normalizer_fn must be a callable. Given: {}'.format(normalizer_fn))
+    raise TypeError(
+        'normalizer_fn must be a callable. Given: {}'.format(normalizer_fn))
 
   return _SequenceNumericColumn(
       key,
