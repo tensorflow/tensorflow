@@ -93,31 +93,39 @@ Status HloDomainMap::InsertDomain(
 
 Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
                                   DomainMetadata::Domain* domain) const {
-  if (domain->reach_set.insert(instruction).second) {
-    // We should not be finding instructions with assigned domain here.
-    // If we assigned a domain to the instruction, it means that all the
-    // instructions reached by it, should have a domain as well.
-    int64 domain_id = FindOrDefault(instruction_to_domain_, instruction, -1);
-    TF_RET_CHECK(domain_id < 0) << "Instruction " << instruction->ToString()
-                                << " already has domain " << domain_id;
-    for (HloInstruction* operand : instruction->operands()) {
-      if (IsDomainInstruction(operand)) {
-        // The reach set instruction is a user of the domain instruction
-        // (the instruction sees the kDomain as operand).
-        // IOW the dataflow enters the domain through the kDomain instruction.
-        domain->enter_domains.insert(operand);
-      } else {
-        TF_RETURN_IF_ERROR(ExpandDomain(operand, domain));
+  std::vector<HloInstruction*> in_queue;
+  in_queue.push_back(instruction);
+  while (!in_queue.empty()) {
+    HloInstruction* current_instruction = in_queue.back();
+    in_queue.pop_back();
+    if (domain->reach_set.insert(current_instruction).second) {
+      // We should not be finding instructions with assigned domain here.
+      // If we assigned a domain to the instruction, it means that all the
+      // instructions reached by it, should have a domain as well.
+      int64 domain_id =
+          FindOrDefault(instruction_to_domain_, current_instruction, -1);
+      TF_RET_CHECK(domain_id < 0)
+          << "Instruction " << current_instruction->ToString()
+          << " already has domain " << domain_id;
+      for (HloInstruction* operand : current_instruction->operands()) {
+        if (IsDomainInstruction(operand)) {
+          // The reach set instruction is a user of the domain instruction
+          // (the instruction sees the kDomain as operand).
+          // IOW the dataflow enters the domain through the kDomain instruction.
+          domain->enter_domains.insert(operand);
+        } else {
+          in_queue.push_back(operand);
+        }
       }
-    }
-    for (HloInstruction* user : instruction->users()) {
-      if (IsDomainInstruction(user)) {
-        // The reach set instruction is an operand of the domain instruction
-        // (the instruction sees the kDomain as user).
-        // IOW the dataflow exits the domain through the kDomain instruction.
-        domain->exit_domains.insert(user);
-      } else {
-        TF_RETURN_IF_ERROR(ExpandDomain(user, domain));
+      for (HloInstruction* user : current_instruction->users()) {
+        if (IsDomainInstruction(user)) {
+          // The reach set instruction is an operand of the domain instruction
+          // (the instruction sees the kDomain as user).
+          // IOW the dataflow exits the domain through the kDomain instruction.
+          domain->exit_domains.insert(user);
+        } else {
+          in_queue.push_back(user);
+        }
       }
     }
   }
