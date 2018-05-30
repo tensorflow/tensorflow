@@ -33,6 +33,7 @@ cc_library(
     srcs = [
         "driver/allocation_finder.cc",
         "driver/computation_flattener.cc",
+        "driver/convolution_classifier.cc",
         "driver/expression_outliner.cc",
         "driver/fuse_ops.cc",
         "driver/hlo_matcher.cc",
@@ -45,7 +46,9 @@ cc_library(
     ],
     hdrs = [
         "driver/allocation_finder.h",
+        "driver/compiler_annotations.h",
         "driver/computation_flattener.h",
+        "driver/convolution_classifier.h",
         "driver/expression_outliner.h",
         "driver/fuse_ops.h",
         "driver/hlo_matcher.h",
@@ -224,6 +227,17 @@ tf_cc_test(
     srcs = ["tests/conversions_test.cc"],
     deps = [
         ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "convolution_classifier_test",
+    srcs = ["tests/convolution_classifier_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
     ],
@@ -479,6 +493,7 @@ test_suite(
         "while_loop_perf_test",
         "estimator_test",
         "expression_outliner_test",
+        "convolution_classifier_test",
     ],
 )
 
@@ -504,6 +519,7 @@ test_suite(
         "conditional_test",
         "estimator_test",
         "expression_outliner_test",
+        "convolution_classifier_test",
     ],
 )
 

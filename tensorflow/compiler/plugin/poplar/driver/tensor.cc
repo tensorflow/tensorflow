@@ -216,8 +216,8 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    CompilerResources& resources) {
   poplar::Tensor out;
 
-  auto target = resources.tensor_allocation_map.find(src);
-  if (target != resources.tensor_allocation_map.end()) {
+  auto target = resources.annotations.tensor_allocation_map.find(src);
+  if (target != resources.annotations.tensor_allocation_map.end()) {
     switch (target->second.tgt->opcode()) {
       case HloOpcode::kConvolution: {
         switch (target->second.input_index) {

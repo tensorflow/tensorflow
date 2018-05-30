@@ -131,8 +131,8 @@ class EntryVisitor : public FullVisitor {
 
     parameter_shapes[inst->parameter_number()] = inst->shape();
 
-    auto num_streaming =
-        inst->parent()->num_parameters() - resources_.num_resource_variables;
+    auto num_streaming = inst->parent()->num_parameters() -
+        resources_.annotations.num_resource_variables;
 
     parameter_streamed[inst->parameter_number()] =
         (inst->parameter_number() < num_streaming) && OkToStream(inst->shape());
@@ -233,7 +233,7 @@ class EntryVisitor : public FullVisitor {
     if (OkToStream(inst->shape())) {
       const auto* root = inst->parent()->root_instruction();
       auto num_streaming = FlattenedXlaShape(root->shape()).size() -
-          resources_.num_resource_variables;
+          resources_.annotations.num_resource_variables;
       if (root->opcode() == HloOpcode::kTuple) {
         for (int i = 0; i < root->operand_count(); i++) {
           if (root->operand(i) == inst) {
@@ -332,7 +332,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode());
-  resources.num_resource_variables = module->config().resource_update_count();
+  resources.annotations.num_resource_variables =
+      module->config().resource_update_count();
 
   {
     HloPassPipeline pipeline("IPU");
@@ -354,13 +355,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<HloCSE>(true);
     pipeline.AddPass<WideConstFinder>();
+    pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<FuseOps>();
     pipeline.AddPass<Outliner>();
-    pipeline.AddPass<InplaceFinder>(resources.inplace_instructions);
-    pipeline.AddPass<ExpressionOutliner>(resources.inplace_instructions);
+    pipeline.AddPass<InplaceFinder>(resources.annotations);
+    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<AllocationFinder>(resources.tensor_allocation_map);
+    pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
+    pipeline.AddPass<AllocationFinder>(resources.annotations);
 
     bool ok;
     TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));

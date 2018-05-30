@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -109,6 +110,9 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
 
   return true;
 }
+
+InplaceFinder::InplaceFinder(CompilerAnnotations& annotations)
+    : inplace_instructions(annotations.inplace_instructions) {}
 
 }  // namespace poplarplugin
 }  // namespace xla

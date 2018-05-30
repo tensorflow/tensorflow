@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
 
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -60,9 +61,9 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::set<const HloInstruction*> inplace;
+  CompilerAnnotations annotations;
 
-  ExpressionOutliner eo(inplace);
+  ExpressionOutliner eo(annotations);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -104,9 +105,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::set<const HloInstruction*> inplace;
+  CompilerAnnotations annotations;
 
-  ExpressionOutliner eo(inplace);
+  ExpressionOutliner eo(annotations);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -135,9 +136,9 @@ TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::set<const HloInstruction*> inplace;
+  CompilerAnnotations annotations;
 
-  ExpressionOutliner eo(inplace);
+  ExpressionOutliner eo(annotations);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -186,9 +187,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeInDAG) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::set<const HloInstruction*> inplace;
+  CompilerAnnotations annotations;
 
-  ExpressionOutliner eo(inplace);
+  ExpressionOutliner eo(annotations);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -232,9 +233,9 @@ TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::set<const HloInstruction*> inplace;
+  CompilerAnnotations annotations;
 
-  ExpressionOutliner eo(inplace);
+  ExpressionOutliner eo(annotations);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();
@@ -271,9 +272,9 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoSubgraphs) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::set<const HloInstruction*> inplace;
+  CompilerAnnotations annotations;
 
-  ExpressionOutliner eo(inplace);
+  ExpressionOutliner eo(annotations);
   EXPECT_TRUE(eo.Run(hlo_module.get()).ValueOrDie());
 
   auto* comp = hlo_module->entry_computation();

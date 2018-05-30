@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_INPLACE_FINDER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_INPLACE_FINDER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CONVOLUTION_CLASSIFIER_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CONVOLUTION_CLASSIFIER_H_
 
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+
+
+#include <vector>
 
 namespace xla {
 
@@ -27,35 +31,34 @@ namespace poplarplugin {
 
 struct CompilerAnnotations;
 
-using InplaceInstructions = std::set<const HloInstruction*>;
-using InplaceRoute = std::vector<HloInstruction*>;
+enum ClassificationType {
+  FORWARD,
+  BACKPROP_INPUT,
+  BACKPROP_FILTER,
+  INFERENCE,
+};
+
+using ConvClassification = std::map<const HloInstruction*, ClassificationType>;
 
 /**
- * This finds instructions which do inplace updates to tensors.
- *
- * Care is taken to track tensors through tuples, as they should still be
- * updated in place even when they have been made part of a tuple.
+ * This class marks each convolution as either a forward pass, a backprop input
+ * (gradient), a backprop filter (weight update), or a standalone inference only
+ * convolution.
  */
-class InplaceFinder : public HloPassInterface {
+class ConvolutionClassifier : public HloPassInterface {
  public:
-  InplaceFinder(CompilerAnnotations& annotations);
+  ConvolutionClassifier(CompilerAnnotations& annotations);
 
-  ~InplaceFinder() = default;
+  ~ConvolutionClassifier() = default;
 
-  tensorflow::StringPiece name() const override { return "inplace-finder"; }
+  tensorflow::StringPiece name() const override {
+    return "convolution-classifier";
+  }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  void RouteFinder(HloInstruction* inst);
-
-  std::multimap<HloInstruction*, InplaceRoute> routes;
-
-  std::vector<int64> tuple_stack;
-
-  InplaceRoute current_route;
-
-  InplaceInstructions& inplace_instructions;
+  ConvClassification& classification_;
 };
 
 }  // namespace poplarplugin
