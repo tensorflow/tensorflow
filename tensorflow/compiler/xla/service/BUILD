@@ -16,6 +16,10 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library_py",
+)
 
 xla_proto_library(
     name = "session_proto",
@@ -29,6 +33,12 @@ xla_proto_library(
     srcs = ["hlo.proto"],
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
+)
+
+tf_proto_library_py(
+    name = "hlo_proto",  # bzl adds a _py suffix only to the OSS target.
+    srcs = ["hlo.proto"],
+    visibility = ["//visibility:public"],
 )
 
 xla_proto_library(
