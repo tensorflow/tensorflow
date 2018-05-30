@@ -263,13 +263,19 @@ CSV_COLUMN_NAMES = ['SepalLength', 'SepalWidth',
 
 ...
 
-def load_data(label_name='Species'):
+def maybe_download():
     """Parses the csv file in TRAIN_URL and TEST_URL."""
 
     # Create a local copy of the training set.
-    train_path = tf.keras.utils.get_file(fname=TRAIN_URL.split('/')[-1],
-                                         origin=TRAIN_URL)
+    train_path = tf.keras.utils.get_file(TRAIN_URL.split('/')[-1], TRAIN_URL)
+    test_path = tf.keras.utils.get_file(TEST_URL.split('/')[-1], TEST_URL)
     # train_path now holds the pathname: ~/.keras/datasets/iris_training.csv
+
+    return train_path, test_path
+
+def load_data(label_name='Species'):
+    """Returns the iris dataset as (train_x, train_y), (test_x, test_y)."""
+    train_path, test_path = maybe_download()
 
     # Parse the local CSV file.
     train = pd.read_csv(filepath_or_buffer=train_path,
@@ -279,18 +285,17 @@ def load_data(label_name='Species'):
     # train now holds a pandas DataFrame, which is data structure
     # analogous to a table.
 
-    # 1. Assign the DataFrame's labels (the right-most column) to train_label.
+    # 1. Assign the DataFrame's labels (the right-most column) to train_y.
     # 2. Delete (pop) the labels from the DataFrame.
-    # 3. Assign the remainder of the DataFrame to train_features
-    train_features, train_label = train, train.pop(label_name)
+    # 3. Assign the remainder of the DataFrame to train_x
+    train_x, train_y = train, train.pop(y_name)
 
     # Apply the preceding logic to the test set.
-    test_path = tf.keras.utils.get_file(TEST_URL.split('/')[-1], TEST_URL)
     test = pd.read_csv(test_path, names=CSV_COLUMN_NAMES, header=0)
-    test_features, test_label = test, test.pop(label_name)
+    test_x, test_y = test, test.pop(y_name)
 
     # Return four DataFrames.
-    return (train_features, train_label), (test_features, test_label)
+    return (train_x, train_y), (test_x, test_y)
 ```
 
 Keras is an open-sourced machine learning library; `tf.keras` is a TensorFlow
@@ -303,7 +308,7 @@ and test sets respectively:
 
 ```python
     # Call load_data() to parse the CSV file.
-    (train_feature, train_label), (test_feature, test_label) = load_data()
+    (train_x, train_y), (test_x, test_y) = load_data()
 ```
 
 Pandas is an open-source Python library leveraged by several
@@ -311,7 +316,7 @@ TensorFlow functions.  A pandas
 [**DataFrame**](https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.html)
 is a table with named columns headers and numbered rows.
 The features returned by `load_data` are packed in `DataFrames`.
-For example, the `test_feature` DataFrame looks as follows:
+For example, the `test_x` DataFrame looks as follows:
 
 ```none
     SepalLength  SepalWidth  PetalLength  PetalWidth
@@ -466,7 +471,7 @@ method. For example:
 
 ```python
     classifier.train(
-        input_fn=lambda:train_input_fn(train_feature, train_label, args.batch_size),
+        input_fn=lambda:train_input_fn(train_x, train_y, args.batch_size),
         steps=args.train_steps)
 ```
 
@@ -490,11 +495,11 @@ def train_input_fn(features, labels, batch_size):
 
 We're passing the following arguments to `train_input_fn`:
 
-* `train_feature` is a Python dictionary in which:
+* `train_x` is a Python dictionary in which:
     * Each key is the name of a feature.
     * Each value is an array containing the values for each example in the
       training set.
-* `train_label` is an array containing the values of the label for every
+* `train_y` is an array containing the values of the label for every
   example in the training set.
 * `args.batch_size` is an integer defining the [**batch
   size**](https://developers.google.com/machine-learning/glossary/#batch_size).
