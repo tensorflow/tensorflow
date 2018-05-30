@@ -14,5 +14,6 @@ OutOfMemoryTest.testOutputOutOfMemory # Don't do out of memory yet
 WhileTest.testCountingLoopHandrolledC64 # C64
 EagerTest # Eager test crashing
 EagerFunctionTest # Eager function test crashing
+ExcessivePaddingTest # Eager test crashing
 CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
 DepthwiseConv2DTest # Failing due to input size to poplibs convolution
