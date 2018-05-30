@@ -1010,6 +1010,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
       return kPurple;
+    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
       return kGray;

@@ -880,6 +880,27 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return !IsTuple(GetSubshape(shape, index));
 }
 
+/* static */ int64 ShapeUtil::GetLeafCount(const Shape& shape) {
+  int64 count = 0;
+  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex& index) {
+    if (IsLeafIndex(shape, index)) {
+      ++count;
+    }
+  });
+  return count;
+}
+
+/* static */ std::vector<ShapeUtil::IndexedShape> ShapeUtil::GetLeafShapes(
+    const Shape& shape) {
+  std::vector<IndexedShape> leaves;
+  ForEachSubshape(shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
+    if (IsLeafIndex(shape, index)) {
+      leaves.emplace_back(index, sub_shape);
+    }
+  });
+  return leaves;
+}
+
 /* static */ Shape ShapeUtil::StripDegenerateDimensions(const Shape& shape) {
   std::vector<int64> dimension_sizes;
   std::vector<int64> degenerate_dimensions;
