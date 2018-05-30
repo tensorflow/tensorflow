@@ -389,6 +389,7 @@ bool HloParser::ParseComputation(HloComputation** entry_computation) {
     }
     *entry_computation = computation;
   }
+  instruction_pool_.clear();
 
   return AddComputation(name, computation, name_loc);
 }

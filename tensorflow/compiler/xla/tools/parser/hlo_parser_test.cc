@@ -1314,21 +1314,6 @@ ENTRY consts {
                   "one computation should have only one ROOT");
 }
 
-TEST_F(HloParserTest, InstructionExists) {
-  const string original = R"(HloModule comp_exists
-c1 {
-  instr = f32[1]{0} constant({12345})
-}
-c2 {
-  instr = f32[1]{0} constant({67890})
-})";
-
-  ExpectHasSubstr(Parse(original).status().error_message(),
-                  R"(was parsing 3:3: error: instruction previously defined here
-  instr = f32[1]{0} constant({12345})
-  ^)");
-}
-
 TEST_F(HloParserTest, ComputationExists) {
   const string original = R"(HloModule comp_exists
 comp {
@@ -1341,6 +1326,27 @@ comp {
                   R"(was parsing 2:1: error: computation previously defined here
 comp {
 ^)");
+}
+
+TEST_F(HloParserTest, CrossComputationLookup) {
+  const string original = R"(HloModule cross_computation_lookup:
+tcalla (a: (s32[], s32[])) -> (s32[], s32[]) {
+  ROOT aparam = (s32[], s32[]) parameter(0)
+}
+
+tcallb (b: (s32[], s32[])) -> s32[] {
+  rparam = (s32[], s32[]) parameter(0)
+  ROOT gte0 = s32[] get-tuple-element(aparam), index=0
+}
+
+ENTRY entry {
+  param = (s32[], s32[]) parameter(0)
+  call0 = (s32[], s32[]) call(param), to_apply=tcalla
+  ROOT call1 = s32[] call(param), to_apply=tcallb
+})";
+  ExpectHasSubstr(
+      Parse(original).status().error_message(),
+      "was parsing 8:39: error: instruction does not exist: aparam");
 }
 
 }  // namespace
