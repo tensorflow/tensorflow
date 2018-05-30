@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -148,6 +149,12 @@ class HloModuleGroupMetadata {
   // the module in the module vector.
   int64 GetModuleId(const HloModule* module) const;
 
+  // Retrieves the device an instruction is assigned to. Either from the
+  // sharding information, or from the ordinal of the module the instruction
+  // is in.
+  tensorflow::gtl::optional<int64> GetInstructionDevice(
+      const HloInstruction& instruction) const;
+
   // Returns the companion instructions for the given instruction.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
@@ -230,6 +237,11 @@ class HloModuleGroupMetadata {
   // Map from computation to the instruction using it (a kWhile, kConditional).
   tensorflow::gtl::FlatMap<const HloComputation*, TrackedInstruction>
       tracked_instructions_;
+
+  // Maps tracked instructions (kWhile, kConditional, kCall, ...) to the set of
+  // communicating instructions within the proper called computation(s).
+  tensorflow::gtl::FlatMap<HloInstruction*, std::vector<HloInstruction*>>
+      tracked_instructions_comms_;
 
   // All channels in the module.
   std::vector<Channel> channels_;

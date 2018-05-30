@@ -2946,8 +2946,8 @@ TEST(GcsFileSystemTest, CreateHttpRequest) {
 
 class TestGcsStats : public GcsStatsInterface {
  public:
-  void Init(GcsFileSystem* fs, GcsThrottle* throttle,
-            const FileBlockCache* block_cache) override {
+  void Configure(GcsFileSystem* fs, GcsThrottle* throttle,
+                 const FileBlockCache* block_cache) override {
     CHECK(fs_ == nullptr);
     CHECK(throttle_ == nullptr);
     CHECK(block_cache_ == nullptr);

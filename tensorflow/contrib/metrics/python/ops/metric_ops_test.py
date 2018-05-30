@@ -7101,6 +7101,14 @@ class CohenKappaTest(test.TestCase):
     with self.assertRaises(ValueError):
       metrics.cohen_kappa(labels, invalid_predictions, 3)
 
+  def testConditionalPackingOptimization(self):
+    placeholder = array_ops.placeholder(dtypes_lib.float32, [None])
+    values, update_op = metric_ops.streaming_concat(placeholder)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      for feed in range(10):
+        sess.run(update_op, feed_dict={placeholder: [feed]})
+        print(sess.run(values))
 
 if __name__ == '__main__':
   test.main()

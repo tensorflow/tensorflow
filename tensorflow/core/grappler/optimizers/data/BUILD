@@ -60,6 +60,7 @@ tf_cc_test(
     deps = [
         ":graph_utils",
         ":map_and_batch_fusion",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",

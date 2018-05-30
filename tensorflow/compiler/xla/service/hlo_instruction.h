@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
+#include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -597,6 +599,13 @@ class HloInstruction {
       const GatherDimensionNumbers& gather_dim_numbers,
       tensorflow::gtl::ArraySlice<int64> window_bounds);
 
+  // Creates a kDomain instruction which delimits an HLO domain which have
+  // the provided user and operand side metadata.
+  static std::unique_ptr<HloInstruction> CreateDomain(
+      const Shape& shape, HloInstruction* operand,
+      std::unique_ptr<DomainMetadata> operand_side_metadata,
+      std::unique_ptr<DomainMetadata> user_side_metadata);
+
   // Creates a fusion instruction. A fusion instruction contains one or more
   // fused instructions forming an expression with a single root
   // "fused_root". Additional instructions can be added to the fusion
@@ -675,6 +684,10 @@ class HloInstruction {
   // Returns the vector of operands of this instruction.
   using InstructionVector = tensorflow::gtl::InlinedVector<HloInstruction*, 2>;
   const InstructionVector& operands() const { return operands_; }
+
+  // Returns the vector of unique operands, in the same order they are found
+  // within the operand vector.
+  InstructionVector unique_operands() const;
 
   // Returns the index of 'target' in the operands sequence.
   // Precondition: target must be an operand (or a fatal error will occur).
@@ -1094,16 +1107,20 @@ class HloInstruction {
   }
   // Returns the sharding unique device, if any.
   tensorflow::gtl::optional<int64> sharding_unique_device() const {
-    if (sharding_ == nullptr || !sharding_->HasUniqueDevice()) {
+    if (sharding_ == nullptr) {
       return tensorflow::gtl::optional<int64>();
     }
-    return sharding_->UniqueDevice().ValueOrDie();
+    auto device = sharding_->UniqueDevice();
+    return device.ok() ? device.ValueOrDie()
+                       : tensorflow::gtl::optional<int64>();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
     sharding_ = MakeUnique<HloSharding>(sharding);
   }
+  // Sets a sharding that assigns the current instruction to device.
+  void set_device_sharding(int64 device);
   // Remove any sharding from this operator.
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
@@ -1115,6 +1132,15 @@ class HloInstruction {
       return !other->has_sharding();
     }
     return other->has_sharding() ? sharding() == other->sharding() : false;
+  }
+
+  // Retrieves the operand side metadata of a kDomain instruction.
+  const DomainMetadata& operand_side_metadata() const {
+    return *operand_side_metadata_;
+  }
+  // Retrieves the user side metadata of a kDomain instruction.
+  const DomainMetadata& user_side_metadata() const {
+    return *user_side_metadata_;
   }
 
   // When creating a new instruction which either replaces, or shifts up (kCopy
@@ -1317,30 +1343,18 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kRng
   RandomDistribution random_distribution() const;
 
-  // See documentation for Clone().
-  using CloneMap = std::unordered_map<const HloInstruction*, HloInstruction*>;
-
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
-  // the instruction to form the name of the cloned instruction. Ignores the
-  // control predecessors and successors of this HLO instruction.
-  //
-  // If the module pointer is not nullptr, then any cloned computations will be
-  // added to this module in order to support deep cloning. Otherwise the module
-  // of the instruction is used.
-  //
-  // If clone_map is not nullptr, then each original instruction that is cloned
-  // will be inserted and map to its clone. clone_map should not already contain
-  // any of the instructions to clone.
-  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone",
-                                        HloModule* module = nullptr,
-                                        CloneMap* clone_map = nullptr) const;
+  // the instruction to form the name of the cloned instruction.
+  // Ignores the control predecessors and successors of this HLO instruction.
+  std::unique_ptr<HloInstruction> Clone(
+      const string& suffix = "clone", HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloModule* module = nullptr, CloneMap* clone_map = nullptr) const;
+      HloCloneContext* context = nullptr) const;
 
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
@@ -1553,7 +1567,7 @@ class HloInstruction {
   // Clones a fusion instruction with a new shape and operands.
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloModule* module = nullptr) const;
+      HloCloneContext* context = nullptr) const;
 
   // Returns true if this instruction can legally have the dimensions field
   // set. Used for checking precondition of dimensions field accessors.
@@ -1645,6 +1659,10 @@ class HloInstruction {
 
   // The sharding, if one exists.
   std::unique_ptr<HloSharding> sharding_;
+
+  // Fields used by the kDomain instruction.
+  std::unique_ptr<DomainMetadata> operand_side_metadata_;
+  std::unique_ptr<DomainMetadata> user_side_metadata_;
 
   // For parameter instructions this field holds the parameter number.
   int64 parameter_number_ = 0;
