@@ -30,12 +30,12 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.summary import summary
 
 # Try importing TensorRT ops if available
-# pylint: disable=unused-import,trailing-whitespace
+# pylint: disable=unused-import,trailing-whitespace,g-import-not-at-top,wildcard-import
 try:
-  import tensorflow.contrib.tensorrt as trt 
+  from tensorflow.contrib.tensorrt.ops.gen_trt_engine_op import *
 except ImportError:
   pass
-# pylint: enable=unused-import,trailing-whitespace
+# pylint: enable=unused-import,trailing-whitespace,g-import-not-at-top,wildcard-import
 
 def import_to_tensorboard(model_dir, log_dir):
   """View an imported protobuf model (`.pb` file) as a graph in Tensorboard.
