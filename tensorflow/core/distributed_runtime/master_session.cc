@@ -119,7 +119,11 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     // it on/off and don't make use of the responses.
     for (auto& p : partitions_) {
       LoggingRequest* req = new LoggingRequest;
-      req->set_rpc_logging(active);
+      if (active) {
+        req->set_enable_rpc_logging(true);
+      } else {
+        req->set_disable_rpc_logging(true);
+      }
       LoggingResponse* resp = new LoggingResponse;
       Ref();
       p.worker->LoggingAsync(req, resp, [this, req, resp](const Status& s) {

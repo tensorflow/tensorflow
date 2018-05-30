@@ -360,7 +360,6 @@ cc_library(
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
     deps = [
-        ":batch_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -382,7 +381,6 @@ cc_library(
     srcs = ["priority_queue.cc"],
     hdrs = ["priority_queue.h"],
     deps = [
-        ":batch_util",
         ":queue_base",
         ":typed_queue",
         "//tensorflow/core:framework",
@@ -1697,7 +1695,6 @@ tf_kernel_library(
     name = "random_shuffle_queue_op",
     prefix = "random_shuffle_queue_op",
     deps = DATA_FLOW_DEPS + [
-        ":batch_util",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -1890,7 +1887,6 @@ cc_library(
     hdrs = ["fifo_queue.h"],
     visibility = ["//visibility:private"],
     deps = [
-        ":batch_util",
         ":queue_base",
         ":typed_queue",
         "//tensorflow/core:framework",
@@ -1905,7 +1901,6 @@ cc_library(
     hdrs = ["padding_fifo_queue.h"],
     visibility = ["//visibility:private"],
     deps = [
-        ":batch_util",
         ":fifo_queue",
         ":queue_base",
         ":typed_queue",
@@ -2032,9 +2027,12 @@ tf_kernel_library(
     name = "functional_ops",
     prefix = "functional_ops",
     deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
     ],
 )
@@ -4249,6 +4247,7 @@ cc_library(
         ":as_string_op",
         ":base64_ops",
         ":reduce_join_op",
+        ":regex_full_match_op",
         ":regex_replace_op",
         ":string_join_op",
         ":string_split_op",
@@ -4283,6 +4282,12 @@ tf_kernel_library(
     name = "string_join_op",
     prefix = "string_join_op",
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "regex_full_match_op",
+    prefix = "regex_full_match_op",
+    deps = STRING_DEPS + ["@com_googlesource_code_re2//:re2"],
 )
 
 tf_kernel_library(
@@ -5001,7 +5006,6 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
-        "batch_util.cc",
         "batchtospace_op.cc",
         "ctc_decoder_ops.cc",
         "decode_bmp_op.cc",
@@ -6128,9 +6132,10 @@ tf_mkl_kernel_library(
     ],
 )
 
+# NOTE(lespeholt): This rule is deprecated, please use:
+# tensorflow/core/util/batch_util.h
 cc_library(
     name = "batch_util",
-    srcs = ["batch_util.cc"],
     hdrs = ["batch_util.h"],
     deps = [
         "//tensorflow/core:framework",

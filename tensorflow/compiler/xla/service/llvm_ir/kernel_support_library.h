@@ -101,6 +101,15 @@ class KernelSupportLibrary {
   }
 
   void For(
+      tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
+      int64 step,
+      const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
+    For(name, start, end, ir_builder_->getInt64(step),
+        /*peel_first_iteration=*/false,
+        [&](llvm::Value* indvar, llvm::Value*) { for_body_generator(indvar); });
+  }
+
+  void For(
       tensorflow::StringPiece name, int64 start, int64 end, int64 step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
     For(name, /*start=*/ir_builder_->getInt64(start),

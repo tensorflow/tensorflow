@@ -26,7 +26,6 @@ py_library(
         "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:checkpointable",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
@@ -34,6 +33,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",
     ],
 )
@@ -151,6 +151,7 @@ py_library(
         ":one_device_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/optimizer_v2:training",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -469,24 +470,24 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "cross_tower_ops_test",
     srcs = ["cross_tower_ops_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
-    deps = [
+    additional_deps = [
         ":combinations",
         ":cross_tower_ops",
         ":values",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "@absl_py//absl/testing:parameterized",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
     ],
 )
 

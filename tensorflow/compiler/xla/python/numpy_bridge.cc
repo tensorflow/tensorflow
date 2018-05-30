@@ -340,13 +340,13 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
   return result;
 }
 
-PyObject* PyObjectFromXlaLiteral(const Literal& literal) {
+PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   if (ShapeUtil::IsTuple(literal.shape())) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {
-      PyTuple_SET_ITEM(
-          tuple, i, PyObjectFromXlaLiteral(LiteralView::Create(literal, {i})));
+      PyTuple_SET_ITEM(tuple, i,
+                       PyObjectFromXlaLiteral(LiteralSlice(literal, {i})));
     }
     return tuple;
   } else {
@@ -431,7 +431,7 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
   return Status::OK();
 }
 
-void CopyLiteralToNumpyArray(int np_type, const Literal& literal,
+void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
                              PyArrayObject* py_array) {
   switch (np_type) {
     case NPY_BOOL:

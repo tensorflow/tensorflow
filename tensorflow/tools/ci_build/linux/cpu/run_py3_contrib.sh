@@ -52,7 +52,7 @@ bazel test --test_tag_filters=-no_oss,-oss_serial,-gpu,-benchmark-test -k \
     //tensorflow/contrib/lite/kernels:embedding_lookup_test \
     //tensorflow/contrib/lite/kernels:embedding_lookup_sparse_test \
     //tensorflow/contrib/lite/kernels:fully_connected_test \
-    //tensorflow/contrib/lite/testing:generated_examples_zip_test \
+    //tensorflow/contrib/lite/testing:generated_zip_tests \
     //tensorflow/contrib/lite/kernels:hashtable_lookup_test \
     //tensorflow/contrib/lite/kernels:local_response_norm_test \
     //tensorflow/contrib/lite/kernels:lsh_projection_test \

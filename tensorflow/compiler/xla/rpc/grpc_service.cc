@@ -27,8 +27,8 @@ namespace xla {
   return std::move(grpc_service);
 }
 
-::grpc::Status DelegateRPC(std::function<tensorflow::Status()> op) {
-  tensorflow::Status s = op();
+::grpc::Status DelegateRPC(std::function<Status()> op) {
+  Status s = op();
   return tensorflow::ToGrpcStatus(s);
 }
 

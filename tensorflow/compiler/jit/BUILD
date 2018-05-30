@@ -124,7 +124,6 @@ cc_library(
     srcs = ["xla_tensor.cc"],
     hdrs = ["xla_tensor.h"],
     deps = [
-        ":common",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
@@ -176,11 +175,11 @@ cc_library(
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:variable_ops",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -217,6 +216,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
@@ -261,6 +261,7 @@ cc_library(
     name = "create_xla_launch_op",
     srcs = [
         "create_xla_launch_op.cc",
+        "create_xla_launch_op.h",
     ],
     deps = [
         ":common",
@@ -270,6 +271,27 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "create_xla_launch_op_test",
+    srcs = [
+        "create_xla_launch_op.h",
+        "create_xla_launch_op_test.cc",
+    ],
+    deps = [
+        ":create_xla_launch_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

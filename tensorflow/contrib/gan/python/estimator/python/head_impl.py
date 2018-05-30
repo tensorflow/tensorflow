@@ -25,17 +25,21 @@ from tensorflow.contrib.gan.python import train as tfgan_train
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.canned import head
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import metrics as metrics_lib
 
 __all__ = [
     'GANHead',
     'gan_head',
 ]
 
+def _summary_key(head_name, val):
+  return '%s/%s' % (val, head_name) if head_name else val
+
 
 def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
              discriminator_optimizer, use_loss_summaries=True,
              get_hooks_fn=tfgan_train.get_sequential_train_hooks(),
-             name=None):
+             get_eval_metric_ops_fn=None, name=None):
   """Creates a `GANHead`.
 
   Args:
@@ -47,9 +51,12 @@ def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
     discriminator_optimizer: Same as `generator_optimizer`, but for the
       discriminator updates.
     use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
-        If `None`, uses defaults.
-    get_hooks_fn: A function that takes a GANTrainOps tuple and returns a list
-        of hooks.
+      If `None`, uses defaults.
+    get_hooks_fn: A function that takes a `GANTrainOps` tuple and returns a
+      list of hooks.
+    get_eval_metric_ops_fn: A function that takes a `GANModel`, and returns a
+      dict of metric results keyed by name. The output of this function is
+      passed into `tf.estimator.EstimatorSpec` during evaluation.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`.
 
@@ -62,6 +69,7 @@ def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
                  discriminator_optimizer=discriminator_optimizer,
                  use_loss_summaries=use_loss_summaries,
                  get_hooks_fn=get_hooks_fn,
+                 get_eval_metric_ops_fn=get_eval_metric_ops_fn,
                  name=name)
 
 
@@ -72,6 +80,7 @@ class GANHead(head._Head):  # pylint: disable=protected-access
                generator_optimizer, discriminator_optimizer,
                use_loss_summaries=True,
                get_hooks_fn=None,
+               get_eval_metric_ops_fn=None,
                name=None):
     """`Head` for GAN training.
 
@@ -85,8 +94,11 @@ class GANHead(head._Head):  # pylint: disable=protected-access
         discriminator updates.
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
-      get_hooks_fn: A function that takes a GANTrainOps tuple and returns a list
-        of hooks. Defaults to `train.get_sequential_train_hooks()`
+      get_hooks_fn: A function that takes a `GANTrainOps` tuple and returns a
+        list of hooks. Defaults to `train.get_sequential_train_hooks()`
+      get_eval_metric_ops_fn: A function that takes a `GANModel`, and returns a
+        dict of metric results keyed by name. The output of this function is
+        passed into `tf.estimator.EstimatorSpec` during evaluation.
       name: name of the head. If provided, summary and metrics keys will be
         suffixed by `"/" + name`.
     """
@@ -104,6 +116,8 @@ class GANHead(head._Head):  # pylint: disable=protected-access
     self._generator_optimizer = generator_optimizer
     self._discriminator_optimizer = discriminator_optimizer
     self._get_hooks_fn = get_hooks_fn
+    self._get_eval_metric_ops_fn = get_eval_metric_ops_fn
+    self._name = name
 
   @property
   def name(self):
@@ -173,13 +187,26 @@ class GANHead(head._Head):  # pylint: disable=protected-access
         gan_loss = self.create_loss(
             features=None, mode=mode, logits=gan_model, labels=None)
         scalar_loss = gan_loss.generator_loss + gan_loss.discriminator_loss
+        with ops.name_scope(None, 'metrics',
+                            [gan_loss.generator_loss,
+                             gan_loss.discriminator_loss]):
+          eval_metric_ops = {
+              _summary_key(self._name, 'generator_loss'):
+                  metrics_lib.mean(gan_loss.generator_loss),
+              _summary_key(self._name, 'discriminator_loss'):
+                  metrics_lib.mean(gan_loss.discriminator_loss)
+          }
+          if self._get_eval_metric_ops_fn is not None:
+            custom_eval_metric_ops = self._get_eval_metric_ops_fn(gan_model)
+            if not isinstance(custom_eval_metric_ops, dict):
+              raise TypeError('get_eval_metric_ops_fn must return a dict, '
+                              'received: {}'.format(custom_eval_metric_ops))
+            eval_metric_ops.update(custom_eval_metric_ops)
         return model_fn_lib.EstimatorSpec(
             mode=model_fn_lib.ModeKeys.EVAL,
             predictions=gan_model.generated_data,
             loss=scalar_loss,
-            # TODO(joelshor): Add metrics. If head name provided, append it to
-            # metric keys.
-            eval_metric_ops={})
+            eval_metric_ops=eval_metric_ops)
       elif mode == model_fn_lib.ModeKeys.TRAIN:
         if train_op_fn is None:
           raise ValueError('train_op_fn can not be None.')

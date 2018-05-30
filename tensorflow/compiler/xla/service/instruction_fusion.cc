@@ -28,6 +28,25 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+// These nodes can always be duplicated into consumers, even if
+// InstructionFusion::may_duplicate_ is false.
+//
+// In general these should be nodes that get *cheaper* the more they're
+// duplicated (and fused into consumers).
+//
+// TODO(jlebar): Duplicating instructions when we have a variable called "may
+// duplicate" that's equal to false is not pretty.
+bool IsAlwaysDuplicable(const HloInstruction& instruction) {
+  // We are always willing to duplicate a widening type-conversion instruction
+  // if it means we can fuse the convert into a consumer.  This allows the
+  // consumer to read less memory, which is almost always a performance win.
+  return instruction.opcode() == HloOpcode::kConvert &&
+         ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
+             ShapeUtil::ByteSizeOf(instruction.shape());
+}
+}  // namespace
+
 /*static*/ bool InstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
   switch (instruction.opcode()) {
@@ -101,11 +120,13 @@ namespace xla {
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
     case HloOpcode::kGather:
     case HloOpcode::kHostCompute:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kPower:
@@ -393,12 +414,9 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   return changed;
 }
 
-HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
-                                        HloInstruction* consumer) {
+HloInstruction* InstructionFusion::AddFusionInstruction(
+    HloInstruction* producer, HloInstruction* consumer) {
   HloInstruction* fusion_instruction;
-
-  VLOG(2) << "Fusing " << producer->ToString() << " into "
-          << consumer->ToString();
   auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {
     fusion_instruction = consumer;
@@ -410,17 +428,35 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
   }
+  return fusion_instruction;
+}
 
+HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
+                                        HloInstruction* consumer) {
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
   fusion_instruction->FuseInstruction(producer);
+  return fusion_instruction;
+}
+
+HloInstruction* InstructionFusion::FuseIntoMultiOutput(
+    HloInstruction* producer, HloInstruction* consumer) {
+  VLOG(2) << "Multi-output fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  fusion_instruction->FuseInstructionIntoMultiOutput(producer);
   return fusion_instruction;
 }
 
 bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                    int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
+
   // Cost condition: don't duplicate expensive instructions.
   if (FusionWouldDuplicate(*producer, *consumer) &&
-      (is_expensive_(*producer) || !may_duplicate_)) {
+      (!may_duplicate_ || is_expensive_(*producer)) &&
+      !IsAlwaysDuplicable(*producer)) {
     return false;
   }
 

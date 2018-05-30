@@ -77,8 +77,7 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
   // Since CUDA 9.0, all GPU versions are included in a single file
   const char* unified_libdevice_filename = "libdevice.10.bc";
   std::vector<string> unified_libdevice_files;
-  const tensorflow::Status status =
-    tensorflow::Env::Default()->GetMatchingPaths(
+  const Status status = tensorflow::Env::Default()->GetMatchingPaths(
       tensorflow::io::JoinPath(libdevice_dir_path, unified_libdevice_filename),
       &unified_libdevice_files);
   if (status.ok() && unified_libdevice_files.size() == 1) {
@@ -273,7 +272,7 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
 
-    target_machine->addPassesToEmitFile(codegen_passes, pstream,
+    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
                                         llvm::TargetMachine::CGFT_AssemblyFile);
     codegen_passes.run(*module);
   }
@@ -311,11 +310,11 @@ bool CouldNeedLibdevice(const llvm::Module& module) {
 }
 
 // Links libdevice into the given module if the module needs libdevice.
-tensorflow::Status LinkLibdeviceIfNecessary(
-    llvm::Module* module, std::pair<int, int> compute_capability,
-    const string& libdevice_dir_path) {
+Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                std::pair<int, int> compute_capability,
+                                const string& libdevice_dir_path) {
   if (!CouldNeedLibdevice(*module)) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   llvm::Linker linker(*module);
@@ -336,7 +335,7 @@ tensorflow::Status LinkLibdeviceIfNecessary(
     return tensorflow::errors::Internal(tensorflow::strings::StrCat(
         "Error linking libdevice from ", libdevice_path));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 StatusOr<string> CompileModuleToPtx(llvm::Module* module,

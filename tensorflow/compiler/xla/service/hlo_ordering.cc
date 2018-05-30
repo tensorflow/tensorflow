@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -170,10 +169,10 @@ bool HloOrdering::UseIsBeforeValueDefinition(
   // is before the def if the instruction allows buffer sharing (in place
   // computation).
   if (use.instruction == value.defining_instruction() &&
-      CanShareOperandBufferWithUser(
+      dataflow.CanShareOperandBufferWithUser(
           use.instruction->mutable_operand(use.operand_number),
           use.operand_index, value.defining_instruction(),
-          value.defining_index(), dataflow)) {
+          value.defining_index())) {
     VLOG(4) << "  use is value def, and instruction can share use buffer";
     return true;
   }

@@ -111,10 +111,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
             kwargs["name"] = "%s/replica_%d" % (var0name, i)
             # Initialize replicas with the same value:
             if context.executing_eagerly():
-              initial_value = index[devices[0]].value()
+              kwargs["initial_value"] = array_ops.identity(
+                  index[devices[0]].value())
             else:
-              initial_value = index[devices[0]].initial_value
-            kwargs["initial_value"] = array_ops.identity(initial_value)
+              def initial_value_fn(device=d):
+                with ops.device(device):
+                  return array_ops.identity(index[devices[0]].initial_value)
+              kwargs["initial_value"] = initial_value_fn
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.DistributedVariable)

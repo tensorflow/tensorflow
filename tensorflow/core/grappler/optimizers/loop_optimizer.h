@@ -54,6 +54,7 @@ class LoopOptimizer : public GraphOptimizer {
   struct LoopOptimizerOptions {
     bool enable_loop_invariant_node_motion = false;
     bool enable_stack_push_removal = true;
+    bool enable_dead_branch_removal = true;
 
     static LoopOptimizerOptions Default(RewriterConfig::Toggle opt_level) {
       LoopOptimizerOptions options;
