@@ -19,9 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <popconv/Convolution.hpp>
@@ -33,16 +31,12 @@ namespace poplarplugin {
 
 using ComputationMap = std::map<const HloComputation*, SubComputationVisitor>;
 
+// This structure contains additional information required to lower the graph
+// from an XLA graph to a poplar graph.
 struct CompilerResources {
   ComputationMap computation_map;
 
-  uint64 num_resource_variables;
-
-  TensorAllocationMap tensor_allocation_map;
-
-  ConvClassification classification_map;
-
-  InplaceInstructions inplace_instructions;
+  CompilerAnnotations annotations;
 
   popconv::PlanningCache convolution_cache;
 

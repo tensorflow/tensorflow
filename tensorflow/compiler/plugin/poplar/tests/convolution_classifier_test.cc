@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
 
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
@@ -179,8 +180,8 @@ HloModule top
     HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   EXPECT_TRUE(module_or_status.ok());
 
-  ConvClassification map;
-  ConvolutionClassifier classifier(map);
+  CompilerAnnotations annotations;
+  ConvolutionClassifier classifier(annotations);
 
   auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
@@ -188,9 +189,9 @@ HloModule top
   EXPECT_TRUE(res.ok());
   EXPECT_TRUE(res.ValueOrDie());
 
-  EXPECT_EQ(map.size(), 5);
+  EXPECT_EQ(annotations.classification_map.size(), 5);
 
-  for (auto it : map) {
+  for (auto it : annotations.classification_map) {
     if (it.first->name() == "call.2.clone") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_INPUT);
     }
@@ -295,8 +296,8 @@ std::string hlo_string = R"(
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   EXPECT_TRUE(module_or_status.ok());
 
-  ConvClassification map;
-  ConvolutionClassifier classifier(map);
+  CompilerAnnotations annotations;
+  ConvolutionClassifier classifier(annotations);
 
   auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
@@ -304,9 +305,9 @@ std::string hlo_string = R"(
   EXPECT_TRUE(res.ok());
   EXPECT_TRUE(res.ValueOrDie());
 
-  EXPECT_EQ(map.size(), 2);
+  EXPECT_EQ(annotations.classification_map.size(), 2);
 
-  for (auto it : map) {
+  for (auto it : annotations.classification_map) {
     if (it.first->name() == "convolution.7.51.clone") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
     }
@@ -402,8 +403,8 @@ ENTRY %cluster_1 {
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   EXPECT_TRUE(module_or_status.ok());
 
-  ConvClassification map;
-  ConvolutionClassifier classifier(map);
+  CompilerAnnotations annotations;
+  ConvolutionClassifier classifier(annotations);
 
   auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
@@ -411,9 +412,9 @@ ENTRY %cluster_1 {
   EXPECT_TRUE(res.ok());
   EXPECT_TRUE(res.ValueOrDie());
 
-  EXPECT_EQ(map.size(), 5);
+  EXPECT_EQ(annotations.classification_map.size(), 5);
 
-  for (auto it : map) {
+  for (auto it : annotations.classification_map) {
     if (it.first->name() == "dot.9.9") {
       EXPECT_EQ(it.second, ClassificationType::FORWARD);
     }
@@ -479,8 +480,8 @@ ENTRY %cluster_9 {
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   EXPECT_TRUE(module_or_status.ok());
 
-  ConvClassification map;
-  ConvolutionClassifier classifier(map);
+  CompilerAnnotations annotations;
+  ConvolutionClassifier classifier(annotations);
 
   auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
@@ -488,9 +489,9 @@ ENTRY %cluster_9 {
   EXPECT_TRUE(res.ok());
   EXPECT_TRUE(res.ValueOrDie());
 
-  EXPECT_EQ(map.size(), 2);
+  EXPECT_EQ(annotations.classification_map.size(), 2);
 
-  for (auto it : map) {
+  for (auto it : annotations.classification_map) {
     if (it.first->name() == "dot.17.12") {
       EXPECT_EQ(it.second, ClassificationType::INFERENCE);
     }

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
@@ -236,6 +237,9 @@ StatusOr<bool> AllocationFinder::Run(HloModule* module) {
 
   return true;
 }
+
+AllocationFinder::AllocationFinder(CompilerAnnotations& annotations)
+    : tensor_allocation_map(annotations.tensor_allocation_map) {}
 
 }  // namespace poplarplugin
 }  // namespace xla

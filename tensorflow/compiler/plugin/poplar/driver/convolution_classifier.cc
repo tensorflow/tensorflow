@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
@@ -83,6 +84,8 @@ const HloInstruction* FindOperand(
 }
 
 StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
+  classification_.clear();
+
   std::set<const HloInstruction*> variable_inputs;
   int64 n_vars = module->config().resource_update_count();
   for (int p = n_vars; p < module->entry_computation()->num_parameters(); p++) {
@@ -180,6 +183,9 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
 
   return true;
 }
+
+ConvolutionClassifier::ConvolutionClassifier(CompilerAnnotations& annotations)
+    : classification_(annotations.classification_map) {}
 
 }  // namespace poplarplugin
 }  // namespace xla

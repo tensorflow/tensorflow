@@ -29,6 +29,8 @@ class HloInstruction;
 
 namespace poplarplugin {
 
+struct CompilerAnnotations;
+
 enum ClassificationType {
   FORWARD,
   BACKPROP_INPUT,
@@ -45,8 +47,7 @@ using ConvClassification = std::map<const HloInstruction*, ClassificationType>;
  */
 class ConvolutionClassifier : public HloPassInterface {
  public:
-  ConvolutionClassifier(ConvClassification& classification) :
-      classification_(classification) {}
+  ConvolutionClassifier(CompilerAnnotations& annotations);
 
   ~ConvolutionClassifier() = default;
 

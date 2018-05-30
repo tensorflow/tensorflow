@@ -25,6 +25,8 @@ class HloInstruction;
 
 namespace poplarplugin {
 
+struct CompilerAnnotations;
+
 using InplaceInstructions = std::set<const HloInstruction*>;
 using InplaceRoute = std::vector<HloInstruction*>;
 
@@ -36,7 +38,7 @@ using InplaceRoute = std::vector<HloInstruction*>;
  */
 class InplaceFinder : public HloPassInterface {
  public:
-  InplaceFinder(InplaceInstructions& insts) : inplace_instructions(insts) {}
+  InplaceFinder(CompilerAnnotations& annotations);
 
   ~InplaceFinder() = default;
 

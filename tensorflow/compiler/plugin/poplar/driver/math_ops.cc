@@ -219,7 +219,7 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
 
-  if (res.inplace_instructions.count(inst) == 1 &&
+  if (res.annotations.inplace_instructions.count(inst) == 1 &&
       (in0.shape() == in1.shape()) && in0.isParallelWriteable()) {
     popops_inplace_fn fn;
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst));

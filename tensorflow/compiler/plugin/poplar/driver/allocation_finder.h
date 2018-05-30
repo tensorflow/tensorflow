@@ -27,6 +27,8 @@ class HloInstruction;
 
 namespace poplarplugin {
 
+struct CompilerAnnotations;
+
 struct TensorTarget {
   const HloInstruction* tgt;
   int64 input_index;
@@ -47,7 +49,7 @@ using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
  */
 class AllocationFinder : public HloPassInterface {
  public:
-  AllocationFinder(TensorAllocationMap& map) : tensor_allocation_map(map) {}
+  AllocationFinder(CompilerAnnotations& annotations);
 
   ~AllocationFinder() = default;
 

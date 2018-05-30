@@ -96,7 +96,7 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
       valid[i] = true;
       auto& t = temp_inputs_[inst->parameter_number()][i];
       auto src = std::make_pair(inst, i);
-      if (resources_.tensor_allocation_map.count(src) > 0 &&
+      if (resources_.annotations.tensor_allocation_map.count(src) > 0 &&
           t.containsConstant()) {
         poplar::Tensor out;
         TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, src, shapes[i], resources_));

@@ -1,3 +1,6 @@
+/* Copyright 2017 Graphcore Ltd
+ */
+
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,37 +16,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_ANNOTATIONS_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_ANNOTATIONS_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
-
-#include <set>
+#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 
 namespace xla {
-
-class HloModule;
-
 namespace poplarplugin {
 
-struct CompilerAnnotations;
+// This structure contains all information which we generate that pertains
+// to the XLA graph, as opposed to the poplar lowering of that graph.
+struct CompilerAnnotations {
 
-// Extract elementwise ops into a called sub-graph
+  uint64 num_resource_variables;
 
-class ExpressionOutliner : public HloMatcher {
- public:
-  ExpressionOutliner(CompilerAnnotations& annotations);
+  TensorAllocationMap tensor_allocation_map;
 
-  ~ExpressionOutliner() override = default;
+  ConvClassification classification_map;
 
-  tensorflow::StringPiece name() const override { return "expression-outline"; }
-
-  StatusOr<bool> Run(HloModule *module) override;
-
- private:
-  ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched&) override;
-
-  const std::set<const HloInstruction*>& inplace_instructions;
+  InplaceInstructions inplace_instructions;
 };
 
 }  // namespace poplarplugin

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
@@ -90,8 +91,9 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 
 }  // namespace
 
-ExpressionOutliner::ExpressionOutliner(const InplaceSet& inplace)
-    : HloMatcher({}, true), inplace_instructions(inplace) {}
+ExpressionOutliner::ExpressionOutliner(CompilerAnnotations& annotations)
+    : HloMatcher({}, true),
+      inplace_instructions(annotations.inplace_instructions) {}
 
 ReplacedInstructions ExpressionOutliner::ReplaceNodes(
     int, const HloMatcherMatched&) {

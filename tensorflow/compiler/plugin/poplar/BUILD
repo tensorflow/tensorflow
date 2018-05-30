@@ -46,6 +46,7 @@ cc_library(
     ],
     hdrs = [
         "driver/allocation_finder.h",
+        "driver/compiler_annotations.h",
         "driver/computation_flattener.h",
         "driver/convolution_classifier.h",
         "driver/expression_outliner.h",
