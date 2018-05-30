@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/no_op.h"
+#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/sendrecv_ops.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 
@@ -39,6 +40,15 @@ class XlaDeviceDummyOp : public OpKernel {
  public:
   explicit XlaDeviceDummyOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
+};
+
+class XlaAssignVariableOp : public AsyncOpKernel {
+ public:
+  explicit XlaAssignVariableOp(OpKernelConstruction* c);
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override;
+
+ private:
+  DataType dtype_;
 };
 
 #define REGISTER_XLA_LAUNCH_KERNEL(DEVICE, KERNEL, TYPES) \
@@ -73,7 +83,19 @@ class XlaDeviceDummyOp : public OpKernel {
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
-      ResourceHandleOp<Var>);
+      ResourceHandleOp<Var>);                                                  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
+      ReadVariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AssignVariableOp").Device(DEVICE).HostMemory("resource"),          \
+      XlaAssignVariableOp);                                                    \
+  REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE),               \
+                          ControlTriggerOp);                                   \
+  REGISTER_KERNEL_BUILDER(Name("Switch").Device(DEVICE).HostMemory("pred"),    \
+                          SwitchOp);                                           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Merge").Device(DEVICE).HostMemory("value_index"), MergeOp);
 
 }  // namespace tensorflow
 

@@ -58,12 +58,18 @@ class LocalExecutable {
 
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
+  //
+  // The given ExecutableRunOptions override any values from legacy_flags
+  // (TF_XLA_FLAGS environment variable).
   Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
+  //
+  // The given ServiceExecutableRunOptions override any values from legacy_flags
+  // (TF_XLA_FLAGS environment variable).
   StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
@@ -109,6 +115,9 @@ class LocalClient : public Client {
 
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given XlaComputation, argument layouts and options.
+  //
+  // The given ExecutableBuildOptions override any values from legacy_flags
+  // (TF_XLA_FLAGS environment variable).
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,

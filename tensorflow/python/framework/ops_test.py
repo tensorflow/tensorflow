@@ -2224,12 +2224,25 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
 
-  def testEagerGraphContextsExecuteEagerly(self):
+  def testEnteringGraphFromEagerIsSticky(self):
     with context.eager_mode():
+      g = ops.Graph()
+      with g.as_default():
+        with ops.init_scope():
+          self.assertFalse(context.executing_eagerly())
+          self.assertEqual(g, ops.get_default_graph())
+
+  def testMixGraphEager(self):
+    with context.eager_mode():
+      c = constant_op.constant(1.0)
       with ops.Graph().as_default():
-        with context.graph_mode():
-          with ops.init_scope():
-            self.assertTrue(context.executing_eagerly())
+        with self.assertRaisesRegexp(
+            RuntimeError, "Attempting to capture an EagerTensor"):
+          math_ops.add(c, c)
+        c2 = constant_op.constant(2.0)
+      with self.assertRaisesRegexp(
+          TypeError, "contains objects other than 'EagerTensor'"):
+        math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():
@@ -2262,6 +2275,11 @@ class GraphTest(test_util.TensorFlowTestCase):
     with self.assertRaises(AssertionError):
       with g0.as_default():
         ops.reset_default_graph()
+
+  def testGraphContextManagerCancelsEager(self):
+    with context.eager_mode():
+      with ops.Graph().as_default():
+        self.assertFalse(context.executing_eagerly())
 
   def testGraphContextManager(self):
     g0 = ops.Graph()

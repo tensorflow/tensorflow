@@ -129,7 +129,7 @@ class TrainSpec(
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
@@ -193,7 +193,7 @@ class EvalSpec(
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
@@ -444,7 +444,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
         'For distributed training, there can only be one `evaluator` task '
         '(with task id 0).  Given task id {}'.format(config.task_id))
 
-  executor.run()
+  return executor.run()
 
 
 class _StopAtSecsHook(session_run_hook.SessionRunHook):

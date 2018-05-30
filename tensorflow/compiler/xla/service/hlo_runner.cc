@@ -94,8 +94,8 @@ HloRunner::~HloRunner() {}
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
-    const tensorflow::gtl::ArraySlice<Literal*> arguments,
-    bool run_hlo_passes) {
+    const tensorflow::gtl::ArraySlice<Literal*> arguments, bool run_hlo_passes,
+    ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
   se::Stream stream(backend().default_stream_executor());
@@ -127,7 +127,7 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer result,
       executable->ExecuteOnStreamWrapper(
-          &service_run_options, /*profile=*/nullptr, argument_buffer_ptrs));
+          &service_run_options, /*profile=*/profile, argument_buffer_ptrs));
 
   auto result_literal = backend().transfer_manager()->TransferLiteralFromDevice(
       stream.parent(), result);
@@ -139,6 +139,18 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
             << result_literal.status().ToString();
   }
   return result_literal;
+}
+
+StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
+    std::unique_ptr<HloModule> module,
+    const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
+    bool run_hlo_passes, ExecutionProfile* profile) {
+  // Construct a vector of plain pointers for the arguments.
+  std::vector<Literal*> argument_pointers;
+  c_transform(
+      arguments, std::back_inserter(argument_pointers),
+      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+  return Execute(std::move(module), argument_pointers, run_hlo_passes, profile);
 }
 
 StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
@@ -293,6 +305,10 @@ Backend& HloRunner::backend() {
     VLOG(1) << "Executing on platform " << backend().platform()->Name();
   }
   return *backend_;
+}
+
+const Backend& HloRunner::backend() const {
+  return const_cast<HloRunner*>(this)->backend();
 }
 
 }  // namespace xla

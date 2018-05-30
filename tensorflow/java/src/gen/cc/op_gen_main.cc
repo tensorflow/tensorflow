@@ -41,7 +41,7 @@ const char kUsageHeader[] =
     "using an appropriate annotation processor.\n\n"
     "The '--base_package' overrides the default parent package under which "
     "the generated subpackage and classes are to be located.\n\n"
-    "Finally, the `--api_dirs` argument takes a list of comma-seperated "
+    "Finally, the `--api_dirs` argument takes a list of comma-separated "
     "directories of API definitions can be provided to override default\n"
     "values found in the ops definitions. Directories are ordered by priority "
     "(the last having precedence over the first).\n\n";
@@ -55,10 +55,12 @@ int main(int argc, char* argv[]) {
   tensorflow::string api_dirs_str;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("output_dir", &output_dir,
-          "Root directory into which output files are generated"),
-      tensorflow::Flag("base_package", &base_package,
+                       "Root directory into which output files are generated"),
+      tensorflow::Flag(
+          "base_package", &base_package,
           "Package parent to the generated subpackage and classes"),
-      tensorflow::Flag("api_dirs", &api_dirs_str,
+      tensorflow::Flag(
+          "api_dirs", &api_dirs_str,
           "List of directories that contains the ops api definitions")};
   tensorflow::string usage = tensorflow::java::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
