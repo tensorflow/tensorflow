@@ -83,7 +83,7 @@ struct Options {
 StatusOr<std::unique_ptr<Literal>> ReplayComputation(const HloSnapshot& module,
                                                      Client* client,
                                                      const Options& opts) {
-  TF_ASSIGN_OR_RETURN(auto computation, client->LoadSnapshot(module));
+  XlaComputation computation(module.hlo().hlo_module());
 
   std::vector<std::unique_ptr<GlobalData>> arguments;
   if (opts.use_fake_data) {
@@ -192,9 +192,15 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
     HloSnapshot snapshot;
     auto status = tensorflow::ReadBinaryProto(env, arg, &snapshot);
     if (!status.ok()) {
-      fprintf(stderr, "%s: is not HloSnapshot: %s.\n", arg,
-              status.ToString().c_str());
-      continue;
+      fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n", arg);
+      status = tensorflow::ReadBinaryProto(env, arg, snapshot.mutable_hlo());
+      if (!status.ok()) {
+        fprintf(stderr, "%s: is not HloSnapshot or HloProto: %s.\n", arg,
+                status.ToString().c_str());
+        continue;
+      }
+      CHECK(opts.use_fake_data)
+          << "HloProto input must be handled with --use_fake_data";
     }
     StatusOr<std::unique_ptr<Literal>> result_status =
         ReplayComputation(snapshot, client, opts);
