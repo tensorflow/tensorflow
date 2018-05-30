@@ -1806,7 +1806,7 @@ class TPUEstimator(estimator_lib.Estimator):
       export_outputs['classes'] =
         export_output_lib.ClassificationOutput(classes=classes)
 
-    tpu.outside_compilation(host_call, [logits])
+    tpu.outside_compilation(host_call, logits)
 
     ...
   ```
