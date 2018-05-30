@@ -320,13 +320,15 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return None
 
 
-def outside_compilation(computation, args=None):
+def outside_compilation(computation, *args, **kwargs):
   """Builds part of a computation outside any current TPU replicate scope.
 
   Args:
     computation: A Python function that builds the computation to
       place on the host.
-    args: Inputs to pass to computation.
+    *args: the positional arguments for the computation.
+    **kwargs: the keyword arguments for the computation.
+
   Returns:
     The Tensors returned by computation.
   """
@@ -342,7 +344,7 @@ def outside_compilation(computation, args=None):
       context._EnterOutsideCompilationScope()  # pylint: disable=protected-access
     context = context.outer_context
 
-  retval = computation(*args)
+  retval = computation(*args, **kwargs)
 
   # If we are in a TPUReplicateContext, signal that we are no longer
   # outside_compilation

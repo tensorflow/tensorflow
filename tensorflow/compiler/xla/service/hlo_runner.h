@@ -102,6 +102,15 @@ class HloRunner {
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
       const std::string& filename, const DebugOptions& debug_options);
 
+  // Transfers data between the host and device.
+  StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal);
+  StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
+      const tensorflow::gtl::ArraySlice<const Literal*> literals);
+  StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
+      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> literals);
+  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+      const ShapedBuffer& buffer);
+
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
   //
@@ -109,12 +118,24 @@ class HloRunner {
   // optimization.
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<Literal*> arguments,
+      const tensorflow::gtl::ArraySlice<const Literal*> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+
+  // As Execute(), but accepts and returns device buffers instead of host
+  // buffers.
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      std::unique_ptr<HloModule> module,
+      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      std::unique_ptr<HloModule> module,
+      const tensorflow::gtl::ArraySlice<ScopedShapedBuffer> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   // Executes a given HLO module into a set of replicas, and returns a map

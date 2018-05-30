@@ -389,6 +389,7 @@ bool HloParser::ParseComputation(HloComputation** entry_computation) {
     }
     *entry_computation = computation;
   }
+  instruction_pool_.clear();
 
   return AddComputation(name, computation, name_loc);
 }
@@ -485,6 +486,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kClz:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kDomain:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kImag:

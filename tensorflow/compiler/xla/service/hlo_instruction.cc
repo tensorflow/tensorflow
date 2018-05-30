@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -256,6 +257,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kClz:
+    case HloOpcode::kDomain:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -821,6 +823,15 @@ HloInstruction::CreateBroadcastSequence(
   return instruction;
 }
 
+void HloInstruction::set_device_sharding(int64 device) {
+  HloSharding device_sharding = HloSharding::AssignDevice(device);
+  if (ShapeUtil::IsTuple(shape())) {
+    set_sharding(HloSharding::Tuple(device_sharding.GetAsShapeTree(shape())));
+  } else {
+    set_sharding(device_sharding);
+  }
+}
+
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
   if (sharding_ != nullptr) {
@@ -1225,21 +1236,28 @@ bool HloInstruction::HasSideEffect() const {
   return gather_dim_numbers;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
+    const Shape& shape, HloInstruction* operand,
+    std::unique_ptr<DomainMetadata> operand_side_metadata,
+    std::unique_ptr<DomainMetadata> user_side_metadata) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kDomain, shape));
+  instruction->operand_side_metadata_ = std::move(operand_side_metadata);
+  instruction->user_side_metadata_ = std::move(user_side_metadata);
+  instruction->AppendOperand(operand);
+  return instruction;
+}
+
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
-    HloModule* module, CloneMap* clone_map) const {
+    HloCloneContext* context) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
     VLOG(3) << "    %" << new_operand->name();
   }
-  if (module == nullptr) {
-    module = GetModule();
-  }
 
   std::unique_ptr<HloInstruction> clone;
-
   // Explicitly call the factory for the instruction type. This is more robust
   // in the face of code changes than copying fields explicitly. This also
   // properly sets the user fields of the operands.
@@ -1419,9 +1437,16 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateConstant(literal_->CloneToUnique());
       break;
     case HloOpcode::kFusion: {
-      CHECK_NE(module, nullptr);
-      auto new_fused_computation = module->AddEmbeddedComputation(
-          fused_instructions_computation()->Clone("clone", module, clone_map));
+      HloModule* module = context != nullptr ? context->module() : GetModule();
+      HloComputation* new_fused_computation = nullptr;
+      if (context != nullptr) {
+        new_fused_computation =
+            context->FindComputation(fused_instructions_computation());
+      }
+      if (new_fused_computation == nullptr) {
+        new_fused_computation = module->AddEmbeddedComputation(
+            fused_instructions_computation()->Clone("clone", context));
+      }
       clone = CreateFusion(/*shape=*/shape, /*fusion_kind=*/fusion_kind(),
                            /*operands=*/new_operands,
                            /*fusion_computation=*/new_fused_computation);
@@ -1485,14 +1510,25 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateGather(shape, new_operands[0], new_operands[1],
                            *gather_dimension_numbers_, gather_window_bounds_);
       break;
+    case HloOpcode::kDomain:
+      CHECK_EQ(new_operands.size(), 1);
+      clone =
+          CreateDomain(shape, new_operands[0], operand_side_metadata_->Clone(),
+                       user_side_metadata_->Clone());
+      break;
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   clone->set_backend_config(backend_config());
-  if (clone_map != nullptr) {
-    InsertOrDie(clone_map, this, clone.get());
+  if (context != nullptr) {
+    context->MapInstruction(this, clone.get());
+    clone->ReplaceCalledComputations([&](HloComputation* callee) {
+      return callee->parent() != context->module()
+                 ? context->module()->DeepCloneComputation(callee, context)
+                 : callee;
+    });
   }
   return clone;
 }
@@ -1500,9 +1536,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 HloInstruction::~HloInstruction() {}
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const string& suffix, HloModule* module, CloneMap* clone_map) const {
+    const string& suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape_, operands_, module, clone_map);
+      CloneWithNewOperands(shape_, operands_, context);
   if (suffix.empty()) {
     clone->name_ = name();
   } else {
@@ -1612,6 +1648,17 @@ int64 HloInstruction::operand_index(const HloInstruction* target) const {
     }
   }
   LOG(FATAL) << "target was not an operand: " << target->ToString();
+}
+
+HloInstruction::InstructionVector HloInstruction::unique_operands() const {
+  InstructionVector unique;
+  tensorflow::gtl::FlatSet<const HloInstruction*> seen;
+  for (HloInstruction* operand : operands()) {
+    if (seen.insert(operand).second) {
+      unique.push_back(operand);
+    }
+  }
+  return unique;
 }
 
 Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
@@ -1758,6 +1805,7 @@ bool HloInstruction::IdenticalSlowPath(
                              other.fused_instructions_computation());
 
     // These opcodes have complex or special behavior so just return false.
+    case HloOpcode::kDomain:
     case HloOpcode::kRng:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
@@ -2369,7 +2417,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("exponent_bits=", exponent_bits_));
     extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
   }
-
+  if (operand_side_metadata_ != nullptr) {
+    extra.push_back(
+        StrCat("operand_side=", operand_side_metadata_->ToString()));
+  }
+  if (user_side_metadata_ != nullptr) {
+    extra.push_back(StrCat("user_side=", user_side_metadata_->ToString()));
+  }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
   // an HloComputation.
@@ -2546,6 +2600,7 @@ bool HloInstruction::IsFusable() const {
   }
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
+    case HloOpcode::kDomain:
     case HloOpcode::kParameter:
       return false;
     // Side effecting instrutions cannot be fused.
@@ -2558,7 +2613,9 @@ HloComputation* HloInstruction::fused_instructions_computation() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(!called_computations_.empty());
   auto* fused_instructions_computation = called_computations_.front();
-  CHECK(fused_instructions_computation->IsFusionComputation());
+  CHECK(fused_instructions_computation->IsFusionComputation())
+      << "Computation " << fused_instructions_computation->name()
+      << " is not a fusion kind";
   return fused_instructions_computation;
 }
 
@@ -2773,6 +2830,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
     case HloOpcode::kGather:
       return visitor->HandleGather(this);
+    case HloOpcode::kDomain:
+      return visitor->HandleDomain(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:

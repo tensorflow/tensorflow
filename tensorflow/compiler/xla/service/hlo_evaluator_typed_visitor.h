@@ -1965,7 +1965,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // to oficially document different behavior.
     for (int64 i = 0; i < start.size(); ++i) {
       start[i] = std::min<int64>(
-          std::max(0LL, start[i]),
+          std::max(int64{0}, start[i]),
           operand_literal.shape().dimensions(i) - result_shape.dimensions(i));
     }
 

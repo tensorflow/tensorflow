@@ -2171,7 +2171,7 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
     }
     // Add a control dependency to make sure axis_node is in the right frame.
     const string ctrl_dep = ConstantFolding::AddControlDependency(
-        node->input(0), graph_, node_map_.get());
+        node->input(0), optimized_graph, node_map_.get());
     axis_node->add_input(ctrl_dep);
     axis_node->set_device(node->device());
     node->set_op("ExpandDims");
