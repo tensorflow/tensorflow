@@ -31,9 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#if GOOGLE_CUDA
-#include "tensorflow/core/util/cuda_kernel_helper.h"
-#endif
 
 namespace tensorflow {
 
