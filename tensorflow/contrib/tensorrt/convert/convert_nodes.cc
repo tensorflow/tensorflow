@@ -2212,9 +2212,11 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
       LOG(WARNING) << " couldn't find output node " << out_node_name;
     }
   }
-  VLOG(1) << "Input Nodes:";
-  for (auto& i : input_names) {
-    VLOG(1) << " " << i << " in graph " << node_maps.count(i);
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << c_node->name() << " Input Nodes:";
+    for (auto& i : input_names) {
+      VLOG(1) << " Input " << i << " in graph " << node_maps.count(i);
+    }
   }
   auto trt_rm = tensorflow::tensorrt::TRTResourceManager::instance();
   auto resmgr = trt_rm->getManager("TRTCalibOps");
@@ -2248,14 +2250,24 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   calib_res->builder_ = nullptr;
   tensorflow::NodeDefBuilder op_builder(engine_name, "TRTEngineOp");
   std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
+  income_edges.resize(c_node->num_inputs());
   for (const auto in_edge : c_node->in_edges()) {
     auto src = in_edge->src();
     int dest_port = in_edge->dst_input();
-    income_edges.emplace_back(src->name(), in_edge->src_output(),
-                              c_node->input_type(dest_port));
+    VLOG(1) << "Incoming connection " << src->name() << ":"
+            << in_edge->src_output() << " -> " << c_node->name() << ":"
+            << dest_port;
+    income_edges.at(dest_port) = {src->name(), in_edge->src_output(),
+                                  c_node->input_type(dest_port)};
   }
   tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
       income_edges);
+  if (VLOG_IS_ON(2)) {
+    for (const auto& inp : input_list) {
+      VLOG(2) << " Input from inputlist " << inp.node << ":" << inp.index << " "
+              << tensorflow::DataTypeString(inp.data_type);
+    }
+  }
   op_builder.Input(input_list);
   tensorflow::NodeDef engine_node;
   const char* engine_plan_data = static_cast<const char*>(engine_plan->data());
@@ -2280,10 +2292,18 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
     string s(i->src()->name());
     if (i->src_output()) StrAppend(&s, ":", i->src_output());
     int out_port = port_map.at(s);
-    VLOG(1) << "Connecting " << trt_engine_node->name() << " port " << out_port
-            << " with " << i->dst()->name() << " port " << i->dst_input();
+    VLOG(1) << "Connecting " << trt_engine_node->name() << ":" << out_port
+            << " -> " << i->dst()->name() << ":" << i->dst_input();
     TF_RETURN_IF_ERROR(
         graph.UpdateEdge(trt_engine_node, out_port, i->dst(), i->dst_input()));
+  }
+  for (const auto ed : trt_engine_node->in_edges()) {
+    VLOG(0) << "In Edge  " << ed->src()->name() << ":" << ed->src_output()
+            << " -> " << ed->dst()->name() << ":" << ed->dst_input();
+  }
+  for (const auto ed : trt_engine_node->out_edges()) {
+    VLOG(0) << "Out Edge " << ed->src()->name() << ":" << ed->src_output()
+            << " -> " << ed->dst()->name() << ":" << ed->dst_input();
   }
   VLOG(1) << "Segment nodes:";
   for (auto& i : segment_nodes) {
