@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -85,6 +86,11 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   std::function<void(std::function<void()>)> runner =
       [](std::function<void()> f) { f(); };
   params.runner = &runner;
+
+  ScopedStepContainer step_container(0, [this](const string& name) {
+    device_->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  params.step_container = &step_container;
 
   OpKernelContext context(&params);
 

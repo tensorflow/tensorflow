@@ -556,12 +556,16 @@ def assert_no_new_tensors(f):
 
     tensors_before = set(
         id(obj) for obj in gc.get_objects() if _is_tensorflow_object(obj))
-    outside_graph_key = ops.get_default_graph()._graph_key
-    with ops.Graph().as_default():
+    if context.executing_eagerly():
+      f(self, **kwargs)
+      ops.reset_default_graph()
+    else:
       # Run the test in a new graph so that collections get cleared when it's
       # done, but inherit the graph key so optimizers behave.
-      ops.get_default_graph()._graph_key = outside_graph_key
-      f(self, **kwargs)
+      outside_graph_key = ops.get_default_graph()._graph_key
+      with ops.Graph().as_default():
+        ops.get_default_graph()._graph_key = outside_graph_key
+        f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     backprop._zeros_cache.flush()
@@ -727,12 +731,12 @@ def run_in_graph_and_eager_modes(__unused__=None,
           f(self, **kwargs)
 
       if assert_no_eager_garbage:
+        ops.reset_default_graph()
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
-        with ops.Graph().as_default():
-          run_eagerly(self, **kwargs)
+        run_eagerly(self, **kwargs)
 
     return decorated
 
@@ -1027,7 +1031,9 @@ class TensorFlowTestCase(googletest.TestCase):
           rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
-    if graph is None:
+    if context.executing_eagerly():
+      yield None
+    elif graph is None:
       if self._cached_session is None:
         self._cached_session = session.Session(
             graph=None, config=prepare_config(config))

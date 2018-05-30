@@ -73,7 +73,7 @@ void _DeleteStatSummarizer(tensorflow::StatSummarizer* ss);
     return ss;
 }
 }
-
+%include "tensorflow/core/util/stat_summarizer_options.h"
 %include "tensorflow/core/util/stat_summarizer.h"
 %unignoreall
 

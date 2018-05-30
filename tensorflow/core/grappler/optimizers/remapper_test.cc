@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/platform/test.h"
@@ -52,6 +53,42 @@ TEST_F(RemapperTest, FusedBatchNorm) {
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
+TEST_F(RemapperTest, FusedBatchNormNCHW) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output dflt =
+      ops::Const(s.WithOpName("dflt"), {3.14f, 2.7f, 1.0f, 2.0f, 3.0f, 100.0f},
+                 {1, 3, 1, 2});
+  Output x = ops::PlaceholderWithDefault(s.WithOpName("x"), dflt, {1, 3, 1, 2});
+  Output scale = ops::Const(s.WithOpName("scale"), {0.3f, 7.0f, 123.0f}, {3});
+  Output offset =
+      ops::Const(s.WithOpName("offset"), {0.123f, 2.1f, 0.55f}, {3});
+  Output mean = ops::Const(s.WithOpName("mean"), {7.3f, 8.3f, 3.1f}, {3});
+  Output variance =
+      ops::Const(s.WithOpName("variance"), {0.57f, 1.0f, 2.0f}, {3});
+  ops::FusedBatchNorm::Attrs attr;
+  attr = attr.IsTraining(false);
+  attr = attr.DataFormat("NCHW");
+  ops::FusedBatchNorm bn(s.WithOpName("batch_norm").WithDevice("/device:GPU:0"),
+                         x, scale, offset, mean, variance, attr);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"batch_norm"};
+
+  Remapper optimizer(RewriterConfig::ON);
+  GraphDef output;
+  TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+  if (GetNumAvailableGPUs() > 0) {
+    // NCHW batch norm is only supported on GPU.
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+    EXPECT_EQ(1, tensors_expected.size());
+    auto tensors = EvaluateNodes(output, item.fetch);
+    EXPECT_EQ(1, tensors.size());
+    test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  }
 }
 
 }  // namespace grappler

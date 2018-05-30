@@ -2674,29 +2674,50 @@ func MatrixBandPart(scope *Scope, input tf.Output, num_lower tf.Output, num_uppe
 	return op.Output(0)
 }
 
-// Clips tensor values to a specified min and max.
+// Returns the batched diagonal part of a batched tensor.
 //
-// Given a tensor `t`, this operation returns a tensor of the same type and
-// shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
-// Any values less than `clip_value_min` are set to `clip_value_min`. Any values
-// greater than `clip_value_max` are set to `clip_value_max`.
+// This operation returns a tensor with the `diagonal` part
+// of the batched `input`. The `diagonal` part is computed as follows:
+//
+// Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+// tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
+//
+// `diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
+//
+// The input must be at least a matrix.
+//
+// For example:
+//
+// ```
+// # 'input' is [[[1, 0, 0, 0]
+//                [0, 2, 0, 0]
+//                [0, 0, 3, 0]
+//                [0, 0, 0, 4]],
+//               [[5, 0, 0, 0]
+//                [0, 6, 0, 0]
+//                [0, 0, 7, 0]
+//                [0, 0, 0, 8]]]
+//
+// and input.shape = (2, 4, 4)
+//
+// tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+//
+// which has shape (2, 4)
+// ```
 //
 // Arguments:
-//	t: A `Tensor`.
-//	clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-// as `t`. The minimum value to clip by.
-//	clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-// as `t`. The maximum value to clip by.
+//	input: Rank `k` tensor where `k >= 2`.
 //
-// Returns A clipped `Tensor` with the same shape as input 't'.
-func ClipByValue(scope *Scope, t tf.Output, clip_value_min tf.Output, clip_value_max tf.Output) (output tf.Output) {
+// Returns The extracted diagonal(s) having shape
+// `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
+func MatrixDiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
-		Type: "ClipByValue",
+		Type: "MatrixDiagPart",
 		Input: []tf.Input{
-			t, clip_value_min, clip_value_max,
+			input,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -4561,6 +4582,68 @@ func Reciprocal(scope *Scope, x tf.Output) (y tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Returns a batched matrix tensor with new batched diagonal values.
+//
+// Given `input` and `diagonal`, this operation returns a tensor with the
+// same shape and values as `input`, except for the main diagonal of the
+// innermost matrices.  These will be overwritten by the values in `diagonal`.
+//
+// The output is computed as follows:
+//
+// Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+// `k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+// tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
+//
+//   * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+//   * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+//
+// Arguments:
+//	input: Rank `k+1`, where `k >= 1`.
+//	diagonal: Rank `k`, where `k >= 1`.
+//
+// Returns Rank `k+1`, with `output.shape = input.shape`.
+func MatrixSetDiag(scope *Scope, input tf.Output, diagonal tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixSetDiag",
+		Input: []tf.Input{
+			input, diagonal,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the element-wise max of two SparseTensors.
+//
+// Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+//
+// Arguments:
+//	a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+// SparseTensor, in the canonical lexicographic ordering.
+//	a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
+//	a_shape: 1-D.  Shape of the input SparseTensor.
+//	b_indices: counterpart to `a_indices` for the other operand.
+//	b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
+//	b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
+//
+// Returns 2-D.  The indices of the output SparseTensor.1-D.  The values of the output SparseTensor.
+func SparseSparseMaximum(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf.Output, b_indices tf.Output, b_values tf.Output, b_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSparseMaximum",
+		Input: []tf.Input{
+			a_indices, a_values, a_shape, b_indices, b_values, b_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // OrderedMapClearAttr is an optional argument to OrderedMapClear.
@@ -7310,6 +7393,47 @@ func DecodeRaw(scope *Scope, bytes tf.Output, out_type tf.DataType, optional ...
 	return op.Output(0)
 }
 
+// RandomPoissonAttr is an optional argument to RandomPoisson.
+type RandomPoissonAttr func(optionalAttr)
+
+// RandomPoissonSeed sets the optional seed attribute to value.
+// If not specified, defaults to 0
+func RandomPoissonSeed(value int64) RandomPoissonAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// RandomPoissonSeed2 sets the optional seed2 attribute to value.
+// If not specified, defaults to 0
+func RandomPoissonSeed2(value int64) RandomPoissonAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Use RandomPoissonV2 instead.
+//
+// DEPRECATED at GraphDef version 25: Replaced by RandomPoissonV2
+func RandomPoisson(scope *Scope, shape tf.Output, rate tf.Output, optional ...RandomPoissonAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomPoisson",
+		Input: []tf.Input{
+			shape, rate,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DepthwiseConv2dNativeBackpropFilterAttr is an optional argument to DepthwiseConv2dNativeBackpropFilter.
 type DepthwiseConv2dNativeBackpropFilterAttr func(optionalAttr)
 
@@ -7766,47 +7890,6 @@ func SparseSplit(scope *Scope, split_dim tf.Output, indices tf.Output, values tf
 		return
 	}
 	return output_indices, output_values, output_shape
-}
-
-// RandomPoissonAttr is an optional argument to RandomPoisson.
-type RandomPoissonAttr func(optionalAttr)
-
-// RandomPoissonSeed sets the optional seed attribute to value.
-// If not specified, defaults to 0
-func RandomPoissonSeed(value int64) RandomPoissonAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// RandomPoissonSeed2 sets the optional seed2 attribute to value.
-// If not specified, defaults to 0
-func RandomPoissonSeed2(value int64) RandomPoissonAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Use RandomPoissonV2 instead.
-//
-// DEPRECATED at GraphDef version 25: Replaced by RandomPoissonV2
-func RandomPoisson(scope *Scope, shape tf.Output, rate tf.Output, optional ...RandomPoissonAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RandomPoisson",
-		Input: []tf.Input{
-			shape, rate,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // ResourceSparseApplyFtrlV2Attr is an optional argument to ResourceSparseApplyFtrlV2.
@@ -10094,6 +10177,43 @@ func BatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, o
 	return op.Output(0)
 }
 
+// Says whether the targets are in the top `K` predictions.
+//
+// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+// prediction for the target class is among the top `k` predictions among
+// all predictions for example `i`. Note that the behavior of `InTopK` differs
+// from the `TopK` op in its handling of ties; if multiple classes have the
+// same prediction value and straddle the top-`k` boundary, all of those
+// classes are considered to be in the top `k`.
+//
+// More formally, let
+//
+//   \\(predictions_i\\) be the predictions for all classes for example `i`,
+//   \\(targets_i\\) be the target class for example `i`,
+//   \\(out_i\\) be the output for example `i`,
+//
+// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+//
+// Arguments:
+//	predictions: A `batch_size` x `classes` tensor.
+//	targets: A `batch_size` vector of class ids.
+//	k: Number of top elements to look at for computing precision.
+//
+// Returns Computed precision at `k` as a `bool Tensor`.
+func InTopKV2(scope *Scope, predictions tf.Output, targets tf.Output, k tf.Output) (precision tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InTopKV2",
+		Input: []tf.Input{
+			predictions, targets, k,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DecodeAndCropJpegAttr is an optional argument to DecodeAndCropJpeg.
 type DecodeAndCropJpegAttr func(optionalAttr)
 
@@ -10944,101 +11064,6 @@ func Fact(scope *Scope) (fact tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "Fact",
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// AngleAttr is an optional argument to Angle.
-type AngleAttr func(optionalAttr)
-
-// AngleTout sets the optional Tout attribute to value.
-// If not specified, defaults to DT_FLOAT
-func AngleTout(value tf.DataType) AngleAttr {
-	return func(m optionalAttr) {
-		m["Tout"] = value
-	}
-}
-
-// Returns the argument of a complex number.
-//
-// Given a tensor `input` of complex numbers, this operation returns a tensor of
-// type `float` that is the argument of each element in `input`. All elements in
-// `input` must be complex numbers of the form \\(a + bj\\), where *a*
-// is the real part and *b* is the imaginary part.
-//
-// The argument returned by this operation is of the form \\(atan2(b, a)\\).
-//
-// For example:
-//
-// ```
-// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.angle(input) ==> [2.0132, 1.056]
-// ```
-//
-// @compatibility(numpy)
-// Equivalent to np.angle.
-// @end_compatibility
-func Angle(scope *Scope, input tf.Output, optional ...AngleAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Angle",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// VarHandleOpAttr is an optional argument to VarHandleOp.
-type VarHandleOpAttr func(optionalAttr)
-
-// VarHandleOpContainer sets the optional container attribute to value.
-//
-// value: the container this variable is placed in.
-// If not specified, defaults to ""
-func VarHandleOpContainer(value string) VarHandleOpAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// VarHandleOpSharedName sets the optional shared_name attribute to value.
-//
-// value: the name by which this variable is referred to.
-// If not specified, defaults to ""
-func VarHandleOpSharedName(value string) VarHandleOpAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Creates a handle to a Variable resource.
-//
-// Arguments:
-//	dtype: the type of this variable. Must agree with the dtypes
-// of all ops using this variable.
-//	shape: The (possibly partially specified) shape of this variable.
-func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...VarHandleOpAttr) (resource tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype, "shape": shape}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "VarHandleOp",
-
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -18002,43 +18027,6 @@ func MaxPool(scope *Scope, input tf.Output, ksize []int64, strides []int64, padd
 	return op.Output(0)
 }
 
-// Says whether the targets are in the top `K` predictions.
-//
-// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-// prediction for the target class is among the top `k` predictions among
-// all predictions for example `i`. Note that the behavior of `InTopK` differs
-// from the `TopK` op in its handling of ties; if multiple classes have the
-// same prediction value and straddle the top-`k` boundary, all of those
-// classes are considered to be in the top `k`.
-//
-// More formally, let
-//
-//   \\(predictions_i\\) be the predictions for all classes for example `i`,
-//   \\(targets_i\\) be the target class for example `i`,
-//   \\(out_i\\) be the output for example `i`,
-//
-// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-//
-// Arguments:
-//	predictions: A `batch_size` x `classes` tensor.
-//	targets: A `batch_size` vector of class ids.
-//	k: Number of top elements to look at for computing precision.
-//
-// Returns Computed precision at `k` as a `bool Tensor`.
-func InTopKV2(scope *Scope, predictions tf.Output, targets tf.Output, k tf.Output) (precision tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InTopKV2",
-		Input: []tf.Input{
-			predictions, targets, k,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Assigns a new value to a variable.
 //
 // Any ReadVariableOp with a control dependency on this op is guaranteed to return
@@ -19589,6 +19577,130 @@ func OrderedMapIncompleteSize(scope *Scope, dtypes []tf.DataType, optional ...Or
 		Type: "OrderedMapIncompleteSize",
 
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// VarHandleOpAttr is an optional argument to VarHandleOp.
+type VarHandleOpAttr func(optionalAttr)
+
+// VarHandleOpContainer sets the optional container attribute to value.
+//
+// value: the container this variable is placed in.
+// If not specified, defaults to ""
+func VarHandleOpContainer(value string) VarHandleOpAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// VarHandleOpSharedName sets the optional shared_name attribute to value.
+//
+// value: the name by which this variable is referred to.
+// If not specified, defaults to ""
+func VarHandleOpSharedName(value string) VarHandleOpAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Creates a handle to a Variable resource.
+//
+// Arguments:
+//	dtype: the type of this variable. Must agree with the dtypes
+// of all ops using this variable.
+//	shape: The (possibly partially specified) shape of this variable.
+func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...VarHandleOpAttr) (resource tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype, "shape": shape}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "VarHandleOp",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// AngleAttr is an optional argument to Angle.
+type AngleAttr func(optionalAttr)
+
+// AngleTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_FLOAT
+func AngleTout(value tf.DataType) AngleAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Returns the argument of a complex number.
+//
+// Given a tensor `input` of complex numbers, this operation returns a tensor of
+// type `float` that is the argument of each element in `input`. All elements in
+// `input` must be complex numbers of the form \\(a + bj\\), where *a*
+// is the real part and *b* is the imaginary part.
+//
+// The argument returned by this operation is of the form \\(atan2(b, a)\\).
+//
+// For example:
+//
+// ```
+// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+// tf.angle(input) ==> [2.0132, 1.056]
+// ```
+//
+// @compatibility(numpy)
+// Equivalent to np.angle.
+// @end_compatibility
+func Angle(scope *Scope, input tf.Output, optional ...AngleAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Angle",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Clips tensor values to a specified min and max.
+//
+// Given a tensor `t`, this operation returns a tensor of the same type and
+// shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
+// Any values less than `clip_value_min` are set to `clip_value_min`. Any values
+// greater than `clip_value_max` are set to `clip_value_max`.
+//
+// Arguments:
+//	t: A `Tensor`.
+//	clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+// as `t`. The minimum value to clip by.
+//	clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+// as `t`. The maximum value to clip by.
+//
+// Returns A clipped `Tensor` with the same shape as input 't'.
+func ClipByValue(scope *Scope, t tf.Output, clip_value_min tf.Output, clip_value_max tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ClipByValue",
+		Input: []tf.Input{
+			t, clip_value_min, clip_value_max,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -26649,56 +26761,6 @@ func QueueIsClosedV2(scope *Scope, handle tf.Output) (is_closed tf.Output) {
 	return op.Output(0)
 }
 
-// Returns the batched diagonal part of a batched tensor.
-//
-// This operation returns a tensor with the `diagonal` part
-// of the batched `input`. The `diagonal` part is computed as follows:
-//
-// Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
-// tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
-//
-// `diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
-//
-// The input must be at least a matrix.
-//
-// For example:
-//
-// ```
-// # 'input' is [[[1, 0, 0, 0]
-//                [0, 2, 0, 0]
-//                [0, 0, 3, 0]
-//                [0, 0, 0, 4]],
-//               [[5, 0, 0, 0]
-//                [0, 6, 0, 0]
-//                [0, 0, 7, 0]
-//                [0, 0, 0, 8]]]
-//
-// and input.shape = (2, 4, 4)
-//
-// tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
-//
-// which has shape (2, 4)
-// ```
-//
-// Arguments:
-//	input: Rank `k` tensor where `k >= 2`.
-//
-// Returns The extracted diagonal(s) having shape
-// `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
-func MatrixDiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixDiagPart",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the absolute value of a tensor.
 //
 // Given a tensor `x`, this operation returns a tensor containing the absolute
@@ -30643,68 +30705,6 @@ func DiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
 		Type: "DiagPart",
 		Input: []tf.Input{
 			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the element-wise max of two SparseTensors.
-//
-// Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
-//
-// Arguments:
-//	a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
-// SparseTensor, in the canonical lexicographic ordering.
-//	a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
-//	a_shape: 1-D.  Shape of the input SparseTensor.
-//	b_indices: counterpart to `a_indices` for the other operand.
-//	b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
-//	b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
-//
-// Returns 2-D.  The indices of the output SparseTensor.1-D.  The values of the output SparseTensor.
-func SparseSparseMaximum(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf.Output, b_indices tf.Output, b_values tf.Output, b_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSparseMaximum",
-		Input: []tf.Input{
-			a_indices, a_values, a_shape, b_indices, b_values, b_shape,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// Returns a batched matrix tensor with new batched diagonal values.
-//
-// Given `input` and `diagonal`, this operation returns a tensor with the
-// same shape and values as `input`, except for the main diagonal of the
-// innermost matrices.  These will be overwritten by the values in `diagonal`.
-//
-// The output is computed as follows:
-//
-// Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
-// `k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
-// tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
-//
-//   * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
-//   * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
-//
-// Arguments:
-//	input: Rank `k+1`, where `k >= 1`.
-//	diagonal: Rank `k`, where `k >= 1`.
-//
-// Returns Rank `k+1`, with `output.shape = input.shape`.
-func MatrixSetDiag(scope *Scope, input tf.Output, diagonal tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixSetDiag",
-		Input: []tf.Input{
-			input, diagonal,
 		},
 	}
 	op := scope.AddOperation(opspec)

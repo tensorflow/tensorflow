@@ -187,6 +187,25 @@ class VariableOpsTest(XLATestCase):
           rtol=1e-4)
       self.assertAllClose(np.array([1.9, 2.9], dtype=np.float32), vb, rtol=1e-4)
 
+  def testWriteOfAliasedTensor(self):
+    for dtype in self.numeric_types:
+      init = np.array([[1, 2j], [3, 4]]).astype(dtype)
+      update = np.array([[7, 1j], [2, 11]]).astype(dtype)
+      with self.test_session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable(init)
+        sess.run(variables.variables_initializer([v]))
+        p = array_ops.placeholder(dtype)
+        q = array_ops.identity(p)
+        x = v.read_value()
+        # Writes the value of 'p' to 'v', but keeps a reference to the original
+        # value of 'v' so the variable update cannot reuse its buffer.
+        with ops.control_dependencies([x]):
+          y = v.assign(q)
+        result = sess.run([x, y, q], {p: update})
+        self.assertAllClose(init, result[0])
+        self.assertAllClose(update, result[1])
+        self.assertAllClose(update, result[2])
+
 
 class StridedSliceAssignChecker(object):
   """Compares the results of a slice assignment using Tensorflow and numpy."""

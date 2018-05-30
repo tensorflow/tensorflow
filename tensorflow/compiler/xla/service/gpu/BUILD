@@ -338,6 +338,7 @@ cc_library(
     srcs = ["cudnn_convolution_runner.cc"],
     hdrs = ["cudnn_convolution_runner.h"],
     deps = [
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -401,6 +402,9 @@ tf_cc_test(
     srcs = ["instruction_fusion_test.cc"],
     deps = [
         ":instruction_fusion",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -542,6 +546,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
+        "//tensorflow/compiler/xla/service:while_loop_invariant_code_motion",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/gpu:cudnn_batchnorm_rewriter",
@@ -587,14 +593,18 @@ cc_library(
     srcs = ["gpu_layout_assignment.cc"],
     hdrs = ["gpu_layout_assignment.h"],
     deps = [
+        ":gpu_options",
         ":ir_emission_utils",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
 
@@ -688,6 +698,27 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "gpu_options",
+    srcs = ["gpu_options.cc"],
+    hdrs = ["gpu_options.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "stream_executor_util",
+    srcs = ["stream_executor_util.cc"],
+    hdrs = ["stream_executor_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
 
