@@ -88,18 +88,56 @@ class ConstantFolding : public GraphOptimizer {
   Status ReplaceOperationWithConstant(double value,
                                       const GraphProperties& properties,
                                       const TensorShapeProto& shape,
-                                      NodeDef* node, GraphDef* graph);
+                                      NodeDef* node, GraphDef* graph,
+                                      bool* success);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output);
 
-  bool IsSimplifiableReduction(const NodeDef& node) const;
+  bool IsSimplifiableReduction(const NodeDef& node,
+                               const GraphProperties& properties) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
                        bool use_shape_info);
+  Status SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
+                      GraphProperties* properties, bool use_shape_info);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
+
+  // Applies partial constant folding for Concat which is not commutative.
+  // Returns true if the transformation applied successfully.
+  bool PartialConcatConstFolding(GraphDef* optimized_graph,
+                                 GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant folding for associative operators AddN and
+  // AccumulateNV2. Returns true if the transformation applied successfully.
+  bool PartialAssocOpConstFolding(GraphDef* optimized_graph,
+                                  GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant propagation through IdentityN operator.
+  // Returns true if the transformation applied successfully.
+  bool PartialConstPropThroughIdentityN(NodeDef* node);
+
+  // Pushes down constants on '+' and '*' operators if applicable. Returns true
+  // the transformation applied successfully.
+  bool ConstantPushDown(NodeDef* node);
+
+  // Aggregate constants present around a conv operator. Returns true if the
+  // transformation was applied successfully.
+  bool MulConvPushDown(NodeDef* node, const GraphProperties& properties);
+
+  // Strength reduces floating point division by a constant Div(x, const) to
+  // multiplication by the reciprocal Mul(x, Reciprocal(const)).
+  bool ReduceDivToReciprocalMul(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies arithmetic operations with ones or zeros. Returns the status,
+  // and updates the success input argument that denotes if any simplification
+  // was applied.
+  Status SimplifyArithmeticOperations(GraphDef* optimized_graph,
+                                      GraphProperties* properties,
+                                      NodeDef* node, bool use_shape_info,
+                                      bool* success);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
@@ -114,6 +152,7 @@ class ConstantFolding : public GraphOptimizer {
   std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
   bool graph_modified_;
+  bool graph_contains_assign_or_inplace_op_;
 };
 
 }  // end namespace grappler

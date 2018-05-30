@@ -13,55 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utility to retrieve function args."""
+"""Utilities for Estimators."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import os
 import time
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import function_utils
 
-
-def _is_bounded_method(fn):
-  _, fn = tf_decorator.unwrap(fn)
-  return tf_inspect.ismethod(fn) and (fn.__self__ is not None)
-
-
-def _is_callable_object(obj):
-  return hasattr(obj, '__call__') and tf_inspect.ismethod(obj.__call__)
-
-
-def fn_args(fn):
-  """Get argument names for function-like object.
-
-  Args:
-    fn: Function, or function-like object (e.g., result of `functools.partial`).
-
-  Returns:
-    `tuple` of string argument names.
-
-  Raises:
-    ValueError: if partial function has positionally bound arguments
-  """
-  if isinstance(fn, functools.partial):
-    args = fn_args(fn.func)
-    args = [a for a in args[len(fn.args):] if a not in (fn.keywords or [])]
-  else:
-    if _is_callable_object(fn):
-      fn = fn.__call__
-    args = tf_inspect.getfullargspec(fn).args
-    if _is_bounded_method(fn):
-      args.remove('self')
-  return tuple(args)
-
+fn_args = function_utils.fn_args
 
 # When we create a timestamped directory, there is a small chance that the
 # directory already exists because another process is also creating these

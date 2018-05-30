@@ -107,7 +107,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
     }
     return Literal::MakeTupleOwned(std::move(elements));
   }
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
+  auto literal = MakeUnique<Literal>(shape);
   switch (shape.element_type()) {
     case BF16:
       PopulateWithRandomFloatingPointData<bfloat16>(literal.get(), engine);

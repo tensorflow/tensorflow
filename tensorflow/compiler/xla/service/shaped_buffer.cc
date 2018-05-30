@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
-#include <set>
 #include <string>
 #include <utility>
 
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -123,6 +123,8 @@ ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
 }
 
 ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
+  Deallocate();
+
   *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));
   allocator_ = s.allocator_;
   // Null out s.allocator_ so it doesn't try to free anything in its destructor.
@@ -130,7 +132,15 @@ ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
   return *this;
 }
 
-ScopedShapedBuffer::~ScopedShapedBuffer() {
+ScopedShapedBuffer::~ScopedShapedBuffer() { Deallocate(); }
+
+ShapedBuffer ScopedShapedBuffer::release() {
+  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
+  buffers_ = ShapeTree<se::DeviceMemoryBase>();
+  return shaped_buffer;
+}
+
+void ScopedShapedBuffer::Deallocate() {
   // allocator_ will be null if we were moved-from.
   if (allocator_ == nullptr) {
     return;
@@ -138,22 +148,14 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
   // Deallocate all non-null buffers. A buffer may appear in more than one spot
   // in the shape (eg, a tuple with a repeated element) so keep track of what
   // has been deallocated.
-  std::set<void*> deallocated_opaques;
+  tensorflow::gtl::FlatSet<void*> deallocated_ptrs;
   for (auto& pair : buffers_) {
     se::DeviceMemoryBase& memory_base = pair.second;
     if (!memory_base.is_null() &&
-        deallocated_opaques.count(memory_base.opaque()) == 0) {
-      deallocated_opaques.insert(memory_base.opaque());
-      TF_CHECK_OK(
-          this->allocator_->Deallocate(this->device_ordinal(), &memory_base));
+        deallocated_ptrs.insert(memory_base.opaque()).second) {
+      TF_CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
     }
   }
-}
-
-ShapedBuffer ScopedShapedBuffer::release() {
-  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
-  buffers_ = ShapeTree<se::DeviceMemoryBase>();
-  return shaped_buffer;
 }
 
 }  // namespace xla

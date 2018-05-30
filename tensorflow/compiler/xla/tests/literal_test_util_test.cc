@@ -34,7 +34,7 @@ TEST(LiteralTestUtilTest, ComparesEqualTuplesEqual) {
   std::unique_ptr<Literal> literal = Literal::MakeTuple({
       Literal::CreateR0<int32>(42).get(), Literal::CreateR0<int32>(64).get(),
   });
-  LiteralTestUtil::ExpectEqual(*literal, *literal);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *literal));
 }
 
 TEST(LiteralTestUtilTest, ComparesUnequalTuplesUnequal) {
@@ -95,6 +95,15 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
       FAIL() << "unknown file in temporary directory: " << result;
     }
   }
+}
+
+TEST(LiteralTestUtilTest, NotEqualHasValuesInMessage) {
+  auto expected = Literal::CreateR1<int32>({1, 2, 3});
+  auto actual = Literal::CreateR1<int32>({4, 5, 6});
+  ::testing::AssertionResult result =
+      LiteralTestUtil::Equal(*expected, *actual);
+  EXPECT_THAT(result.message(), ::testing::HasSubstr("expected: {1, 2, 3}"));
+  EXPECT_THAT(result.message(), ::testing::HasSubstr("actual:   {4, 5, 6}"));
 }
 
 TEST(LiteralTestUtilTest, NearComparatorR1) {

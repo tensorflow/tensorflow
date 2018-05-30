@@ -181,6 +181,7 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
+        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

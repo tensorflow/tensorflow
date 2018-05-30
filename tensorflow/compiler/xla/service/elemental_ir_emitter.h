@@ -105,6 +105,9 @@ class ElementalIrEmitter {
   virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                          llvm::Value* value) const;
 
+  virtual StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
+                                           llvm::Value* value) const;
+
   virtual StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
                                          llvm::Value* value) const;
 
@@ -113,6 +116,9 @@ class ElementalIrEmitter {
 
   virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
                                          llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
+                                           llvm::Value* value) const;
 
   virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
                                          llvm::Value* lhs,

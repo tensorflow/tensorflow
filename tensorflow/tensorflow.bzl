@@ -959,15 +959,6 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
-  if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
-    enable_text_relocation_linkopt = select({
-          clean_dep("//tensorflow:darwin"): [],
-          clean_dep("//tensorflow:windows"): [],
-          "//conditions:default": ['-Wl,-z,notext'],})
-    if 'linkopts' in kwargs:
-      kwargs['linkopts'] += enable_text_relocation_linkopt
-    else:
-      kwargs['linkopts'] = enable_text_relocation_linkopt
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
@@ -1309,7 +1300,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
     native.cc_library(
         name=basename + "_gpu",
         srcs=gpu_srcs,
-        copts=_cuda_copts(),
+        copts=_cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
         deps=deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
 
@@ -1445,13 +1436,13 @@ def tf_py_wrap_cc(name,
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          "%s.lds"%vscriptname,
+          "$(location %s.lds)"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          "%s.lds"%vscriptname,
+          "$(location %s.lds)"%vscriptname,
       ]
   })
   extra_deps += select({
@@ -1725,7 +1716,7 @@ def tf_version_info_genrule():
       ],
       outs=["util/version_info.cc"],
       cmd=
-      "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
+      "$${PYTHON_BIN_PATH} $(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
       local=1,
       tools=[clean_dep("//tensorflow/tools/git:gen_git_source.py")],)
 
@@ -1734,7 +1725,7 @@ def tf_py_build_info_genrule():
       name="py_build_info_gen",
       outs=["platform/build_info.py"],
       cmd=
-      "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
+      "$${PYTHON_BIN_PATH} $(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
       local=1,
       tools=[clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],)
 

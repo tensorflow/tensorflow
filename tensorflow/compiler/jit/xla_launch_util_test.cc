@@ -36,9 +36,9 @@ void BM_ExtractSubBuffer(int iters, int depth, int fan_out) {
   for (int i = 0; i < iters; ++i) {
     // Extract a buffer from approximately the middle of the first level of the
     // tree.
-    tensorflow::internal::ExtractSubShapedBuffer(&shaped_buffer,
-                                                 /*index=*/fan_out / 2,
-                                                 /*allocator=*/nullptr)
+    (void)tensorflow::internal::ExtractSubShapedBuffer(&shaped_buffer,
+                                                       /*index=*/fan_out / 2,
+                                                       /*allocator=*/nullptr)
         .release();
   }
 }

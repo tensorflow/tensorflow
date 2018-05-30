@@ -126,7 +126,8 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options,
       return nullptr;
     }
 
-    const CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
     gpu_allocator =
         new GPUBFCAllocator(cuda_gpu_id, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));

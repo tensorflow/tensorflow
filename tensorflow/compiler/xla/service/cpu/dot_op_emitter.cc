@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
+#include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -520,18 +521,259 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
   }
 }
 
+// This class implements a tiled matrix multiplication algorithm, intended for
+// use as the innermost GEBP loop in a GEMM kernel (GEBP is described in "Goto,
+// Kazushige, and Robert Van De Geijn. "High-performance implementation of the
+// level-3 BLAS." ACM Transactions on Mathematical Software (TOMS) 35.1 (2008):
+// 4).
+//
+// This only supports canonical dot operations (i.e. where the lhs contraction
+// dimension is 1 and the rhs contraction dimension is 0) over row major
+// matrices.
+class MatrixMatrixBlockPanelEmitter {
+ public:
+  // Describe the dimensions of the GEBP kernel.  These will usually not be the
+  // dimensions of the GEMM itself, the GEMM will usually be broken up into GEBP
+  // kernels with smaller dimensions.
+  class Dimensions {
+   public:
+    explicit Dimensions(int64 m, int64 k, int64 n) : m_(m), k_(k), n_(n) {}
+
+    int64 m() const { return m_; }
+    int64 k() const { return k_; }
+    int64 n() const { return n_; }
+
+   private:
+    const int64 m_;
+    const int64 k_;
+    const int64 n_;
+  };
+
+  // Creates an instance of MatrixMatrixBlockPanelEmitter that matrix-multiplies
+  // `lhs` with `rhs` and stores the result in `result`.
+  //
+  // `m`, `k` and `n` are the matrix multiplication dimensions.
+  //
+  // `max_vectorization_width` is the maximum vector width (i.e. the width of
+  // the largest vector register we will use).  This can be larger than the
+  // largest vector register supported by the machine -- LLVM will legalize
+  // these large vector widths into legally sized vectors.
+  // `min_vectorization_width` is the smallest vector width the emitter will use
+  // -- below that it will devolve to using a scalar loop.
+  //
+  // `k_tiling_factor` is the number of elements along the reduction dimensions
+  // that we will attempt to process at once.
+  explicit MatrixMatrixBlockPanelEmitter(
+      llvm::Value* lhs, llvm::Value* rhs, llvm::Value* result, Dimensions dims,
+      int max_vectorization_width, int min_vectorization_width,
+      int k_tiling_factor, const TargetMachineFeatures& target_machine_features,
+      llvm::IRBuilder<>* ir_builder, PrimitiveType primitive_type)
+      : lhs_(lhs),
+        rhs_(rhs),
+        result_(result),
+        dims_(dims),
+        max_vectorization_width_(max_vectorization_width),
+        min_vectorization_width_(min_vectorization_width),
+        k_tiling_factor_(k_tiling_factor),
+        target_machine_features_(target_machine_features),
+        ir_builder_(ir_builder),
+        primitive_type_(primitive_type),
+        ksl_(ir_builder_) {
+    CHECK(max_vectorization_width > 0 &&
+          IsPowerOfTwo(static_cast<uint64>(max_vectorization_width)));
+    CHECK(min_vectorization_width > 0 &&
+          IsPowerOfTwo(static_cast<uint64>(min_vectorization_width)));
+    CHECK_GT(k_tiling_factor, 0);
+  }
+
+  void Emit();
+
+ private:
+  // We can only iterate the `n` dimension for an extent that is divisible by
+  // the vectorization width.  So we emit an outer loop that first processes the
+  // largest extent in `n` that is divisible by max_vectorization_width, then
+  // the largest remaining extent that is divisible by max_vectorization_width /
+  // 2 etc.  This function emits that outermost loop.
+  void EmitChunkedLoopOverN();
+
+  // This emits a loop that loops over the `k` dimension in multiples of
+  // `k_tiling_factor` as much as possible and then emits a remainder epilogue.
+  void EmitLoopOverK(VectorSupportLibrary* vsl, llvm::Value* n_start,
+                     llvm::Value* n_end);
+
+  // This emits the inner reduction loop.  This inner reduction loop processes
+  // all indices in the `m` dimension, [`k_start`, `k_end`) in the k dimension
+  // and [`n_start`, `n_end`) in the `n` dimension.
+  void EmitInnerLoop(int64 k_tiling_factor, llvm::Value* k_start,
+                     llvm::Value* k_end, llvm::Value* n_start,
+                     llvm::Value* n_end, VectorSupportLibrary* vsl);
+
+  llvm::Value* getInt64(int64 value) { return ir_builder_->getInt64(value); }
+
+  llvm::Value* lhs_;
+  llvm::Value* rhs_;
+  llvm::Value* result_;
+  Dimensions dims_;
+
+  int64 max_vectorization_width_;
+  int64 min_vectorization_width_;
+  int64 k_tiling_factor_;
+
+  const TargetMachineFeatures& target_machine_features_;
+  llvm::IRBuilder<>* ir_builder_;
+  PrimitiveType primitive_type_;
+  KernelSupportLibrary ksl_;
+};
+
+void MatrixMatrixBlockPanelEmitter::Emit() { EmitChunkedLoopOverN(); }
+
+void MatrixMatrixBlockPanelEmitter::EmitChunkedLoopOverN() {
+  int64 current_vectorization_width = max_vectorization_width_;
+  int64 n_start = 0;
+  while (n_start != dims_.n() &&
+         current_vectorization_width >= min_vectorization_width_) {
+    int64 n_end = dims_.n() - (dims_.n() % current_vectorization_width);
+    if (n_start != n_end) {
+      VectorSupportLibrary vsl(primitive_type_, current_vectorization_width,
+                               ir_builder_, "gebp");
+      EmitLoopOverK(&vsl, getInt64(n_start), getInt64(n_end));
+      n_start = n_end;
+    }
+    current_vectorization_width /= 2;
+  }
+
+  if (n_start != dims_.n()) {
+    VectorSupportLibrary vsl(primitive_type_, 1, ir_builder_, "gebp");
+    ksl_.For("epi.n", n_start, dims_.n(), 1, [&](llvm::Value* n_i) {
+      llvm::Value* n_i_next =
+          ir_builder_->CreateAdd(n_i, ir_builder_->getInt64(1));
+      EmitLoopOverK(&vsl, n_i, n_i_next);
+    });
+  }
+}
+
+void MatrixMatrixBlockPanelEmitter::EmitLoopOverK(VectorSupportLibrary* vsl,
+                                                  llvm::Value* n_start,
+                                                  llvm::Value* n_end) {
+  int64 k_start = 0;
+  int64 k_end = dims_.k() - (dims_.k() % k_tiling_factor_);
+  if (k_end != k_start) {
+    EmitInnerLoop(k_tiling_factor_, getInt64(k_start), getInt64(k_end), n_start,
+                  n_end, vsl);
+    k_start = k_end;
+  }
+
+  if (k_start != dims_.k()) {
+    EmitInnerLoop(dims_.k() - k_start, getInt64(k_start), getInt64(dims_.k()),
+                  n_start, n_end, vsl);
+  }
+}
+
+// The tiling scheme is as follows:
+//
+// Let the LHS be:
+//
+//   +---+---+---+
+//   | a | b | c | .
+//   +---+---+---+ .
+//   |   |   |   | .
+//   +---+---+---+
+//     ..     ..
+//
+// and the RHS be:
+//
+//   +----+----+----+----+
+//   | p0 | p1 | p2 | p3 | .
+//   +----+----+----+----+ .
+//   | q0 | q1 | q2 | q3 | .
+//   +----+----+----+----+
+//   | r0 | r1 | r2 | r3 | .
+//   +----+----+----+----+ .
+//     ......    ......
+//
+// and let k_tiling_factor be 3 and the vector width (implicitly denoted by
+// `vsl`) be 4.
+//
+// Then we
+//
+//  1. broadcast the first row in LHS to 3 vectors of width 4
+//  2. elementwise multiply the RHS rows with these broadcasted vectors
+//  3. elementwise add them:
+//
+//   +---+---+---+---+   +----+----+----+----+
+//   | a | a | a | a | * | p0 | p1 | p2 | p3 |   +
+//   +---+---+---+---+   +----+----+----+----+
+//
+//   +---+---+---+---+   +----+----+----+----+
+//   | b | b | b | b | * | q0 | q1 | q2 | q3 |   +
+//   +---+---+---+---+   +----+----+----+----+
+//
+//   +---+---+---+---+   +----+----+----+----+
+//   | c | c | c | c | * | r0 | r1 | r2 | r3 |
+//   +---+---+---+---+   +----+----+----+----+
+//
+// to get:
+//
+//   +----------------+----------------+----------------+----------------+
+//   | a*p0+b*q0+c*r0 | a*p1+b*q1+c*r1 | a*p2+b*q2+c*r2 | a*p3+b*q3+c*r3 |
+//   +----------------+----------------+----------------+----------------+
+//
+// which we increment into the appropriate region in the result.
+void MatrixMatrixBlockPanelEmitter::EmitInnerLoop(
+    int64 k_tiling_factor, llvm::Value* k_start, llvm::Value* k_end,
+    llvm::Value* n_start, llvm::Value* n_end, VectorSupportLibrary* vsl) {
+  ksl_.For("dot.m", 0, dims_.m(), 1, [&](llvm::Value* m_i) {
+    // This outer loop iterates over all of the M dimension
+    llvm::Value* result_row_begin = vsl->ComputeOffsetPointer(
+        result_, /*offset_elements=*/m_i, /*scale=*/dims_.n());
+    llvm::Value* lhs_row_begin = vsl->ComputeOffsetPointer(
+        lhs_, /*offset_elements=*/m_i, /*scale=*/dims_.k());
+
+    ksl_.For("dot.k", k_start, k_end, k_tiling_factor, [&](llvm::Value* k_i) {
+      // broadcasted_a is the broadcasted set of vectors denoted as <a,a,a,a>,
+      // <b,b,b,b> etc. in the diagram.
+      std::vector<llvm::Value*> broadcasted_a;
+      broadcasted_a.reserve(k_tiling_factor);
+      for (int i = 0; i < k_tiling_factor; i++) {
+        broadcasted_a.push_back(vsl->LoadBroadcast(
+            lhs_row_begin, ir_builder_->CreateAdd(getInt64(i), k_i)));
+      }
+
+      // rhs_loader will be used to load the tile off of the RHS, denoted as
+      // <<p0,p1,p2,p3>,<q0,q1,q2,q3> ...> in the diagram.
+      TileLoader rhs_loader(vsl, ir_builder_, rhs_, dims_.n(), k_i,
+                            k_tiling_factor);
+      ksl_.For(
+          "dot.n", n_start, n_end, vsl->vector_size(), [&](llvm::Value* n_i) {
+            // This loop iterates over the N dimension.  It loads the tile from
+            // RHS, does the FMA resulting in the
+            // <a*p0+b*q0+c*r0,a*p1+b*q1+c*r1,...> in the diagram and increments
+            // the result.
+            std::vector<llvm::Value*> tile = rhs_loader.LoadTile(n_i);
+            llvm::Value* result_accumulator =
+                vsl->LoadVector(result_row_begin, n_i);
+            for (int i = 0; i < tile.size(); i++) {
+              result_accumulator =
+                  vsl->MulAdd(tile[i], broadcasted_a[i], result_accumulator);
+            }
+            vsl->StoreVector(result_accumulator, result_row_begin, n_i);
+          });
+    });
+  });
+}
+
 }  // namespace
 
-DotOpEmitter::DotOpEmitter(
-    const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
-    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
-    const HloModuleConfig& hlo_module_config,
-    const TargetMachineFeatures& target_machine_features)
+DotOpEmitter::DotOpEmitter(const HloInstruction& dot,
+                           const llvm_ir::IrArray& target_array,
+                           const llvm_ir::IrArray& lhs_array,
+                           const llvm_ir::IrArray& rhs_array,
+                           const llvm_ir::IrArray* addend_array,
+                           llvm::Value* executable_run_options_value,
+                           llvm::IRBuilder<>* ir_builder,
+                           const HloModuleConfig& hlo_module_config,
+                           const TargetMachineFeatures& target_machine_features)
     : dot_(dot),
-      transpose_lhs_(transpose_lhs),
-      transpose_rhs_(transpose_rhs),
       target_array_(target_array),
       lhs_array_(lhs_array),
       rhs_array_(rhs_array),
@@ -541,20 +783,78 @@ DotOpEmitter::DotOpEmitter(
       hlo_module_config_(hlo_module_config),
       target_machine_features_(target_machine_features) {}
 
-/* static */ tensorflow::Status DotOpEmitter::EmitDotOperation(
-    const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
-    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
+/* static */ Status DotOpEmitter::EmitDotOperation(
+    const HloInstruction& dot, const llvm_ir::IrArray& target_array,
+    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
+    const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
-  DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
-                           lhs_array, rhs_array, addend_array,
-                           executable_run_options_value, ir_builder,
-                           hlo_module_config, target_machine_features);
+  DotOpEmitter dot_emitter(dot, target_array, lhs_array, rhs_array,
+                           addend_array, executable_run_options_value,
+                           ir_builder, hlo_module_config,
+                           target_machine_features);
   return dot_emitter.Emit();
+}
+
+bool DotOpEmitter::EmitExperimentalGebpDotIfEnabled(
+    const DotOpEmitter::MatMultDims& mat_mult_dims) {
+  if (!EnableExperimentalLlvmIrGemm() || ShouldUseMultiThreadedEigen()) {
+    return false;
+  }
+
+  if (mat_mult_dims.lhs_non_canonical || mat_mult_dims.rhs_non_canonical) {
+    return false;
+  }
+
+  PrimitiveType primitive_type = dot_.shape().element_type();
+
+  switch (primitive_type) {
+    default:
+      return false;
+
+    case F32:
+    case F64:
+    case S32:
+    case S64:
+      break;
+  }
+
+  if (!(mat_mult_dims.lhs_column_major == mat_mult_dims.rhs_column_major &&
+        mat_mult_dims.rhs_column_major == mat_mult_dims.target_column_major)) {
+    return false;
+  }
+
+  VLOG(2) << "Emitting GEBP kernel in LLVM IR";
+
+  llvm::Value* lhs = lhs_array_.GetBasePointer();
+  llvm::Value* rhs = rhs_array_.GetBasePointer();
+  llvm::Value* target = target_array_.GetBasePointer();
+  int64 m = mat_mult_dims.m;
+  int64 k = mat_mult_dims.k;
+  int64 n = mat_mult_dims.n;
+
+  if (mat_mult_dims.lhs_column_major) {
+    std::swap(lhs, rhs);
+    std::swap(m, n);
+  }
+
+  int64 size_bytes = m * n * ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
+  ir_builder_->CreateMemSet(
+      target, ir_builder_->getInt8(0), size_bytes,
+      target_machine_features_.minimum_alignment_for_allocation(size_bytes));
+
+  MatrixMatrixBlockPanelEmitter::Dimensions gebp_dims(/*m=*/m, /*k=*/k,
+                                                      /*n=*/n);
+  MatrixMatrixBlockPanelEmitter gebp_emitter(
+      /*lhs=*/lhs, /*rhs=*/rhs, /*result=*/target, gebp_dims,
+      /*max_vectorization_width=*/8, /*min_vectorization_width=*/4,
+      /*k_tiling_factor=*/8, target_machine_features_, ir_builder_,
+      primitive_type);
+  gebp_emitter.Emit();
+  return true;
 }
 
 bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
@@ -578,7 +878,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
 
   if (mat_mult_dims.m == 1) {
     bool rhs_effectively_row_major =
-        transpose_rhs_ ^ !mat_mult_dims.rhs_column_major;
+        mat_mult_dims.rhs_non_canonical ^ !mat_mult_dims.rhs_column_major;
     if (rhs_effectively_row_major) {
       k = mat_mult_dims.k;
       m = mat_mult_dims.n;
@@ -594,7 +894,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
 
   if (mat_mult_dims.n == 1) {
     bool lhs_effectively_column_major =
-        transpose_lhs_ ^ mat_mult_dims.lhs_column_major;
+        mat_mult_dims.lhs_non_canonical ^ mat_mult_dims.lhs_column_major;
     if (lhs_effectively_column_major) {
       m = mat_mult_dims.m;
       k = mat_mult_dims.k;
@@ -609,7 +909,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   }
 
   if (!is_column_major_matrix_vector && !is_row_major_matrix_vector) {
-    return false;
+    return EmitExperimentalGebpDotIfEnabled(mat_mult_dims);
   }
 
   int64 tiling_factor = GetGemvTilingFactor();
@@ -690,7 +990,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   return true;
 }
 
-tensorflow::Status DotOpEmitter::Emit() {
+Status DotOpEmitter::Emit() {
   // The dot operation performs a sum of products over dimension 0 of the left
   // hand side operand and dimension 1 of the right hand side operand.
   //
@@ -734,23 +1034,17 @@ tensorflow::Status DotOpEmitter::Emit() {
 
   CHECK_EQ(addend_array_, nullptr);
 
-  if (PotentiallyImplementedAsEigenDot(dot_)) {
+  if (PotentiallyImplementedAsEigenDot(dot_, target_machine_features_)) {
     return EmitCallToRuntime();
   }
 
   // Reduce along dimension 0 of the LHS and 1 of the RHS. Vectors are a special
   // case where the reduction dimension is 0 for both LHS and RHS. This results
   // in a vector dot product producing a scalar.
-  int64 lhs_reduction_dimension = 0;
-  if (ShapeUtil::Rank(lhs_shape) >= 2) {
-    lhs_reduction_dimension =
-        ShapeUtil::GetDimensionNumber(lhs_shape, transpose_lhs_ ? -2 : -1);
-  }
-  int64 rhs_reduction_dimension = 0;
-  if (ShapeUtil::Rank(rhs_shape) >= 2) {
-    rhs_reduction_dimension =
-        ShapeUtil::GetDimensionNumber(rhs_shape, transpose_rhs_ ? -1 : -2);
-  }
+  int64 lhs_reduction_dimension =
+      dot_.dot_dimension_numbers().lhs_contracting_dimensions(0);
+  int64 rhs_reduction_dimension =
+      dot_.dot_dimension_numbers().rhs_contracting_dimensions(0);
 
   // Verify the reduction dimension in the two operands are the same size.
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
@@ -874,10 +1168,10 @@ tensorflow::Status DotOpEmitter::Emit() {
   // loop.
   ir_builder_->SetInsertPoint(loop_nest.GetOuterLoopExitBasicBlock());
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status DotOpEmitter::EmitScalarDot() {
+Status DotOpEmitter::EmitScalarDot() {
   // A scalar dot is just a scalar multiply.
   llvm::Value* result;
   llvm::Value* lhs_value =
@@ -902,10 +1196,10 @@ tensorflow::Status DotOpEmitter::EmitScalarDot() {
     result = ir_builder_->CreateFMul(lhs_value, rhs_value);
   }
   target_array_.EmitWriteArrayElement(/*index=*/{}, result, ir_builder_);
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
+Status DotOpEmitter::EmitCallToRuntime() {
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
@@ -914,8 +1208,7 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // The two transpose_... parameters are actually booleans, but we use int32
   // to avoid target-dependent calling convention details.
 
-  bool multi_threaded =
-      hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
+  bool multi_threaded = ShouldUseMultiThreadedEigen();
   bool use_mkl_dnn = hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Type* float_type;
@@ -986,8 +1279,8 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
 
   const llvm_ir::IrArray* lhs = &lhs_array_;
   const llvm_ir::IrArray* rhs = &rhs_array_;
-  bool transpose_lhs = transpose_lhs_;
-  bool transpose_rhs = transpose_rhs_;
+  bool transpose_lhs = mat_mult_dims.lhs_non_canonical;
+  bool transpose_rhs = mat_mult_dims.rhs_non_canonical;
 
   if (!mat_mult_dims.lhs_column_major) {
     std::swap(mat_mult_dims.m, mat_mult_dims.n);
@@ -1007,7 +1300,7 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
        ir_builder_->getInt64(mat_mult_dims.k),
        ir_builder_->getInt32(transpose_lhs),
        ir_builder_->getInt32(transpose_rhs)});
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
@@ -1015,12 +1308,18 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
+  const DotDimensionNumbers& dim_nums = dot_.dot_dimension_numbers();
 
-  return {lhs_shape.dimensions(transpose_lhs_ ? 1 : 0),
-          lhs_shape.dimensions(transpose_lhs_ ? 0 : 1),
-          rhs_shape.dimensions(transpose_rhs_ ? 0 : 1),
-          LayoutUtil::Minor(lhs_shape.layout(), 0) == 0,
-          LayoutUtil::Minor(rhs_shape.layout(), 0) == 0};
+  return {
+      /*m=*/lhs_shape.dimensions(1 - dim_nums.lhs_contracting_dimensions(0)),
+      /*k=*/lhs_shape.dimensions(dim_nums.lhs_contracting_dimensions(0)),
+      /*n=*/rhs_shape.dimensions(1 - dim_nums.rhs_contracting_dimensions(0)),
+      /*lhs_column_major=*/LayoutUtil::Minor(lhs_shape.layout(), 0) == 0,
+      /*lhs_non_canonical=*/dim_nums.lhs_contracting_dimensions(0) == 0,
+      /*rhs_column_major=*/LayoutUtil::Minor(rhs_shape.layout(), 0) == 0,
+      /*rhs_non_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 1,
+      /*target_column_major=*/
+      LayoutUtil::Minor(target_array_.GetShape().layout(), 0) == 0};
 }
 
 llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
@@ -1060,19 +1359,39 @@ static bool IsRank2WithNoPadding(const Shape& shape) {
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.
-static bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
-                               const Shape& output_shape) {
+static bool AreValidGemmShapes(
+    const Shape& lhs_shape, const Shape& rhs_shape, const Shape& output_shape,
+    const TargetMachineFeatures& target_machine_features) {
   // The inputs and the output must
   // 1) be matrices with no padding, and
   // 2) have an allowed element type.
   PrimitiveType output_primitive_type = output_shape.element_type();
-  return (output_primitive_type == F64 || output_primitive_type == F32 ||
-          output_primitive_type == F16) &&
-         IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
-         IsRank2WithNoPadding(output_shape);
+  if (!(output_primitive_type == F64 || output_primitive_type == F32 ||
+        output_primitive_type == F16)) {
+    return false;
+  }
+
+  if (!(IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
+        IsRank2WithNoPadding(output_shape))) {
+    return false;
+  }
+
+  auto is_aligned = [&](const Shape& shape) {
+    return GetMinimumAlignmentForArray(shape, target_machine_features) >=
+           TargetMachineFeatures::kEigenExpectedTensorAlignment;
+  };
+
+  if (!is_aligned(lhs_shape) || !is_aligned(rhs_shape) ||
+      !is_aligned(output_shape)) {
+    return false;
+  }
+
+  return true;
 }
 
-bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
+bool PotentiallyImplementedAsEigenDot(
+    const HloInstruction& hlo,
+    const TargetMachineFeatures& target_machine_features) {
   // For certain types of Dot, we can call Eigen
   if (hlo.opcode() == HloOpcode::kDot) {
     const Shape& lhs_shape = hlo.operand(0)->shape();
@@ -1089,26 +1408,16 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
 
     // If gemm can accept the operand shapes, use it rather than a custom
     // kernel.
-    if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
+    if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape(),
+                           target_machine_features)) {
+      const DotDimensionNumbers& dim_numbers = hlo.dot_dimension_numbers();
       // The size of the reduction dimension should match. The shape inference
       // guarantees this invariant, so the check here is for programming
       // errors.
-      CHECK_EQ(lhs_shape.dimensions(1), rhs_shape.dimensions(0));
+      CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+               rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
       return true;
     }
-  }
-
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    auto* dot = hlo.fused_expression_root();
-    const Shape& lhs_shape = dot->operand(0)->shape();
-    const Shape& rhs_shape = dot->operand(1)->shape();
-    if (ShapeUtil::HasZeroElements(lhs_shape) ||
-        ShapeUtil::HasZeroElements(rhs_shape)) {
-      return false;
-    }
-    return true;
   }
 
   return false;

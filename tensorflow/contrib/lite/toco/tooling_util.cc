@@ -143,6 +143,10 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
     for (auto& input : op->inputs) {
       if (input == array_name) {
         count++;
+        // Breaking here is important: some graphs have ops that use the
+        // same array as more than one of their inputs, and in that case
+        // we want it counted only once.
+        break;
       }
     }
   }
@@ -333,6 +337,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LogSoftmax)
     HANDLE_OPERATORTYPENAME_CASE(Div)
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
+    HANDLE_OPERATORTYPENAME_CASE(Sin)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAssert)
     HANDLE_OPERATORTYPENAME_CASE(ExpandDims)
@@ -352,6 +357,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
     HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
+    HANDLE_OPERATORTYPENAME_CASE(PadV2)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
     HANDLE_OPERATORTYPENAME_CASE(Stack)
     HANDLE_OPERATORTYPENAME_CASE(Range)
@@ -386,6 +392,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Exp)
     HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
+    HANDLE_OPERATORTYPENAME_CASE(Select)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -980,7 +987,7 @@ void FixOperatorOrdering(Model* model) {
     for (auto i : remaining) {
       bool can_insert = true;
       auto& op = old_operators[i];
-      CHECK(op.get());
+      CHECK(op);
       for (const auto& input : op->inputs) {
         if (!IsConstantParameterArray(*model, input) &&
             !arrays_behind_us.count(input)) {
@@ -2067,15 +2074,21 @@ bool ReshapeIsEquivalentToTranspose(const Model& model,
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
+    if (array.data_type == ArrayDataType::kBool) {
+      // Boolean values are never quantized.
+      continue;
+    }
+
     // If the final data type is int16, the data type may be float, for example
     // after dequantization.
     if (array.final_data_type != ArrayDataType::kNone &&
         array.final_data_type != ArrayDataType::kInt16) {
-      CHECK(array.final_data_type == array.data_type)
+      CHECK(array.data_type == array.final_data_type)
           << "Array \"" << array_entry.first
-          << "\" has mis-matching actual and final data types ("
-          << ArrayDataTypeName(array.data_type) << ","
-          << ArrayDataTypeName(array.final_data_type) << ").";
+          << "\" has mis-matching actual and final data types (data_type="
+          << ArrayDataTypeName(array.data_type)
+          << ", final_data_type=" << ArrayDataTypeName(array.final_data_type)
+          << ").";
     }
   }
 }
@@ -2092,6 +2105,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt32;
     case INT64:
       return ArrayDataType::kInt64;
+    case BOOL:
+      return ArrayDataType::kBool;
     default:
       return ArrayDataType::kNone;
   }

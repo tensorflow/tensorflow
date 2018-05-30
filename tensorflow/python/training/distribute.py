@@ -357,14 +357,14 @@ class DistributionStrategy(object):
     on different slices of the input data. This is in contrast to
     _model parallelism_ where we divide up a single copy of a model
     across multiple devices.
-    Note: for now we only support data parallelism at this time, but
+    Note: we only support data parallelism for now, but
     hope to add support for model parallelism in the future.
   * A _tower_ is one copy of the model, running on one slice of the
     input data.
-  * _Synchronous_, or more commonly _sync_, training is when the
+  * _Synchronous_, or more commonly _sync_, training is where the
     updates from each tower are aggregated together before updating
     the model variables. This is in contrast to _asynchronous_, or
-    _async_ training where each tower updates the model variables
+    _async_ training, where each tower updates the model variables
     independently.
   * Furthermore you might run your computation on multiple devices
     on one machine (or "host"), or on multiple machines/hosts.
@@ -386,11 +386,11 @@ class DistributionStrategy(object):
   * Reductions and Allreduce: A _reduction_ is some method of
     aggregating multiple values into one value, like "sum" or
     "mean". If doing sync training, we will perform a reduction on the
-    gradients to a parameter from each tower before applying the
+    gradients to a parameter from all towers before applying the
     update. Allreduce is an algorithm for performing a reduction on
     values from multiple devices and making the result available on
     all of those devices.
-  * In the future we will have support for TensorFlows' partitioned
+  * In the future we will have support for TensorFlow's partitioned
     variables, where a single variable is split across multiple
     devices.
 
@@ -419,9 +419,9 @@ class DistributionStrategy(object):
     `tower_fn` can use the `get_tower_context()` API to get enhanced
     behavior in this case.
 
-    You can also create an initializable iterator instead of one shot iterator.
-    In that case, you will need to ensure that you initialize the iterator
-    before calling get_next.
+    You can also create an initializable iterator instead of a one-shot
+    iterator. In that case, you will need to ensure that you initialize the
+    iterator before calling get_next.
     ```
     iterator = my_distribution.distribute_dataset(
         dataset).make_initializable_iterator())
@@ -816,6 +816,7 @@ class DistributionStrategy(object):
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
     _require_cross_tower_context(self)
+    assert method_string in ("sum", "mean")
     return self._reduce(method_string, value, destinations)
 
   def _reduce(self, method_string, value, destinations):

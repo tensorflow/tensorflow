@@ -48,6 +48,7 @@ bool IsConstant(const NodeDef& node);
 bool IsConv2D(const NodeDef& node);
 bool IsConv2DBackpropFilter(const NodeDef& node);
 bool IsConv2DBackpropInput(const NodeDef& node);
+bool IsConv3D(const NodeDef& node);
 bool IsDepthwiseConv2dNative(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropFilter(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropInput(const NodeDef& node);
@@ -165,6 +166,10 @@ bool IsCommutative(const NodeDef& node);
 bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
+
+// Returns true if the takes a tensor reference as input, or if looking up its
+// OpDef failed.
+bool MaybeHasRefInput(const NodeDef& node);
 
 bool ModifiesFrameInfo(const NodeDef& node);
 

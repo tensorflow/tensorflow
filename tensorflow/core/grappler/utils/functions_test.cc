@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -52,6 +51,44 @@ TEST_F(FunctionsTest, IsParametrized) {
   EXPECT_FALSE(HasParametrizedType(non_parametrized_func));
   EXPECT_FALSE(HasParametrizedBody(non_parametrized_func));
   EXPECT_FALSE(IsParametrized(non_parametrized_func));
+}
+
+TEST_F(FunctionsTest, InstantiationParameters) {
+  // Function definition is invalid, only type/body parameters are important.
+  FunctionDef func = FunctionDefHelper::Create(
+      "ParametrizedFunc",
+      /* inputs */
+      {"input1:A", "input2:B", "input3:float"},
+      /* outputs */
+      {"output1: A", "output2:C"},
+      /* type parameters */
+      {"A: {float, double}", "B: {float, int32}", "C: {float, double}"},
+      /* function body*/
+      {{{"output"}, "FakeOp", {"input1", "input2"}, {{"key", "$key"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"x", "cx:output:0"}, {"y", "cy:output:0"}});
+
+  std::unordered_map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["key"].set_s("key-value");
+  func_instantiation_attr["A"].set_type(DT_FLOAT);
+  func_instantiation_attr["B"].set_type(DT_INT32);
+  func_instantiation_attr["C"].set_type(DT_DOUBLE);
+
+  std::unordered_map<string, DataType> type_parameters;
+  TF_EXPECT_OK(InstantiationTypeParameters(func, func_instantiation_attr,
+                                           &type_parameters));
+
+  ASSERT_EQ(3, type_parameters.size());
+  EXPECT_EQ(DT_FLOAT, type_parameters["A"]);
+  EXPECT_EQ(DT_INT32, type_parameters["B"]);
+  EXPECT_EQ(DT_DOUBLE, type_parameters["C"]);
+
+  std::unordered_map<string, AttrValue> body_parameters;
+  TF_EXPECT_OK(InstantiationBodyParameters(func, func_instantiation_attr,
+                                           &body_parameters));
+
+  ASSERT_EQ(1, body_parameters.size());
+  EXPECT_EQ("key-value", body_parameters["key"].s());
 }
 
 TEST_F(FunctionsTest, GrapplerFunctionConnectivity_ExpandFunctionDefInput) {

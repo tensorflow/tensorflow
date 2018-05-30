@@ -106,6 +106,8 @@ bool IsConv2DBackpropInput(const NodeDef& node) {
   return node.op() == "Conv2DBackpropInput";
 }
 
+bool IsConv3D(const NodeDef& node) { return node.op() == "Conv3D"; }
+
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
   return node.op() == "DepthwiseConv2dNative";
 }
@@ -406,6 +408,21 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 
 bool IsPersistent(const NodeDef& node) {
   return IsConstant(node) || IsVariable(node);
+}
+
+bool MaybeHasRefInput(const NodeDef& node) {
+  const OpDef* op_def;
+  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (!status.ok()) {
+    return true;
+  }
+  // Nodes such as Assign or AssignAdd modify one of their inputs.
+  for (const auto& input : op_def->input_arg()) {
+    if (input.is_ref()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool IsFreeOfSideEffect(const NodeDef& node) {

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 

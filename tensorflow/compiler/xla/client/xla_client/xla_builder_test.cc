@@ -76,7 +76,7 @@ TEST_F(XlaBuilderTest, ParamPlusParamHasBroadcast) {
   auto y = b.Parameter(1, y_shape, "y");
   auto add = b.Add(x, y, /*broadcast_dimensions=*/{0, 1});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto add_shape, add.GetShape());
+  TF_ASSERT_OK_AND_ASSIGN(auto add_shape, b.GetShape(add));
   EXPECT_TRUE(ShapeUtil::Equal(add_shape, x_shape));
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
@@ -188,8 +188,10 @@ TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
   builder.Add(p0, p0);
   auto statusor = builder.Build();
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Do not add XlaOp from builder b1 to builder main"));
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr(
+          "built by builder 'b1', but is trying to use it in builder 'main'"));
 }
 
 TEST_F(XlaBuilderTest, ReshapeDefaultOrder) {
