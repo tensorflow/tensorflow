@@ -914,10 +914,11 @@ def fill_triangular(x, upper=False, name=None):
     #   = 2 (n**2 / 2 + n / 2) - n**2
     #   = n**2 + n - n**2
     #   = n
+    ndims = array_ops.rank(x) if x.shape.ndims is None else x.shape.ndims
     if upper:
-      x_list = [x, array_ops.reverse(x[..., n:], axis=[-1])]
+      x_list = [x, array_ops.reverse(x[..., n:], axis=[ndims - 1])]
     else:
-      x_list = [x[..., n:], array_ops.reverse(x, axis=[-1])]
+      x_list = [x[..., n:], array_ops.reverse(x, axis=[ndims - 1])]
     new_shape = (
         static_final_shape.as_list()
         if static_final_shape.is_fully_defined()
