@@ -197,6 +197,10 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
 
+  virtual Status HandleDomain(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleHostCompute(HloInstructionPtr hlo) = 0;

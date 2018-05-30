@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test", "py_test", "tf_py_test")
 
 py_test(
     name = "batch_dataset_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [

@@ -273,6 +273,14 @@ Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
+Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
+  // A kDomain instruction aliases its operand. That is, the buffer of its
+  // result *is* the buffer of its operand, so just copy the operands points-to
+  // set.
+  CreateCopiedPointsToSet(domain, domain->operand(0));
+  return Status::OK();
+}
+
 Status TuplePointsToAnalysis::HandleSlice(HloInstruction* slice) {
   // A kSlice instruction aliases its operand if the backend lowers it to an
   // in-place implementation.

@@ -265,11 +265,14 @@ class WALSModel(object):
         "col_factors")
     self._row_gramian = self._create_gramian(self._n_components, "row_gramian")
     self._col_gramian = self._create_gramian(self._n_components, "col_gramian")
-    self._row_update_prep_gramian = self._prepare_gramian(
-        self._col_factors, self._col_gramian)
-    self._col_update_prep_gramian = self._prepare_gramian(
-        self._row_factors, self._row_gramian)
-    self._create_transient_vars()
+    with ops.name_scope("row_prepare_gramian"):
+      self._row_update_prep_gramian = self._prepare_gramian(
+          self._col_factors, self._col_gramian)
+    with ops.name_scope("col_prepare_gramian"):
+      self._col_update_prep_gramian = self._prepare_gramian(
+          self._row_factors, self._row_gramian)
+    with ops.name_scope("transient_vars"):
+      self._create_transient_vars()
 
   @property
   def row_factors(self):
@@ -310,36 +313,37 @@ class WALSModel(object):
   @classmethod
   def _create_factors(cls, rows, cols, num_shards, init, name):
     """Helper function to create row and column factors."""
-    if callable(init):
-      init = init()
-    if isinstance(init, list):
-      assert len(init) == num_shards
-    elif isinstance(init, str) and init == "random":
-      pass
-    elif num_shards == 1:
-      init = [init]
-    sharded_matrix = []
-    sizes = cls._shard_sizes(rows, num_shards)
-    assert len(sizes) == num_shards
+    with ops.name_scope(name):
+      if callable(init):
+        init = init()
+      if isinstance(init, list):
+        assert len(init) == num_shards
+      elif isinstance(init, str) and init == "random":
+        pass
+      elif num_shards == 1:
+        init = [init]
+      sharded_matrix = []
+      sizes = cls._shard_sizes(rows, num_shards)
+      assert len(sizes) == num_shards
 
-    def make_initializer(i, size):
+      def make_initializer(i, size):
 
-      def initializer():
-        if init == "random":
-          return random_ops.random_normal([size, cols])
-        else:
-          return init[i]
+        def initializer():
+          if init == "random":
+            return random_ops.random_normal([size, cols])
+          else:
+            return init[i]
 
-      return initializer
+        return initializer
 
-    for i, size in enumerate(sizes):
-      var_name = "%s_shard_%d" % (name, i)
-      var_init = make_initializer(i, size)
-      sharded_matrix.append(
-          variable_scope.variable(
-              var_init, dtype=dtypes.float32, name=var_name))
+      for i, size in enumerate(sizes):
+        var_name = "%s_shard_%d" % (name, i)
+        var_init = make_initializer(i, size)
+        sharded_matrix.append(
+            variable_scope.variable(
+                var_init, dtype=dtypes.float32, name=var_name))
 
-    return sharded_matrix
+      return sharded_matrix
 
   @classmethod
   def _create_weights(cls, wt_init, num_wts, num_shards, name):
@@ -380,25 +384,26 @@ class WALSModel(object):
     sizes = cls._shard_sizes(num_wts, num_shards)
     assert len(sizes) == num_shards
 
-    def make_wt_initializer(i, size):
+    with ops.name_scope(name):
+      def make_wt_initializer(i, size):
 
-      def initializer():
-        if init_mode == "scalar":
-          return wt_init * array_ops.ones([size])
-        else:
-          return wt_init[i]
+        def initializer():
+          if init_mode == "scalar":
+            return wt_init * array_ops.ones([size])
+          else:
+            return wt_init[i]
 
-      return initializer
+        return initializer
 
-    sharded_weight = []
-    for i, size in enumerate(sizes):
-      var_name = "%s_shard_%d" % (name, i)
-      var_init = make_wt_initializer(i, size)
-      sharded_weight.append(
-          variable_scope.variable(
-              var_init, dtype=dtypes.float32, name=var_name))
+      sharded_weight = []
+      for i, size in enumerate(sizes):
+        var_name = "%s_shard_%d" % (name, i)
+        var_init = make_wt_initializer(i, size)
+        sharded_weight.append(
+            variable_scope.variable(
+                var_init, dtype=dtypes.float32, name=var_name))
 
-    return sharded_weight
+      return sharded_weight
 
   @staticmethod
   def _create_gramian(n_components, name):

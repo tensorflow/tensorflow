@@ -26,6 +26,7 @@ from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -116,6 +117,11 @@ class MetricsTest(test.TestCase):
     self.assertEqual(3.0/8, m.result().numpy())
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testAccuracyDifferentShapes(self):
+    m = metrics.Accuracy()
+    with self.assertRaises(errors.InvalidArgumentError):
+      m([[0], [0]], [0, 1])
 
   def testWeightedAccuracy(self):
     m = metrics.Accuracy()

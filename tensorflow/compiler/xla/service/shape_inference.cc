@@ -316,7 +316,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
     HloOpcode opcode, const Shape& shape) {
   // There is no copy operation at the proto level, so handle copy explicitly.
-  if (opcode == HloOpcode::kCopy) {
+  // A domain shape is the same as the input one.
+  if (opcode == HloOpcode::kCopy || opcode == HloOpcode::kDomain) {
     return shape;
   }
 
