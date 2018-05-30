@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -175,6 +176,7 @@ class DirectSession : public Session {
     mutex mu_;
     Status status GUARDED_BY(mu_);
     IntraProcessRendezvous* rendez = nullptr;
+    std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
     Notification executors_done;
     std::unordered_map<string, bool> pending_inputs;   // true if fed
@@ -352,6 +354,7 @@ class DirectSession : public Session {
 
   DirectSessionFactory* const factory_;  // not owned
   CancellationManager* cancellation_manager_;
+  std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr_;
 
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these

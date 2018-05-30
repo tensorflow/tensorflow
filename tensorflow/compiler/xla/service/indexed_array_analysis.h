@@ -143,8 +143,8 @@ class IndexedArrayAnalysis {
   //
   // For example, if source is of shape [11,13,17,19], indices is of shape
   // [23,29], output_dims is [0,2] and source_dim is 2 then the output is of
-  // shape [23,11,29,19] and the output index [A,B,C,D,E] is mapped to the input
-  // index [B,D,indices[A,C],E].
+  // shape [23,11,29,13,19] and the output index [A,B,C,D,E] is mapped to the
+  // input index [B,D,indices[A,C],E].
   class ScalarIndexedArray : public Array {
    public:
     Kind kind() const override { return kScalarIndexed; }
@@ -152,7 +152,15 @@ class IndexedArrayAnalysis {
 
     Array* source() const { return source_; }
     Array* indices() const { return indices_; }
+
+    // `source_dim` is the dimension in the source array that is being indexed
+    // over using indices from the `indices` array.  See the class documentation
+    // and the overview for more details.
     int64 source_dim() const { return source_dim_; }
+
+    // `output_dims` are the dimensions in the output array that are being used
+    // to compute an index into the `indices` array.  See the class
+    // documentation and the overview for more details.
     tensorflow::gtl::ArraySlice<int64> output_dims() const {
       return output_dims_;
     }
@@ -258,6 +266,8 @@ class IndexedArrayAnalysis {
       ScalarIndexedArray* source, Array* indices, int64 source_dim,
       tensorflow::gtl::ArraySlice<int64> output_dims, Shape shape);
 
+  Array* ComputeArrayForReshape(const Shape& shape, Array* operand);
+
   template <typename T, typename... Args>
   T* Construct(Args&&... args) {
     T* new_tensor = new T(std::forward<Args>(args)...);
@@ -277,6 +287,11 @@ class IndexedArrayAnalysis {
                                            std::move(output_dims),
                                            std::move(shape));
     }
+  }
+
+  Literal* TakeOwnership(std::unique_ptr<Literal> literal) {
+    owned_literals_.push_back(std::move(literal));
+    return owned_literals_.back().get();
   }
 
   std::vector<std::unique_ptr<Array>> owned_tensors_;

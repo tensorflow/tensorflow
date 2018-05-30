@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+import re
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import export as export_lib
@@ -42,9 +42,11 @@ from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import tf_export
+
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
@@ -136,8 +138,9 @@ def _in_place_subclassed_model_reset(model):
   To "instantiate" an identical model in a new TF graph, we reuse the original
   model object, but we clear its state.
 
-  After calling this function on a model intance, you can use the model instance
-  as if it were a model clone (in particular you can use it in a new graph).
+  After calling this function on a model instance, you can use the model
+  instance as if it were a model clone (in particular you can use it in a new
+  graph).
 
   This method clears the state of the input model. It is thus destructive.
   However the original state can be restored fully by calling
@@ -220,7 +223,6 @@ def _in_place_subclassed_model_reset(model):
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
   model._original_attributes_cache = attributes_cache
-
   # Reset built state
   model.built = False
   model.inputs = None
@@ -340,8 +342,19 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
     """model_fn for keras Estimator."""
     model = _clone_and_build_model(mode, keras_model, custom_objects, features,
                                    labels)
+    model_output_names = []
+    # We need to make sure that the output names of the last layer in the model
+    # is the same for each of the cloned models. This is required for mirrored
+    # strategy when we call regroup.
+    if distribute_lib.has_distribution_strategy():
+      for name in model.output_names:
+        name = re.compile(r'_\d$').sub('', name)
+        model_output_names.append(name)
+    else:
+      model_output_names = model.output_names
+
     # Get inputs to EstimatorSpec
-    predictions = dict(zip(model.output_names, model.outputs))
+    predictions = dict(zip(model_output_names, model.outputs))
 
     loss = None
     train_op = None
@@ -445,10 +458,14 @@ def model_to_estimator(keras_model=None,
   @{$programmers_guide/estimators$creating_estimators_from_keras_models}.
 
   Args:
-    keras_model: Keras model in memory.
-    keras_model_path: Directory to a keras model on disk.
+    keras_model: A compiled Keras model object. This argument is mutually
+      exclusive with `keras_model_path`.
+    keras_model_path: Path to a compiled Keras model saved on disk, in HDF5
+      format, which can be generated with the `save()` method of a Keras model.
+      This argument is mutually exclusive with `keras_model`.
     custom_objects: Dictionary for custom objects.
-    model_dir: Directory to save Estimator model parameters, graph and etc.
+    model_dir: Directory to save Estimator model parameters, graph, summary
+      files for TensorBoard, etc.
     config: Configuration object.
 
   Returns:
@@ -460,7 +477,7 @@ def model_to_estimator(keras_model=None,
     ValueError: if the keras_model_path is a GCS URI.
     ValueError: if keras_model has not been compiled.
   """
-  if (not keras_model) and (not keras_model_path):
+  if not (keras_model or keras_model_path):
     raise ValueError(
         'Either `keras_model` or `keras_model_path` needs to be provided.')
   if keras_model and keras_model_path:
@@ -482,8 +499,9 @@ def model_to_estimator(keras_model=None,
 
   if not hasattr(keras_model, 'optimizer') or not keras_model.optimizer:
     raise ValueError(
-        'The given keras model has not been compiled yet. Please compile first '
-        'before calling `model_to_estimator`.')
+        'The given keras model has not been compiled yet. '
+        'Please compile the model with `model.compile()` '
+        'before calling `model_to_estimator()`.')
 
   if isinstance(config, dict):
     config = run_config_lib.RunConfig(**config)

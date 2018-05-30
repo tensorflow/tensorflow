@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -592,7 +593,8 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
           }
         }
       }
-      if (fwd_status.ok() && forward_from[i] == -1) {
+      if (fwd_status.ok() &&
+          forward_from[i] == OpKernelContext::Params::kNoReservation) {
         DCHECK_EQ(forward_input.size() % 2, 0);
         for (int j = 0; j < forward_input.size(); j += 2) {
           if (forward_input[j + 1] == i) {
@@ -770,7 +772,8 @@ void GraphView::SetScopedAllocatorAttrs(
                 << use_node->name();
         continue;
       }
-      // There should be exactly one output using ScopedAllocation.
+      // There can be more than one output using ScopedAllocation, but this
+      // analysis assumes they use the same ScopedAllocator.
       for (const auto& e : use_node->out_edges()) {
         if (!e->IsControlEdge()) {
           AllocatorAttributes attr;
@@ -886,6 +889,11 @@ Status InferAllocAttr(const Node* n, const Node* dst,
       VLOG(2) << "default alloc case local type " << local_dev_name.type
               << " remote type " << parsed_dst_name.type;
     }
+  }
+  if (n->IsCollective()) {
+    // We'll make the sweeping assumption that any collective op is going
+    // to be involved in network i/o.
+    attr->set_nic_compatible(true);
   }
   return s;
 }
@@ -1289,6 +1297,7 @@ class ExecutorState {
   int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
+  CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
   TensorStore* tensor_store_;
   // Step-local container.
@@ -1411,6 +1420,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       rendezvous_(args.rendezvous),
+      collective_executor_(args.collective_executor),
       session_state_(args.session_state),
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
@@ -1621,6 +1631,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
+  params.collective_executor = collective_executor_;
   params.session_state = session_state_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
@@ -2179,6 +2190,9 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
     if (rendezvous_) {
       rendezvous_->StartAbort(s);
+    }
+    if (collective_executor_) {
+      collective_executor_->StartAbort(s);
     }
     if (cancellation_manager_) {
       cancellation_manager_->StartCancel();

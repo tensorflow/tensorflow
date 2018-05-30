@@ -73,10 +73,6 @@ string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
 
-#ifdef TENSORFLOW_EAGER_USE_XLA
-std::atomic_int_fast64_t func_id_generator(0);
-#endif  // TENSORFLOW_EAGER_USE_XLA
-
 tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,

@@ -187,5 +187,116 @@ ENTRY main {
       "(scalar-indexed %operand (scalar-indexed %indices_a %indices_b "
       "1->[0,2]) 1->[0,1,3])");
 }
+
+TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather0) {
+  string hlo_text = R"(
+HloModule ReshapeOfGather
+
+ENTRY main {
+  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  indices = s32[5] parameter(0)
+  gather = s32[5,4] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1,4}
+  ROOT reshape = s32[5,2,2] reshape(gather)
+}
+)";
+
+  AssertArrayForRootExpressionIs(
+      hlo_text, "(scalar-indexed-const (constant s32[3,2,2]) %indices 0->[0])");
+}
+
+TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather1) {
+  string hlo_text = R"(
+HloModule ReshapeOfGather
+
+ENTRY main {
+  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  indices = s32[5,7] parameter(0)
+  gather = s32[5,4,7] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=2,
+      window_bounds={1,4}
+  ROOT reshape = s32[5,2,2,7] reshape(gather)
+}
+)";
+
+  AssertArrayForRootExpressionIs(
+      hlo_text,
+      "(scalar-indexed-const (constant s32[3,2,2]) %indices 0->[0,3])");
+}
+
+TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather2) {
+  string hlo_text = R"(
+HloModule ReshapeOfGather
+
+ENTRY main {
+  operand = s32[3,2,6] constant(s32[3,2,6]{
+      {{1,2,3,4,5,6},{1,2,3,4,5,6}},
+      {{1,2,3,4,5,6},{1,2,3,4,5,6}},
+      {{1,2,3,4,5,6},{1,2,3,4,5,6}}})
+  indices = s32[5,7] parameter(0)
+  gather = s32[5,2,6,7] gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=2,
+      window_bounds={1,2,6}
+  ROOT reshape = s32[5,3,4,7] reshape(gather)
+}
+)";
+
+  AssertArrayForRootExpressionIs(
+      hlo_text,
+      "(scalar-indexed-const (constant s32[3,3,4]) %indices 0->[0,3])");
+}
+
+TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNegative0) {
+  string hlo_text = R"(
+HloModule ReshapeOfGather
+
+ENTRY main {
+  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  indices = s32[5,6] parameter(0)
+  gather = s32[5,4,6] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=2,
+      window_bounds={1,4}
+  ROOT reshape = s32[5,2,2,2,3] reshape(gather)
+}
+)";
+
+  AssertArrayForRootExpressionIs(hlo_text, "%reshape");
+}
+
+TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNegative1) {
+  string hlo_text = R"(
+HloModule ReshapeOfGather
+
+ENTRY main {
+  operand = s32[3,5,2] constant(s32[3,5,2]{
+      {{1,2},{3,4},{5,6},{7,8},{9,10}},
+      {{1,2},{3,4},{5,6},{7,8},{9,10}},
+      {{1,2},{3,4},{5,6},{7,8},{9,10}}})
+  indices = s32[7] parameter(0)
+  gather = s32[3,2,7] gather(operand, indices),
+      output_window_dims={0,1},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=1,
+      window_bounds={3,1,2}
+  ROOT reshape = s32[6,7] reshape(gather)
+}
+)";
+
+  AssertArrayForRootExpressionIs(hlo_text, "%reshape");
+}
 }  // namespace
 }  // namespace xla

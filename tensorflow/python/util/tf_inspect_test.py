@@ -245,6 +245,52 @@ class TfInspectTest(test.TestCase):
     self.assertEqual(partial_argspec,
                      tf_inspect.getargspec(partial_with_decorator))
 
+  def testGetArgSpecOnCallableObject(self):
+
+    class Callable(object):
+
+      def __call__(self, a, b=1, c='hello'):
+        pass
+
+    argspec = tf_inspect.ArgSpec(
+        args=['self', 'a', 'b', 'c'],
+        varargs=None,
+        keywords=None,
+        defaults=(1, 'hello'))
+
+    test_obj = Callable()
+    self.assertEqual(argspec, tf_inspect.getargspec(test_obj))
+
+  def testGetArgSpecOnInitClass(self):
+
+    class InitClass(object):
+
+      def __init__(self, a, b=1, c='hello'):
+        pass
+
+    argspec = tf_inspect.ArgSpec(
+        args=['self', 'a', 'b', 'c'],
+        varargs=None,
+        keywords=None,
+        defaults=(1, 'hello'))
+
+    self.assertEqual(argspec, tf_inspect.getargspec(InitClass))
+
+  def testGetArgSpecOnNewClass(self):
+
+    class NewClass(object):
+
+      def __new__(cls, a, b=1, c='hello'):
+        pass
+
+    argspec = tf_inspect.ArgSpec(
+        args=['cls', 'a', 'b', 'c'],
+        varargs=None,
+        keywords=None,
+        defaults=(1, 'hello'))
+
+    self.assertEqual(argspec, tf_inspect.getargspec(NewClass))
+
   def testGetDoc(self):
     self.assertEqual('Test Decorated Function With Defaults Docstring.',
                      tf_inspect.getdoc(test_decorated_function_with_defaults))

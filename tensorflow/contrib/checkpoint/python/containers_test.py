@@ -22,6 +22,8 @@ import six
 
 from tensorflow.contrib.checkpoint.python import containers
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import layers
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -94,6 +96,13 @@ class UniqueNameTrackerTests(test.TestCase):
         self,
         dependency_names,
         ["x", "x_1", "y", "slot_manager", "slotdeps", "save_counter"])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testLayers(self):
+    tracker = containers.UniqueNameTracker()
+    tracker.track(layers.Dense(3), "dense")
+    tracker.layers[0](array_ops.zeros([1, 1]))
+    self.assertEqual(2, len(tracker.trainable_weights))
 
 if __name__ == "__main__":
   test.main()

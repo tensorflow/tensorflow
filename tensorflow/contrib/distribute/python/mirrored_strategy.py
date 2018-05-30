@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import threading
 import six
 
@@ -37,6 +38,16 @@ from tensorflow.python.training import distribute as distribute_lib
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
+
+
+@contextlib.contextmanager
+def _enter_graph(g):
+  if context.executing_eagerly():
+    with g.as_default(), context.eager_mode():
+      yield
+  else:
+    with g.as_default():
+      yield
 
 
 def _cpu_device(device):
@@ -458,7 +469,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         with self.coord.stop_on_exception(), \
             context.context()._mode(self.context_mode), \
             context.context().device_policy(self.context_device_policy), \
-            self.graph.as_default(), \
+            _enter_graph(self.graph), \
             MirroredTowerContext(self.distribution, self.tower_id), \
             ops.device(self.device), \
             ops.name_scope(self._captured_name_scope), \

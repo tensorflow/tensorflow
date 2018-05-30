@@ -2,6 +2,9 @@
 
 We'd love to have your patches and contributions! Here are some guidelines. In general, we follow the [TensorFlow contributing guidelines](../../CONTRIBUTING.md), but have some [AutoGraph-specific style guidelines](STYLE_GUIDE.md). More details below.
 
+## TensorFlow Code of Conduct
+Please review and follow the [TensorFlow Code of Conduct](../../CODE_OF_CONDUCT.md).
+
 ## Contributor License Agreement
 
 Contributions to this project must be accompanied by a Contributor License
@@ -28,7 +31,7 @@ repository (with credit to the original author) and closes the pull request.
 
 ## Style
 
-See the [TensorFlow AutoGraph style guide](STYLE_GUIDE.md).
+See the [AutoGraph style guide](STYLE_GUIDE.md).
 
 ## Unit tests
 
