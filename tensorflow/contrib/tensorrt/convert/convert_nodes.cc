@@ -2176,7 +2176,7 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
     VLOG(2) << node_names;
   }
 
-  VLOG(0) << "Output Nodes:";
+  VLOG(1) << "Output Nodes:";
   std::vector<tensorflow::DataType> out_types;
   std::vector<const tensorflow::Edge*> out_edges;
 
@@ -2298,11 +2298,11 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
         graph.UpdateEdge(trt_engine_node, out_port, i->dst(), i->dst_input()));
   }
   for (const auto ed : trt_engine_node->in_edges()) {
-    VLOG(0) << "In Edge  " << ed->src()->name() << ":" << ed->src_output()
+    VLOG(1) << "In Edge  " << ed->src()->name() << ":" << ed->src_output()
             << " -> " << ed->dst()->name() << ":" << ed->dst_input();
   }
   for (const auto ed : trt_engine_node->out_edges()) {
-    VLOG(0) << "Out Edge " << ed->src()->name() << ":" << ed->src_output()
+    VLOG(1) << "Out Edge " << ed->src()->name() << ":" << ed->src_output()
             << " -> " << ed->dst()->name() << ":" << ed->dst_input();
   }
   VLOG(1) << "Segment nodes:";
