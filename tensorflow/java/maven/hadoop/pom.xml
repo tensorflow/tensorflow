@@ -5,7 +5,7 @@
     <!-- Placeholder pom which is replaced by TensorFlow ecosystem Hadoop pom during build -->
     <modelVersion>4.0.0</modelVersion>
     <description>TensorFlow TFRecord InputFormat/OutputFormat for Apache Hadoop</description>
-    <artifactId>tensorflow-hadoop</artifactId>
+    <artifactId>hadoop</artifactId>
     <packaging>jar</packaging>
 
     <scm>

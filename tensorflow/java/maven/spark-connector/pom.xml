@@ -5,7 +5,7 @@
     <!-- Placeholder pom which is replaced by TensorFlow ecosystem Spark pom during build -->
     <modelVersion>4.0.0</modelVersion>
     <description>TensorFlow TFRecord connector for Apache Spark DataFrames</description>
-    <artifactId>spark-tensorflow-connector</artifactId>
+    <artifactId>spark-connector</artifactId>
     <packaging>jar</packaging>
 
     <scm>
