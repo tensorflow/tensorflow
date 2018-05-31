@@ -327,7 +327,8 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
   kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
   auto out = popconv::convolution(graph, in, kernel, params, false, prog,
-                                  inst->name(), opts, &res.convolution_cache);
+                                  GetDebugName(inst), opts,
+                                  &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -365,8 +366,8 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
   kernel = AddGroupsDimensionToWeights(params, kernel, true);
 
   poplar::Tensor out =
-      popconv::convolution(graph, in, kernel, params, true, prog, conv->name(),
-                           opts, &res.convolution_cache);
+      popconv::convolution(graph, in, kernel, params, true, prog,
+                           GetDebugName(conv), opts, &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -411,8 +412,8 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
   poplar::Tensor out =
-      popconv::convolution(graph, in, kernel, params, false, prog, conv->name(),
-                           opts, &res.convolution_cache);
+      popconv::convolution(graph, in, kernel, params, false, prog,
+                           GetDebugName(conv), opts, &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -434,7 +435,7 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
   poplar::Tensor shuffled_in = in.dimShuffle({0, 3, 1, 2});
 
   poplar::program::Sequence prog;
-  popconv::addBias(graph, shuffled_in, bias, prog, inst->name());
+  popconv::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in));
   return prog;
@@ -465,7 +466,7 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
 
   poplar::program::Sequence prog;
   popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate,
-                                 poplar::FLOAT, prog, inst->name());
+                                 poplar::FLOAT, prog, GetDebugName(inst));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, biases));
 

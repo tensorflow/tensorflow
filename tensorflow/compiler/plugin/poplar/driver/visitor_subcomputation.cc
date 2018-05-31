@@ -103,7 +103,7 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
         inputs.push_back(out);
         TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
       } else {
-        auto name = se::port::StrCat(inst->name(), "_in_", i);
+        auto name = se::port::StrCat(GetDebugName(inst), "_in_", i);
         poplar::Tensor out = graph_.clone(t, name);
         inputs.push_back(out);
         TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));

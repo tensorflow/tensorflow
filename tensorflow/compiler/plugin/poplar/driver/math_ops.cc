@@ -201,7 +201,7 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
   TF_ASSIGN_OR_RETURN(op, LookupUnaryFn(inst));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = popops::map(graph, op, in, seq, inst->name());
+  poplar::Tensor out = popops::map(graph, op, in, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
@@ -226,7 +226,7 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst));
 
     poplar::program::Sequence seq;
-    fn(graph, in0, in1, seq, inst->name());
+    fn(graph, in0, in1, seq, GetDebugName(inst));
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
 
@@ -257,7 +257,8 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
 
     poplar::program::Sequence seq;
-    poplar::Tensor out = popops::map(graph, op, in0, in1, seq, inst->name());
+    poplar::Tensor out = popops::map(graph, op, in0, in1, seq,
+                                     GetDebugName(inst));
 
     // Occasionally, due to an interplay of implicit broadcasting and
     // arithmetic re-arrangement, the output of an op is larger than the inputs
@@ -331,7 +332,8 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   opts.set("fullyConnectedPass", GetMatMulPass(inst, res.annotations));
 
   out =
-      poplin::matMul(graph, in0, in1, seq, inst->name(), opts, &res.dot_cache);
+      poplin::matMul(graph, in0, in1, seq, GetDebugName(inst), opts,
+                     &res.dot_cache);
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -367,7 +369,7 @@ StatusOr<poplar::program::Program> CreateSelectOp(
     }
 
     poplar::Tensor out = popops::map(graph, popops::expr::TernaryOpType::SELECT,
-                                     i0, i1, p, seq, inst->name());
+                                     i0, i1, p, seq, GetDebugName(inst));
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
   }
@@ -388,7 +390,8 @@ StatusOr<poplar::program::Program> CreateCastOp(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = popops::cast(graph, in, poplar_type, seq, inst->name());
+  poplar::Tensor out = popops::cast(graph, in, poplar_type, seq,
+                                    GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
@@ -422,7 +425,7 @@ StatusOr<poplar::program::Program> CreateClampOp(poplar::Graph& graph,
 
   poplar::program::Sequence seq;
   poplar::Tensor out = popops::map(graph, popops::expr::TernaryOpType::CLAMP,
-                                   arg, min, max, seq, inst->name());
+                                   arg, min, max, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
@@ -440,10 +443,10 @@ StatusOr<poplar::program::Program> CreateReluOp(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = graph.clone(t, inst->name());
+  poplar::Tensor out = graph.clone(t, GetDebugName(inst));
 
   seq.add(poplar::program::Copy(t, out));
-  popnn::relu(graph, out, seq, inst->name());
+  popnn::relu(graph, out, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
@@ -463,7 +466,7 @@ StatusOr<poplar::program::Program> CreateReluGradOp(
 
   poplar::program::Sequence seq;
   poplar::Tensor t = popnn::nonLinearityInputGradient(
-      graph, popnn::NON_LINEARITY_RELU, out, outgrad, seq, inst->name());
+      graph, popnn::NON_LINEARITY_RELU, out, outgrad, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
@@ -479,10 +482,10 @@ StatusOr<poplar::program::Program> CreateSigmoidOp(
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = graph.clone(t, inst->name());
+  poplar::Tensor out = graph.clone(t, GetDebugName(inst));
 
   seq.add(poplar::program::Copy(t, out));
-  popnn::sigmoid(graph, out, seq, inst->name());
+  popnn::sigmoid(graph, out, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
@@ -502,7 +505,8 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
 
   poplar::program::Sequence seq;
   poplar::Tensor t = popnn::nonLinearityInputGradient(
-      graph, popnn::NON_LINEARITY_SIGMOID, out, outgrad, seq, inst->name());
+      graph, popnn::NON_LINEARITY_SIGMOID, out, outgrad, seq,
+      GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 

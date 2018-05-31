@@ -56,7 +56,7 @@ StatusOr<poplar::program::Program> TruncatedNormalScale(
 
   poplar::program::Sequence seq;
   res.random.truncatedNormal(graph, out, mean1_val + mean2_val,
-                             sd1_val * sd2_val, 1.0, seq, inst->name());
+                             sd1_val * sd2_val, 1.0, seq, GetDebugName(inst));
 
   return seq;
 }
@@ -80,7 +80,7 @@ StatusOr<poplar::program::Program> TruncatedNormal(
 
   poplar::program::Sequence seq;
   res.random.truncatedNormal(graph, out, mean_val, sd_val, 1.0, seq,
-                             inst->name());
+                             GetDebugName(inst));
 
   return seq;
 }
@@ -110,7 +110,7 @@ StatusOr<poplar::program::Program> RandomNormalScale(
 
   poplar::program::Sequence seq;
   res.random.normal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val, seq,
-                    inst->name());
+                    GetDebugName(inst));
 
   return seq;
 }
@@ -140,7 +140,8 @@ StatusOr<poplar::program::Program> RandomUniformScale(
 
   poplar::program::Sequence seq;
   res.random.uniform(graph, out, lower_val * scale_val + shift_val,
-                     upper_val * scale_val + shift_val, seq, inst->name());
+                     upper_val * scale_val + shift_val, seq,
+                     GetDebugName(inst));
 
   return seq;
 }
@@ -165,7 +166,7 @@ StatusOr<poplar::program::Program> RandomNormal(poplar::Graph& graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  res.random.normal(graph, out, mean_val, sd_val, seq, inst->name());
+  res.random.normal(graph, out, mean_val, sd_val, seq, GetDebugName(inst));
 
   return seq;
 }
@@ -194,7 +195,7 @@ StatusOr<poplar::program::Program> RandomUniform(poplar::Graph& graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  res.random.uniform(graph, out, lower_val, upper_val, seq, inst->name());
+  res.random.uniform(graph, out, lower_val, upper_val, seq, GetDebugName(inst));
 
   return seq;
 }

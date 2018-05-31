@@ -36,7 +36,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(result) == 2)
       cs_list = tu.get_compute_sets_from_report(result[1])
 
-      ok = ['call/Nonlinearity']
+      ok = ['Sigmoid/call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testSigmoidGrad(self):
@@ -60,7 +60,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(result) == 2)
       cs_list = tu.get_compute_sets_from_report(result[1])
 
-      ok = ['call/NonLinearityGrad']
+      ok = ['SigmoidGrad/call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testRelu(self):
@@ -82,7 +82,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(result) == 2)
       cs_list = tu.get_compute_sets_from_report(result[1])
 
-      ok = ['call/Nonlinearity']
+      ok = ['Relu/call/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testReluGrad(self):
@@ -106,7 +106,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(result) == 2)
       cs_list = tu.get_compute_sets_from_report(result[1])
 
-      ok = ['call/NonLinearityGrad']
+      ok = ['ReluGrad/call/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 if __name__ == "__main__":

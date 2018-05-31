@@ -213,5 +213,40 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         except tf.errors.InternalError as e:
             self.assertTrue(e.message.startswith("Failed to create session"))
 
+    def testNamedOperations(self):
+        with tf.device("/device:IPU:0"):
+            pa = tf.placeholder(tf.float32, [2,2], name="a")
+            pb = tf.placeholder(tf.float32, [2,2], name="b")
+            with tf.name_scope('my_ops'):
+                out = tf.add(pa, pb, 'my_add_op')
+
+        with tf.device('cpu'):
+            report = gen_ipu_ops.ipu_event_trace()
+
+        opts = config_pb2.IPUOptions()
+        dev = opts.device_config.add()
+        dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+        dev.profiling.enable_compilation_trace = True
+        dev.profiling.enable_io_trace = False
+        dev.profiling.enable_execution_trace = True
+
+        with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
+
+            fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
+            sess.run(report, fd)
+
+            result = sess.run(out, fd)
+            self.assertAllClose(result, [[1.,2.],[6.,8.]])
+
+            rep = sess.run(report, fd)
+            s = tu.extract_all_strings_from_event_trace(rep)
+            cs_list = tu.get_compute_sets_from_report(s)
+
+            print(cs_list)
+
+            ok = ['my_ops/my_add_op/add']
+
+            self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
 if __name__ == "__main__":
     googletest.main()

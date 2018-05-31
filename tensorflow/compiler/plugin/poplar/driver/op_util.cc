@@ -11,6 +11,11 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
+std::string GetDebugName(const HloInstruction* inst) {
+  const std::string &tf_core_name = inst->metadata().op_name();
+  return tf_core_name + "/" + inst->name();
+}
+
 std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
                                               int64 n) {
   int64 start = 0;
@@ -73,8 +78,8 @@ Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
   auto it = map.find(p);
   if (it != map.end()) {
     return Status(tensorflow::error::UNKNOWN,
-                  se::port::StrCat("[Poplar] Ouptut Tensor for ", inst->name(),
-                                   " already exists"));
+                  se::port::StrCat("[Poplar] Ouptut Tensor for ",
+                                   GetDebugName(inst), " already exists"));
   }
   map[p] = tensor;
   return Status::OK();

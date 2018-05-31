@@ -52,6 +52,8 @@ StatusOr<popops_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction*);
 Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                       const Literal& literal);
 
+std::string GetDebugName(const HloInstruction*);
+
 StatusOr<popconv::ConvParams> GetConvolutionParameters(
     const HloInstruction* operand_op, const HloInstruction* conv_op);
 

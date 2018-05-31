@@ -129,7 +129,7 @@ StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
   poplar::Type poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
-  out = graph.addVariable(poplar_type, dim, inst->name());
+  out = graph.addVariable(poplar_type, dim, GetDebugName(inst));
   poputil::mapTensorLinearly(graph, out);
   return out;
 }
@@ -142,7 +142,7 @@ StatusOr<poplar::Tensor> AddRnnSequence(poplar::Graph& graph,
   poplar::Type poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
-  out = graph.addVariable(poplar_type, dim, inst->name());
+  out = graph.addVariable(poplar_type, dim, GetDebugName(inst));
 
   for (auto i = 0; i != dim[0]; ++i) {
     poputil::mapTensorLinearly(graph, out[i]);
@@ -158,7 +158,7 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
-  auto name = StrCat(inst->name(), "_input");
+  auto name = StrCat(GetDebugName(inst), "_input");
   poplar::OptionFlags opts;
   poplar::Tensor out = popconv::createInput(graph, params, name, opts,
                                             &resources.convolution_cache);
@@ -172,7 +172,7 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
   popconv::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
-  auto name = StrCat(inst->name(), "_weights");
+  auto name = StrCat(GetDebugName(inst), "_weights");
   poplar::OptionFlags opts;
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts,
                                               &resources.convolution_cache);
@@ -190,7 +190,7 @@ static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  auto name = StrCat(inst->name(), "_lhs");
+  auto name = StrCat(GetDebugName(inst), "_lhs");
   poplar::OptionFlags opts;
   return poplin::createMatMulInputLHS(graph, type, aShape, bShape, name, opts,
                                       &resources.dot_cache);
@@ -204,7 +204,7 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  auto name = StrCat(inst->name(), "_rhs");
+  auto name = StrCat(GetDebugName(inst), "_rhs");
   poplar::OptionFlags opts;
   return poplin::createMatMulInputRHS(graph, type, aShape, bShape, name, opts,
                                       &resources.dot_cache);

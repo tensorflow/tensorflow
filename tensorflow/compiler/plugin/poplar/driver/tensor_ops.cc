@@ -108,7 +108,7 @@ StatusOr<poplar::program::Program> CreateSliceOp(poplar::Graph& graph,
   }
 
   poplar::Tensor slice = input.slice(s_begin, s_end);
-  poplar::Tensor out = graph.clone(slice, inst->name());
+  poplar::Tensor out = graph.clone(slice, GetDebugName(inst));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -166,7 +166,7 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
 
   if (slice_dims.size() > 0) {
     popops::dynamicUpdate(graph, input, update, slice_indices, slice_dims,
-                          slice_sizes, seq, inst->name());
+                          slice_sizes, seq, GetDebugName(inst));
   } else {
     seq.add(poplar::program::Copy(update, input));
   }
@@ -219,7 +219,7 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
 
   if (slice_dims.size() > 0) {
     out = popops::dynamicSlice(graph, input, slice_indices, slice_dims,
-                               slice_sizes, seq, inst->name());
+                               slice_sizes, seq, GetDebugName(inst));
   } else {
     out = input;
   }

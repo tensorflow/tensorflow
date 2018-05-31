@@ -167,7 +167,7 @@ StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
     seq.add(subcomp_visitor->second.sequence);
 
     for (size_t i = 0; i < subcomp_visitor->second.outputs().size(); i++) {
-      auto name = se::port::StrCat(inst->name(), "_out_", i);
+      auto name = se::port::StrCat(GetDebugName(inst), "_out_", i);
       poplar::Tensor o =
           graph.clone(subcomp_visitor->second.outputs()[i], name);
       seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
@@ -288,7 +288,7 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
   std::vector<poplar::Tensor> copies(param_count);
   for (unsigned int o = 0; o < param_count; o++) {
     if (alias_type[o] == 1) {
-      auto name = se::port::StrCat(inst->name(), "_bodyout_temp_", o);
+      auto name = se::port::StrCat(GetDebugName(inst), "_bodyout_temp_", o);
       copies[o] = graph.clone(body_outputs[o], name);
       body_seq.add(poplar::program::Copy(body_outputs[o], copies[o]));
     }
@@ -319,13 +319,13 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
   }
   cond_seq.add(cond->second.sequence);
   poplar::Tensor pred =
-      popops::allTrue(graph, cond_outputs[0], cond_seq, inst->name());
+      popops::allTrue(graph, cond_outputs[0], cond_seq, GetDebugName(inst));
 
   // Main
   main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, pred, body_seq));
 
   for (unsigned int i = 0; i < param_count; i++) {
-    auto name = se::port::StrCat(inst->name(), "_out_", i);
+    auto name = se::port::StrCat(GetDebugName(inst), "_out_", i);
     poplar::Tensor o = graph.clone(body_outputs[i], name);
     main_seq.add(poplar::program::Copy(body_outputs[i], o));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
@@ -359,7 +359,8 @@ StatusOr<poplar::program::Program> CreateIfOp(poplar::Graph& graph,
                                                  inst->false_computation()));
 
   poplar::program::Sequence seq;
-  poplar::Tensor scalar_pred = popops::allTrue(graph, pred, seq, inst->name());
+  poplar::Tensor scalar_pred = popops::allTrue(graph, pred, seq,
+                                               GetDebugName(inst));
 
   if (true_body->second.inputs().size() != 1 ||
       false_body->second.inputs().size() != 1) {

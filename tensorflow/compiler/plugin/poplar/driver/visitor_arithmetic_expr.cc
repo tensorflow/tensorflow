@@ -152,7 +152,8 @@ Status ArithmeticExprVisitor::FinishVisit(HloInstruction* inst) {
   std::unique_ptr<popops::expr::Expr> expr;
   TF_ASSIGN_OR_RETURN(expr, FindExpressionInput(inst));
   // map expression with the tensors
-  poplar::Tensor out = popops::map(graph_, *expr, ts_, sequence, inst->name());
+  poplar::Tensor out = popops::map(graph_, *expr, ts_, sequence,
+                                   GetDebugName(inst) + "_expression");
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, GetOutputShape(inst)));
   outputs_.push_back(out);
 

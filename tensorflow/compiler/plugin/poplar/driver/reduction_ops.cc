@@ -234,7 +234,8 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
     }
 
     poplar::Tensor out =
-        popops::reduce(graph, to_reduce, reduction_dims, op, seq, inst->name());
+        popops::reduce(graph, to_reduce, reduction_dims, op, seq,
+                       GetDebugName(inst));
 
     // Apply initial value
     Literal identity_literal = GetIdentityConstantLiteral(root);
@@ -251,7 +252,8 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
       TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
 
       out =
-          popops::map(graph, op, out, init_val, seq, inst->name() + "_initval");
+          popops::map(graph, op, out, init_val, seq,
+                      GetDebugName(inst) + "_initval");
     }
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
@@ -299,7 +301,7 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
         out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
     poplar::Tensor out_flat = out.flatten();
 
-    auto cs = graph.addComputeSet(inst->name());
+    auto cs = graph.addComputeSet(GetDebugName(inst));
     const unsigned long N = out_flat.dim(0);
 
     unsigned dim_count(to_reduce.rank());
@@ -356,7 +358,8 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
       TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
 
       out =
-          popops::map(graph, op, out, init_val, seq, inst->name() + "_initval");
+          popops::map(graph, op, out, init_val, seq,
+                      GetDebugName(inst) + "_initval");
     }
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   }
@@ -449,7 +452,7 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
 
     out = popnn::pooling::pool(graph, reduction_type, kernel_shape, stride,
                                padding_lower, padding_upper, to_reduce, prog,
-                               inst->name());
+                               GetDebugName(inst));
 
     std::vector<unsigned int> shuffle_out(shuffle_in.size());
     for (int i = 0; i < window.dimensions_size(); i++) {
@@ -496,7 +499,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   std::vector<std::size_t> poplar_shape = operand.shape();
   poplar_shape.push_back(1);
 
-  auto name = se::port::StrCat(inst->name(), "_partial");
+  auto name = se::port::StrCat(GetDebugName(inst), "_partial");
   poplar::Tensor extended_operand = operand.reshape(poplar_shape);
   poplar::Tensor partial = graph.clone(extended_operand, name);
 
@@ -529,7 +532,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
         input_dim, window.dimensions(d).size(), window.dimensions(d).stride());
   }
 
-  auto select_cs = graph.addComputeSet(inst->name() + "_select");
+  auto select_cs = graph.addComputeSet(GetDebugName(inst) + "_select");
   program_seq.add(poplar::program::Execute(select_cs));
 
   const unsigned long num_windows = source.numElements();
@@ -604,7 +607,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   reduction_dims.push_back(partial.rank() - 1);
 
   out = popops::reduce(graph, partial, reduction_dims, op, program_seq,
-                       inst->name() + "_reduce");
+                       GetDebugName(inst) + "_reduce");
 
   /*
    * Initial value application
@@ -621,7 +624,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
     TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(scatter_root));
 
     out = popops::map(graph, op, out, init_val, program_seq,
-                      inst->name() + "_initval");
+                      GetDebugName(inst) + "_initval");
   }
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
