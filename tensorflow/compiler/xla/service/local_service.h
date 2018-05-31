@@ -70,6 +70,11 @@ class LocalService : public Service {
   // the "easy" case where a single replica is a single device.
   StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
+  // Converts a GlobalDataHandle into a pointer to a ShapedBuffer that's valid
+  // as long as the handle is valid.
+  StatusOr<const ShapedBuffer*> GlobalDataToShapedBuffer(
+      const GlobalDataHandle& data, int replica_number);
+
  private:
   explicit LocalService(const ServiceOptions& options,
                         std::unique_ptr<Backend> backend);

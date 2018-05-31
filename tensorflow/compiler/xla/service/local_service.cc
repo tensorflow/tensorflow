@@ -260,4 +260,15 @@ StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
       /*computation_count=*/1);
 }
 
+StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
+    const GlobalDataHandle& data, int replica_number) {
+  TF_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
+  if (replica_number >= buffers.size()) {
+    return InvalidArgument(
+        "replica_number %d out of range; must be less than num_replicas = %zu.",
+        replica_number, buffers.size());
+  }
+  return buffers[replica_number];
+}
+
 }  // namespace xla
