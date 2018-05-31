@@ -2133,6 +2133,24 @@ void ConvertDynamicStitchOperator(const NodeDef& node,
   model->operators.emplace_back(op.release());
 }
 
+void ConvertSparseToDenseOperator(const NodeDef& node,
+                                  const TensorFlowImportFlags& tf_import_flags,
+                                  Model* model) {
+  CHECK_EQ(node.op(), "SparseToDense");
+  CheckInputsCount(node, tf_import_flags, 4);
+
+  auto* op = new SparseToDenseOperator;
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+
+  op->validate_indices = HasAttr(node, "validate_indices")
+                             ? GetBoolAttr(node, "validate_indices")
+                             : true;
+  model->operators.emplace_back(op);
+}
+
 }  // namespace
 
 namespace internal {
@@ -2314,6 +2332,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertSinOperator(node, tf_import_flags, model);
   } else if (node.op() == "Select") {
     ConvertSelectOperator(node, tf_import_flags, model);
+  } else if (node.op() == "SparseToDense") {
+    ConvertSparseToDenseOperator(node, tf_import_flags, model);
   } else {
     ConvertUnsupportedOperator(node, tf_import_flags, model);
   }

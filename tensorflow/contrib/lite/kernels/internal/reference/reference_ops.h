@@ -4000,6 +4000,42 @@ inline void RankOneSelect(const D* input_condition_data,
   }
 }
 
+// For easy implementation, the indices is always a vector of size-4 vectors.
+template <typename T, typename I>
+inline void SparseToDense(const std::vector<std::vector<I>>& indices,
+                          const T* values, T default_value, T* output_data,
+                          const Dims<4>& output_dims, bool value_is_scalar) {
+  const int value_count = indices.size();
+
+  // First fill the output_data with default value.
+  const int num_elements = FlatSize(output_dims);
+  for (int i = 0; i < num_elements; ++i) {
+    output_data[i] = default_value;
+  }
+
+  // Special handle for value is scalar case to avoid checking the boolean
+  // condition within the loop every time.
+  if (value_is_scalar) {
+    for (int i = 0; i < value_count; ++i) {
+      const std::vector<I>& index = indices[i];
+      TFLITE_DCHECK_EQ(index.size(), 4);
+      const T value = *values;  // just use the first value.
+      output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
+          value;
+    }
+    return;
+  }
+
+  // Go through the values and indices to fill the sparse values.
+  for (int i = 0; i < value_count; ++i) {
+    const std::vector<I>& index = indices[i];
+    TFLITE_DCHECK_EQ(index.size(), 4);
+    const T value = values[i];
+    output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
+        value;
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

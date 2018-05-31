@@ -699,6 +699,16 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SPARSE_TO_DENSE: {
+      TfLiteSparseToDenseParams* params =
+          MallocPOD<TfLiteSparseToDenseParams>();
+      if (auto* sparse_to_dense_params =
+              op->builtin_options_as_SparseToDenseOptions()) {
+        params->validate_indices = sparse_to_dense_params->validate_indices();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
