@@ -3416,8 +3416,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softmax_op",
     prefix = "softmax_op",
-    deps = NN_DEPS + if_cuda([
-        ":reduction_ops",
+    deps = NN_DEPS + [":reduction_ops",] + if_cuda([
         "@cub_archive//:cub",
 	]) + if_rocm([
 	"@rocprim_archive//:rocprim",

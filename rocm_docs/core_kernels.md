@@ -940,9 +940,9 @@ Kernels under tensorflow/core/kernels
 |   O    |        | snapshot_op.cc
 |   O    |        | snapshot_op.h
 |   O    |        | snapshot_op_gpu.cu.cc
-|   X    |cub     | softmax_op.cc
-|   X    |cub     | softmax_op_functor.h
-|   X    |cub     | softmax_op_gpu.cu.cc
+|   P    |cub     | softmax_op.cc
+|   P    |cub     | softmax_op_functor.h
+|   P    |cub     | softmax_op_gpu.cu.cc
 |   O    |        | softplus_op.cc
 |   O    |        | softplus_op.h
 |   O    |        | softplus_op_gpu.cu.cc

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/strings/str_util.h"
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -179,8 +179,8 @@ class SoftmaxOpGPU : public OpKernel {
           context, const_cast<acc_type*>(sum_probs.flat<acc_type>().data()),
           input_itr, rows, cols);
 
-      GenerateNormalizedProb<T, acc_type>
-          <<<numBlocks, numThreads, 0, cu_stream>>>(
+      GPU_LAUNCH_KERNEL(GenerateNormalizedProb<T, acc_type>,
+          dim3(numBlocks), dim3(numThreads), 0, cu_stream,
               reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
               reinterpret_cast<const acc_type*>(
                   sum_probs.flat<acc_type>().data()),
@@ -211,4 +211,4 @@ REGISTER_KERNEL_BUILDER(
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
