@@ -98,20 +98,12 @@ gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingSub(
 
 namespace reference_ops {
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOne(
-    int32 x, int32 quantized_multiplier, int right_shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), right_shift);
-}
-
-inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(
-    int32 x, int32 quantized_multiplier, int left_shift) {
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
-                                           quantized_multiplier);
-}
+// TODO(b/80247582) Remove this constant.
+// This will be phased out as the shifts are revised with more thought. Use of a
+// constant enables us to track progress on this work.
+//
+// Used mainly to convert from old-style shifts (right) to new-style (left).
+static constexpr int kReverseShift = -1;
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {
@@ -422,8 +414,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
           if (bias_data) {
             acc += bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
           }
-          acc = MultiplyByQuantizedMultiplierSmallerThanOne(
-              acc, output_multiplier, output_shift);
+          acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+              acc, output_multiplier, kReverseShift * output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -646,8 +638,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       if (bias_data) {
         acc += bias_data[Offset(bias_dims, out_c, 0, 0, 0)];
       }
-      acc = MultiplyByQuantizedMultiplierSmallerThanOne(acc, output_multiplier,
-                                                        output_shift);
+      acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          acc, output_multiplier, kReverseShift * output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -1041,8 +1033,8 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
     for (int c = 0; c < depth; c++) {
       int32 diff =
           input_data[Offset(input_dims, c, i, 0, 0)] - input_zero_point;
-      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOne(
-          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
+      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          128 * diff, inv_l2norm_multiplier, kReverseShift * inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
       output_data[Offset(output_dims, c, i, 0, 0)] =
@@ -1113,15 +1105,17 @@ inline void Add(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sum = scaled_input1_val + scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -1267,15 +1261,17 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sum = scaled_input1_val + scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -1320,15 +1316,17 @@ inline void BroadcastAddFivefold(
             const int32 shifted_input1_val = input1_val * (1 << left_shift);
             const int32 shifted_input2_val = input2_val * (1 << left_shift);
             const int32 scaled_input1_val =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    shifted_input1_val, input1_multiplier, input1_shift);
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    shifted_input1_val, input1_multiplier,
+                    kReverseShift * input1_shift);
             const int32 scaled_input2_val =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    shifted_input2_val, input2_multiplier, input2_shift);
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    shifted_input2_val, input2_multiplier,
+                    kReverseShift * input2_shift);
             const int32 raw_sum = scaled_input1_val + scaled_input2_val;
             const int32 raw_output =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    raw_sum, output_multiplier, output_shift) +
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    raw_sum, output_multiplier, kReverseShift * output_shift) +
                 output_offset;
             const int32 clamped_output =
                 std::min(output_activation_max,
@@ -1508,9 +1506,9 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
           const int32 input2_val =
               input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
           const int32 unclamped_result =
-              output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  input1_val * input2_val, output_multiplier, output_shift);
+              output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                                  input1_val * input2_val, output_multiplier,
+                                  kReverseShift * output_shift);
           const int32 clamped_output =
               std::min(output_activation_max,
                        std::max(output_activation_min, unclamped_result));
@@ -1724,15 +1722,17 @@ inline void BroadcastSub(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sub = scaled_input1_val - scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sub, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sub, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -2944,9 +2944,9 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
         fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
     const int adjusted_diff_min =
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOne(
+                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     reverse_scaling_right_shift));
+                     kReverseShift * reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff =
@@ -3850,10 +3850,14 @@ inline void Comparison(int left_shift, const T* input1_data,
     const int32 input2_val = input2_offset + input2_data[i];
     const int32 shifted_input1_val = input1_val * (1 << left_shift);
     const int32 shifted_input2_val = input2_val * (1 << left_shift);
-    const int32 scaled_input1_val = MultiplyByQuantizedMultiplierSmallerThanOne(
-        shifted_input1_val, input1_multiplier, input1_shift);
-    const int32 scaled_input2_val = MultiplyByQuantizedMultiplierSmallerThanOne(
-        shifted_input2_val, input2_multiplier, input2_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, input1_multiplier,
+            kReverseShift * input1_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, input2_multiplier,
+            kReverseShift * input2_shift);
     output_data[i] = F(scaled_input1_val, scaled_input2_val);
   }
 }
@@ -3902,11 +3906,13 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           output_data[Offset(output_dims, c, x, y, b)] =
               F(scaled_input1_val, scaled_input2_val);
         }
