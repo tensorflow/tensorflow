@@ -124,6 +124,12 @@ ExecutionOptions CreateExecutionOptions(
     LayoutUtil::SetToDefaultLayout(
         execution_options.mutable_shape_with_output_layout());
   }
+
+  for (const std::string& disabled_pass : build_options.disabled_hlo_passes()) {
+    execution_options.mutable_debug_options()->add_xla_disable_hlo_passes(
+        disabled_pass);
+  }
+
   return execution_options;
 }
 
