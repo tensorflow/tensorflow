@@ -79,21 +79,21 @@ def _get_workers(num_workers, period, workers, moving_rate):
         var_0 = variable_scope.get_variable(initializer=0.0, name="v0")
         var_1 = variable_scope.get_variable(initializer=1.0, name="v1")
 
-      with ops.device("/job:worker/task:" + str(worker_id)):
-        grads_0 = constant_op.constant(-1.0)
-        grads_1 = constant_op.constant(-1.0)
+        with ops.device("/job:worker/task:" + str(worker_id)):
+          grads_0 = constant_op.constant(-1.0)
+          grads_1 = constant_op.constant(-1.0)
 
-        sgd_opt = gradient_descent.GradientDescentOptimizer(1.0)
-        opt = ElasticAverageOptimizer(
-            opt=sgd_opt,
-            num_worker=num_workers,
-            moving_rate=moving_rate,
-            communication_period=period,
-            ea_custom_getter=ea_coustom)
-        train_op = [
-            opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
-                                global_step)
-        ]
+          sgd_opt = gradient_descent.GradientDescentOptimizer(1.0)
+          opt = ElasticAverageOptimizer(
+              opt=sgd_opt,
+              num_worker=num_workers,
+              moving_rate=moving_rate,
+              communication_period=period,
+              ea_custom_getter=ea_coustom)
+          train_op = [
+               opt.apply_gradients(([grads_0, var_0], [grads_1, var_1]),
+                                  global_step)
+          ]
         easgd_hook = opt.make_session_run_hook(is_chief, worker_id)
       # Creates MonitoredSession
       sess = training.MonitoredTrainingSession(
