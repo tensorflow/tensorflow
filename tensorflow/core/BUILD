@@ -843,7 +843,6 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
-        "util/stats_calculator.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -870,9 +869,11 @@ tf_cuda_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = ["util/stats_calculator.cc"],
-    hdrs = [
+    srcs = [
         "util/stat_summarizer_options.h",
+        "util/stats_calculator.cc",
+    ],
+    hdrs = [
         "util/stats_calculator.h",
     ],
     deps = [":platform_base"],
