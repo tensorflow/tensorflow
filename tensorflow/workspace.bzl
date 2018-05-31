@@ -707,6 +707,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "cython-0.28.4",
       build_file = clean_dep("//third_party:cython.BUILD"),
       delete = ["BUILD.bazel"],
+      system_build_file = clean_dep("//third_party/systemlibs:cython.BUILD"),
   )
 
   tf_http_archive(
