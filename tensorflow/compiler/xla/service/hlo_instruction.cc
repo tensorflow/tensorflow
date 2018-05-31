@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -110,7 +111,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->name_ = proto.name();
 
   instruction->metadata_ = proto.metadata();
-  instruction->set_backend_config(proto.backend_config());
+  instruction->backend_config_ = proto.backend_config();
   if (proto.has_literal()) {
     TF_ASSIGN_OR_RETURN(instruction->literal_,
                         Literal::CreateFromProto(proto.literal()));
@@ -1521,7 +1522,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
-  clone->set_backend_config(backend_config());
+  clone->set_raw_backend_config_string(backend_config_);
   if (context != nullptr) {
     context->MapInstruction(this, clone.get());
     clone->ReplaceCalledComputations([&](HloComputation* callee) {
@@ -2182,8 +2183,8 @@ string HloInstruction::ToStringWithCanonicalNameMap(
        !metadata_.source_file().empty())) {
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
-  if (options.print_backend_config() && !backend_config().empty()) {
-    StrAppend(&result, ", backend_config=\"", CEscape(backend_config()), "\"");
+  if (options.print_backend_config() && !backend_config_.empty()) {
+    StrAppend(&result, ", backend_config=\"", CEscape(backend_config_), "\"");
   }
   return result;
 }
@@ -2463,7 +2464,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_metadata() = metadata_;
-  proto.set_backend_config(backend_config());
+  proto.set_backend_config(backend_config_);
   if (literal_ != nullptr) {
     *proto.mutable_literal() = literal_->ToProto();
   }
@@ -3524,6 +3525,31 @@ bool HloInstruction::CouldBeBitcast() const {
     default:
       return false;
   }
+}
+
+Status HloInstruction::GetBackendConfigInternal(
+    tensorflow::protobuf::Message* proto) const {
+  proto->Clear();
+
+  // Empty string does not parse as valid JSON, but it's a valid backend config,
+  // corresponding to the empty proto.
+  if (backend_config_.empty()) {
+    return Status::OK();
+  }
+  return tensorflow::HumanReadableJsonToProto(backend_config_, proto);
+}
+
+Status HloInstruction::set_backend_config(
+    const tensorflow::protobuf::Message& proto) {
+  TF_ASSIGN_OR_RETURN(backend_config_, BackendConfigToRawString(proto));
+  return Status::OK();
+}
+
+/* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
+    const tensorflow::protobuf::Message& proto) {
+  string ret;
+  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
+  return ret;
 }
 
 HloModule* HloInstruction::GetModule() const {

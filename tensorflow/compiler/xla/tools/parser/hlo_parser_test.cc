@@ -1025,7 +1025,7 @@ ENTRY %configuration_test() -> s32[] {
   EXPECT_EQ("foo bar", result.ValueOrDie()
                            ->entry_computation()
                            ->root_instruction()
-                           ->backend_config());
+                           ->raw_backend_config_string());
 }
 
 TEST_F(HloParserTest, LiteralDimensionsMismatch_1) {

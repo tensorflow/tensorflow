@@ -1127,7 +1127,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     instruction->set_metadata(*metadata);
   }
   if (backend_config) {
-    instruction->set_backend_config(std::move(*backend_config));
+    instruction->set_raw_backend_config_string(std::move(*backend_config));
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)

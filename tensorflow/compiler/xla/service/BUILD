@@ -309,6 +309,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:human_readable_json",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
