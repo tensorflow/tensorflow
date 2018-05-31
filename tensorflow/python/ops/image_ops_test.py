@@ -1047,6 +1047,46 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       self.assertGreaterEqual(count_flipped, 20)
       self.assertGreaterEqual(count_unflipped, 20)
 
+  def testRandomFlipLeftRightWithBatch(self):
+    batch_size = 16
+    seed = 42
+
+    # create single item of test data
+    x_np_raw = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([1, 2, 3, 1])
+    y_np_raw = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([1, 2, 3, 1])
+    
+    # create batched test data
+    x_np = np.vstack([x_np_raw for _ in range(batch_size)])
+    y_np = np.vstack([y_np_raw for _ in range(batch_size)])
+    
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_left_right(x_tf)
+      self.assertTrue(y.op.name.startswith("random_flip_left_right"))
+
+      count_flipped = 0
+      count_unflipped = 0
+      for _ in range(100):
+        y_tf = y.eval()
+
+        # check every element of the batch
+        for i in range(batch_size):
+          if y_tf[i][0][0] == 1:
+            self.assertAllEqual(y_tf[i], x_np[i])
+            count_unflipped += 1
+          else:
+            self.assertAllEqual(y_tf[i], y_np[i])
+            count_flipped += 1
+
+      # 100 trials, each containing batch_size elements
+      # Mean: 50 * batch_size
+      # Std Dev: ~5 * sqrt(batch_size)
+      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
+      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
+      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
+      self.assertGreaterEqual(count_flipped, six_sigma)
+      self.assertGreaterEqual(count_unflipped, six_sigma)
+
   def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
 
@@ -1117,6 +1157,46 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       # Six Sigma: 50 - (5 * 6) = 20
       self.assertGreaterEqual(count_flipped, 20)
       self.assertGreaterEqual(count_unflipped, 20)
+
+  def testRandomFlipUpDownWithBatch(self):
+    batch_size = 16
+    seed = 42
+
+    # create single item of test data
+    x_np_raw = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([1, 2, 3, 1])
+    y_np_raw = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([1, 2, 3, 1])
+    
+    # create batched test data
+    x_np = np.vstack([x_np_raw for _ in range(batch_size)])
+    y_np = np.vstack([y_np_raw for _ in range(batch_size)])
+    
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_up_down(x_tf, seed=seed)
+      self.assertTrue(y.op.name.startswith("random_flip_up_down"))
+
+      count_flipped = 0
+      count_unflipped = 0
+      for _ in range(100):
+        y_tf = y.eval()
+
+        # check every element of the batch
+        for i in range(batch_size):
+          if y_tf[i][0][0] == 1:
+            self.assertAllEqual(y_tf[i], x_np[i])
+            count_unflipped += 1
+          else:
+            self.assertAllEqual(y_tf[i], y_np[i])
+            count_flipped += 1
+
+      # 100 trials, each containing batch_size elements
+      # Mean: 50 * batch_size
+      # Std Dev: ~5 * sqrt(batch_size)
+      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
+      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
+      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
+      self.assertGreaterEqual(count_flipped, six_sigma)
+      self.assertGreaterEqual(count_unflipped, six_sigma)
 
   def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
