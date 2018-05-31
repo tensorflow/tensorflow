@@ -407,6 +407,8 @@ string FilterDescriptor::ToShortString() const {
   switch (layout_) {
     case FilterLayout::kOutputInputYX:
       return port::StrCat(od, id, spatial);
+    case FilterLayout::kOutputYXInput:
+      return port::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
       return port::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
