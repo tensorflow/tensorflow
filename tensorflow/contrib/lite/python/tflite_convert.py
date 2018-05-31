@@ -91,6 +91,9 @@ def _convert_model(flags):
   converter = _get_toco_converter(flags)
   if flags.inference_type:
     converter.inference_type = _types_pb2.IODataType.Value(flags.inference_type)
+  if flags.inference_input_type:
+    converter.inference_input_type = _types_pb2.IODataType.Value(
+        flags.inference_input_type)
   if flags.output_format:
     converter.output_format = _toco_flags_pb2.FileFormat.Value(
         flags.output_format)
@@ -101,9 +104,16 @@ def _convert_model(flags):
     mean_values = _parse_int_array(flags.mean_values)
     quant_stats = zip(mean_values, std_dev_values)
     converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
+  if flags.default_ranges_min and flags.default_ranges_max:
+    converter.default_ranges_stats = (flags.default_ranges_min,
+                                      flags.default_ranges_max)
 
   if flags.drop_control_dependency:
     converter.drop_control_dependency = flags.drop_control_dependency
+  if flags.reorder_across_fake_quant:
+    converter.reorder_across_fake_quant = flags.reorder_across_fake_quant
+  if flags.change_concat_input_ranges:
+    converter.change_concat_input_ranges = flags.change_concat_input_ranges
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
 
@@ -116,8 +126,8 @@ def _convert_model(flags):
 def _check_flags(flags, unparsed):
   """Checks the parsed and unparsed flags to ensure they are valid.
 
-  Displays warnings for unparsed flags. Raises an error for parsed flags that
-  don't meet the required conditions.
+  Raises an error if previously support unparsed flags are found. Raises an
+  error for parsed flags that don't meet the required conditions.
 
   Args:
     flags: argparse.Namespace object containing TFLite flags.
@@ -126,17 +136,20 @@ def _check_flags(flags, unparsed):
   Raises:
     ValueError: Invalid flags.
   """
+
   # Check unparsed flags for common mistakes based on previous TOCO.
+  def _get_message_unparsed(flag, orig_flag, new_flag):
+    if flag.startswith(orig_flag):
+      return "\n  Use {0} instead of {1}".format(new_flag, orig_flag)
+    return ""
+
   if unparsed:
-    print("tflite_convert: warning: Unable to parse following flags "
-          "'{}'".format(",".join(unparsed)))
+    output = ""
     for flag in unparsed:
-      if "--input_file=" in flag:
-        print("tflite_convert: warning: Use --graph_def_file instead of "
-              "--input_file")
-      if "--std_values=" in flag:
-        print("tflite_convert: warning: Use --std_dev_values instead of "
-              "--std_values")
+      output += _get_message_unparsed(flag, "--input_file", "--graph_def_file")
+      output += _get_message_unparsed(flag, "--std_value", "--std_dev_values")
+      output += _get_message_unparsed(flag, "--batch_size", "--input_shapes")
+    raise ValueError(output)
 
   # Check that flags are valid.
   if flags.graph_def_file and (not flags.input_arrays or
@@ -162,6 +175,10 @@ def _check_flags(flags, unparsed):
         flags.std_dev_values.count(",") != flags.input_arrays.count(",")):
       raise ValueError("--std_dev_values, --mean_values, and --input_arrays "
                        "must have the same number of items")
+
+  if bool(flags.default_ranges_min) != bool(flags.default_ranges_max):
+    raise ValueError("--default_ranges_min and --default_ranges_max must be "
+                     "used together")
 
 
 def run_main(_):
@@ -199,6 +216,12 @@ def run_main(_):
       type=str,
       choices=["FLOAT", "QUANTIZED_UINT8"],
       help="Target data type of arrays in the output file.")
+  parser.add_argument(
+      "--inference_input_type",
+      type=str,
+      choices=["FLOAT", "QUANTIZED_UINT8"],
+      help=("Target data type of input arrays. Allows for a different type for "
+            "input arrays in the case of quantization."))
 
   # Input and output arrays flags.
   parser.add_argument(
@@ -218,12 +241,13 @@ def run_main(_):
   parser.add_argument(
       "--saved_model_tag_set",
       type=str,
-      help=("Set of tags identifying the MetaGraphDef within the SavedModel "
-            "to analyze. All tags must be present. (default \"serve\")"))
+      help=("Comma-separated set of tags identifying the MetaGraphDef within "
+            "the SavedModel to analyze. All tags must be present. "
+            "(default \"serve\")"))
   parser.add_argument(
       "--saved_model_signature_key",
       type=str,
-      help=("Key identifying SignatureDef containing inputs and outputs. "
+      help=("Key identifying the SignatureDef containing inputs and outputs. "
             "(default DEFAULT_SERVING_SIGNATURE_DEF_KEY)"))
 
   # Quantization flags.
@@ -237,14 +261,41 @@ def run_main(_):
       type=str,
       help=("Mean of training data for each input tensor, comma-separated. "
             "Used for quantization. (default None)"))
+  parser.add_argument(
+      "--default_ranges_min",
+      type=int,
+      help=("Default value for min bound of min/max range values used for all "
+            "arrays without a specified range, Intended for experimenting with "
+            "quantization via \"dummy quantization\". (default None)"))
+  parser.add_argument(
+      "--default_ranges_max",
+      type=int,
+      help=("Default value for max bound of min/max range values used for all "
+            "arrays without a specified range, Intended for experimenting with "
+            "quantization via \"dummy quantization\". (default None)"))
 
   # Graph manipulation flags.
   parser.add_argument(
       "--drop_control_dependency",
       type=bool,
       help=("Boolean indicating whether to drop control dependencies silently. "
-            "This is due to TensorFlow Lite not supporting control "
-            "dependencies. (default True)"))
+            "This is due to TensorFlow not supporting control dependencies. "
+            "(default True)"))
+  parser.add_argument(
+      "--reorder_across_fake_quant",
+      type=bool,
+      help=("Boolean indicating whether to reorder FakeQuant nodes in "
+            "unexpected locations. Used when the location of the FakeQuant "
+            "nodes is preventing graph transformations necessary to convert "
+            "the graph. Results in a graph that differs from the quantized "
+            "training graph, potentially causing differing arithmetic "
+            "behavior. (default False)"))
+  parser.add_argument(
+      "--change_concat_input_ranges",
+      type=bool,
+      help=("Boolean to change behavior of min/max ranges for inputs and "
+            "outputs of the concat operator for quantized models. Changes the "
+            "ranges of concat operator overlap when true. (default False)"))
   parser.add_argument(
       "--allow_custom_ops",
       type=bool,

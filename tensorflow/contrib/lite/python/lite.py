@@ -64,17 +64,33 @@ class TocoConverter(object):
 
     inference_type: Target data type of arrays in the output file. Currently
       must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+    inference_input_type: Target data type of input arrays. Allows for a
+      different type for input arrays in the case of quantization. Currently
+      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: The mean and std deviation of training data for each
-      input tensor. Only needed if `inference_type` is `QUANTIZED_UINT8`.
-      Dict of strings representing input tensor names to a tuple of integers
-      representing the quantization stats (e.g., {"foo" : (0., 1.)}).
-      (default {})
+    quantized_input_stats: Dict of strings representing input tensor names
+      mapped to tuple of integers representing the mean and standard deviation
+      of the training data (e.g., {"foo" : (0., 1.)}). Only need if
+      `inference_type` is `QUANTIZED_UINT8`. (default {})
+    default_ranges_stats: Tuple of integers representing (min, max) range values
+      for all arrays without a specified range. Intended for experimenting with
+      quantization via "dummy quantization". (default None)
     drop_control_dependency: Boolean indicating whether to drop control
       dependencies silently. This is due to TFLite not supporting control
       dependencies. (default True)
+    reorder_across_fake_quant: Boolean indicating whether to reorder FakeQuant
+      nodes in unexpected locations. Used when the location of the FakeQuant
+      nodes is preventing graph transformations necessary to convert the graph.
+      Results in a graph that differs from the quantized training graph,
+      potentially causing differing arithmetic behavior. (default False)
+    change_concat_input_ranges: Boolean to change behavior of min/max ranges for
+      inputs and outputs of the concat operator for quantized models. Changes
+      the ranges of concat operator overlap when true. (default False)
     allow_custom_ops: Boolean indicating whether to allow custom operations.
+      When false any unknown operation is an error. When true, custom ops are
+      created for any op that is unknown. The developer will need to provide
+      these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
 
   Example usage:
@@ -109,9 +125,13 @@ class TocoConverter(object):
     self._input_tensors = input_tensors
     self._output_tensors = output_tensors
     self.inference_type = constants.FLOAT
+    self.inference_input_type = None
     self.output_format = constants.TFLITE
     self.quantized_input_stats = {}
+    self.default_ranges_stats = None
     self.drop_control_dependency = True
+    self.reorder_across_fake_quant = False
+    self.change_concat_input_ranges = False
     self.allow_custom_ops = False
 
   @classmethod
@@ -270,10 +290,15 @@ class TocoConverter(object):
         input_tensors=self._input_tensors,
         output_tensors=self._output_tensors,
         inference_type=self.inference_type,
+        inference_input_type=self.inference_input_type,
         input_format=constants.TENSORFLOW_GRAPHDEF,
         output_format=self.output_format,
         quantized_input_stats=quantized_stats,
-        drop_control_dependency=self.drop_control_dependency)
+        default_ranges_stats=self.default_ranges_stats,
+        drop_control_dependency=self.drop_control_dependency,
+        reorder_across_fake_quant=self.reorder_across_fake_quant,
+        change_concat_input_ranges=self.change_concat_input_ranges,
+        allow_custom_ops=self.allow_custom_ops)
     return result
 
   def _set_batch_size(self, batch_size):
