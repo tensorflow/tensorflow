@@ -61,7 +61,7 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
       to_concatenate_->Unref();
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Concatenate")}));
@@ -94,10 +94,12 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            i_(0),
-            input_impl_(params.dataset->input_->MakeIterator(
-                strings::StrCat(params.prefix, "[0]"))) {}
+          : DatasetIterator<Dataset>(params), i_(0) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(
+            ctx, strings::StrCat(prefix(), "[0]"), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -114,8 +116,8 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
             return Status::OK();
           }
           if (++i_ < 2) {
-            input_impl_ = dataset()->to_concatenate_->MakeIterator(
-                strings::StrCat(prefix(), "[1]"));
+            TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
+                ctx, strings::StrCat(prefix(), "[1]"), &input_impl_));
           }
         }
         *end_of_sequence = true;
@@ -147,8 +149,8 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
         if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
           return errors::InvalidArgument("i_ must be in range [0, 2].");
         if (i_ == 1) {
-          input_impl_ = dataset()->to_concatenate_->MakeIterator(
-              strings::StrCat(prefix(), "[1]"));
+          TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
+              ctx, strings::StrCat(prefix(), "[1]"), &input_impl_));
         } else if (i_ == 2) {
           input_impl_.reset();
         }

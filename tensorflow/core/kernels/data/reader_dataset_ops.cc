@@ -89,7 +89,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
           use_compression_(!compression_type.empty()),
           options_(options) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
@@ -323,7 +323,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           footer_bytes_(footer_bytes),
           buffer_size_(buffer_size) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
@@ -543,7 +543,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::TFRecord")}));

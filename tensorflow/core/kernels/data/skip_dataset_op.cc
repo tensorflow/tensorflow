@@ -47,14 +47,11 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ < 0) {
         return std::unique_ptr<IteratorBase>(
             new EmptyIterator({this, strings::StrCat(prefix, "::EmptySkip")}));
-      } else if (count_ == 0) {
-        // Pass through.
-        return input_->MakeIterator(prefix);
       } else {
         return std::unique_ptr<IteratorBase>(new FiniteIterator(
             {this, strings::StrCat(prefix, "::FiniteSkip")}));
@@ -108,9 +105,11 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
       explicit FiniteIterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            i_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params), i_(0) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,

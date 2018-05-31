@@ -64,7 +64,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     ~FileDataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (env_->FileExists(strings::StrCat(filename_, ".index")).ok()) {
         return std::unique_ptr<IteratorBase>(new FileReaderIterator(
@@ -106,11 +106,14 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       explicit FileWriterIterator(const Params& params)
           : DatasetIterator<FileDataset>(params),
             cur_index_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             writer_(params.dataset->env_, params.dataset->filename_),
             lockfile_(strings::StrCat(params.dataset->filename_, ".lockfile")),
             lockfile_created_(false),
             iteration_completed_(false) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -268,7 +271,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     ~MemoryDataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       mutex_lock l(mu_);
       if (cache_) {
@@ -305,7 +308,6 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit MemoryWriterIterator(const Params& params)
           : DatasetIterator<MemoryDataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             cache_(new std::vector<std::vector<Tensor>>) {}
 
       ~MemoryWriterIterator() override {
@@ -321,6 +323,10 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l2(dataset()->mu_);
           dataset()->writer_iterator_created_ = false;
         }
+      }
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,

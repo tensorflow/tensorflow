@@ -85,7 +85,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
         bool first_call = false;
         if (!input_impl_ && epoch_ == 0) {
           first_call = true;
-          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(
+              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         }
         while (input_impl_ && num_elements_ < dataset()->buffer_size_) {
           if (ctx->env()->NowMicros() >
@@ -114,7 +115,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             epoch_++;
             int64 n = slices_.back()->end;
             slices_.emplace_back(new Slice{n, n});
-            input_impl_ = dataset()->input_->MakeIterator(prefix());
+            TF_RETURN_IF_ERROR(
+                dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           }
           if (!end_of_input_sequence) {
             buffer_[slices_.back()->end % dataset()->buffer_size_] =
@@ -211,7 +213,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
 
         // Restore the input iterator if it wasn't already exhausted.
         if (!reader->Contains(full_name("end_of_input_sequence"))) {
-          input_impl_ = dataset()->input_->MakeIterator(prefix());
+          TF_RETURN_IF_ERROR(
+              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
@@ -361,7 +364,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                              ", ", seed2_, ")::ReshufflingDataset");
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       int64 iterator_seed;
       int64 iterator_seed2;
@@ -399,7 +402,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                              ", ", seed2_, ")::FixedSeedDataset");
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new ShuffleDatasetBase::Iterator(
           {this, strings::StrCat(prefix, "::Shuffle")}, seed_, seed2_));
@@ -482,7 +485,7 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
                              seed_, ", ", seed2_, ", ", count_, ")::Dataset");
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new ShuffleDatasetBase::Iterator(
           {this, strings::StrCat(prefix, "::ShuffleAndRepeat")}, seed_,

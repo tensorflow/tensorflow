@@ -133,7 +133,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           delim_(delim),
           na_value_(std::move(na_value)) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::CSV")}));
