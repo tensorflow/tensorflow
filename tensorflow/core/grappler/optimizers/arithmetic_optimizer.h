@@ -71,6 +71,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_negation = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
+    bool remove_redundant_reshape = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
