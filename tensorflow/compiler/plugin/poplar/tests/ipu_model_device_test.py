@@ -194,5 +194,24 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         except tf.errors.UnknownError:
             pass
 
+    def testIpuSimulatorDevice(self):
+        with tf.device("/device:IPU:0"):
+            pa = tf.placeholder(tf.float32, [16], name="a")
+            pb = tf.placeholder(tf.float32, [16], name="b")
+            output = pa + pb
+
+        opts = config_pb2.IPUOptions()
+        dev = opts.device_config.add()
+        dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_SIMULATOR
+
+        try:
+            with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
+                fd = {pa: np.zeros([16]), pb: np.zeros([16])}
+                res = sess.run(output, fd)
+
+                self.assertAllClose(res, np.zeros([16]))
+        except tf.errors.InternalError as e:
+            self.assertTrue(e.message.startswith("Failed to create session"))
+
 if __name__ == "__main__":
     googletest.main()

@@ -160,6 +160,7 @@ message IPUOptions {
       IPU = 1;
       CPU = 2;
       IPU_MODEL = 3;
+      IPU_SIMULATOR = 4;
     };
     Type type = 1;
 
