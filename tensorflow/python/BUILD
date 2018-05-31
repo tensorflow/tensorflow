@@ -718,6 +718,38 @@ py_library(
 )
 
 py_library(
+    name = "function_def_to_graph",
+    srcs = ["framework/function_def_to_graph.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":function",
+        ":op_def_registry",
+        ":tensor_shape",
+        ":versions",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "function_def_to_graph_test",
+    size = "small",
+    srcs = ["framework/function_def_to_graph_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":function_def_to_graph",
+        ":graph_to_function_def",
+        ":math_ops",
+        ":test_ops",
+    ],
+)
+
+py_library(
     name = "graph_util",
     srcs = [
         "framework/graph_util.py",
