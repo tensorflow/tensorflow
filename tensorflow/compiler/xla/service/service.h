@@ -83,11 +83,6 @@ class Service : public ServiceInterface {
   static StatusOr<std::unique_ptr<Service>> NewService(
       const ServiceOptions& options);
 
-  // Creates a new computation with the given name.
-  // A unique ComputationHandle is returned.
-  Status Computation(const ComputationRequest* arg,
-                     ComputationResponse* result) override;
-
   // Unregisters a previously-allocated global handle.
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
@@ -100,35 +95,15 @@ class Service : public ServiceInterface {
   Status DeconstructTuple(const DeconstructTupleRequest* arg,
                           DeconstructTupleResponse* result) override;
 
-  // Modifies the provided computation so that subsequent executions
-  // will compute the provided ComputationDataHandle, rather than the
-  // last expression enqueued on that Computation.
-  Status SetReturnValue(const SetReturnValueRequest* arg,
-                        SetReturnValueResponse* results) override;
-
-  // Executes a computation with the provided global data passed as
-  // immutable arguments. Returns global data output and execution timing.
-  Status Execute(const ExecuteRequest* arg, ExecuteResponse* result) override;
-
   // Executes a computation with the provided global data passed as
   // immutable arguments. The request contains the whole computation graph.
   // Returns global data output and execution timing.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   Status ExecuteGraph(const ExecuteGraphRequest* arg,
                       ExecuteResponse* result) override;
 
   // Executes one or more computations in parallel with the provided global data
   // passed as immutable arguments. Returns global data output for each
   // computation.
-  Status ExecuteParallel(const ExecuteParallelRequest* arg,
-                         ExecuteParallelResponse* result) override;
-
-  // Executes one or more computations in parallel with the provided global data
-  // passed as immutable arguments. Returns global data output for each
-  // computation.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                               ExecuteParallelResponse* result) override;
 
@@ -142,16 +117,6 @@ class Service : public ServiceInterface {
   // replica id 0.
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override;
-
-  // Asynchronously executes a computation with provided arguments. Invokes
-  // the provided computation with the provided global data passed as
-  // immutable arguments. Returns a handle to the execution.
-  //
-  // (Note: The corresponding function in xla::Client was removed as part of
-  // b/64116060, in an attempt to simplify our API.  We're keeping this around
-  // for now in case we want to expose this to clients in a different way.)
-  Status ExecuteAsync(const ExecuteAsyncRequest* arg,
-                      ExecuteAsyncResponse* result) override;
 
   // Waits until the specified execution is complete and returns the result.
   // Calling this API multiple times with the same execution handle returns the
@@ -190,13 +155,6 @@ class Service : public ServiceInterface {
   Status ResetDevice(const ResetDeviceRequest* arg,
                      ResetDeviceResponse* result) override;
 
-  // Tests if an expression is a compile-time constant.
-  Status IsConstant(const IsConstantRequest* arg,
-                    IsConstantResponse* result) override;
-
-  // Computes the value of a constant expression.
-  Status ComputeConstant(const ComputeConstantRequest* arg,
-                         ComputeConstantResponse* result) override;
   Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
                               ComputeConstantResponse* result) override;
 
@@ -205,42 +163,9 @@ class Service : public ServiceInterface {
   Status GetShape(const GetShapeRequest* arg,
                   GetShapeResponse* result) override;
 
-  // Returns the program shape of the computation associated with the given
-  // handle.
-  Status GetComputationShape(const GetComputationShapeRequest* arg,
-                             GetComputationShapeResponse* result) override;
-
-  /////
-  // Computation-oriented methods.
-
-  // Enqueues an Op on the computation.
-  Status Op(const OpRequest* arg, OpResponse* result) override;
-
-  // Retrieves the inferred shape for a value within a computation.
-  Status GetLocalShape(const GetLocalShapeRequest* arg,
-                       GetLocalShapeResponse* result) override;
-
   // Retrieves the statistics of a computation.
-  Status GetComputationStats(const ComputationStatsRequest* arg,
-                             ComputationStatsResponse* result) override;
-
-  // Retrieves the statistics of a computation.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   Status GetComputationGraphStats(const ComputationGraphStatsRequest* arg,
                                   ComputationStatsResponse* result) override;
-
-  // Snapshots the current state of a computation handle into a serializable
-  // protocol buffer form, so it can be loaded via
-  // LoadComputationSnapshot.
-  Status SnapshotComputation(const SnapshotComputationRequest* arg,
-                             SnapshotComputationResponse* result) override;
-
-  // Loads a computation from a serialized protocol buffer created via
-  // SnapshotComputation.
-  Status LoadComputationSnapshot(
-      const LoadComputationSnapshotRequest* arg,
-      LoadComputationSnapshotResponse* result) override;
 
   // Creates a unique channel handle that can be used for Send/Recv
   // instructions.
@@ -382,7 +307,6 @@ class Service : public ServiceInterface {
   // Executes a single computation which has more than one target device.
   // The N devices are expected to all return an empty tuple, but one, which
   // will be the result of this computation.
-  Status ExecuteOneToN(const ExecuteRequest* arg, ExecuteResponse* result);
   Status ExecuteOneToN(const ExecuteGraphRequest* arg, ExecuteResponse* result);
 
   // Convenience function which checks whether the given shape_with_layout
