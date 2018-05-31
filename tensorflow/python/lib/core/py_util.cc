@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/py_util.h"
 
+#include <Python.h>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include <Python.h>
 
 namespace tensorflow {
 namespace {

@@ -299,6 +299,8 @@ class ListScheduler {
       auto best_it = ready_queue.end();
       --best_it;
       const HloInstruction* best = best_it->second.instruction;
+      VLOG(2) << "Schedule instruction: " << best->ToShortString()
+              << " Bytes freed: " << best_it->first.first;
       ready_queue.erase(best_it);
       ready_instructions.erase(best);
       schedule.push_back(best);
@@ -437,6 +439,7 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
   // simply users-1 for each instruction.  By subtracting 1, we're saying that
   // instructions with no users or a single user don't count; instructions with
   // lots of fan-out will be visited earlier.
+  int64 cumulative_total_size = 0;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
@@ -449,12 +452,21 @@ StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     int64 logical_buffer_size = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
     total_sizes[hlo] = logical_buffer_size;
+    cumulative_total_size += logical_buffer_size;
     tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
       extra_users[hlo] += extra_users[operand];
       total_sizes[hlo] += total_sizes[operand];
     }
+    // total_sizes[hlo] transitively includes the sizes of all nodes that
+    // lead to it. But computation is a DAG, so we are double-counting nodes,
+    // which can lead to overflows for large programs.
+    // cumulative_total_size caps the size to prevent overflows.
+    // NOTE(dimvar): this is quite ugly and should be changed. It's unclear
+    // why we care about transitive sizes; when scheduling a node, its input
+    // and output buffers should be all that matters, not its "history".
+    total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
   CHECK_EQ(total_sizes.size(), computation.instruction_count());

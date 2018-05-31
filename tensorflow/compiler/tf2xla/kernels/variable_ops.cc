@@ -57,7 +57,7 @@ class ReadVariableOp : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ReadVariableOp"), ReadVariableOp);
+REGISTER_XLA_OP(Name("ReadVariableOp").CompilationOnly(), ReadVariableOp);
 
 class AssignVariableOp : public XlaOpKernel {
  public:
@@ -67,7 +67,7 @@ class AssignVariableOp : public XlaOpKernel {
                    ctx->AssignVariable(0, ctx->input_type(1), ctx->Input(1)));
   }
 };
-REGISTER_XLA_OP(Name("AssignVariableOp"), AssignVariableOp);
+REGISTER_XLA_OP(Name("AssignVariableOp").CompilationOnly(), AssignVariableOp);
 
 class AssignAddVariableOp : public XlaOpKernel {
  public:

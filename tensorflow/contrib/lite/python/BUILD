@@ -45,7 +45,22 @@ py_library(
         ":convert",
         ":convert_saved_model",
         ":interpreter",
+        ":lite_constants",
         ":op_hint",
+        "//tensorflow/contrib/saved_model:saved_model_py",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python/tools:freeze_graph_lib",
+    ],
+)
+
+py_test(
+    name = "lite_test",
+    srcs = ["lite_test.py"],
+    data = [":interpreter_test_data"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":lite",
     ],
 )
 
@@ -110,10 +125,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":convert",
-        ":lite_constants",
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python:platform",
         "//tensorflow/python/tools:freeze_graph_lib",
     ],
 )
@@ -148,15 +162,6 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
-    ],
-)
-
-py_binary(
-    name = "convert_saved_model_to_frozen_graph",
-    srcs = ["convert_saved_model_to_frozen_graph.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":convert_saved_model",
     ],
 )
 

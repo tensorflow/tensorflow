@@ -254,6 +254,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
+    TF_LITE_ENSURE(context, real_multiplier < 1.0);
     QuantizeMultiplierSmallerThanOne(real_multiplier, &data->output_multiplier,
                                      &data->output_shift);
     CalculateActivationRangeUint8(params->activation, output,

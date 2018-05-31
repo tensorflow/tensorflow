@@ -164,6 +164,16 @@ class ComputationsWithConstantsTest(LocalComputationTest):
         c.Constant(NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
     self._ExecuteAndCompareClose(c, expected=[[2, 1, 4], [3, 6, 5]])
 
+  def testGetProto(self):
+    c = self._NewComputation()
+    c.Add(
+        c.Constant(NumpyArrayF32([[1, 2, 3], [4, 5, 6]])),
+        c.Constant(NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
+    built = c.Build()
+    proto = built.GetProto()  # HloModuleProto
+    self.assertTrue(len(proto.computations) == 1)
+    self.assertTrue(len(proto.computations[0].instructions) == 3)
+
   def testSum2DF64(self):
     c = self._NewComputation()
     c.Add(

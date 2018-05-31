@@ -591,11 +591,11 @@ class CheckpointableBase(object):
           self._unconditional_checkpoint_dependencies):
         if name == old_name:
           self._unconditional_checkpoint_dependencies[index] = new_reference
-    else:
+    elif current_object is None:
       self._unconditional_checkpoint_dependencies.append(new_reference)
-
-    self._unconditional_dependency_names[name] = checkpointable
-    self._handle_deferred_dependencies(name=name, checkpointable=checkpointable)
+      self._unconditional_dependency_names[name] = checkpointable
+      self._handle_deferred_dependencies(
+          name=name, checkpointable=checkpointable)
     return checkpointable
 
   def _handle_deferred_dependencies(self, name, checkpointable):

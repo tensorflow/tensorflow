@@ -1631,39 +1631,187 @@ Status ConstantFolding::ReplaceOperationWithConstant(
   return Status::OK();
 }
 
-Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
-                                      GraphProperties* properties,
-                                      bool use_shape_info) {
+Status ConstantFolding::SimplifyGraph(bool use_shape_info,
+                                      GraphDef* optimized_graph,
+                                      GraphProperties* properties) {
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
-    TF_RETURN_IF_ERROR(SimplifyNode(optimized_graph->mutable_node(i),
-                                    optimized_graph, properties,
-                                    use_shape_info));
+    TF_RETURN_IF_ERROR(SimplifyNode(use_shape_info,
+                                    optimized_graph->mutable_node(i),
+                                    optimized_graph, properties));
   }
   return Status::OK();
 }
 
-Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
-                                     GraphProperties* properties,
-                                     bool use_shape_info) {
-  if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
-    ReplaceOperationWithIdentity(1, *properties, node, optimized_graph);
+Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
+                                     GraphDef* optimized_graph,
+                                     GraphProperties* properties) {
+  if (RemoveSplitOrSplitV(*properties, optimized_graph, node)) {
     return Status::OK();
+  }
+
+  bool remove_shuffle_transpose_successful = false;
+  Status remove_shuffle_transpose_status =
+      RemoveShuffleOrTranspose(*properties, use_shape_info, optimized_graph,
+                               node, &remove_shuffle_transpose_successful);
+  if (!remove_shuffle_transpose_status.ok()) {
+    return remove_shuffle_transpose_status;
+  } else if (remove_shuffle_transpose_successful) {
+    return Status::OK();
+  }
+
+  if (RemoveRandomShuffle(*properties, use_shape_info, optimized_graph, node)) {
+    return Status::OK();
+  }
+
+  bool remove_reverse_successful = false;
+  Status remove_reverse_status =
+      RemoveReverse(*properties, use_shape_info, optimized_graph, node,
+                    &remove_reverse_successful);
+  if (!remove_reverse_status.ok()) {
+    return remove_reverse_status;
+  } else if (remove_reverse_successful) {
+    return Status::OK();
+  }
+
+  bool simplify_slice_successful = false;
+  Status simplify_slice_status =
+      SimplifySlice(*properties, use_shape_info, optimized_graph, node,
+                    &simplify_slice_successful);
+  if (!simplify_slice_status.ok()) {
+    return simplify_slice_status;
+  } else if (simplify_slice_successful) {
+    return Status::OK();
+  }
+
+  bool simplify_strided_slice_successful = false;
+  Status simplify_strided_slice_status =
+      SimplifyStridedSlice(*properties, use_shape_info, optimized_graph, node,
+                           &simplify_strided_slice_successful);
+  if (!simplify_strided_slice_status.ok()) {
+    return simplify_strided_slice_status;
+  } else if (simplify_strided_slice_successful) {
+    return Status::OK();
+  }
+
+  bool simplify_tile_successful = false;
+  Status simplify_tile_status =
+      SimplifyTile(*properties, use_shape_info, optimized_graph, node,
+                   &simplify_tile_successful);
+  if (!simplify_tile_status.ok()) {
+    return simplify_tile_status;
+  } else if (simplify_tile_successful) {
+    return Status::OK();
+  }
+
+  bool simplify_pad_successful = false;
+  Status simplify_pad_status =
+      SimplifyPad(*properties, use_shape_info, optimized_graph, node,
+                  &simplify_pad_successful);
+  if (!simplify_pad_status.ok()) {
+    return simplify_pad_status;
+  } else if (simplify_pad_successful) {
+    return Status::OK();
+  }
+
+  if (SimplifySqueeze(*properties, use_shape_info, optimized_graph, node)) {
+    return Status::OK();
+  }
+
+  if (SimplifyPack(optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (MoveConstantsPastEnter(optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (SimplifySwitch(optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (SimplifyReduction(*properties, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (SimplifyReshape(*properties, use_shape_info, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  bool arithmetic_simplification_succeed = false;
+  Status simplify_arithmetic_status =
+      SimplifyArithmeticOperations(*properties, use_shape_info, optimized_graph,
+                                   node, &arithmetic_simplification_succeed);
+  if (!simplify_arithmetic_status.ok()) {
+    return simplify_arithmetic_status;
+  } else if (arithmetic_simplification_succeed) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (ReduceDivToReciprocalMul(optimized_graph, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (ConstantPushDown(node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (MulConvPushDown(node, *properties)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (PartialConstPropThroughIdentityN(node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (PartialAssocOpConstFolding(optimized_graph, properties, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (PartialConcatConstFolding(optimized_graph, properties, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  return Status::OK();
+}
+
+bool ConstantFolding::RemoveSplitOrSplitV(const GraphProperties& properties,
+                                          GraphDef* optimized_graph,
+                                          NodeDef* node) {
+  if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
+    ReplaceOperationWithIdentity(1, properties, node, optimized_graph);
+    return true;
   }
 
   if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
-    ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
-    return Status::OK();
+    ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+    return true;
   }
+  return false;
+}
 
-  // Remove Shuffle or Transpose op over dimensions of size 1.
+Status ConstantFolding::RemoveShuffleOrTranspose(
+    const GraphProperties& properties, bool use_shape_info,
+    GraphDef* optimized_graph, NodeDef* node, bool* success) {
   if (use_shape_info && (IsShuffle(*node) || IsTranspose(*node)) &&
-      properties->GetInputProperties(node->name()).size() >= 2) {
-    const auto& shape = properties->GetInputProperties(node->name())[0].shape();
+      properties.GetInputProperties(node->name()).size() >= 2) {
+    const auto& shape = properties.GetInputProperties(node->name())[0].shape();
     if (shape.unknown_rank()) {
       // Not optimizable.
       return Status::OK();
     }
-    const auto& p = properties->GetInputProperties(node->name())[1];
+    const auto& p = properties.GetInputProperties(node->name())[1];
     if (TensorShape::IsValid(p.shape()) && p.has_value()) {
       Tensor perm(p.dtype(), p.shape());
       if (!perm.FromProto(p.value())) {
@@ -1690,34 +1838,45 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
         replaceable &= shape.dim(j).size() == 1 || j == permutation[j];
       }
       if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
   }
-
-  // Remove RandomShuffle op if it is scalar or first dimension is of size 1.
+  *success = false;
+  return Status::OK();
+}
+bool ConstantFolding::RemoveRandomShuffle(const GraphProperties& properties,
+                                          bool use_shape_info,
+                                          GraphDef* optimized_graph,
+                                          NodeDef* node) {
   if (use_shape_info && IsRandomShuffle(*node) &&
-      !properties->GetInputProperties(node->name()).empty()) {
-    const auto& shape = properties->GetInputProperties(node->name())[0].shape();
+      !properties.GetInputProperties(node->name()).empty()) {
+    const auto& shape = properties.GetInputProperties(node->name())[0].shape();
     // The node is replaceable iff
     // unknown_rank == false && (dim_size == 0 || first dim is of size 1)
     if (!shape.unknown_rank() &&
         (shape.dim_size() == 0 || shape.dim(0).size() == 1)) {
-      ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
-      return Status::OK();
+      ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+      return true;
     }
   }
+  return false;
+}
 
-  // Remove Reverse op over dimensions with size 1.
+Status ConstantFolding::RemoveReverse(const GraphProperties& properties,
+                                      bool use_shape_info,
+                                      GraphDef* optimized_graph, NodeDef* node,
+                                      bool* success) {
   if (use_shape_info && node->op() == "ReverseV2" &&
-      properties->GetInputProperties(node->name()).size() >= 2) {
-    const auto& shape = properties->GetInputProperties(node->name())[0].shape();
+      properties.GetInputProperties(node->name()).size() >= 2) {
+    const auto& shape = properties.GetInputProperties(node->name())[0].shape();
     if (shape.unknown_rank()) {
       // Not optimizable.
       return Status::OK();
     }
-    const auto& a = properties->GetInputProperties(node->name())[1];
+    const auto& a = properties.GetInputProperties(node->name())[1];
     if (TensorShape::IsValid(a.shape()) && a.has_value()) {
       Tensor axis(a.dtype(), a.shape());
       if (!axis.FromProto(a.value())) {
@@ -1746,17 +1905,25 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
                        target_axes.find(j) == target_axes.end();
       }
       if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
   }
+  *success = false;
+  return Status::OK();
+}
 
+Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
+                                      bool use_shape_info,
+                                      GraphDef* optimized_graph, NodeDef* node,
+                                      bool* success) {
   if (use_shape_info && IsSlice(*node) &&
-      properties->GetInputProperties(node->name()).size() == 3) {
-    const auto& input = properties->GetInputProperties(node->name())[0];
-    const auto& b = properties->GetInputProperties(node->name())[1];
-    const auto& s = properties->GetInputProperties(node->name())[2];
+      properties.GetInputProperties(node->name()).size() == 3) {
+    const auto& input = properties.GetInputProperties(node->name())[0];
+    const auto& b = properties.GetInputProperties(node->name())[1];
+    const auto& s = properties.GetInputProperties(node->name())[2];
     if (TensorShape::IsValid(b.shape()) && b.has_value() &&
         TensorShape::IsValid(s.shape()) && s.has_value()) {
       Tensor begin(b.dtype(), b.shape());
@@ -1787,30 +1954,38 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
         }
       }
       if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
   }
+  *success = false;
+  return Status::OK();
+}
 
+Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
+                                             bool use_shape_info,
+                                             GraphDef* optimized_graph,
+                                             NodeDef* node, bool* success) {
   if (use_shape_info && IsStridedSlice(*node) &&
-      properties->GetInputProperties(node->name()).size() == 4) {
+      properties.GetInputProperties(node->name()).size() == 4) {
     if (node->attr().at("new_axis_mask").i() != 0 ||
         node->attr().at("shrink_axis_mask").i() != 0) {
       // Skip nodes with new/shrink axis mask, since they involve dimension
       // changes.
       return Status::OK();
     }
-    const auto& input = properties->GetInputProperties(node->name())[0];
+    const auto& input = properties.GetInputProperties(node->name())[0];
     for (int j = 0; j < input.shape().dim_size(); ++j) {
       // Skip if input shape is not fully determined.
       if (input.shape().dim(j).size() < 0) {
         return Status::OK();
       }
     }
-    const auto& b = properties->GetInputProperties(node->name())[1];
-    const auto& e = properties->GetInputProperties(node->name())[2];
-    const auto& s = properties->GetInputProperties(node->name())[3];
+    const auto& b = properties.GetInputProperties(node->name())[1];
+    const auto& e = properties.GetInputProperties(node->name())[2];
+    const auto& s = properties.GetInputProperties(node->name())[3];
     if (TensorShape::IsValid(b.shape()) && b.has_value() &&
         TensorShape::IsValid(e.shape()) && e.has_value() &&
         TensorShape::IsValid(s.shape()) && s.has_value()) {
@@ -1879,15 +2054,23 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
             (end_mask & 1 << i || e == input.shape().dim(j).size()) && s == 1;
       }
       if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
   }
+  *success = false;
+  return Status::OK();
+}
 
+Status ConstantFolding::SimplifyTile(const GraphProperties& properties,
+                                     bool use_shape_info,
+                                     GraphDef* optimized_graph, NodeDef* node,
+                                     bool* success) {
   if (use_shape_info && IsTile(*node) &&
-      properties->GetInputProperties(node->name()).size() == 2) {
-    const auto& m = properties->GetInputProperties(node->name())[1];
+      properties.GetInputProperties(node->name()).size() == 2) {
+    const auto& m = properties.GetInputProperties(node->name())[1];
     if (TensorShape::IsValid(m.shape()) && m.has_value()) {
       Tensor multiplies(m.dtype(), m.shape());
       if (!multiplies.FromProto(m.value())) {
@@ -1907,15 +2090,23 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
         }
       }
       if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
   }
+  *success = false;
+  return Status::OK();
+}
 
+Status ConstantFolding::SimplifyPad(const GraphProperties& properties,
+                                    bool use_shape_info,
+                                    GraphDef* optimized_graph, NodeDef* node,
+                                    bool* success) {
   if (use_shape_info && IsPad(*node) &&
-      properties->GetInputProperties(node->name()).size() >= 2) {
-    const auto& p = properties->GetInputProperties(node->name())[1];
+      properties.GetInputProperties(node->name()).size() >= 2) {
+    const auto& p = properties.GetInputProperties(node->name())[1];
     if (TensorShape::IsValid(p.shape()) && p.has_value()) {
       Tensor paddings(p.dtype(), p.shape());
       if (!paddings.FromProto(p.value())) {
@@ -1931,18 +2122,26 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
         replaceable &= flatten(j) == 0;
       }
       if (replaceable) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+        *success = true;
         return Status::OK();
       }
     }
   }
+  *success = false;
+  return Status::OK();
+}
 
+bool ConstantFolding::SimplifySqueeze(const GraphProperties& properties,
+                                      bool use_shape_info,
+                                      GraphDef* optimized_graph,
+                                      NodeDef* node) {
   if (use_shape_info && IsSqueeze(*node) &&
-      !properties->GetInputProperties(node->name()).empty()) {
+      !properties.GetInputProperties(node->name()).empty()) {
     // https://www.tensorflow.org/api_docs/python/tf/squeeze mentions it's
     // error to squeeze a dimension that is not 1, so we only need to check
     // whether the input has > 1 size for each dimension.
-    const auto& shape = properties->GetInputProperties(node->name())[0].shape();
+    const auto& shape = properties.GetInputProperties(node->name())[0].shape();
     // The node is replaceable iff
     // unknown_rank == false && (dim_size == 0 || all dims have size > 1)
     bool replaceable = !shape.unknown_rank();
@@ -1950,11 +2149,14 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
       replaceable &= shape.dim(j).size() > 1;
     }
     if (replaceable) {
-      ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
-      return Status::OK();
+      ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
+      return true;
     }
   }
+  return false;
+}
 
+bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
   if (IsPack(*node) && NumNonControlInputs(*node) == 1 &&
       !OptimizedNodeExists(*node, "_const_axis")) {
     // Create constant axis node.
@@ -1965,11 +2167,11 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
     if (!SetTensorValue(DT_INT32, axis, &axis_t).ok() ||
         !CreateNodeDef(axis_node->name(), TensorValue(&axis_t), axis_node)
              .ok()) {
-      return Status::OK();
+      return false;
     }
     // Add a control dependency to make sure axis_node is in the right frame.
     const string ctrl_dep = ConstantFolding::AddControlDependency(
-        node->input(0), graph_, node_map_.get());
+        node->input(0), optimized_graph, node_map_.get());
     axis_node->add_input(ctrl_dep);
     axis_node->set_device(node->device());
     node->set_op("ExpandDims");
@@ -1983,16 +2185,18 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
     node->add_input(axis_node->name());
     if (node->input_size() > 2) {
       node->mutable_input()->SwapElements(1, node->input_size() - 1);
+      return true;
     }
-    graph_modified_ = true;
-    return Status::OK();
   }
+  return false;
+}
 
-  // Move constants past Enter.
+bool ConstantFolding::MoveConstantsPastEnter(GraphDef* optimized_graph,
+                                             NodeDef* node) {
   if (IsEnter(*node) && node->input_size() > 0) {
     if (node->attr().count("is_constant") == 0 ||
         !node->attr().at("is_constant").b()) {
-      return Status::OK();
+      return false;
     }
     const string& node_name = node->name();
     const NodeDef* input = node_map_->GetNode(node->input(0));
@@ -2029,28 +2233,14 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
             }
           }
         }
-        graph_modified_ = true;
-        return Status::OK();
+        return true;
       }
     }
   }
+  return false;
+}
 
-  // Switch(x, x) will always feed false to its false branch and true to
-  // its true branch. By rewriting the graph a bit, we can propagate these
-  // constants down the two output branches, and just use control dependencies
-  // to trigger the selected one at runtime. For example,
-  //
-  //     +------+
-  // x-->|Switch|-->a  (in practice there may be multiple consumers of each
-  // x-->|      |-->b   output branch.)
-  //     +------+
-  //
-  // Is rewritten as
-  //
-  //     +------+
-  // x-->|Switch|-->Identity--^>Const(false)-->a
-  // x-->|      |-->Identity--^>Const(true)-->b
-  //     +------+
+bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
   if (node->op() == "Switch" && node->input(0) == node->input(1) &&
       !OptimizedNodeExists(*node, "_const_false") &&
       !OptimizedNodeExists(*node, "_const_true")) {
@@ -2087,7 +2277,7 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
       false_node->set_name(OptimizedNodeName(*node, "_const_false"));
       if (!CreateNodeDef(false_node->name(), TensorValue(&false_t), false_node)
                .ok()) {
-        return Status::OK();
+        return false;
       }
       false_node->set_device(node->device());
 
@@ -2095,7 +2285,7 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
       true_node->set_name(OptimizedNodeName(*node, "_const_true"));
       if (!CreateNodeDef(true_node->name(), TensorValue(&true_t), true_node)
                .ok()) {
-        return Status::OK();
+        return false;
       }
       true_node->set_device(node->device());
 
@@ -2129,11 +2319,15 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
           }
         }
       }
-      graph_modified_ = true;
-      return Status::OK();
+      return true;
     }
   }
-  if (IsSimplifiableReduction(*node, *properties)) {
+  return false;
+}
+
+bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,
+                                        NodeDef* node) {
+  if (IsSimplifiableReduction(*node, properties)) {
     // Replace the reduction node with an identity node, that can be further
     // optimized by the model pruner.
     DataType output_type;
@@ -2147,66 +2341,26 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
     node->clear_attr();
     (*node->mutable_attr())["T"].set_type(output_type);
     *node->mutable_input(1) = AsControlDependency(node->input(1));
-    graph_modified_ = true;
-    return Status::OK();
+    return true;
   }
-  if (use_shape_info && IsSimplifiableReshape(*node, *properties)) {
-    DataType output_type = node->attr().at("T").type();
-    node->set_op("Identity");
-    node->clear_attr();
-    (*node->mutable_attr())["T"].set_type(output_type);
-    *node->mutable_input(1) = AsControlDependency(node->input(1));
-    graph_modified_ = true;
-    return Status::OK();
-  }
+  return false;
+}
 
-  bool arithmetic_simplification_succeed = false;
-  Status simplify_arithmetic_status = SimplifyArithmeticOperations(
-      optimized_graph, properties, node, use_shape_info,
-      &arithmetic_simplification_succeed);
-  if (!simplify_arithmetic_status.ok()) {
-    return simplify_arithmetic_status;
-  } else if (arithmetic_simplification_succeed) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (ReduceDivToReciprocalMul(optimized_graph, node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (ConstantPushDown(node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (MulConvPushDown(node, *properties)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (PartialConstPropThroughIdentityN(node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (PartialAssocOpConstFolding(optimized_graph, properties, node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  if (PartialConcatConstFolding(optimized_graph, properties, node)) {
-    graph_modified_ = true;
-    return Status::OK();
-  }
-
-  return Status::OK();
+bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
+                                      bool use_shape_info, NodeDef* node) {
+  if (!use_shape_info) return false;
+  if (!IsSimplifiableReshape(*node, properties)) return false;
+  DataType output_type = node->attr().at("T").type();
+  node->set_op("Identity");
+  node->clear_attr();
+  (*node->mutable_attr())["T"].set_type(output_type);
+  *node->mutable_input(1) = AsControlDependency(node->input(1));
+  return true;
 }
 
 Status ConstantFolding::SimplifyArithmeticOperations(
-    GraphDef* optimized_graph, GraphProperties* properties, NodeDef* node,
-    bool use_shape_info, bool* success) {
+    const GraphProperties& properties, bool use_shape_info,
+    GraphDef* optimized_graph, NodeDef* node, bool* success) {
   const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
@@ -2215,8 +2369,8 @@ Status ConstantFolding::SimplifyArithmeticOperations(
   // Simplify arithmetic operations with ones or zeros.
   if (use_shape_info &&
       (is_mul || is_matmul || is_add || is_sub || is_any_div) &&
-      properties->HasInputProperties(node->name()) &&
-      properties->HasOutputProperties(node->name())) {
+      properties.HasInputProperties(node->name()) &&
+      properties.HasOutputProperties(node->name())) {
     const NodeDef* x = node_map_->GetNode(node->input(0));
     const NodeDef* y = node_map_->GetNode(node->input(1));
     if (x == nullptr || y == nullptr) {
@@ -2224,19 +2378,19 @@ Status ConstantFolding::SimplifyArithmeticOperations(
                                      node->DebugString());
     }
     const TensorShapeProto& output_shape =
-        properties->GetOutputProperties(node->name())[0].shape();
+        properties.GetOutputProperties(node->name())[0].shape();
 
     // Simplify element-wise multiplication by ones or addition/subtraction
     // of zeros.
     const TensorShapeProto& y_shape =
-        properties->GetInputProperties(node->name())[1].shape();
+        properties.GetInputProperties(node->name())[1].shape();
     const bool x_is_zero = IsZeros(*x);
     const bool x_is_one = x_is_zero ? false : IsOnes(*x);
     const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
     if (y_matches_output_shape &&
         ((is_mul && x_is_one) || (is_add && x_is_zero))) {
       // 1 * y = y or 0 + y = y.
-      ReplaceOperationWithSnapshot(1, *properties, node, optimized_graph);
+      ReplaceOperationWithSnapshot(1, properties, node, optimized_graph);
       *success = true;
       return Status::OK();
     }
@@ -2259,14 +2413,14 @@ Status ConstantFolding::SimplifyArithmeticOperations(
     }
 
     const TensorShapeProto& x_shape =
-        properties->GetInputProperties(node->name())[0].shape();
+        properties.GetInputProperties(node->name())[0].shape();
     const bool y_is_zero = IsZeros(*y);
     const bool y_is_one = y_is_zero ? false : IsOnes(*y);
     const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
     if (x_matches_output_shape && (((is_mul || is_any_div) && y_is_one) ||
                                    ((is_add || is_sub) && y_is_zero))) {
       // x * 1 = x or x / 1 = x or x +/- 0 = x
-      ReplaceOperationWithSnapshot(0, *properties, node, optimized_graph);
+      ReplaceOperationWithSnapshot(0, properties, node, optimized_graph);
       *success = true;
       return Status::OK();
     }
@@ -2276,9 +2430,8 @@ Status ConstantFolding::SimplifyArithmeticOperations(
     const PartialTensorShape shp(output_shape);
     if (shp.IsFullyDefined() && IsLogicalOr(*node) && (y_is_one || x_is_one)) {
       bool replace_succeed = false;
-      Status replace_op_status =
-          ReplaceOperationWithConstant(1, *properties, output_shape, node,
-                                       optimized_graph, &replace_succeed);
+      Status replace_op_status = ReplaceOperationWithConstant(
+          1, properties, output_shape, node, optimized_graph, &replace_succeed);
       if (!replace_op_status.ok()) {
         return replace_op_status;
       } else if (replace_succeed) {
@@ -2296,7 +2449,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
       if (shp.IsFullyDefined()) {
         bool replace_succeed = false;
         Status replace_op_status =
-            ReplaceOperationWithConstant(0, *properties, output_shape, node,
+            ReplaceOperationWithConstant(0, properties, output_shape, node,
                                          optimized_graph, &replace_succeed);
         if (!replace_op_status.ok()) {
           return replace_op_status;
@@ -2309,11 +2462,11 @@ Status ConstantFolding::SimplifyArithmeticOperations(
       // matches the output shape and thus forward the corresponding zero
       // input.
       if ((is_mul || is_any_div) && x_is_zero && x_matches_output_shape) {
-        ReplaceOperationWithIdentity(0, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
         *success = true;
         return Status::OK();
       } else if (is_mul && y_is_zero && y_matches_output_shape) {
-        ReplaceOperationWithIdentity(1, *properties, node, optimized_graph);
+        ReplaceOperationWithIdentity(1, properties, node, optimized_graph);
         *success = true;
         return Status::OK();
       }
@@ -2855,7 +3008,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   TF_RETURN_IF_ERROR(FoldGraph(optimized_graph));
   node_map_.reset(new NodeMap(optimized_graph));
   TF_RETURN_IF_ERROR(
-      SimplifyGraph(optimized_graph, &properties, can_use_shape_info));
+      SimplifyGraph(can_use_shape_info, optimized_graph, &properties));
 
   return Status::OK();
 }

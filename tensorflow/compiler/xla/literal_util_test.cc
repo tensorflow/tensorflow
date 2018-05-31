@@ -1810,5 +1810,35 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
       tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
 }
 
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
+  std::unique_ptr<Literal> literal = Literal::CreateR1<int64>({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
+          /*dimensions=*/{0}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int64>({{1, 1}, {2, 2}}));
+}
+
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
+  std::unique_ptr<Literal> literal = Literal::CreateR1<int64>({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
+          /*dimensions=*/{1}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int64>({{1, 2}, {1, 2}}));
+}
+
+TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
+  std::unique_ptr<Literal> literal = Literal::CreateR0<int32>(9);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S32, {2, 2}),
+          /*dimensions=*/{}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int32>({{9, 9}, {9, 9}}));
+}
+
 }  // namespace
 }  // namespace xla

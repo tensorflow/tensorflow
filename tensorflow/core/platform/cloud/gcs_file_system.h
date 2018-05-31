@@ -43,9 +43,12 @@ class GcsFileSystem;
 /// time.
 class GcsStatsInterface {
  public:
-  /// Init is called by the GcsFileSystem immediately after being registered.
-  virtual void Init(GcsFileSystem* fs, GcsThrottle* throttle,
-                    const FileBlockCache* block_cache) = 0;
+  /// Configure is called by the GcsFileSystem to provide instrumentation hooks.
+  ///
+  /// Note: Configure can be called multiple times (e.g. if the block cache is
+  /// re-initialized).
+  virtual void Configure(GcsFileSystem* fs, GcsThrottle* throttle,
+                         const FileBlockCache* block_cache) = 0;
 
   /// RecordBlockLoadRequest is called to record a block load request is about
   /// to be made.
@@ -132,9 +135,18 @@ class GcsFileSystem : public FileSystem {
 
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
-  size_t block_size() const { return file_block_cache_->block_size(); }
-  size_t max_bytes() const { return file_block_cache_->max_bytes(); }
-  uint64 max_staleness() const { return file_block_cache_->max_staleness(); }
+  size_t block_size() {
+    tf_shared_lock l(block_cache_lock_);
+    return file_block_cache_->block_size();
+  }
+  size_t max_bytes() {
+    tf_shared_lock l(block_cache_lock_);
+    return file_block_cache_->max_bytes();
+  }
+  uint64 max_staleness() {
+    tf_shared_lock l(block_cache_lock_);
+    return file_block_cache_->max_staleness();
+  }
   TimeoutConfig timeouts() const { return timeouts_; }
   string additional_header_name() const {
     return additional_header_ ? additional_header_->first : "";
@@ -189,6 +201,21 @@ class GcsFileSystem : public FileSystem {
   };
 
   Status CreateHttpRequest(std::unique_ptr<HttpRequest>* request);
+
+  /// \brief Sets a new AuthProvider on the GCS FileSystem.
+  ///
+  /// The new auth provider will be used for all subsequent requests.
+  void SetAuthProvider(std::unique_ptr<AuthProvider> auth_provider);
+
+  /// \brief Resets the block cache and re-instantiates it with the new values.
+  ///
+  /// This method can be used to clear the existing block cache and/or to
+  /// re-configure the block cache for different values.
+  ///
+  /// Note: the existing block cache is not cleaned up until all existing files
+  /// have been closed.
+  void ResetFileBlockCache(size_t block_size_bytes, size_t max_bytes,
+                           uint64 max_staleness_secs);
 
  private:
   // GCS file statistics.
@@ -246,9 +273,14 @@ class GcsFileSystem : public FileSystem {
   // Clear all the caches related to the file with name `filename`.
   void ClearFileCaches(const string& fname);
 
-  std::unique_ptr<AuthProvider> auth_provider_;
+  mutex mu_;
+  std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
-  std::unique_ptr<FileBlockCache> file_block_cache_;
+  // block_cache_lock_ protects the file_block_cache_ pointer (Note that
+  // FileBlockCache instances are themselves threadsafe).
+  mutex block_cache_lock_;
+  std::unique_ptr<FileBlockCache> file_block_cache_
+      GUARDED_BY(block_cache_lock_);
   std::unique_ptr<GcsDnsCache> dns_cache_;
   GcsThrottle throttle_;
 

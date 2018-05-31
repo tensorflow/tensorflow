@@ -33,6 +33,7 @@ limitations under the License.
 namespace tensorflow {
 
 class CancellationManager;
+class CollectiveExecutor;
 class GraphDef;
 class OpKernel;
 class ProcessFunctionLibraryRuntime;
@@ -484,6 +485,7 @@ class FunctionLibraryRuntime {
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
+    CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollector* stats_collector = nullptr;
 

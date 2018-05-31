@@ -619,6 +619,7 @@ xla_test(
 
 xla_test(
     name = "exhaustive_f32_elementwise_op_test",
+    size = "enormous",
     srcs = ["exhaustive_f32_elementwise_op_test.cc"],
     backends = [
         "cpu",
@@ -626,7 +627,6 @@ xla_test(
     ],
     shard_count = 48,
     tags = [
-        "enormous",
         "manual",
         "notap",
     ],
@@ -776,30 +776,42 @@ xla_test(
     ],
 )
 
+CONVOLUTION_TEST_DEPS = [
+    "//tensorflow/compiler/xla:array2d",
+    "//tensorflow/compiler/xla:array4d",
+    "//tensorflow/compiler/xla:literal_util",
+    "//tensorflow/compiler/xla:reference_util",
+    "//tensorflow/compiler/xla:shape_util",
+    "//tensorflow/compiler/xla:statusor",
+    "//tensorflow/compiler/xla:util",
+    "//tensorflow/compiler/xla:xla_data_proto",
+    "//tensorflow/compiler/xla/client:global_data",
+    "//tensorflow/compiler/xla/client:local_client",
+    "//tensorflow/compiler/xla/client:padding",
+    "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+    "//tensorflow/compiler/xla/tests:client_library_test_base",
+    "//tensorflow/compiler/xla/tests:literal_test_util",
+    "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:test",
+]
+
 xla_test(
     name = "convolution_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
     shard_count = 25,
-    deps = [
-        "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:reference_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:padding",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-    ],
+    deps = CONVOLUTION_TEST_DEPS,
+)
+
+xla_test(
+    name = "convolution_test_gpu_alternative_layout",
+    timeout = "long",
+    srcs = ["convolution_test.cc"],
+    backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
+    backends = ["gpu"],
+    shard_count = 25,
+    deps = CONVOLUTION_TEST_DEPS,
 )
 
 xla_test(

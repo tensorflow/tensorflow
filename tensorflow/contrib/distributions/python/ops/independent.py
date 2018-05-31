@@ -29,7 +29,6 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import kullback_leibler
-from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class Independent(distribution_lib.Distribution):
@@ -117,7 +116,7 @@ class Independent(distribution_lib.Distribution):
       ValueError: if `reinterpreted_batch_ndims` exceeds
         `distribution.batch_ndims`
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     name = name or "Independent" + distribution.name
     self._distribution = distribution
     with ops.name_scope(name) as name:

@@ -94,7 +94,7 @@ class TransformerTest(test.TestCase):
                       inner_function, lambda_node),
                      anno.getanno(lambda_expr, 'enclosing_entities'))
 
-  def test_statement_info_stack(self):
+  def test_local_scope_info_stack(self):
 
     class TestTransformer(transformer.Base):
 
@@ -142,7 +142,7 @@ class TransformerTest(test.TestCase):
     self.assertFalse(anno.hasanno(while_node, 'string'))
     self.assertEqual('1', anno.getanno(while_node, 'test'))
 
-  def test_statement_info_stack_checks_integrity(self):
+  def test_local_scope_info_stack_checks_integrity(self):
 
     class TestTransformer(transformer.Base):
 

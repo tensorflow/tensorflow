@@ -156,7 +156,7 @@ def _loss_smaller(best_eval_result, current_eval_result):
   return best_eval_result[default_key] > current_eval_result[default_key]
 
 
-def _verify_compre_fn_args(compare_fn):
+def _verify_compare_fn_args(compare_fn):
   """Verifies compare_fn arguments."""
   args = set(util.fn_args(compare_fn))
   if 'best_eval_result' not in args:
@@ -265,7 +265,7 @@ class BestExporter(Exporter):
     self._compare_fn = compare_fn
     if self._compare_fn is None:
       raise ValueError('`compare_fn` must not be None.')
-    _verify_compre_fn_args(self._compare_fn)
+    _verify_compare_fn_args(self._compare_fn)
 
     self._saved_model_exporter = _SavedModelExporter(
         name, serving_input_receiver_fn, assets_extra, as_text)
@@ -287,11 +287,11 @@ class BestExporter(Exporter):
              is_the_final_export):
     export_result = None
 
-    if self._model_dir != estimator.model_dir() and self._event_file_pattern:
+    if self._model_dir != estimator.model_dir and self._event_file_pattern:
       # Loads best metric from event files.
       tf_logging.info('Loading best metric from event files.')
 
-      self._model_dir = estimator.model_dir()
+      self._model_dir = estimator.model_dir
       full_event_file_pattern = os.path.join(self._model_dir,
                                              self._event_file_pattern)
       self._best_eval_result = self._get_best_eval_result(

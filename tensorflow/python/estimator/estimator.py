@@ -212,8 +212,8 @@ class Estimator(object):
     else:
       self._session_config = self._config.session_config
 
-    self._device_fn = self._config.device_fn or \
-                      _get_replica_device_setter(self._config)
+    self._device_fn = (
+        self._config.device_fn or _get_replica_device_setter(self._config))
 
     if model_fn is None:
       raise ValueError('model_fn must be provided to Estimator.')
@@ -302,7 +302,7 @@ class Estimator(object):
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 
@@ -398,7 +398,7 @@ class Estimator(object):
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 
@@ -477,7 +477,7 @@ class Estimator(object):
       input_fn: A function that constructs the features. Prediction continues
         until `input_fn` raises an end-of-input exception (`OutOfRangeError` or
         `StopIteration`).
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 
@@ -564,7 +564,8 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names', '_validate_features_in_predict_input'
+        '_tf_api_names', '_validate_features_in_predict_input',
+        '_call_model_fn', '_add_meta_graph_for_mode'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
@@ -828,10 +829,14 @@ class Estimator(object):
       gfile.Rename(temp_export_dir, export_dir)
       return export_dir
 
-  def _add_meta_graph_for_mode(
-      self, builder, input_receiver_fn_map, checkpoint_path,
-      strip_default_attrs, save_variables=True,
-      mode=model_fn_lib.ModeKeys.PREDICT):
+  def _add_meta_graph_for_mode(self,
+                               builder,
+                               input_receiver_fn_map,
+                               checkpoint_path,
+                               strip_default_attrs,
+                               save_variables=True,
+                               mode=model_fn_lib.ModeKeys.PREDICT,
+                               export_tags=None):
     # pylint: disable=line-too-long
     """Loads variables and adds them along with a MetaGraphDef for saving.
 
@@ -850,9 +855,14 @@ class Estimator(object):
         True for the first call to this function, and the SavedModelBuilder will
         raise an error if that is not the case.
       mode: tf.estimator.ModeKeys value indicating which mode will be exported.
+      export_tags: The set of tags with which to save `MetaGraphDef`. If None,
+        a default set will be selected to matched the passed mode.
     """
     # pylint: enable=line-too-long
+    if export_tags is None:
+      export_tags = model_fn_lib.EXPORT_TAG_MAP[mode]
     input_receiver_fn = input_receiver_fn_map[mode]
+
     with ops.Graph().as_default() as g:
       self._create_and_assert_global_step(g)
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -876,8 +886,6 @@ class Estimator(object):
           serving_only=(mode == model_fn_lib.ModeKeys.PREDICT))
 
       with tf_session.Session(config=self._session_config) as session:
-
-        export_tags = model_fn_lib.EXPORT_TAG_MAP[mode]
 
         local_init_op = (
             estimator_spec.scaffold.local_init_op or
@@ -1746,10 +1754,19 @@ class WarmStartSettings(
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    vars_to_warm_start: [Optional] A regular expression that captures which
-      variables to warm-start (see tf.get_collection).  Defaults to `'.*'`,
-      which warm-starts all variables.  If `None` is explicitly given, only
-      variables specified in `var_name_to_vocab_info` will be warm-started.
+    vars_to_warm_start: [Optional] One of the following:
+
+      - A regular expression (string) that captures which variables to
+        warm-start (see tf.get_collection).  This expression will only consider
+        variables in the TRAINABLE_VARIABLES collection.
+      - A list of Variables to warm-start.
+      - A list of strings, each representing a full variable name to warm-start.
+      - `None`, in which case only variables specified in
+        `var_name_to_vocab_info` will be warm-started.
+
+      Defaults to `'.*'`, which warm-starts all variables in the
+      TRAINABLE_VARIABLES collection.  Note that this excludes variables such as
+      accumulators and moving statistics from batch norm.
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
       VocabInfo. The variable names should be "full" variables, not the names
       of the partitions.  If not explicitly provided, the variable is assumed to

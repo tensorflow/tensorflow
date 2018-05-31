@@ -196,6 +196,19 @@ class TypeInfoResolverTest(test.TestCase):
     f_ref = node.body[0].body[1].value
     self.assertEqual(anno.getanno(f_ref, 'element_type'), Foo)
 
+  def test_type_annotation_args(self):
+
+    class Foo(object):
+      pass
+
+    def test_fn(f):
+      utils.set_element_type(f, Foo)
+      return f
+
+    node = self._parse_and_analyze(test_fn, {'Foo': Foo, 'utils': utils})
+    f_ref = node.body[0].body[1].value
+    self.assertEqual(anno.getanno(f_ref, 'element_type'), Foo)
+
   def test_nested_unpacking(self):
 
     class Foo(object):

@@ -160,13 +160,18 @@ Status ScopedAllocatorMgr::AddScopedAllocator(
                                  expected_call_count);
 }
 
-void ScopedAllocatorMgr::PopulateFields(
+/*static*/
+size_t ScopedAllocatorMgr::PopulateFields(
     int32 scope_id, const gtl::ArraySlice<TensorShape>& shapes,
     const DataType dtype, std::vector<ScopedAllocator::Field>* fields) {
   const int32 num_fields = static_cast<int32>(shapes.size());
   fields->resize(num_fields);
   size_t offset = 0;
   for (int32 i = 0; i < num_fields; ++i) {
+    size_t overshoot = offset % Allocator::kAllocatorAlignment;
+    if (overshoot > 0) {
+      offset += (Allocator::kAllocatorAlignment - overshoot);
+    }
     size_t bytes = shapes[i].num_elements() * DataTypeSize(dtype);
     (*fields)[i].scope_id = scope_id + 1 + i;
     (*fields)[i].bytes = bytes;
@@ -175,11 +180,8 @@ void ScopedAllocatorMgr::PopulateFields(
             << " bytes=" << (*fields)[i].bytes
             << " offset=" << (*fields)[i].offset;
     offset += bytes;
-    size_t overshoot = offset % Allocator::kAllocatorAlignment;
-    if (overshoot > 0) {
-      offset += (Allocator::kAllocatorAlignment - overshoot);
-    }
   }
+  return offset;
 }
 
 }  // namespace tensorflow

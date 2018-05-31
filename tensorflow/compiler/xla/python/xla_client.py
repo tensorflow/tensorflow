@@ -28,6 +28,7 @@ import numpy as np
 
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
+from tensorflow.compiler.xla.service import hlo_pb2
 
 
 # Most functions are snake_case for consistency with other modules, whereas
@@ -409,6 +410,17 @@ class LocalComputation(object):
     else:
       assert isinstance(c_local_computation, c_api.LocalComputation)
       self._delete = c_api.DeleteLocalComputation
+
+  def GetProto(self):
+    """Get the HloModuleProto proto object in this local computation.
+
+    Returns:
+       An HloModuleProto proto object that has the whole-graph information.
+    """
+
+    serialized = self.c_local_computation.GetSerializedProto()
+    proto = hlo_pb2.HloModuleProto.FromString(serialized)
+    return proto
 
   def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
     """Compiles an un-compiled local computation.
