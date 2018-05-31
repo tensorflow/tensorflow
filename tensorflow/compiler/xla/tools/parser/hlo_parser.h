@@ -36,9 +36,16 @@ StatusOr<std::unique_ptr<HloModule>> Parse(tensorflow::StringPiece str,
 // format, parses the string and creates a HloModule with default config.
 StatusOr<std::unique_ptr<HloModule>> Parse(tensorflow::StringPiece str);
 
-// Parse sharding from str. str is supposed to contain the body of the
-// sharding, i.e. just the rhs of the "sharding={...}" attribute string.
+// Parses the result of HloSharding::ToString(), e.g. "{replicated}".
 StatusOr<HloSharding> ParseSharding(tensorflow::StringPiece str);
+
+// Parses the result of window_util::ToString(const Window&).
+StatusOr<Window> ParseWindow(tensorflow::StringPiece str);
+
+// Parses the result of ConvolutionDimensionNumbersToString(), e.g.
+// "b0f_0io->b0f".
+StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
+    tensorflow::StringPiece str);
 
 }  // namespace tools
 }  // namespace xla
