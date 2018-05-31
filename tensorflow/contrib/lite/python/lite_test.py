@@ -295,8 +295,8 @@ class FromFlatbufferFile(test_util.TensorFlowTestCase):
     write_graph(sess.graph_def, '', graph_def_file, False)
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_flatbuffer_file(
-        graph_def_file, ['Placeholder'], ['add'])
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -329,7 +329,7 @@ class FromFlatbufferFile(test_util.TensorFlowTestCase):
     write_graph(sess.graph_def, '', graph_def_file, False)
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_flatbuffer_file(
+    converter = lite.TocoConverter.from_frozen_graph(
         graph_def_file, ['Placeholder'], ['add'],
         input_shapes={'Placeholder': [1, 16, 16, 3]})
     tflite_model = converter.convert()
@@ -357,8 +357,8 @@ class FromFlatbufferFile(test_util.TensorFlowTestCase):
 
     # Ensure the graph with variables cannot be converted.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter.from_flatbuffer_file(graph_def_file, ['Placeholder'],
-                                              ['add'])
+      lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
+                                           ['add'])
     self.assertEqual('Please freeze the graph using freeze_graph.py',
                      str(error.exception))
 
@@ -373,8 +373,8 @@ class FromFlatbufferFile(test_util.TensorFlowTestCase):
     write_graph(sess.graph_def, '', graph_def_file, True)
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_flatbuffer_file(
-        graph_def_file, ['Placeholder'], ['add'])
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -404,8 +404,8 @@ class FromFlatbufferFile(test_util.TensorFlowTestCase):
 
     # Attempts to convert the invalid model.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter.from_flatbuffer_file(graph_def_file, ['Placeholder'],
-                                              ['add'])
+      lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
+                                           ['add'])
     self.assertEqual(
         'Unable to parse input file \'{}\'.'.format(graph_def_file),
         str(error.exception))

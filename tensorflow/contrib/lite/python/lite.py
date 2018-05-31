@@ -101,7 +101,7 @@ class TocoConverter(object):
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a GraphDef from file.
-    converter = lite.TocoConverter.from_flatbuffer_file(
+    converter = lite.TocoConverter.from_frozen_graph(
       graph_def_file, input_arrays, output_arrays)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
@@ -151,12 +151,12 @@ class TocoConverter(object):
     return cls(graph_def, input_tensors, output_tensors)
 
   @classmethod
-  def from_flatbuffer_file(cls,
-                           graph_def_file,
-                           input_arrays,
-                           output_arrays,
-                           input_shapes=None):
-    """Creates a TocoConverter class from a file containing a GraphDef.
+  def from_frozen_graph(cls,
+                        graph_def_file,
+                        input_arrays,
+                        output_arrays,
+                        input_shapes=None):
+    """Creates a TocoConverter class from a file containing a frozen GraphDef.
 
     Args:
       graph_def_file: Full filepath of file containing TensorFlow GraphDef.

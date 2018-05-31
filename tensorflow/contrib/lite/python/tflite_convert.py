@@ -70,7 +70,7 @@ def _get_toco_converter(flags):
 
   # Create TocoConverter.
   if flags.graph_def_file:
-    converter_fn = lite.TocoConverter.from_flatbuffer_file
+    converter_fn = lite.TocoConverter.from_frozen_graph
     converter_kwargs["graph_def_file"] = flags.graph_def_file
   elif flags.saved_model_dir:
     converter_fn = lite.TocoConverter.from_saved_model
