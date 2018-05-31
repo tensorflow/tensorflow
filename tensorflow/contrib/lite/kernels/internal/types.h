@@ -71,8 +71,8 @@ class RuntimeShape {
     }
   }
 
-  inline const int32 DimensionsCount() const { return size_; }
-  inline const int32 Dims(int i) const {
+  inline int32 DimensionsCount() const { return size_; }
+  inline int32 Dims(int i) const {
     TFLITE_DCHECK_GE(i, 0);
     TFLITE_DCHECK_LT(i, size_);
     return size_ > kMaxSmallSize ? dims_pointer_[i] : dims_[i];
@@ -123,7 +123,7 @@ class RuntimeShape {
 
   // Returns the total count of elements, that is the size when flattened into a
   // vector.
-  inline const int FlatSize() const {
+  inline int FlatSize() const {
     int buffer_size = 1;
     const int* dims_data = DimsData();
     for (int i = 0; i < size_; i++) {
