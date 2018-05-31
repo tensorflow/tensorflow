@@ -1542,5 +1542,21 @@ ENTRY entry (param: s32[]) -> s32[] {
   }
 }
 
+TEST_F(HloInstructionTest, IdenticalAccountsForBackendConfig) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {42});
+  HloComputation::Builder builder("test");
+  HloInstruction* p =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p, p));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p, p));
+
+  EXPECT_TRUE(add1->Identical(*add2));
+  add1->set_raw_backend_config_string("abc");
+  EXPECT_FALSE(add1->Identical(*add2));
+}
+
 }  // namespace
 }  // namespace xla

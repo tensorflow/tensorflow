@@ -776,6 +776,10 @@ class HloInstruction {
       }
     }
 
+    if (backend_config_ != other.backend_config_) {
+      return false;
+    }
+
     return IdenticalSlowPath(other, eq_computations);
   }
 
