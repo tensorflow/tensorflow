@@ -38,9 +38,11 @@ from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export as export_helpers
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
@@ -1383,10 +1385,18 @@ class Estimator(object):
         hooks=all_hooks,
         config=self._session_config)
 
+    current_global_step = eval_results[ops.GraphKeys.GLOBAL_STEP]
+
     _write_dict_to_summary(
         output_dir=output_dir,
         dictionary=eval_results,
-        current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
+        current_global_step=current_global_step)
+
+    if checkpoint_path:
+      _write_checkpoint_path_to_summary(
+          output_dir=output_dir,
+          checkpoint_path=checkpoint_path,
+          current_global_step=current_global_step)
 
     return eval_results
 
@@ -1581,6 +1591,30 @@ def _write_dict_to_summary(output_dir,
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
           'np.int32 or int or a serialized string of Summary.', key)
+  summary_writer.add_summary(summary_proto, current_global_step)
+  summary_writer.flush()
+
+
+def _write_checkpoint_path_to_summary(output_dir, checkpoint_path,
+                                      current_global_step):
+  """Writes `checkpoint_path` into summary file in the given output directory.
+
+  Args:
+    output_dir: `str`, directory to write the summary file in.
+    checkpoint_path: `str`, checkpoint file path to be written to summary file.
+    current_global_step: `int`, the current global step.
+  """
+
+  checkpoint_path_tag = 'checkpoint_path'
+
+  logging.info('Saving \'%s\' summary for global step %d: %s',
+               checkpoint_path_tag, current_global_step, checkpoint_path)
+  summary_proto = summary_pb2.Summary()
+  summary_proto.value.add(
+      tag=checkpoint_path_tag,
+      tensor=tensor_util.make_tensor_proto(
+          checkpoint_path, dtype=dtypes.string))
+  summary_writer = writer_cache.FileWriterCache.get(output_dir)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
