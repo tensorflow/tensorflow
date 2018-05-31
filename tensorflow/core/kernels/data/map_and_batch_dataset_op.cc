@@ -139,7 +139,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "MapAndBatchDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "MapAndBatchDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

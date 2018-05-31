@@ -75,7 +75,9 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ConcatenateDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "ConcatenateDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

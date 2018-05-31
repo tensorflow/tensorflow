@@ -425,7 +425,7 @@ class DatasetBase : public core::RefCounted {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // A human-readable debug string for this dataset.
-  virtual string DebugString() = 0;
+  virtual string DebugString() const = 0;
 
   // Serializes the dataset and writes it to the `writer`.
   virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) const {

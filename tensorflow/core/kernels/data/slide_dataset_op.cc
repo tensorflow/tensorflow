@@ -81,7 +81,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("SlideDatasetOp(", window_size_, ", ", stride_,
                              ")::Dataset");
     }

@@ -38,7 +38,7 @@ class WindowDataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() override { return "WindowDataset"; }
+  string DebugString() const override { return "WindowDataset"; }
 
  private:
   class Iterator : public DatasetIterator<WindowDataset> {

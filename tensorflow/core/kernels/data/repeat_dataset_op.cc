@@ -69,7 +69,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "RepeatDatasetOp::Dataset"; }
+    string DebugString() const override { return "RepeatDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

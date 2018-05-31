@@ -133,7 +133,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("PaddedBatchDatasetOp(", batch_size_,
                              ")::Dataset");
     }

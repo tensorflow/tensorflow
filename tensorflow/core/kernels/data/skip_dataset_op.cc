@@ -65,7 +65,7 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "SkipDatasetOp::Dataset"; }
+    string DebugString() const override { return "SkipDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

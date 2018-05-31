@@ -81,7 +81,7 @@ class KafkaDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "KafkaDatasetOp::Dataset"; }
+    string DebugString() const override { return "KafkaDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,

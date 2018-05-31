@@ -66,7 +66,7 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "TakeDatasetOp::Dataset"; }
+    string DebugString() const override { return "TakeDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

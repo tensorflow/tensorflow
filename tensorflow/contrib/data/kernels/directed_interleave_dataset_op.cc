@@ -105,7 +105,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("DirectedInterleaveDatasetOp::Dataset");
     }
 

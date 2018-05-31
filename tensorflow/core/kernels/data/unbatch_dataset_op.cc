@@ -62,7 +62,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "UnbatchDatasetOp::Dataset"; }
+    string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

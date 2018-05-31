@@ -359,7 +359,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
           parent_generator_(seed, seed2),
           generator_(&parent_generator_) {}
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("ShuffleDatasetOp(", buffer_size_, ", ", seed_,
                              ", ", seed2_, ")::ReshufflingDataset");
     }
@@ -397,7 +397,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
           seed_(seed),
           seed2_(seed) {}
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("ShuffleDatasetOp(", buffer_size_, ", ", seed_,
                              ", ", seed2_, ")::FixedSeedDataset");
     }
@@ -480,7 +480,7 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
           seed_(seed),
           seed2_(seed2) {}
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("ShuffleAndRepeatDatasetOp(", buffer_size_, ", ",
                              seed_, ", ", seed2_, ", ", count_, ")::Dataset");
     }

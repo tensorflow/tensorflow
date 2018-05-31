@@ -69,7 +69,9 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "LatencyStatsDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "LatencyStatsDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -166,7 +168,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return "BytesProducedStatsDatasetOp::Dataset";
     }
 

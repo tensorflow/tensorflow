@@ -68,7 +68,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "PrefetchDatasetOp::Dataset"; }
+    string DebugString() const override { return "PrefetchDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

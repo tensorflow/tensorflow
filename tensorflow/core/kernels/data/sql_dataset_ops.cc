@@ -102,7 +102,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "SqlDatasetOp::Dataset"; }
+    string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

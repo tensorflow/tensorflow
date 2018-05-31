@@ -65,7 +65,7 @@ class RangeDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("RangeDatasetOp(", start_, ", ", stop_, ", ",
                              step_, ")::Dataset");
     }

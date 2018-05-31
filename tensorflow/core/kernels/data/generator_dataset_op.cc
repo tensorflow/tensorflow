@@ -112,7 +112,9 @@ class GeneratorDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "GeneratorDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "GeneratorDatasetOp::Dataset";
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {

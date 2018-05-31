@@ -145,7 +145,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "CSVDatasetOp::Dataset"; }
+    string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,

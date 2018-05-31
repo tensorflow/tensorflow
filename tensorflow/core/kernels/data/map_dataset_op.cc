@@ -86,7 +86,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "MapDatasetOp::Dataset"; }
+    string DebugString() const override { return "MapDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

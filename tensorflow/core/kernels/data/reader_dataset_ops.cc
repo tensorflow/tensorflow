@@ -106,7 +106,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "TextLineDatasetOp::Dataset"; }
+    string DebugString() const override { return "TextLineDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
@@ -340,7 +340,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return "FixedLengthRecordDatasetOp::Dataset";
     }
 
@@ -560,7 +560,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "TFRecordDatasetOp::Dataset"; }
+    string DebugString() const override { return "TFRecordDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,

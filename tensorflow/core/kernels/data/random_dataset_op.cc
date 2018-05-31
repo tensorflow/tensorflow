@@ -71,7 +71,7 @@ class RandomDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("RandomDatasetOp(", seed_, ", ", seed2_,
                              ")::Dataset");
     }

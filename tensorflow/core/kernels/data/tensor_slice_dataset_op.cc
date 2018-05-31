@@ -81,7 +81,9 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "TensorSliceDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "TensorSliceDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,

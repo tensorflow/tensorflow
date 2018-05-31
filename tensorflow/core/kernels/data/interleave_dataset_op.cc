@@ -109,7 +109,9 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "InterleaveDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "InterleaveDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

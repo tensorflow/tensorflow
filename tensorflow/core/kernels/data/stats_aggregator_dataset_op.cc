@@ -66,7 +66,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return "SetStatsAggregatorDatasetOp::Dataset";
     }
 

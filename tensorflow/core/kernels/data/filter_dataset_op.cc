@@ -106,7 +106,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "FilterDatasetOp::Dataset"; }
+    string DebugString() const override { return "FilterDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

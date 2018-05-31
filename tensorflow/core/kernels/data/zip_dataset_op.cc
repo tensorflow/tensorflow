@@ -74,7 +74,7 @@ class ZipDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ZipDatasetOp::Dataset"; }
+    string DebugString() const override { return "ZipDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

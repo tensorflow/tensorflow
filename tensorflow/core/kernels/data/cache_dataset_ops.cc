@@ -83,7 +83,9 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "CacheDatasetOp::FileDataset"; }
+    string DebugString() const override {
+      return "CacheDatasetOp::FileDataset";
+    }
 
    private:
     static size_t StringPaddingSize(size_t num_tensors) {
@@ -295,7 +297,9 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "CacheDatasetOp::MemoryDataset"; }
+    string DebugString() const override {
+      return "CacheDatasetOp::MemoryDataset";
+    }
 
    private:
     // MemoryWriterIterator passes through and appends items from the input

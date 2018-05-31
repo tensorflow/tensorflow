@@ -50,7 +50,7 @@ class Dataset : public GraphDatasetBase {
     return shapes_;
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 

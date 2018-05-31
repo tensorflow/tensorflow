@@ -103,7 +103,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ScanDatasetOp::Dataset"; }
+    string DebugString() const override { return "ScanDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

@@ -88,7 +88,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "FlatMapDatasetOp::Dataset"; }
+    string DebugString() const override { return "FlatMapDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

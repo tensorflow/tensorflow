@@ -131,7 +131,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "GroupByWindowDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "GroupByWindowDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

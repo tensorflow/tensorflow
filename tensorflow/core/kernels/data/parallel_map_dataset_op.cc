@@ -99,7 +99,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ParallelMapDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "ParallelMapDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

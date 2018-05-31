@@ -101,7 +101,9 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "GroupByReducerDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "GroupByReducerDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,

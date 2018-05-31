@@ -75,7 +75,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("BatchDatasetOp(", batch_size_, ")::Dataset");
     }
 

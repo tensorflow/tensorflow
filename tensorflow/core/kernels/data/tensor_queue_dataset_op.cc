@@ -94,7 +94,7 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
     return batched_shapes_with_queue_;
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return "PrependFromQueueAndPaddedBatchDatasetOp::Dataset";
   }
 
