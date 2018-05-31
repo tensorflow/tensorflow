@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Bring in all of the public TensorFlow interface into this
-# module.
+"""Bring in all of the public TensorFlow interface into this module."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +20,7 @@ from __future__ import print_function
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+# API IMPORTS PLACEHOLDER
 
 from tensorflow.python.util.lazy_loader import LazyLoader
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
