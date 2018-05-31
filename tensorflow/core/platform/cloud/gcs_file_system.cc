@@ -64,6 +64,10 @@ constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The environment variable that overrides the size of the readahead buffer.
 // DEPRECATED. Use GCS_BLOCK_SIZE_MB instead.
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
+// The environment variable that disables the GCS block cache for reads.
+// This is the explicit alternative to setting BLOCK_SIZE or MAX_SIZE to 0, and
+// takes precedence over either of those environment variables.
+constexpr char kReadCacheDisabled[] = "GCS_READ_CACHE_DISABLED";
 // The environment variable that overrides the block size for aligned reads from
 // GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
 constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
@@ -622,6 +626,10 @@ GcsFileSystem::GcsFileSystem()
   }
   if (GetEnvVar(kMaxStaleness, strings::safe_strtou64, &value)) {
     max_staleness = value;
+  }
+  if (std::getenv(kReadCacheDisabled)) {
+    // Setting either to 0 disables the cache; set both for good measure.
+    block_size = max_bytes = 0;
   }
   file_block_cache_ = MakeFileBlockCache(block_size, max_bytes, max_staleness);
   // Apply overrides for the stat cache max age and max entries, if provided.
