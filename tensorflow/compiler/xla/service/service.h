@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 #include "tensorflow/compiler/xla/service/compilation_cache.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/execution_tracker.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
-#include "tensorflow/compiler/xla/service/user_computation.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -172,12 +170,6 @@ class Service : public ServiceInterface {
   Status CreateChannelHandle(const CreateChannelHandleRequest* arg,
                              CreateChannelHandleResponse* result) override;
 
-  // Returns the ComputationTracker of the current service instance.
-  // Only used in unit tests to access user computations from client.
-  const ComputationTracker& computation_tracker() {
-    return computation_tracker_;
-  }
-
   // Returns the backend used to execute computations.
   const Backend& backend() const { return *execute_backend_; }
   Backend* mutable_backend() { return execute_backend_.get(); }
@@ -188,8 +180,7 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutionOptions& execution_options,
-      const UserComputation* user_computation = nullptr);
+      const ExecutionOptions& execution_options);
 
   // Picks a parallel response and fills the result.
   Status PickParallelResponse(const ExecuteParallelResponse& parallel_result,
@@ -230,23 +221,13 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-      const ExecutionOptions* execution_options,
-      const UserComputation* user_computation = nullptr);
+      const ExecutionOptions* execution_options);
 
   // Builds an Executable for the given parameters.
   //
   // If device_allocator is not null, the compiler may use it to allocate temp
   // buffers, which the compiler is responsible for freeing.  The allocator
   // given here need not match the allocator used when running the executable.
-  StatusOr<std::unique_ptr<Executable>> BuildExecutable(
-      const VersionedComputationHandle& versioned_handle,
-      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-      se::StreamExecutor* executor,
-      DeviceMemoryAllocator* device_allocator = nullptr);
-
-  // Builds an Executable for the given HLO module proto.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
@@ -256,24 +237,10 @@ class Service : public ServiceInterface {
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.
   StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
-      std::vector<VersionedComputationHandle> versioned_handles,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-      Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-      DeviceMemoryAllocator* device_allocator);
-  StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
       const std::vector<const HloModuleProto*>& module_protos,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
       DeviceMemoryAllocator* device_allocator);
-
-  // Similar to BuildExecutable, but look in the compilation cache for the
-  // executable first. If the executable is not in the cache, it is built and
-  // inserted into the cache.
-  StatusOr<std::shared_ptr<Executable>> BuildAndCacheExecutable(
-      const VersionedComputationHandle& versioned_handle,
-      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-      se::StreamExecutor* executor, ExecutionProfile* profile,
-      DeviceMemoryAllocator* device_allocator = nullptr);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is
@@ -296,13 +263,6 @@ class Service : public ServiceInterface {
       tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
       tensorflow::gtl::ArraySlice<string> result_tags,
       ExecutionProfile* profile);
-
-  // Convenience function for adding a function to a user computation.
-  template <typename RequestT, typename ResponseT>
-  Status AddInstruction(
-      const RequestT* arg, ResponseT* result,
-      const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
-          adder);
 
   // Executes a single computation which has more than one target device.
   // The N devices are expected to all return an empty tuple, but one, which
@@ -328,9 +288,6 @@ class Service : public ServiceInterface {
   DeviceHandle SingleComputationDeviceHandle() const;
 
   ServiceOptions options_;
-
-  // Tracks computations built via the API.
-  ComputationTracker computation_tracker_;
 
   // Tracks channels created via the API.
   ChannelTracker channel_tracker_;

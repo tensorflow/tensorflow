@@ -274,8 +274,7 @@ Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-    const ExecutionOptions* execution_options,
-    const UserComputation* user_computation) {
+    const ExecutionOptions* execution_options) {
   auto config = MakeUnique<HloModuleConfig>(program_shape);
   ComputationLayout* host_computation_layout =
       config->mutable_host_entry_computation_layout();
@@ -291,17 +290,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     // ProgramShape.
     if (!ShapeUtil::Compatible(*argument_shapes[i],
                                program_shape.parameters(i))) {
-      if (user_computation == nullptr) {
-        return InvalidArgument(
-            "Argument does not match shape of computation parameter %d: want "
-            "%s, got %s",
-            i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
-            ShapeUtil::HumanString(*argument_shapes[i]).c_str());
-      }
-      return InvalidParameterArgument(
-          *user_computation->ParameterMetadata(i).value(),
-          "Argument does not match shape of computation parameter %d: want %s, "
-          "got %s",
+      return InvalidArgument(
+          "Argument does not match shape of computation parameter %d: want "
+          "%s, got %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
           ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
@@ -352,76 +343,12 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const ExecutionOptions& execution_options,
-    const UserComputation* user_computation) {
+    const ExecutionOptions& execution_options) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
   }
-  return CreateModuleConfig(program_shape, argument_shapes, &execution_options,
-                            user_computation);
-}
-
-StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
-    std::vector<VersionedComputationHandle> versioned_handles,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-    DeviceMemoryAllocator* device_allocator) {
-  VLOG(1) << Printf("BuildExecutable on service %p", this);
-
-  // Dump computation proto state if flag is set.
-  std::vector<std::unique_ptr<SessionModule>> session_modules;
-  for (int64 i = 0; i < versioned_handles.size(); ++i) {
-    const string& directory_path =
-        module_configs[i]->debug_options().xla_dump_computations_to();
-    const string& other_directory_path =
-        module_configs[i]->debug_options().xla_dump_executions_to();
-    if (directory_path.empty() && other_directory_path.empty()) {
-      continue;
-    }
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<SessionModule> session_module,
-        computation_tracker_.SnapshotComputation(versioned_handles[i].handle));
-    if (!directory_path.empty()) {
-      string filename = Printf("computation_%lld__%s__version_%lld",
-                               versioned_handles[i].handle.handle(),
-                               session_module->entry().name().c_str(),
-                               versioned_handles[i].version);
-      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
-                                                     *session_module));
-      session_modules.push_back(std::move(session_module));
-    }
-  }
-
-  VLOG(1) << "Computation handles:";
-  for (const VersionedComputationHandle& versioned_handle : versioned_handles) {
-    VLOG(1) << versioned_handle;
-  }
-
-  CHECK_EQ(versioned_handles.size(), module_configs.size());
-  std::vector<std::unique_ptr<HloModule>> modules;
-  for (int64 i = 0; i < versioned_handles.size(); ++i) {
-    const VersionedComputationHandle& versioned_handle = versioned_handles[i];
-    const HloModuleConfig& config = *module_configs[i];
-    TF_ASSIGN_OR_RETURN(auto module,
-                        computation_tracker_.BuildHloModule(
-                            versioned_handle, config,
-                            /*include_unreachable_instructions=*/true));
-    modules.push_back(std::move(module));
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<Executable>> executables,
-      backend->compiler()->Compile(std::move(modules), std::move(executors),
-                                   device_allocator));
-
-  for (size_t i = 0; i < versioned_handles.size(); ++i) {
-    if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
-      executables[i]->set_session_module(std::move(session_modules[i]));
-    }
-  }
-
-  return std::move(executables);
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
@@ -496,98 +423,6 @@ Status Service::ValidateEntryComputationLayout(HloModule* module) {
       execute_backend_->transfer_manager()->HostShapeToDeviceShape(
           module->host_entry_computation_layout().result_shape())));
   return Status::OK();
-}
-
-StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
-    const VersionedComputationHandle& versioned_handle,
-    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-    se::StreamExecutor* executor, DeviceMemoryAllocator* device_allocator) {
-  VLOG(1) << Printf("BuildExecutable on service %p with handle %s", this,
-                    versioned_handle.ToString().c_str());
-
-  // Dump computation proto state if flag is set.
-  std::unique_ptr<SessionModule> session_module;
-  const string& directory_path =
-      module_config->debug_options().xla_dump_computations_to();
-  const string& other_directory_path =
-      module_config->debug_options().xla_dump_executions_to();
-  if (!directory_path.empty() || !other_directory_path.empty()) {
-    TF_ASSIGN_OR_RETURN(
-        session_module,
-        computation_tracker_.SnapshotComputation(versioned_handle.handle));
-    if (!directory_path.empty()) {
-      string filename = Printf("computation_%lld__%s__version_%lld",
-                               versioned_handle.handle.handle(),
-                               session_module->entry().name().c_str(),
-                               versioned_handle.version);
-      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
-                                                     *session_module));
-    }
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle, *module_config,
-                                          /*include_unreachable_instructions=*/
-                                          true));
-
-  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
-
-  TF_ASSIGN_OR_RETURN(
-      module, backend->compiler()->RunHloPasses(std::move(module), executor,
-                                                device_allocator));
-  // Check that on-host and on-device shapes are consistent.
-  TF_RETURN_IF_ERROR(ValidateEntryComputationLayout(module.get()));
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      backend->compiler()->RunBackend(
-                          std::move(module), executor, device_allocator));
-
-  if (!other_directory_path.empty()) {
-    executable->set_session_module(std::move(session_module));
-  }
-
-  return std::move(executable);
-}
-
-StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
-    const VersionedComputationHandle& versioned_handle,
-    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-    se::StreamExecutor* executor, ExecutionProfile* profile,
-    DeviceMemoryAllocator* device_allocator) {
-  std::shared_ptr<Executable> executable =
-      compilation_cache_.LookUp(versioned_handle, *module_config);
-
-  if (executable != nullptr) {
-    // Executable found in the computation cache.
-    if (profile != nullptr) {
-      profile->set_compilation_cache_hit(true);
-    }
-    return executable;
-  }
-
-  uint64 start_micros =
-      // Avoid reading the clock if we don't want timing info
-      (profile != nullptr) ? tensorflow::Env::Default()->NowMicros() : 0;
-
-  // Take a copy of the module config, as compilation introduces layouts where
-  // layouts were optional before.
-  HloModuleConfig original_module_config = *module_config;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable_unique_ptr,
-      BuildExecutable(versioned_handle, std::move(module_config), backend,
-                      executor, device_allocator));
-
-  if (profile != nullptr) {
-    uint64 end_micros = tensorflow::Env::Default()->NowMicros();
-    uint64 milliseconds = (end_micros - start_micros) / 1000;
-    profile->set_compilation_cache_hit(false);
-    profile->set_compile_time_ms(milliseconds);
-  }
-
-  // Insert executable into the cache.
-  return compilation_cache_.Insert(std::move(executable_unique_ptr),
-                                   original_module_config);
 }
 
 StatusOr<std::vector<GlobalDataHandle>>
@@ -882,8 +717,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(request.computation().program_shape(),
                            replicated_arguments.front(),
-                           request.execution_options(),
-                           /*user_computation=*/nullptr));
+                           request.execution_options()));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
         << module_config->host_entry_computation_layout().ToString();
@@ -1337,18 +1171,6 @@ Status Service::GetComputationGraphStats(
   stats.set_flop_count(analysis.flop_count());
   stats.set_transcendental_count(analysis.transcendental_count());
   *result->mutable_stats() = stats;
-  return Status::OK();
-}
-
-template <typename RequestT, typename ResponseT>
-Status Service::AddInstruction(
-    const RequestT* arg, ResponseT* result,
-    const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
-        adder) {
-  TF_ASSIGN_OR_RETURN(UserComputation * computation,
-                      computation_tracker_.Resolve(arg->computation()));
-
-  TF_ASSIGN_OR_RETURN(*result->mutable_output(), adder(computation));
   return Status::OK();
 }
 

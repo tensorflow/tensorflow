@@ -164,7 +164,6 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:computation_tracker",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
