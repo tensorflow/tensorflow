@@ -97,12 +97,22 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   }
 
   // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
+  // Optionally run a constant folding pass before pruning.
   void OptimizeTwiceAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
-                             GraphDef* output) {
+                             GraphDef* output, bool const_folding = false) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+
     item->graph.Swap(output);
     output->Clear();
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+
+    if (const_folding) {
+      item->graph.Swap(output);
+      output->Clear();
+      TF_EXPECT_OK(ConstantFolding(/*cpu_device=*/nullptr)
+                       .Optimize(nullptr, *item, output));
+    }
+
     item->graph.Swap(output);
     output->Clear();
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
@@ -127,6 +137,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.remove_redundant_reshape = false;
     options.remove_negation = false;
     options.remove_logical_not = false;
+    options.reorder_cast_and_transpose = false;
     optimizer->options_ = options;
   }
 
@@ -177,6 +188,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlyRemoveNegation(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.remove_negation = true;
+  }
+
+  void EnableOnlyReorderCastAndTranspose(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.reorder_cast_and_transpose = true;
   }
 
   void EnableOnlyHoistCWiseUnaryChains(ArithmeticOptimizer* optimizer) {
@@ -1540,6 +1556,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   //     =>
   //   Conv2D(Cast(Transpose(I)), W*S)
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+
   Output inputs =
       ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
   Output cast = ops::Cast(s, inputs, DT_FLOAT);
@@ -1557,28 +1574,28 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(
-      ConstantFolding(/*cpu_device=*/nullptr).Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  OptimizeTwiceAndPrune(&optimizer, &item, &output, /*const_folding=*/true);
 
   NodeMap node_map(&output);
-  const NodeDef* inputs_node = CHECK_NOTNULL(node_map.GetNode("Placeholder"));
-  const NodeDef* transpose_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Transpose_uint8")));
-  const NodeDef* cast_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Cast_float")));
+
+  // Expected names for the optimized nodes.
+  const string p = "ArithmeticOptimizer/ReorderCastAndTranspose_";
+  const string optimized_cast_name = strings::StrCat(p, "float_Cast");
+  const string optimized_transpose_name = strings::StrCat(p, "uint8_Transpose");
+
+  const NodeDef* inputs_node = node_map.GetNode("Placeholder");
+  const NodeDef* transpose_node = node_map.GetNode(optimized_transpose_name);
+  const NodeDef* cast_node = node_map.GetNode(optimized_cast_name);
   const NodeDef* weights_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D")));
-  const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
+      node_map.GetNode(OptimizedName("weights_scaled_Conv2D"));
+  const NodeDef* conv_node = node_map.GetNode("Conv2D");
+
+  ASSERT_TRUE(inputs_node != nullptr);
+  ASSERT_TRUE(transpose_node != nullptr);
+  ASSERT_TRUE(cast_node != nullptr);
+  ASSERT_TRUE(weights_node != nullptr);
+  ASSERT_TRUE(conv_node != nullptr);
 
   EXPECT_EQ(output.node_size(), 7);
   EXPECT_EQ(transpose_node->input(0), inputs_node->name());
