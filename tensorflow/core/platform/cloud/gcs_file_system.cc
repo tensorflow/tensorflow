@@ -129,9 +129,6 @@ constexpr char kInitialTokens[] = "GCS_INITIAL_TOKENS";
 
 // TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
-  if (!filename) {
-    return errors::Internal("'filename' cannot be nullptr.");
-  }
 #ifndef _WIN32
   char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
   int fd = mkstemp(buffer);
@@ -158,9 +155,6 @@ Status GetTmpFilename(string* filename) {
 /// object is empty.
 Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
                     string* object) {
-  if (!bucket || !object) {
-    return errors::Internal("bucket and object cannot be null.");
-  }
   StringPiece scheme, bucketp, objectp;
   io::ParseURI(fname, &scheme, &bucketp, &objectp);
   if (scheme != "gs") {
@@ -448,9 +442,6 @@ class GcsWritableFile : public WritableFile {
   }
 
   Status GetCurrentFileSize(uint64* size) {
-    if (size == nullptr) {
-      return errors::Internal("'size' cannot be nullptr");
-    }
     const auto tellp = outfile_.tellp();
     if (tellp == static_cast<std::streampos>(-1)) {
       return errors::Internal(
@@ -462,9 +453,6 @@ class GcsWritableFile : public WritableFile {
 
   /// Initiates a new resumable upload session.
   Status CreateNewUploadSession(string* session_uri) {
-    if (session_uri == nullptr) {
-      return errors::Internal("'session_uri' cannot be nullptr.");
-    }
     uint64 file_size;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
 
@@ -498,9 +486,6 @@ class GcsWritableFile : public WritableFile {
   /// uploaded size in bytes.
   Status RequestUploadSessionStatus(const string& session_uri, bool* completed,
                                     uint64* uploaded) {
-    if (completed == nullptr || uploaded == nullptr) {
-      return errors::Internal("'completed' and 'uploaded' cannot be nullptr.");
-    }
     uint64 file_size;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
 
@@ -984,9 +969,6 @@ Status GcsFileSystem::FileExists(const string& fname) {
 
 Status GcsFileSystem::ObjectExists(const string& fname, const string& bucket,
                                    const string& object, bool* result) {
-  if (!result) {
-    return errors::Internal("'result' cannot be nullptr.");
-  }
   GcsFileStat stat;
   const Status status = StatForObject(fname, bucket, object, &stat);
   switch (status.code()) {
@@ -1058,9 +1040,6 @@ Status GcsFileSystem::UncachedStatForObject(const string& fname,
 
 Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
                                     const string& object, GcsFileStat* stat) {
-  if (!stat) {
-    return errors::Internal("'stat' cannot be nullptr.");
-  }
   if (object.empty()) {
     return errors::InvalidArgument(strings::Printf(
         "'object' must be a non-empty string. (File: %s)", fname.c_str()));
@@ -1075,10 +1054,6 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
 }
 
 Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
-  if (!result) {
-    return errors::Internal("'result' cannot be nullptr.");
-  }
-
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
@@ -1097,9 +1072,6 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
 }
 
 Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
-  if (!result) {
-    return errors::Internal("'result' cannot be nullptr.");
-  }
   StatCache::ComputeFunc compute_func = [this](const string& dirname,
                                                GcsFileStat* stat) {
     std::vector<string> children;
