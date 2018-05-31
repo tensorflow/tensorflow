@@ -32,14 +32,6 @@ CONTROL_VAR_NAME = 'control_var_name'
 class BreakStatementTransformer(transformer.Base):
   """Canonicalizes break statements into additional conditionals."""
 
-  def _track_body(self, nodes, break_var):
-    self.enter_local_scope()
-    self.set_local(CONTROL_VAR_NAME, break_var)
-    nodes = self.visit_block(nodes)
-    break_used = self.get_local(BREAK_USED, False)
-    self.exit_local_scope()
-    return nodes, break_used
-
   def visit_Break(self, node):
     self.set_local(BREAK_USED, True)
     var_name = self.get_local(CONTROL_VAR_NAME)
@@ -64,6 +56,14 @@ class BreakStatementTransformer(transformer.Base):
         var_name=var_name,
         block=block)
     return node
+
+  def _track_body(self, nodes, break_var):
+    self.enter_local_scope()
+    self.set_local(CONTROL_VAR_NAME, break_var)
+    nodes = self.visit_block(nodes)
+    break_used = self.get_local(BREAK_USED, False)
+    self.exit_local_scope()
+    return nodes, break_used
 
   def visit_While(self, node):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)

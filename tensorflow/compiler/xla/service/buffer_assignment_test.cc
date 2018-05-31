@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -82,7 +81,7 @@ const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
 
 class BufferAssignmentTest : public HloTestBase {
  protected:
-  BufferAssignmentTest() : computation_tracker_() {}
+  BufferAssignmentTest() {}
   ~BufferAssignmentTest() override {}
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
@@ -251,9 +250,6 @@ class BufferAssignmentTest : public HloTestBase {
     }
     return total_size;
   }
-
-  // Computation tracker for nested computations.
-  ComputationTracker computation_tracker_;
 
   // Shapes for use in the examples.
   Shape s32_ = ShapeUtil::MakeShape(xla::S32, {});

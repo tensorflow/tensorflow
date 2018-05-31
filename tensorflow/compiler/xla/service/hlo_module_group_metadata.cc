@@ -247,6 +247,13 @@ tensorflow::gtl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
   return device;
 }
 
+int64 HloModuleGroupMetadata::GetDeviceModulesCount() const {
+  return std::count_if(modules_.begin(), modules_.end(),
+                       [](const HloModule* module) {
+                         return !module->config().is_host_module();
+                       });
+}
+
 Status HloModuleGroupMetadata::RecordInstructions() {
   const auto visitor = [this](HloInstruction* hlo) -> Status {
     if (hlo->opcode() == HloOpcode::kWhile) {

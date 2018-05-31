@@ -173,9 +173,7 @@ sh_binary(
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
             "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tf_lite_py_pip",
-            "//tensorflow/contrib/lite/toco:toco",
-            "//tensorflow/contrib/lite/toco/python:toco_wrapper",
+            "//tensorflow/contrib/lite/python:tflite_convert",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([

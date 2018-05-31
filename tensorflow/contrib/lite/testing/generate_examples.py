@@ -146,8 +146,9 @@ def toco_options(data_types,
        " --inference_type=%s" % inference_type +
        " --input_format=TENSORFLOW_GRAPHDEF" + " --output_format=TFLITE" +
        " --input_arrays=%s" % ",".join(input_arrays) +
-       " --input_shapes=%s" % shape_str +
        " --output_arrays=%s" % ",".join(output_arrays))
+  if shape_str:
+    s += (" --input_shapes=%s" % shape_str)
   if extra_toco_options.drop_control_dependency:
     s += " --drop_control_dependency"
   if extra_toco_options.allow_custom_ops:
@@ -236,6 +237,19 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   elif dtype in (tf.int32, tf.uint8, tf.int64):
     value = np.random.randint(min_value, max_value+1, shape)
   return value.astype(dtype)
+
+
+def create_scalar_data(dtype, min_value=-100, max_value=100):
+  """Build scalar tensor data range from min_value to max_value exclusively."""
+
+  if dtype in _TF_TYPE_INFO:
+    dtype = _TF_TYPE_INFO[dtype][0]
+
+  if dtype in (tf.float32, tf.float16):
+    value = (max_value - min_value) * np.random.random() + min_value
+  elif dtype in (tf.int32, tf.uint8, tf.int64):
+    value = np.random.randint(min_value, max_value + 1)
+  return np.array(value, dtype=dtype)
 
 
 def freeze_graph(session, outputs):
@@ -2484,6 +2498,67 @@ def make_transpose_conv_tests(zip_path):
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
+
+def make_sparse_to_dense_tests(zip_path):
+  """Make a set of tests to do sparse to dense."""
+
+  test_parameters = [{
+      "value_dtype": [tf.float32, tf.int32],
+      "index_dtype": [tf.int32, tf.int64],
+      "value_count": [1, 3, 6, 8],
+      "dense_shape": [[15], [3, 10], [4, 4, 4, 4], [7, 10, 9]],
+      "default_value": [0, -1],
+      "value_is_scalar": [True, False],
+  }]
+
+  # Return a single value for 1-D dense shape, but a tuple for other shapes.
+  def generate_index(dense_shape):
+    if len(dense_shape) == 1:
+      return np.random.randint(dense_shape[0])
+    else:
+      index = []
+      for shape in dense_shape:
+        index.append(np.random.randint(shape))
+      return tuple(index)
+
+  def build_graph(parameters):
+    """Build the sparse_to_dense op testing graph."""
+    dense_shape = parameters["dense_shape"]
+
+    # Special handle for value_is_scalar case.
+    # value_count must be 1.
+    if parameters["value_is_scalar"] and parameters["value_count"] == 1:
+      value = tf.placeholder(
+          name="value", dtype=parameters["value_dtype"], shape=())
+    else:
+      value = tf.placeholder(
+          name="value",
+          dtype=parameters["value_dtype"],
+          shape=[parameters["value_count"]])
+    indices = set()
+    while len(indices) < parameters["value_count"]:
+      indices.add(generate_index(dense_shape))
+    indices = tf.constant(tuple(indices), dtype=parameters["index_dtype"])
+    # TODO(renjieliu): Add test for validate_indices case.
+    out = tf.sparse_to_dense(
+        indices,
+        dense_shape,
+        value,
+        parameters["default_value"],
+        validate_indices=False)
+
+    return [value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    if parameters["value_is_scalar"] and parameters["value_count"] == 1:
+      input_value = create_scalar_data(parameters["value_dtype"])
+    else:
+      input_value = create_tensor_data(parameters["value_dtype"],
+                                       [parameters["value_count"]])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 # Toco binary path provided by the generate rule.
 bin_path = None

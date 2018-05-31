@@ -420,6 +420,15 @@ TEST_F(OperatorTest, BuiltinTransposeConv) {
   EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
 }
 
+TEST_F(OperatorTest, BuiltinSparseToDense) {
+  SparseToDenseOperator op;
+  op.validate_indices = false;
+  std::unique_ptr<toco::SparseToDenseOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("SPARSE_TO_DENSE", OperatorType::kSparseToDense), op);
+  EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";

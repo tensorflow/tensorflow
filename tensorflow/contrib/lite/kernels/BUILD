@@ -170,6 +170,7 @@ cc_library(
         "slice.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "sparse_to_dense.cc",
         "split.cc",
         "squeeze.cc",
         "strided_slice.cc",
@@ -925,6 +926,19 @@ tf_cc_test(
     name = "transpose_conv_test",
     size = "small",
     srcs = ["transpose_conv_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_to_dense_test",
+    size = "small",
+    srcs = ["sparse_to_dense_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

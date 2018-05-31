@@ -46,6 +46,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -2748,7 +2749,8 @@ class _Inputs(object):
     """
     iterator = self._dataset.make_initializable_iterator()
     # pylint: disable=protected-access
-    hook = estimator_lib._DatasetInitializerHook(iterator)
+    hook = estimator_util._DatasetInitializerHook(iterator)
+    # pylint: enable=protected-access
     self._iterator = iterator
     return hook
 

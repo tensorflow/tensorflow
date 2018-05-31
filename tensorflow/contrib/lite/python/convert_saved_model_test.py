@@ -41,7 +41,56 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import training as train
+
+
+class TensorFunctionsTest(test_util.TensorFlowTestCase):
+
+  def testGetTensorsValid(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    tensors = convert_saved_model.get_tensors_from_tensor_names(
+        sess.graph, ["Placeholder"])
+    self.assertEqual("Placeholder:0", tensors[0].name)
+
+  def testGetTensorsInvalid(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    with self.assertRaises(ValueError) as error:
+      convert_saved_model.get_tensors_from_tensor_names(sess.graph,
+                                                        ["invalid-input"])
+    self.assertEqual("Invalid tensors 'invalid-input' were found.",
+                     str(error.exception))
+
+  def testSetTensorShapeValid(self):
+    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+    convert_saved_model.set_tensor_shapes([tensor],
+                                          {"Placeholder:0": [5, 3, 5]})
+    self.assertEqual([5, 3, 5], tensor.shape.as_list())
+
+  def testSetTensorShapeInvalid(self):
+    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+    convert_saved_model.set_tensor_shapes([tensor],
+                                          {"invalid-input": [5, 3, 5]})
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+  def testSetTensorShapeEmpty(self):
+    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+    convert_saved_model.set_tensor_shapes([tensor], {})
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
 
 class FreezeSavedModelTest(test_util.TensorFlowTestCase):
@@ -93,6 +142,10 @@ class FreezeSavedModelTest(test_util.TensorFlowTestCase):
                          output_arrays=None,
                          tag_set=None,
                          signature_key=None):
+    if tag_set is None:
+      tag_set = set([tag_constants.SERVING])
+    if signature_key is None:
+      signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     graph_def, in_tensors, out_tensors = convert_saved_model.freeze_saved_model(
         saved_model_dir=saved_model_dir,
         input_arrays=input_arrays,
@@ -390,7 +443,7 @@ class FreezeSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
         input_arrays=None,
         input_shapes=None,
         output_arrays=["Softmax"],
-        tag_set=None,
+        tag_set=set([tag_constants.SERVING]),
         signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
 
     self.assertTrue(result)

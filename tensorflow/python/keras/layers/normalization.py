@@ -574,28 +574,26 @@ class BatchNormalization(Layer):
                                      lambda: variance,
                                      lambda: moving_variance)
 
-      if self.renorm:
-        r, d, new_mean, new_variance = self._renorm_correction_and_moments(
-            mean, variance, training)
-        # When training, the normalized values (say, x) will be transformed as
-        # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
-        # = x * (r * gamma) + (d * gamma + beta) with renorm.
-        r = _broadcast(array_ops.stop_gradient(r, name='renorm_r'))
-        d = _broadcast(array_ops.stop_gradient(d, name='renorm_d'))
-        scale, offset = _compose_transforms(r, d, scale, offset)
-      else:
-        new_mean, new_variance = mean, variance
-
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
         # supposed to sequentially update the moving_mean and moving_variance
         # with each sub-batch. However, since the moving statistics are only
         # used during evaluation, it is more efficient to just update in one
         # step and should not make a significant difference in the result.
-        new_mean = math_ops.reduce_mean(new_mean,
-                                        axis=1, keepdims=True)
-        new_variance = math_ops.reduce_mean(new_variance,
-                                            axis=1, keepdims=True)
+        new_mean = math_ops.reduce_mean(mean, axis=1, keepdims=True)
+        new_variance = math_ops.reduce_mean(variance, axis=1, keepdims=True)
+      else:
+        new_mean, new_variance = mean, variance
+
+      if self.renorm:
+        r, d, new_mean, new_variance = self._renorm_correction_and_moments(
+            new_mean, new_variance, training)
+        # When training, the normalized values (say, x) will be transformed as
+        # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
+        # = x * (r * gamma) + (d * gamma + beta) with renorm.
+        r = _broadcast(array_ops.stop_gradient(r, name='renorm_r'))
+        d = _broadcast(array_ops.stop_gradient(d, name='renorm_d'))
+        scale, offset = _compose_transforms(r, d, scale, offset)
 
       def _do_update(var, value):
         if in_eager_mode and not self.trainable:

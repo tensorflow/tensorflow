@@ -27,6 +27,10 @@ message TFAPIClass {
 };
 
 message TFAPIProto {
+  // Suppress generation of the proto API's descriptor() method lest it
+  // conflict with the standard accessor for the field having the same name.
+  option no_standard_descriptor_accessor = true;
+
   optional google.protobuf.DescriptorProto descriptor = 1;
 };
 
