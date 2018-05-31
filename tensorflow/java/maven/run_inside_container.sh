@@ -48,7 +48,7 @@ clean() {
   mvn -q clean
   rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target \
     libtensorflow/src libtensorflow/target tensorflow-android/target \
-    tensorflow-hadoop/src spark-tensorflow-connector/src
+    hadoop/src spark-connector/src
 }
 
 update_version_in_pom() {
@@ -193,8 +193,8 @@ generate_java_protos() {
 # is updated for each module.
 download_tf_ecosystem() {
   ECOSYSTEM_DIR="/tmp/tensorflow-ecosystem"
-  HADOOP_DIR="${DIR}/tensorflow-hadoop"
-  SPARK_DIR="${DIR}/spark-tensorflow-connector"
+  HADOOP_DIR="${DIR}/hadoop"
+  SPARK_DIR="${DIR}/spark-connector"
 
   # Clean any previous attempts
   rm -rf "${ECOSYSTEM_DIR}"
@@ -203,6 +203,8 @@ download_tf_ecosystem() {
   mkdir -p  "${ECOSYSTEM_DIR}"
   cd "${ECOSYSTEM_DIR}"
   git clone "${TF_ECOSYSTEM_URL}"
+  cd ecosystem
+  git checkout r${TF_VERSION}
 
   # Copy the TensorFlow Hadoop source
   cp -r "${ECOSYSTEM_DIR}/ecosystem/hadoop/src" "${HADOOP_DIR}"
@@ -279,7 +281,7 @@ cd "${DIR}"
 # Comment lines out appropriately if debugging/tinkering with the release
 # process.
 # gnupg2 is required for signing
-apt-get -qq update && apt-get -qqq install -y gnupg2 && apt-get -qqq install -y git
+apt-get -qq update && apt-get -qqq install -y gnupg2 git
 
 clean
 update_version_in_pom
