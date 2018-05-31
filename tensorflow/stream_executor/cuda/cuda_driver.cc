@@ -21,7 +21,6 @@ limitations under the License.
 #include <set>
 #include <utility>
 
-#include "cuda/include/cuda_runtime.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"

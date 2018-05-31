@@ -262,13 +262,13 @@ TEST_P(HloEvaluatorTest, DoesCosR2) {
   auto operand = Literal::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = Literal::CreateR2<float>({{1, -1}, {-1, 1}});
   TestUnaryOp(HloOpcode::kCos, std::move(expected), std::move(operand),
-              use_bfloat16_ ? 0x1.0P-5 : 0x1.0P-20);
+              use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_P(HloEvaluatorTest, DoesSinR2) {
   auto operand = Literal::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = Literal::CreateR2<float>({{0, 0}, {0, 0}});
   TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand),
-              use_bfloat16_ ? 0x1.0P-5 : 0x1.0P-20);
+              use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_P(HloEvaluatorTest, DoesNotR2) {
   auto operand =
@@ -333,7 +333,7 @@ TEST_P(HloEvaluatorTest, DoesReshape) {
   result->EachCell<NativeT>(
       [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
-        EXPECT_NEAR(value, literal_clone->Get<NativeT>(rindexes), 0x1.0P-5);
+        EXPECT_NEAR(value, literal_clone->Get<NativeT>(rindexes), 0.031250);
       });
 }
 
@@ -567,7 +567,7 @@ TEST_P(HloEvaluatorTest, NegativePadding2D) {
   (*expected_array)(0, 4) = 2.718f;
   auto expected = Literal::CreateR2FromArray2D<float>(*expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(0x1.0P-5)));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(0.031250)));
 }
 
 TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {

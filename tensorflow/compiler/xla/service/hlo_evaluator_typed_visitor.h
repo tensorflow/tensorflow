@@ -161,36 +161,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleRound<ReturnT>(round);
   }
 
-  Status HandleBroadcast(HloInstruction* broadcast) override {
-    const Literal& operand_to_broadcast =
-        parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
-    std::vector<int64> broadcast_indices(
-        ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
-
-    TF_RET_CHECK(broadcast->dimensions().size() ==
-                 ShapeUtil::Rank(operand_to_broadcast.shape()))
-        << "broadcast dimensions is of size: " << broadcast->dimensions().size()
-        << " and rank of operand_to_broadcast is: "
-        << ShapeUtil::Rank(operand_to_broadcast.shape());
-    // Checks that operand's dimensions are the same as the broadcast's
-    // dimensions along the dimensions to be broadcasted.
-    for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
-      TF_RET_CHECK(broadcast->shape().dimensions(broadcast->dimensions(i)) ==
-                   operand_to_broadcast.shape().dimensions(i));
-    }
-
-    auto output = MakeUnique<Literal>(broadcast->shape());
-    TF_RETURN_IF_ERROR(output->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-          for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
-            broadcast_indices[i] = multi_index[broadcast->dimensions(i)];
-          }
-          return operand_to_broadcast.Get<ReturnT>(broadcast_indices);
-        }));
-    parent_->evaluated_[broadcast] = std::move(output);
-    return Status::OK();
-  }
-
   template <
       typename NativeT,
       typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
@@ -1482,11 +1452,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             // Evaluate computation with specified literal operands.
             auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
             auto result_val_literal = Literal::CreateR0<ReturnT>(result_val);
-            std::vector<const Literal*> args = {result_val_literal.get(),
-                                                curr_val_literal.get()};
 
             std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                embedded_evaluator
+                    .Evaluate<const Literal*>(
+                        *function,
+                        {result_val_literal.get(), curr_val_literal.get()})
                     .ConsumeValueOrDie();
             // Clear visit states so that we can use the evaluator again on
             // the same computation.
@@ -1685,10 +1656,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                     Literal::CreateR0<ReturnT>(curr_val);
                 const auto result_val_literal =
                     Literal::CreateR0<ReturnT>(result_val);
-                const std::vector<const Literal*> args = {
-                    result_val_literal.get(), curr_val_literal.get()};
                 std::unique_ptr<Literal> computed_result =
-                    embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                    embedded_evaluator
+                        .Evaluate<const Literal*>(
+                            *function,
+                            {result_val_literal.get(), curr_val_literal.get()})
                         .ConsumeValueOrDie();
 
                 // Clear visit states so that the we can use the evaluate again
@@ -1993,7 +1965,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // to oficially document different behavior.
     for (int64 i = 0; i < start.size(); ++i) {
       start[i] = std::min<int64>(
-          std::max(0LL, start[i]),
+          std::max(int64{0}, start[i]),
           operand_literal.shape().dimensions(i) - result_shape.dimensions(i));
     }
 

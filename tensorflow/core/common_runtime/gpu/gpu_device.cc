@@ -770,7 +770,7 @@ int64 MinSystemMemory(int64 available_memory) {
   } else {
     // max(300 MiB, 0.05 * available_memory)
     min_system_memory =
-        std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
+        std::max(int64{314572800}, static_cast<int64>(available_memory * 0.05));
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing

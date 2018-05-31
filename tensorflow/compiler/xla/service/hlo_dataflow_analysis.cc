@@ -363,7 +363,7 @@ bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
 bool HloDataflowAnalysis::UpdateConditionalValueSet(
     HloInstruction* conditional) {
   CHECK_EQ(conditional->opcode(), HloOpcode::kConditional);
-  std::vector<const InstructionValueSet*> inputs = {
+  const InstructionValueSet* const inputs[] = {
       &GetInstructionValueSet(
           conditional->true_computation()->root_instruction()),
       &GetInstructionValueSet(
@@ -538,7 +538,7 @@ bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
 
 bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
   CHECK_EQ(xla_while->opcode(), HloOpcode::kWhile);
-  std::vector<const InstructionValueSet*> inputs = {
+  const InstructionValueSet* const inputs[] = {
       &GetInstructionValueSet(xla_while->while_body()->root_instruction()),
       &GetInstructionValueSet(xla_while->operand(0))};
   if (ssa_form_) {

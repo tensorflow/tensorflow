@@ -420,6 +420,15 @@ cc_library(
     }),
 )
 
+cc_library(
+    name = "test_util",
+    srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
+    deps = [
+        ":types",
+    ],
+)
+
 cc_test(
     name = "tensor_utils_test",
     srcs = ["tensor_utils_test.cc"],
@@ -436,6 +445,83 @@ cc_test(
         ":tensor_utils",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "depthwiseconv_float_test",
+    srcs = ["depthwiseconv_float_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "depthwiseconv_quantized_test",
+    srcs = ["depthwiseconv_quantized_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "resize_bilinear_float_test",
+    srcs = ["resize_bilinear_float_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "softmax_quantized_test",
+    timeout = "long",
+    srcs = [
+        "softmax_quantized_test.cc",
+    ],
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "logsoftmax_quantized_test",
+    timeout = "long",
+    srcs = [
+        "logsoftmax_quantized_test.cc",
+    ],
+    tags = ["tflite_not_portable"],
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "log_quantized_test",
+    srcs = ["log_quantized_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
         "@com_google_googletest//:gtest_main",
     ],
 )

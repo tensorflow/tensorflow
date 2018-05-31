@@ -107,14 +107,14 @@ class Client {
   // device (and its replicas if replication is enabled). Otherwise, data is
   // transferred to the default device (and its replicas).
   StatusOr<std::unique_ptr<GlobalData>> TransferToServer(
-      const Literal& literal, const DeviceHandle* device_handle = nullptr);
+      const LiteralSlice& literal, const DeviceHandle* device_handle = nullptr);
 
   // Transfer the given literal to the Infeed interface of the device.
   //
   // device_handle and replica_id together specify a particular device; a device
   // assigned for the given replica_id among the replicas that the given device
   // handle belongs to.
-  Status TransferToInfeed(const Literal& literal, int64 replica_id = 0,
+  Status TransferToInfeed(const LiteralSlice& literal, int64 replica_id = 0,
                           const DeviceHandle* device_handle = nullptr);
 
   // Transfers from the Outfeed of the device.

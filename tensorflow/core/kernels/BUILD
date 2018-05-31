@@ -1968,6 +1968,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resource_variable_ops",
     srcs = ["resource_variable_ops.cc"],
+    hdrs = ["resource_variable_ops.h"],
     deps = [
         ":bounds_check",
         ":dense_update_functor",
@@ -5178,9 +5179,9 @@ filegroup(
             "partitioned_function_ops.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
-            "scatter_nd_op*",
             "mutex_ops.*",
             "batch_kernels.*",
+            "regex_full_match_op.cc",
             "regex_replace_op.cc",
         ],
     ),

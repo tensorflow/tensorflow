@@ -55,6 +55,23 @@ string ShapeIndexView::ToString() const {
       "}");
 }
 
+bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
+  if (size() != other.size()) {
+    return false;
+  }
+  for (auto it = begin(), other_it = other.begin(); it != end();
+       ++it, ++other_it) {
+    if (*it != *other_it) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ShapeIndexView::operator!=(const ShapeIndexView& other) const {
+  return !(*this == other);
+}
+
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   out << shape_index.ToString();
   return out;
@@ -861,6 +878,27 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 /* static */
 bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return !IsTuple(GetSubshape(shape, index));
+}
+
+/* static */ int64 ShapeUtil::GetLeafCount(const Shape& shape) {
+  int64 count = 0;
+  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex& index) {
+    if (IsLeafIndex(shape, index)) {
+      ++count;
+    }
+  });
+  return count;
+}
+
+/* static */ std::vector<ShapeUtil::IndexedShape> ShapeUtil::GetLeafShapes(
+    const Shape& shape) {
+  std::vector<IndexedShape> leaves;
+  ForEachSubshape(shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
+    if (IsLeafIndex(shape, index)) {
+      leaves.emplace_back(index, sub_shape);
+    }
+  });
+  return leaves;
 }
 
 /* static */ Shape ShapeUtil::StripDegenerateDimensions(const Shape& shape) {

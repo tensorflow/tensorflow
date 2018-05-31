@@ -41,6 +41,7 @@ from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras.utils.layer_utils import print_summary as print_layer_summary
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures_base
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -321,7 +322,10 @@ class Network(base_layer.Layer):
     no_dependency = isinstance(value, checkpointable.NoDependency)
     if no_dependency:
       value = value.value
-    if isinstance(value, (base_layer.Layer, Network)):
+    if isinstance(value, (
+        base_layer.Layer,
+        Network,
+        data_structures_base.CheckpointableDataStructureBase)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -1424,7 +1428,15 @@ class Network(base_layer.Layer):
             It will be called on each line of the summary.
             You can set it to a custom function
             in order to capture the string summary.
+
+    Raises:
+        ValueError: if `summary()` is called before the model is built.
     """
+    if not self.built:
+      raise ValueError('This model has never been called, thus its weights '
+                       'have not yet been created, so no summary can be '
+                       'displayed. Build the model first '
+                       '(e.g. by calling it on some data).')
     print_layer_summary(self,
                         line_length=line_length,
                         positions=positions,

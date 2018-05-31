@@ -290,51 +290,24 @@ Status GetBoolValue(const Json::Value& parent, const char* name, bool* result) {
 /// A GCS-based implementation of a random access file with an LRU block cache.
 class GcsRandomAccessFile : public RandomAccessFile {
  public:
-  using SignatureGenFun =
-      std::function<Status(const string& filename, int64* file_signature)>;
+  using ReadFn =
+      std::function<Status(const string& filename, uint64 offset, size_t n,
+                           StringPiece* result, char* scratch)>;
 
-  GcsRandomAccessFile(const string& filename, FileBlockCache* file_block_cache,
-                      const SignatureGenFun& signature_gen_fun)
-      : filename_(filename),
-        file_block_cache_(file_block_cache),
-        signature_gen_fun_(signature_gen_fun) {}
+  GcsRandomAccessFile(const string& filename, ReadFn read_fn)
+      : filename_(filename), read_fn_(std::move(read_fn)) {}
 
   /// The implementation of reads with an LRU block cache. Thread safe.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    if (file_block_cache_->IsCacheEnabled()) {
-      int64 signature;
-      TF_RETURN_IF_ERROR(signature_gen_fun_(filename_, &signature));
-      if (!file_block_cache_->ValidateAndUpdateFileSignature(filename_,
-                                                             signature)) {
-        VLOG(1) << "File " << filename_
-                << " signature has been changed. Refreshing the cache.";
-      }
-    }
-
-    *result = StringPiece();
-    size_t bytes_transferred;
-    TF_RETURN_IF_ERROR(file_block_cache_->Read(filename_, offset, n, scratch,
-                                               &bytes_transferred));
-    *result = StringPiece(scratch, bytes_transferred);
-
-    if (bytes_transferred < n) {
-      // This is not an error per se. The RandomAccessFile interface expects
-      // that Read returns OutOfRange if fewer bytes were read than requested.
-      return errors::OutOfRange("EOF reached, ", result->size(),
-                                " bytes were read out of ", n,
-                                " bytes requested.");
-    }
-    return Status::OK();
+    return read_fn_(filename_, offset, n, result, scratch);
   }
 
  private:
   /// The filename of this file.
   const string filename_;
-  /// The LRU block cache for this file.
-  mutable FileBlockCache* file_block_cache_;  // not owned
-
-  const SignatureGenFun signature_gen_fun_;
+  /// The implementation of the read operation (provided by the GCSFileSystem).
+  const ReadFn read_fn_;
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -797,19 +770,48 @@ Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
-  result->reset(new GcsRandomAccessFile(
-      fname, file_block_cache_.get(),
-      [this, bucket, object](const string& fname, int64* signature) {
-        GcsFileStat stat;
-        TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
-            fname, &stat,
-            [this, bucket, object](const string& fname, GcsFileStat* stat) {
-              return UncachedStatForObject(fname, bucket, object, stat);
-            }));
-        *signature = stat.generation_number;
-        return Status::OK();
-      }));
+  result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
+                                                   const string& fname,
+                                                   uint64 offset, size_t n,
+                                                   StringPiece* result,
+                                                   char* scratch) {
+    tf_shared_lock l(block_cache_lock_);
+    if (file_block_cache_->IsCacheEnabled()) {
+      GcsFileStat stat;
+      TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
+          fname, &stat,
+          [this, bucket, object](const string& fname, GcsFileStat* stat) {
+            return UncachedStatForObject(fname, bucket, object, stat);
+          }));
+      if (!file_block_cache_->ValidateAndUpdateFileSignature(
+              fname, stat.generation_number)) {
+        VLOG(1)
+            << "File signature has been changed. Refreshing the cache. Path: "
+            << fname;
+      }
+    }
+    *result = StringPiece();
+    size_t bytes_transferred;
+    TF_RETURN_IF_ERROR(
+        file_block_cache_->Read(fname, offset, n, scratch, &bytes_transferred));
+    *result = StringPiece(scratch, bytes_transferred);
+    if (bytes_transferred < n) {
+      return errors::OutOfRange("EOF reached, ", result->size(),
+                                " bytes were read out of ", n,
+                                " bytes requested.");
+    }
+    return Status::OK();
+  }));
   return Status::OK();
+}
+
+void GcsFileSystem::ResetFileBlockCache(size_t block_size_bytes,
+                                        size_t max_bytes,
+                                        uint64 max_staleness_secs) {
+  mutex_lock l(block_cache_lock_);
+  file_block_cache_ =
+      MakeFileBlockCache(block_size_bytes, max_bytes, max_staleness_secs);
+  stats_->Configure(this, &throttle_, file_block_cache_.get());
 }
 
 // A helper function to build a FileBlockCache for GcsFileSystem.
@@ -880,6 +882,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
 }
 
 void GcsFileSystem::ClearFileCaches(const string& fname) {
+  tf_shared_lock l(block_cache_lock_);
   file_block_cache_->RemoveFile(fname);
   stat_cache_->Delete(fname);
   // TODO(rxsang): Remove the patterns that matche the file in
@@ -1103,7 +1106,8 @@ Status GcsFileSystem::FolderExists(const string& dirname, bool* result) {
     }
   };
   GcsFileStat stat;
-  Status s = stat_cache_->LookupOrCompute(dirname, &stat, compute_func);
+  Status s = stat_cache_->LookupOrCompute(MaybeAppendSlash(dirname), &stat,
+                                          compute_func);
   if (s.ok()) {
     *result = stat.base.is_directory;
     return Status::OK();
@@ -1508,6 +1512,7 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
 // reclaiming memory once filesystem operations are done (e.g. model is loaded),
 // or for resetting the filesystem to a consistent state.
 void GcsFileSystem::FlushCaches() {
+  tf_shared_lock l(block_cache_lock_);
   file_block_cache_->Flush();
   stat_cache_->Clear();
   matching_paths_cache_->Clear();
@@ -1516,8 +1521,15 @@ void GcsFileSystem::FlushCaches() {
 void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   CHECK(stats_ == nullptr) << "SetStats() has already been called.";
   CHECK(stats != nullptr);
+  mutex_lock l(block_cache_lock_);
   stats_ = stats;
-  stats_->Init(this, &throttle_, file_block_cache_.get());
+  stats_->Configure(this, &throttle_, file_block_cache_.get());
+}
+
+void GcsFileSystem::SetAuthProvider(
+    std::unique_ptr<AuthProvider> auth_provider) {
+  mutex_lock l(mu_);
+  auth_provider_ = std::move(auth_provider);
 }
 
 // Creates an HttpRequest and sets several parameters that are common to all
@@ -1530,7 +1542,11 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   }
 
   string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+  {
+    tf_shared_lock l(mu_);
+    TF_RETURN_IF_ERROR(
+        AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+  }
 
   new_request->AddAuthBearerHeader(auth_token);
 

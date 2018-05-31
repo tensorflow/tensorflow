@@ -104,10 +104,10 @@ class SavedModelBuilder(object):
     Args:
       assets_collection_to_add: The collection where the asset paths are setup.
     """
-    asset_source_filepath_list = _maybe_save_assets(assets_collection_to_add)
+    asset_filename_map = _maybe_save_assets(assets_collection_to_add)
 
     # Return if there are no assets to write.
-    if len(asset_source_filepath_list) is 0:
+    if not asset_filename_map:
       tf_logging.info("No assets to write.")
       return
 
@@ -119,12 +119,10 @@ class SavedModelBuilder(object):
       file_io.recursive_create_dir(assets_destination_dir)
 
     # Copy each asset from source path to destination path.
-    for asset_source_filepath in asset_source_filepath_list:
-      asset_source_filename = os.path.basename(asset_source_filepath)
-
+    for asset_basename, asset_source_filepath in asset_filename_map.items():
       asset_destination_filepath = os.path.join(
           compat.as_bytes(assets_destination_dir),
-          compat.as_bytes(asset_source_filename))
+          compat.as_bytes(asset_basename))
 
       # Only copy the asset file to the destination if it does not already
       # exist. This is to ensure that an asset with the same name defined as
@@ -476,16 +474,17 @@ def _maybe_save_assets(assets_collection_to_add=None):
     assets_collection_to_add: The collection where the asset paths are setup.
 
   Returns:
-    The list of filepaths to the assets in the assets collection.
+    A dict of asset basenames for saving to the original full path to the asset.
 
   Raises:
     ValueError: Indicating an invalid filepath tensor.
   """
-  asset_source_filepath_list = []
+  # Map of target file names to original filenames
+  asset_filename_map = {}
 
   if assets_collection_to_add is None:
     tf_logging.info("No assets to save.")
-    return asset_source_filepath_list
+    return asset_filename_map
 
   # Iterate over the supplied asset collection, build the `AssetFile` proto
   # and add them to the collection with key `constants.ASSETS_KEY`, in the
@@ -495,15 +494,71 @@ def _maybe_save_assets(assets_collection_to_add=None):
     if not asset_source_filepath:
       raise ValueError("Invalid asset filepath tensor %s" % asset_tensor)
 
-    asset_source_filename = os.path.basename(asset_source_filepath)
+    asset_filename = _get_asset_filename_to_add(
+        asset_source_filepath, asset_filename_map)
 
     # Build `AssetFile` proto and add it to the asset collection in the graph.
-    _add_asset_to_collection(asset_source_filename, asset_tensor)
+    # Note that this should be done even when the file is a duplicate of an
+    # already-added file, as the tensor reference should still exist.
+    _add_asset_to_collection(asset_filename, asset_tensor)
 
-    asset_source_filepath_list.append(asset_source_filepath)
+    # In the cases where we are adding a duplicate, this will result in the
+    # last of the filepaths being the one used for copying the file to the
+    # SavedModel. Since the files in question are the same, it doesn't matter
+    # either way.
+    asset_filename_map[asset_filename] = asset_source_filepath
 
   tf_logging.info("Assets added to graph.")
-  return asset_source_filepath_list
+  return asset_filename_map
+
+
+def _get_asset_filename_to_add(asset_filepath, asset_filename_map):
+  """Get a unique basename to add to the SavedModel if this file is unseen.
+
+  Assets come from users as full paths, and we save them out to the
+  SavedModel as basenames. In some cases, the basenames collide. Here,
+  we dedupe asset basenames by first checking if the file is the same,
+  and, if different, generate and return an index-suffixed basename
+  that can be used to add the asset to the SavedModel.
+
+  Args:
+    asset_filepath: the full path to the asset that is being saved
+    asset_filename_map: a dict of filenames used for saving the asset in
+      the SavedModel to full paths from which the filenames were derived.
+
+  Returns:
+    Uniquified filename string if the file is not a duplicate, or the original
+    filename if the file has already been seen and saved.
+  """
+  asset_filename = os.path.basename(asset_filepath)
+
+  if asset_filename not in asset_filename_map:
+    # This is an unseen asset. Safe to add.
+    return asset_filename
+
+  other_asset_filepath = asset_filename_map[asset_filename]
+  if other_asset_filepath == asset_filepath:
+    # This is the same file, stored twice in the collection list. No need
+    # to make unique.
+    return asset_filename
+
+  # Else, asset_filename is in the map, and the filepath is different. Dedupe.
+  if not file_io.filecmp(asset_filepath, other_asset_filepath):
+    # Files are different; dedupe filenames.
+    return _get_unique_asset_filename(asset_filename, asset_filename_map)
+
+  # Files are the same; don't make unique.
+  return asset_filename
+
+
+def _get_unique_asset_filename(asset_filename, asset_filename_map):
+  i = 1
+  unique_filename = asset_filename
+  while unique_filename in asset_filename_map:
+    unique_filename = compat.as_bytes("_").join(
+        [compat.as_bytes(asset_filename), compat.as_bytes(str(i))])
+    i += 1
+  return unique_filename
 
 
 def _asset_path_from_tensor(path_tensor):

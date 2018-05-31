@@ -321,13 +321,11 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
-               const DebugOptions& debug_options, bool show_metadata,
-               bool show_backend_config, const HloExecutionProfile* profile,
-               NodeFilter filter)
+               const DebugOptions& debug_options, bool show_backend_config,
+               const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
         label_(std::string(label)),
         debug_options_(debug_options),
-        show_metadata_(show_metadata),
         show_backend_config_(show_backend_config),
         profile_(profile),
         filter_(std::move(filter)) {}
@@ -395,7 +393,6 @@ class HloDotDumper {
   const HloComputation* computation_;  // never null
   const string label_;                 // overall name for the graph
   const DebugOptions& debug_options_;
-  const bool show_metadata_;
   const bool show_backend_config_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
@@ -430,7 +427,8 @@ class HloDotDumper {
 
   // When coloring by sharding information, we track the sharding string
   // representation to color association, by round-robin the color schemes.
-  std::unordered_map<string, ColorScheme> sharding_colors_;
+  std::unordered_map<HloSharding, ColorScheme, HloSharding::Hasher>
+      sharding_colors_;
   int64 next_shard_color_ = 0;
 };
 
@@ -791,16 +789,16 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   }
   // Build the text that will be displayed inside the node.
   string node_body = node_label;
-  for (const string& s : {trivial_subcomputation, node_metadata,
-                          node_backend_config, extra_info, inlined_constants}) {
+  for (const string& s : {trivial_subcomputation, node_backend_config,
+                          extra_info, inlined_constants}) {
     if (!s.empty()) {
       StrAppend(&node_body, "<br/>", s);
     }
   }
 
-  return Printf(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
+  return Printf(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
                 "\n",
-                InstructionId(instr), node_body, node_shape,
+                InstructionId(instr), node_body, node_shape, node_metadata,
                 NodeColorAttributes(color));
 }
 
@@ -885,14 +883,13 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     if (!instr->has_sharding()) {
       return kDashedBorder;
     }
-    string shard_str = instr->sharding().ToString();
-    auto it = sharding_colors_.find(shard_str);
+    auto it = sharding_colors_.find(instr->sharding());
     if (it != sharding_colors_.end()) {
       return it->second;
     }
     ColorScheme color = static_cast<ColorScheme>(
         kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
-    sharding_colors_.emplace(shard_str, color);
+    sharding_colors_.emplace(instr->sharding(), color);
     return color;
   }
   const auto kParameterColor = kOrange;
@@ -1013,6 +1010,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
       return kPurple;
+    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
       return kGray;
@@ -1068,10 +1066,6 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
 }
 
 string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
-  if (!show_metadata_) {
-    return "";
-  }
-
   std::vector<string> lines;
   if (!instr->metadata().op_name().empty()) {
     lines.push_back(HtmlLikeStringSanitize(instr->metadata().op_name()));
@@ -1154,6 +1148,20 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   return Join(lines, "<br/>");
 }
 
+// Gets the total number of array elements in the given shape.  For tuples, this
+// is the sum of all the sizes of all of the array elements recursively in the
+// tuple.
+static int64 TotalElementsInShape(const Shape& shape) {
+  int64 elems = 0;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (ShapeUtil::IsArray(subshape)) {
+          elems += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  return elems;
+}
+
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
                       int64 operand_num, bool control_edge = false) {
@@ -1173,9 +1181,16 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     } else if (control_edge) {
       edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
-    const char* kEdgeFmt = R"(%s -> %s [tooltip="%s -> %s" %s];)";
+
+    // We print "small" arrays using a hollow arrowhead and "large" arrays using
+    // a filled arrowhead.  For now, we use an arbitrary cutoff for what "big"
+    // means.
+    bool is_big_array = TotalElementsInShape(from->shape()) >= 4096;
+
+    const char* kEdgeFmt = R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
     edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
-                            from->name(), to->name(), edge_label));
+                            (is_big_array ? "normal" : "empty"), from->name(),
+                            to->name(), edge_label));
   };
 
   // Add edges from instr's operands to instr.  Parameters within fusion
@@ -1425,7 +1440,7 @@ string ExportGraph(const string& graph,
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,
-                 bool show_metadata, bool show_backend_config) {
+                 bool show_backend_config) {
   GraphRendererInterface::GraphKind graph_kind;
   string graph;
   if (debug_options.xla_hlo_dump_as_graphdef()) {
@@ -1436,8 +1451,8 @@ string DumpGraph(const HloComputation& computation, const string& label,
     graph_kind = GraphRendererInterface::TF_GRAPHDEF;
   } else {
     graph =
-        HloDotDumper(&computation, label, debug_options, show_metadata,
-                     show_backend_config, hlo_execution_profile, NodeFilter())
+        HloDotDumper(&computation, label, debug_options, show_backend_config,
+                     hlo_execution_profile, NodeFilter())
             .Dump();
     graph_kind = GraphRendererInterface::DOT_GRAPH;
   }
@@ -1449,15 +1464,15 @@ string DumpGraph(const HloComputation& computation, const string& label,
 }
 
 string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_metadata, bool show_backend_config) {
+                              bool show_backend_config) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
   NodeFilter filter = MakeNodeFilter(&node, radius);
-  string graph = HloDotDumper(node.parent(), label, debug_options,
-                              show_metadata, show_backend_config,
-                              /*profile=*/nullptr, filter)
-                     .Dump();
+  string graph =
+      HloDotDumper(node.parent(), label, debug_options, show_backend_config,
+                   /*profile=*/nullptr, filter)
+          .Dump();
   return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);
 }
 

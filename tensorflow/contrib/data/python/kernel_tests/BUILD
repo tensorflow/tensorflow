@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test", "py_test", "tf_py_test")
 
 py_test(
     name = "batch_dataset_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -202,6 +202,23 @@ py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "directed_interleave_dataset_test",
+    size = "medium",
+    srcs = ["directed_interleave_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",

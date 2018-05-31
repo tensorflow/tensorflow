@@ -166,10 +166,16 @@ def standardize_input_data(data,
   # Check shapes compatibility.
   if shapes:
     for i in range(len(names)):
-      if shapes[i] is not None and not tensor_util.is_tensor(data[i]):
-        data_shape = data[i].shape
+      if shapes[i] is not None:
+        if tensor_util.is_tensor(data[i]):
+          tensorshape = data[i].get_shape()
+          if not tensorshape:
+            continue
+          data_shape = tuple(tensorshape.as_list())
+        else:
+          data_shape = data[i].shape
         shape = shapes[i]
-        if data[i].ndim != len(shape):
+        if len(data_shape) != len(shape):
           raise ValueError('Error when checking ' + exception_prefix +
                            ': expected ' + names[i] + ' to have ' +
                            str(len(shape)) + ' dimensions, but got array '
@@ -178,7 +184,7 @@ def standardize_input_data(data,
           data_shape = data_shape[1:]
           shape = shape[1:]
         for dim, ref_dim in zip(data_shape, shape):
-          if ref_dim != dim and ref_dim:
+          if ref_dim != dim and ref_dim is not None and dim is not None:
             raise ValueError(
                 'Error when checking ' + exception_prefix + ': expected ' +
                 names[i] + ' to have shape ' + str(shape) +
@@ -632,19 +638,20 @@ def validate_iterator_input(x, y, sample_weight, validation_split=None):
         provided by user.
   """
   if y is not None:
-    raise ValueError('You passed a dataset iterator (%s) as input `x` to '
-                     'your model. In that case, you should not specify '
-                     'a target (`y`) argument, since the dataset iterator '
-                     'generates both input data and target data. '
+    raise ValueError('You passed a dataset or dataset iterator (%s) as '
+                     'input `x` to your model. In that case, you should '
+                     'not specify a target (`y`) argument, since the dataset '
+                     'or dataset iterator generates both input data and '
+                     'target data. '
                      'Received: %s' % (x, y))
   if sample_weight is not None:
-    raise ValueError('`sample_weight` argument is not supported when input'
-                     ' `x` is a dataset iterator. '
+    raise ValueError('`sample_weight` argument is not supported when input '
+                     '`x` is a dataset or a dataset iterator. '
                      'Received: x=%s, sample_weight=%s' % (x, sample_weight))
   if validation_split is not None and validation_split != 0.0:
     raise ValueError(
         '`validation_split` argument is not supported when '
-        'input `x` is a dataset iterator. '
+        'input `x` is a dataset or a dataset iterator. '
         'Received: x=%s, validation_split=%f' % (x, validation_split))
 
 

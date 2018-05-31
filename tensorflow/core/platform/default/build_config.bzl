@@ -71,7 +71,12 @@ def pyx_library(
         name = filename + "_cython_translation",
         srcs = [filename],
         outs = [filename.split(".")[0] + ".cpp"],
-        cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+        # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
+        # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
+        cmd = "PYTHONHASHSEED=0 " + select({
+            "@bazel_tools//src/conditions:windows": "",
+            "//conditions:default": "$${PYTHON_BIN_PATH} ",
+        }) + "$(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
         tools = ["@cython//:cython_binary"] + pxd_srcs,
     )
 
@@ -82,7 +87,7 @@ def pyx_library(
     native.cc_binary(
         name=shared_object_name,
         srcs=[stem + ".cpp"],
-        deps=deps + ["//util/python:python_headers"],
+        deps=deps + ["//third_party/python_runtime:headers"],
         linkshared = 1,
     )
     shared_objects.append(shared_object_name)
@@ -494,14 +499,6 @@ def tf_additional_lib_srcs(exclude = []):
         "platform/posix/*.cc",
       ], exclude = exclude),
   })
-
-# pylint: disable=unused-argument
-def tf_additional_framework_hdrs(exclude = []):
-  return []
-
-def tf_additional_framework_srcs(exclude = []):
-  return []
-# pylint: enable=unused-argument
 
 def tf_additional_minimal_lib_srcs():
   return [

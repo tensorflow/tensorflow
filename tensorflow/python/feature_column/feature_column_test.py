@@ -137,6 +137,9 @@ class LazyColumnTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'bbb is not in features dictionary'):
       builder.get('bbb')
+    with self.assertRaisesRegexp(ValueError,
+                                 'bbb is not in features dictionary'):
+      builder.get(u'bbb')
 
   def test_not_supported_feature_column(self):
 

@@ -2534,7 +2534,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   // Build the TRT op
   // TODO(sami,ben,jie): proper naming!
   tensorflow::NodeDefBuilder op_builder(calib_op_name, "TRTCalibOp");
-  SetInputList(s, &op_builder, &input_names, &input_dtypes);
+  TF_RETURN_IF_ERROR(SetInputList(s, &op_builder, &input_names, &input_dtypes));
 
   std::vector<string> segment_names;
   segment_names.reserve(s.subgraph_node_ids.size());
@@ -2632,7 +2632,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
   // Build the TRT op
   tensorflow::NodeDefBuilder op_builder(engine_name, "TRTEngineOp");
-  SetInputList(s, &op_builder, &input_names, &input_dtypes);
+  TF_RETURN_IF_ERROR(SetInputList(s, &op_builder, &input_names, &input_dtypes));
 
   VLOG(0) << "Finished op preparation";
 

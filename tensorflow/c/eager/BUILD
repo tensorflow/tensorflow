@@ -14,6 +14,7 @@ tf_cuda_library(
     name = "c_api",
     srcs = [
         "c_api.cc",
+        "c_api_debug.cc",
         "c_api_internal.h",
     ],
     hdrs = ["c_api.h"],
@@ -45,6 +46,7 @@ tf_cuda_library(
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
             "//tensorflow/compiler/jit",
+            "//tensorflow/compiler/jit:xla_device",
         ],
         "//conditions:default": [],
     }) + [
@@ -99,9 +101,31 @@ tf_cuda_library(
     ],
 )
 
+tf_cuda_library(
+    name = "c_api_test_util",
+    testonly = 1,
+    srcs = ["c_api_test_util.cc"],
+    hdrs = ["c_api_test_util.h"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        ":c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "c_api_test",
-    srcs = ["c_api_test.cc"],
+    srcs = [
+        "c_api_debug_test.cc",
+        "c_api_test.cc",
+    ],
     extra_copts = tfe_xla_copts(),
     tags = [
         "guitar",
@@ -109,6 +133,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":c_api",
+        ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
