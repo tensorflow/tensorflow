@@ -1026,7 +1026,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf)
+      y = image_ops.random_flip_left_right(x_tf, seed=seed)
       self.assertTrue(y.op.name.startswith("random_flip_left_right"))
 
       count_flipped = 0
@@ -1061,7 +1061,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf)
+      y = image_ops.random_flip_left_right(x_tf, seed=seed)
       self.assertTrue(y.op.name.startswith("random_flip_left_right"))
 
       count_flipped = 0
@@ -1136,9 +1136,11 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
 
+    seed = 42
+
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=42)
+      y = image_ops.random_flip_up_down(x_tf, seed=seed)
       self.assertTrue(y.op.name.startswith("random_flip_up_down"))
       count_flipped = 0
       count_unflipped = 0
@@ -1292,7 +1294,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
         op(p_wrong_rank)
 
-
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
     with self.test_session(use_gpu=True):
@@ -1326,41 +1327,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
-
-class RandomFlipTest(test_util.TensorFlowTestCase):
-
-  def testRandomLeftRight(self):
-    x_np = np.array([0, 1], dtype=np.uint8).reshape([1, 2, 1])
-    num_iterations = 500
-
-    hist = [0, 0]
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf)
-      for _ in xrange(num_iterations):
-        y_np = y.eval().flatten()[0]
-        hist[y_np] += 1
-
-    # Ensure that each entry is observed within 4 standard deviations.
-    four_stddev = 4.0 * np.sqrt(num_iterations / 2.0)
-    self.assertAllClose(hist, [num_iterations / 2.0] * 2, atol=four_stddev)
-
-  def testRandomUpDown(self):
-    x_np = np.array([0, 1], dtype=np.uint8).reshape([2, 1, 1])
-    num_iterations = 500
-
-    hist = [0, 0]
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf)
-      for _ in xrange(num_iterations):
-        y_np = y.eval().flatten()[0]
-        hist[y_np] += 1
-
-    # Ensure that each entry is observed within 4 standard deviations.
-    four_stddev = 4.0 * np.sqrt(num_iterations / 2.0)
-    self.assertAllClose(hist, [num_iterations / 2.0] * 2, atol=four_stddev)
-
 
 class AdjustContrastTest(test_util.TensorFlowTestCase):
 
