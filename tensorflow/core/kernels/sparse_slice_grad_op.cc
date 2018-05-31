@@ -87,17 +87,17 @@ class SparseSliceGradOp : public OpKernel {
     int64 j = 0;
     for (int64 i = 0; i < input_nnz && j < backprop_val_grad->NumElements();
          ++i) {
-      bool isSame = true;
+      bool is_same = true;
       for (int d = 0; d < num_dims; ++d) {
         const int64 a = input_indices_mat(i, d);
         const int64 b = output_indices_mat(j, d);
         const int64 offset = input_start_flat(d);
         if (a != b + offset) {
-          isSame = false;
+          is_same = false;
           break;
         }
       }
-      if (isSame) {
+      if (is_same) {
         val_grad_flat[i] = backprop_val_grad_flat[j];
         ++j;
       }
@@ -106,7 +106,7 @@ class SparseSliceGradOp : public OpKernel {
         ctx, backprop_val_grad->NumElements() == j,
         errors::Internal("Elements of backprop_val_grad aren't eaten up :", 
                          "all: ", backprop_val_grad->NumElements(),
-                         " , used: ", output_indices->dim_size(0)));
+                         " , used: ", j));
   }
 };
 

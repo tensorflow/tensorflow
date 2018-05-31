@@ -131,7 +131,7 @@ def _SparseSliceGrad(op, *grads):
   Returns:
     Gradient for each of the 5 input tensors of SparseSlice:
       (indices, values, shape, start, size)
-    The gradients for the indices, shapes, start and the size are None.
+    The gradients for the indices, shape, start and the size are None.
   """
   backprop_val_grad = grads[1]
   input_indices = op.inputs[0]
