@@ -102,7 +102,12 @@ class ElasticAverageCustomGetter(object):
     else:
       kwargs['trainable'] = trainable
       kwargs['collections'] = collections
-      return getter(name, *args, **kwargs)
+      if ops.GraphKeys.LOCAL_VARIABLES in collections:
+        with ops.device(self._worker_device):
+          return getter(name, *args, **kwargs)
+      else:
+        return getter(name, *args, **kwargs)
+
 
 
 class ElasticAverageOptimizer(optimizer.Optimizer):
