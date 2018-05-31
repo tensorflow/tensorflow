@@ -225,7 +225,7 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
 // Computes the XLA shape for argument 'arg'.
 Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
                                         bool is_entry_computation,
-                                        xla::Shape* xla_shape) {
+                                        xla::Shape* xla_shape) const {
   switch (arg.kind) {
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
