@@ -378,6 +378,23 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
           iterator_seed2));
     }
 
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented(
+          "Checkpointing ShufflingDataset with reshuffle_each_iteration=true "
+          "is not supported.\n"
+          "If you have a ds.shuffle(buffer_size).repeat(count) in your input "
+          "pipeline, replace it with "
+          "ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size, count)).\n"
+          "If you iterate over your dataset once, change shuffle(buffer_size) "
+          "to shuffle(buffer_size, reshuffle_each_iteration=False).\n"
+          "If you are using Dataset.list_files(pattern), change it to "
+          "Dataset.list_files(pattern, shuffle=False) and manually shuffle "
+          "the list of files using shuffle_and_repeat as above or using "
+          "ds.shuffle with reshuffle_each_iteration=False.");
+    }
+
    private:
     const int64 seed_;
     const int64 seed2_;
