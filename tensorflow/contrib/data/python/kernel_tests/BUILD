@@ -8,10 +8,13 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test", "py_test", "tf_py_test")
 
 py_test(
     name = "batch_dataset_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",  # (b/79552534)
+        "no_pip",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:batching",
@@ -32,7 +35,7 @@ py_test(
 
 py_test(
     name = "bucketing_test",
-    size = "small",
+    size = "medium",
     srcs = ["bucketing_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -118,6 +121,19 @@ py_library(
 )
 
 py_test(
+    name = "csv_dataset_op_test",
+    size = "small",
+    srcs = ["csv_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:readers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "filter_dataset_op_test",
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
@@ -186,6 +202,23 @@ py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "directed_interleave_dataset_test",
+    size = "medium",
+    srcs = ["directed_interleave_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -287,6 +320,7 @@ py_test(
     name = "reader_dataset_ops_test",
     size = "medium",
     srcs = ["reader_dataset_ops_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -301,6 +335,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
@@ -411,6 +446,7 @@ py_test(
     srcs = ["sql_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

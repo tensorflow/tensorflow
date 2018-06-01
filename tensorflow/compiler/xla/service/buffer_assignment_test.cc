@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
@@ -1684,7 +1685,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
-  static int64 ByteSizeOf(const LogicalBuffer& buffer) {
+  static int64 ByteSizeOf(const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   }
 

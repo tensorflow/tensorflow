@@ -64,25 +64,6 @@ class WindowsFileSystem : public FileSystem {
   Status RenameFile(const string& src, const string& target) override;
 
   string TranslateName(const string& name) const override { return name; }
-
-  static std::wstring Utf8ToWideChar(const string& utf8str) {
-    int size_required = MultiByteToWideChar(CP_UTF8, 0, utf8str.c_str(),
-                                            (int)utf8str.size(), NULL, 0);
-    std::wstring ws_translated_str(size_required, 0);
-    MultiByteToWideChar(CP_UTF8, 0, utf8str.c_str(), (int)utf8str.size(),
-                        &ws_translated_str[0], size_required);
-    return ws_translated_str;
-  }
-
-  static string WideCharToUtf8(const std::wstring& wstr) {
-    if (wstr.empty()) return std::string();
-    int size_required = WideCharToMultiByte(
-        CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), NULL, 0, NULL, NULL);
-    string utf8_translated_str(size_required, 0);
-    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(),
-                        &utf8_translated_str[0], size_required, NULL, NULL);
-    return utf8_translated_str;
-  }
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {

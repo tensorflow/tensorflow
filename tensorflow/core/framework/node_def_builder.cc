@@ -24,22 +24,23 @@ limitations under the License.
 namespace tensorflow {
 
 NodeDefBuilder::NodeOut::NodeOut(StringPiece n, int i, DataType dt)
-    : node(n.ToString()), index(i), data_type(dt) {}
+    : node(std::string(n)), index(i), data_type(dt) {}
 
 NodeDefBuilder::NodeOut::NodeOut() {
   // uninitialized, call Reset() before use.
 }
 
 void NodeDefBuilder::NodeOut::Reset(StringPiece n, int i, DataType dt) {
-  node = n.ToString();
+  node = std::string(n);
   index = i;
   data_type = dt;
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
                                const OpRegistryInterface* op_registry) {
-  node_def_.set_name(name.ToString());
-  const Status status = op_registry->LookUpOpDef(op_name.ToString(), &op_def_);
+  node_def_.set_name(std::string(name));
+  const Status status =
+      op_registry->LookUpOpDef(std::string(op_name), &op_def_);
   if (status.ok()) {
     Initialize();
   } else {
@@ -50,7 +51,7 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, const OpDef* op_def)
     : op_def_(op_def) {
-  node_def_.set_name(name.ToString());
+  node_def_.set_name(std::string(name));
   Initialize();
 }
 
@@ -170,7 +171,7 @@ void NodeDefBuilder::AddInput(StringPiece src_node, int src_index) {
   } else if (src_index > 0) {
     node_def_.add_input(strings::StrCat(src_node, ":", src_index));
   } else {
-    node_def_.add_input(src_node.ToString());
+    node_def_.add_input(std::string(src_node));
   }
 }
 
@@ -193,12 +194,12 @@ void NodeDefBuilder::VerifyInputRef(const OpDef::ArgDef* input_arg,
 }
 
 NodeDefBuilder& NodeDefBuilder::ControlInput(StringPiece src_node) {
-  control_inputs_.push_back(src_node.ToString());
+  control_inputs_.push_back(std::string(src_node));
   return *this;
 }
 
 NodeDefBuilder& NodeDefBuilder::Device(StringPiece device_spec) {
-  node_def_.set_device(device_spec.ToString());
+  node_def_.set_device(std::string(device_spec));
   return *this;
 }
 

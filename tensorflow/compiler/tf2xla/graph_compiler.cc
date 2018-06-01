@@ -208,10 +208,11 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RETURN_IF_ERROR(
       PrepareArguments(&xla_op_context, graph.get(), expressions, &arguments));
 
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = false;
   XlaCompiler::CompilationResult result;
-
-  TF_RETURN_IF_ERROR(compiler->CompileFunction(XlaCompiler::CompileOptions(),
-                                               func, arguments, &result));
+  TF_RETURN_IF_ERROR(
+      compiler->CompileFunction(compile_options, func, arguments, &result));
 
   TF_RET_CHECK(arguments.size() == expressions.size());
 
@@ -229,11 +230,14 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   auto output_handle = b->Call(*result.computation, handles);
   // The output handle of `Call` computation is a tuple type. Unzip it so
   // that it can fit into future computations.
+  int computation_output = 0;
   for (int64 i = 0; i < n->num_outputs(); ++i) {
     if (result.outputs[i].is_constant) {
       xla_op_context.SetConstantOutput(i, result.outputs[i].constant_value);
     } else {
-      xla_op_context.SetOutput(i, b->GetTupleElement(output_handle, i));
+      xla_op_context.SetOutput(
+          i, b->GetTupleElement(output_handle, computation_output));
+      ++computation_output;
     }
   }
   return b->first_error();

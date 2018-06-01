@@ -399,8 +399,8 @@ Status DebugIO::PublishDebugMetadata(
                               strings::Printf("%.14lld", session_run_index))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
-          event, io::Dirname(core_metadata_path).ToString(),
-          io::Basename(core_metadata_path).ToString()));
+          event, std::string(io::Dirname(core_metadata_path)),
+          std::string(io::Basename(core_metadata_path))));
     }
   }
 
@@ -632,8 +632,8 @@ Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
   std::vector<Event> events;
   TF_RETURN_IF_ERROR(
       WrapTensorAsEvents(debug_node_key, tensor, wall_time_us, 0, &events));
-  return DumpEventProtoToFile(events[0], io::Dirname(file_path).ToString(),
-                              io::Basename(file_path).ToString());
+  return DumpEventProtoToFile(events[0], std::string(io::Dirname(file_path)),
+                              std::string(io::Basename(file_path)));
 }
 
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
@@ -642,7 +642,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
     return Status::OK();
   }
 
-  string parent_dir = io::Dirname(dir).ToString();
+  string parent_dir = std::string(io::Dirname(dir));
   if (!env->FileExists(parent_dir).ok()) {
     // The parent path does not exist yet, create it first.
     Status s = RecursiveCreateDir(env, parent_dir);  // Recursive call

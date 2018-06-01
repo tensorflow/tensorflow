@@ -83,6 +83,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
                         GraphDef* output) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
+    output->Clear();
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
   }
 
@@ -91,6 +92,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
                      GraphDef* output) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
+    output->Clear();
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
   }
 
@@ -99,8 +101,10 @@ class ArithmeticOptimizerTest : public GrapplerTest {
                              GraphDef* output) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
+    output->Clear();
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
+    output->Clear();
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
   }
 
@@ -111,12 +115,17 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.dedup_computations = false;
     options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
+    options.convert_sqrt_div_to_rsqrt_mul = false;
     options.hoist_common_factor_out_of_aggregation = false;
+    options.hoist_cwise_unary_chains = false;
     options.minimize_broadcasts = false;
     options.remove_identity_transpose = false;
+    options.remove_involution = false;
+    options.remove_idempotent = false;
     options.remove_redundant_bitcast = false;
     options.remove_redundant_cast = false;
     options.remove_negation = false;
+    options.remove_logical_not = false;
     optimizer->options_ = options;
   }
 
@@ -144,6 +153,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.remove_identity_transpose = true;
   }
 
+  void EnableOnlyRemoveInvolution(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_involution = true;
+  }
+
   void EnableOnlyRemoveRedundantBitcast(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.remove_redundant_bitcast = true;
@@ -167,6 +181,16 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlySqrtDivToRsqrtMul(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.convert_sqrt_div_to_rsqrt_mul = true;
+  }
+
+  void EnableOnlyRemoveIdempotent(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_idempotent = true;
+  }
+
+  void EnableOnlyRemoveLogicalNot(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_logical_not = true;
   }
 };
 
@@ -324,100 +348,110 @@ TEST_F(ArithmeticOptimizerTest, MulToSquare) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsReal) {
+TEST_F(ArithmeticOptimizerTest, RemoveInvolution_AdjacentNodes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
-  Output neg1 = ops::Neg(s.WithOpName("neg1"), c);
-  Output neg2 = ops::Neg(s.WithOpName("neg2"), neg1);
-  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), neg2);
-  Output recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
-  Output id = ops::Identity(s.WithOpName("id"), recip2);
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  auto neg1 = ops::Neg(s.WithOpName("neg1"), c);
+  auto neg2 = ops::Neg(s.WithOpName("neg2"), neg1);
+  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), neg2);
+  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
+  auto id = ops::Identity(s.WithOpName("id"), recip2);
+
   std::vector<string> fetch = {"id"};
+
+  GrapplerItem item;
+  item.fetch = fetch;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
   EXPECT_EQ(1, tensors_expected.size());
 
-  ArithmeticOptimizer optimizer;
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInvolution(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
 
-  EXPECT_EQ(6, output.node_size());
+  // Negation and Reciprocal nodes cancelled each other.
+  EXPECT_EQ(2, output.node_size());
+  EXPECT_EQ("id", output.node(1).name());
   EXPECT_EQ("c", output.node(1).input(0));
-  EXPECT_EQ("c", output.node(3).input(0));
-  EXPECT_EQ("c", output.node(5).input(0));
 
   auto tensors = EvaluateNodes(output, fetch);
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithChain) {
+TEST_F(ArithmeticOptimizerTest, RemoveInvolution_AroundValuePreservingChain) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
-  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
-  Output id1 = ops::Identity(s.WithOpName("id1"), recip1);
-  Output squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
-  Output recip2 = ops::Reciprocal(s.WithOpName("recip2"), squeeze);
-  Output id2 = ops::Identity(s.WithOpName("id2"), recip2);
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
+  auto id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
+  auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), squeeze);
+  auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
+
   std::vector<string> fetch = {"id2"};
+
+  GrapplerItem item;
+  item.fetch = fetch;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
   EXPECT_EQ(1, tensors_expected.size());
 
-  ArithmeticOptimizer optimizer;
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-
-  EXPECT_EQ(6, output.node_size());
-  EXPECT_EQ("squeeze", output.node(5).input(0));
-  EXPECT_EQ("c", output.node(2).input(0));
-
-  auto tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(1, tensors.size());
-  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
-}
-
-TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithControlChain) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
-  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
-  Output id1 = ops::Identity(s.WithOpName("id1"), recip1);
-  Output squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
-  Output recip2 = ops::Reciprocal(
-      s.WithOpName("recip2").WithControlDependencies(squeeze), c);
-  Output id2 = ops::Identity(s.WithOpName("id2"), recip2);
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  std::vector<string> fetch = {"id2"};
-  auto tensors_expected = EvaluateNodes(item.graph, fetch);
-  EXPECT_EQ(1, tensors_expected.size());
-
   ArithmeticOptimizer optimizer;
-  GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  EnableOnlyRemoveInvolution(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-  // The optimizer should be a noop.
-  EXPECT_EQ(item.graph.node_size(), output.node_size());
-  for (int i = 0; i < item.graph.node_size(); ++i) {
-    const NodeDef& original = item.graph.node(i);
-    const NodeDef& optimized = output.node(i);
-    EXPECT_EQ(original.name(), optimized.name());
-    EXPECT_EQ(original.op(), optimized.op());
-    EXPECT_EQ(original.input_size(), optimized.input_size());
-    for (int j = 0; j < original.input_size(); ++j) {
-      EXPECT_EQ(original.input(j), optimized.input(j));
+  // Check that Reciprocal nodes were removed from the graph.
+  EXPECT_EQ(3, output.node_size());
+
+  // And const directly flows into squeeze.
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "squeeze") {
+      EXPECT_EQ("c", node.input(0));
+      found++;
+    } else if (node.name() == "id2") {
+      EXPECT_EQ("squeeze", node.input(0));
+      found++;
     }
   }
+  EXPECT_EQ(2, found);
+
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveInvolution_SkipControlDependencies) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  auto recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
+  auto id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
+  auto recip2 = ops::Reciprocal(
+      s.WithOpName("recip2").WithControlDependencies(squeeze), c);
+  auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
+
+  std::vector<string> fetch = {"id2"};
+
+  GrapplerItem item;
+  item.fetch = fetch;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInvolution(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);  // do not prune in this test
+
+  // The optimizer should be a noop.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
 
   auto tensors = EvaluateNodes(output, fetch);
   EXPECT_EQ(1, tensors.size());
@@ -687,6 +721,9 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
         item.fetch = {"id"};
         TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+        auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+        EXPECT_EQ(1, tensors_expected.size());
+
         ArithmeticOptimizer optimizer;
         EnableOnlyHoistCommonFactor(&optimizer);
 
@@ -724,6 +761,13 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
           ASSERT_TRUE(id_node != nullptr) << "Id node not found";
           EXPECT_EQ("id", id_node->name());
           EXPECT_EQ(HoistDivName("add"), id_node->input(0));
+        }
+        auto tensors = EvaluateNodes(output, item.fetch);
+        EXPECT_EQ(1, tensors.size());
+        if (use_ints) {
+          test::ExpectTensorEqual<int32>(tensors_expected[0], tensors[0]);
+        } else {
+          test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
         }
       }
     }
@@ -945,6 +989,67 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
+TEST_F(ArithmeticOptimizerTest, NotAssumeValidFeeds) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({4, 3, 28, 28}));
+  Output target_shape = ops::Const(s, {4, 3, 28, 28}, {4});
+  Output reshape = ops::Reshape(s, inputs, target_shape);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({4, 3, 28, 28}));
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  item.feed = {{"Placeholder", x_t}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph.Swap(&output);
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  // The reshape is preserved because the shape of the placeholder can be
+  // different from the shape of the actual feed.
+  EXPECT_EQ(1, CountOpNodes(output, "Reshape"));
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, AssumeValidFeedsInAggressiveMode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({4, 3, 28, 28}));
+  Output target_shape = ops::Const(s, {4, 3, 28, 28}, {4});
+  Output reshape = ops::Reshape(s, inputs, target_shape);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({4, 3, 28, 28}));
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  item.feed = {{"Placeholder", x_t}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph.Swap(&output);
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(0, CountOpNodes(output, "Reshape"));
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
 TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
   // Reshape from [-1,3,28,28] to [8,-1,28,28] is not identity, because it can
   // be from [4,3,28,28] to [8,6,28,28].
@@ -1103,7 +1208,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposes) {
       ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
   Output perm1 = ops::Const(s.WithOpName("perm1"), {0, 2, 3, 1}, {4});
   Output perm2 = ops::Const(s.WithOpName("perm2"), {0, 3, 1, 2}, {4});
-  Output perm3 = ops::Const(s.WithOpName("perm2"), {0, 1, 2, 3}, {4});
+  Output perm3 = ops::Const(s.WithOpName("perm3"), {0, 1, 2, 3}, {4});
   Output transpose1 = ops::Transpose(s.WithOpName("transpose1"), inputs, perm1);
   Output transpose2 =
       ops::Transpose(s.WithOpName("transpose2"), transpose1, perm2);
@@ -1147,6 +1252,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({8, 12, 28, 28}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveIdentityTranspose(&optimizer);
@@ -1159,6 +1269,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
       EXPECT_EQ(node.input(2), "Split:2");
     }
   }
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
@@ -1175,6 +1289,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 3}));
+  item.feed = {{"Placeholder", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveIdentityTranspose(&optimizer);
@@ -1185,6 +1304,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
   EXPECT_EQ(2, outputs_node->input_size());
   EXPECT_EQ(outputs_node->input(0), "outputs_const");
   EXPECT_EQ(outputs_node->input(1), "^Placeholder");
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
@@ -1209,6 +1332,47 @@ TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   OptimizeAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(6, output.node_size());
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs_shape =
+      ops::Const(s.WithOpName("inputs_shape"), {8, 3, 28, 28}, {4});
+  Output inputs =
+      ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
+  Output perm1 = ops::Const(s.WithOpName("perm1"), {0, 2, 3, 1}, {4});
+  Output perm2 = ops::Const(s.WithOpName("perm2"), {0, 3, 1, 2}, {4});
+  Output transpose1 = ops::Transpose(
+      s.WithOpName("transpose1").WithControlDependencies(perm2), inputs, perm1);
+  Output identity = ops::Identity(s.WithOpName("id"), transpose1);
+  Output transpose2 =
+      ops::Transpose(s.WithOpName("transpose2"), identity, perm2);
+  Output id1 = ops::Identity(s.WithOpName("id1"), transpose2);
+
+  GrapplerItem item;
+  item.fetch = {"id1"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  std::set<string> nodes_after_optimization;
+  for (const NodeDef& node : output.node()) {
+    nodes_after_optimization.insert(node.name());
+    if (node.name() == "id") {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("inputs", node.input(0));
+      EXPECT_EQ("^perm2", node.input(1));
+    }
+    if (node.name() == "id1") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("id", node.input(0));
+    }
+  }
+  EXPECT_EQ(nodes_after_optimization,
+            std::set<string>({"id", "id1", "inputs_shape", "inputs", "perm2"}));
 }
 
 TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
@@ -1431,6 +1595,11 @@ TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_UINT8>(TensorShape({2, 3}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveRedundantBitcast(&optimizer);
@@ -1442,6 +1611,10 @@ TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
   EXPECT_EQ(3, output.node_size());
   EXPECT_EQ(1, CountOpNodes(output, "Bitcast"));
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "bc2"));
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int8>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
@@ -1456,6 +1629,11 @@ TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_INT8>(TensorShape({2, 3}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveRedundantBitcast(&optimizer);
@@ -1467,6 +1645,10 @@ TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
   EXPECT_EQ(2, output.node_size());
   EXPECT_EQ(0, CountOpNodes(output, "Bitcast"));
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int8>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
@@ -1480,6 +1662,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto x_t = GenerateRandomTensor<DT_INT8>(TensorShape({2, 3}));
+  item.feed = {{"inputs", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveRedundantCast(&optimizer);
@@ -1491,6 +1678,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   EXPECT_EQ(2, output.node_size());
   EXPECT_EQ(0, CountOpNodes(output, "Cast"));
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
+
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int8>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfIdenticalShape) {
@@ -1509,6 +1700,14 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfIdenticalShape) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  std::vector<std::pair<string, Tensor>> feed = {
+      {"a", a_t}, {"b", b_t}, {"c", c_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -1543,6 +1742,10 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfIdenticalShape) {
   ASSERT_NE(updated_outputs, nullptr);
 
   EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MultiplePasses) {
@@ -1566,6 +1769,17 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MultiplePasses) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto z_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  std::vector<std::pair<string, Tensor>> feed = {
+      {"a", a_t}, {"b", b_t}, {"c", c_t}, {"x", x_t}, {"y", y_t}, {"z", z_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -1616,6 +1830,10 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MultiplePasses) {
   EXPECT_EQ(2, updated_mul->input_size());
   EXPECT_EQ(collapsed_left->name(), updated_mul->input(0));
   EXPECT_EQ(collapsed_right->name(), updated_mul->input(1));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddInputMultipleTimes) {
@@ -1632,6 +1850,14 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddInputMultipleTimes) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  std::vector<std::pair<string, Tensor>> feed = {
+      {"a", a_t}, {"b", b_t}, {"c", c_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -1661,6 +1887,10 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddInputMultipleTimes) {
   EXPECT_EQ("b", collapsed_add->input(1));
   EXPECT_EQ("b", collapsed_add->input(2));
   EXPECT_EQ("c", collapsed_add->input(3));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfSymbolicallyEqualShape) {
@@ -1683,6 +1913,11 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfSymbolicallyEqualShape) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  std::vector<std::pair<string, Tensor>> feed = {{"input", x_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -1715,6 +1950,10 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfSymbolicallyEqualShape) {
   const NodeDef* updated_outputs = node_map.GetNode("outputs");
   ASSERT_NE(updated_outputs, nullptr);
   EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MinimizeBCast) {
@@ -1738,6 +1977,17 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MinimizeBCast) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
+  auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32}));
+  auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32, 32}));
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
+  auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32}));
+  auto z_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32, 32}));
+  std::vector<std::pair<string, Tensor>> feed = {
+      {"a", a_t}, {"b", b_t}, {"c", c_t}, {"x", x_t}, {"y", y_t}, {"z", z_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -1811,18 +2061,22 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MinimizeBCast) {
   const NodeDef* updated_outputs = node_map.GetNode("outputs");
   ASSERT_NE(updated_outputs, nullptr);
   EXPECT_EQ(outer_add_name, updated_outputs->input(0));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MinimizeBCastWithSymbolicShapes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   // We have a small input with one unknown dimension
-  auto small = ops::Variable(s.WithOpName("small"), {-1, 1, 1}, DT_FLOAT);
+  auto small = ops::Variable(s.WithOpName("small"), {-1, 1, 1}, DT_DOUBLE);
 
   // And second input which is larger, but has the same unknown dimension
   // device spec prevents this node from rewriting
-  auto d = "/job:do_not_rewrite_me";
-  auto v = ops::Variable(s.WithOpName("v"), {1, 32, 32}, DT_FLOAT);
+  auto d = "/device:CPU:0";
+  auto v = ops::Variable(s.WithOpName("v"), {1, 32, 32}, DT_DOUBLE);
   auto large = ops::Add(s.WithOpName("large").WithDevice(d), small, v);
 
   // [a, c] have {?, 1, 1} shape, [b] has {?, 32, 32}
@@ -1839,6 +2093,12 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MinimizeBCastWithSymbolicShapes) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto s_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({8, 1, 1}));
+  auto v_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({1, 32, 32}));
+  std::vector<std::pair<string, Tensor>> feed = {{"small", s_t}, {"v", v_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -1878,6 +2138,10 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MinimizeBCastWithSymbolicShapes) {
   const NodeDef* updated_outputs = node_map.GetNode("outputs");
   ASSERT_NE(updated_outputs, nullptr);
   EXPECT_EQ(outer_add_name, updated_outputs->input(0));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<double>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
@@ -1901,6 +2165,12 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
   GrapplerItem item;
   item.fetch = {"add_all"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  std::vector<std::pair<string, Tensor>> feed = {{"x", x_t}, {"y", y_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -1950,6 +2220,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
     }
   }
   EXPECT_EQ(5, found);
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, ConvertSqrtDivToRsqrtMul) {
@@ -2005,6 +2279,14 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_SimpleSwap) {
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
+  auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32}));
+  auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
+  std::vector<std::pair<string, Tensor>> feed = {
+      {"a", a_t}, {"b", b_t}, {"c", c_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyMinimizeBroadcasts(&optimizer);
@@ -2029,16 +2311,20 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_SimpleSwap) {
   ASSERT_NE(mul2_node, nullptr);
   EXPECT_EQ("mul1", mul2_node->input(0));
   EXPECT_EQ("b", mul2_node->input(1));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_FlattenTallGraph) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  auto a = ops::Variable(s.WithOpName("a"), {32}, DT_FLOAT);
-  auto b = ops::Variable(s.WithOpName("b"), {32, 32}, DT_FLOAT);
-  auto c = ops::Variable(s.WithOpName("c"), {32}, DT_FLOAT);
-  auto d = ops::Variable(s.WithOpName("d"), {32}, DT_FLOAT);
-  auto e = ops::Variable(s.WithOpName("e"), {32}, DT_FLOAT);
+  auto a = ops::Variable(s.WithOpName("a"), {32}, DT_DOUBLE);
+  auto b = ops::Variable(s.WithOpName("b"), {32, 32}, DT_DOUBLE);
+  auto c = ops::Variable(s.WithOpName("c"), {32}, DT_DOUBLE);
+  auto d = ops::Variable(s.WithOpName("d"), {32}, DT_DOUBLE);
+  auto e = ops::Variable(s.WithOpName("e"), {32}, DT_DOUBLE);
 
   auto mul1 = ops::Mul(s.WithOpName("mul1"), a, b);
   auto mul2 = ops::Mul(s.WithOpName("mul2"), mul1, c);
@@ -2050,6 +2336,16 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_FlattenTallGraph) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto a_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32}));
+  auto b_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32, 32}));
+  auto c_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32}));
+  auto d_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32}));
+  auto e_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32}));
+  std::vector<std::pair<string, Tensor>> feed = {
+      {"a", a_t}, {"b", b_t}, {"c", c_t}, {"d", d_t}, {"e", e_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -2090,6 +2386,10 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_FlattenTallGraph) {
   ASSERT_NE(mul4_node, nullptr);
   EXPECT_EQ("mul3", mul4_node->input(0));
   EXPECT_EQ("b", mul4_node->input(1));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<double>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_BuildTreeUp) {
@@ -2110,6 +2410,15 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_BuildTreeUp) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
+  auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
+  auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
+  auto d_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32}));
+  std::vector<std::pair<string, Tensor>> feed = {
+      {"a", a_t}, {"b", b_t}, {"c", c_t}, {"D", d_t}};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
@@ -2142,6 +2451,10 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_BuildTreeUp) {
   ASSERT_NE(mul3_node, nullptr);
   EXPECT_EQ("D", mul3_node->input(0));
   EXPECT_EQ("mul1", mul3_node->input(1));
+
+  auto tensors = EvaluateNodes(output, item.fetch, feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcat) {
@@ -2320,16 +2633,16 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
     EXPECT_NE(node.name(), "cos_exp_b2");
 
     if (node.name() == "split1") {
-      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("axis", node.input(0));
       EXPECT_EQ("ArithmeticOptimizer/_sin_a_split1", node.input(1));
-      EXPECT_EQ("^ctrl1", node.input(2));
       found++;
     }
     if (node.name() == "ArithmeticOptimizer/_sin_a_split1") {
       EXPECT_EQ("Sin", node.op());
-      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^ctrl1", node.input(1));
       found++;
     }
     if (node.name() == "id_a") {
@@ -2349,8 +2662,11 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
     }
     if (node.name() == "ArithmeticOptimizer/_exp_a2_split2") {
       EXPECT_EQ("Exp", node.op());
-      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ(4, node.input_size());
       EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^ctrl1", node.input(1));
+      EXPECT_EQ("^ctrl2", node.input(2));
+      EXPECT_EQ("^ctrl3", node.input(3));
       found++;
     }
     if (node.name() == "ArithmeticOptimizer/_cos_exp_a2_split2") {
@@ -2360,13 +2676,10 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
       found++;
     }
     if (node.name() == "split2") {
-      EXPECT_EQ(6, node.input_size());
+      EXPECT_EQ(3, node.input_size());
       EXPECT_EQ("ArithmeticOptimizer/_cos_exp_a2_split2", node.input(0));
       EXPECT_EQ("size_splits2", node.input(1));
       EXPECT_EQ("axis", node.input(2));
-      EXPECT_EQ("^ctrl1", node.input(3));
-      EXPECT_EQ("^ctrl2", node.input(4));
-      EXPECT_EQ("^ctrl3", node.input(5));
       found++;
     }
     if (node.name() == "id_a2") {
@@ -2387,6 +2700,163 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
   EXPECT_EQ(tensors.size(), item.fetch.size());
   for (int i = 0; i < item.fetch.size(); ++i) {
     test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveIdempotent) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 3.14f, {32});
+  Output ctrl1 = ops::Const(s.WithOpName("ctrl1"), 1, {});
+  Output ctrl2 = ops::Const(s.WithOpName("ctrl2"), 2, {});
+  Output sn1 =
+      ops::Snapshot(s.WithOpName("sn1").WithControlDependencies(ctrl1), a);
+  Output sn2 =
+      ops::Snapshot(s.WithOpName("sn2").WithControlDependencies(ctrl2), sn1);
+  Output out1 = ops::Identity(s.WithOpName("out1"), sn2);
+  Output id1 = ops::Identity(s.WithOpName("id1"), a);
+  Output id2 = ops::Identity(s.WithOpName("id2"), id1);
+  Output out2 = ops::Identity(s.WithOpName("out2"), id2);
+  GrapplerItem item;
+  item.fetch = {"out1", "out2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveIdempotent(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  EXPECT_EQ(11, output.node_size());
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "out1") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ArithmeticOptimizer/RemoveIdempotent_sn2", node.input(0));
+      found++;
+    } else if (node.name() == "ArithmeticOptimizer/RemoveIdempotent_sn2") {
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("Snapshot", node.op());
+      EXPECT_EQ("a", node.input(0));
+      EXPECT_EQ("^ctrl1", node.input(1));
+      EXPECT_EQ("^ctrl2", node.input(2));
+      found++;
+    } else if (node.name() == "out2") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("ArithmeticOptimizer/RemoveIdempotent_id2", node.input(0));
+      found++;
+    } else if (node.name() == "ArithmeticOptimizer/RemoveIdempotent_id2") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("a", node.input(0));
+      found++;
+    }
+  }
+  EXPECT_EQ(4, found);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveLogicalNot) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 3.14f, {32});
+  Output b = ops::Const(s.WithOpName("b"), -3.14f, {32});
+  Output eq = ops::Equal(s.WithOpName("eq"), a, b);
+  Output neq = ops::NotEqual(s.WithOpName("neq"), a, b);
+  Output lt = ops::Less(s.WithOpName("lt"), a, b);
+  Output le = ops::LessEqual(s.WithOpName("le"), a, b);
+  Output gt = ops::Greater(s.WithOpName("gt"), a, b);
+  Output ge = ops::GreaterEqual(s.WithOpName("ge"), a, b);
+  // not_eq is reserved
+  Output not_eq1 = ops::LogicalNot(s.WithOpName("not_eq1"), eq);
+  Output not_neq = ops::LogicalNot(s.WithOpName("not_neq"), neq);
+  Output not_lt = ops::LogicalNot(s.WithOpName("not_lt"), lt);
+  Output not_le = ops::LogicalNot(s.WithOpName("not_le"), le);
+  Output not_gt = ops::LogicalNot(s.WithOpName("not_gt"), gt);
+  Output not_ge = ops::LogicalNot(s.WithOpName("not_ge"), ge);
+  Output id_not_eq = ops::Identity(s.WithOpName("id_not_eq"), not_eq1);
+  Output id_not_neq = ops::Identity(s.WithOpName("id_not_neq"), not_neq);
+  Output id_not_lt = ops::Identity(s.WithOpName("id_not_lt"), not_lt);
+  Output id_not_le = ops::Identity(s.WithOpName("id_not_le"), not_le);
+  Output id_not_gt = ops::Identity(s.WithOpName("id_not_gt"), not_gt);
+  Output id_not_ge = ops::Identity(s.WithOpName("id_not_ge"), not_ge);
+
+  GrapplerItem item;
+  item.fetch = {"id_not_eq", "id_not_neq", "id_not_lt",
+                "id_not_le", "id_not_gt",  "id_not_ge"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveLogicalNot(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "id_not_eq") {
+      EXPECT_EQ("eq", node.input(0));
+      ++found;
+    }
+    if (node.name() == "id_not_neq") {
+      EXPECT_EQ("neq", node.input(0));
+      ++found;
+    }
+    if (node.name() == "id_not_lt") {
+      EXPECT_EQ("lt", node.input(0));
+      ++found;
+    }
+    if (node.name() == "id_not_le") {
+      EXPECT_EQ("le", node.input(0));
+      ++found;
+    }
+    if (node.name() == "id_not_gt") {
+      EXPECT_EQ("gt", node.input(0));
+      ++found;
+    }
+    if (node.name() == "id_not_ge") {
+      EXPECT_EQ("ge", node.input(0));
+      ++found;
+    }
+
+    if (node.name() == "eq") {
+      EXPECT_EQ("NotEqual", node.op());
+      ++found;
+    }
+    if (node.name() == "neq") {
+      EXPECT_EQ("Equal", node.op());
+      ++found;
+    }
+    if (node.name() == "lt") {
+      EXPECT_EQ("GreaterEqual", node.op());
+      ++found;
+    }
+    if (node.name() == "le") {
+      EXPECT_EQ("Greater", node.op());
+      ++found;
+    }
+    if (node.name() == "gt") {
+      EXPECT_EQ("LessEqual", node.op());
+      ++found;
+    }
+    if (node.name() == "ge") {
+      EXPECT_EQ("Less", node.op());
+      ++found;
+    }
+  }
+  EXPECT_EQ(12, found);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorEqual<bool>(tensors_expected[i], tensors[i]);
   }
 }
 

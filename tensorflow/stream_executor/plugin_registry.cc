@@ -72,11 +72,11 @@ port::Status PluginRegistry::RegisterFactoryInternal(
   mutex_lock lock{GetPluginRegistryMutex()};
 
   if (factories->find(plugin_id) != factories->end()) {
-    return port::Status{
+    return port::Status(
         port::error::ALREADY_EXISTS,
         port::Printf("Attempting to register factory for plugin %s when "
                      "one has already been registered",
-                     plugin_name.c_str())};
+                     plugin_name.c_str()));
   }
 
   (*factories)[plugin_id] = factory;
@@ -92,9 +92,9 @@ port::StatusOr<FACTORY_TYPE> PluginRegistry::GetFactoryInternal(
   if (iter == factories.end()) {
     iter = generic_factories.find(plugin_id);
     if (iter == generic_factories.end()) {
-      return port::Status{
+      return port::Status(
           port::error::NOT_FOUND,
-          port::Printf("Plugin ID %p not registered.", plugin_id)};
+          port::Printf("Plugin ID %p not registered.", plugin_id));
     }
   }
 
@@ -212,10 +212,11 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
       plugin_id = default_factories_[platform_id].FACTORY_VAR;                \
                                                                               \
       if (plugin_id == kNullPlugin) {                                         \
-        return port::Status{port::error::FAILED_PRECONDITION,                 \
-                            "No suitable " PLUGIN_STRING                      \
-                            " plugin registered. Have you linked in a "       \
-                            PLUGIN_STRING "-providing plugin?"};              \
+        return port::Status(                                                  \
+            port::error::FAILED_PRECONDITION,                                 \
+            "No suitable " PLUGIN_STRING                                      \
+            " plugin registered. Have you linked in a " PLUGIN_STRING         \
+            "-providing plugin?");                                            \
       } else {                                                                \
         VLOG(2) << "Selecting default " PLUGIN_STRING " plugin, "             \
                 << plugin_names_[plugin_id];                                  \
@@ -231,9 +232,9 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
       PlatformKind platform_kind, PluginId plugin_id) {                       \
     auto iter = platform_id_by_kind_.find(platform_kind);                     \
     if (iter == platform_id_by_kind_.end()) {                                 \
-      return port::Status{port::error::FAILED_PRECONDITION,                   \
+      return port::Status(port::error::FAILED_PRECONDITION,                   \
                           port::Printf("Platform kind %d not registered.",    \
-                                       static_cast<int>(platform_kind))};     \
+                                       static_cast<int>(platform_kind)));     \
     }                                                                         \
     return GetFactory<PluginRegistry::FACTORY_TYPE>(iter->second, plugin_id); \
   }

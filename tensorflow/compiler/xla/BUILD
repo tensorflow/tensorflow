@@ -99,8 +99,9 @@ cc_library(
     hdrs = ["service_interface.h"],
     visibility = [":friends"],
     deps = [
+        ":status",
+        ":xla_data_proto",
         ":xla_proto",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -244,6 +245,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protobuf_util",
+        ":status",
         ":status_macros",
         ":statusor",
         ":types",
@@ -302,13 +304,13 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
-        ":shape_tree",
         ":shape_util",
         ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
         ":xla_data_proto",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )
@@ -323,9 +325,27 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":types",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "error_spec",
+    hdrs = ["error_spec.h"],
+)
+
+cc_library(
+    name = "literal_comparison",
+    srcs = ["literal_comparison.cc"],
+    hdrs = ["literal_comparison.h"],
+    deps = [
+        ":error_spec",
+        ":literal_util",
+        ":util",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -480,6 +500,37 @@ cc_library(
 )
 
 cc_library(
+    name = "scanner",
+    srcs = ["scanner.cc"],
+    hdrs = ["scanner.h"],
+    visibility = [":internal"],
+    deps = [
+        ":status",
+        ":status_macros",
+        ":types",
+        ":util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "scanner_test",
+    srcs = ["scanner_test.cc"],
+    deps = [
+        ":scanner",
+        ":status",
+        ":status_macros",
+        ":test",
+        ":types",
+        ":util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "text_literal_reader",
     srcs = ["text_literal_reader.cc"],
     hdrs = ["text_literal_reader.h"],
@@ -563,6 +614,7 @@ tf_cc_test(
         ":shape_util",
         ":test",
         ":xla_data_proto",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

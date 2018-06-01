@@ -357,7 +357,7 @@ class Distribution(_BaseDistribution):
 
   For detailed usage examples of TensorFlow Distributions shapes, see
   [this tutorial](
-  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding%20TensorFlow%20Distributions%20Shapes.ipynb)
+  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding_TensorFlow_Distributions_Shapes.ipynb)
 
   #### Parameter values leading to undefined statistics or distributions.
 
@@ -524,7 +524,8 @@ class Distribution(_BaseDistribution):
   def parameters(self):
     """Dictionary of parameters used to instantiate this `Distribution`."""
     # Remove "self", "__class__", or other special variables. These can appear
-    # if the subclass used `parameters = locals()`.
+    # if the subclass used:
+    # `parameters = dict(locals())`.
     return dict((k, v) for k, v in self._parameters.items()
                 if not k.startswith("__") and k != "self")
 

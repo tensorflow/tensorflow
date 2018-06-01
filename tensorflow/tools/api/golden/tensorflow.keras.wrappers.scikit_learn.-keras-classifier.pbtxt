@@ -1,7 +1,7 @@
 path: "tensorflow.keras.wrappers.scikit_learn.KerasClassifier"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.wrappers.scikit_learn.KerasClassifier\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.wrappers.scikit_learn.BaseWrapper\'>"
+  is_instance: "<class \'tensorflow.python.keras.wrappers.scikit_learn.KerasClassifier\'>"
+  is_instance: "<class \'tensorflow.python.keras.wrappers.scikit_learn.BaseWrapper\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

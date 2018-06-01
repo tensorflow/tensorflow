@@ -26,12 +26,13 @@ from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class MetricsTest(test.TestCase):
@@ -117,6 +118,11 @@ class MetricsTest(test.TestCase):
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
 
+  def testAccuracyDifferentShapes(self):
+    m = metrics.Accuracy()
+    with self.assertRaises(errors.InvalidArgumentError):
+      m([[0], [0]], [0, 1])
+
   def testWeightedAccuracy(self):
     m = metrics.Accuracy()
     # 1 correct, total weight of 2
@@ -146,8 +152,6 @@ class MetricsTest(test.TestCase):
     self.assertAllEqual(2.0, m2.result())
 
   def testNamesWithSpaces(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
     m1 = metrics.Mean("has space")
     m1(0)
     self.assertEqual(m1.name, "has space")
@@ -186,8 +190,8 @@ class MetricsTest(test.TestCase):
     self.assertEqual(self.evaluate(value), 2.5)
 
   def testTwoMeansGraph(self):
-    # Verify two metrics with the same class and name don't
-    # accidentally share state.
+    # Verify two metrics with the same name in the same graph raises a
+    # ValueError.
     with context.graph_mode():
       m1 = metrics.Mean()
       m1(0)

@@ -100,7 +100,8 @@ Status CpuLayoutAssignment::AddBackendConstraints(
   const HloComputation* computation = constraints->computation();
   for (auto* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kConvolution &&
-        PotentiallyImplementedAsEigenConvolution(*instruction)) {
+        PotentiallyImplementedAsEigenConvolution(*instruction,
+                                                 target_machine_features_)) {
       const HloInstruction* convolution = instruction;
       const HloInstruction* lhs_instruction = convolution->operand(0);
       const HloInstruction* rhs_instruction = convolution->operand(1);
@@ -126,7 +127,8 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       const HloInstruction* op = instruction->operand(*op_idx);
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           ColMajorShape(op->shape()), instruction, *op_idx));
-    } else if (PotentiallyImplementedAsEigenDot(*instruction)) {
+    } else if (PotentiallyImplementedAsEigenDot(*instruction,
+                                                target_machine_features_)) {
       const HloInstruction* dot = instruction;
       // In order to implement `dot` with Eigen dot, the layouts of the lhs,
       // rhs, and output need to be row-major.
@@ -139,13 +141,9 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       Shape lhs_shape(RowMajorShape(lhs_instruction->shape()));
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, dot, 0));
 
-      // dot is a kDot or a kTransposeDot fusion node.  In the latter case, if
-      // it represents X @ X, it may have just one operand.
-      if (dot->operand_count() > 1) {
-        const HloInstruction* rhs_instruction = dot->operand(1);
-        Shape rhs_shape(RowMajorShape(rhs_instruction->shape()));
-        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, dot, 1));
-      }
+      const HloInstruction* rhs_instruction = dot->operand(1);
+      Shape rhs_shape(RowMajorShape(rhs_instruction->shape()));
+      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, dot, 1));
 
       // Set layouts of the instructions' shapes.
       TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(output_shape, dot));
@@ -181,7 +179,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       }
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 }  // namespace cpu
 }  // namespace xla

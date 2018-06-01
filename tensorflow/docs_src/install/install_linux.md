@@ -517,7 +517,7 @@ on your system:
   from source. To use the TensorFlow binaries, version 3.5 or higher is required.
   See the [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
   list of supported GPU cards.
-* [GPU drivers](http://nvidia.com/driver) that support your version of the CUDA
+* [GPU drivers](http://nvidia.com/drivers) that support your version of the CUDA
   Toolkit.
 * The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
   library provides advanced profiling support. To install this library,
@@ -531,12 +531,6 @@ Add this path to the `LD_LIBRARY_PATH` environmental variable:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</code>
-</pre>
-
-For CUDA Toolkit <= 7.5 use:
-
-<pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">sudo apt-get install libcupti-dev</code>
 </pre>
 
 * *OPTIONAL*:  For optimized performance during inference, install

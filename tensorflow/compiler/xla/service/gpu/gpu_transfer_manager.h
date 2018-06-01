@@ -37,7 +37,7 @@ class GpuTransferManager : public GenericTransferManager {
   ~GpuTransferManager() override {}
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const Literal& literal) override;
+                                 const LiteralSlice& literal) override;
   Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
                                 const void* source) override;
 

@@ -168,12 +168,12 @@ below).
 
 Please use a descriptive subject line for your report email. After the initial
 reply to your report, the security team will endeavor to keep you informed of
-the progress being made towards a fix and announcement. 
+the progress being made towards a fix and announcement.
 
 In addition, please include the following information along with your report:
 
 * Your name and affiliation (if any).
-* A description the technical details of the vulnerabilities. It is very
+* A description of the technical details of the vulnerabilities. It is very
   important to let us know how we can reproduce your findings.
 * An explanation who can exploit this vulnerability, and what they gain when
   doing so -- write an attack scenario. This will help us evaluate your report
@@ -246,5 +246,8 @@ v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 
 | Type               | Versions affected | Reported by           | Additional Information      |
 |--------------------|:-----------------:|-----------------------|-----------------------------|
+| TensorFlow Lite TOCO FlatBuffer Parsing Vulnerability | <= 1.7 | Blade Team of Tencent | [security advisory](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/docs_src/security/advisory/tfsa-2018-003.md) |
+| GIF File Parsing Null Pointer Dereference Error | <= 1.5 | Blade Team of Tencent | [security advisory](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/docs_src/security/advisory/tfsa-2018-002.md) |
+| BMP File Parser Out-of-bounds Read | <= 1.6 | Blade Team of Tencent | [security advisory](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/docs_src/security/advisory/tfsa-2018-001.md) |
 | Out Of Bounds Read |             <=1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
 

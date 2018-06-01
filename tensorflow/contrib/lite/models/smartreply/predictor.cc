@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/string_util.h"
-#include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -104,11 +104,11 @@ void GetSegmentPredictions(
             });
 
   // Add backoff response.
-  for (const string& backoff : config.backoff_responses) {
+  for (const auto& backoff : config.backoff_responses) {
     if (predictor_responses->size() >= config.num_response) {
       break;
     }
-    predictor_responses->push_back({backoff, config.backoff_confidence});
+    predictor_responses->emplace_back(backoff, config.backoff_confidence);
   }
 }
 

@@ -54,6 +54,7 @@ class BreakStatementTransformer(transformer.Base):
     """Prevents the block from executing if var_name is set."""
     if not block:
       return block
+
     template = """
         if not var_name:
           block
@@ -66,7 +67,7 @@ class BreakStatementTransformer(transformer.Base):
 
   def visit_While(self, node):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    break_var = self.context.namer.new_symbol('break__', scope.referenced)
+    break_var = self.context.namer.new_symbol('break_', scope.referenced)
 
     node.test = self.visit(node.test)
     node.body, break_used = self._track_body(node.body, break_var)
@@ -74,6 +75,10 @@ class BreakStatementTransformer(transformer.Base):
     node.orelse = self.visit_block(node.orelse)
 
     if break_used:
+      # Python's else clause only triggers if the loop exited cleanly (e.g.
+      # break did not trigger).
+      guarded_orelse = self._guard_if_present(node.orelse, break_var)
+
       template = """
         var_name = False
         while test and not var_name:
@@ -81,20 +86,18 @@ class BreakStatementTransformer(transformer.Base):
         else:
           orelse
       """
-      # Python's else clause only triggers if the loop exited cleanly (e.g.
-      # break did not trigger).
       node = templates.replace(
           template,
           var_name=break_var,
           test=node.test,
           body=node.body,
-          orelse=self._guard_if_present(node.orelse, break_var))
+          orelse=guarded_orelse)
 
     return node
 
   def visit_For(self, node):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    break_var = self.context.namer.new_symbol('break__', scope.referenced)
+    break_var = self.context.namer.new_symbol('break_', scope.referenced)
 
     node.target = self.visit(node.target)
     node.iter = self.visit(node.iter)
@@ -103,19 +106,32 @@ class BreakStatementTransformer(transformer.Base):
     node.orelse = self.visit_block(node.orelse)
 
     if break_used:
-      node.orelse = self._guard_if_present(node.orelse, break_var)
-      template = """
-        var_name = False
-        for_stmt
-      """
       # Python's else clause only triggers if the loop exited cleanly (e.g.
       # break did not trigger).
+      guarded_orelse = self._guard_if_present(node.orelse, break_var)
+      extra_test = templates.replace_as_expression(
+          'not var_name', var_name=break_var)
+
+      # The extra test is hidden in the AST, which will confuse the static
+      # analysis. To mitigate that, we insert a no-op statement that ensures
+      # the control variable is marked as used.
+      # TODO(mdan): Use a marker instead, e.g. ag__.condition_loop_on(var_name)
+      template = """
+        var_name = False
+        for target in iter_:
+          (var_name,)
+          body
+        else:
+          orelse
+      """
       node = templates.replace(
           template,
           var_name=break_var,
-          for_stmt=node)
-      extra_test = templates.replace_as_expression(
-          'not var_name', var_name=break_var)
+          iter_=node.iter,
+          target=node.target,
+          body=node.body,
+          orelse=guarded_orelse)
+
       anno.setanno(node[1], 'extra_test', extra_test)
 
     return node

@@ -27,6 +27,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import googletest
 
 conv2d = layers.conv2d
@@ -74,7 +76,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                     weights_initializer=self._WeightInit(0.09),
                     activation_fn=None, scope='test/test')
       node = math_ops.add(conv, input2, name='test/add')
-      node = array_ops.identity(node, name='test/identity')
+      node = nn_ops.relu6(node, name='test/relu6')
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
@@ -97,7 +99,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         for output in quant_op.outputs:
           consumers.extend(output.consumers())
 
-        self.assertNotIn('test/identity', [c.name for c in consumers])
+        self.assertNotIn('test/relu6', [c.name for c in consumers])
 
   def testInsertQuantOpForAddAfterSeparableConv2d(self):
     self._RunTestOverParameters(
@@ -114,7 +116,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                               weights_initializer=self._WeightInit(0.09),
                               activation_fn=None, scope='test/test')
       node = math_ops.add(conv, input2, name='test/add')
-      node = array_ops.identity(node, name='test/identity')
+      node = nn_ops.relu6(node, name='test/relu6')
       update_barrier = control_flow_ops.no_op(name='update_barrier')
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
@@ -135,7 +137,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         for output in quant_op.outputs:
           consumers.extend(output.consumers())
 
-        self.assertNotIn('test/identity', [c.name for c in consumers])
+        self.assertNotIn('test/relu6', [c.name for c in consumers])
 
   def testFinalLayerQuantized(self):
     self._RunTestOverParameters(self._TestFinalLayerQuantized)
@@ -174,7 +176,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           stride=2,
           padding='SAME',
           weights_initializer=self._WeightInit(0.09),
-          activation_fn=array_ops.identity,
+          activation_fn=nn_ops.relu6,
           scope='test/test')
       bypass_tensor = math_ops.add(conv, input2, name='test/add')
       # The output of the post_activation bypass will be another layer.
@@ -184,7 +186,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           stride=2,
           padding='SAME',
           weights_initializer=self._WeightInit(0.09),
-          activation_fn=array_ops.identity,
+          activation_fn=nn_ops.relu6,
           scope='test/unused')
 
       quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
@@ -212,7 +214,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           stride=2,
           padding='SAME',
           weights_initializer=self._WeightInit(0.09),
-          activation_fn=array_ops.identity,
+          activation_fn=nn_ops.relu6,
           scope='test/test1')
 
       # The bypass of this conv is the post activation bypass of the previous
@@ -227,7 +229,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           scope='test/test2')
 
       bypass_tensor = math_ops.add(conv1, conv2, name='test/add')
-      _ = array_ops.identity(bypass_tensor, name='test/output')
+      _ = nn_ops.relu6(bypass_tensor, name='test/output')
 
       quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
 
@@ -248,11 +250,11 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           'test/test1/act_quant/FakeQuantWithMinMaxVars' in op_names)
       self.assertTrue('test/act_quant/FakeQuantWithMinMaxVars' in op_names)
       self.assertEqual(
-          'Identity',
+          'Relu6',
           graph.get_operation_by_name(
               'test/test1/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
       self.assertEqual(
-          'Identity',
+          'Relu6',
           graph.get_operation_by_name(
               'test/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
 
@@ -326,6 +328,66 @@ class QuantizeTest(test_util.TensorFlowTestCase):
 
     # No ops should be inserted or removed.
     self.assertEqual(op_names_before_quantize, op_names_after_quantize)
+
+  def testSinglePartitionedVariable(self):
+    self._RunTestOverParameters(self._testSinglePartitionedVariable)
+
+  def _testSinglePartitionedVariable(self, is_training):
+    # When weights are partitioned into a single partition, the weights variable
+    # is followed by a identity -> identity (An additional identity node).
+    partitioner = partitioned_variables.fixed_size_partitioner(1)
+    graph = ops.Graph()
+    with graph.as_default():
+      with variable_scope.variable_scope('part', partitioner=partitioner):
+        batch_size, height, width, depth = 5, 128, 128, 3
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        input2 = array_ops.zeros((batch_size, height / 2, width / 2, 32))
+        conv = conv2d(
+            input1,
+            32, [5, 5],
+            stride=2,
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            scope='test/test')
+        node = math_ops.add(conv, input2, name='test/add')
+        node = nn_ops.relu6(node, name='test/relu6')
+
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+      # Check that the weight's quant node was added.
+      op_names = [op.name for op in graph.get_operations()]
+      self.assertTrue(
+          'part/test/test/weights_quant/FakeQuantWithMinMaxVars' in op_names)
+
+  def testMultiplePartitionedVariables(self):
+    self._RunTestOverParameters(self._testMultiplePartitionedVariables)
+
+  def _testMultiplePartitionedVariables(self, is_training):
+    # When weights are partitioned into multiple partitions the weights variable
+    # is followed by a identity -> concat -> identity to group the partitions.
+    partitioner = partitioned_variables.fixed_size_partitioner(2)
+    graph = ops.Graph()
+    with graph.as_default():
+      with variable_scope.variable_scope('part', partitioner=partitioner):
+        batch_size, height, width, depth = 5, 128, 128, 3
+        input1 = array_ops.zeros((batch_size, height, width, depth))
+        input2 = array_ops.zeros((batch_size, height / 2, width / 2, 32))
+        conv = conv2d(
+            input1,
+            32, [5, 5],
+            stride=2,
+            padding='SAME',
+            weights_initializer=self._WeightInit(0.09),
+            activation_fn=None,
+            scope='test/test')
+        node = math_ops.add(conv, input2, name='test/add')
+        node = nn_ops.relu6(node, name='test/relu6')
+
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+      # Check that the weight's quant node was added.
+      op_names = [op.name for op in graph.get_operations()]
+      self.assertTrue(
+          'part/test/test/weights_quant/FakeQuantWithMinMaxVars' in op_names)
 
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.
