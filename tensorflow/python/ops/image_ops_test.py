@@ -1277,6 +1277,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     #Ops that support 4D input
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
+        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
         image_ops.transpose_image, image_ops.rot90
     ]:
       transformed_unknown_dims_4 = op(p_unknown_dims_4)
@@ -1285,13 +1286,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
       with self.assertRaisesRegexp(ValueError,
                                    "must be at least three-dimensional"):
-        op(p_wrong_rank)
-
-    for op in [
-        image_ops.random_flip_left_right,
-        image_ops.random_flip_up_down,
-    ]:
-      with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
         op(p_wrong_rank)
 
   def testRot90GroupOrder(self):
