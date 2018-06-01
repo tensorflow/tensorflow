@@ -79,10 +79,10 @@ Kernels under tensorflow/core/kernels
 |   O    |        | bias_op.h
 |   O    |        | bias_op_gpu.cu.cc
 |   O    |        | bias_op_gpu.h
-|   X    |cub     | bincount_op.cc
-|   X    |cub     | bincount_op.h
-|   X    |cub     | bincount_op_gpu.cu.cc
-|   X    |cub     | bincount_op_test.cc
+|   O    |rocPRIM | bincount_op.cc
+|   O    |rocPRIM | bincount_op.h
+|   O    |rocPRIM | bincount_op_gpu.cu.cc
+|   O    |rocPRIM | bincount_op_test.cc
 |   O    |        | bitcast_op.cc
 |   O    |        | bitcast_op.h
 |   O    |        | boosted_trees
@@ -557,9 +557,9 @@ Kernels under tensorflow/core/kernels
 |   O    |        | hexagon/soc_interface.cc
 |   O    |        | hexagon/soc_interface.h
 |   O    |        | hinge-loss.h
-|   X    |cub     | histogram_op.cc
-|   X    |cub     | histogram_op.h
-|   X    |cub     | histogram_op_gpu.cu.cc
+|   O    |rocPRIM | histogram_op.cc
+|   O    |rocPRIM | histogram_op.h
+|   O    |rocPRIM | histogram_op_gpu.cu.cc
 |   O    |        | i_remote_fused_graph_executor.h
 |   O    |        | i_remote_fused_graph_ops_definitions.cc
 |   O    |        | i_remote_fused_graph_ops_definitions.h
