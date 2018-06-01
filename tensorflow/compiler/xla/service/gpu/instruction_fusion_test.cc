@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -143,7 +143,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
 
 // Tests that broadcasts fused into a fusion with a reduce root.
 TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
 
     add {
@@ -172,7 +172,7 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
@@ -194,7 +194,7 @@ TEST_F(InstructionFusionTest, BitcastIntoAdd) {
 }
 
 TEST_F(InstructionFusionTest, AddIntoBitcast) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
 
     ENTRY BroadcastIntoAdd {
@@ -216,7 +216,7 @@ TEST_F(InstructionFusionTest, AddIntoBitcast) {
 }
 
 TEST_F(InstructionFusionTest, DontFuseGTE) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY DontFuseGTE {
     p0 = (f32[10], f32[10]) parameter(0)
@@ -232,7 +232,7 @@ TEST_F(InstructionFusionTest, DontFuseGTE) {
 }
 
 TEST_F(InstructionFusionTest, DotOutputFusion) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     alpha = f32[] constant(3)
@@ -261,7 +261,7 @@ TEST_F(InstructionFusionTest, DotOutputFusion) {
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
 // duplicated and fused into both reduces.
 TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   Add {
     lhs = f32[] parameter(0)
@@ -292,7 +292,7 @@ TEST_F(InstructionFusionTest, FloatingPointDivIsCheap) {
 // is *not* duplicated and fused into both reduces, because we say that integer
 // division is not cheap.
 TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   Add {
     lhs = s32[] parameter(0)
@@ -317,7 +317,7 @@ TEST_F(InstructionFusionTest, IntegerDivIsNotCheap) {
 }
 
 TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY NoOutputFusion {
     alpha = f32[] constant(3)
@@ -371,7 +371,7 @@ static StatusOr<const HloInstruction*> FindHloInstruction(
 TEST_F(InstructionFusionTest, MultiOutputFusion) {
   // sub --> add --> tuple
   //  \---------------/
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
     ENTRY OutputFusion {
      p0 = f32[4,3]{1,0} parameter(0)
@@ -403,7 +403,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusion) {
 TEST_F(InstructionFusionTest, MultiOutputFusionExpensiveOp) {
   // tanh --> add --> tuple
   //  \---------------/
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
     ENTRY OutputFusion {
      p0 = f32[4,3]{1,0} parameter(0)
@@ -424,7 +424,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusionExpensiveOp) {
 TEST_F(InstructionFusionTest, MultiOutputFusion2) {
   // sub --> add1 --\--------\
   //  \----------> add2 --> tuple
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
     ENTRY OutputFusion {
      p0 = f32[4,3]{1,0} parameter(0)
@@ -457,7 +457,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusion2) {
 TEST_F(InstructionFusionTest, MultiOutputFusion3) {
   // sub --> add1 ----\--------\
   //  \ --> add2 --> add3 --> tuple
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
     ENTRY OutputFusion {
      p0 = f32[4,3]{1,0} parameter(0)
@@ -492,7 +492,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusion3) {
 TEST_F(InstructionFusionTest, NoCyclesDueToMultiOutputFusion) {
   // sub --> mul ---\
   //  \--> call --> add --> tuple
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     c = f32[] constant(42)
@@ -527,7 +527,7 @@ TEST_F(InstructionFusionTest, NoCyclesDueToMultiOutputFusion) {
 TEST_F(InstructionFusionTest, NoMultiOutputFusionWithIncompatibleShapes) {
   // sub[2,3] --> add[4,3] --> tuple([2,3], [4,3])
   //  \-------------------------/
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule test_module
     ENTRY OutputFusion {
      p0 = f32[2,3]{1,0} parameter(0)
@@ -548,7 +548,7 @@ TEST_F(InstructionFusionTest, NoMultiOutputFusionWithIncompatibleShapes) {
 }
 
 TEST_F(InstructionFusionTest, FuseIntoInputFusionInstruction) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
 
   add_computation {

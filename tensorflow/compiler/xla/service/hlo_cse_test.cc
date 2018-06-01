@@ -32,10 +32,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -486,7 +486,7 @@ TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
 }
 
 TEST_F(HloCseTest, CompareComputations) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule m
 
     add_computation {

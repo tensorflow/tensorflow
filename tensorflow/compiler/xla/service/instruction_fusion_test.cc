@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 
@@ -47,7 +47,7 @@ class InstructionFusionForTesting : public InstructionFusion {
 };
 
 TEST_F(InstructionFusionTest, FuseInstructions) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY entry_computation {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -67,7 +67,7 @@ TEST_F(InstructionFusionTest, FuseInstructions) {
 }
 
 TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   fused_computation {
     p1 = f32[4,3] parameter(0)
@@ -90,7 +90,7 @@ TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
 }
 
 TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY entry_computation {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -195,7 +195,7 @@ static int Count(const HloModule& module, HloOpcode op) {
 }
 
 TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -220,7 +220,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   //
   // p0 -> add -------------------------> sub
   //           \-> abs1 -> rng -> abs2 -/
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -251,7 +251,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   // p0 -> add -------------------------> sub
   //           \-> abs1 -> log -> abs2 -/
   //                           \-> send
-  module = tools::Parse(R"(
+  module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -282,7 +282,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   //    \         \-> add2 -/
   //     \-> log -/
   //             \-> send
-  module = tools::Parse(R"(
+  module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -314,7 +314,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   //                       \------> sub1
   //                        log -/
   //                            \-> send
-  module = tools::Parse(R"(
+  module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -390,7 +390,7 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
 
 TEST_F(InstructionFusionTest,
        WideningConvertsAreAlwaysDuplicableIntoConsumers) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f16[100] parameter(0)
