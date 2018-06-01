@@ -2517,6 +2517,72 @@ def make_transpose_conv_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_tile_tests(zip_path):
+  """Make a set of tests to do tile."""
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[3, 2, 1], [2, 2, 2]],
+      "multiplier_dtype": [tf.int32, tf.int64],
+      "multiplier_shape": [[3]]
+  }]
+
+  def build_graph(parameters):
+    """Build the tile op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        shape=parameters["input_shape"],
+        name="input")
+    multiplier_value = tf.placeholder(
+        dtype=parameters["multiplier_dtype"],
+        shape=parameters["multiplier_shape"],
+        name="multiplier")
+    out = tf.tile(input_value, multiplier_value)
+    return [input_value, multiplier_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    multipliers_value = create_tensor_data(parameters["multiplier_dtype"],
+                                           parameters["multiplier_shape"])
+    return [input_value, multipliers_value], sess.run(
+        outputs,
+        feed_dict={
+            inputs[0]: input_value,
+            inputs[1]: multipliers_value
+        })
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_expand_dims_tests(zip_path):
+  """Make a set of tests to do expand_dims."""
+
+  test_parameters = [{
+      "input_type": [tf.float32, tf.int32],
+      "input_shape": [[3, 4], [10, 10, 3]],
+      "axis_value": [0, 1, 2, -1, -2],
+  }]
+
+  def build_graph(parameters):
+    """Build the where op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_type"],
+        name="input",
+        shape=parameters["input_shape"])
+    axis_value = tf.placeholder(dtype=tf.int32, name="axis", shape=[1])
+    out = tf.expand_dims(input_value, axis=axis_value)
+    return [input_value, axis_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_type"],
+                                     parameters["input_shape"])
+    axis_value = np.array([parameters["axis_value"]], dtype=np.int32)
+    return [input_value, axis_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value, axis_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_sparse_to_dense_tests(zip_path):
   """Make a set of tests to do sparse to dense."""
 
@@ -2577,6 +2643,7 @@ def make_sparse_to_dense_tests(zip_path):
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
 
 # Toco binary path provided by the generate rule.
 bin_path = None

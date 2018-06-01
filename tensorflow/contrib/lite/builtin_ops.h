@@ -94,6 +94,8 @@ typedef enum {
   kTfLiteBuiltinSin = 66,
   kTfLiteBuiltinTransposeConv = 67,
   kTfLiteBuiltinSparseToDense = 68,
+  kTfLiteBuiltinTile = 69,
+  kTfLiteBuiltinExpandDims = 70,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
