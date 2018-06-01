@@ -45,21 +45,24 @@ limitations under the License.
 #define GPU_AXIS_KERNEL_LOOP(i, n, axis) \
   for (int i : ::tensorflow::GpuGridRange##axis<int>(n))
 
-#if TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#define gpuSuccess cudaSuccess
+#define GPUGETERRORSTRING(error) cudaGetErrorString(error)
+using gpuStream_t = cudaStream_t;
+#define GPUGETLASTERROR() cudaGetLastError()
+using gpuError_t = cudaError_t;
+#elif TENSORFLOW_USE_ROCM
+#define gpuSuccess hipSuccess
+#define GPUGETERRORSTRING(error) hipGetErrorString(error)
+using gpuStream_t = hipStream_t;
+#define GPUGETLASTERROR() hipGetLastError()
+using gpuError_t = hipError_t;
+#endif
 
-#define cub hipcub
-#define cudaSuccess hipSuccess
-#define cudaGetErrorString hipGetErrorString
-#define cudaStream_t hipStream_t
-#define cudaGetLastError hipGetLastError
-#define cudaError hipError
-
-#define CUDA_1D_KERNEL_LOOP(i, n)                                   \
-    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < (n); \
-        i += blockDim.x * gridDim.x)
-
-#define GetCudaStream(context) context->eigen_gpu_device().stream()
-
+#if GOOGLE_CUDA
+#define GetGPUStream(context) GetCudaStream(context)
+#elif TENSORFLOW_USE_ROCM
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
 #endif
 
 namespace tensorflow {

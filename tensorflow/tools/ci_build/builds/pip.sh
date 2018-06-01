@@ -132,6 +132,7 @@ echo "Using Bazel flags: ${BAZEL_FLAGS}"
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
+   [[ ${CONTAINER_TYPE} == "rocm" ]] || \
    [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
   bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
@@ -255,7 +256,8 @@ if [[ $(uname) == "Linux" ]]; then
       die "ERROR: Cannot find repaired wheel."
     fi
   # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
-  elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
+  elif [[ ${CONTAINER_TYPE} == "gpu" ]] || \
+       [[ ${CONTAINER_TYPE} == "rocm" ]]; then
     WHL_PATH=${AUDITED_WHL_NAME}
     cp ${WHL_DIR}/${WHL_BASE_NAME} ${WHL_PATH}
     echo "Copied manylinx1 wheel file at ${WHL_PATH}"
