@@ -124,7 +124,7 @@ class MyReaderDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "MyReaderDatasetOp::Dataset"; }
+    string DebugString() const override { return "MyReaderDatasetOp::Dataset"; }
 
    protected:
     // Optional: Implementation of `GraphDef` serialization for this dataset.
