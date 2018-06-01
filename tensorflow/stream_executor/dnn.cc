@@ -141,6 +141,10 @@ string PadAlignmentString(PadAlignment alignment) {
   return "unknown pad alignment";
 }
 
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment) {
+  return str << PadAlignmentString(alignment);
+}
+
 string ShortPoolingModeString(PoolingMode mode) {
   switch (mode) {
     case PoolingMode::kMaximum:

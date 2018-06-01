@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 
 namespace tensorflow {
@@ -103,12 +102,11 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(
         ctx, select_cols.empty() || select_cols.front() >= 0,
         errors::InvalidArgument("select_cols should be non-negative indices"));
-    bool select_all_cols = select_cols.empty();
 
-    *output = new Dataset(
-        ctx, std::move(filenames), header, buffer_size, output_types_,
-        output_shapes_, std::move(record_defaults), std::move(select_cols),
-        select_all_cols, use_quote_delim, delim[0], std::move(na_value));
+    *output = new Dataset(ctx, std::move(filenames), header, buffer_size,
+                          output_types_, output_shapes_,
+                          std::move(record_defaults), std::move(select_cols),
+                          use_quote_delim, delim[0], std::move(na_value));
   }
 
  private:
@@ -118,8 +116,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             int64 buffer_size, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::vector<Tensor> record_defaults, std::vector<int64> select_cols,
-            bool select_all_cols, bool use_quote_delim, char delim,
-            string na_value)
+            bool use_quote_delim, char delim, string na_value)
         : GraphDatasetBase(ctx),
           filenames_(std::move(filenames)),
           header_(header),
@@ -128,7 +125,6 @@ class CSVDatasetOp : public DatasetOpKernel {
           output_shapes_(output_shapes),
           record_defaults_(std::move(record_defaults)),
           select_cols_(std::move(select_cols)),
-          select_all_cols_(select_all_cols),
           use_quote_delim_(use_quote_delim),
           delim_(delim),
           na_value_(std::move(na_value)) {}
@@ -166,11 +162,24 @@ class CSVDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        bool select_all = dataset()->select_cols_.empty();
         do {
           // We are currently processing a file, so try to read the next record
-          if (buffered_input_stream_) {
-            Status s = ReadRecord(ctx, out_tensors);
-            if (s.ok() || !errors::IsOutOfRange(s)) {
+          if (input_stream_) {
+            Status s = ReadRecord(ctx, out_tensors, select_all,
+                                  dataset()->select_cols_);
+            if (s.ok()) {
+              // Validate output
+              if (out_tensors->size() != dataset()->out_type_.size()) {
+                return errors::InvalidArgument(
+                    "Expect ", dataset()->out_type_.size(), " fields but have ",
+                    out_tensors->size(), " in record");
+              }
+
+              *end_of_sequence = false;
+              return s;
+            }
+            if (!errors::IsOutOfRange(s)) {
               // Not at the end of file, return OK or non-EOF errors to caller.
               *end_of_sequence = false;
               return s;
@@ -203,145 +212,341 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
      private:
-      // Reads a record by parsing the input buffer, and converting extracted
+      // Reads an entire CSV row from the input stream, either from the
+      // existing buffer or by filling the buffer as needed. Converts extracted
       // fields to output tensors as we go.
-      Status ReadRecord(IteratorContext* ctx, std::vector<Tensor>* out_tensors)
+      //
+      // When this function is called, pos_ should be the index of the first
+      // character of the record in buffer_, or past the end of the buffer.
+      // Note: ctx and out_tensors are only used in this function
+      // when fields are included in the record.
+      Status ReadRecord(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                        bool select_all, const std::vector<int64>& selected)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        // Extracts fields from line(s) from the buffered input stream.
-        out_tensors->reserve(dataset()->record_defaults_.size());
+        if (pos_ >= buffer_.size()) {
+          // At the end of the file, this will return errors::OutOfRange
+          TF_RETURN_IF_ERROR(FillBuffer(&buffer_));
+          pos_ = 0;
+        }
 
-        string input;
-        TF_RETURN_IF_ERROR(buffered_input_stream_->ReadLine(&input));
+        // The first character may be \n if this is the continuation of a
+        // \r\n linebreak between this and the previous record. If so, skip it.
 
-        size_t current_idx = 0;
-        size_t num_fields_parsed = 0;
-        size_t selector_idx = 0;  // Keep track of index into select_cols
+        bool end_of_record = false;  // Keep track of when we find \n, \r or EOF
+        size_t num_parsed = 0;
+        size_t num_selected_parsed = 0;
 
-        while (current_idx < input.size()) {
-          // In each iteration, parse one field
-          if (input[current_idx] == '\n' || input[current_idx] == '\r') {
-            // This should never happen, because buffered input reader splits
-            // input on newlines.
-            return errors::InvalidArgument("Parsing error.");
-          }
+        Status result = Status::OK();
 
-          bool quoted = false;
+        while (!end_of_record) {  // Read till we reach \n, \r or EOF
           bool include =
-              (dataset()->select_all_cols_ ||
-               dataset()->select_cols_[selector_idx] == num_fields_parsed);
+              select_all || (num_selected_parsed < selected.size() &&
+                             selected[num_selected_parsed] == num_parsed);
 
-          if (dataset()->use_quote_delim_ && input[current_idx] == '"') {
-            quoted = true;
-            current_idx++;
+          // Don't fail fast, so that the next call to GetNext may still return
+          // a valid record
+          result.Update(
+              ParseOneField(ctx, out_tensors, &end_of_record, include));
+
+          num_parsed++;
+          if (include) num_selected_parsed++;
+        }
+
+        return result;
+      }
+
+      // Parses one field from position pos_ in the buffer. Fields are
+      // delimited by delim, CRLF, or EOF. Advances pos_ to the first char of
+      // the next field.
+      Status ParseOneField(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_record, bool include)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        if (pos_ >= buffer_.size()) {
+          // If we get here, this means the previous field's end coincided
+          // with the end of the buffer. We can fill the buffer without abandon.
+          Status s = FillBuffer(&buffer_);
+
+          if (errors::IsOutOfRange(s)) {
+            // Reached EOF, and last field is empty
+            *end_of_record = true;
+            if (include) {
+              return FieldToOutput(ctx, StringPiece(), out_tensors);
+            } else {
+              return Status::OK();
+            }
+          } else if (!s.ok()) {
+            return s;  // Surface other errors back to caller
           }
 
-          // Parse the body of the field
-          string field;
-          if (!quoted) {
-            while (current_idx < input.size() &&
-                   input[current_idx] != dataset()->delim_) {
-              if ((dataset()->use_quote_delim_ && input[current_idx] == '"') ||
-                  input[current_idx] == '\n' || input[current_idx] == '\r') {
-                return errors::InvalidArgument(
-                    "Unquoted fields cannot have quotes/CRLFs inside");
-              }
-              if (include) field += input[current_idx];
-              current_idx++;
-            }  // Exit condition: end of input, or current index at delim
+          pos_ = 0;
+        }
 
-            // Go to next field or the end
-            current_idx++;
-          } else {
-            // Quoted field needs to be ended with '"' and delim or end
-            while (true) {
-              if (current_idx >= input.size() - 1 || input.empty()) {
-                if (current_idx == input.size() - 1 &&
-                    input[current_idx] == '"') {
-                  // We're at the end of the input, and the quote terminates the
-                  // record. Go to end.
-                  current_idx++;
-                  break;
-                }
-                // If there's no terminating quote, it means our buffered record
-                // line reader split a record up. This can happen if there is a
-                // newline encased in quotes. The next line is also part of the
-                // record, so we read it and reset the index.
-                if (include && current_idx == input.size() - 1) {
-                  // TODO(rachelim): Instead of building up a string, keep track
-                  //  of terminal indices (or starting char* and length)
-                  // Also look into using /lib/strings/Scanner
-                  field += input[current_idx];
-                }
-                if (include) {
-                  field += '\n';
-                }
-                current_idx = 0;
-                Status s = buffered_input_stream_->ReadLine(&input);
-                if (!s.ok()) {
-                  return errors::InvalidArgument(
-                      "Quoted field has to end with quote followed by delim, "
-                      "CRLF, or EOF");
-                }
-              } else if (input[current_idx] == '"' &&
-                         input[current_idx + 1] == dataset()->delim_) {
-                // End of field, go to next field or end
-                current_idx += 2;
-                break;
-              } else if (input[current_idx] == '"') {
-                // Current char is a quote. Since we're not at end of field,
-                // the next character must also be a quote.
-                if (input[current_idx + 1] != '"') {
-                  return errors::InvalidArgument(
-                      "Quote inside a string has to be escaped by another "
-                      "quote");
-                }
-                if (include) field += '"';
-                current_idx += 2;
-              } else {
-                if (include) field += input[current_idx];
-                current_idx++;
-              }
+        if (dataset()->use_quote_delim_ && buffer_[pos_] == '"') {
+          return ParseQuotedField(ctx, out_tensors, end_of_record, include);
+        }
+
+        return ParseUnquotedField(ctx, out_tensors, end_of_record, include);
+      }
+
+      // For keeping track of relevant parts of a field from a previous buffer
+      struct Piece {
+        size_t start;
+        size_t len;
+        string buffer;
+
+        Piece(string buffer, size_t start, size_t len)
+            : start(start), len(len), buffer(std::move(buffer)) {}
+      };
+
+      // Given that pos_ exceeds the buffer, saves the relevant part of the
+      // current buffer (if necessary), fills the buffer, and resets indices to
+      // 0.
+      Status SaveAndFillBuffer(std::vector<Piece>* earlier_pieces,
+                               size_t* start, bool include)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        string temp_buffer;
+
+        buffer_.swap(temp_buffer);
+        if (include && pos_ > *start) {
+          earlier_pieces->push_back(
+              Piece(std::move(temp_buffer), *start, pos_ - *start));
+        }
+        pos_ = 0;
+        *start = 0;
+        return FillBuffer(&buffer_);
+      }
+
+      // Parses unquoted field from position pos_ in the buffer. Continually
+      // reads from buffer until end of field is reached (delim, CRLF, or EOF).
+      // Advances pos_ to keep track of our position in the buffer as we go,
+      // stopping at the first character of the next field.
+      Status ParseQuotedField(IteratorContext* ctx,
+                              std::vector<Tensor>* out_tensors,
+                              bool* end_of_record, bool include)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        std::vector<Piece> earlier_pieces;
+        size_t start = pos_;
+        pos_++;  // Starting quotation mark
+
+        while (true) {  // Each iter reads 1 char, filling buffer if necessary
+          if (pos_ >= buffer_.size()) {
+            Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
+            if (errors::IsOutOfRange(s)) {
+              return errors::InvalidArgument(
+                  "Reached end of file without closing quoted field in "
+                  "record");
+            } else if (!s.ok()) {
+              return s;  // Surface all other errors to caller
             }
           }
 
-          num_fields_parsed++;
+          char ch = buffer_[pos_];
+          if (ch == '"') {
+            // When we encounter a quote, we look ahead to the next character to
+            // decide what to do
+            pos_++;
+            if (pos_ >= buffer_.size()) {
+              Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
+              if (errors::IsOutOfRange(s)) {
+                // This was the last field. We are done
+                *end_of_record = true;
+                return QuotedFieldToOutput(ctx, StringPiece(), out_tensors,
+                                           earlier_pieces, include);
+              } else if (!s.ok()) {
+                return s;
+              }
+            }
 
-          if (include) {
-            // Add the tensor to the result
-            TF_RETURN_IF_ERROR(FieldToOutput(ctx, std::move(field),
-                                             selector_idx, out_tensors));
-            selector_idx++;
-            // Terminate early if we have all the fields we want
-            if (selector_idx == dataset()->select_cols_.size())
-              return Status::OK();
+            char next = buffer_[pos_];
+            pos_++;
+            if (next == dataset()->delim_) {
+              return QuotedFieldToOutput(
+                  ctx, StringPiece(&buffer_[start], pos_ - 1 - start),
+                  out_tensors, earlier_pieces, include);
+
+            } else if (next == '\n' || next == '\r') {
+              *end_of_record = true;
+              Status s = QuotedFieldToOutput(
+                  ctx, StringPiece(&buffer_[start], pos_ - 1 - start),
+                  out_tensors, earlier_pieces, include);
+              if (next == '\r') SkipNewLineIfNecessary();
+              return s;
+            } else if (next != '"') {
+              return errors::InvalidArgument(
+                  "Quote inside a string has to be escaped by another quote");
+            }
+
+          } else {
+            pos_++;
           }
-        }  // Exit condition: current_idx has reached the end of record
-
-        // Check if the last field is empty, and include it if necessary
-        bool include =
-            (dataset()->select_all_cols_ ||
-             dataset()->select_cols_[selector_idx] == num_fields_parsed);
-        if (include && !input.empty() &&
-            input[input.size() - 1] == dataset()->delim_) {
-          TF_RETURN_IF_ERROR(
-              FieldToOutput(ctx, string(), selector_idx, out_tensors));
         }
-
-        // Check that number of fields matches
-        if (out_tensors->size() != dataset()->out_type_.size()) {
-          return errors::InvalidArgument("Expect ", dataset()->out_type_.size(),
-                                         " fields but have ",
-                                         out_tensors->size(), " in record");
-        }
-        return Status::OK();
       }
 
-      // Given a string field, and its index in the output,
-      // converts it to a Tensor of the right type and adds it to the
-      // out_tensors vector.
-      Status FieldToOutput(IteratorContext* ctx, string field,
-                           size_t output_idx,
+      // Converts quoted field to an output tensor, removing the starting
+      // and ending quotes from it and unescaping double quotations if
+      // necessary.
+      Status QuotedFieldToOutput(IteratorContext* ctx, StringPiece field,
+                                 std::vector<Tensor>* out_tensors,
+                                 const std::vector<Piece>& earlier_pieces,
+                                 bool include) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        if (!include) return Status::OK();
+
+        if (earlier_pieces.empty()) {
+          if (field.find('\"', 1) == field.size() - 1) {
+            // `field` contains no escaped quotation marks.
+            // Exclude framing quotation marks
+            field.remove_prefix(1);
+            field.remove_suffix(1);
+            return FieldToOutput(ctx, field, out_tensors);
+          }
+        }
+        string field_complete;
+        size_t str_len = field.size();
+        for (const Piece& p : earlier_pieces) {
+          str_len += p.len;
+        }
+        field_complete.reserve(str_len);
+
+        // This bool flips every time we see a quote, so that we skip the second
+        // quote of every pair of adjacent quotes in the field. We need to track
+        // this across iterations of the for loop because adjacent double quotes
+        // may be in different buffers. Initialize to true because we also skip
+        // the opening quotation mark of the quoted field.
+        bool skip_next_quote = true;
+        for (const Piece& p : earlier_pieces) {
+          AppendUnescapedPiece(StringPiece(&p.buffer[p.start], p.len),
+                               &field_complete, &skip_next_quote);
+        }
+        AppendUnescapedPiece(field, &field_complete, &skip_next_quote);
+        StringPiece result = StringPiece(field_complete);
+        result.remove_suffix(1);  // Skip final quote
+
+        return FieldToOutput(ctx, result, out_tensors);
+      }
+
+      void AppendUnescapedPiece(StringPiece piece, string* field_complete,
+                                bool* skip_next_quote) {
+        size_t from = 0;
+        size_t found = piece.find('\"', from);
+        while (found != string::npos) {
+          if (!*skip_next_quote) {
+            // This is the first quote in a pair of adjacent double quotes
+            field_complete->append(piece.data() + from, found + 1 - from);
+          }
+          *skip_next_quote = !*skip_next_quote;
+          from = found + 1;
+          found = piece.find('\"', from);
+        }
+        // Include the chunk after the last quotation mark in the string
+        if (from < piece.size()) {
+          field_complete->append(piece.data() + from, piece.size() - from);
+        }
+      }
+
+      // Parses unquoted field from position pos_ in the buffer. Continually
+      // reads from buffer until end of field is reached (delim, CRLF, or EOF).
+      // Advances pos_ to keep track of our position in the buffer as we go,
+      // stopping at the first character of the next field.
+      Status ParseUnquotedField(IteratorContext* ctx,
+                                std::vector<Tensor>* out_tensors,
+                                bool* end_of_record, bool include)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        std::vector<Piece> earlier_pieces;
+        size_t start = pos_;
+        while (true) {  // Each iter reads 1 char, filling buffer if necessary
+          if (pos_ >= buffer_.size()) {
+            Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
+            // Handle errors
+            if (errors::IsOutOfRange(s)) {
+              // Whatever we have is the last field of the last record
+              *end_of_record = true;
+              return UnquotedFieldToOutput(
+                  ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
+                  earlier_pieces, include);
+            } else if (!s.ok()) {
+              return s;  // Surface all other errors to caller
+            }
+          }
+
+          char ch = buffer_[pos_];
+
+          if (ch == dataset()->delim_) {
+            Status s = UnquotedFieldToOutput(
+                ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
+                earlier_pieces, include);
+            pos_++;
+            return s;
+          }
+          if (ch == '\n' || ch == '\r') {
+            // need special case to skip over first \n of record if the line
+            // breaks are \r\n
+            Status s = UnquotedFieldToOutput(
+                ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
+                earlier_pieces, include);
+            *end_of_record = true;
+            pos_++;
+            if (ch == '\r') SkipNewLineIfNecessary();
+            return s;
+          }
+          if (dataset()->use_quote_delim_ && ch == '"') {
+            // Advance pos_ to the next field anyway so that we can ignore
+            // errors gracefully if required. The caller of this will be able to
+            // call ParseOneField and continue with the rest of the record.
+            AdvanceToNextField(end_of_record);
+            return errors::InvalidArgument(
+                "Unquoted fields cannot have quotes inside");
+          }
+          // Otherwise, go to next character
+          pos_++;
+        }
+      }
+
+      // Advances pos_ to the start of the next field, as delimited by delim,
+      // CRLF, or EOF, ignoring errors, and not keeping track of characters in
+      // the current field.
+      void AdvanceToNextField(bool* end_of_record)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        while (true) {
+          if (pos_ >= buffer_.size()) {
+            Status s = FillBuffer(&buffer_);
+            pos_ = 0;
+            if (!s.ok()) {
+              *end_of_record = true;
+              return;
+            }
+          }
+
+          char ch = buffer_[pos_];
+          pos_++;
+
+          if (ch == dataset()->delim_) {
+            return;
+          }
+
+          if (ch == '\n' || ch == '\r') {
+            *end_of_record = true;
+            if (ch == '\r') SkipNewLineIfNecessary();
+            return;
+          }
+        }
+      }
+
+      Status FillBuffer(string* result) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        result->clear();
+        Status s = input_stream_->ReadNBytes(dataset()->buffer_size_, result);
+
+        if (errors::IsOutOfRange(s) && !result->empty()) {
+          // Ignore OutOfRange error when ReadNBytes read < N bytes.
+          return Status::OK();
+        }
+        return s;
+      }
+
+      // Given a field, converts it to the right output tensor type
+      Status FieldToOutput(IteratorContext* ctx, StringPiece field,
                            std::vector<Tensor>* out_tensors) {
+        size_t output_idx = out_tensors->size();
         if (output_idx >= dataset()->out_type_.size()) {
           // We can get here if we're selecting all columns, but the number of
           // fields exceeds the number of defaults provided
@@ -397,7 +602,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<float>()(0);
             } else {
               float value;
-              if (!strings::safe_strtof(field.c_str(), &value)) {
+              if (!strings::safe_strtof(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid float: ", field);
@@ -412,7 +617,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<double>()(0);
             } else {
               double value;
-              if (!strings::safe_strtod(field.c_str(), &value)) {
+              if (!strings::safe_strtod(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid double: ", field);
@@ -426,7 +631,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<string>()() =
                   dataset()->record_defaults_[output_idx].flat<string>()(0);
             } else {
-              component.scalar<string>()() = std::move(field);
+              component.scalar<string>()() = field.ToString();
             }
             break;
           }
@@ -437,6 +642,50 @@ class CSVDatasetOp : public DatasetOpKernel {
         }
         out_tensors->push_back(std::move(component));
         return Status::OK();
+      }
+
+      // Records can be delimited by "\r\n" line breaks. When we encounter a
+      // '\r', we have to check the next character to see if it is part of the
+      // linebreak, and ignore it if so.
+      void SkipNewLineIfNecessary() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        if (pos_ >= buffer_.size()) {
+          Status s = FillBuffer(&buffer_);
+          pos_ = 0;
+          // If we failed to fill buffer, it doesn't matter because we're done
+          // with the record
+          if (!s.ok()) return;
+        }
+        if (buffer_[pos_] == '\n') {
+          pos_++;
+        }
+      }
+
+      // Given a string field, and its index in the output,
+      // converts it to a Tensor of the right type and adds it to the
+      // out_tensors vector.
+      Status UnquotedFieldToOutput(IteratorContext* ctx, StringPiece field,
+                                   std::vector<Tensor>* out_tensors,
+                                   const std::vector<Piece>& earlier_pieces,
+                                   bool include) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        if (!include) return Status::OK();
+
+        if (earlier_pieces.empty()) {
+          return FieldToOutput(ctx, field, out_tensors);
+        }
+
+        size_t str_len = field.size();
+        for (const Piece& p : earlier_pieces) {
+          str_len += p.len;
+        }
+        string field_complete;
+        field_complete.reserve(str_len);
+
+        for (const Piece& p : earlier_pieces) {
+          field_complete.append(p.buffer, p.start, p.len);
+        }
+
+        field_complete.append(field.data(), field.size());
+        return FieldToOutput(ctx, field_complete, out_tensors);
       }
 
       // Sets up reader streams to read from the file at `current_file_index_`.
@@ -452,16 +701,18 @@ class CSVDatasetOp : public DatasetOpKernel {
             dataset()->filenames_[current_file_index_], &file_));
         input_stream_.reset(
             new io::RandomAccessInputStream(file_.get(), false));
-        // TODO(rachelim): Maintain our own buffer so we don't read every record
-        //   twice
-        buffered_input_stream_.reset(new io::BufferedInputStream(
-            input_stream_.get(), dataset()->buffer_size_, false));
+        buffer_.clear();
+        pos_ = 0;
         if (dataset()->header_) {
-          // Ignore header line
-          string str;
-          Status s = buffered_input_stream_->ReadLine(&str);
-          if (errors::IsOutOfRange(s)) {
-            return errors::InvalidArgument("Can't read header of empty file");
+          // Read one line, but don't include it. Pass nullptrs as dummy
+          // pointers to objects that shouldn't be invoked anyway
+          // We need to process this as a record here instead of just finding
+          // the first newline because it might contain quoted fields with
+          // newlines in the header as well
+          std::vector<int64> empty;
+          Status s = ReadRecord(nullptr, nullptr, false, empty);
+          if (!s.ok()) {
+            return errors::InvalidArgument("Can't read header of file");
           }
         }
         return Status::OK();
@@ -470,14 +721,14 @@ class CSVDatasetOp : public DatasetOpKernel {
       // Resets all reader streams.
       void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         input_stream_.reset();
-        buffered_input_stream_.reset();
         file_.reset();
       }
 
       mutex mu_;
+      string buffer_ GUARDED_BY(mu_);  // Maintain our own buffer
+      size_t pos_ GUARDED_BY(
+          mu_);  // Index into the buffer must be maintained between iters
       std::unique_ptr<io::RandomAccessInputStream> input_stream_
-          GUARDED_BY(mu_);
-      std::unique_ptr<io::BufferedInputStream> buffered_input_stream_
           GUARDED_BY(mu_);
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
@@ -491,7 +742,6 @@ class CSVDatasetOp : public DatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
     const std::vector<Tensor> record_defaults_;
     const std::vector<int64> select_cols_;
-    const bool select_all_cols_;
     const bool use_quote_delim_;
     const char delim_;
     const string na_value_;
