@@ -24,4 +24,3 @@ py_test(
         "//tensorflow/python:client_testlib",
     ],
 )
-

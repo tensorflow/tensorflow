@@ -296,18 +296,14 @@ def create_api_files(
       continue
     contents = ''
     if module or not root_init_template:
-      contents = _GENERATED_FILE_HEADER + text
+      contents = _GENERATED_FILE_HEADER + text + _GENERATED_FILE_FOOTER
     else:
       # Read base init file
       with open(root_init_template, 'r') as root_init_template_file:
         contents = root_init_template_file.read()
         contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
     with open(module_name_to_file_path[module], 'w') as fp:
-<<<<<<< HEAD
-      fp.write(_GENERATED_FILE_HEADER + text + _GENERATED_FILE_FOOTER)
-=======
       fp.write(contents)
->>>>>>> 2e272dbca6600991599e55a7ff7cfa668b8403aa
 
   if missing_output_files:
     raise ValueError(
