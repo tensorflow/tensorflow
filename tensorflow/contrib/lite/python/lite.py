@@ -33,7 +33,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
+from six import PY3
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -192,7 +192,7 @@ class TocoConverter(object):
           print("Ignore 'tcmalloc: large alloc' warnings.")
 
           if not isinstance(file_content, str):
-            if six.PY3:
+            if PY3:
               file_content = file_content.decode('utf-8')
             else:
               file_content = file_content.encode('utf-8')
