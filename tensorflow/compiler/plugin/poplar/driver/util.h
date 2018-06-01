@@ -39,6 +39,8 @@ StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
 StatusOr<std::vector<int64>> WideConstToInt64Vector(
     const xla::HloInstruction* bcast, const xla::HloInstruction* constant);
 
+StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit);
+
 }  // namespace poplarplugin
 }  // namespace xla
 

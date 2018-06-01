@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
+#include "tensorflow/compiler/plugin/poplar/driver/while_loop_condition_simplify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/wide_const_finder.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -354,6 +355,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
+    pipeline.AddPass<WhileLoopConditionSimplify>();
 
     bool ok;
     TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));

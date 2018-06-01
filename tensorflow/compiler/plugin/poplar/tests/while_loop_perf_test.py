@@ -17,7 +17,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
   def testIpuWhilePerfTest(self):
     def cond(i, v):
-      return tf.less(i, 10)
+      return tf.less(i, 15)
 
     def body(i, v):
       v = v + i
@@ -27,7 +27,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
     with tf.device("/device:IPU:0"):
       i = tf.constant(0)
       v = tf.placeholder(tf.int32, [500])
-      r = tf.while_loop(cond, body, [i, v])
+      r = tf.while_loop(cond, body, (i, v), maximum_iterations=10)
 
     with tf.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()

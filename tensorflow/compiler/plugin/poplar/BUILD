@@ -42,6 +42,8 @@ cc_library(
         "driver/outliner.cc",
         "driver/scheduler.cc",
         "driver/util.cc",
+        "driver/while_loop_condition_simplify.cc",
+        "driver/while_loop_util.cc",
         "driver/wide_const_finder.cc",
     ],
     hdrs = [
@@ -57,6 +59,8 @@ cc_library(
         "driver/outliner.h",
         "driver/scheduler.h",
         "driver/util.h",
+        "driver/while_loop_condition_simplify.h",
+        "driver/while_loop_util.h",
         "driver/wide_const_finder.h",
     ],
     deps = [
@@ -296,6 +300,16 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "while_loop_condition_simplify_test",
+    srcs = ["tests/while_loop_condition_simplify_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_test(
     name = "device_test",
     size = "small",
@@ -494,6 +508,7 @@ test_suite(
         "estimator_test",
         "expression_outliner_test",
         "convolution_classifier_test",
+        "while_loop_condition_simplify_test",
     ],
 )
 
@@ -520,6 +535,7 @@ test_suite(
         "estimator_test",
         "expression_outliner_test",
         "convolution_classifier_test",
+        "while_loop_condition_simplify_test",
     ],
 )
 

@@ -214,7 +214,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       print(cs_list)
 
       ok = ['depthwise/call.*clone/Conv_1x1',
-            'Copy_partials_to_call',
+            'Copy_partials_to_depthwise',
             'add/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 

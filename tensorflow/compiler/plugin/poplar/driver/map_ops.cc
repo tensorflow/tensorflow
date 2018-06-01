@@ -8,6 +8,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/while_loop_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -322,7 +323,14 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
       popops::allTrue(graph, cond_outputs[0], cond_seq, GetDebugName(inst));
 
   // Main
-  main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, pred, body_seq));
+  auto ret = WhileLoopUtil::CanConvertWhileToRepeat(inst);
+  if (ret.ok()) {
+    int64 count = std::move(ret.ValueOrDie());
+    VLOG(1) << "Simplified while loop with a repeat of count " << count;
+    main_seq.add(poplar::program::Repeat(count, body_seq));
+  } else {
+    main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, pred, body_seq));
+  }
 
   for (unsigned int i = 0; i < param_count; i++) {
     auto name = se::port::StrCat(GetDebugName(inst), "_out_", i);
@@ -359,8 +367,8 @@ StatusOr<poplar::program::Program> CreateIfOp(poplar::Graph& graph,
                                                  inst->false_computation()));
 
   poplar::program::Sequence seq;
-  poplar::Tensor scalar_pred = popops::allTrue(graph, pred, seq,
-                                               GetDebugName(inst));
+  poplar::Tensor scalar_pred =
+      popops::allTrue(graph, pred, seq, GetDebugName(inst));
 
   if (true_body->second.inputs().size() != 1 ||
       false_body->second.inputs().size() != 1) {

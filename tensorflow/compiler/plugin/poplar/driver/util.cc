@@ -58,11 +58,21 @@ StatusOr<std::vector<int64>> WideConstToInt64Vector(
   }
   CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
 
-  std::unique_ptr<Literal> s64_lit;
-  TF_ASSIGN_OR_RETURN(s64_lit, constant->literal().Convert(S64));
-
-  const int64 val = *static_cast<const int64*>(s64_lit->untyped_data());
+  int64 val;
+  TF_ASSIGN_OR_RETURN(val, LiteralScalarInt64toInt64(constant->literal()));
   return std::vector<int64>(bcast->shape().dimensions(0), val);
+}
+
+StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
+  if (!ShapeUtil::IsScalar(lit.shape())) {
+    return Status(tensorflow::error::FAILED_PRECONDITION,
+                  "Literal is not scalar");
+  }
+
+  std::unique_ptr<Literal> s64_lit;
+  TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
+
+  return *static_cast<const int64*>(s64_lit->untyped_data());
 }
 
 }  // namespace poplarplugin
