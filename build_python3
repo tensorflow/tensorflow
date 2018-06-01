@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# prerequisites: install python3
+# sudo apt-get install python3-numpy python3-dev python3-pip python3-wheel
+#
+# configure with python3
+# PYTHON_BIN_PATH=/usr/bin/python3 ./configure
+#
+# press enter all the way
+#
+pip3 uninstall -y tensorflow || true
+bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg &&
+pip3 install /tmp/tensorflow_pkg/tensorflow-1.8.0rc1-cp35-cp35m-linux_x86_64.whl
