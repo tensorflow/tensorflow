@@ -556,7 +556,8 @@ class FlipImageBenchmark(test.Benchmark):
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
-    print("benchmarkBatchedRandomFlipLeftRight_16_299_299_3_%s step_time: %.2f us" %
+    print("benchmarkBatchedRandomFlipLeftRight_16_299_299_3_%s step_time: "
+          "%.2f us" %
           (tag, step_time * 1e6))
     self.report_benchmark(
         name="benchmarkBatchedRandomFlipLeftRight_16_299_299_3_%s" % (tag),
@@ -1052,13 +1053,17 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     seed = 42
 
     # create single item of test data
-    x_np_raw = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([1, 2, 3, 1])
-    y_np_raw = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([1, 2, 3, 1])
-    
+    x_np_raw = np.array(
+        [[1, 2, 3], [1, 2, 3]], dtype=np.uint8
+    ).reshape([1, 2, 3, 1])
+    y_np_raw = np.array(
+        [[3, 2, 1], [3, 2, 1]], dtype=np.uint8
+    ).reshape([1, 2, 3, 1])
+
     # create batched test data
     x_np = np.vstack([x_np_raw for _ in range(batch_size)])
     y_np = np.vstack([y_np_raw for _ in range(batch_size)])
-    
+
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.random_flip_left_right(x_tf, seed=seed)
@@ -1165,13 +1170,17 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     seed = 42
 
     # create single item of test data
-    x_np_raw = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([1, 2, 3, 1])
-    y_np_raw = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([1, 2, 3, 1])
-    
+    x_np_raw = np.array(
+        [[1, 2, 3], [4, 5, 6]], dtype=np.uint8
+    ).reshape([1, 2, 3, 1])
+    y_np_raw = np.array(
+        [[4, 5, 6], [1, 2, 3]], dtype=np.uint8
+    ).reshape([1, 2, 3, 1])
+
     # create batched test data
     x_np = np.vstack([x_np_raw for _ in range(batch_size)])
     y_np = np.vstack([y_np_raw for _ in range(batch_size)])
-    
+
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.random_flip_up_down(x_tf, seed=seed)

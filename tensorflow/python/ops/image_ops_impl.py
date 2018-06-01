@@ -322,18 +322,21 @@ def _random_flip(image, flip_index, seed, scope_name):
       uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
       mirror_cond = math_ops.less(uniform_random, .5)
       result = control_flow_ops.cond(
-        mirror_cond,
-        lambda: array_ops.reverse(image, [flip_index]),
-        lambda: image,
-      name=scope)
+          mirror_cond,
+          lambda: array_ops.reverse(image, [flip_index]),
+          lambda: image,
+          name=scope
+      )
       return fix_image_flip_shape(image, result)
     elif shape.ndims == 4:
-      uniform_random = random_ops.random_uniform([tf.shape(image)[0]], 0, 1.0, seed=seed)
+      uniform_random = random_ops.random_uniform(
+          [tf.shape(image)[0]], 0, 1.0, seed=seed
+      )
       mirror_cond = math_ops.less(uniform_random, .5)
       return array_ops.where(
-        mirror_cond,
-        image,
-        functional_ops.map_fn(lambda x: array_ops.reverse(x, [flip_index]), image, dtype=image.dtype)
+          mirror_cond,
+          image,
+          functional_ops.map_fn(lambda x: array_ops.reverse(x, [flip_index]), image, dtype=image.dtype)
       )
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
