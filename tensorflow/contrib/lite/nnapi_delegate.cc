@@ -491,6 +491,8 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_SLICE:
       case tflite::BuiltinOperator_SIN:
       case tflite::BuiltinOperator_TRANSPOSE_CONV:
+      case tflite::BuiltinOperator_TILE:
+      case tflite::BuiltinOperator_EXPAND_DIMS:
       case tflite::BuiltinOperator_SPARSE_TO_DENSE:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid

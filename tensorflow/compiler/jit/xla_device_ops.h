@@ -95,7 +95,16 @@ class XlaAssignVariableOp : public AsyncOpKernel {
   REGISTER_KERNEL_BUILDER(Name("Switch").Device(DEVICE).HostMemory("pred"),    \
                           SwitchOp);                                           \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Merge").Device(DEVICE).HostMemory("value_index"), MergeOp);
+      Name("Merge").Device(DEVICE).HostMemory("value_index"), MergeOp);        \
+  REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE), EnterOp);              \
+  REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE), ExitOp);                \
+  REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE),                \
+                          NextIterationOp);                                    \
+  REGISTER_KERNEL_BUILDER(Name("LoopCond")                                     \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("input")                             \
+                              .HostMemory("output"),                           \
+                          LoopCondOp);
 
 }  // namespace tensorflow
 

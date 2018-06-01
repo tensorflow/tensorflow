@@ -714,6 +714,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
     }
+    case BuiltinOperator_EXPAND_DIMS:
+    case BuiltinOperator_TILE: {
+      break;
+    }
   }
   return kTfLiteOk;
 }
