@@ -47,7 +47,7 @@ Status SoftmaxGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
 
-bool isZero(const Scope& scope, Output grad) {
+bool IsZero(const Scope& scope, Output grad) {
   std::array<std::string, 2> zeroOpTypeNames{{"ZerosLike", "Zeros"}};
   string opTypeName = grad.op().node()->type_string();
   for (auto& zeroOpTypeName : zeroOpTypeNames) {
@@ -100,7 +100,7 @@ Status SoftmaxCrossEntropyWithLogitsGrad(const Scope& scope,
   auto grad_grad = grad_inputs[1];
 
   auto grad = BroadcastMul(scope, grad_loss, softmax_grad);
-  if (!isZero(scope, grad_grad)) {
+  if (!IsZero(scope, grad_grad)) {
     std::vector<int> axis;
     auto logitsSoftmax = Softmax(scope, logits);
 
