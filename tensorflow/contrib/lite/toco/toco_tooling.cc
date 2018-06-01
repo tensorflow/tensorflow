@@ -263,7 +263,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
       transformations.Add(new IdentifyLstmCell);
     }
-    if (output_format == TFLITE) {
+    if (output_format == TFLITE && toco_flags.split_tflite_lstm_inputs()) {
       transformations.Add(new toco::SplitLstmCellInputs);
     } else {
       transformations.Add(new toco::MergeLstmCellInputs);

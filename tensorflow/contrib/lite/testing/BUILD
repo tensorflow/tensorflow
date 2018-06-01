@@ -155,6 +155,7 @@ cc_library(
     deps = [
         ":split",
         ":test_runner",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],

@@ -153,6 +153,11 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.dedupe_array_min_size_bytes.default_value(),
            "Minimum size of constant arrays to deduplicate; arrays smaller "
            "will not be deduplicated."),
+      Flag("split_tflite_lstm_inputs",
+           parsed_flags.split_tflite_lstm_inputs.bind(),
+           parsed_flags.split_tflite_lstm_inputs.default_value(),
+           "Split the LSTM inputs from 5 tensors to 18 tensors for TFLite. "
+           "Ignored if the output format is not TFLite."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -245,6 +250,7 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(allow_nudging_weights_to_use_fast_gemm_kernel,
                  FlagRequirement::kNone);
   READ_TOCO_FLAG(dedupe_array_min_size_bytes, FlagRequirement::kNone);
+  READ_TOCO_FLAG(split_tflite_lstm_inputs, FlagRequirement::kNone);
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {
