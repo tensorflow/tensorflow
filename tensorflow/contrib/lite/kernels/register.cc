@@ -85,11 +85,13 @@ TfLiteRegistration* Register_GREATER_EQUAL();
 TfLiteRegistration* Register_LESS();
 TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR();
+TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE();
 TfLiteRegistration* Register_SIN();
 TfLiteRegistration* Register_TRANSPOSE_CONV();
+TfLiteRegistration* Register_EXPAND_DIMS();
 TfLiteRegistration* Register_SPARSE_TO_DENSE();
 
 BuiltinOpResolver::BuiltinOpResolver() {
@@ -162,6 +164,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
+  AddBuiltin(BuiltinOperator_TILE, Register_TILE());
+  AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

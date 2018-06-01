@@ -132,6 +132,12 @@ void AppendArrayVal(string* string, Array const& array, int index) {
       return;
     }
     AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kBool) {
+    const auto& data = array.GetBuffer<ArrayDataType::kBool>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
   }
 }
 

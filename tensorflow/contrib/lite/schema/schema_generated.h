@@ -151,6 +151,9 @@ struct DequantizeOptionsT;
 struct MaximumMinimumOptions;
 struct MaximumMinimumOptionsT;
 
+struct TileOptions;
+struct TileOptionsT;
+
 struct ArgMaxOptions;
 struct ArgMaxOptionsT;
 
@@ -177,6 +180,9 @@ struct SliceOptionsT;
 
 struct TransposeConvOptions;
 struct TransposeConvOptionsT;
+
+struct ExpandDimsOptions;
+struct ExpandDimsOptionsT;
 
 struct SparseToDenseOptions;
 struct SparseToDenseOptionsT;
@@ -309,11 +315,13 @@ enum BuiltinOperator {
   BuiltinOperator_SIN = 66,
   BuiltinOperator_TRANSPOSE_CONV = 67,
   BuiltinOperator_SPARSE_TO_DENSE = 68,
+  BuiltinOperator_TILE = 69,
+  BuiltinOperator_EXPAND_DIMS = 70,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SPARSE_TO_DENSE
+  BuiltinOperator_MAX = BuiltinOperator_EXPAND_DIMS
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[68] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[70] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -382,7 +390,9 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[68] {
     BuiltinOperator_SLICE,
     BuiltinOperator_SIN,
     BuiltinOperator_TRANSPOSE_CONV,
-    BuiltinOperator_SPARSE_TO_DENSE
+    BuiltinOperator_SPARSE_TO_DENSE,
+    BuiltinOperator_TILE,
+    BuiltinOperator_EXPAND_DIMS
   };
   return values;
 }
@@ -458,6 +468,8 @@ inline const char **EnumNamesBuiltinOperator() {
     "SIN",
     "TRANSPOSE_CONV",
     "SPARSE_TO_DENSE",
+    "TILE",
+    "EXPAND_DIMS",
     nullptr
   };
   return names;
@@ -520,11 +532,13 @@ enum BuiltinOptions {
   BuiltinOptions_SliceOptions = 48,
   BuiltinOptions_TransposeConvOptions = 49,
   BuiltinOptions_SparseToDenseOptions = 50,
+  BuiltinOptions_TileOptions = 51,
+  BuiltinOptions_ExpandDimsOptions = 52,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SparseToDenseOptions
+  BuiltinOptions_MAX = BuiltinOptions_ExpandDimsOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[51] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[53] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -576,7 +590,9 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[51] {
     BuiltinOptions_SelectOptions,
     BuiltinOptions_SliceOptions,
     BuiltinOptions_TransposeConvOptions,
-    BuiltinOptions_SparseToDenseOptions
+    BuiltinOptions_SparseToDenseOptions,
+    BuiltinOptions_TileOptions,
+    BuiltinOptions_ExpandDimsOptions
   };
   return values;
 }
@@ -634,6 +650,8 @@ inline const char **EnumNamesBuiltinOptions() {
     "SliceOptions",
     "TransposeConvOptions",
     "SparseToDenseOptions",
+    "TileOptions",
+    "ExpandDimsOptions",
     nullptr
   };
   return names;
@@ -846,6 +864,14 @@ template<> struct BuiltinOptionsTraits<TransposeConvOptions> {
 
 template<> struct BuiltinOptionsTraits<SparseToDenseOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_SparseToDenseOptions;
+};
+
+template<> struct BuiltinOptionsTraits<TileOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_TileOptions;
+};
+
+template<> struct BuiltinOptionsTraits<ExpandDimsOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ExpandDimsOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1278,6 +1304,22 @@ struct BuiltinOptionsUnion {
   const SparseToDenseOptionsT *AsSparseToDenseOptions() const {
     return type == BuiltinOptions_SparseToDenseOptions ?
       reinterpret_cast<const SparseToDenseOptionsT *>(value) : nullptr;
+  }
+  TileOptionsT *AsTileOptions() {
+    return type == BuiltinOptions_TileOptions ?
+      reinterpret_cast<TileOptionsT *>(value) : nullptr;
+  }
+  const TileOptionsT *AsTileOptions() const {
+    return type == BuiltinOptions_TileOptions ?
+      reinterpret_cast<const TileOptionsT *>(value) : nullptr;
+  }
+  ExpandDimsOptionsT *AsExpandDimsOptions() {
+    return type == BuiltinOptions_ExpandDimsOptions ?
+      reinterpret_cast<ExpandDimsOptionsT *>(value) : nullptr;
+  }
+  const ExpandDimsOptionsT *AsExpandDimsOptions() const {
+    return type == BuiltinOptions_ExpandDimsOptions ?
+      reinterpret_cast<const ExpandDimsOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4152,6 +4194,46 @@ inline flatbuffers::Offset<MaximumMinimumOptions> CreateMaximumMinimumOptions(
 
 flatbuffers::Offset<MaximumMinimumOptions> CreateMaximumMinimumOptions(flatbuffers::FlatBufferBuilder &_fbb, const MaximumMinimumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct TileOptionsT : public flatbuffers::NativeTable {
+  typedef TileOptions TableType;
+  TileOptionsT() {
+  }
+};
+
+struct TileOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef TileOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  TileOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(TileOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<TileOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const TileOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct TileOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit TileOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  TileOptionsBuilder &operator=(const TileOptionsBuilder &);
+  flatbuffers::Offset<TileOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<TileOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<TileOptions> CreateTileOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  TileOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<TileOptions> CreateTileOptions(flatbuffers::FlatBufferBuilder &_fbb, const TileOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct ArgMaxOptionsT : public flatbuffers::NativeTable {
   typedef ArgMaxOptions TableType;
   TensorType output_type;
@@ -4564,6 +4646,46 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(
 
 flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flatbuffers::FlatBufferBuilder &_fbb, const TransposeConvOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ExpandDimsOptionsT : public flatbuffers::NativeTable {
+  typedef ExpandDimsOptions TableType;
+  ExpandDimsOptionsT() {
+  }
+};
+
+struct ExpandDimsOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ExpandDimsOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  ExpandDimsOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ExpandDimsOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ExpandDimsOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ExpandDimsOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ExpandDimsOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit ExpandDimsOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ExpandDimsOptionsBuilder &operator=(const ExpandDimsOptionsBuilder &);
+  flatbuffers::Offset<ExpandDimsOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ExpandDimsOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ExpandDimsOptions> CreateExpandDimsOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  ExpandDimsOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ExpandDimsOptions> CreateExpandDimsOptions(flatbuffers::FlatBufferBuilder &_fbb, const ExpandDimsOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct SparseToDenseOptionsT : public flatbuffers::NativeTable {
   typedef SparseToDenseOptions TableType;
   bool validate_indices;
@@ -4899,6 +5021,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const SparseToDenseOptions *builtin_options_as_SparseToDenseOptions() const {
     return builtin_options_type() == BuiltinOptions_SparseToDenseOptions ? static_cast<const SparseToDenseOptions *>(builtin_options()) : nullptr;
   }
+  const TileOptions *builtin_options_as_TileOptions() const {
+    return builtin_options_type() == BuiltinOptions_TileOptions ? static_cast<const TileOptions *>(builtin_options()) : nullptr;
+  }
+  const ExpandDimsOptions *builtin_options_as_ExpandDimsOptions() const {
+    return builtin_options_type() == BuiltinOptions_ExpandDimsOptions ? static_cast<const ExpandDimsOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -5123,6 +5251,14 @@ template<> inline const TransposeConvOptions *Operator::builtin_options_as<Trans
 
 template<> inline const SparseToDenseOptions *Operator::builtin_options_as<SparseToDenseOptions>() const {
   return builtin_options_as_SparseToDenseOptions();
+}
+
+template<> inline const TileOptions *Operator::builtin_options_as<TileOptions>() const {
+  return builtin_options_as_TileOptions();
+}
+
+template<> inline const ExpandDimsOptions *Operator::builtin_options_as<ExpandDimsOptions>() const {
+  return builtin_options_as_ExpandDimsOptions();
 }
 
 struct OperatorBuilder {
@@ -6725,6 +6861,29 @@ inline flatbuffers::Offset<MaximumMinimumOptions> CreateMaximumMinimumOptions(fl
       _fbb);
 }
 
+inline TileOptionsT *TileOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new TileOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void TileOptions::UnPackTo(TileOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<TileOptions> TileOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TileOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateTileOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<TileOptions> CreateTileOptions(flatbuffers::FlatBufferBuilder &_fbb, const TileOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const TileOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateTileOptions(
+      _fbb);
+}
+
 inline ArgMaxOptionsT *ArgMaxOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ArgMaxOptionsT();
   UnPackTo(_o, _resolver);
@@ -6942,6 +7101,29 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flat
       _padding,
       _stride_w,
       _stride_h);
+}
+
+inline ExpandDimsOptionsT *ExpandDimsOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ExpandDimsOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ExpandDimsOptions::UnPackTo(ExpandDimsOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<ExpandDimsOptions> ExpandDimsOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ExpandDimsOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateExpandDimsOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ExpandDimsOptions> CreateExpandDimsOptions(flatbuffers::FlatBufferBuilder &_fbb, const ExpandDimsOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ExpandDimsOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateExpandDimsOptions(
+      _fbb);
 }
 
 inline SparseToDenseOptionsT *SparseToDenseOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -7356,6 +7538,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const SparseToDenseOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_TileOptions: {
+      auto ptr = reinterpret_cast<const TileOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_ExpandDimsOptions: {
+      auto ptr = reinterpret_cast<const ExpandDimsOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -7574,6 +7764,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const SparseToDenseOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_TileOptions: {
+      auto ptr = reinterpret_cast<const TileOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_ExpandDimsOptions: {
+      auto ptr = reinterpret_cast<const ExpandDimsOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -7780,6 +7978,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const SparseToDenseOptionsT *>(value);
       return CreateSparseToDenseOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_TileOptions: {
+      auto ptr = reinterpret_cast<const TileOptionsT *>(value);
+      return CreateTileOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_ExpandDimsOptions: {
+      auto ptr = reinterpret_cast<const ExpandDimsOptionsT *>(value);
+      return CreateExpandDimsOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -7984,6 +8190,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_SparseToDenseOptions: {
       value = new SparseToDenseOptionsT(*reinterpret_cast<SparseToDenseOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_TileOptions: {
+      value = new TileOptionsT(*reinterpret_cast<TileOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ExpandDimsOptions: {
+      value = new ExpandDimsOptionsT(*reinterpret_cast<ExpandDimsOptionsT *>(u.value));
       break;
     }
     default:
@@ -8240,6 +8454,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SparseToDenseOptions: {
       auto ptr = reinterpret_cast<SparseToDenseOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_TileOptions: {
+      auto ptr = reinterpret_cast<TileOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ExpandDimsOptions: {
+      auto ptr = reinterpret_cast<ExpandDimsOptionsT *>(value);
       delete ptr;
       break;
     }
