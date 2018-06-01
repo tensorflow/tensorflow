@@ -27,6 +27,7 @@ echo ""
 
 # Run configure.
 export TF_NEED_CUDA=0
+export TF_NEED_ROCM=0
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python2)
 yes "" | $PYTHON_BIN_PATH configure.py
