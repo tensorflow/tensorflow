@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_linkopts")
 
 py_binary(
     name = "visualize",
@@ -28,16 +29,27 @@ tf_cc_binary(
     ],
 )
 
+#  To build benchmark_model for Android arm64-v8a, e.g.,
+#   'bazel build --config android_arm64 --cxxopt=-std=c++11 \
+#    --config monolithic \
+#    tensorflow/contrib/lite/tools/benchmark_model'
+#
+#  To build benchmark_model for Android armeabi-v7a, e.g.,
+#   'bazel build --config android --cxxopt=-std=c++11 \
+#    --cxxopt=Wno-narrowing --config monolithic \
+#    tensorflow/contrib/lite/tools/benchmark_model'
+#
+#  If --config monolithic is not used, remember to copy
+#  bazel-bin/tensorflow/libtensorflow_framework.so to
+#  your target Android device
+#
 tf_cc_binary(
     name = "benchmark_model",
     srcs = ["benchmark_model.cc"],
-    linkopts = select({
+    linkopts = tflite_linkopts() + select({
         "//tensorflow:android": [
             "-pie",
-            "-landroid",
-            "-lm",
-            "-z defs",
-            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+            "-llog",
         ],
         "//conditions:default": [],
     }),
