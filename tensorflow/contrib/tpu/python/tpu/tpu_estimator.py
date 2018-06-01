@@ -1830,6 +1830,7 @@ class TPUEstimator(estimator_lib.Estimator):
                predict_batch_size=None,
                batch_axis=None,
                eval_on_tpu=True,
+               export_to_tpu=True,
                warm_start_from=None):
     """Constructs an `TPUEstimator` instance.
 
@@ -1872,6 +1873,8 @@ class TPUEstimator(estimator_lib.Estimator):
         False or `PER_HOST_V2`, batch_axis is ignored.
       eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
         model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
+      export_to_tpu: If True, `export_savedmodel()` exports a metagraph for
+        serving on TPU besides the one on CPU.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
                        warm-start from, or a `tf.estimator.WarmStartSettings`
                        object to fully configure warm-starting.  If the string
@@ -1943,6 +1946,8 @@ class TPUEstimator(estimator_lib.Estimator):
         use_tpu,
         eval_on_tpu)
 
+    self._export_to_tpu = export_to_tpu
+
     self._is_input_fn_invoked = None
 
   def _add_meta_graph_for_mode(self,
@@ -1965,11 +1970,11 @@ class TPUEstimator(estimator_lib.Estimator):
                                                        save_variables,
                                                        mode=mode)
 
-    input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
-                             input_receiver_fn_map[mode]}
-    export_tags = [tag_constants.SERVING, tag_constants.TPU]
-    mode = _REWRITE_FOR_INFERENCE_MODE
     if self._export_to_tpu:
+      input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
+                               input_receiver_fn_map[mode]}
+      export_tags = [tag_constants.SERVING, tag_constants.TPU]
+      mode = _REWRITE_FOR_INFERENCE_MODE
       (super(TPUEstimator, self).
        _add_meta_graph_for_mode(builder,
                                 input_receiver_fn_map,
