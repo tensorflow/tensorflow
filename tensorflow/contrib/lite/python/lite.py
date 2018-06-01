@@ -33,6 +33,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
@@ -188,6 +190,12 @@ class TocoConverter(object):
       except (_text_format.ParseError, DecodeError):
         try:
           print("Ignore 'tcmalloc: large alloc' warnings.")
+
+          if not isinstance(file_content, str):
+            if six.PY3:
+              file_content = file_content.decode('utf-8')
+            else:
+              file_content = file_content.encode('utf-8')
           _text_format.Merge(file_content, graph_def)
         except (_text_format.ParseError, DecodeError):
           raise ValueError(
