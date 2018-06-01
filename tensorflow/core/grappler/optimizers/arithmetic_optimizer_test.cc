@@ -97,12 +97,22 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   }
 
   // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
+  // Optionally run a constant folding pass before pruning.
   void OptimizeTwiceAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
-                             GraphDef* output) {
+                             GraphDef* output, bool const_folding = false) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+
     item->graph.Swap(output);
     output->Clear();
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+
+    if (const_folding) {
+      item->graph.Swap(output);
+      output->Clear();
+      TF_EXPECT_OK(ConstantFolding(/*cpu_device=*/nullptr)
+                       .Optimize(nullptr, *item, output));
+    }
+
     item->graph.Swap(output);
     output->Clear();
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
@@ -124,8 +134,10 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.remove_idempotent = false;
     options.remove_redundant_bitcast = false;
     options.remove_redundant_cast = false;
+    options.remove_redundant_reshape = false;
     options.remove_negation = false;
     options.remove_logical_not = false;
+    options.reorder_cast_and_transpose = false;
     optimizer->options_ = options;
   }
 
@@ -168,9 +180,19 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.remove_redundant_cast = true;
   }
 
+  void EnableOnlyRemoveRedundantReshape(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_redundant_reshape = true;
+  }
+
   void EnableOnlyRemoveNegation(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.remove_negation = true;
+  }
+
+  void EnableOnlyReorderCastAndTranspose(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.reorder_cast_and_transpose = true;
   }
 
   void EnableOnlyHoistCWiseUnaryChains(ArithmeticOptimizer* optimizer) {
@@ -955,7 +977,7 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   test::ExpectTensorNear<complex64>(tensors_expected[0], tensors[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
+TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshape_IdentityReshape) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs =
       ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
@@ -977,11 +999,11 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   auto tensors_expected =
       EvaluateNodes(item.graph, item.fetch, {{"Placeholder", x_t}});
   EXPECT_EQ(1, tensors_expected.size());
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(0, CountOpNodes(output, "Reshape"));
   auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", x_t}});
@@ -989,7 +1011,49 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, NotAssumeValidFeeds) {
+TEST_F(ArithmeticOptimizerTest,
+       RemoveRedundantReshape_IdentityReshapeBetweenSymbolicShapes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, -1, -1}));
+  Output inputs_shape = ops::Shape(s, inputs);
+  // The target shape of the reshape is the concatenation of `batch_size`, 3,
+  // `height, and `width`.
+  Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
+                                 ops::Const(s, {1}, {1}));
+  Output height = ops::Slice(s, inputs_shape, ops::Const(s, {2}, {1}),
+                             ops::Const(s, {1}, {1}));
+  Output width = ops::Slice(s, inputs_shape, ops::Const(s, {3}, {1}),
+                            ops::Const(s, {1}, {1}));
+  Output target_shape =
+      ops::Concat(s.WithOpName("target_shape"),
+                  {batch_size, ops::Const(s, {3}, {1}), height, width},
+                  ops::Const(s, {0}, {}));
+  Output reshape = ops::Reshape(s, inputs, target_shape);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 3, 28, 28}));
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  item.feed = {{"Placeholder", x_t}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  // Assume valid feed shape in aggressive mode.
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+  EXPECT_EQ(0, CountOpNodes(output, "Reshape"));
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshape_NotAssumeValidFeeds) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs =
       ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({4, 3, 28, 28}));
@@ -1007,10 +1071,9 @@ TEST_F(ArithmeticOptimizerTest, NotAssumeValidFeeds) {
   EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   // The reshape is preserved because the shape of the placeholder can be
   // different from the shape of the actual feed.
@@ -1021,7 +1084,8 @@ TEST_F(ArithmeticOptimizerTest, NotAssumeValidFeeds) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, AssumeValidFeedsInAggressiveMode) {
+TEST_F(ArithmeticOptimizerTest,
+       RemoveRedundantReshape_AssumeValidFeedsInAggressiveMode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs =
       ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({4, 3, 28, 28}));
@@ -1037,12 +1101,11 @@ TEST_F(ArithmeticOptimizerTest, AssumeValidFeedsInAggressiveMode) {
 
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
   EXPECT_EQ(1, tensors_expected.size());
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
 
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  GraphDef output;
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(0, CountOpNodes(output, "Reshape"));
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
@@ -1050,7 +1113,7 @@ TEST_F(ArithmeticOptimizerTest, AssumeValidFeedsInAggressiveMode) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
+TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshape_NotIdentityReshape) {
   // Reshape from [-1,3,28,28] to [8,-1,28,28] is not identity, because it can
   // be from [4,3,28,28] to [8,6,28,28].
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1066,11 +1129,11 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
   item.feed = {{"Placeholder", x_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
   EXPECT_EQ(1, tensors_expected.size());
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(1, CountOpNodes(output, "Reshape"));
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
@@ -1078,7 +1141,8 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
-TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
+TEST_F(ArithmeticOptimizerTest,
+       RemoveRedundantReshape_NotIdentityReshapeTooManyUnknownDimSizes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs =
       ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({4, 3}));
@@ -1088,16 +1152,16 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(1, CountOpNodes(output, "Reshape"));
 }
 
-TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
+TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshape_CombineReshapes) {
   // Converts an NCHW_VECT_C tensor to NHWC and then flattens it to 2D. The two
   // reshapes should be combined.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1122,11 +1186,11 @@ TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
   item.feed = {{"nchw_vect_c", x_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
   EXPECT_EQ(1, tensors_expected.size());
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(1, CountOpNodes(output, "Reshape"));
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
@@ -1492,6 +1556,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   //     =>
   //   Conv2D(Cast(Transpose(I)), W*S)
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+
   Output inputs =
       ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
   Output cast = ops::Cast(s, inputs, DT_FLOAT);
@@ -1509,28 +1574,28 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(
-      ConstantFolding(/*cpu_device=*/nullptr).Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  OptimizeTwiceAndPrune(&optimizer, &item, &output, /*const_folding=*/true);
 
   NodeMap node_map(&output);
-  const NodeDef* inputs_node = CHECK_NOTNULL(node_map.GetNode("Placeholder"));
-  const NodeDef* transpose_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Transpose_uint8")));
-  const NodeDef* cast_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Cast_float")));
+
+  // Expected names for the optimized nodes.
+  const string p = "ArithmeticOptimizer/ReorderCastAndTranspose_";
+  const string optimized_cast_name = strings::StrCat(p, "float_Cast");
+  const string optimized_transpose_name = strings::StrCat(p, "uint8_Transpose");
+
+  const NodeDef* inputs_node = node_map.GetNode("Placeholder");
+  const NodeDef* transpose_node = node_map.GetNode(optimized_transpose_name);
+  const NodeDef* cast_node = node_map.GetNode(optimized_cast_name);
   const NodeDef* weights_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D")));
-  const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
+      node_map.GetNode(OptimizedName("weights_scaled_Conv2D"));
+  const NodeDef* conv_node = node_map.GetNode("Conv2D");
+
+  ASSERT_TRUE(inputs_node != nullptr);
+  ASSERT_TRUE(transpose_node != nullptr);
+  ASSERT_TRUE(cast_node != nullptr);
+  ASSERT_TRUE(weights_node != nullptr);
+  ASSERT_TRUE(conv_node != nullptr);
 
   EXPECT_EQ(output.node_size(), 7);
   EXPECT_EQ(transpose_node->input(0), inputs_node->name());

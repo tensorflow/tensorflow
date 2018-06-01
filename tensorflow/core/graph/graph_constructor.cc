@@ -278,8 +278,9 @@ class GraphConstructor {
   // name, the value is the new unique name.
   std::unordered_map<string, string> uniquified_names_;
 
-  // Index of NodeDefs in node_defs_ with all inputs already converted.
-  std::vector<int> ready_;
+  // Index of NodeDefs in node_defs_ with all inputs already converted. We use a
+  // (sorted) set so nodes are created in the order defined in the GraphDef.
+  std::set<int> ready_;
 
   // Mapping between index within node_defs_ and the number of inputs that
   // still need to be converted.
@@ -520,7 +521,7 @@ Status GraphConstructor::InitFromEdges() {
       }
     }
     if (pending_count == 0) {
-      ready_.push_back(n);
+      ready_.insert(n);
     }
     pending_count_.push_back(pending_count);
   }
@@ -884,12 +885,12 @@ namespace {
 
 void UpdatePendingCountAndReady(
     const std::vector<gtl::InlinedVector<int, 4>>& outputs, int o,
-    std::vector<int>* pending_count, std::vector<int>* ready) {
+    std::vector<int>* pending_count, std::set<int>* ready) {
   for (size_t i = 0; i < outputs[o].size(); ++i) {
     const int output = outputs[o][i];
     (*pending_count)[output]--;
     if ((*pending_count)[output] == 0) {
-      ready->push_back(output);
+      ready->insert(output);
     }
   }
 }
@@ -913,8 +914,8 @@ Status GraphConstructor::Convert() {
   // inputs, pending_counts_ with the number of inputs for each node and
   // outputs_ with the outputs of each node).
   while (!ready_.empty()) {
-    int o = ready_.back();
-    ready_.pop_back();
+    int o = *ready_.begin();
+    ready_.erase(ready_.begin());
     ++processed;
     inputs.clear();
     bool has_data_back_edge = false;

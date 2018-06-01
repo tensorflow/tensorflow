@@ -22,6 +22,8 @@ import collections
 import six
 
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import base as checkpointable_lib
 from tensorflow.python.training.checkpointable import data_structures_base
 
@@ -41,11 +43,14 @@ class CheckpointableDataStructure(
   def __init__(self):
     self._layers = []
     self.trainable = True
+    self._extra_variables = []
 
   def _track_value(self, value, name):
     """Add a dependency on `value`."""
     if isinstance(value, checkpointable_lib.CheckpointableBase):
       self._track_checkpointable(value, name=name)
+      if isinstance(value, variables.Variable):
+        self._extra_variables.append(value)
     else:
       raise ValueError(
           ("Only checkpointable objects (such as Layers or Optimizers) may be "
@@ -67,28 +72,29 @@ class CheckpointableDataStructure(
 
   @property
   def trainable_weights(self):
-    if not self.trainable:
-      return []
-    weights = []
-    for layer in self.layers:
-      weights += layer.trainable_weights
-    return weights
+    return layer_utils.gather_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
-    weights = []
-    for layer in self.layers:
-      weights += layer.non_trainable_weights
-    if not self.trainable:
-      trainable_weights = []
-      for layer in self.layers:
-        trainable_weights += layer.trainable_weights
-      return trainable_weights + weights
-    return weights
+    return layer_utils.gather_non_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def weights(self):
     return self.trainable_weights + self.non_trainable_weights
+
+  @property
+  def trainable_variables(self):
+    return self.trainable_weights
+
+  @property
+  def non_trainable_variables(self):
+    return self.non_trainable_weights
 
   @property
   def variables(self):

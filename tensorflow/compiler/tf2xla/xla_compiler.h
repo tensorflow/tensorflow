@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -244,9 +245,9 @@ class XlaCompiler {
   typedef std::function<TensorShape(const TensorShape&, DataType)>
       ShapeRepresentationFn;
   struct Options {
-    // Name of the compilation device to use. Needs to be live only during
-    // XlaCompiler's constructor.
-    const DeviceType* device_type = nullptr;
+    // Name of the compilation device to use. It must be set by the caller.
+    // The default empty value is invalid.
+    DeviceType device_type = DeviceType("");
 
     xla::Client* client = nullptr;
 
@@ -313,7 +314,7 @@ class XlaCompiler {
   // See the class comment for more details about the argument passing
   // convention.
   Status XLAShapeForArgument(const Argument& arg, bool is_entry_computation,
-                             xla::Shape* xla_shape);
+                             xla::Shape* xla_shape) const;
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.

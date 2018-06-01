@@ -341,6 +341,7 @@ class Variable(checkpointable.CheckpointableBase):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
+    self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
@@ -450,6 +451,7 @@ class Variable(checkpointable.CheckpointableBase):
                                  import_scope=import_scope))
     else:
       self._initial_value = None
+    self._trainable = getattr(variable_def, "trainable", True)
     self._snapshot = g.as_graph_element(
         ops.prepend_name_scope(variable_def.snapshot_name,
                                import_scope=import_scope))
@@ -542,6 +544,10 @@ class Variable(checkpointable.CheckpointableBase):
     """
     self._ref().set_shape(shape)
     self.value().set_shape(shape)
+
+  @property
+  def trainable(self):
+    return self._trainable
 
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
@@ -1050,6 +1056,7 @@ class Variable(checkpointable.CheckpointableBase):
         # For backwards compatibility.
         var_def.initial_value_name = ops.strip_name_scope(
             self._initial_value.name, export_scope)
+      var_def.trainable = self.trainable
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
       var_def.snapshot_name = ops.strip_name_scope(

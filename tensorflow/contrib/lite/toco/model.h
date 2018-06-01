@@ -135,6 +135,7 @@ enum class OperatorType {
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
   kSelect,
+  kSparseToDense,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1596,6 +1597,19 @@ struct DynamicPartitionOperator : Operator {
 struct DynamicStitchOperator : Operator {
   DynamicStitchOperator() : Operator(OperatorType::kDynamicStitch) {}
   int num_partitions;
+};
+
+// SparseToDense operator:
+//
+// Inputs:
+// Inputs[0]: required: sparse_indices.
+// Inputs[1]: required: output_shape.
+// Inputs[2]: required: sparse_values.
+//
+// TensorFlow equivalent: SparseToDense.
+struct SparseToDenseOperator : Operator {
+  SparseToDenseOperator() : Operator(OperatorType::kSparseToDense) {}
+  bool validate_indices;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

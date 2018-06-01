@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 
 
 class TestModelCloning(test.TestCase):
@@ -122,6 +126,23 @@ class TestModelCloning(test.TestCase):
     with self.assertRaises(ValueError):
       keras.models._clone_sequential_model(seq_model, input_tensors=y)
 
+
+class CheckpointingTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_optimizer_dependency(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_shape=(4,)))
+    opt = adam.AdamOptimizer(0.01)
+    model.compile(optimizer=opt, loss='mse')
+    model.fit(x=np.array([[1., 2., 3., 4.]]), y=[1.], epochs=2)
+    save_prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    beta1_power, _ = opt._get_beta_accumulators()
+    self.evaluate(beta1_power.assign(12.))
+    model.save_weights(save_prefix)
+    self.evaluate(beta1_power.assign(13.))
+    model.load_weights(save_prefix)
+    self.assertEqual(12., self.evaluate(beta1_power))
 
 if __name__ == '__main__':
   test.main()

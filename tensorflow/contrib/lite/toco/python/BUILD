@@ -41,12 +41,6 @@ py_binary(
     ],
 )
 
-py_binary(
-    name = "toco_wrapper",
-    srcs = ["toco_wrapper.py"],
-    srcs_version = "PY2AND3",
-)
-
 tf_py_test(
     name = "toco_from_protos_test",
     srcs = ["toco_from_protos_test.py"],

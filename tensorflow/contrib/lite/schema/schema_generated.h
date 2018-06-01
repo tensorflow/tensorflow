@@ -178,6 +178,9 @@ struct SliceOptionsT;
 struct TransposeConvOptions;
 struct TransposeConvOptionsT;
 
+struct SparseToDenseOptions;
+struct SparseToDenseOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -305,11 +308,12 @@ enum BuiltinOperator {
   BuiltinOperator_SLICE = 65,
   BuiltinOperator_SIN = 66,
   BuiltinOperator_TRANSPOSE_CONV = 67,
+  BuiltinOperator_SPARSE_TO_DENSE = 68,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_TRANSPOSE_CONV
+  BuiltinOperator_MAX = BuiltinOperator_SPARSE_TO_DENSE
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[67] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[68] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -377,7 +381,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[67] {
     BuiltinOperator_SELECT,
     BuiltinOperator_SLICE,
     BuiltinOperator_SIN,
-    BuiltinOperator_TRANSPOSE_CONV
+    BuiltinOperator_TRANSPOSE_CONV,
+    BuiltinOperator_SPARSE_TO_DENSE
   };
   return values;
 }
@@ -452,6 +457,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "SLICE",
     "SIN",
     "TRANSPOSE_CONV",
+    "SPARSE_TO_DENSE",
     nullptr
   };
   return names;
@@ -513,11 +519,12 @@ enum BuiltinOptions {
   BuiltinOptions_SelectOptions = 47,
   BuiltinOptions_SliceOptions = 48,
   BuiltinOptions_TransposeConvOptions = 49,
+  BuiltinOptions_SparseToDenseOptions = 50,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_TransposeConvOptions
+  BuiltinOptions_MAX = BuiltinOptions_SparseToDenseOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[50] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[51] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -568,7 +575,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[50] {
     BuiltinOptions_LessEqualOptions,
     BuiltinOptions_SelectOptions,
     BuiltinOptions_SliceOptions,
-    BuiltinOptions_TransposeConvOptions
+    BuiltinOptions_TransposeConvOptions,
+    BuiltinOptions_SparseToDenseOptions
   };
   return values;
 }
@@ -625,6 +633,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "SelectOptions",
     "SliceOptions",
     "TransposeConvOptions",
+    "SparseToDenseOptions",
     nullptr
   };
   return names;
@@ -833,6 +842,10 @@ template<> struct BuiltinOptionsTraits<SliceOptions> {
 
 template<> struct BuiltinOptionsTraits<TransposeConvOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_TransposeConvOptions;
+};
+
+template<> struct BuiltinOptionsTraits<SparseToDenseOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SparseToDenseOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1257,6 +1270,14 @@ struct BuiltinOptionsUnion {
   const TransposeConvOptionsT *AsTransposeConvOptions() const {
     return type == BuiltinOptions_TransposeConvOptions ?
       reinterpret_cast<const TransposeConvOptionsT *>(value) : nullptr;
+  }
+  SparseToDenseOptionsT *AsSparseToDenseOptions() {
+    return type == BuiltinOptions_SparseToDenseOptions ?
+      reinterpret_cast<SparseToDenseOptionsT *>(value) : nullptr;
+  }
+  const SparseToDenseOptionsT *AsSparseToDenseOptions() const {
+    return type == BuiltinOptions_SparseToDenseOptions ?
+      reinterpret_cast<const SparseToDenseOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4543,6 +4564,60 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(
 
 flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flatbuffers::FlatBufferBuilder &_fbb, const TransposeConvOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SparseToDenseOptionsT : public flatbuffers::NativeTable {
+  typedef SparseToDenseOptions TableType;
+  bool validate_indices;
+  SparseToDenseOptionsT()
+      : validate_indices(false) {
+  }
+};
+
+struct SparseToDenseOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SparseToDenseOptionsT NativeTableType;
+  enum {
+    VT_VALIDATE_INDICES = 4
+  };
+  bool validate_indices() const {
+    return GetField<uint8_t>(VT_VALIDATE_INDICES, 0) != 0;
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_VALIDATE_INDICES) &&
+           verifier.EndTable();
+  }
+  SparseToDenseOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SparseToDenseOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SparseToDenseOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SparseToDenseOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SparseToDenseOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_validate_indices(bool validate_indices) {
+    fbb_.AddElement<uint8_t>(SparseToDenseOptions::VT_VALIDATE_INDICES, static_cast<uint8_t>(validate_indices), 0);
+  }
+  explicit SparseToDenseOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SparseToDenseOptionsBuilder &operator=(const SparseToDenseOptionsBuilder &);
+  flatbuffers::Offset<SparseToDenseOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SparseToDenseOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SparseToDenseOptions> CreateSparseToDenseOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    bool validate_indices = false) {
+  SparseToDenseOptionsBuilder builder_(_fbb);
+  builder_.add_validate_indices(validate_indices);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SparseToDenseOptions> CreateSparseToDenseOptions(flatbuffers::FlatBufferBuilder &_fbb, const SparseToDenseOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -4821,6 +4896,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const TransposeConvOptions *builtin_options_as_TransposeConvOptions() const {
     return builtin_options_type() == BuiltinOptions_TransposeConvOptions ? static_cast<const TransposeConvOptions *>(builtin_options()) : nullptr;
   }
+  const SparseToDenseOptions *builtin_options_as_SparseToDenseOptions() const {
+    return builtin_options_type() == BuiltinOptions_SparseToDenseOptions ? static_cast<const SparseToDenseOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -5041,6 +5119,10 @@ template<> inline const SliceOptions *Operator::builtin_options_as<SliceOptions>
 
 template<> inline const TransposeConvOptions *Operator::builtin_options_as<TransposeConvOptions>() const {
   return builtin_options_as_TransposeConvOptions();
+}
+
+template<> inline const SparseToDenseOptions *Operator::builtin_options_as<SparseToDenseOptions>() const {
+  return builtin_options_as_SparseToDenseOptions();
 }
 
 struct OperatorBuilder {
@@ -6862,6 +6944,32 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flat
       _stride_h);
 }
 
+inline SparseToDenseOptionsT *SparseToDenseOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SparseToDenseOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SparseToDenseOptions::UnPackTo(SparseToDenseOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = validate_indices(); _o->validate_indices = _e; };
+}
+
+inline flatbuffers::Offset<SparseToDenseOptions> SparseToDenseOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SparseToDenseOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSparseToDenseOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SparseToDenseOptions> CreateSparseToDenseOptions(flatbuffers::FlatBufferBuilder &_fbb, const SparseToDenseOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SparseToDenseOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _validate_indices = _o->validate_indices;
+  return tflite::CreateSparseToDenseOptions(
+      _fbb,
+      _validate_indices);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -7244,6 +7352,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const TransposeConvOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SparseToDenseOptions: {
+      auto ptr = reinterpret_cast<const SparseToDenseOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -7458,6 +7570,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const TransposeConvOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SparseToDenseOptions: {
+      auto ptr = reinterpret_cast<const SparseToDenseOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -7660,6 +7776,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const TransposeConvOptionsT *>(value);
       return CreateTransposeConvOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_SparseToDenseOptions: {
+      auto ptr = reinterpret_cast<const SparseToDenseOptionsT *>(value);
+      return CreateSparseToDenseOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -7860,6 +7980,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_TransposeConvOptions: {
       value = new TransposeConvOptionsT(*reinterpret_cast<TransposeConvOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SparseToDenseOptions: {
+      value = new SparseToDenseOptionsT(*reinterpret_cast<SparseToDenseOptionsT *>(u.value));
       break;
     }
     default:
@@ -8111,6 +8235,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_TransposeConvOptions: {
       auto ptr = reinterpret_cast<TransposeConvOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SparseToDenseOptions: {
+      auto ptr = reinterpret_cast<SparseToDenseOptionsT *>(value);
       delete ptr;
       break;
     }

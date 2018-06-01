@@ -517,6 +517,9 @@ def tf_additional_proto_srcs():
       "platform/default/protobuf.cc",
   ]
 
+def tf_additional_human_readable_json_deps():
+  return []
+
 def tf_additional_all_protos():
   return ["//tensorflow/core:protos_all"]
 

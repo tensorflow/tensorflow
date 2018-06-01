@@ -794,6 +794,27 @@ class TransposeConv
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class SparseToDense
+    : public BuiltinOperator<SparseToDenseOperator,
+                             ::tflite::SparseToDenseOptions,
+                             ::tflite::BuiltinOptions_SparseToDenseOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSparseToDenseOptions(*builder, op.validate_indices);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->validate_indices = options.validate_indices();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -978,6 +999,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
   ops.emplace_back(new TransposeConv(::tflite::BuiltinOperator_TRANSPOSE_CONV,
                                      OperatorType::kTransposeConv));
+  ops.emplace_back(new SparseToDense(::tflite::BuiltinOperator_SPARSE_TO_DENSE,
+                                     OperatorType::kSparseToDense));
 
   // Custom Operators.
   ops.emplace_back(

@@ -117,9 +117,13 @@ WhileUtil::MakeInstructionsLiveIn(
   HloInstruction* new_while = containing_computation->AddInstruction(
       HloInstruction::CreateWhile(new_while_shape, new_while_condition,
                                   new_while_body, new_while_init));
-  TF_RETURN_IF_ERROR(containing_computation->ReplaceInstruction(
-      while_instr, TupleUtil::ExtractPrefix(
-                       new_while, while_instr->shape().tuple_shapes_size())));
+
+  // We want to get rid of the old while instruction even if it has side
+  // effecting operations so we do a manual HloComputation::RemoveInstruction
+  // instead of relying on HloComputation::ReplaceInstruction.
+  TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(TupleUtil::ExtractPrefix(
+      new_while, while_instr->shape().tuple_shapes_size())));
+  TF_RETURN_IF_ERROR(containing_computation->RemoveInstruction(while_instr));
 
   HloInstruction* while_body_param = new_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> live_in_instructions;
