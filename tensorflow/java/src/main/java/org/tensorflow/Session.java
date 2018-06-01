@@ -109,6 +109,14 @@ public final class Session implements AutoCloseable {
   }
 
   /**
+   * Run when the JVM terminates the object.
+   * <p>Ensures that close is called when the JVM deallocates the object.</p>
+   */
+  protected void finalize() {
+    close();
+  }
+
+  /**
    * Run {@link Operation}s and evaluate {@link Tensor}s.
    *
    * <p>A Runner runs the necessary graph fragments to execute every {@link Operation} required to
