@@ -121,6 +121,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "bucketize_op_test",
+    size = "small",
+    srcs = ["bucketize_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "categorical_op_test",
     size = "small",
     srcs = ["categorical_op_test.py"],
@@ -196,9 +209,11 @@ tf_xla_py_test(
     name = "oom_test",
     size = "medium",
     srcs = ["oom_test.py"],
+    # TODO(b/80081500): Re-enable on GPU. Disabled on 2018-05-21.
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
+        "gpu",
     ],
     tags = [
         # Allocates very large amounts of memory and does not work under TSAN.

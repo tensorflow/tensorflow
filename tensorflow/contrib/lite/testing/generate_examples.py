@@ -385,7 +385,7 @@ def make_zip_of_tests(zip_path,
   for parameters in test_parameters:
     keys = parameters.keys()
     for curr in itertools.product(*parameters.values()):
-      label = zip_path.replace(".zip", "") + (",".join(
+      label = zip_path.replace(".zip", "_") + (",".join(
           "%s=%r" % z for z in sorted(zip(keys, curr))).replace(" ", ""))
       if label[0] == "/":
         label = label[1:]

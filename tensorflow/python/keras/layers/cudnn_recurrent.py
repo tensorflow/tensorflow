@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
@@ -71,10 +72,11 @@ class _CuDNNRNN(RNN):
     self.constants_spec = None
     self._states = None
     self._num_constants = None
+    self._vector_shape = constant_op.constant([-1])
 
   def _canonical_to_params(self, weights, biases):
-    weights = [array_ops.reshape(x, (-1,)) for x in weights]
-    biases = [array_ops.reshape(x, (-1,)) for x in biases]
+    weights = [array_ops.reshape(x, self._vector_shape) for x in weights]
+    biases = [array_ops.reshape(x, self._vector_shape) for x in biases]
     return array_ops.concat(weights + biases, axis=0)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):

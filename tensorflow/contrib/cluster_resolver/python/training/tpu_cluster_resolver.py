@@ -37,6 +37,7 @@ except ImportError:
 
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
+_DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
 
 
 class TPUClusterResolver(ClusterResolver):
@@ -77,6 +78,10 @@ class TPUClusterResolver(ClusterResolver):
       return os.environ[_DEFAULT_ENV_VARIABLE]
     return None
 
+  @staticmethod
+  def _discoveryUrl():
+    return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
+
   def __init__(self,
                tpu=None,
                zone=None,
@@ -85,7 +90,8 @@ class TPUClusterResolver(ClusterResolver):
                coordinator_name=None,
                coordinator_address=None,
                credentials='default',
-               service=None):
+               service=None,
+               discovery_url=None):
     """Creates a new TPUClusterResolver object.
 
     The ClusterResolver will then use the parameters to query the Cloud TPU APIs
@@ -115,6 +121,11 @@ class TPUClusterResolver(ClusterResolver):
       service: The GCE API object returned by the googleapiclient.discovery
         function. If you specify a custom service object, then the credentials
         parameter will be ignored.
+      discovery_url: A URL template that points to the location of
+        the discovery service. It should have two parameters {api} and
+        {apiVersion} that when filled in produce an absolute URL to the
+        discovery document for that service. The environment variable
+        'TPU_API_DISCOVERY_URL' will override this.
 
     Raises:
       ImportError: If the googleapiclient is not installed.
@@ -164,9 +175,16 @@ class TPUClusterResolver(ClusterResolver):
                           '--upgrade google-api-python-client` to install with '
                           'pip.')
 
-      self._service = discovery.build(
-          'tpu', 'v1alpha1',
-          credentials=self._credentials)
+      final_discovery_url = self._discoveryUrl() or discovery_url
+      if final_discovery_url:
+        self._service = discovery.build(
+            'tpu', 'v1alpha1',
+            credentials=self._credentials,
+            discoveryServiceUrl=final_discovery_url)
+      else:
+        self._service = discovery.build(
+            'tpu', 'v1alpha1',
+            credentials=self._credentials)
     else:
       self._service = service
 

@@ -263,7 +263,7 @@ class QuantizedDistribution(distributions.Distribution):
           `Distribution` or continuous.
       NotImplementedError:  If the base distribution does not implement `cdf`.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     values = (
         list(distribution.parameters.values()) +
         [low, high])

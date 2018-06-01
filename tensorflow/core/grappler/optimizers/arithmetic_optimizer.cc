@@ -1162,10 +1162,8 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
 class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
  public:
   explicit RemoveIdentityTranspose(const GraphOptimizerContext& ctx,
-                                   const ArithmeticOptimizerContext& ctx_ext,
-                                   RewriterConfig::Toggle opt_level)
-      : ArithmeticOptimizerStage("RemoveIdentityTranspose", ctx, ctx_ext),
-        opt_level_(opt_level) {}
+                                   const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveIdentityTranspose", ctx, ctx_ext) {}
   ~RemoveIdentityTranspose() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
@@ -1260,8 +1258,47 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     }
     return true;
   }
+};
 
-  RewriterConfig::Toggle opt_level_;
+// An involution is an element-wise function f(x) that is its own inverse,
+// i.e. f(f(x)) = x. If we can find a chain of ops
+//   f->op1->op2->...opn->f
+// where op1 through opn preserve the values of their inputs, we can remove
+// the two instances of the involution from the graph, since they cancel
+// each other.
+class RemoveInvolution : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveInvolution(const GraphOptimizerContext& ctx,
+                            const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveInvolution", ctx, ctx_ext) {}
+  ~RemoveInvolution() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsInvolution(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* tail = GetTailOfValuePreservingChain(*node, *ctx().node_map,
+                                                  *ctx().nodes_to_preserve);
+
+    NodeDef* involution;
+    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &involution));
+
+    if (involution->op() == node->op()) {
+      // Skip both *node and *involution since they cancel each other.
+      if (tail == node) {
+        // The two nodes to eliminate are adjacent.
+        *simplified_node_name = involution->input(0);
+      } else {
+        tail->set_input(0, involution->input(0));
+        ctx().node_map->UpdateInput(tail->name(), involution->name(),
+                                    involution->input(0));
+        *simplified_node_name = node->input(0);
+      }
+    }
+
+    return Status::OK();
+  }
 };
 
 // Remove redundant Bitcasts.
@@ -1375,6 +1412,47 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
     }
     if (updated) {
       AddToOptimizationQueue(node);
+    }
+    return Status::OK();
+  }
+};
+
+class RemoveLogicalNotStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveLogicalNotStage(const GraphOptimizerContext& ctx,
+                                 const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveLogicalNot", ctx, ctx_ext) {}
+  ~RemoveLogicalNotStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsLogicalNot(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const string node_name = node->name();
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+    if (IsInPreserveSet(*input) ||
+        NumNonControlOutputs(*input, *ctx().node_map) > 1) {
+      return Status::OK();
+    }
+    string new_op;
+    if (IsEqual(*input)) {
+      new_op = "NotEqual";
+    } else if (IsNotEqual(*input)) {
+      new_op = "Equal";
+    } else if (IsLess(*input)) {
+      new_op = "GreaterEqual";
+    } else if (IsLessEqual(*input)) {
+      new_op = "Greater";
+    } else if (IsGreater(*input)) {
+      new_op = "LessEqual";
+    } else if (IsGreaterEqual(*input)) {
+      new_op = "Less";
+    }
+    if (!new_op.empty()) {
+      input->set_op(new_op);
+      *simplified_node_name = input->name();
     }
     return Status::OK();
   }
@@ -2030,30 +2108,6 @@ void ArithmeticOptimizer::ForwardControlDependencies(
 // ArithmeticOptimizerStage
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify) {
-  // Remove involutions applied twice.
-  if (IsInvolution(*node)) {
-    // An involution is an element-wise function f(x) that is its own inverse,
-    // i.e. f(f(x)) = x. If we can find a chain of ops
-    //   f->op1->op2->...opn->f
-    // where op1 through opn preserve the values of their inputs, we can remove
-    // the two instances of the involution from the graph, since they cancel
-    // each other.
-    NodeDef* tail =
-        GetTailOfValuePreservingChain(*node, *node_map_, nodes_to_preserve_);
-    NodeDef* involution = node_map_->GetNode(tail->input(0));
-    if (involution->op() == node->op()) {
-      // Skip both *node and *involution since they cancel each other.
-      if (tail == node) {
-        // The two nodes to eliminate are adjacent.
-        return involution->input(0);
-      } else {
-        tail->set_input(0, involution->input(0));
-        node_map_->UpdateInput(tail->name(), involution->name(),
-                               involution->input(0));
-        return node->input(0);
-      }
-    }
-  }
 
   if (node->op() == "Reshape") {
     //   Reshape
@@ -2422,13 +2476,17 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.minimize_broadcasts && can_use_shapes)
     pipeline.AddStage<MinimizeBroadcasts>(ctx, ctx_ext);
   if (options_.remove_identity_transpose && can_use_shapes)
-    pipeline.AddStage<RemoveIdentityTranspose>(ctx, ctx_ext, opt_level_);
+    pipeline.AddStage<RemoveIdentityTranspose>(ctx, ctx_ext);
+  if (options_.remove_involution)
+    pipeline.AddStage<RemoveInvolution>(ctx, ctx_ext);
   if (options_.remove_redundant_bitcast)
     pipeline.AddStage<RemoveRedundantBitcastStage>(ctx, ctx_ext);
   if (options_.remove_redundant_cast)
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
+  if (options_.remove_logical_not)
+    pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
     pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)

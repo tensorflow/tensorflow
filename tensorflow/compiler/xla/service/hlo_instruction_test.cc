@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -1492,6 +1493,53 @@ TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
     ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
 })");
+}
+
+TEST_F(HloInstructionTest, CheckDeepClone) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+addy (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT zadd = s32[] add(lhs, rhs)
+}
+
+calla (x: s32[]) -> s32[] {
+  x = s32[] parameter(0)
+  reduce = s32[] reduce-window(x, x), to_apply=addy
+  ROOT xadd = s32[] add(x, reduce)
+}
+
+body (bparam: s32[]) -> s32[] {
+  constant = s32[] constant(1)
+  bparam = s32[] parameter(0)
+  v = s32[] call(bparam), to_apply=calla
+  ROOT add = s32[] add(constant, bparam)
+}
+
+condition (cparam: s32[]) -> pred[] {
+  xconstant = s32[] constant(5)
+  cparam = s32[] parameter(0)
+  ROOT greater-than = pred[] greater-than(xconstant, cparam)
+}
+
+ENTRY entry (param: s32[]) -> s32[] {
+  eparam = s32[] parameter(0)
+  ROOT while = s32[] while(eparam), condition=condition, body=body
+ }
+)";
+  // Check that deep clones really deep clones every instruction and
+  // computations, without leaving dangling pointers to the old module.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(hlo_string));
+  std::unique_ptr<HloModule> clone = module->Clone();
+  for (HloComputation* computation : clone->computations()) {
+    EXPECT_EQ(computation->parent(), clone.get());
+    for (HloInstruction* instruction : computation->instructions()) {
+      EXPECT_EQ(instruction->parent()->parent(), clone.get());
+    }
+  }
 }
 
 }  // namespace
