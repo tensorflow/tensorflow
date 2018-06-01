@@ -1330,6 +1330,14 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kCustomCall:
       clone = CreateCustomCall(shape, new_operands, custom_call_target_);
+      if (window_ != nullptr) {
+        clone->window_ = MakeUnique<Window>(*window_);
+      }
+      if (convolution_dimension_numbers_ != nullptr) {
+        clone->convolution_dimension_numbers_ =
+            MakeUnique<ConvolutionDimensionNumbers>(
+                *convolution_dimension_numbers_);
+      }
       break;
     case HloOpcode::kHostCompute:
       clone = CreateHostCompute(shape, new_operands, channel_name_,
@@ -1882,6 +1890,19 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kCustomCall:
+      if ((window_ == nullptr) != (other.window_ == nullptr) ||
+          (window_ != nullptr &&
+           !protobuf_util::ProtobufEquals(window(), other.window()))) {
+        return false;
+      }
+      if ((convolution_dimension_numbers_ == nullptr) !=
+              (other.convolution_dimension_numbers_ == nullptr) ||
+          (convolution_dimension_numbers_ != nullptr &&
+           !protobuf_util::ProtobufEquals(
+               convolution_dimension_numbers(),
+               other.convolution_dimension_numbers()))) {
+        return false;
+      }
       return custom_call_target_ == other.custom_call_target_;
     case HloOpcode::kReverse:
       return dimensions() == other.dimensions();
