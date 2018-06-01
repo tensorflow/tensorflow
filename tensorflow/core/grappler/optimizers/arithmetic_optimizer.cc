@@ -209,40 +209,7 @@ bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
     return false;
   }
 
-  const PartialTensorShape& src_shape = input_props[output_pos].shape();
-  const PartialTensorShape& dst_shape = reshape_props[0].shape();
-
-  if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
-    return false;
-  }
-
-  if (!dst_shape.IsCompatibleWith(src_shape)) {
-    return false;
-  }
-
-  // Returns false when src_shape or dst_shape has >=2 dimensions with unknown
-  // sizes.
-  auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
-    auto dim_sizes = partial_shape.dim_sizes();
-    return std::count_if(dim_sizes.begin(), dim_sizes.end(),
-                         [](int dim) { return dim < 0; });
-  };
-  int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
-  int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
-  if (src_num_unknown_dim_sizes > 1 || dst_num_unknown_dim_sizes > 1) {
-    return false;
-  }
-
-  // If dst_num_unknown_dim_sizes != src_num_unknown_dim_sizes we would weaken
-  // shape inference in subsequent passes if we removed this reshape.
-  if (src_num_unknown_dim_sizes != dst_num_unknown_dim_sizes) {
-    return false;
-  }
-
-  // Remove the reshape if both are fully defined or partially defined and the
-  // unknown or symbolic shape appears on the same dimension, i.e., if
-  // IsIdenticalTo returns true.
-  return dst_shape.IsIdenticalTo(src_shape);
+  return ShapesSymbolicallyEqual(input_props[output_pos], reshape_props[0]);
 }
 
 NodeDef* GetTailOfValuePreservingChain(

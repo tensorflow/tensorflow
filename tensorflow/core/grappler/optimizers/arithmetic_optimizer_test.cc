@@ -989,6 +989,46 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
+TEST_F(ArithmeticOptimizerTest, IdentityReshapeBetweenSymbolicShapes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, -1, -1}));
+  Output inputs_shape = ops::Shape(s, inputs);
+  // The target shape of the reshape is the concatenation of `batch_size`, 3,
+  // `height, and `width`.
+  Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
+                                 ops::Const(s, {1}, {1}));
+  Output height = ops::Slice(s, inputs_shape, ops::Const(s, {2}, {1}),
+                             ops::Const(s, {1}, {1}));
+  Output width = ops::Slice(s, inputs_shape, ops::Const(s, {3}, {1}),
+                            ops::Const(s, {1}, {1}));
+  Output target_shape =
+      ops::Concat(s.WithOpName("target_shape"),
+                  {batch_size, ops::Const(s, {3}, {1}), height, width},
+                  ops::Const(s, {0}, {}));
+  Output reshape = ops::Reshape(s, inputs, target_shape);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 3, 28, 28}));
+  auto tensors_expected =
+      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", x_t}});
+  EXPECT_EQ(1, tensors_expected.size());
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph.Swap(&output);
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(0, CountOpNodes(output, "Reshape"));
+  auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", x_t}});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
 TEST_F(ArithmeticOptimizerTest, NotAssumeValidFeeds) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs =

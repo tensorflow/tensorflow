@@ -1728,6 +1728,25 @@ void ConvertComparisonOperator(const Model& model, const Operator& src_op,
   (*comparison_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertSparseToDenseOperator(const Model& model,
+                                  const SparseToDenseOperator& src_op,
+                                  const char* op_name,
+                                  GraphDef* tensorflow_graph) {
+  auto* sparse_to_dense_op = tensorflow_graph->add_node();
+  sparse_to_dense_op->set_op(op_name);
+  sparse_to_dense_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 4);
+  for (int i = 0; i < 4; ++i) {
+    *sparse_to_dense_op->add_input() = src_op.inputs[i];
+  }
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[3]);
+  (*sparse_to_dense_op->mutable_attr())["T"].set_type(data_type);
+  const auto index_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*sparse_to_dense_op->mutable_attr())["Tindices"].set_type(index_type);
+  (*sparse_to_dense_op->mutable_attr())["Tindices"].set_b(
+      src_op.validate_indices);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
