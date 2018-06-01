@@ -54,12 +54,12 @@ limitations under the License.
 #define cudaGetLastError hipGetLastError
 #define cudaError hipError
 
-#define CUDA_1D_KERNEL_LOOP(i, n)                                   \
-    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < (n); \
-        i += blockDim.x * gridDim.x)
+#endif
 
-#define GetCudaStream(context) context->eigen_gpu_device().stream()
-
+#if GOOGLE_CUDA
+#define GetGPUStream(context) GetCudaStream(context)
+#elif TENSORFLOW_USE_ROCM
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
 #endif
 
 namespace tensorflow {

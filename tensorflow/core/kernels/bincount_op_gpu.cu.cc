@@ -59,7 +59,7 @@ struct BincountFunctor<GPUDevice, T> {
     int32 lower_level = 0;
     int32 upper_level = output.size();
     int num_samples = arr.size();
-    const cudaStream_t& stream = GetCudaStream(context);
+    const cudaStream_t& stream = GetGPUStream(context);
 
     // The first HistogramEven is to obtain the temp storage size required
     // with d_temp_storage = NULL passed to the call.
