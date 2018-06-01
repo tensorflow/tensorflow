@@ -101,42 +101,43 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 # For platform specific build config
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_all_protos",
+    "tf_additional_cloud_kernel_deps",
+    "tf_additional_cloud_op_deps",
+    "tf_additional_core_deps",
+    "tf_additional_cupti_wrapper_deps",
+    "tf_additional_device_tracer_cuda_deps",
+    "tf_additional_device_tracer_deps",
+    "tf_additional_device_tracer_srcs",
+    "tf_additional_gdr_lib_defines",
+    "tf_additional_human_readable_json_deps",
+    "tf_additional_lib_defines",
+    "tf_additional_lib_deps",
+    "tf_additional_libdevice_data",
+    "tf_additional_libdevice_deps",
+    "tf_additional_libdevice_srcs",
+    "tf_additional_lib_hdrs",
+    "tf_additional_lib_srcs",
+    "tf_additional_minimal_lib_srcs",
+    "tf_additional_mpi_lib_defines",
+    "tf_additional_proto_hdrs",
+    "tf_additional_proto_srcs",
+    "tf_additional_test_deps",
+    "tf_additional_test_srcs",
+    "tf_additional_verbs_lib_defines",
+    "tf_jspb_proto_library",
+    "tf_kernel_tests_linkstatic",
+    "tf_lib_proto_parsing_deps",
+    "tf_nano_proto_library",
     "tf_platform_hdrs",
     "tf_platform_srcs",
     "tf_proto_library",
     "tf_proto_library_cc",
-    "tf_additional_all_protos",
-    "tf_additional_core_deps",
-    "tf_additional_lib_defines",
-    "tf_additional_lib_deps",
-    "tf_additional_lib_hdrs",
-    "tf_additional_lib_srcs",
-    "tf_additional_minimal_lib_srcs",
-    "tf_additional_proto_hdrs",
-    "tf_additional_proto_srcs",
-    "tf_additional_cupti_wrapper_deps",
-    "tf_additional_libdevice_data",
-    "tf_additional_libdevice_deps",
-    "tf_additional_libdevice_srcs",
-    "tf_additional_test_deps",
-    "tf_additional_test_srcs",
-    "tf_kernel_tests_linkstatic",
-    "tf_additional_cloud_op_deps",
-    "tf_additional_cloud_kernel_deps",
-    "tf_lib_proto_parsing_deps",
-    "tf_additional_verbs_lib_defines",
-    "tf_additional_mpi_lib_defines",
-    "tf_additional_gdr_lib_defines",
-    "tf_additional_device_tracer_srcs",
-    "tf_additional_device_tracer_deps",
-    "tf_additional_device_tracer_cuda_deps",
-    "tf_pyclif_proto_library",
-    "tf_jspb_proto_library",
-    "tf_nano_proto_library",
     "tf_protos_all",
     "tf_protos_all_impl",
     "tf_protos_grappler",
     "tf_protos_grappler_impl",
+    "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -401,6 +402,7 @@ cc_library(
         "protobuf.cc",
     ]) + [
         "platform/protobuf_util.cc",
+        "lib/core/status.h",
     ],
     hdrs = [
         ":platform_protobuf_hdrs",
@@ -415,6 +417,18 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:protobuf",
         "@protobuf_archive//:protobuf",
     ],
+)
+
+cc_library(
+    name = "human_readable_json",
+    srcs = tf_platform_srcs(["human_readable_json.cc"]),
+    hdrs = ["platform/human_readable_json.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+    ] + tf_additional_human_readable_json_deps(),
 )
 
 filegroup(
@@ -832,7 +846,6 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
-        "util/stats_calculator.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -859,9 +872,11 @@ tf_cuda_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = ["util/stats_calculator.cc"],
-    hdrs = [
+    srcs = [
         "util/stat_summarizer_options.h",
+        "util/stats_calculator.cc",
+    ],
+    hdrs = [
         "util/stats_calculator.h",
     ],
     deps = [":platform_base"],
@@ -2016,6 +2031,7 @@ cc_library(
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
+            "platform/**/human_readable_json.cc",
             "platform/abi.cc",
         ],
     ) + tf_additional_lib_srcs(
@@ -2028,6 +2044,7 @@ cc_library(
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
+            "platform/**/human_readable_json.cc",
             "platform/abi.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"

@@ -39,6 +39,7 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers
 from tensorflow.python.lib.io import file_io
@@ -81,21 +82,22 @@ def dummy_model_fn(features, labels, params):
   _, _, _ = features, labels, params
 
 
-def check_eventfile_for_keyword(keyword, dir_):
-  """Checks event files for the keyword."""
+def summaries_with_matching_keyword(keyword, dir_):
+  """Yields summary protos matching given keyword from event file."""
 
   writer_cache.FileWriterCache.clear()
 
-  # Get last Event written.
   event_paths = glob.glob(os.path.join(dir_, 'events*'))
-  last_event = None
-  for last_event in summary_iterator.summary_iterator(event_paths[-1]):
-    if last_event.summary is not None:
-      for value in last_event.summary.value:
+  for event in summary_iterator.summary_iterator(event_paths[-1]):
+    if event.summary is not None:
+      for value in event.summary.value:
         if keyword in value.tag:
-          return True
+          yield event.summary
 
-  return False
+
+def check_eventfile_for_keyword(keyword, dir_):
+  """Checks event files for the keyword."""
+  return any(summaries_with_matching_keyword(keyword, dir_))
 
 
 class EstimatorInheritanceConstraintTest(test.TestCase):
@@ -1397,6 +1399,19 @@ class EstimatorEvaluateTest(test.TestCase):
       self.assertTrue(
           check_eventfile_for_keyword(key, est.eval_dir()),
           '{} should be part of reported summaries.'.format(key))
+
+    # Verify that evaluated checkpoint path is written to event file.
+    checkpoint_path_tag = 'checkpoint_path'
+    self.assertTrue(
+        check_eventfile_for_keyword(checkpoint_path_tag, est.eval_dir()),
+        '{} should be part of reported summaries.'.format(checkpoint_path_tag))
+
+    expected_tensor_proto = tensor_util.make_tensor_proto(
+        est.latest_checkpoint(), dtype=dtypes.string)
+    summaries = summaries_with_matching_keyword(checkpoint_path_tag,
+                                                est.eval_dir())
+    self.assertProtoEquals(expected_tensor_proto,
+                           next(summaries).value[0].tensor)
 
 
 class EstimatorPredictTest(test.TestCase):

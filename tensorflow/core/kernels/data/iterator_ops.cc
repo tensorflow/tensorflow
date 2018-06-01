@@ -158,7 +158,10 @@ class IteratorResource : public ResourceBase {
         graph_runner.Run(&graph, lib, {}, {output_node}, &outputs));
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
-    TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iterator;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    TF_RETURN_IF_ERROR(set_iterator(std::move(iterator)));
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
@@ -657,8 +660,12 @@ class MakeIteratorOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
     core::ScopedUnref unref(iterator_resource);
-    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
-                            dataset->MakeIterator("Iterator")));
+
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iterator;
+    OP_REQUIRES_OK(ctx,
+                   dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(std::move(iterator)));
   }
 };
 
@@ -680,9 +687,12 @@ class ToSingleElementOp : public AsyncOpKernel {
       DatasetBase* dataset;
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
-      auto iterator = dataset->MakeIterator("SingleElementIterator");
-
       IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+      std::unique_ptr<IteratorBase> iterator;
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator),
+          done);
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
@@ -866,8 +876,10 @@ class OneShotIteratorOp : public AsyncOpKernel {
     // factory function.
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
-    TF_RETURN_IF_ERROR(
-        (*iterator)->set_iterator(dataset->MakeIterator("Iterator")));
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iter;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, "Iterator", &iter));
+    TF_RETURN_IF_ERROR((*iterator)->set_iterator(std::move(iter)));
 
     (*iterator)->Ref();
     return Status::OK();

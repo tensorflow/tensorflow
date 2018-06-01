@@ -29,6 +29,13 @@ cc_library(
     name = "profile_buffer",
     hdrs = ["profile_buffer.h"],
     copts = common_copts,
+    deps = [":time"],
+)
+
+cc_library(
+    name = "time",
+    srcs = ["time.cc"],
+    hdrs = ["time.h"],
 )
 
 cc_library(

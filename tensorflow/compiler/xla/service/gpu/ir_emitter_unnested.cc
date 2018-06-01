@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -423,15 +424,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     auto conv_result_slice = assn.GetUniqueSlice(custom_call, {0}).ValueOrDie();
     auto scratch_slice = assn.GetUniqueSlice(custom_call, {1}).ValueOrDie();
 
-    const HloInstruction* algorithm_inst = custom_call->operand(2);
-    CHECK(algorithm_inst->IsConstant()) << algorithm_inst->ToString();
-    int64 algorithm = algorithm_inst->literal().Get<int64>({});
-
-    const HloInstruction* tensor_ops_enabled_inst = custom_call->operand(3);
-    CHECK(tensor_ops_enabled_inst->IsConstant())
-        << tensor_ops_enabled_inst->ToString();
-    bool tensor_ops_enabled = tensor_ops_enabled_inst->literal().Get<bool>({});
-
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
+                        custom_call->backend_config<CudnnConvBackendConfig>());
     const auto& target = custom_call->custom_call_target();
     std::unique_ptr<ConvolutionThunk> thunk;
     if (target == kCudnnConvForwardCallTarget) {
@@ -446,7 +440,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           /*filter_shape=*/rhs_shape,
           /*output_shape=*/conv_result_shape,  //
           custom_call->window(), custom_call->convolution_dimension_numbers(),
-          algorithm, tensor_ops_enabled, custom_call);
+          backend_config.algorithm(), backend_config.tensor_ops_enabled(),
+          custom_call);
     } else if (target == kCudnnConvBackwardInputCallTarget) {
       thunk = MakeUnique<ConvolutionThunk>(
           CudnnConvKind::kBackwardInput,
@@ -459,7 +454,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           /*filter_shape=*/rhs_shape,
           /*output_shape=*/lhs_shape,  //
           custom_call->window(), custom_call->convolution_dimension_numbers(),
-          algorithm, tensor_ops_enabled, custom_call);
+          backend_config.algorithm(), backend_config.tensor_ops_enabled(),
+          custom_call);
     } else if (target == kCudnnConvBackwardFilterCallTarget) {
       thunk = MakeUnique<ConvolutionThunk>(
           CudnnConvKind::kBackwardFilter,
@@ -472,7 +468,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
           /*filter_shape=*/conv_result_shape,
           /*output_shape=*/rhs_shape,  //
           custom_call->window(), custom_call->convolution_dimension_numbers(),
-          algorithm, tensor_ops_enabled, custom_call);
+          backend_config.algorithm(), backend_config.tensor_ops_enabled(),
+          custom_call);
     } else {
       LOG(FATAL) << "Unexpected custom call target: "
                  << custom_call->custom_call_target();

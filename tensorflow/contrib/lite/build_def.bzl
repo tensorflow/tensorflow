@@ -239,6 +239,7 @@ def generated_test_models():
         "softmax",
         "space_to_batch_nd",
         "space_to_depth",
+        "sparse_to_dense",
         "split",
         "squeeze",
         "strided_slice",

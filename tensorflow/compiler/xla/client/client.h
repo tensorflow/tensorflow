@@ -153,8 +153,6 @@ class Client {
   //
   // If output_layout is non-null, then the output of the computation will be
   // stored using that layout.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::unique_ptr<Literal>> ComputeConstant(
       const XlaComputation& computation,
       const Layout* output_layout = nullptr) const;

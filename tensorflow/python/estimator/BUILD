@@ -446,7 +446,26 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/data",
+    ],
+)
+
+py_test(
+    name = "util_test",
+    srcs = ["util_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67510291
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -598,6 +617,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
