@@ -1,6 +1,6 @@
 diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen_archive/Eigen/Core
 --- eigen-eigen-6913f0cf7d06/Eigen/Core	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/Eigen/Core	2018-05-15 09:18:49.393164350 -0400
++++ eigen_archive/Eigen/Core	2018-05-22 09:16:40.649938020 -0400
 @@ -31,8 +31,8 @@
  #define EIGEN_CUDACC_VER 0
  #endif
@@ -51,7 +51,54 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen_archive/Eigen/Core
    #define EIGEN_EXCEPTIONS
  #endif
  
-@@ -267,6 +277,23 @@
+@@ -168,22 +178,30 @@
+       #define EIGEN_VECTORIZE_SSE4_1
+       #define EIGEN_VECTORIZE_SSE4_2
+     #endif
+-    #ifdef __FMA__
+-      #define EIGEN_VECTORIZE_FMA
+-    #endif
+-    #if defined(__AVX512F__)
+-      #define EIGEN_VECTORIZE_AVX512
+-      #define EIGEN_VECTORIZE_AVX2
+-      #define EIGEN_VECTORIZE_AVX
+-      #define EIGEN_VECTORIZE_FMA
+-      #define EIGEN_VECTORIZE_SSE3
+-      #define EIGEN_VECTORIZE_SSSE3
+-      #define EIGEN_VECTORIZE_SSE4_1
+-      #define EIGEN_VECTORIZE_SSE4_2
+-      #ifdef __AVX512DQ__
+-        #define EIGEN_VECTORIZE_AVX512DQ
+-      #endif
+-    #endif
++
++    // Disabling the __FMA__ and __AVX512F__ related features as a temporary workaround
++    // When building TF on CentOS, we use a newer version of GCC which enables these
++    // features. When these features get enabled, code within Eigen/src/Core/arch/<NAME>
++    // gets enabled, and is resulting in a compile failure, because we need to add
++    // support for Eigen::half for those architectures. That is a correct fix for this issue
++    // Until we fix it correctly, this temporary workaround will enable us to make progress.
++
++    // #ifdef __FMA__
++    //   #define EIGEN_VECTORIZE_FMA
++    // #endif
++    // #if defined(__AVX512F__)
++    //   #define EIGEN_VECTORIZE_AVX512
++    //   #define EIGEN_VECTORIZE_AVX2
++    //   #define EIGEN_VECTORIZE_AVX
++    //   #define EIGEN_VECTORIZE_FMA
++    //   #define EIGEN_VECTORIZE_SSE3
++    //   #define EIGEN_VECTORIZE_SSSE3
++    //   #define EIGEN_VECTORIZE_SSE4_1
++    //   #define EIGEN_VECTORIZE_SSE4_2
++    //   #ifdef __AVX512DQ__
++    //     #define EIGEN_VECTORIZE_AVX512DQ
++    //   #endif
++    // #endif
+ 
+     // include files
+ 
+@@ -267,6 +285,23 @@
    #include <cuda_fp16.h>
  #endif
  
@@ -75,7 +122,7 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen_archive/Eigen/Core
  #if (defined _OPENMP) && (!defined EIGEN_DONT_PARALLELIZE)
    #define EIGEN_HAS_OPENMP
  #endif
-@@ -430,9 +457,15 @@
+@@ -430,9 +465,15 @@
  #endif
  
  // Half float support

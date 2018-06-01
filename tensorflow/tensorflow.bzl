@@ -284,7 +284,7 @@ def _rpath_linkopts(name):
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
-          "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
+          "-Wl,%s" % (_make_search_paths("\\\$$ORIGIN", levels_to_root),),
       ],
   })
 

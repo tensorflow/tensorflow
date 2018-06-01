@@ -25,14 +25,18 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export TF_NEED_CUDA=0
-export TF_NEED_ROCM=0
-export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=`which python3`
-yes "" | $PYTHON_BIN_PATH configure.py
 
+export TF_NEED_ROCM=1
+
+yes "" | $PYTHON_BIN_PATH configure.py
+echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
+
+bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
-bazel test --test_tag_filters=-no_oss,-oss_serial,-gpu,-benchmark-test --test_lang_filters=py -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only --config=opt \
-    --test_output=errors -- \
-    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...
+bazel test --config=rocm --test_tag_filters=-no_gpu,-benchmark-test,-no_oss -k \
+    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
+    --build_tests_only --test_output=errors --local_test_jobs=1 \
+    --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
+    --config=xla -- \
+    //tensorflow/compiler/...
