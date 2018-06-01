@@ -135,7 +135,7 @@ class Network(base_layer.Layer):
     self._in_progress_restore_finalizer = None
 
   def _init_graph_network(self, inputs, outputs, name=None):
-    self._uses_inputs_arg = True
+    self._call_convention = base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, (list, tuple)):
       self.inputs = list(inputs)  # Tensor or list of tensors.
@@ -295,18 +295,54 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    call_args = tf_inspect.getargspec(self.call).args
-    if 'training' in call_args:
+    call_argspec = tf_inspect.getargspec(self.call)
+    if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
-    if 'inputs' in call_args:
-      self._uses_inputs_arg = True
-    else:
-      self._uses_inputs_arg = False
+    self._call_convention = self._determine_call_convention(call_argspec)
     self.outputs = None
     self.inputs = None
     self.built = False
+
+  def _determine_call_convention(self, call_argspec):
+    """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
+    if call_argspec.varargs:
+      may_take_single_argument = False
+    else:
+      try:
+        # Note: tf_inspect doesn't raise a TypeError when regular inspect would,
+        # so we need to keep in mind that "getcallargs" may have returned
+        # something even though we under-specified positional arguments.
+        all_args = tf_inspect.getcallargs(self.call, None)
+        self_args = set()
+        for arg_name, obj in all_args.items():
+          if obj is self:
+            self_args.add(arg_name)
+        may_take_single_argument = True
+      except TypeError:
+        may_take_single_argument = False
+    if may_take_single_argument:
+      # A single positional argument (plus "self") is considered equivalent to
+      # an "inputs" argument.
+      all_positional_args = len(call_argspec.args)
+      if call_argspec.defaults is not None:
+        all_positional_args -= len(call_argspec.defaults)
+      non_self_positional_args = all_positional_args
+      for positional_arg_name in call_argspec.args[:all_positional_args]:
+        if positional_arg_name in self_args:
+          non_self_positional_args -= 1
+      if non_self_positional_args == 1:
+        if 'inputs' in call_argspec.args[all_positional_args:]:
+          raise TypeError(
+              "Model.call() takes a single positional argument (to which "
+              "inputs are passed by convention) and a separate 'inputs' "
+              "argument. Unable to determine which arguments are inputs.")
+        return base_layer.CallConvention.SINGLE_POSITIONAL_ARGUMENT
+    if 'inputs' in call_argspec.args:
+      return base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
+    else:
+      return base_layer.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
     """Add Checkpointable dependencies on a list of Layers."""
