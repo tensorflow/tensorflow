@@ -621,7 +621,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   """Calculate the mean and variance of based on the sufficient statistics.
 
   Args:
-    counts: A `Tensor` containing a the total count of the data (one value).
+    counts: A `Tensor` containing the total count of the data (one value).
     mean_ss: A `Tensor` containing the mean sufficient statistics: the (possibly
       shifted) sum of the elements to average over.
     variance_ss: A `Tensor` containing the variance sufficient statistics: the
