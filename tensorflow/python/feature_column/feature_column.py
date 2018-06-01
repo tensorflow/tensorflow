@@ -1799,6 +1799,15 @@ class _EmbeddingColumnLayer(base.Layer):
     self._initializer = initializer
     self._weight_collections = weight_collections
 
+  def set_weight_collections(self, weight_collections):
+    """Sets the weight collections for the layer.
+
+    Args:
+      weight_collections: A list of collection names to which the Variable will
+        be added.
+    """
+    self._weight_collections = weight_collections
+
   def build(self, _):
     self._embedding_weight_var = self.add_variable(
         name='embedding_weights',
@@ -2604,6 +2613,7 @@ class _SharedEmbeddingColumn(
       sparse_ids = sparse_tensors.id_tensor
       sparse_weights = sparse_tensors.weight_tensor
 
+      self._layer.set_weight_collections(weight_collections)
       embedding_weights = self._layer(
           None, scope=variable_scope.get_variable_scope())
       # If we're in graph mode and this is called with a different graph,
@@ -2612,6 +2622,7 @@ class _SharedEmbeddingColumn(
           ops.get_default_graph() !=
           _get_graph_for_variable(embedding_weights)):
         self._reset_config()
+        self._layer.set_weight_collections(weight_collections)
         embedding_weights = self._layer(
             None, scope=variable_scope.get_variable_scope())
 
