@@ -146,6 +146,8 @@ enum BuiltinOperator : byte {
   SIN = 66,
   TRANSPOSE_CONV = 67,
   SPARSE_TO_DENSE = 68,
+  TILE = 69,
+  EXPAND_DIMS = 70,
 }
 
 // Options for the builtin operators.
@@ -200,6 +202,8 @@ union BuiltinOptions {
   SliceOptions,
   TransposeConvOptions,
   SparseToDenseOptions,
+  TileOptions,
+  ExpandDimsOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -421,6 +425,9 @@ table DequantizeOptions {
 table MaximumMinimumOptions {
 }
 
+table TileOptions {
+}
+
 table ArgMaxOptions {
   output_type : TensorType;
 }
@@ -450,6 +457,9 @@ table TransposeConvOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+}
+
+table ExpandDimsOptions {
 }
 
 table SparseToDenseOptions {

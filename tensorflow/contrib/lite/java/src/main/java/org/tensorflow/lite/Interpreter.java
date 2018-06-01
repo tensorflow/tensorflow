@@ -17,6 +17,7 @@ package org.tensorflow.lite;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -101,6 +102,27 @@ public final class Interpreter implements AutoCloseable {
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, numThreads);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   */
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
+   * specifies the number of threads used for inference.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   */
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
   }
 
   /**
@@ -229,6 +251,15 @@ public final class Interpreter implements AutoCloseable {
   public void close() {
     wrapper.close();
     wrapper = null;
+  }
+
+  @Override
+  protected void finalize() throws Throwable {
+    try {
+      close();
+    } finally {
+      super.finalize();
+    }
   }
 
   NativeInterpreterWrapper wrapper;
