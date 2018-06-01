@@ -171,5 +171,10 @@ int64 AvailableRam() {
   return INT64_MAX;
 }
 
+int NumHyperthreadsPerCore() {
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
+}
+
 }  // namespace port
 }  // namespace tensorflow

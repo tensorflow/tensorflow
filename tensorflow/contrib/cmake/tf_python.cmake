@@ -743,6 +743,13 @@ set(api_init_list_file "${tensorflow_source_dir}/api_init_files_list.txt")
 file(WRITE "${api_init_list_file}" "${api_init_files}")
 
 # Run create_python_api.py to generate __init__.py files.
+if (tensorflow_ENABLE_MKL_SUPPORT AND WIN32)
+    # add mkl dist dlls to system path for python
+    set(ENV{Path} "$ENV{Path};${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/lib")
+    if (tensorflow_ENABLE_MKLDNN_SUPPORT)
+        set(ENV{Path} "$ENV{Path};${CMAKE_CURRENT_BINARY_DIR}/mkldnn/src/mkldnn/src/Release")
+    endif (tensorflow_ENABLE_MKLDNN_SUPPORT)
+endif (tensorflow_ENABLE_MKL_SUPPORT)
 add_custom_command(
       OUTPUT ${api_init_files}
       DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
