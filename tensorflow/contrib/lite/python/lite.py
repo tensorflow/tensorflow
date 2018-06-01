@@ -165,17 +165,17 @@ class TocoConverter(object):
       graph_def = _graph_pb2.GraphDef()
       with open(graph_def_file, "rb") as f:
         file_content = f.read()
-        if not isinstance(file_content, str):
-          if six.PY3:
-            file_content = file_content.decode('utf-8')
-          else:
-            file_content = file_content.encode('utf-8')
 
       try:
         graph_def.ParseFromString(file_content)
       except (_text_format.ParseError, DecodeError):
         try:
           print("Ignore 'tcmalloc: large alloc' warnings.")
+          if not isinstance(file_content, str):
+            if six.PY3:
+              file_content = file_content.decode('utf-8')
+            else:
+              file_content = file_content.encode('utf-8')
           _text_format.Merge(file_content, graph_def)
         except (_text_format.ParseError, DecodeError):
           raise ValueError(
