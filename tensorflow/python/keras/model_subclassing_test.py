@@ -56,8 +56,8 @@ class SimpleTestModel(keras.Model):
     if self.use_bn:
       self.bn = keras.layers.BatchNormalization(axis=-1)
 
-  def call(self, inputs):
-    x = self.dense1(inputs)
+  def call(self, x):
+    x = self.dense1(x)
     if self.use_dp:
       x = self.dp(x)
     if self.use_bn:
