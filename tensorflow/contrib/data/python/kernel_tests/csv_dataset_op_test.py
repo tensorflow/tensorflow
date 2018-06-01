@@ -25,7 +25,6 @@ import time
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import readers as core_readers
@@ -62,12 +61,12 @@ class CsvDatasetOpTest(test.TestCase):
         op2 = sess.run(next2)
         self.assertAllEqual(op1, op2)
 
-  def setup_files(self, inputs, linebreak='\n'):
+  def setup_files(self, inputs):
     filenames = []
     for i, ip in enumerate(inputs):
-      fn = os.path.join(self.get_temp_dir(), 'temp_%d.csv' % i)
-      with open(fn, 'wb') as f:
-        f.write(linebreak.join(ip).encode('utf-8'))
+      fn = os.path.join(self.get_temp_dir(), 'temp_%d.txt' % i)
+      with open(fn, 'w') as f:
+        f.write('\n'.join(ip))
       filenames.append(fn)
     return filenames
 
@@ -87,47 +86,38 @@ class CsvDatasetOpTest(test.TestCase):
           inputs, **kwargs)
       self._assert_datasets_equal(g, dataset_actual, dataset_expected)
 
-  def _verify_output_or_err(self,
-                            sess,
-                            dataset,
-                            expected_output=None,
-                            expected_err_re=None):
-    nxt = dataset.make_one_shot_iterator().get_next()
-    if expected_err_re is None:
-      # Verify that output is expected, without errors
-      expected_output = [[
-          v.encode('utf-8') if isinstance(v, str) else v for v in op
-      ] for op in expected_output]
-      for value in expected_output:
-        op = sess.run(nxt)
-        self.assertAllEqual(op, value)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(nxt)
-    else:
-      # Verify that OpError is produced as expected
-      with self.assertRaisesOpError(expected_err_re):
-        while True:
-          try:
-            sess.run(nxt)
-          except errors.OutOfRangeError:
-            break
-
   def _test_dataset(self,
                     inputs,
                     expected_output=None,
                     expected_err_re=None,
-                    linebreak='\n',
                     **kwargs):
     """Checks that elements produced by CsvDataset match expected output."""
     # Convert str type because py3 tf strings are bytestrings
-    filenames = self.setup_files(inputs, linebreak)
+    filenames = self.setup_files(inputs)
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         dataset = readers.CsvDataset(filenames, **kwargs)
-        self._verify_output_or_err(sess, dataset, expected_output,
-                                   expected_err_re)
+        nxt = dataset.make_one_shot_iterator().get_next()
+        if expected_err_re is None:
+          # Verify that output is expected, without errors
+          expected_output = [[
+              v.encode('utf-8') if isinstance(v, str) else v for v in op
+          ] for op in expected_output]
+          for value in expected_output:
+            op = sess.run(nxt)
+            self.assertAllEqual(op, value)
+          with self.assertRaises(errors.OutOfRangeError):
+            sess.run(nxt)
+        else:
+          # Verify that OpError is produced as expected
+          with self.assertRaisesOpError(expected_err_re):
+            while True:
+              try:
+                sess.run(nxt)
+              except errors.OutOfRangeError:
+                break
 
-  def testCsvDataset_requiredFields(self):
+  def testCsvDataset_floatRequired(self):
     record_defaults = [[]] * 4
     inputs = [['1,2,3,4']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
@@ -147,36 +137,10 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['1.0,2.1,hello,4.3', '5.4,6.5,goodbye,8.7']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
-  def testCsvDataset_withEmptyFields(self):
-    record_defaults = [[0]] * 4
-    inputs = [[',,,', '1,1,1,', ',2,2,2']]
-    self._test_dataset(
-        inputs, [[0, 0, 0, 0], [1, 1, 1, 0], [0, 2, 2, 2]],
-        record_defaults=record_defaults)
-
-  def testCsvDataset_errWithUnquotedQuotes(self):
-    record_defaults = [['']] * 3
-    inputs = [['1,2"3,4']]
-    self._test_dataset(
-        inputs,
-        expected_err_re='Unquoted fields cannot have quotes inside',
-        record_defaults=record_defaults)
-
-  def testCsvDataset_ignoreErrWithUnquotedQuotes(self):
-    record_defaults = [['']] * 3
-    inputs = [['1,2"3,4', 'a,b,c"d', 'e,f,g']]
-    filenames = self.setup_files(inputs)
-    with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
-        dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
-        dataset = dataset.apply(error_ops.ignore_errors())
-        self._verify_output_or_err(sess, dataset, [['e', 'f', 'g']])
-
-  def testCsvDataset_withNoQuoteDelimAndUnquotedQuotes(self):
-    record_defaults = [['']] * 3
-    inputs = [['1,2"3,4']]
-    self._test_by_comparison(
-        inputs, record_defaults=record_defaults, use_quote_delim=False)
+  def testCsvDataset_withQuoted(self):
+    record_defaults = [['']] * 4
+    inputs = [['1.0,2.1,"hello, it is me",4.3', '5.4,6.5,goodbye,8.7']]
+    self._test_by_comparison(inputs, record_defaults=record_defaults)
 
   def testCsvDataset_mixedTypes(self):
     record_defaults = [
@@ -200,6 +164,11 @@ class CsvDatasetOpTest(test.TestCase):
     self._test_by_comparison(
         inputs, record_defaults=record_defaults, field_delim=':')
 
+  def testCsvDataset_withEmptyValues(self):
+    record_defaults = [[0]] * 4
+    inputs = [['1,,3,4', ',6,7,8']]
+    self._test_by_comparison(inputs, record_defaults=record_defaults)
+
   def testCsvDataset_withNaValue(self):
     record_defaults = [[0]] * 4
     inputs = [['1,NA,3,4', 'NA,6,7,8']]
@@ -207,8 +176,8 @@ class CsvDatasetOpTest(test.TestCase):
         inputs, record_defaults=record_defaults, na_value='NA')
 
   def testCsvDataset_withSelectCols(self):
-    record_defaults = [['']] * 2
-    inputs = [['1,2,3,4', '"5","6","7","8"']]
+    record_defaults = [[0]] * 2
+    inputs = [['1,2,3,4', '5,6,7,8']]
     self._test_by_comparison(
         inputs, record_defaults=record_defaults, select_cols=[1, 2])
 
@@ -221,16 +190,26 @@ class CsvDatasetOpTest(test.TestCase):
         record_defaults=record_defaults,
         select_cols=[3, 4])
 
-  def testCsvDataset_withOneCol(self):
-    record_defaults = [['NA']]
-    inputs = [['0', '', '2']]
-    self._test_dataset(
-        inputs, [['0'], ['NA'], ['2']], record_defaults=record_defaults)
-
   def testCsvDataset_withMultipleFiles(self):
     record_defaults = [[0]] * 4
     inputs = [['1,2,3,4', '5,6,7,8'], ['5,6,7,8']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
+
+  def testCsvDataset_withNewLine(self):
+    # In this case, we expect it to behave differently from
+    # TextLineDataset->map(decode_csv) since that flow has bugs
+    record_defaults = [['']] * 4
+    inputs = [['a,b,"""c""\n0","d\ne"', 'f,g,h,i']]
+    expected = [['a', 'b', '"c"\n0', 'd\ne'], ['f', 'g', 'h', 'i']]
+    self._test_dataset(inputs, expected, record_defaults=record_defaults)
+
+  def testCsvDataset_withMultipleNewLines(self):
+    # In this case, we expect it to behave differently from
+    # TextLineDataset->map(decode_csv) since that flow has bugs
+    record_defaults = [['']] * 4
+    inputs = [['a,"b\n\nx","""c""\n \n0","d\ne"', 'f,g,h,i']]
+    expected = [['a', 'b\n\nx', '"c"\n \n0', 'd\ne'], ['f', 'g', 'h', 'i']]
+    self._test_dataset(inputs, expected, record_defaults=record_defaults)
 
   def testCsvDataset_withLeadingAndTrailingSpaces(self):
     record_defaults = [[0.0]] * 4
@@ -287,10 +266,9 @@ class CsvDatasetOpTest(test.TestCase):
   def testCsvDataset_errorWithHeaderEmptyFile(self):
     record_defaults = [[0]] * 2
     inputs = [[]]
-    expected_err_re = "Can't read header of file"
     self._test_dataset(
         inputs,
-        expected_err_re=expected_err_re,
+        expected_err_re="Can't read header of empty file",
         record_defaults=record_defaults,
         header=True,
     )
@@ -306,7 +284,7 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['', '1,2']]  # First record is empty
     self._test_dataset(
         inputs,
-        expected_err_re='Expect 2 fields but have 1 in record',
+        expected_err_re='Expect 2 fields but have 0 in record',
         record_defaults=record_defaults)
 
   def testCsvDataset_withChainedOps(self):
@@ -323,7 +301,7 @@ class CsvDatasetOpTest(test.TestCase):
 
   def testCsvDataset_withTypeDefaults(self):
     # Testing using dtypes as record_defaults for required fields
-    record_defaults = [dtypes.float32, [0.0]]
+    record_defaults = [dtypes.float32, dtypes.float32]
     inputs = [['1.0,2.0', '3.0,4.0']]
     self._test_dataset(
         inputs,
@@ -348,162 +326,6 @@ class CsvDatasetOpTest(test.TestCase):
 
     self.assertEqual(result, sorted(result))
 
-## The following tests exercise parsing logic for quoted fields
-
-  def testCsvDataset_withQuoted(self):
-    record_defaults = [['']] * 4
-    inputs = [['"a","b","c :)","d"', '"e","f","g :(","h"']]
-    self._test_by_comparison(inputs, record_defaults=record_defaults)
-
-  def testCsvDataset_withOneColAndQuotes(self):
-    record_defaults = [['']]
-    inputs = [['"0"', '"1"', '"2"']]
-    self._test_dataset(
-        inputs, [['0'], ['1'], ['2']], record_defaults=record_defaults)
-
-  def testCsvDataset_withNewLine(self):
-    # In this case, we expect it to behave differently from
-    # TextLineDataset->map(decode_csv) since that flow has bugs
-    record_defaults = [['']] * 4
-    inputs = [['a,b,"""c""\n0","d\ne"', 'f,g,h,i']]
-    expected = [['a', 'b', '"c"\n0', 'd\ne'], ['f', 'g', 'h', 'i']]
-    self._test_dataset(inputs, expected, record_defaults=record_defaults)
-
-  def testCsvDataset_withNewLineInUnselectedCol(self):
-    record_defaults = [['']]
-    inputs = [['1,"2\n3",4', '5,6,7']]
-    self._test_dataset(
-        inputs,
-        expected_output=[['1'], ['5']],
-        record_defaults=record_defaults,
-        select_cols=[0])
-
-  def testCsvDataset_withMultipleNewLines(self):
-    # In this case, we expect it to behave differently from
-    # TextLineDataset->map(decode_csv) since that flow has bugs
-    record_defaults = [['']] * 4
-    inputs = [['a,"b\n\nx","""c""\n \n0","d\ne"', 'f,g,h,i']]
-    expected = [['a', 'b\n\nx', '"c"\n \n0', 'd\ne'], ['f', 'g', 'h', 'i']]
-    self._test_dataset(inputs, expected, record_defaults=record_defaults)
-
-  def testCsvDataset_errorWithTerminateMidRecord(self):
-    record_defaults = [['']] * 4
-    inputs = [['a,b,c,"a']]
-    self._test_dataset(
-        inputs,
-        expected_err_re=
-        'Reached end of file without closing quoted field in record',
-        record_defaults=record_defaults)
-
-  def testCsvDataset_withEscapedQuotes(self):
-    record_defaults = [['']] * 4
-    inputs = [['1.0,2.1,"she said: ""hello""",4.3', '5.4,6.5,goodbye,8.7']]
-    self._test_by_comparison(inputs, record_defaults=record_defaults)
-
-
-## Testing that parsing works with all buffer sizes, quoted/unquoted fields,
-## and different types of line breaks
-
-  def testCsvDataset_withInvalidBufferSize(self):
-    record_defaults = [['']] * 4
-    inputs = [['a,b,c,d']]
-    self._test_dataset(
-        inputs,
-        expected_err_re='buffer_size should be positive',
-        record_defaults=record_defaults,
-        buffer_size=0)
-
-  def testCsvDataset_withBufferSize(self):
-    record_defaults = [['NA']] * 3
-    inputs = [['abc,def,ghi', '0,1,2', ',,']]
-    expected = [['abc', 'def', 'ghi'], ['0', '1', '2'], ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs, expected, record_defaults=record_defaults, buffer_size=i + 1)
-
-  def testCsvDataset_withCR(self):
-    # Test that when the line separator is '\r', parsing works with all buffer
-    # sizes
-    record_defaults = [['NA']] * 3
-    inputs = [['abc,def,ghi', '0,1,2', ',,']]
-    expected = [['abc', 'def', 'ghi'], ['0', '1', '2'], ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-
-  def testCsvDataset_withCRLF(self):
-    # Test that when the line separator is '\r\n', parsing works with all buffer
-    # sizes
-    record_defaults = [['NA']] * 3
-    inputs = [['abc,def,ghi', '0,1,2', ',,']]
-    expected = [['abc', 'def', 'ghi'], ['0', '1', '2'], ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r\n',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-
-  def testCsvDataset_withBufferSizeAndQuoted(self):
-    record_defaults = [['NA']] * 3
-    inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
-    expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
-                ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\n',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-    self._test_dataset(
-        inputs, expected, linebreak='\n', record_defaults=record_defaults)
-
-  def testCsvDataset_withCRAndQuoted(self):
-    # Test that when the line separator is '\r', parsing works with all buffer
-    # sizes
-    record_defaults = [['NA']] * 3
-    inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
-    expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
-                ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-    self._test_dataset(
-        inputs, expected, linebreak='\r', record_defaults=record_defaults)
-
-  def testCsvDataset_withCRLFAndQuoted(self):
-    # Test that when the line separator is '\r\n', parsing works with all buffer
-    # sizes
-    record_defaults = [['NA']] * 3
-    inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
-    expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
-                ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r\n',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-    self._test_dataset(
-        inputs, expected, linebreak='\r\n', record_defaults=record_defaults)
-
 
 class CsvDatasetBenchmark(test.Benchmark):
   """Benchmarks for the various ways of creating a dataset from CSV files.
@@ -521,7 +343,7 @@ class CsvDatasetBenchmark(test.Benchmark):
     self._filenames = []
     for n in self._num_cols:
       fn = os.path.join(self._temp_dir, 'file%d.csv' % n)
-      with open(fn, 'wb') as f:
+      with open(fn, 'w') as f:
         # Just write 100 rows and use `repeat`... Assumes the cost
         # of creating an iterator is not significant
         row = ','.join([str_val for _ in range(n)])
