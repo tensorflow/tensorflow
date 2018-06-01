@@ -122,13 +122,7 @@ genrule(
         "api/user_ops/__init__.py",
         # END GENERATED FILES
     ],
-    # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
-    # works. Windows has issues with the command so skip PYTHON_BIN_PATH
-    # for now.
-    cmd = select({
-        "@bazel_tools//src/conditions:windows": "",
-        "//conditions:default": "$${PYTHON_BIN_PATH} ",
-    }) + "$(location create_python_api) $(OUTS)",
+    cmd = "$(location create_python_api) $(OUTS)",
     tools = ["create_python_api"],
 )
 
