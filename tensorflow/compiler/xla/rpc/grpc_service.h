@@ -54,6 +54,10 @@ class GRPCService : public grpc::XlaService::Service {
                          const ExecuteRequest* arg,
                          ExecuteResponse* result) override;
 
+  ::grpc::Status ExecuteGraph(::grpc::ServerContext* context,
+                              const ExecuteGraphRequest* arg,
+                              ExecuteResponse* result) override;
+
   ::grpc::Status ExecuteAsync(::grpc::ServerContext* context,
                               const ExecuteAsyncRequest* arg,
                               ExecuteAsyncResponse* result) override;

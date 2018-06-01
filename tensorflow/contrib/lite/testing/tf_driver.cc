@@ -103,7 +103,7 @@ void TfDriver::LoadModel(const string& bin_file_path) {
   session_.reset(tensorflow::NewSession(options));
   auto status = session_->Create(graphdef);
   if (!status.ok()) {
-    Invalidate("Failed to create session");
+    Invalidate("Failed to create session. " + status.error_message());
   }
 }
 

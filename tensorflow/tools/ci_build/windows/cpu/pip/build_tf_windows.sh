@@ -54,18 +54,24 @@ function cleanup {
 trap cleanup EXIT
 
 skip_test=0
+release_build=0
 
 for ARG in "$@"; do
   if [[ "$ARG" == --skip_test ]]; then
     skip_test=1
   elif [[ "$ARG" == --enable_gcs_remote_cache ]]; then
     set_gcs_remote_cache_options
+  elif [[ "$ARG" == --release_build ]]; then
+    release_build=1
   fi
 done
 
-# --define=override_eigen_strong_inline=true speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
-# by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
-echo "build --define=override_eigen_strong_inline=true" >> "${TMP_BAZELRC}"
+if [[ "$release_build" != 1 ]]; then
+  # --define=override_eigen_strong_inline=true speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
+  # by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
+  # Because this hurts the performance of TF, we don't enable it in release build.
+  echo "build --define=override_eigen_strong_inline=true" >> "${TMP_BAZELRC}"
+fi
 
 echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
 

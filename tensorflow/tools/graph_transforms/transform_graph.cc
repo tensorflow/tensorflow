@@ -65,19 +65,19 @@ Status ParseTransformParameters(const string& transforms_string,
               .GetResult(&remaining, &transform_name);
       if (!found_transform_name) {
         return errors::InvalidArgument("Looking for transform name, but found ",
-                                       remaining.ToString().c_str());
+                                       std::string(remaining).c_str());
       }
       if (Scanner(remaining).OneLiteral("(").GetResult(&remaining, &match)) {
         state = TRANSFORM_PARAM_NAME;
       } else {
         // Add a transform with no parameters.
-        params_list->push_back({transform_name.ToString(), func_parameters});
+        params_list->push_back({std::string(transform_name), func_parameters});
         transform_name = "";
         state = TRANSFORM_NAME;
       }
     } else if (state == TRANSFORM_PARAM_NAME) {
       if (Scanner(remaining).OneLiteral(")").GetResult(&remaining, &match)) {
-        params_list->push_back({transform_name.ToString(), func_parameters});
+        params_list->push_back({std::string(transform_name), func_parameters});
         transform_name = "";
         state = TRANSFORM_NAME;
       } else {
@@ -92,13 +92,13 @@ Status ParseTransformParameters(const string& transforms_string,
         if (!found_parameter_name) {
           return errors::InvalidArgument(
               "Looking for parameter name, but found ",
-              remaining.ToString().c_str());
+              std::string(remaining).c_str());
         }
         if (Scanner(remaining).OneLiteral("=").GetResult(&remaining, &match)) {
           state = TRANSFORM_PARAM_VALUE;
         } else {
           return errors::InvalidArgument("Looking for =, but found ",
-                                         remaining.ToString().c_str());
+                                         std::string(remaining).c_str());
         }
       }
     } else if (state == TRANSFORM_PARAM_VALUE) {
@@ -120,10 +120,10 @@ Status ParseTransformParameters(const string& transforms_string,
       }
       if (!found_parameter_value) {
         return errors::InvalidArgument("Looking for parameter name, but found ",
-                                       remaining.ToString().c_str());
+                                       std::string(remaining).c_str());
       }
-      func_parameters[parameter_name.ToString()].push_back(
-          parameter_value.ToString());
+      func_parameters[std::string(parameter_name)].push_back(
+          std::string(parameter_value));
       // Eat up any trailing quotes.
       Scanner(remaining).ZeroOrOneLiteral("\"").GetResult(&remaining, &match);
       Scanner(remaining).ZeroOrOneLiteral("'").GetResult(&remaining, &match);
@@ -141,7 +141,7 @@ std::string ExpandPath(const std::string& path_string) {
     return path_string;
   }
 
-  const char* home = NULL;
+  const char* home = nullptr;
   std::string::size_type prefix = path_string.find_first_of('/');
   if (path_string.length() == 1 || prefix == 1) {
     // The value of $HOME, e.g., ~/foo

@@ -220,7 +220,7 @@ std::unordered_set<string> Scope::Impl::GetColocationConstraints(
     for (const string& entry : node_constraints) {
       StringPiece s(entry);
       if (str_util::ConsumePrefix(&s, kColocationGroupPrefix)) {
-        current_constraints.insert(s.ToString());
+        current_constraints.insert(std::string(s));
       }
     }
   } else {

@@ -2,7 +2,7 @@ path: "tensorflow.train.ProximalGradientDescentOptimizer"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.proximal_gradient_descent.ProximalGradientDescentOptimizer\'>"
   is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "GATE_GRAPH"

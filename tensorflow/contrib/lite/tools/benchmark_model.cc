@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/string_util.h"
-#include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -354,7 +354,7 @@ int Main(int argc, char** argv) {
   string output_layer_string;  // e.g.: output
   int num_runs = 50;
   string run_delay = "-1.0";
-  int num_threads = -1;
+  int num_threads = 1;
   string benchmark_name = "";
   string output_prefix = "";
   int warmup_runs = 1;

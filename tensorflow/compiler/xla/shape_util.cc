@@ -55,6 +55,23 @@ string ShapeIndexView::ToString() const {
       "}");
 }
 
+bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
+  if (size() != other.size()) {
+    return false;
+  }
+  for (auto it = begin(), other_it = other.begin(); it != end();
+       ++it, ++other_it) {
+    if (*it != *other_it) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ShapeIndexView::operator!=(const ShapeIndexView& other) const {
+  return !(*this == other);
+}
+
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   out << shape_index.ToString();
   return out;
@@ -511,7 +528,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
         break;
       } else if (must_end) {
         return InvalidArgument("Expected end of tuple; got: \"%s\"",
-                               s->ToString().c_str());
+                               std::string(*s).c_str());
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
@@ -541,7 +558,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       if (!tensorflow::strings::safe_strto64(input.c_str(), &element)) {
         return InvalidArgument(
             "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-            input.c_str(), s->ToString().c_str());
+            input.c_str(), std::string(*s).c_str());
       }
       return element;
     };
@@ -594,7 +611,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   }
 
   return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                         s->ToString().c_str());
+                         std::string(*s).c_str());
 }
 }  // namespace
 
@@ -603,7 +620,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
   if (!s.empty()) {
     return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                           s.ToString().c_str());
+                           std::string(s).c_str());
   }
   return shape;
 }
@@ -861,6 +878,27 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 /* static */
 bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return !IsTuple(GetSubshape(shape, index));
+}
+
+/* static */ int64 ShapeUtil::GetLeafCount(const Shape& shape) {
+  int64 count = 0;
+  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex& index) {
+    if (IsLeafIndex(shape, index)) {
+      ++count;
+    }
+  });
+  return count;
+}
+
+/* static */ std::vector<ShapeUtil::IndexedShape> ShapeUtil::GetLeafShapes(
+    const Shape& shape) {
+  std::vector<IndexedShape> leaves;
+  ForEachSubshape(shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
+    if (IsLeafIndex(shape, index)) {
+      leaves.emplace_back(index, sub_shape);
+    }
+  });
+  return leaves;
 }
 
 /* static */ Shape ShapeUtil::StripDegenerateDimensions(const Shape& shape) {

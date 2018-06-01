@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 
 #ifdef INTEL_MKL
+#ifdef _OPENMP
 #include <omp.h>
-#endif
+#endif  // _OPENMP
+#endif  // INTEL_MKL
 #include <string.h>
 
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -57,7 +59,10 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   // MKL library executes ops in parallel using OMP threads
   // Set inter_op conservatively to avoid thread oversubscription that could
   // lead to severe perf degradations and OMP resource exhaustion
-  const int mkl_intra_op = omp_get_max_threads();
+  int mkl_intra_op = 1;
+#ifdef _OPENMP
+  mkl_intra_op = omp_get_max_threads();
+#endif  // _OPENMP
   CHECK_GE(mkl_intra_op, 1);
   const int32 mkl_inter_op = std::max(
       (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
@@ -68,7 +73,7 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 #else
   // Default to using the number of cores available in the process.
   return port::NumSchedulableCPUs();
-#endif
+#endif  // INTEL_MKL
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(

@@ -553,8 +553,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           features=features,
           labels=labels,
           mode=mode,
-          head=head_lib.  # pylint: disable=protected-access
-          _regression_head_with_mean_squared_error_loss(
+          head=head_lib._regression_head(  # pylint: disable=protected-access
               label_dimension=label_dimension, weight_column=weight_column,
               loss_reduction=loss_reduction),
           linear_feature_columns=linear_feature_columns,

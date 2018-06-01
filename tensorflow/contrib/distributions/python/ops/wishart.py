@@ -107,7 +107,7 @@ class _WishartLinearOperator(distribution.Distribution):
       ValueError: if df < k, where scale operator event shape is
         `(k, k)`
     """
-    parameters = locals()
+    parameters = dict(locals())
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
     with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[df, scale_operator]):
@@ -530,7 +530,7 @@ class WishartCholesky(_WishartLinearOperator):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[scale]) as name:
       with ops.name_scope("init", values=[scale]):
         scale = ops.convert_to_tensor(scale)
@@ -646,7 +646,7 @@ class WishartFull(_WishartLinearOperator):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[scale]):
         scale = ops.convert_to_tensor(scale)

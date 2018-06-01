@@ -24,8 +24,11 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -152,6 +155,15 @@ class Compiler {
       std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       DeviceMemoryAllocator* device_allocator) = 0;
 
+  // Returns the backend configurations that the backend will consider for the
+  // given HLO. Returns no configurations if the backend does not support
+  // configurations for the given HLO.
+  //
+  // The stream executor is passed in to provide information about the hardware
+  // that the backend configurations would be targeting.
+  virtual std::vector<string> ComputeBackendConfigs(
+      const HloInstruction& hlo, se::StreamExecutor* executor) const;
+
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
@@ -181,9 +193,9 @@ class Compiler {
 
   // Returns a function that computes the size in bytes of a given
   // logical buffer.
-  std::function<int64(const LogicalBuffer&)> BufferSizeBytesFunction() {
+  std::function<int64(const BufferValue&)> BufferSizeBytesFunction() {
     HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
-    return [shape_size](const LogicalBuffer& buffer) {
+    return [shape_size](const BufferValue& buffer) {
       return shape_size(buffer.shape());
     };
   }
