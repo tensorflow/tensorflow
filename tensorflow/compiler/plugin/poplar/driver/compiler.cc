@@ -132,7 +132,7 @@ class EntryVisitor : public FullVisitor {
     parameter_shapes[inst->parameter_number()] = inst->shape();
 
     auto num_streaming = inst->parent()->num_parameters() -
-        resources_.annotations.num_resource_variables;
+                         resources_.annotations.num_resource_variables;
 
     parameter_streamed[inst->parameter_number()] =
         (inst->parameter_number() < num_streaming) && OkToStream(inst->shape());
@@ -147,9 +147,6 @@ class EntryVisitor : public FullVisitor {
           layout->parameter_shape(inst->parameter_number());
       module_shapes = FlattenedXlaShape(mod_shape);
     }
-
-    poplar::DataTransferOptions opt;
-    opt.convertHalf = true;
 
     for (unsigned i = 0; i < shapes.size(); i++) {
       poplar::Tensor out;
@@ -167,14 +164,14 @@ class EntryVisitor : public FullVisitor {
 
       if (parameter_streamed[inst->parameter_number()]) {
         auto fifo = graph_.addHostToDeviceFIFO(
-            GetInputCopyHandle(inst->parameter_number(), i),
-            out.elementType(), out.numElements(), opt);
+            GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
+            out.numElements());
 
         sequence.add(poplar::program::Copy(fifo, out));
 
       } else {
         graph_.createHostWrite(GetInputCopyHandle(inst->parameter_number(), i),
-                               out, opt);
+                               out);
       }
     }
     return Status::OK();
@@ -182,9 +179,6 @@ class EntryVisitor : public FullVisitor {
 
   Status FinishVisit(HloInstruction* inst) {
     HloComputation* comp = inst->parent();
-
-    poplar::DataTransferOptions opt;
-    opt.convertHalf = true;
 
     auto outputs = FindInstructionOutputs(tensor_map, inst);
 
@@ -207,7 +201,7 @@ class EntryVisitor : public FullVisitor {
 
       if (!output_streamed[o]) {
         poplar::Tensor out = ConvertFromDeviceLayout(shapes[o], outputs[o]);
-        graph_.createHostRead(GetOutputCopyHandle(o), out, opt);
+        graph_.createHostRead(GetOutputCopyHandle(o), out);
       }
     }
 
@@ -233,7 +227,7 @@ class EntryVisitor : public FullVisitor {
     if (OkToStream(inst->shape())) {
       const auto* root = inst->parent()->root_instruction();
       auto num_streaming = FlattenedXlaShape(root->shape()).size() -
-          resources_.annotations.num_resource_variables;
+                           resources_.annotations.num_resource_variables;
       if (root->opcode() == HloOpcode::kTuple) {
         for (int i = 0; i < root->operand_count(); i++) {
           if (root->operand(i) == inst) {
@@ -253,15 +247,11 @@ class EntryVisitor : public FullVisitor {
                   poplar::Tensor out =
                       ConvertFromDeviceLayout(shapes[index], outputs[o]);
 
-                  poplar::DataTransferOptions opt;
-                  opt.convertHalf = true;
-
                   auto fifo = graph_.addDeviceToHostFIFO(
                       GetOutputCopyHandle(index), out.elementType(),
-                      out.numElements(), opt);
+                      out.numElements());
 
                   sequence.add(poplar::program::Copy(out, fifo));
-
                 }
               }
             }
