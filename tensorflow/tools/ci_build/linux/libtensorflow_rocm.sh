@@ -14,21 +14,9 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to produce binary releases for libtensorflow (C API, Java jars etc.).
-# Intended to be run inside a docker container. See libtensorflow_docker.sh
+# Script to build a binary releases of libtensorflow with GPU support.
 
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# See comments at the top of this file for details.
-source "${SCRIPT_DIR}/../builds/libtensorflow.sh"
-
-SUFFIX="-cpu-linux-"
-if [ "${TF_NEED_CUDA}" == "1" ]; then
-  SUFFIX="-gpu-linux-"
-fi
-if [ "${TF_NEED_ROCM}" == "1" ]; then
-  SUFFIX="-rocm-linux-"
-fi
-
-build_libtensorflow_tarball "${SUFFIX}$(uname -m)"
+export TF_NEED_ROCM=1
+"${SCRIPT_DIR}/libtensorflow_docker.sh"
