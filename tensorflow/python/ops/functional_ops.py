@@ -455,7 +455,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         lambda i, _: i < n, compute, (i, accs_ta),
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
-        swap_memory=swap_memory)
+        swap_memory=swap_memory,
+        maximum_iterations=n)
     results_flat = [r.stack() for r in r_a]
 
     n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]

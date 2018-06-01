@@ -125,7 +125,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::MapAndBatch")}));
@@ -139,7 +139,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "MapAndBatchDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "MapAndBatchDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -188,7 +190,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             batch_results_((params.dataset->num_parallel_calls_ +
                             params.dataset->batch_size_ - 1) /
                            params.dataset->batch_size_) {
@@ -206,6 +207,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         while (num_calls_ > 0) {
           cond_var_.wait(l);
         }
+      }
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -647,7 +652,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       int64 num_calls_ GUARDED_BY(mu_) = 0;
       // Counts the total number of calls.
       int64 call_counter_ GUARDED_BY(mu_) = 0;
-      const std::unique_ptr<IteratorBase> input_impl_;
+      std::unique_ptr<IteratorBase> input_impl_;
       // Identifies the next batch to be read by the caller.
       int64 input_batch_ GUARDED_BY(mu_) = 0;
       // Identifies the next batch to create.

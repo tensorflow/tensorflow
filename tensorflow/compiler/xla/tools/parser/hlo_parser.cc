@@ -56,10 +56,10 @@ class HloParser {
   // Returns the error information.
   string GetError() const { return Join(error_, "\n"); }
 
-  // Stand alone parsing for sharding. The parser string is supposed to
-  // contain the body of the sharding, i.e. just the rhs of the "sharding={...}"
-  // attribute string.
+  // Stand alone parsing utils for various aggregate data types.
   StatusOr<HloSharding> ParseShardingOnly();
+  StatusOr<Window> ParseWindowOnly();
+  StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
 
  private:
   // ParseXXX returns false if an error occurred.
@@ -169,7 +169,9 @@ class HloParser {
   bool ParseComputationName(HloComputation** value);
   // Parses a list of names and finds the corresponding hlo instructions.
   bool ParseInstructionNames(std::vector<HloInstruction*>* instructions);
-  bool ParseWindow(Window* window);
+  // Pass expect_outer_curlies == true when parsing a Window in the context of a
+  // larger computation.  Pass false when parsing a stand-alone Window string.
+  bool ParseWindow(Window* window, bool expect_outer_curlies);
   bool ParseConvolutionDimensionNumbers(ConvolutionDimensionNumbers* dnums);
   bool ParsePaddingConfig(PaddingConfig* padding);
   bool ParseMetadata(OpMetadata* metadata);
@@ -1125,7 +1127,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     instruction->set_metadata(*metadata);
   }
   if (backend_config) {
-    instruction->set_backend_config(std::move(*backend_config));
+    instruction->set_raw_backend_config_string(std::move(*backend_config));
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
@@ -1933,7 +1935,7 @@ bool HloParser::ParseAttributeHelper(
       }
       case AttrTy::kWindow: {
         Window result;
-        if (!ParseWindow(&result)) {
+        if (!ParseWindow(&result, /*expect_outer_curlies=*/true)) {
           return false;
         }
         static_cast<optional<Window>*>(attr_out_ptr)->emplace(result);
@@ -2051,9 +2053,10 @@ bool HloParser::ParseComputationName(HloComputation** value) {
 // ::= '{' size stride? pad? lhs_dilate? rhs_dilate? '}'
 // The subattributes can appear in any order. 'size=' is required, others are
 // optional.
-bool HloParser::ParseWindow(Window* window) {
+bool HloParser::ParseWindow(Window* window, bool expect_outer_curlies) {
   LocTy loc = lexer_.GetLoc();
-  if (!ParseToken(TokKind::kLbrace, "expected '{' to start window attribute")) {
+  if (expect_outer_curlies &&
+      !ParseToken(TokKind::kLbrace, "expected '{' to start window attribute")) {
     return false;
   }
 
@@ -2063,7 +2066,9 @@ bool HloParser::ParseWindow(Window* window) {
   std::vector<int64> lhs_dilate;
   std::vector<int64> rhs_dilate;
   std::vector<int64> rhs_reversal;
-  while (lexer_.GetKind() != TokKind::kRbrace) {
+  const auto end_token =
+      expect_outer_curlies ? TokKind::kRbrace : TokKind::kEof;
+  while (lexer_.GetKind() != end_token) {
     LocTy attr_loc = lexer_.GetLoc();
     string field_name;
     if (!ParseAttributeName(&field_name)) {
@@ -2127,7 +2132,8 @@ bool HloParser::ParseWindow(Window* window) {
     window->mutable_dimensions(i)->set_window_reversal(
         rhs_reversal.empty() ? false : (rhs_reversal[i] == 1));
   }
-  return ParseToken(TokKind::kRbrace, "expected '}' to end window attribute");
+  return !expect_outer_curlies ||
+         ParseToken(TokKind::kRbrace, "expected '}' to end window attribute");
 }
 
 // This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
@@ -2692,6 +2698,32 @@ StatusOr<HloSharding> HloParser::ParseShardingOnly() {
   return HloSharding::FromProto(op_sharding);
 }
 
+StatusOr<Window> HloParser::ParseWindowOnly() {
+  lexer_.Lex();
+  Window window;
+  if (!ParseWindow(&window, /*expect_outer_curlies=*/false)) {
+    return InvalidArgument("Syntax error:\n%s", GetError().c_str());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after window");
+  }
+  return window;
+}
+
+StatusOr<ConvolutionDimensionNumbers>
+HloParser::ParseConvolutionDimensionNumbersOnly() {
+  lexer_.Lex();
+  ConvolutionDimensionNumbers dnums;
+  if (!ParseConvolutionDimensionNumbers(&dnums)) {
+    return InvalidArgument("Syntax error:\n%s", GetError().c_str());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument(
+        "Syntax error:\nExtra content after convolution dnums");
+  }
+  return dnums;
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> Parse(StringPiece str,
@@ -2712,6 +2744,19 @@ StatusOr<HloSharding> ParseSharding(tensorflow::StringPiece str) {
   HloModuleConfig config;
   HloParser parser(str, config);
   return parser.ParseShardingOnly();
+}
+
+StatusOr<Window> ParseWindow(tensorflow::StringPiece str) {
+  HloModuleConfig config;
+  HloParser parser(str, config);
+  return parser.ParseWindowOnly();
+}
+
+StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
+    tensorflow::StringPiece str) {
+  HloModuleConfig config;
+  HloParser parser(str, config);
+  return parser.ParseConvolutionDimensionNumbersOnly();
 }
 
 }  // namespace tools

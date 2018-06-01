@@ -236,6 +236,10 @@ typedef struct {
   int stride_height;
 } TfLiteTransposeConvParams;
 
+typedef struct {
+  bool validate_indices;
+} TfLiteSparseToDenseParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

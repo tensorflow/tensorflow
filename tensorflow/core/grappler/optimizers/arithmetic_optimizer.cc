@@ -194,57 +194,6 @@ void SetSourceDataType(DataType dtype, NodeDef* node) {
   SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
 }
 
-bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
-
-// Returns whether `reshape` is an identity op. The tensor that `reshape`
-// reshapes is the `output_pos`-th output of node `input`.
-bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
-                       const int output_pos,
-                       const GraphProperties& graph_properties) {
-  const std::vector<OpInfo::TensorProperties>& reshape_props =
-      graph_properties.GetOutputProperties(reshape.name());
-  const std::vector<OpInfo::TensorProperties>& input_props =
-      graph_properties.GetOutputProperties(input.name());
-  if (reshape_props.empty() || input_props.size() <= output_pos) {
-    return false;
-  }
-
-  const PartialTensorShape& src_shape = input_props[output_pos].shape();
-  const PartialTensorShape& dst_shape = reshape_props[0].shape();
-
-  if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
-    return false;
-  }
-
-  if (!dst_shape.IsCompatibleWith(src_shape)) {
-    return false;
-  }
-
-  // Returns false when src_shape or dst_shape has >=2 dimensions with unknown
-  // sizes.
-  auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
-    auto dim_sizes = partial_shape.dim_sizes();
-    return std::count_if(dim_sizes.begin(), dim_sizes.end(),
-                         [](int dim) { return dim < 0; });
-  };
-  int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
-  int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
-  if (src_num_unknown_dim_sizes > 1 || dst_num_unknown_dim_sizes > 1) {
-    return false;
-  }
-
-  // If dst_num_unknown_dim_sizes != src_num_unknown_dim_sizes we would weaken
-  // shape inference in subsequent passes if we removed this reshape.
-  if (src_num_unknown_dim_sizes != dst_num_unknown_dim_sizes) {
-    return false;
-  }
-
-  // Remove the reshape if both are fully defined or partially defined and the
-  // unknown or symbolic shape appears on the same dimension, i.e., if
-  // IsIdenticalTo returns true.
-  return dst_shape.IsIdenticalTo(src_shape);
-}
-
 NodeDef* GetTailOfValuePreservingChain(
     const NodeDef& node, const NodeMap& node_map,
     const std::unordered_set<string>& nodes_to_preserve) {
@@ -1856,6 +1805,159 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   }
 };
 
+// Bypass redundant reshape nodes:
+//
+//   Reshape                    Reshape  <-+
+//      ^                                  |
+//      |                                  |
+//   Reshape       becomes      Reshape    |
+//      ^                                  |
+//      |                                  |
+//    input                      input  ---+
+class RemoveRedundantReshape : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveRedundantReshape(const GraphOptimizerContext& ctx,
+                                  const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveRedundantReshape", ctx, ctx_ext) {}
+  ~RemoveRedundantReshape() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsReshape(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+
+    // 1. Bypass reshape followed by reshape.
+    if (IsReshape(*input) && !HasControlInputs(*input)) {
+      node->set_input(0, input->input(0));
+      ctx().node_map->UpdateInput(node->name(), input->name(), input->input(0));
+      *simplified_node_name = node->name();
+      AddToOptimizationQueue(node);
+      return Status::OK();
+    }
+
+    // 2. If the reshape is a no-op, forward its input to its consumers, unless
+    // it anchors a control dependency since we want to make sure that control
+    // dependency is triggered.
+    if (ReshapeIsIdentity(*node) && !HasControlInputs(*node)) {
+      *simplified_node_name = node->input(0);
+      return Status::OK();
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  // Returns whether `reshape` is an identity op.
+  bool ReshapeIsIdentity(const NodeDef& reshape) {
+    OpInfo::TensorProperties reshape_props;
+    OpInfo::TensorProperties input_props;
+
+    if (!GetTensorProperties(reshape.name(), &reshape_props).ok() ||
+        !GetTensorProperties(reshape.input(0), &input_props).ok()) {
+      return false;
+    }
+
+    return ShapesSymbolicallyEqual(input_props.shape(), reshape_props.shape());
+  }
+};
+
+// Reorder Cast and Transpose if beneficial.
+//
+// A common pattern after the layout optimizer is casting an uint8 NHWC
+// image to float before transposing it to NCHW. It is beneficial to reorder
+// the cast and the transpose to make the transpose process smaller amount
+// of data. This optimization converts
+//   Transpose(Cast(image, dst_type), perm)
+// to
+//   Cast(Transpose(image, perm), dst_type)
+// when sizeof(image.type) < sizeof(dst_type).
+//
+// TODO(jingyue): This optimization can be generalized to a cast followed by
+// a chain of ops that merely reorder elements (e.g. Reshape and
+// DepthToSpace).
+class ReorderCastAndTranspose : public ArithmeticOptimizerStage {
+ public:
+  explicit ReorderCastAndTranspose(const GraphOptimizerContext& ctx,
+                                   const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReorderCastAndTranspose", ctx, ctx_ext) {}
+  ~ReorderCastAndTranspose() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsTranspose(*node) && NodeIsOnCpuOrGpu(node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const NodeDef* transpose = node;
+
+    // Verify that input to Transpose is the Cast op.
+    NodeDef* cast;
+    TF_RETURN_IF_ERROR(GetInputNode(transpose->input(0), &cast));
+    if (!IsCast(*cast)) return Status::OK();
+
+    // Input to the Cast-Transpose chain.
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(cast->input(0), &input));
+
+    const DataType src_type = GetSourceDataType(*cast);
+    const DataType dst_type = GetDestinationDataType(*cast);
+
+    const string src_type_name = DataTypeString(src_type);
+    const string dst_type_name = DataTypeString(dst_type);
+
+    // Check if nodes were not already optimized.
+    const string optimized_cast_name =
+        OptimizedNodeName(ParseNodeScopeAndName(cast->name()), dst_type_name);
+    const string optimized_transpose_name = OptimizedNodeName(
+        ParseNodeScopeAndName(transpose->name()), src_type_name);
+
+    bool is_already_optimized =
+        ctx().node_map->NodeExists(optimized_transpose_name) ||
+        ctx().node_map->NodeExists(optimized_cast_name);
+
+    if (IsNumberType(src_type) && IsNumberType(dst_type) &&
+        DataTypeSize(src_type) < DataTypeSize(dst_type) &&
+        !is_already_optimized) {
+      NodeDef* new_transpose = AddCopyNode(optimized_transpose_name, transpose);
+      (*new_transpose->mutable_attr())["T"].set_type(src_type);
+      new_transpose->set_input(0, cast->input(0));
+
+      ctx().node_map->AddOutput(input->name(), new_transpose->name());
+      ctx().node_map->AddOutput(NodeName(new_transpose->input(1)),
+                                new_transpose->name());
+
+      NodeDef* new_cast = AddCopyNode(optimized_cast_name, cast);
+      new_cast->set_input(0, new_transpose->name());
+      ctx().node_map->AddOutput(new_transpose->name(), new_cast->name());
+
+      AddToOptimizationQueue(new_transpose);
+      ForwardControlDependencies(new_transpose, {cast, node});
+
+      *simplified_node_name = new_cast->name();
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  // This optimization can be dangerous on devices other than CPU and
+  // GPU. The transpose might not be implemented for image.type, or
+  // might be slower with image.type than with dst_type.
+  bool NodeIsOnCpuOrGpu(const NodeDef* node) const {
+    using str_util::StrContains;
+
+    string task;
+    string device;
+
+    return DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
+           (StrContains(device, DEVICE_CPU) || StrContains(device, DEVICE_GPU));
+  }
+
+  bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
+};
+
 }  // namespace
 
 class UniqueNodes {
@@ -2108,99 +2210,6 @@ void ArithmeticOptimizer::ForwardControlDependencies(
 // ArithmeticOptimizerStage
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify) {
-
-  if (node->op() == "Reshape") {
-    //   Reshape
-    //      ^
-    //      |
-    //   Reshape
-    //      ^
-    //      |
-    //    input
-    //
-    // becomes
-    //
-    //   Reshape <-+
-    //             |
-    //   Reshape   |
-    //      ^      |
-    //      |      |
-    //    input ---+
-    NodeDef* reshape = const_cast<NodeDef*>(node);
-    int output_pos = 0;
-    string input_node_name = ParseNodeName(reshape->input(0), &output_pos);
-    const NodeDef* input = node_map_->GetNode(input_node_name);
-    if (input->op() == "Reshape" && !HasControlInputs(*input)) {
-      reshape->set_input(0, input->input(0));
-      node_map_->UpdateInput(reshape->name(), input->name(), input->input(0));
-      nodes_to_simplify->PushBack(reshape);
-      return reshape->name();
-    }
-
-    // If the reshape is a no-op, forward its input to its consumers, unless it
-    // anchors a control dependency since we want to make sure that control
-    // dependency is triggered.
-    if (ReshapeIsIdentity(*reshape, *input, output_pos, *graph_properties_) &&
-        !HasControlInputs(*reshape)) {
-      return reshape->input(0);
-    }
-  }
-
-  if (node->op() == "Transpose") {
-    // Reorder Cast and Transpose if beneficial.
-    //
-    // A common pattern after the layout optimizer is casting an uint8 NHWC
-    // image to float before transposing it to NCHW. It is beneficial to reorder
-    // the cast and the transpose to make the transpose process smaller amount
-    // of data. This optimization converts
-    //   Transpose(Cast(image, dst_type), perm)
-    // to
-    //   Cast(Transpose(image, perm), dst_type)
-    // when sizeof(image.type) < sizeof(dst_type).
-    //
-    // TODO(jingyue): This optimization can be generalized to a cast followed by
-    // a chain of ops that merely reorder elements (e.g. Reshape and
-    // DepthToSpace).
-    const NodeDef* transpose = node;
-    string dontcare;
-    string device;
-    // This optimization can be dangerous on devices other than CPU and GPU. The
-    // transpose might not be implemented for image.type, or might be slower
-    // with image.type than with dst_type.
-    if (DeviceNameUtils::SplitDeviceName(transpose->device(), &dontcare,
-                                         &device) &&
-        (str_util::StrContains(device, DEVICE_CPU) ||
-         str_util::StrContains(device, DEVICE_GPU))) {
-      const NodeDef* cast = node_map_->GetNode(transpose->input(0));
-      if (cast->op() == "Cast") {
-        const NodeDef* input = node_map_->GetNode(cast->input(0));
-        const DataType src_type = GetSourceDataType(*cast);
-        const DataType dst_type = GetDestinationDataType(*cast);
-        if (IsNumberType(src_type) && IsNumberType(dst_type) &&
-            DataTypeSize(src_type) < DataTypeSize(dst_type) &&
-            !OptimizedNodeExists(*cast, DataTypeString(dst_type)) &&
-            !OptimizedNodeExists(*transpose, DataTypeString(src_type))) {
-          NodeDef* new_transpose = AddNode(*transpose, DataTypeString(src_type),
-                                           /*copy_node=*/true);
-          (*new_transpose->mutable_attr())["T"].set_type(src_type);
-          new_transpose->set_input(0, cast->input(0));
-          node_map_->AddOutput(input->name(), new_transpose->name());
-          node_map_->AddOutput(NodeName(new_transpose->input(1)),
-                               new_transpose->name());
-
-          NodeDef* new_cast =
-              AddNode(*cast, DataTypeString(dst_type), /*copy_node=*/true);
-          new_cast->set_input(0, new_transpose->name());
-          node_map_->AddOutput(new_transpose->name(), new_cast->name());
-
-          nodes_to_simplify->PushBack(new_transpose);
-          ForwardControlDependencies(new_transpose, {cast, node});
-          return new_cast->name();
-        }
-      }
-    }
-  }
-
   // Fold a multiply of a scalar into the following convolution. This folding
   // can jump across nodes that merely reorders data (such as reshape and
   // transpose). For example, we can optimize
@@ -2483,10 +2492,14 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantBitcastStage>(ctx, ctx_ext);
   if (options_.remove_redundant_cast)
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
+  if (options_.remove_redundant_reshape)
+    pipeline.AddStage<RemoveRedundantReshape>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
   if (options_.remove_logical_not)
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
+  if (options_.reorder_cast_and_transpose)
+    pipeline.AddStage<ReorderCastAndTranspose>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
     pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)

@@ -136,6 +136,11 @@ class LocalClient : public Client {
   StatusOr<std::unique_ptr<Literal>> ShapedBufferToLiteral(
       const ShapedBuffer& shaped_buffer);
 
+  // Converts a GlobalDataHandle into a pointer to a ShapedBuffer that's valid
+  // as long as the handle is valid.
+  StatusOr<const ShapedBuffer*> GlobalDataToShapedBuffer(
+      const GlobalDataHandle& data, int replica_number);
+
   // Transfer the given literal to the infeed queue of the given device.
   // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
   // not inherit from Client and there is no possibility of confusion with

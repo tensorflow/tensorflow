@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 #include <string>
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -1024,7 +1025,7 @@ ENTRY %configuration_test() -> s32[] {
   EXPECT_EQ("foo bar", result.ValueOrDie()
                            ->entry_computation()
                            ->root_instruction()
-                           ->backend_config());
+                           ->raw_backend_config_string());
 }
 
 TEST_F(HloParserTest, LiteralDimensionsMismatch_1) {
@@ -1347,6 +1348,26 @@ ENTRY entry {
   ExpectHasSubstr(
       Parse(original).status().error_message(),
       "was parsing 8:39: error: instruction does not exist: aparam");
+}
+
+TEST_F(HloParserTest, ParseSharding) {
+  const string original = "{maximal device=42}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+}
+
+TEST_F(HloParserTest, ParseWindow) {
+  Window original = window_util::MakeWindow({1, 2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(Window parsed,
+                          ParseWindow(window_util::ToString(original)))
+  EXPECT_EQ(window_util::ToString(original), window_util::ToString(parsed));
+}
+
+TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
+  const string original = "b0f_0io->b0f";
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
+                          ParseConvolutionDimensionNumbers(original));
+  EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
 }
 
 }  // namespace

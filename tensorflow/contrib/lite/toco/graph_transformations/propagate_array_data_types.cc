@@ -163,6 +163,16 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       SetDataTypeForAllOutputs(model, op, data_type_x);
       break;
     }
+    case OperatorType::kSparseToDense: {
+      // Select produces outputs with the same type as their 3rd input
+      CHECK_EQ(op->inputs.size(), 4);
+      const ArrayDataType data_type = model->GetArray(op->inputs[2]).data_type;
+      const ArrayDataType data_type_default =
+          model->GetArray(op->inputs[3]).data_type;
+      CHECK(data_type == data_type_default);
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);

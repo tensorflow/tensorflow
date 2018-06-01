@@ -19,6 +19,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_binary_deps",
 )
+load(
+    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "gen_api_init_files",  # @unused
+)
 
 # Config setting for determining if we are building for Android.
 config_setting(
@@ -534,13 +538,16 @@ exports_files(
     ],
 )
 
+gen_api_init_files(
+    name = "python_api_gen",
+    srcs = ["api_template.__init__.py"],
+    root_init_template = "api_template.__init__.py",
+)
+
 py_library(
     name = "tensorflow_py",
-    srcs = ["__init__.py"],
+    srcs = [":python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/python",
-        "//tensorflow/tools/api/generator:python_api",
-    ],
+    deps = ["//tensorflow/python"],
 )

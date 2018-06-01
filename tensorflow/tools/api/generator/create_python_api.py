@@ -29,9 +29,13 @@ from tensorflow.python.util import tf_decorator
 
 _API_CONSTANTS_ATTR = '_tf_api_constants'
 _API_NAMES_ATTR = '_tf_api_names'
-_API_DIR = '/api/'
 _DEFAULT_PACKAGE = 'tensorflow.python'
-_OUTPUT_MODULE = 'tensorflow.tools.api.generator.api'
+_GENFILES_DIR_SUFFIX = 'genfiles/'
+_SYMBOLS_TO_SKIP_EXPLICITLY = {
+    # Overrides __getattr__, so that unwrapping tf_decorator
+    # would have side effects.
+    'tensorflow.python.platform.flags.FLAGS'
+}
 _GENERATED_FILE_HEADER = """\"\"\"Imports for Python API.
 
 This file is MACHINE GENERATED! Do not edit.
@@ -147,8 +151,8 @@ class _ModuleInitCodeBuilder(object):
     # the script outputs.
     module_text_map[''] = module_text_map.get('', '') + '''
 _names_with_underscore = [%s]
-__all__ = [s for s in dir() if not s.startswith('_')]
-__all__.extend([s for s in _names_with_underscore])
+__all__ = [_s for _s in dir() if not _s.startswith('_')]
+__all__.extend([_s for _s in _names_with_underscore])
 __all__.remove('print_function')
 ''' % underscore_names_str
 
@@ -182,6 +186,9 @@ def get_api_init_text(package):
       continue
 
     for module_contents_name in dir(module):
+      if (module.__name__ + '.' + module_contents_name
+          in _SYMBOLS_TO_SKIP_EXPLICITLY):
+        continue
       attr = getattr(module, module_contents_name)
 
       # If attr is _tf_api_constants attribute, then add the constants.
@@ -194,7 +201,11 @@ def get_api_init_text(package):
                 -1, dest_module, module.__name__, value, names[-1])
         continue
 
-      _, attr = tf_decorator.unwrap(attr)
+      try:
+        _, attr = tf_decorator.unwrap(attr)
+      except Exception as e:
+        print('5555: %s %s' % (module, module_contents_name), file=sys.stderr)
+        raise e
       # If attr is a symbol with _tf_api_names attribute, then
       # add import for it.
       if hasattr(attr, '__dict__') and _API_NAMES_ATTR in attr.__dict__:
@@ -209,6 +220,7 @@ def get_api_init_text(package):
   # For e.g. if we import 'foo.bar.Value'. Then, we also
   # import 'bar' in 'foo'.
   imported_modules = set(module_code_builder.module_imports.keys())
+  import_from = '.'
   for module in imported_modules:
     if not module:
       continue
@@ -216,11 +228,9 @@ def get_api_init_text(package):
     parent_module = ''  # we import submodules in their parent_module
 
     for submodule_index in range(len(module_split)):
-      import_from = _OUTPUT_MODULE
       if submodule_index > 0:
         parent_module += ('.' + module_split[submodule_index-1] if parent_module
                           else module_split[submodule_index-1])
-        import_from += '.' + parent_module
       module_code_builder.add_import(
           -1, parent_module, import_from,
           module_split[submodule_index], module_split[submodule_index])
@@ -228,7 +238,24 @@ def get_api_init_text(package):
   return module_code_builder.build()
 
 
-def create_api_files(output_files, package):
+def get_module(dir_path, relative_to_dir):
+  """Get module that corresponds to path relative to relative_to_dir.
+
+  Args:
+    dir_path: Path to directory.
+    relative_to_dir: Get module relative to this directory.
+
+  Returns:
+    module that corresponds to the given directory.
+  """
+  dir_path = dir_path[len(relative_to_dir):]
+  # Convert path separators to '/' for easier parsing below.
+  dir_path = dir_path.replace(os.sep, '/')
+  return dir_path.replace('/', '.').strip('.')
+
+
+def create_api_files(
+    output_files, package, root_init_template, output_dir):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -236,6 +263,10 @@ def create_api_files(output_files, package):
       Each file must be under api/ directory.
     package: Base python package containing python with target tf_export
       decorators.
+    root_init_template: Template for top-level __init__.py file.
+      "#API IMPORTS PLACEHOLDER" comment in the template file will be replaced
+      with imports.
+    output_dir: output API root directory.
 
   Raises:
     ValueError: if an output file is not under api/ directory,
@@ -243,18 +274,7 @@ def create_api_files(output_files, package):
   """
   module_name_to_file_path = {}
   for output_file in output_files:
-    # Convert path separators to '/' for easier parsing below.
-    normalized_output_file = output_file.replace(os.sep, '/')
-    if _API_DIR not in output_file:
-      raise ValueError(
-          'Output files must be in api/ directory, found %s.' % output_file)
-    # Get the module name that corresponds to output_file.
-    # First get module directory under _API_DIR.
-    module_dir = os.path.dirname(
-        normalized_output_file[
-            normalized_output_file.rfind(_API_DIR)+len(_API_DIR):])
-    # Convert / to .
-    module_name = module_dir.replace('/', '.').strip('.')
+    module_name = get_module(os.path.dirname(output_file), output_dir)
     module_name_to_file_path[module_name] = os.path.normpath(output_file)
 
   # Create file for each expected output in genrule.
@@ -270,12 +290,20 @@ def create_api_files(output_files, package):
   for module, text in module_text_map.items():
     # Make sure genrule output file list is in sync with API exports.
     if module not in module_name_to_file_path:
-      module_file_path = '"api/%s/__init__.py"' %  (
+      module_file_path = '"%s/__init__.py"' %  (
           module.replace('.', '/'))
       missing_output_files.append(module_file_path)
       continue
+    contents = ''
+    if module or not root_init_template:
+      contents = _GENERATED_FILE_HEADER + text + _GENERATED_FILE_FOOTER
+    else:
+      # Read base init file
+      with open(root_init_template, 'r') as root_init_template_file:
+        contents = root_init_template_file.read()
+        contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
     with open(module_name_to_file_path[module], 'w') as fp:
-      fp.write(_GENERATED_FILE_HEADER + text + _GENERATED_FILE_FOOTER)
+      fp.write(contents)
 
   if missing_output_files:
     raise ValueError(
@@ -297,6 +325,16 @@ def main():
       '--package', default=_DEFAULT_PACKAGE, type=str,
       help='Base package that imports modules containing the target tf_export '
            'decorators.')
+  parser.add_argument(
+      '--root_init_template', default='', type=str,
+      help='Template for top level __init__.py file. '
+           '"#API IMPORTS PLACEHOLDER" comment will be replaced with imports.')
+  parser.add_argument(
+      '--apidir', type=str, required=True,
+      help='Directory where generated output files are placed. '
+           'gendir should be a prefix of apidir. Also, apidir '
+           'should be a prefix of every directory in outputs.')
+
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -309,7 +347,8 @@ def main():
 
   # Populate `sys.modules` with modules containing tf_export().
   importlib.import_module(args.package)
-  create_api_files(outputs, args.package)
+  create_api_files(
+      outputs, args.package, args.root_init_template, args.apidir)
 
 
 if __name__ == '__main__':
