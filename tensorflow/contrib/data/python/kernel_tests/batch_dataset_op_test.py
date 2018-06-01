@@ -553,14 +553,14 @@ class BatchDatasetTest(test.TestCase):
         sess.run(next_element)
 
   def testMapAndBatchParallelGetNext(self):
-    iterator = (dataset_ops.Dataset.range(500000)
+    iterator = (dataset_ops.Dataset.range(50000)
                 .apply(batching.map_and_batch(lambda x: x, batch_size=100))
                 .make_one_shot_iterator())
     elements = []
     for _ in range(100):
       elements.append(iterator.get_next())
     with self.test_session() as sess:
-      for i in range(50):
+      for i in range(5):
         got = sess.run(elements)
         got.sort(key=lambda x: x[0])
         expected = []
@@ -572,7 +572,7 @@ class BatchDatasetTest(test.TestCase):
 
   def testMapAndBatchParallelGetNextDropRemainder(self):
     iterator = (
-        dataset_ops.Dataset.range(499999).apply(
+        dataset_ops.Dataset.range(49999).apply(
             batching.map_and_batch(
                 lambda x: x, batch_size=100, drop_remainder=True))
         .make_one_shot_iterator())
@@ -580,7 +580,7 @@ class BatchDatasetTest(test.TestCase):
     for _ in range(100):
       elements.append(iterator.get_next())
     with self.test_session() as sess:
-      for i in range(49):
+      for i in range(4):
         got = sess.run(elements)
         got.sort(key=lambda x: x[0])
         expected = []

@@ -95,7 +95,8 @@ if sys.version_info < (3, 4):
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
-    'toco = tensorflow.contrib.lite.toco.python.toco_wrapper:main',
+    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the

@@ -155,6 +155,9 @@ class HloModuleGroupMetadata {
   tensorflow::gtl::optional<int64> GetInstructionDevice(
       const HloInstruction& instruction) const;
 
+  // Returns the number of modules for devices (excluding the host module).
+  int64 GetDeviceModulesCount() const;
+
   // Returns the companion instructions for the given instruction.
   //
   // Precondition: IsCompanionWhile(instruction) is true.

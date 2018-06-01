@@ -36,9 +36,10 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
-from tensorflow.python.keras.utils.layer_utils import print_summary as print_layer_summary
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures_base
@@ -94,6 +95,11 @@ class Network(base_layer.Layer):
     self.trainable = True
     self._is_compiled = False
     self._expects_training_arg = False
+    # A list of "extra" variables assigned to attributes of this class, included
+    # in self.weights and self.variables. Always empty for graph networks (but
+    # included in base_init to avoid excessive special casing when retrieving
+    # the value).
+    self._extra_variables = []
 
     self.supports_masking = False
     if not hasattr(self, 'optimizer'):
@@ -347,11 +353,22 @@ class Network(base_layer.Layer):
       # layers). Therefore Model tracks Checkpointable objects itself.
       self._track_checkpointable(
           checkpointable=value, name=name, overwrite=True)
+      if (  # For subclassed models only, users may add extra weights/variables
+            # simply by assigning them to attributes.
+          not self._is_graph_network
+          and isinstance(value, variables.Variable)):
+        self._extra_variables.append(value)
     super(Network, self).__setattr__(name, value)
 
   def add_variable(self, name, shape, dtype=None, initializer=None,
                    regularizer=None, trainable=True, constraint=None):
-    raise NotImplementedError('`add_variable` is not supported on Networks.')
+    if self._is_graph_network:
+      raise NotImplementedError('`add_variable` is not supported on Networks.')
+    else:
+      raise NotImplementedError(
+          '`add_variable` is not supported on Networks. However, you may '
+          'assign variables to attributes and they will show up in the weights '
+          'and variables properties.')
 
   def add_loss(self, *args, **kwargs):
     if context.executing_eagerly():
@@ -589,24 +606,17 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
-    if not self.trainable:
-      return []
-    weights = []
-    for layer in self.layers:
-      weights += layer.trainable_weights
-    return weights
+    return layer_utils.gather_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
-    weights = []
-    for layer in self.layers:
-      weights += layer.non_trainable_weights
-    if not self.trainable:
-      trainable_weights = []
-      for layer in self.layers:
-        trainable_weights += layer.trainable_weights
-      return trainable_weights + weights
-    return weights
+    return layer_utils.gather_non_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def input_spec(self):
@@ -1437,10 +1447,10 @@ class Network(base_layer.Layer):
                        'have not yet been created, so no summary can be '
                        'displayed. Build the model first '
                        '(e.g. by calling it on some data).')
-    print_layer_summary(self,
-                        line_length=line_length,
-                        positions=positions,
-                        print_fn=print_fn)
+    layer_utils.print_summary(self,
+                              line_length=line_length,
+                              positions=positions,
+                              print_fn=print_fn)
 
 
 def get_source_inputs(tensor, layer=None, node_index=None):

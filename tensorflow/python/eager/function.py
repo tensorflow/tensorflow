@@ -494,7 +494,7 @@ class GraphModeFunction(object):
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
     for v in self._variables:
-      if v._trainable:  # pylint: disable=protected-access
+      if v.trainable:
         tape.watch_variable(v)
 
     tensor_inputs = [x for x in nest.flatten(args) if isinstance(x, ops.Tensor)]

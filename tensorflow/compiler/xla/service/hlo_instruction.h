@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -775,6 +776,10 @@ class HloInstruction {
       }
     }
 
+    if (backend_config_ != other.backend_config_) {
+      return false;
+    }
+
     return IdenticalSlowPath(other, eq_computations);
   }
 
@@ -1313,9 +1318,6 @@ class HloInstruction {
     return fft_length_;
   }
 
-  // Returns the dump string of the convolution dimension numbers.
-  string ConvolutionDimensionNumbersToString() const;
-
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
     CHECK(dot_dimension_numbers_ != nullptr);
@@ -1449,12 +1451,33 @@ class HloInstruction {
   // this field and they cannot interpret it due to its meaning being backend
   // specific.
   //
-  // TODO(b/78194644): Introduce structured configuration format as per
-  // go/xla-heuristics.
-  const string& backend_config() const { return backend_config_; }
-  void set_backend_config(string backend_config) {
-    backend_config_ = std::move(backend_config);
+  // ConfigProto should be a protobuf Message type.
+  template <typename ConfigProto>
+  StatusOr<ConfigProto> backend_config() const {
+    ConfigProto proto;
+    TF_RETURN_IF_ERROR(GetBackendConfigInternal(&proto));
+    return std::move(proto);
   }
+  Status set_backend_config(const tensorflow::protobuf::Message& proto);
+
+  // Getter/setter for raw JSON-encoded backend config.  Prefer the
+  // functions above that deal in proto Messages where possible.
+  const string& raw_backend_config_string() const { return backend_config_; }
+  void set_raw_backend_config_string(string config_str) {
+    backend_config_ = std::move(config_str);
+  }
+
+  // Returns a string representation of a proto in the format used by
+  // raw_backend_config_string.
+  //
+  // This is morally equivalent to:
+  //
+  //   HloInstruction instr;
+  //   TF_RETURN_IF_ERROR(instr.set_backend_config(proto));
+  //   return instr.raw_backend_config_string();
+  //
+  static StatusOr<string> BackendConfigToRawString(
+      const tensorflow::protobuf::Message& proto);
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -1575,6 +1598,10 @@ class HloInstruction {
 
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
+
+  // Helper for implementing backend_config().  Parses backend_config_ into the
+  // given proto.
+  Status GetBackendConfigInternal(tensorflow::protobuf::Message* proto) const;
 
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 
@@ -1749,6 +1776,9 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 string PaddingConfigToString(const PaddingConfig& padding);
 string OpMetadataToString(const OpMetadata& metadata);
 string RandomDistributionToString(const RandomDistribution& distribution);
+string ConvolutionDimensionNumbersToString(
+    const ConvolutionDimensionNumbers& dnums);
+
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);

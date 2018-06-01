@@ -344,6 +344,11 @@ class ExponentialMovingAverage(object):
     self._name = name
     self._averages = {}
 
+  @property
+  def name(self):
+    """The name of this ExponentialMovingAverage object."""
+    return self._name
+
   def apply(self, var_list=None):
     """Maintains moving averages of variables.
 
@@ -394,7 +399,7 @@ class ExponentialMovingAverage(object):
         if isinstance(var, variables.Variable):
           avg = slot_creator.create_slot(var,
                                          var.initialized_value(),
-                                         self._name,
+                                         self.name,
                                          colocate_with_primary=True)
           # NOTE(mrry): We only add `tf.Variable` objects to the
           # `MOVING_AVERAGE_VARIABLES` collection.
@@ -402,7 +407,7 @@ class ExponentialMovingAverage(object):
         else:
           avg = slot_creator.create_zeros_slot(
               var,
-              self._name,
+              self.name,
               colocate_with_primary=(var.op.type in ["Variable",
                                                      "VariableV2",
                                                      "VarHandleOp"]))
@@ -410,7 +415,7 @@ class ExponentialMovingAverage(object):
             zero_debias_true.add(avg)
       self._averages[var] = avg
 
-    with ops.name_scope(self._name) as scope:
+    with ops.name_scope(self.name) as scope:
       decay = ops.convert_to_tensor(self._decay, name="decay")
       if self._num_updates is not None:
         num_updates = math_ops.cast(self._num_updates,
@@ -462,7 +467,7 @@ class ExponentialMovingAverage(object):
     if var in self._averages:
       return self._averages[var].op.name
     return ops.get_default_graph().unique_name(
-        var.op.name + "/" + self._name, mark_as_used=False)
+        var.op.name + "/" + self.name, mark_as_used=False)
 
   def variables_to_restore(self, moving_avg_variables=None):
     """Returns a map of names to `Variables` to restore.

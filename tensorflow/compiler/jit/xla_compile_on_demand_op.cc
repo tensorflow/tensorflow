@@ -151,8 +151,7 @@ Status XlaCompileOnDemandOp::Compile(
   core::ScopedUnref cache_ref(cache);
 
   XlaCompiler::Options options;
-  DeviceType device_type = metadata.jit_device_type();
-  options.device_type = &device_type;
+  options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
   options.flib_def =
       new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
