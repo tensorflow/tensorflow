@@ -31,6 +31,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
+#if GOOGLE_CUDA
+namespace gpuprim = ::cub;
+#elif TENSORFLOW_USE_ROCM
+namespace gpuprim = ::hipcub;
+#endif
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -59,11 +65,11 @@ struct BincountFunctor<GPUDevice, T> {
     int32 lower_level = 0;
     int32 upper_level = output.size();
     int num_samples = arr.size();
-    const cudaStream_t& stream = GetGPUStream(context);
+    const gpuStream_t& stream = GetGPUStream(context);
 
     // The first HistogramEven is to obtain the temp storage size required
     // with d_temp_storage = NULL passed to the call.
-    auto err = cub::DeviceHistogram::HistogramEven(
+    auto err = gpuprim::DeviceHistogram::HistogramEven(
         /* d_temp_storage */ NULL,
         /* temp_storage_bytes */ temp_storage_bytes,
         /* d_samples */ d_samples,
@@ -73,10 +79,10 @@ struct BincountFunctor<GPUDevice, T> {
         /* upper_level */ upper_level,
         /* num_samples */ num_samples,
         /* stream */ stream);
-    if (err != cudaSuccess) {
+    if (err != gpuSuccess) {
       return errors::Internal(
           "Could not launch HistogramEven to get temp storage: ",
-          cudaGetErrorString(err), ".");
+          GPUGETERRORSTRING(err), ".");
     }
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -86,7 +92,7 @@ struct BincountFunctor<GPUDevice, T> {
     void* d_temp_storage = temp_storage.flat<int8>().data();
     // The second HistogramEven is to actual run with d_temp_storage
     // allocated with temp_storage_bytes.
-    err = cub::DeviceHistogram::HistogramEven(
+    err = gpuprim::DeviceHistogram::HistogramEven(
         /* d_temp_storage */ d_temp_storage,
         /* temp_storage_bytes */ temp_storage_bytes,
         /* d_samples */ d_samples,
@@ -96,9 +102,9 @@ struct BincountFunctor<GPUDevice, T> {
         /* upper_level */ upper_level,
         /* num_samples */ num_samples,
         /* stream */ stream);
-    if (err != cudaSuccess) {
+    if (err != gpuSuccess) {
       return errors::Internal(
-          "Could not launch HistogramEven: ", cudaGetErrorString(err), ".");
+          "Could not launch HistogramEven: ", GPUGETERRORSTRING(err), ".");
     }
     return Status::OK();
   }
