@@ -743,11 +743,17 @@ set(api_init_list_file "${tensorflow_source_dir}/api_init_files_list.txt")
 file(WRITE "${api_init_list_file}" "${api_init_files}")
 
 # Run create_python_api.py to generate __init__.py files.
-if (tensorflow_ENABLE_MKL_SUPPORT AND WIN32)
+set(PY_RUNTIME_ENV $ENV{Path})
+if (tensorflow_ENABLE_MKL_SUPPORT)
+    if (WIN32)
+        set(PATH_SEP ";")
+    elseif (UNIX)
+        set(PATH_SEP ":")
+    endif ()
     # add mkl dist dlls to system path for python
-    set(ENV{Path} "$ENV{Path};${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/lib")
+    set(PY_RUNTIME_ENV "${PY_RUNTIME_ENV}${PATH_SEP}${mkl_BIN_DIRS}")
     if (tensorflow_ENABLE_MKLDNN_SUPPORT)
-        set(ENV{Path} "$ENV{Path};${CMAKE_CURRENT_BINARY_DIR}/mkldnn/src/mkldnn/src/Release")
+        set(PY_RUNTIME_ENV "${PY_RUNTIME_ENV}${PATH_SEP}${mkldnn_BUILD}")
     endif (tensorflow_ENABLE_MKLDNN_SUPPORT)
 endif (tensorflow_ENABLE_MKL_SUPPORT)
 add_custom_command(
