@@ -123,6 +123,12 @@ py_library(
             "//tensorflow/contrib/kafka",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_aws_support_windows_override": [],
+        "//tensorflow:with_aws_support": [
+            "//tensorflow/contrib/kinesis",
+        ],
+        "//conditions:default": [],
     }) + if_not_windows_cuda([
         "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
     ]) + if_not_windows([
@@ -156,6 +162,12 @@ cc_library(
             "//tensorflow/contrib/kafka:dataset_kernels",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_aws_support_windows_override": [],
+        "//tensorflow:with_aws_support": [
+            "//tensorflow/contrib/kinesis:dataset_kernels",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -183,6 +195,12 @@ cc_library(
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_aws_support_windows_override": [],
+        "//tensorflow:with_aws_support": [
+            "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
         ],
         "//conditions:default": [],
     }),
