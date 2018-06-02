@@ -206,10 +206,10 @@ def _project_log_stochastic_matrix_wrt_kl_divergence(log_matrix):
 
   # For numerical reasons, make sure that the largest matrix element is zero
   # before exponentiating.
-  log_matrix -= standard_ops.reduce_max(log_matrix, axis=0, keep_dims=True)
+  log_matrix -= standard_ops.reduce_max(log_matrix, axis=0, keepdims=True)
   log_matrix -= standard_ops.log(
       standard_ops.reduce_sum(
-          standard_ops.exp(log_matrix), axis=0, keep_dims=True))
+          standard_ops.exp(log_matrix), axis=0, keepdims=True))
   return log_matrix
 
 
