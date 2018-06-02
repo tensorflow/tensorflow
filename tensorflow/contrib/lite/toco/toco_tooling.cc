@@ -269,6 +269,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
       transformations.Add(new toco::MergeLstmCellInputs);
     }
   }
+  if (toco_flags.quantize_weights()) {
+    transformations.Add(new QuantizeWeights);
+  }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
