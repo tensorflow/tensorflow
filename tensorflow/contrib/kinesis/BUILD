@@ -40,7 +40,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core/platform/s3:s3_crypto",
+        "//tensorflow/core/platform/s3:aws_crypto",
         "//third_party/eigen3",
         "@aws",
         "@protobuf_archive//:protobuf_headers",

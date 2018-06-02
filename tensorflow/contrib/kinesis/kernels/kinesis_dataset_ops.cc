@@ -23,7 +23,7 @@ limitations under the License.
 #include <aws/kinesis/model/PutRecordsRequest.h>
 #include <aws/kinesis/model/ShardIteratorType.h>
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/platform/s3/s3_crypto.h"
+#include "tensorflow/core/platform/s3/aws_crypto.h"
 
 namespace tensorflow {
 namespace {
@@ -117,10 +117,10 @@ void AwsInitAPI() {
   if (count == 1) {
     Aws::SDKOptions options;
     options.cryptoOptions.sha256Factory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256Factory>(AWSCryptoAllocationTag);
     };
     options.cryptoOptions.sha256HMACFactory_create_fn = []() {
-      return Aws::MakeShared<S3SHA256HmacFactory>(S3CryptoAllocationTag);
+      return Aws::MakeShared<AWSSHA256HmacFactory>(AWSCryptoAllocationTag);
     };
     Aws::InitAPI(options);
   }
