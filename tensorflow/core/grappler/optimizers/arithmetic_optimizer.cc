@@ -1958,6 +1958,127 @@ class ReorderCastAndTranspose : public ArithmeticOptimizerStage {
   bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
 };
 
+// Fold a multiply of a scalar into the following convolution. This folding
+// can jump across nodes that merely reorders data (such as reshape and
+// transpose). For example, we can optimize
+//
+//
+//         Conv2D                             Conv2D
+//        /      \                           /      \
+//    Transpose  weights*       ->     Transpose    Mul
+//       |                                |        /   \
+//      Mul                               |    weights  scale
+//     /   \                              |
+//   input  scale**                     input
+//
+//  *) weights must be a const
+// **) scale must be a const scalar
+//
+// When `weights` and `scale` are constant, `Mul` in the optimized graph can be
+// constant-folded, also weights tend to be smaller than the activations.
+//
+// TODO(jingyue): Fold scalar multiplies to Conv?DBackpropFilter and
+// Conv?DBackpropInput.
+class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
+ public:
+  explicit FoldMultiplyIntoConv(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FoldMultiplyIntoConv", ctx, ctx_ext) {}
+  ~FoldMultiplyIntoConv() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsConv2D(*node) || IsConv3D(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+#define TF_RETURN_IF_TRUE(...) \
+  if ((__VA_ARGS__)) return Status::OK()
+
+    NodeDef* conv = node;
+
+    NodeDef* weights;
+    TF_RETURN_IF_ERROR(GetInputNode(conv->input(1), &weights));
+
+    // Fold the multiply to conv only when the weights are constant, so the
+    // multiply can be constant-folded.
+    //
+    // TODO(jingyue): When the weights aren't constant, this should also help
+    // performance a bit and memory usage a lot, since the weights tend to be
+    // smaller than the activations.
+    TF_RETURN_IF_TRUE(!IsConstant(*weights));
+
+    // Verify that this node was not already optimized.
+    const string scaled_weights_node_name =
+        OptimizedNodeName(ParseNodeScopeAndName(weights->name()),
+                          strings::StrCat("scaled", "_", conv->name()));
+
+    TF_RETURN_IF_TRUE(ctx().node_map->NodeExists(scaled_weights_node_name));
+
+    // Find the tail of value preserving chain entering the Conv node.
+    NodeDef* tail = GetTailOfValuePreservingChain(*conv, *ctx().node_map,
+                                                  *ctx().nodes_to_preserve);
+
+    NodeDef* source;
+    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &source));
+
+    // Check that value preserving chain is the only consumer of the Mul output.
+    TF_RETURN_IF_TRUE(!IsMul(*source));
+    TF_RETURN_IF_TRUE(NumNonControlOutputs(*source, *ctx().node_map) != 1);
+
+    const NodeDef* mul = source;
+
+    // TODO(jingyue): handle the case where `scale` is 0-th operand.
+    NodeDef* scale;  // scalar multiplier fot the input tensor
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(mul->input(1), &scale));
+    TF_RETURN_IF_ERROR(GetInputNode(mul->input(0), &input));
+
+    // Check that 'scale * weight' can be const folded.
+    TF_RETURN_IF_TRUE(!IsConstant(*scale));
+    TF_RETURN_IF_TRUE(scale->attr().at("dtype").type() !=
+                      weights->attr().at("dtype").type());
+
+    // Check that `scale` is a scalar.
+    const TensorProto& scale_tensor = scale->attr().at("value").tensor();
+    bool scale_is_a_scalar = scale_tensor.has_tensor_shape() &&
+                             scale_tensor.tensor_shape().dim_size() == 0;
+    TF_RETURN_IF_TRUE(!scale_is_a_scalar);
+
+    // At this point all preconditions are met, and we safely do the rewrite.
+    VLOG(3) << "Fold multiply into conv: conv=" << conv->name()
+            << " mul=" << mul->name() << " weights=" << weights->name();
+
+    // Create new node `scaled_weights`.
+    NodeDef* scaled_weights = AddEmptyNode(scaled_weights_node_name);
+    scaled_weights->set_op("Mul");
+    scaled_weights->set_device(weights->device());
+    (*scaled_weights->mutable_attr())["T"] = weights->attr().at("dtype");
+    AddToOptimizationQueue(scaled_weights);
+
+    // Link in its inputs.
+    scaled_weights->add_input(conv->input(1));
+    ctx().node_map->AddOutput(weights->name(), scaled_weights->name());
+    scaled_weights->add_input(mul->input(1));
+    ctx().node_map->AddOutput(scale->name(), scaled_weights->name());
+    ForwardControlDependencies(scaled_weights, {source});
+
+    // Update `conv`'s weights to `scaled_weights`.
+    conv->set_input(1, scaled_weights->name());
+    ctx().node_map->UpdateInput(conv->name(), weights->name(),
+                                scaled_weights->name());
+    AddToOptimizationQueue(conv);
+
+    // Update `tail` node to bypass `mul` because it's folded to the weights.
+    tail->set_input(0, mul->input(0));
+    ctx().node_map->UpdateInput(tail->name(), mul->name(), input->name());
+    AddToOptimizationQueue(tail);
+    *simplified_node_name = conv->name();
+
+    return Status::OK();
+#undef TF_RETURN_IF_TRUE
+  }
+};
+
 }  // namespace
 
 class UniqueNodes {
@@ -2210,97 +2331,6 @@ void ArithmeticOptimizer::ForwardControlDependencies(
 // ArithmeticOptimizerStage
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify) {
-  // Fold a multiply of a scalar into the following convolution. This folding
-  // can jump across nodes that merely reorders data (such as reshape and
-  // transpose). For example, we can optimize
-  //
-  //
-  //         Conv2D
-  //        /      \
-  //    Transpose  weights
-  //       |
-  //      Mul
-  //     /   \
-  //   inputs 255.0
-  //
-  // to
-  //
-  //         Conv2D
-  //        /      \
-  //    Transpose   Mul
-  //       |       /   \
-  //       |   weights  255.0
-  //       |
-  //     inputs
-  //
-  // when `weights` are constant. `Mul` in the optimized graph can be
-  // constant-folded.
-  //
-  // TODO(jingyue): Fold scalar multiplies to Conv?DBackpropFilter and
-  // Conv?DBackpropInput.
-  if (node->op() == "Conv2D" || node->op() == "Conv3D") {
-    NodeDef* conv = const_cast<NodeDef*>(node);
-    const NodeDef* weights = node_map_->GetNode(NodeName(conv->input(1)));
-    // Fold the multiply to conv only when the weights are constant, so the
-    // multiply can be constant-folded. TODO(jingyue): When the weights aren't
-    // constant, this should also help performance a bit and memory usage a lot,
-    // since the weights tend to be smaller than the activations.
-    if (weights->op() == "Const" &&
-        !OptimizedNodeExists(*weights, StrCat("scaled_", conv->name()))) {
-      const NodeDef* source = node_map_->GetNode(
-          GetTailOfValuePreservingChain(*node, *node_map_, nodes_to_preserve_)
-              ->input(0));
-      if (source->op() == "Mul" &&
-          node_map_->GetOutputs(source->name()).size() == 1) {
-        const NodeDef* mul = source;
-        // `scale` is the scalar multiplier, and `other` is the other operand.
-        // TODO(jingyue): handle the case where `scale` is 0-th operand.
-        const NodeDef* scale = node_map_->GetNode(mul->input(1));
-        const NodeDef* other = node_map_->GetNode(mul->input(0));
-        if (scale->op() == "Const" && scale->attr().at("dtype").type() ==
-                                          weights->attr().at("dtype").type()) {
-          const TensorProto& scale_tensor = scale->attr().at("value").tensor();
-          // Test whether `scale` is a scalar.
-          if (scale_tensor.has_tensor_shape() &&
-              scale_tensor.tensor_shape().dim_size() == 0) {
-            // Create new node `scaled_weights`.
-            NodeDef* scaled_weights = AddNode(
-                *weights, StrCat("scaled_", conv->name()), /*copy_node=*/false);
-            scaled_weights->set_op("Mul");
-            scaled_weights->set_device(weights->device());
-            (*scaled_weights->mutable_attr())["T"] =
-                weights->attr().at("dtype");
-            nodes_to_simplify->PushBack(scaled_weights);
-
-            // Link in its inputs.
-            scaled_weights->add_input(conv->input(1));
-            node_map_->AddOutput(weights->name(), scaled_weights->name());
-            scaled_weights->add_input(mul->input(1));
-            node_map_->AddOutput(scale->name(), scaled_weights->name());
-            ForwardControlDependencies(scaled_weights, {source});
-
-            // Update `conv`'s weights to `scaled_weights`.
-            conv->set_input(1, scaled_weights->name());
-            node_map_->UpdateInput(conv->name(), weights->name(),
-                                   scaled_weights->name());
-            nodes_to_simplify->PushBack(conv);
-
-            // Update `mul`'s consumer to bypass `mul` because it's folded to
-            // the weights.
-            CHECK_EQ(node_map_->GetOutputs(mul->name()).size(), 1);
-            NodeDef* consumer_of_mul =
-                *node_map_->GetOutputs(mul->name()).begin();
-            consumer_of_mul->set_input(0, mul->input(0));
-            node_map_->UpdateInput(consumer_of_mul->name(), mul->name(),
-                                   other->name());
-            nodes_to_simplify->PushBack(consumer_of_mul);
-            return conv->name();
-          }
-        }
-      }
-    }
-  }
-
   if (node->op() == "Mul" && node->input(0) == node->input(1) &&
       !OptimizedNodeExists(*node, "square")) {
     const DataType type = GetDataTypeFromAttr(*node, "T");
@@ -2480,6 +2510,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
 
   if (options_.combine_add_to_addn && can_use_shapes)
     pipeline.AddStage<AddOpsRewriteStage>(ctx, ctx_ext);
+  if (options_.fold_multiply_into_conv)
+    pipeline.AddStage<FoldMultiplyIntoConv>(ctx, ctx_ext);
   if (options_.hoist_common_factor_out_of_aggregation && can_use_shapes)
     pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
   if (options_.minimize_broadcasts && can_use_shapes)

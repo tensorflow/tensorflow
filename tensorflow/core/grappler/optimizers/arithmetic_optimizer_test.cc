@@ -126,6 +126,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
     options.convert_sqrt_div_to_rsqrt_mul = false;
+    options.fold_multiply_into_conv = false;
     options.hoist_common_factor_out_of_aggregation = false;
     options.hoist_cwise_unary_chains = false;
     options.minimize_broadcasts = false;
@@ -148,6 +149,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlyAddToAddNCombining(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.combine_add_to_addn = true;
+  }
+
+  void EnableOnlyFoldMultipleIntoConv(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.fold_multiply_into_conv = true;
   }
 
   void EnableOnlyHoistCommonFactor(ArithmeticOptimizer* optimizer) {
@@ -1462,18 +1468,24 @@ TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   NodeMap node_map(&output);
+
   // `conv` is now a folded convolution with scaled weights.
   const NodeDef* folded_conv = node_map.GetNode(conv.node()->name());
-  CHECK_EQ(node_map.GetNode(NodeName(folded_conv->input(1)))->op(), "Mul");
+  ASSERT_NE(folded_conv, nullptr);
+
+  const NodeDef* folded_conv_weights = node_map.GetNode(folded_conv->input(1));
+  ASSERT_NE(folded_conv_weights, nullptr);
+  EXPECT_EQ("Mul", folded_conv_weights->op());
+
   // Its input should be a transpose of `inputs`.
   const NodeDef* transpose = node_map.GetNode(NodeName(folded_conv->input(0)));
-  CHECK_EQ(NodeName(transpose->input(0)), inputs.node()->name());
+  ASSERT_NE(transpose, nullptr);
+  EXPECT_EQ("inputs", transpose->input(0));
 }
 
 TEST_F(ArithmeticOptimizerTest, NotFoldMulAcrossPreservedTranspose) {
@@ -1574,28 +1586,32 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  ArithmeticOptimizer optimizer;
+  ArithmeticOptimizer optimizer;  // all optimization stages are on
   OptimizeTwiceAndPrune(&optimizer, &item, &output, /*const_folding=*/true);
 
   NodeMap node_map(&output);
 
-  // Expected names for the optimized nodes.
+  // Expected names for reordered cast and transpose.
   const string p = "ArithmeticOptimizer/ReorderCastAndTranspose_";
   const string optimized_cast_name = strings::StrCat(p, "float_Cast");
   const string optimized_transpose_name = strings::StrCat(p, "uint8_Transpose");
 
+  // Expected names for folded multiply and conv.
+  const string optimized_weights =
+      "ArithmeticOptimizer/FoldMultiplyIntoConv_scaled_Conv2D_weights";
+
   const NodeDef* inputs_node = node_map.GetNode("Placeholder");
   const NodeDef* transpose_node = node_map.GetNode(optimized_transpose_name);
   const NodeDef* cast_node = node_map.GetNode(optimized_cast_name);
-  const NodeDef* weights_node =
-      node_map.GetNode(OptimizedName("weights_scaled_Conv2D"));
+
+  const NodeDef* weights_node = node_map.GetNode(optimized_weights);
   const NodeDef* conv_node = node_map.GetNode("Conv2D");
 
-  ASSERT_TRUE(inputs_node != nullptr);
-  ASSERT_TRUE(transpose_node != nullptr);
-  ASSERT_TRUE(cast_node != nullptr);
-  ASSERT_TRUE(weights_node != nullptr);
-  ASSERT_TRUE(conv_node != nullptr);
+  ASSERT_NE(inputs_node, nullptr);
+  ASSERT_NE(transpose_node, nullptr);
+  ASSERT_NE(cast_node, nullptr);
+  ASSERT_NE(weights_node, nullptr);
+  ASSERT_NE(conv_node, nullptr);
 
   EXPECT_EQ(output.node_size(), 7);
   EXPECT_EQ(transpose_node->input(0), inputs_node->name());
@@ -1627,23 +1643,27 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(
-      ConstantFolding(/*cpu_device=*/nullptr).Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldMultipleIntoConv(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &output, /*const_folding=*/true);
 
   NodeMap node_map(&output);
-  const NodeDef* weights_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D")));
-  const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
 
-  const NodeDef* weights_node_1 =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D_1")));
-  const NodeDef* conv_node_1 = CHECK_NOTNULL(node_map.GetNode("Conv2D_1"));
+  using strings::StrCat;
+  const string p = "ArithmeticOptimizer/FoldMultiplyIntoConv_";
+  const string optimized_weights = StrCat(p, "scaled_Conv2D_weights");
+  const string optimized_weights_1 = StrCat(p, "scaled_Conv2D_1_weights_1");
+
+  const NodeDef* weights_node = node_map.GetNode(optimized_weights);
+  const NodeDef* weights_node_1 = node_map.GetNode(optimized_weights_1);
+  const NodeDef* conv_node = node_map.GetNode("Conv2D");
+  const NodeDef* conv_node_1 = node_map.GetNode("Conv2D_1");
+
+  ASSERT_NE(weights_node, nullptr);
+  ASSERT_NE(weights_node_1, nullptr);
+  ASSERT_NE(conv_node, nullptr);
+  ASSERT_NE(conv_node_1, nullptr);
+
   EXPECT_EQ(conv_node->input(1), weights_node->name());
   EXPECT_EQ(conv_node_1->input(1), weights_node_1->name());
 }
