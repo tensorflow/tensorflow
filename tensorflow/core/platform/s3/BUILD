@@ -48,8 +48,6 @@ cc_library(
         "s3_crypto.h",
     ],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "@aws",
         "@boringssl//:crypto",
     ],
