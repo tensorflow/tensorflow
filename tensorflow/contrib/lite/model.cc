@@ -558,6 +558,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(lstm_params->fused_activation_function());
         params->cell_clip = lstm_params->cell_clip();
         params->proj_clip = lstm_params->proj_clip();
+        switch (lstm_params->kernel_type()) {
+          case LSTMKernelType_FULL:
+            params->kernel_type = kTfLiteLSTMFullKernel;
+            break;
+          case LSTMKernelType_BASIC:
+            params->kernel_type = kTfLiteLSTMBasicKernel;
+            break;
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;

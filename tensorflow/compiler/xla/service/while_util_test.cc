@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -50,7 +50,7 @@ ENTRY entry {
 )";
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      tools::Parse(hlo_string));
+                      ParseHloString(hlo_string));
 
   *entry_computation = module->entry_computation();
   *param0 = (*entry_computation)->parameter_instruction(0);
@@ -151,7 +151,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   HloComputation* while_body = module->GetComputationWithName("body");
 
@@ -190,7 +190,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   HloComputation* main = module->GetComputationWithName("main");
   HloInstruction* while_instr = main->root_instruction();

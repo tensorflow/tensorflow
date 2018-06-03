@@ -315,11 +315,23 @@ table LocalResponseNormalizationOptions {
   beta:float;
 }
 
+enum LSTMKernelType : byte {
+  // Full LSTM kernel which supports peephole and projection.
+  FULL = 0,
+  // Basic LSTM kernels. Equivalent to TensorFlow BasicLSTMCell.
+  BASIC = 1,
+}
+
 // An implementation of TensorFlow LSTMCell and CoupledInputForgetGateLSTMCell
 table LSTMOptions {
+  // Parameters for LSTM version 1 or above.
   fused_activation_function:ActivationFunctionType;
   cell_clip: float; // Optional, 0.0 means no clipping
   proj_clip: float; // Optional, 0.0 means no clipping
+
+  // Parameters for LSTM version 2 or above.
+  // Basic kernel is only supported in version 2 or above.
+  kernel_type: LSTMKernelType = FULL;
 }
 
 table ResizeBilinearOptions {

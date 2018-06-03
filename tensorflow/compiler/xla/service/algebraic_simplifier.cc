@@ -1774,6 +1774,10 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
                     new_reduce_dimensions, function));
   }
 
+  // If the reduction results in the same number of elements, then the only
+  // possible side effect would be a reshape. Since the init_value is an
+  // identity of the reduction function, we can therefore replace the reduce
+  // with a simple reshape, ignoring the reduction function completely.
   if (ShapeUtil::ElementsIn(reduce->shape()) ==
       ShapeUtil::ElementsIn(arg->shape())) {
     return ReplaceWithNewInstruction(
@@ -1842,7 +1846,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return ReplaceWithNewInstruction(
         reduce_window,
         HloInstruction::CreateMap(reduce_window->shape(),
-                                  {operand, reduce_window->mutable_operand(1)},
+                                  {reduce_window->mutable_operand(1), operand},
                                   function));
   }
 
