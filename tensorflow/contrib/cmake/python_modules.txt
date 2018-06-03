@@ -238,6 +238,8 @@ tensorflow/contrib/keras/api/keras/wrappers/scikit_learn
 tensorflow/contrib/kernel_methods
 tensorflow/contrib/kernel_methods/python
 tensorflow/contrib/kernel_methods/python/mappers
+tensorflow/contrib/kinesis/python
+tensorflow/contrib/kinesis/python/ops
 tensorflow/contrib/kfac
 tensorflow/contrib/kfac/examples
 tensorflow/contrib/kfac/python
