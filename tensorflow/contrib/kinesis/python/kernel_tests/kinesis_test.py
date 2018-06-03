@@ -27,7 +27,6 @@ from __future__ import division
 from __future__ import print_function
 
 import boto3
-import os
 
 from tensorflow.contrib.kinesis.python.ops import kinesis_dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -49,7 +48,8 @@ class KinesisDatasetTest(test.TestCase):
     client.get_waiter('stream_exists').wait(StreamName=stream_name)
     for i in range(10):
       data = "D" + str(i)
-      client.put_record(StreamName=stream_name, Data=data, PartitionKey="TensorFlow")
+      client.put_record(
+          StreamName=stream_name, Data=data, PartitionKey="TensorFlow" + str(i))
 
     stream = array_ops.placeholder(dtypes.string, shape=[])
     num_epochs = array_ops.placeholder(dtypes.int64, shape=[])
@@ -87,7 +87,8 @@ class KinesisDatasetTest(test.TestCase):
 
     for i in range(10):
       data = "D" + str(i)
-      client.put_record(StreamName=stream_name, Data=data, PartitionKey="TensorFlow")
+      client.put_record(
+          StreamName=stream_name, Data=data, PartitionKey="TensorFlow" + str(i))
     response = client.describe_stream(StreamName=stream_name)
     shard_id_0 = response["StreamDescription"]["Shards"][0]["ShardId"]
     shard_id_1 = response["StreamDescription"]["Shards"][1]["ShardId"]
@@ -109,23 +110,25 @@ class KinesisDatasetTest(test.TestCase):
     data = list()
     with self.test_session() as sess:
       # Basic test: read from shard 0 of stream 2.
-      sess.run(init_op, feed_dict={stream: stream_name, shard: shard_id_0, num_epochs: 1})
+      sess.run(
+          init_op, feed_dict={
+              stream: stream_name, shard: shard_id_0, num_epochs: 1})
       with self.assertRaises(errors.OutOfRangeError):
+        # Use range(11) to guaranteee the OutOfRangeError.
         for i in range(11):
           data.append(sess.run(get_next))
-          #self.assertEqual("D" + str(i), sess.run(get_next))
-          #with self.assertRaises(errors.OutOfRangeError):
-          #sess.run(get_next)
 
       # Basic test: read from shard 1 of stream 2.
-      sess.run(init_op, feed_dict={stream: stream_name, shard: shard_id_1, num_epochs: 1})
+      sess.run(
+          init_op, feed_dict={
+              stream: stream_name, shard: shard_id_1, num_epochs: 1})
       with self.assertRaises(errors.OutOfRangeError):
+        # Use range(11) to guaranteee the OutOfRangeError.
         for i in range(11):
           data.append(sess.run(get_next))
-          #self.assertEqual("D" + str(i + 5), sess.run(get_next))
-          #with self.assertRaises(errors.OutOfRangeError):
-          #sess.run(get_next)
-    print(data)
+
+    data.sort()
+    self.assertEqual(data, ["D" + str(i) for i in range(10)])
 
     client.delete_stream(StreamName=stream_name)
     # Wait until stream deleted, default is 10 * 18 seconds.
