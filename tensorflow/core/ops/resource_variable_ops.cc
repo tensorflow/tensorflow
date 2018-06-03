@@ -269,4 +269,38 @@ REGISTER_OP("ConsumeMutexLock")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
 
+REGISTER_OP("Notification")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Output("resource: resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("NotifyNotification")
+    .Input("notification: resource")
+    .Attr("immediately_reset: bool = true")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+
+REGISTER_OP("ResetNotification")
+    .Input("notification: resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+
+REGISTER_OP("WaitForNotification")
+    .Input("notification: resource")
+    .Input("timeout_in_us: int64")
+    .Output("notified: bool")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

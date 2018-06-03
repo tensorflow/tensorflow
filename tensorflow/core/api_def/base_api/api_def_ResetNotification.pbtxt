@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "ResetNotification"
+  in_arg {
+    name: "notification"
+    description: <<END
+The notification resource to reset.
+END
+  }
+  summary: "Resets the notified flag on a notification."
+}

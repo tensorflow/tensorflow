@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "Notification"
+  out_arg {
+    name: "resource"
+    description: <<END
+The notification resource.
+END
+  }
+  attr {
+    name: "container"
+    description: <<END
+If non-empty, this notification is placed in the given container.
+Otherwise, a default container is used.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+If non-empty, this notification is named in the given bucket
+with this shared_name. Otherwise, the node name is used instead.
+END
+  }
+  summary: "Creates a Notification resource."
+}

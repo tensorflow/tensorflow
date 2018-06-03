@@ -97,6 +97,7 @@ See the @{$python/contrib.framework} guide.
 @@smart_case
 
 @@CriticalSection
+@@Notification
 
 @@BoundedTensorSpec
 @@TensorSpec
