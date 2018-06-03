@@ -19,7 +19,7 @@ set(mkl_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/include)
 set(mkl_BIN_DIRS ${CMAKE_CURRENT_BINARY_DIR}/mkl/bin)
 set(mkl_WIN mklml_win_2018.0.3.20180406.zip) # match for v0.14
 set(mkl_MAC mklml_mac_2018.0.3.20180406.tgz)
-set(mkl_LNX mklml_mac_2018.0.3.20180406.tgz)
+set(mkl_LNX mklml_lnx_2018.0.3.20180406.tgz)
 set(mkl_TAG v0.14)
 set(mkl_URL https://github.com/intel/mkl-dnn/releases)
 
