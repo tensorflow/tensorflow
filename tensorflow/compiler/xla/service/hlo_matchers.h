@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
@@ -329,7 +329,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
     tensorflow::StringPiece sharding) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShardingMatcher(
-      xla::tools::ParseSharding(sharding).ValueOrDie()));
+      ParseSharding(sharding).ValueOrDie()));
 }
 // Verifies that no HloSharding is set for an HLO instruction.
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {

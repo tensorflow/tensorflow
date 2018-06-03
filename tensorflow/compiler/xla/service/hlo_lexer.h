@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_LEXER_H_
-#define TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_LEXER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LEXER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LEXER_H_
 
 #include <string>
 
-#include "tensorflow/compiler/xla/tools/parser/hlo_token.h"
+#include "tensorflow/compiler/xla/service/hlo_token.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -27,9 +27,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-namespace tools {
 
 // Lexer for the HloModule::ToString() format text.
+//
+// This class is meant to be used by hlo_parser.cc.  You shouldn't need to use
+// it directly.
 class HloLexer {
  public:
   explicit HloLexer(tensorflow::StringPiece buf) : buf_(buf) {
@@ -57,7 +59,7 @@ class HloLexer {
     CHECK(GetKind() == TokKind::kShape);
     return shape_val_;
   }
-  int64 GetInt64Val() const {
+  tensorflow::int64 GetInt64Val() const {
     CHECK(GetKind() == TokKind::kInt);
     return int64_val_;
   }
@@ -114,7 +116,7 @@ class HloLexer {
   TokKind current_kind_;
   string str_val_;
   Shape shape_val_;
-  int64 int64_val_;
+  tensorflow::int64 int64_val_;
   double decimal_val_;
 
   struct LineNoCacheTy {
@@ -125,7 +127,6 @@ class HloLexer {
   mutable LineNoCacheTy line_no_cache_{nullptr, 0};
 };
 
-}  // namespace tools
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_LEXER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LEXER_H_

@@ -13,28 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_PARSER_H_
-#define TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_PARSER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_lexer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
-namespace tools {
+
+// For details about the syntax accepted by this parser, see
+// g3doc/hlo_parser.md.
 
 // The api of the hlo parser. Given a string in the HloModule::ToString()
 // format, parses the string and creates a HloModule with the given config.
-StatusOr<std::unique_ptr<HloModule>> Parse(tensorflow::StringPiece str,
-                                           const HloModuleConfig& config);
+StatusOr<std::unique_ptr<HloModule>> ParseHloString(
+    tensorflow::StringPiece str, const HloModuleConfig& config);
 
 // The api of the hlo parser. Given a string in the HloModule::ToString()
 // format, parses the string and creates a HloModule with default config.
-StatusOr<std::unique_ptr<HloModule>> Parse(tensorflow::StringPiece str);
+StatusOr<std::unique_ptr<HloModule>> ParseHloString(
+    tensorflow::StringPiece str);
 
 // Parses the result of HloSharding::ToString(), e.g. "{replicated}".
 StatusOr<HloSharding> ParseSharding(tensorflow::StringPiece str);
@@ -47,7 +50,10 @@ StatusOr<Window> ParseWindow(tensorflow::StringPiece str);
 StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
     tensorflow::StringPiece str);
 
-}  // namespace tools
+// ParseHloString sharding from str. str is supposed to contain the body of the
+// sharding, i.e. just the rhs of the "sharding={...}" attribute string.
+StatusOr<HloSharding> ParseSharding(tensorflow::StringPiece str);
+
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_PARSER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
