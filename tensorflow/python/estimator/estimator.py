@@ -32,15 +32,17 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as tf_session
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export as export_helpers
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
@@ -964,17 +966,9 @@ class Estimator(object):
   def _get_features_from_input_fn(self, input_fn, mode):
     """Extracts the `features` from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
-    input_hooks = []
-    if isinstance(result, dataset_ops.Dataset):
-      iterator = result.make_initializable_iterator()
-      input_hooks.append(_DatasetInitializerHook(iterator))
-      result = iterator.get_next()
-    if isinstance(result, (list, tuple)):
-      # Unconditionally drop the label (the second element of result).
-      result = result[0]
-
+    result, _, hooks = estimator_util.parse_input_fn_result(result)
     self._validate_features_in_predict_input(result)
-    return result, input_hooks
+    return result, hooks
 
   def _validate_features_in_predict_input(self, result):
     if not _has_dataset_or_queue_runner(result):
@@ -984,25 +978,13 @@ class Estimator(object):
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
     """Extracts the `features` and labels from return values of `input_fn`."""
-    input_hooks = []
     if self._distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
       result = self._distribution.distribute_dataset(
           lambda: self._call_input_fn(input_fn, mode))
-      iterator = result.make_initializable_iterator()
-      input_hooks.append(_DatasetInitializerHook(iterator))
-      result = iterator.get_next()
     else:
       result = self._call_input_fn(input_fn, mode)
-      if isinstance(result, dataset_ops.Dataset):
-        iterator = result.make_initializable_iterator()
-        input_hooks.append(_DatasetInitializerHook(iterator))
-        result = iterator.get_next()
-    if isinstance(result, (list, tuple)):
-      if len(result) != 2:
-        raise ValueError(
-            'input_fn should return (features, labels) as a len 2 tuple.')
-      return result[0], result[1], input_hooks
-    return result, None, input_hooks
+
+    return estimator_util.parse_input_fn_result(result)
 
   def _extract_batch_length(self, preds_evaluated):
     """Extracts batch length of predictions."""
@@ -1067,9 +1049,15 @@ class Estimator(object):
       mode: ModeKeys
 
     Returns:
-      Either features or (features, labels) where features and labels are:
-        features - `Tensor` or dictionary of string feature name to `Tensor`.
-        labels - `Tensor` or dictionary of `Tensor` with labels.
+      The return value of the passed input_fn, which should be one of:
+
+        * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
+            tuple (features, labels) with same constraints as below.
+        * A tuple (features, labels): Where `features` is a `Tensor` or a
+          dictionary of string feature name to `Tensor` and `labels` is a
+          `Tensor` or a dictionary of string label name to `Tensor`. Both
+          `features` and `labels` are consumed by `model_fn`. They should
+          satisfy the expectation of `model_fn` from inputs.
 
     Raises:
       ValueError: if input_fn takes invalid arguments.
@@ -1397,10 +1385,18 @@ class Estimator(object):
         hooks=all_hooks,
         config=self._session_config)
 
+    current_global_step = eval_results[ops.GraphKeys.GLOBAL_STEP]
+
     _write_dict_to_summary(
         output_dir=output_dir,
         dictionary=eval_results,
-        current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
+        current_global_step=current_global_step)
+
+    if checkpoint_path:
+      _write_checkpoint_path_to_summary(
+          output_dir=output_dir,
+          checkpoint_path=checkpoint_path,
+          current_global_step=current_global_step)
 
     return eval_results
 
@@ -1599,6 +1595,30 @@ def _write_dict_to_summary(output_dir,
   summary_writer.flush()
 
 
+def _write_checkpoint_path_to_summary(output_dir, checkpoint_path,
+                                      current_global_step):
+  """Writes `checkpoint_path` into summary file in the given output directory.
+
+  Args:
+    output_dir: `str`, directory to write the summary file in.
+    checkpoint_path: `str`, checkpoint file path to be written to summary file.
+    current_global_step: `int`, the current global step.
+  """
+
+  checkpoint_path_tag = 'checkpoint_path'
+
+  logging.info('Saving \'%s\' summary for global step %d: %s',
+               checkpoint_path_tag, current_global_step, checkpoint_path)
+  summary_proto = summary_pb2.Summary()
+  summary_proto.value.add(
+      tag=checkpoint_path_tag,
+      tensor=tensor_util.make_tensor_proto(
+          checkpoint_path, dtype=dtypes.string))
+  summary_writer = writer_cache.FileWriterCache.get(output_dir)
+  summary_writer.add_summary(summary_proto, current_global_step)
+  summary_writer.flush()
+
+
 def _has_dataset_or_queue_runner(maybe_tensor):
   """Returns True if TF dataset or QueueRunner has been used."""
   # Check TF dataset first. Here, we use a simple algorithm to check the top
@@ -1609,19 +1629,6 @@ def _has_dataset_or_queue_runner(maybe_tensor):
 
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
-
-
-class _DatasetInitializerHook(training.SessionRunHook):
-
-  def __init__(self, iterator):
-    self._iterator = iterator
-
-  def begin(self):
-    self._initializer = self._iterator.initializer
-
-  def after_create_session(self, session, coord):
-    del coord
-    session.run(self._initializer)
 
 VocabInfo = warm_starting_util.VocabInfo  # pylint: disable=invalid-name
 tf_export('estimator.VocabInfo', allow_multiple_exports=True)(VocabInfo)

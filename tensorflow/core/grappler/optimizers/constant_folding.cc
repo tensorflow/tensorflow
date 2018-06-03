@@ -2185,8 +2185,8 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
     node->add_input(axis_node->name());
     if (node->input_size() > 2) {
       node->mutable_input()->SwapElements(1, node->input_size() - 1);
-      return true;
     }
+    return true;
   }
   return false;
 }

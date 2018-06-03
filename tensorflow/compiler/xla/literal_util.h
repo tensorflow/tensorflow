@@ -542,6 +542,12 @@ class LiteralBase {
   friend class Literal;
   friend class LiteralSlice;
   friend class BorrowingLiteral;
+
+ private:
+  template <typename NativeT>
+  std::unique_ptr<Literal> SliceInternal(
+      const Shape& result_shape,
+      tensorflow::gtl::ArraySlice<int64> start_indices) const;
 };
 
 // Class representing literal values in XLA.

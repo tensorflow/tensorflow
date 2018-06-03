@@ -1085,11 +1085,11 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
 
 string HloDotDumper::GetInstructionNodeBackendConfig(
     const HloInstruction* instr) {
-  if (!show_backend_config_ || instr->backend_config().empty()) {
+  if (!show_backend_config_ || instr->raw_backend_config_string().empty()) {
     return "";
   }
 
-  return StrCat("backend_config=\"", instr->backend_config(), "\"");
+  return StrCat("backend_config=\"", instr->raw_backend_config_string(), "\"");
 }
 
 string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {

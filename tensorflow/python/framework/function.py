@@ -718,8 +718,12 @@ class _FuncGraph(ops.Graph):
           tensor.dtype, shape=tensor.get_shape(), name=name)
     # pylint: disable=protected-access
     if ops._USE_C_SHAPES:
-      handle_data = c_api.GetResourceHandleShapeAndType(tensor.graph._c_graph,
-                                                        tensor._as_tf_output())
+      if isinstance(tensor, ops.EagerTensor):
+        handle_data = tensor._handle_data
+      else:
+        handle_data = c_api.GetResourceHandleShapeAndType(
+            tensor.graph._c_graph, tensor._as_tf_output())
+
       if handle_data:
         c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
                                             ph._as_tf_output(),

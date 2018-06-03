@@ -526,6 +526,13 @@ typename std::decay<T>::type c_accumulate(const Sequence& sequence, T&& init,
                          std::forward<BinaryOp>(binary_op));
 }
 
+template <typename C, typename Pred>
+typename std::iterator_traits<
+    decltype(std::begin(std::declval<C>()))>::difference_type
+c_count_if(const C& c, Pred&& pred) {
+  return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
+}
+
 template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
   auto it = c_find(c, std::forward<Value>(value));

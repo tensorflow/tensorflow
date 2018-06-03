@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
 namespace {
@@ -1540,6 +1541,71 @@ ENTRY entry (param: s32[]) -> s32[] {
       EXPECT_EQ(instruction->parent()->parent(), clone.get());
     }
   }
+}
+
+TEST_F(HloInstructionTest, IdenticalAccountsForBackendConfig) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {42});
+  HloComputation::Builder builder("test");
+  HloInstruction* p =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p, p));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p, p));
+
+  EXPECT_TRUE(add1->Identical(*add2));
+  add1->set_raw_backend_config_string("abc");
+  EXPECT_FALSE(add1->Identical(*add2));
+}
+
+TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallWindow) {
+  auto instr1 = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                 /*operands=*/{},
+                                                 /*custom_call_target=*/"foo");
+  auto instr2 = instr1->Clone();
+  EXPECT_TRUE(instr1->Identical(*instr2));
+
+  Window w = window_util::MakeWindow({1, 2, 3});
+  instr1->set_window(w);
+  EXPECT_FALSE(instr1->Identical(*instr2));
+}
+
+TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallDnums) {
+  auto instr1 = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                 /*operands=*/{},
+                                                 /*custom_call_target=*/"foo");
+  auto instr2 = instr1->Clone();
+  EXPECT_TRUE(instr1->Identical(*instr2));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_output_batch_dimension(42);
+  instr1->set_convolution_dimension_numbers(dnums);
+  EXPECT_FALSE(instr1->Identical(*instr2));
+}
+
+TEST_F(HloInstructionTest, CloneWindowOnCustomCall) {
+  auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                /*operands=*/{},
+                                                /*custom_call_target=*/"foo");
+  Window w = window_util::MakeWindow({1, 2, 3});
+  instr->set_window(w);
+  auto clone = instr->Clone();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(clone->window(), w))
+      << clone->window().DebugString();
+}
+
+TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
+  auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                /*operands=*/{},
+                                                /*custom_call_target=*/"foo");
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_output_batch_dimension(42);
+  instr->set_convolution_dimension_numbers(dnums);
+  auto clone = instr->Clone();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      clone->convolution_dimension_numbers(), dnums))
+      << clone->convolution_dimension_numbers().DebugString();
 }
 
 }  // namespace

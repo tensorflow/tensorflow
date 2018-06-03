@@ -7,6 +7,8 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
+common_copts = ["-Wall"]
+
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
@@ -30,7 +32,11 @@ tf_cc_binary(
 
 tf_cc_binary(
     name = "benchmark_model",
-    srcs = ["benchmark_model.cc"],
+    srcs = [
+        "benchmark_main.cc",
+        "logging.h",
+    ],
+    copts = common_copts,
     linkopts = select({
         "//tensorflow:android": [
             "-pie",
@@ -42,18 +48,67 @@ tf_cc_binary(
         "//conditions:default": [],
     }),
     deps = [
+        ":benchmark_tflite_model_lib",
+        "//tensorflow/core:stats_calculator_portable",
+    ],
+)
+
+cc_library(
+    name = "command_line_flags",
+    srcs = ["command_line_flags.cc"],
+    hdrs = ["command_line_flags.h"],
+    copts = common_copts,
+    visibility = ["//visibility:private"],
+)
+
+cc_test(
+    name = "command_line_flags_test",
+    srcs = ["command_line_flags_test.cc"],
+    copts = common_copts,
+    visibility = ["//visibility:private"],
+    deps = [
+        ":command_line_flags",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "benchmark_tflite_model_lib",
+    srcs = [
+        "benchmark_tflite_model.cc",
+        "logging.h",
+    ],
+    hdrs = ["benchmark_tflite_model.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-        ],
-    }),
+        "//tensorflow/contrib/lite/profiling:profile_summarizer",
+        "//tensorflow/contrib/lite/profiling:profiler",
+    ],
+)
+
+cc_library(
+    name = "benchmark_model_lib",
+    srcs = [
+        "benchmark_model.cc",
+        "logging.h",
+    ],
+    hdrs = ["benchmark_model.h"],
+    copts = common_copts,
+    deps = [
+        ":command_line_flags",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "//tensorflow/contrib/lite/profiling:profile_summarizer",
+        "//tensorflow/contrib/lite/profiling:profiler",
+        "//tensorflow/contrib/lite/profiling:time",
+        "//tensorflow/core:stats_calculator_portable",
+    ],
 )
 
 cc_library(

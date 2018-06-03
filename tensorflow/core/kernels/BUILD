@@ -3300,7 +3300,7 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
     ] + if_cuda([
         "@cub_archive//:cub",
-        "@local_config_cuda//cuda:cudnn",
+        "@local_config_cuda//cuda:cudnn_header",
     ]),
 )
 
@@ -3319,7 +3319,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
     ] + if_cuda([
-        "@local_config_cuda//cuda:cudnn",
+        "@local_config_cuda//cuda:cudnn_header",
     ]),
 )
 
