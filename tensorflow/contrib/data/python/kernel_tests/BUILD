@@ -128,6 +128,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:error_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//third_party/py/numpy",
     ],

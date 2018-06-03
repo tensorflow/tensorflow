@@ -4340,7 +4340,7 @@ py_test(
 
 py_test(
     name = "warm_starting_util_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/warm_starting_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [

@@ -587,24 +587,14 @@ REGISTER_SYCL_HOST_KERNEL(string);
 #undef REGISTER_SYCL_HOST_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
-// A LoopCond op has one input and one output. The input is a boolean
-// scalar representing the taken branches of the "pivot" Switch that
-// determines loop termination. As a contract, any high-level front-end
-// should always use port '0' of the "pivot" switches for loop exit.
-class LoopCondOp : public OpKernel {
- public:
-  explicit LoopCondOp(OpKernelConstruction* context) : OpKernel(context) {}
+LoopCondOp::LoopCondOp(OpKernelConstruction* context) : OpKernel(context) {}
+LoopCondOp::~LoopCondOp() = default;
 
-  void Compute(OpKernelContext* context) override {
-    context->set_output(0, context->input(0));
-  }
+void LoopCondOp::Compute(OpKernelContext* context) {
+  context->set_output(0, context->input(0));
+}
 
-  bool IsExpensive() override { return false; }
-
-  ~LoopCondOp() override {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(LoopCondOp);
-};
+bool LoopCondOp::IsExpensive() { return false; }
 
 REGISTER_KERNEL_BUILDER(Name("LoopCond").Device(DEVICE_CPU), LoopCondOp);
 REGISTER_KERNEL_BUILDER(Name("LoopCond")

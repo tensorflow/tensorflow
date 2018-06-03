@@ -507,6 +507,22 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class Tile
+    : public BuiltinOperator<TensorFlowTileOperator, ::tflite::TileOptions,
+                             ::tflite::BuiltinOptions_TileOptions> {
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateTileOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class PadV2 : public BuiltinOperator<PadV2Operator, ::tflite::PadV2Options,
                                      ::tflite::BuiltinOptions_PadV2Options> {
  public:
@@ -815,6 +831,24 @@ class SparseToDense
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class ExpandDims
+    : public BuiltinOperator<ExpandDimsOperator, ::tflite::ExpandDimsOptions,
+                             ::tflite::BuiltinOptions_ExpandDimsOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateExpandDimsOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -997,6 +1031,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Cast(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
   ops.emplace_back(
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
+  ops.emplace_back(
+      new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTensorFlowTile));
+  ops.emplace_back(new ExpandDims(::tflite::BuiltinOperator_EXPAND_DIMS,
+                                  OperatorType::kExpandDims));
   ops.emplace_back(new TransposeConv(::tflite::BuiltinOperator_TRANSPOSE_CONV,
                                      OperatorType::kTransposeConv));
   ops.emplace_back(new SparseToDense(::tflite::BuiltinOperator_SPARSE_TO_DENSE,
