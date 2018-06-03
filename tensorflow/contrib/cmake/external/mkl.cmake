@@ -16,7 +16,7 @@ include (ExternalProject)
 
 # NOTE: Different from mkldnn.cmake, this file is meant to download mkl libraries
 set(mkl_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/include)
-set(mkl_BIN_DIRS ${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/lib)
+set(mkl_BIN_DIRS ${CMAKE_CURRENT_BINARY_DIR}/mkl/bin)
 set(mkl_WIN mklml_win_2018.0.3.20180406.zip) # match for v0.14
 set(mkl_MAC mklml_mac_2018.0.3.20180406.tgz)
 set(mkl_LNX mklml_mac_2018.0.3.20180406.tgz)
