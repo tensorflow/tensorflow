@@ -871,7 +871,7 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  @{tf.image.resize_image_with_crop_or_pad}.
+  @{tf.image.resize_image_with_pad}.
 
   `method` can be one of:
 
@@ -1044,27 +1044,29 @@ def resize_image_with_pad(image, target_height, target_width,
     ratio = max_(f_width / f_target_width, f_height / f_target_height)
     resized_height_float = f_height / ratio
     resized_width_float = f_width / ratio
-    resized_height = math_ops.cast(math_ops.floor(p_height_float), dtype=dtypes.int32)
-    resized_width = math_ops.cast(math_ops.floor(p_width_float), dtype=dtypes.int32)
+    resized_height = math_ops.cast(math_ops.floor(resized_height_float), dtype=dtypes.int32)
+    resized_width = math_ops.cast(math_ops.floor(resized_width_float), dtype=dtypes.int32)
 
-    p_height = target_height - resized_height
-    p_weight = target_width - resized_width
+    f_padding_height = math_ops.floor((f_target_height - resized_height_float) / 2)
+    f_padding_width = math_ops.floor((f_target_width - resized_width_float) / 2)
+    p_height = max_(0, math_ops.cast(f_padding_height, dtype=dtypes.int32))
+    p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
 
     # Resize first, then pad to meet requested dimensions
     resized = resize_images(image, [resized_height, resized_width], method)
     
-    padded = pad_to_bounding_box(image, p_height, p_width,
+    padded = pad_to_bounding_box(resized, p_height, p_width,
                                  target_height, target_width)
 
-    if resized.get_shape().ndims is None:
-      raise ValueError('resized contains no shape.')
+    if padded.get_shape().ndims is None:
+      raise ValueError('padded contains no shape.')
 
-    _, resized_height, resized_width, _ = _ImageDimensions(resized, rank=4)
+    _, padded_height, padded_width, _ = _ImageDimensions(padded, rank=4)
 
     if not is_batch:
-      resized = array_ops.squeeze(resized, squeeze_dims=[0])
+      padded = array_ops.squeeze(padded, squeeze_dims=[0])
 
-    return resized
+    return padded
 
 
 @tf_export('image.per_image_standardization')
