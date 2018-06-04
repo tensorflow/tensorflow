@@ -19,6 +19,17 @@ tf_cc_binary(
     srcs = ["clock_cycle_profiling_main.cc"],
     copts = tf_copts(),
     linkopts = select({
+        "//tensorflow:android_cc": [
+            "-pie",
+            "-s",
+            "-landroid",
+            "-ljnigraphics",
+            "-llog",
+            "-lm",
+            "-z defs",
+            "-s",
+            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+        ],
         "//tensorflow:android": [
             "-pie",
             "-s",

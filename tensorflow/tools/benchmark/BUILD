@@ -72,6 +72,18 @@ tf_cc_binary(
     srcs = ["benchmark_model_main.cc"],
     copts = tf_copts(),
     linkopts = select({
+        "//tensorflow:android_cc": [
+            "-pie",
+            "-s",
+            "-landroid",
+            "-latomic",
+            "-ljnigraphics",
+            "-llog",
+            "-lm",
+            "-z defs",
+            "-s",
+            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+        ],
         "//tensorflow:android": [
             "-pie",
             "-s",

@@ -97,6 +97,12 @@ def if_not_android_mips_and_mips64(a):
       "//conditions:default": a,
   })
 
+def if_android_cc(a):
+  return select({
+      clean_dep("//tensorflow:android_cc"): a,
+      "//conditions:default": [],
+  })
+
 def if_android(a):
   return select({
       clean_dep("//tensorflow:android"): a,
@@ -213,6 +219,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
       })
       + select({
+            clean_dep("//tensorflow:android_cc"): android_copts,
             clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
@@ -637,6 +644,9 @@ def tf_cc_test(name,
       srcs=srcs + tf_binary_additional_srcs(),
       copts=tf_copts() + extra_copts,
       linkopts=select({
+        clean_dep("//tensorflow:android_cc"): [
+            "-pie",
+        ],
         clean_dep("//tensorflow:android"): [
             "-pie",
         ],
@@ -816,6 +826,9 @@ def tf_cc_test_mkl(srcs,
       srcs=if_mkl([src]) + tf_binary_additional_srcs(),
       copts=tf_copts(),
       linkopts=select({
+        clean_dep("//tensorflow:android_cc"): [
+            "-pie",
+          ],
         clean_dep("//tensorflow:android"): [
             "-pie",
           ],

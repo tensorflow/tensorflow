@@ -5324,6 +5324,12 @@ tf_cc_binary(
     srcs = ["quantization_utils_test.cc"],
     copts = tf_copts(),
     linkopts = select({
+        "//tensorflow:android_cc": [
+            "-lm",
+            "-llog",
+            "-pie",
+            "-std=c++11",
+        ],
         "//tensorflow:android": [
             "-lm",
             "-llog",
@@ -5384,6 +5390,12 @@ cc_binary(
     srcs = ["quantized_add_op_test.cc"],
     copts = tf_copts(),
     linkopts = select({
+        "//tensorflow:android_cc": [
+            "-lm",
+            "-llog",
+            "-pie",
+            "-std=c++11",
+        ],
         "//tensorflow:android": [
             "-lm",
             "-llog",
@@ -5470,6 +5482,12 @@ cc_binary(
     srcs = ["quantized_resize_bilinear_op_test.cc"],
     copts = tf_copts(),
     linkopts = select({
+        "//tensorflow:android_cc": [
+            "-lm",
+            "-llog",
+            "-pie",
+            "-std=c++11",
+        ],
         "//tensorflow:android": [
             "-lm",
             "-llog",
@@ -5594,6 +5612,9 @@ cc_binary(
     testonly = 1,
     srcs = ["quantized_mul_op_test.cc"],
     linkopts = select({
+        "//tensorflow:android_cc": [
+            "-pie",
+        ],
         "//tensorflow:android": [
             "-pie",
         ],
@@ -5736,6 +5757,9 @@ cc_binary(
     testonly = 1,
     srcs = ["quantized_instance_norm_test.cc"],
     linkopts = select({
+        "//tensorflow:android_cc": [
+            "-pie",
+        ],
         "//tensorflow:android": [
             "-pie",
         ],

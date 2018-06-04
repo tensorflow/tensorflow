@@ -285,6 +285,9 @@ cc_library(
         "@org_tensorflow//tensorflow:android": [
             "-pie",
         ],
+        "@org_tensorflow//tensorflow:android_cc": [
+            "-pie",
+        ],
         "@org_tensorflow//tensorflow:darwin": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",

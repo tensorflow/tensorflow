@@ -604,6 +604,9 @@ tf_cc_binary(
             "-lm",
             "-lpthread",
         ],
+        "//conditions:android_cc": [
+            "-lm",
+        ],
         "//conditions:default": [
             "-lm",
             "-lpthread",

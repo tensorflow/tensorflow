@@ -26,6 +26,11 @@ config_setting(
     values = {"crosstool_top": "//external:android/crosstool"},
     visibility = ["//visibility:public"],
 )
+config_setting(
+    name = "android_cc",
+    values = {"android_crosstool_top": "@androidndk//:toolchain-libcpp"},
+    visibility = ["//visibility:public"],
+)
 
 config_setting(
     name = "android_x86",
@@ -66,7 +71,6 @@ config_setting(
 config_setting(
     name = "android_arm",
     values = {
-        "crosstool_top": "//external:android/crosstool",
         "cpu": "armeabi-v7a",
     },
     visibility = ["//visibility:public"],
@@ -75,7 +79,6 @@ config_setting(
 config_setting(
     name = "android_arm64",
     values = {
-        "crosstool_top": "//external:android/crosstool",
         "cpu": "arm64-v8a",
     },
     visibility = ["//visibility:public"],
@@ -505,6 +508,13 @@ tf_cc_shared_object(
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
             "$(location //tensorflow:tf_exported_symbols.lds)",
+        ],
+        "//tensorflow:android_cc": [
+            "-z defs",
+            "-s",
+            "-llog",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "$(location //tensorflow:tf_version_script.lds)",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],

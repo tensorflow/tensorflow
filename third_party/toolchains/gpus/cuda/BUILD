@@ -64,12 +64,19 @@ cc_library(
         "cuda/include",
     ],
     linkopts = select({
-        ":freebsd": [],
-        "//conditions:default": ["-ldl"],
-    }) + [
-        "-lpthread",
-        "-lrt",
-    ],
+        ":freebsd": [
+            "-lpthread",
+            "-lrt",
+        ],
+        "@org_tensorflow//tensorflow:android_cc": [
+
+        ],
+        "//conditions:default": [
+            "-ldl"
+            "-lpthread",
+            "-lrt",
+        ],
+    }),
     visibility = ["//visibility:public"],
 )
 

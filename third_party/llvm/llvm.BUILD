@@ -299,10 +299,12 @@ cc_binary(
         "utils/TableGen/*.cpp",
         "utils/TableGen/*.h",
     ]),
-    linkopts = [
+    linkopts = select({
+        "@org_tensorflow//tensorflow:android_cc":[],
+        "//conditions:default":["-lpthread"]
+    }) + [
         "-lm",
         "-ldl",
-        "-lpthread",
     ],
     stamp = 0,
     deps = [
@@ -319,10 +321,12 @@ cc_binary(
         "utils/FileCheck/*.cpp",
         "utils/FileCheck/*.h",
     ]),
-    linkopts = [
+    linkopts = select({
+        "@org_tensorflow//tensorflow:android_cc":[],
+        "//conditions:default":["-lpthread"]
+    }) + [
         "-ldl",
         "-lm",
-        "-lpthread",
     ],
     stamp = 0,
     deps = [":support"],
