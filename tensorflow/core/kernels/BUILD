@@ -6170,7 +6170,7 @@ cc_library(
 tf_kernel_library(
     name = "dataset_ops",
     deps = [
-        "//tensorflow/core/kernels/data:dataset_ops",
+        "//tensorflow/core/kernels/data",
     ],
 )
 

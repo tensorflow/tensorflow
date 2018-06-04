@@ -73,11 +73,15 @@ if [[ "$release_build" != 1 ]]; then
   echo "build --define=override_eigen_strong_inline=true" >> "${TMP_BAZELRC}"
 fi
 
+# The host and target platforms are the same in Windows build. So we don't have
+# to distinct them. This helps avoid building the same targets twice.
+echo "build --distinct_host_configuration=false" >> "${TMP_BAZELRC}"
+
 echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
 
 run_configure_for_cpu_build
 
-bazel build --announce_rc -c opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$skip_test" == 1 ]]; then
   exit 0
@@ -98,7 +102,7 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-bazel test -c opt -k --test_output=errors \
+bazel test --announce_rc --config=opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss \
   --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \

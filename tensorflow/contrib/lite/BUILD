@@ -90,6 +90,16 @@ cc_library(
     deps = [":context"],
 )
 
+cc_library(
+    name = "kernel_api",
+    hdrs = [
+        "builtin_op_data.h",
+        "builtin_ops.h",
+        "context.h",
+        "context_util.h",
+    ],
+)
+
 exports_files(["builtin_ops.h"])
 
 cc_library(
