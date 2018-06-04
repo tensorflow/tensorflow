@@ -1018,12 +1018,6 @@ def resize_image_with_pad(image, target_height, target_width,
                           'target_height must be > 0.')
 
     image = control_flow_ops.with_dependencies(assert_ops, image)
-    if _is_tensor(target_height):
-      target_height = control_flow_ops.with_dependencies(
-          assert_ops, target_height)
-    if _is_tensor(target_width):
-      target_width = control_flow_ops.with_dependencies(assert_ops,
-                                                        target_width)
 
     def max_(x, y):
       if _is_tensor(x) or _is_tensor(y):
