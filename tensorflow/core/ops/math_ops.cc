@@ -1416,6 +1416,10 @@ REGISTER_OP("Bincount")
     .Attr("T: {int32, int64, float32, float64}")
     .Output("bins: T")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      // The input `size` must be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
       c->set_output(0, c->UnknownShapeOfRank(1));
       return Status::OK();
     });
