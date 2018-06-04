@@ -209,6 +209,20 @@ py_library(
 )
 
 py_library(
+    name = "optimization",
+    srcs = ["optimization.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":contrib_op_loader",
+        ":gen_dataset_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
     name = "resampling",
     srcs = ["resampling.py"],
     srcs_version = "PY2AND3",
@@ -368,6 +382,7 @@ py_library(
         ":get_single_element",
         ":grouping",
         ":interleave_ops",
+        ":optimization",
         ":prefetching_ops",
         ":readers",
         ":resampling",

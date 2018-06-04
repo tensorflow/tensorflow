@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 # pylint disable=long-line
 from tensorflow.contrib.kfac.python.ops import curvature_matrix_vector_products as cmvp
 from tensorflow.contrib.kfac.python.ops import estimator as est
@@ -107,6 +109,10 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       ValueError: If momentum is non-zero and momentum_type is not 'regular'
           or 'adam'.
     """
+    warnings.warn(
+        "third_party.tensorflow.contrib.kfac is deprecated."
+        "This will be removed on 15-07-2018. Check README for further details.",
+        DeprecationWarning)
     # Parameters to be passed to the Fisher estimator:
     self._variables = var_list or tf_variables.trainable_variables
     self._cov_ema_decay = cov_ema_decay

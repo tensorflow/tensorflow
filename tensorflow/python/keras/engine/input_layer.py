@@ -119,6 +119,12 @@ class InputLayer(base_layer.Layer):
       self.is_placeholder = False
       self._batch_input_shape = tuple(input_tensor.get_shape().as_list())
 
+      if context.executing_eagerly():
+        raise ValueError('You should not pass an input tensor when executing '
+                         'in eager mode. For example, instead of creating an '
+                         'InputLayer, you should instantiate your model and '
+                         'directly call it on your input.')
+
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
     input_tensor._keras_history = (self, 0, 0)  # pylint: disable=protected-access
