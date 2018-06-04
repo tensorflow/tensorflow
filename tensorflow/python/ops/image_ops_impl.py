@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -258,14 +259,14 @@ def random_flip_up_down(image, seed=None):
   dimension, which is `height`.  Otherwise output the image as-is.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
       @{tf.set_random_seed}
       for behavior.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
-
+    A tensor of the same type and shape as `image`.
   Raises:
     ValueError: if the shape of `image` not supported.
   """
@@ -280,13 +281,14 @@ def random_flip_left_right(image, seed=None):
   second dimension, which is `width`.  Otherwise output the image as-is.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
       @{tf.set_random_seed}
       for behavior.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -297,7 +299,8 @@ def random_flip_left_right(image, seed=None):
 def _random_flip(image, flip_index, seed, scope_name):
   """Randomly (50% chance) flip an image along axis `flip_index`.
     Args:
-      image: A 3-D tensor of shape `[height, width, channels].`
+      image: 4-D Tensor of shape `[batch, height, width, channels]` or
+             3-D Tensor of shape `[height, width, channels]`.
       flip_index: The dimension along which to flip the image.
                   Vertical: 0, Horizontal: 1
       seed: A Python integer. Used to create a random seed. See
@@ -306,22 +309,37 @@ def _random_flip(image, flip_index, seed, scope_name):
       scope_name: Name of the scope in which the ops are added.
 
     Returns:
-      A 3-D tensor of the same type and shape as `image`.
+      A tensor of the same type and shape as `image`.
 
     Raises:
       ValueError: if the shape of `image` not supported.
   """
   with ops.name_scope(None, scope_name, [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = _Assert3DImage(image)
-    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-    mirror_cond = math_ops.less(uniform_random, .5)
-    result = control_flow_ops.cond(
-        mirror_cond,
-        lambda: array_ops.reverse(image, [flip_index]),
-        lambda: image,
-        name=scope)
-    return fix_image_flip_shape(image, result)
+    image = _AssertAtLeast3DImage(image)
+    shape = image.get_shape()
+    if shape.ndims == 3 or shape.ndims is None:
+      uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
+      mirror_cond = math_ops.less(uniform_random, .5)
+      result = control_flow_ops.cond(
+          mirror_cond,
+          lambda: array_ops.reverse(image, [flip_index]),
+          lambda: image,
+          name=scope
+      )
+      return fix_image_flip_shape(image, result)
+    elif shape.ndims == 4:
+      uniform_random = random_ops.random_uniform(
+          [array_ops.shape(image)[0]], 0, 1.0, seed=seed
+      )
+      mirror_cond = math_ops.less(uniform_random, .5)
+      return array_ops.where(
+          mirror_cond,
+          image,
+          functional_ops.map_fn(lambda x: array_ops.reverse(x, [flip_index]), image, dtype=image.dtype)
+      )
+    else:
+      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
 
 @tf_export('image.flip_left_right')
