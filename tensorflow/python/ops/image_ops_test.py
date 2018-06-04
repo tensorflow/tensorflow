@@ -2540,7 +2540,7 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
     x = [1, 2, 3, 4, 5, 6, 7, 8]
     x_shape = [2, 4, 1]
 
-    y = [0, 0, 5, 7]
+    y = [1, 3, 0, 0]
     y_shape = [2, 2, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)
