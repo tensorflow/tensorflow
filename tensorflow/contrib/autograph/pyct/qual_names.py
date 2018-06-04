@@ -205,6 +205,7 @@ class QnResolver(gast.NodeTransformer):
     return node
 
   def visit_Subscript(self, node):
+    # TODO(mdan): This may no longer apply if we overload getitem.
     node = self.generic_visit(node)
     s = node.slice
     if not isinstance(s, gast.Index):
@@ -216,7 +217,11 @@ class QnResolver(gast.NodeTransformer):
     elif isinstance(s.value, gast.Str):
       subscript = QN(StringLiteral(s.value.s))
     else:
-      subscript = anno.getanno(node.slice.value, anno.Basic.QN)
+      # The index may be an expression, case in which a name doesn't make sense.
+      if anno.hasanno(node.slice.value, anno.Basic.QN):
+        subscript = anno.getanno(node.slice.value, anno.Basic.QN)
+      else:
+        return node
     if anno.hasanno(node.value, anno.Basic.QN):
       anno.setanno(node, anno.Basic.QN,
                    QN(anno.getanno(node.value, anno.Basic.QN),
