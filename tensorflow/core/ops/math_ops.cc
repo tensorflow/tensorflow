@@ -1420,7 +1420,19 @@ REGISTER_OP("Bincount")
       // The input `size` must be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-      c->set_output(0, c->UnknownShapeOfRank(1));
+      const Tensor* size_tensor = c->input_tensor(1);
+      if (size_tensor == nullptr) {
+        // Return unknown shape if size is not known.
+        c->set_output(0, c->UnknownShapeOfRank(1));
+        return Status::OK();
+      }
+
+      // Return `[size]` shape if size is known.
+      int32 size_val = size_tensor->scalar<int32>()();
+      if (size_val < 0) {
+        return errors::InvalidArgument("size (", size_val, ") must be non-negative");
+      }
+      c->set_output(0, c->MakeShape({size_val}));
       return Status::OK();
     });
 
