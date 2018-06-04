@@ -2980,6 +2980,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_lexer",
+        ":hlo_sharding_metadata",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
