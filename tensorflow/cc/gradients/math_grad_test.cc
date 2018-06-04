@@ -475,11 +475,7 @@ TEST_F(CWiseUnaryGradTest, Tan_Complex) {
   auto x_fn = [this](const int i) {
     return CRV({{1, 0}, {0, 1}, {2, -1}, {1, 2}, {3, 4}});
   };
-  // TODO(kbsriram)
-  // Enable when tan kernel supports complex inputs
-  if (false) {
-    TestCWiseGrad<complex64, complex64>(TAN, x_fn);
-  }
+  TestCWiseGrad<complex64, complex64>(TAN, x_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Atan) {
