@@ -88,9 +88,4 @@ def NewStatSummarizer(unused):
 
 def DeleteStatSummarizer(stat_summarizer):
   _DeleteStatSummarizer(stat_summarizer)
-
-NewStatSummarizer._tf_api_names = ["contrib.stat_summarizer.NewStatSummarizer"]
-DeleteStatSummarizer._tf_api_names = [
-    "contrib.stat_summarizer.DeleteStatSummarizer"]
-StatSummarizer._tf_api_names = ["contrib.stat_summarizer.StatSummarizer"]
 %}

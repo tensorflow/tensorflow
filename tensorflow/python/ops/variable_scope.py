@@ -1261,13 +1261,13 @@ class EagerVariableStore(object):
 
   def trainable_variables(self):
     # pylint: disable=protected-access
-    return sorted([x for x in self._store._vars.values() if x._trainable],
+    return sorted([x for x in self._store._vars.values() if x.trainable],
                   key=lambda x: x.name)
     # pylint: enable=protected-access
 
   def non_trainable_variables(self):
     # pylint: disable=protected-access
-    return sorted([x for x in self._store._vars.values() if not x._trainable],
+    return sorted([x for x in self._store._vars.values() if not x.trainable],
                   key=lambda x: x.name)
     # pylint: enable=protected-access
 
@@ -1296,7 +1296,7 @@ class EagerVariableStore(object):
       new_var = resource_variable_ops.ResourceVariable(
           var.read_value(),
           name=stripped_var_name,
-          trainable=var._trainable)
+          trainable=var.trainable)
       new_store._store._vars[key] = new_var
     return new_store
     # pylint: enable=protected-access

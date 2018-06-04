@@ -36,9 +36,10 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
-from tensorflow.python.keras.utils.layer_utils import print_summary as print_layer_summary
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures_base
@@ -94,6 +95,11 @@ class Network(base_layer.Layer):
     self.trainable = True
     self._is_compiled = False
     self._expects_training_arg = False
+    # A list of "extra" variables assigned to attributes of this class, included
+    # in self.weights and self.variables. Always empty for graph networks (but
+    # included in base_init to avoid excessive special casing when retrieving
+    # the value).
+    self._extra_variables = []
 
     self.supports_masking = False
     if not hasattr(self, 'optimizer'):
@@ -128,7 +134,7 @@ class Network(base_layer.Layer):
     self._in_progress_restore_finalizer = None
 
   def _init_graph_network(self, inputs, outputs, name=None):
-    self._uses_inputs_arg = True
+    self._call_convention = base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, (list, tuple)):
       self.inputs = list(inputs)  # Tensor or list of tensors.
@@ -288,18 +294,54 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    call_args = tf_inspect.getargspec(self.call).args
-    if 'training' in call_args:
+    call_argspec = tf_inspect.getargspec(self.call)
+    if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
-    if 'inputs' in call_args:
-      self._uses_inputs_arg = True
-    else:
-      self._uses_inputs_arg = False
+    self._call_convention = self._determine_call_convention(call_argspec)
     self.outputs = None
     self.inputs = None
     self.built = False
+
+  def _determine_call_convention(self, call_argspec):
+    """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
+    if call_argspec.varargs:
+      may_take_single_argument = False
+    else:
+      try:
+        # Note: tf_inspect doesn't raise a TypeError when regular inspect would,
+        # so we need to keep in mind that "getcallargs" may have returned
+        # something even though we under-specified positional arguments.
+        all_args = tf_inspect.getcallargs(self.call, None)
+        self_args = set()
+        for arg_name, obj in all_args.items():
+          if obj is self:
+            self_args.add(arg_name)
+        may_take_single_argument = True
+      except TypeError:
+        may_take_single_argument = False
+    if may_take_single_argument:
+      # A single positional argument (plus "self") is considered equivalent to
+      # an "inputs" argument.
+      all_positional_args = len(call_argspec.args)
+      if call_argspec.defaults is not None:
+        all_positional_args -= len(call_argspec.defaults)
+      non_self_positional_args = all_positional_args
+      for positional_arg_name in call_argspec.args[:all_positional_args]:
+        if positional_arg_name in self_args:
+          non_self_positional_args -= 1
+      if non_self_positional_args == 1:
+        if 'inputs' in call_argspec.args[all_positional_args:]:
+          raise TypeError(
+              "Model.call() takes a single positional argument (to which "
+              "inputs are passed by convention) and a separate 'inputs' "
+              "argument. Unable to determine which arguments are inputs.")
+        return base_layer.CallConvention.SINGLE_POSITIONAL_ARGUMENT
+    if 'inputs' in call_argspec.args:
+      return base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
+    else:
+      return base_layer.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
     """Add Checkpointable dependencies on a list of Layers."""
@@ -347,11 +389,22 @@ class Network(base_layer.Layer):
       # layers). Therefore Model tracks Checkpointable objects itself.
       self._track_checkpointable(
           checkpointable=value, name=name, overwrite=True)
+      if (  # For subclassed models only, users may add extra weights/variables
+            # simply by assigning them to attributes.
+          not self._is_graph_network
+          and isinstance(value, variables.Variable)):
+        self._extra_variables.append(value)
     super(Network, self).__setattr__(name, value)
 
   def add_variable(self, name, shape, dtype=None, initializer=None,
                    regularizer=None, trainable=True, constraint=None):
-    raise NotImplementedError('`add_variable` is not supported on Networks.')
+    if self._is_graph_network:
+      raise NotImplementedError('`add_variable` is not supported on Networks.')
+    else:
+      raise NotImplementedError(
+          '`add_variable` is not supported on Networks. However, you may '
+          'assign variables to attributes and they will show up in the weights '
+          'and variables properties.')
 
   def add_loss(self, *args, **kwargs):
     if context.executing_eagerly():
@@ -589,24 +642,17 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
-    if not self.trainable:
-      return []
-    weights = []
-    for layer in self.layers:
-      weights += layer.trainable_weights
-    return weights
+    return layer_utils.gather_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
-    weights = []
-    for layer in self.layers:
-      weights += layer.non_trainable_weights
-    if not self.trainable:
-      trainable_weights = []
-      for layer in self.layers:
-        trainable_weights += layer.trainable_weights
-      return trainable_weights + weights
-    return weights
+    return layer_utils.gather_non_trainable_weights(
+        trainable=self.trainable,
+        sub_layers=self.layers,
+        extra_variables=self._extra_variables)
 
   @property
   def input_spec(self):
@@ -1437,10 +1483,10 @@ class Network(base_layer.Layer):
                        'have not yet been created, so no summary can be '
                        'displayed. Build the model first '
                        '(e.g. by calling it on some data).')
-    print_layer_summary(self,
-                        line_length=line_length,
-                        positions=positions,
-                        print_fn=print_fn)
+    layer_utils.print_summary(self,
+                              line_length=line_length,
+                              positions=positions,
+                              print_fn=print_fn)
 
 
 def get_source_inputs(tensor, layer=None, node_index=None):

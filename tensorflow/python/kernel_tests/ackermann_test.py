@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,19 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os.path
+import os
 
-import tensorflow as tf
+from tensorflow.python.framework import load_library
+from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import test
 
 
-class InvalidOpTest(tf.test.TestCase):
+class AckermannTest(test.TestCase):
 
   def testBasic(self):
-    library_filename = os.path.join(tf.resource_loader.get_data_files_path(),
-                                    'invalid_op.so')
-    with self.assertRaises(tf.errors.InvalidArgumentError):
-      tf.load_op_library(library_filename)
+    library_filename = os.path.join(resource_loader.get_data_files_path(),
+                                    'ackermann_op.so')
+    ackermann = load_library.load_op_library(library_filename)
+
+    self.assertEqual(len(ackermann.OP_LIST.op), 1)
+    self.assertEqual(ackermann.OP_LIST.op[0].name, 'Ackermann')
+
+    with self.test_session():
+      self.assertEqual(ackermann.ackermann().eval(), b'A(m, 0) == A(m-1, 1)')
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

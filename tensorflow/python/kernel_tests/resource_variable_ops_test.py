@@ -119,6 +119,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           dtype=dtypes.int32, shape=[1], name="foo")
       self.assertGreater(len(handle.eval()), 0)
 
+  def testCachedValueReadBeforeWrite(self):
+    with self.test_session() as sess:
+      v = resource_variable_ops.ResourceVariable(0.0, caching_device="cpu:0")
+      sess.run(v.initializer)
+      value, _ = sess.run([v, v.assign_add(1.0)])
+      self.assertAllEqual(value, 0.0)
+
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
@@ -530,6 +537,25 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       # But attempts to use initialized_value will result in errors.
       with self.assertRaises(ValueError):
         sess.run(v.initialized_value())
+
+  def testTrainableInProto(self):
+    with ops.Graph().as_default():
+      non_trainable_variable = resource_variable_ops.ResourceVariable(
+          trainable=False,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          False,
+          resource_variable_ops.ResourceVariable(
+              variable_def=non_trainable_variable.to_proto())
+          .trainable)
+      trainable_variable = resource_variable_ops.ResourceVariable(
+          trainable=True,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          True,
+          resource_variable_ops.ResourceVariable(
+              variable_def=trainable_variable.to_proto())
+          .trainable)
 
   @test_util.run_in_graph_and_eager_modes()
   def testSparseRead(self):

@@ -98,20 +98,12 @@ gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingSub(
 
 namespace reference_ops {
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOne(
-    int32 x, int32 quantized_multiplier, int right_shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), right_shift);
-}
-
-inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(
-    int32 x, int32 quantized_multiplier, int left_shift) {
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
-                                           quantized_multiplier);
-}
+// TODO(b/80247582) Remove this constant.
+// This will be phased out as the shifts are revised with more thought. Use of a
+// constant enables us to track progress on this work.
+//
+// Used mainly to convert from old-style shifts (right) to new-style (left).
+static constexpr int kReverseShift = -1;
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {
@@ -422,8 +414,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
           if (bias_data) {
             acc += bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
           }
-          acc = MultiplyByQuantizedMultiplierSmallerThanOne(
-              acc, output_multiplier, output_shift);
+          acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+              acc, output_multiplier, kReverseShift * output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -646,8 +638,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       if (bias_data) {
         acc += bias_data[Offset(bias_dims, out_c, 0, 0, 0)];
       }
-      acc = MultiplyByQuantizedMultiplierSmallerThanOne(acc, output_multiplier,
-                                                        output_shift);
+      acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          acc, output_multiplier, kReverseShift * output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -1041,8 +1033,8 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
     for (int c = 0; c < depth; c++) {
       int32 diff =
           input_data[Offset(input_dims, c, i, 0, 0)] - input_zero_point;
-      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOne(
-          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
+      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          128 * diff, inv_l2norm_multiplier, kReverseShift * inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
       output_data[Offset(output_dims, c, i, 0, 0)] =
@@ -1113,15 +1105,17 @@ inline void Add(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sum = scaled_input1_val + scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -1267,15 +1261,17 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sum = scaled_input1_val + scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -1320,15 +1316,17 @@ inline void BroadcastAddFivefold(
             const int32 shifted_input1_val = input1_val * (1 << left_shift);
             const int32 shifted_input2_val = input2_val * (1 << left_shift);
             const int32 scaled_input1_val =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    shifted_input1_val, input1_multiplier, input1_shift);
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    shifted_input1_val, input1_multiplier,
+                    kReverseShift * input1_shift);
             const int32 scaled_input2_val =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    shifted_input2_val, input2_multiplier, input2_shift);
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    shifted_input2_val, input2_multiplier,
+                    kReverseShift * input2_shift);
             const int32 raw_sum = scaled_input1_val + scaled_input2_val;
             const int32 raw_output =
-                MultiplyByQuantizedMultiplierSmallerThanOne(
-                    raw_sum, output_multiplier, output_shift) +
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    raw_sum, output_multiplier, kReverseShift * output_shift) +
                 output_offset;
             const int32 clamped_output =
                 std::min(output_activation_max,
@@ -1508,9 +1506,9 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
           const int32 input2_val =
               input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
           const int32 unclamped_result =
-              output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  input1_val * input2_val, output_multiplier, output_shift);
+              output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                                  input1_val * input2_val, output_multiplier,
+                                  kReverseShift * output_shift);
           const int32 clamped_output =
               std::min(output_activation_max,
                        std::max(output_activation_min, unclamped_result));
@@ -1724,15 +1722,17 @@ inline void BroadcastSub(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sub = scaled_input1_val - scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sub, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sub, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -2944,9 +2944,9 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
         fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
     const int adjusted_diff_min =
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOne(
+                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     reverse_scaling_right_shift));
+                     kReverseShift * reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff =
@@ -3505,63 +3505,124 @@ inline void Exp(const T* input_data, const size_t num_elements,
   }
 }
 
+// A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
+// It takes a reducer function as input and returns false when numeric overflow
+// is detected.
+// This method iterates through input data and reduce elements along the
+// dimensions given in axis.
+template <typename In, typename Out>
+inline bool Reduce(const In* input_data, const int* input_dims,
+                   const int* output_dims, const int input_num_dims,
+                   const int output_num_dims, const int* axis,
+                   const int num_axis, int* input_iter,
+                   Out reducer(Out current, const In in, bool* overflow),
+                   Out* output_data) {
+  // Reset input iterator.
+  TFLITE_DCHECK(input_num_dims > 0);
+  for (int idx = 0; idx < input_num_dims; ++idx) {
+    input_iter[idx] = 0;
+  }
+  // Iterate through input_data.
+  do {
+    size_t input_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, input_iter, 0, nullptr);
+    size_t output_offset = ReducedOutputOffset(input_num_dims, input_dims,
+                                               input_iter, num_axis, axis);
+    bool overflow = false;
+    output_data[output_offset] = reducer(output_data[output_offset],
+                                         input_data[input_offset], &overflow);
+    if (overflow) return false;
+  } while (NextIndex(input_num_dims, input_dims, input_iter));
+  return true;
+}
+
+inline bool ResolveAxis(const int num_dims, const int* axis, const int num_axis,
+                        int* out_axis, int* out_num_axis) {
+  *out_num_axis = 0;  // Just in case.
+  // o(n^2) is fine since out_num_axis should be really small, mostly <= 4
+  for (int idx = 0; idx < num_axis; ++idx) {
+    // Handle negative index.
+    int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
+    TFLITE_DCHECK(current >= 0 && current < num_dims);
+    bool is_dup = false;
+    for (int j = 0; j < *out_num_axis; ++j) {
+      if (out_axis[j] == current) {
+        is_dup = true;
+        break;
+      }
+    }
+    if (!is_dup) {
+      out_axis[*out_num_axis] = current;
+      *out_num_axis += 1;
+    }
+  }
+  return true;
+}
+
+// This method expects that output_data has been initialized.
+template <typename In, typename Out>
+inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
+                          const int* output_dims, const int input_num_dims,
+                          const int output_num_dims, const int* axis,
+                          const int num_axis, int* input_iter,
+                          Out* output_data) {
+  auto reducer = [](Out current, const In in, bool* overflow) -> Out {
+    const Out actual_in = static_cast<Out>(in);
+    return current + actual_in;
+  };
+  return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
+                         output_num_dims, axis, num_axis, input_iter, reducer,
+                         output_data);
+}
+
+// Computes the mean of elements across dimensions given in axis.
+// It does so in two stages, first calculates the sum of elements along the axis
+// then divides it by the number of element in axis.
 template <typename T, typename U>
 inline bool Mean(const T* input_data, const int* input_dims,
                  const int input_num_dims, T* output_data,
                  const int* output_dims, const int output_num_dims,
                  const int* axis, const int num_axis_dimensions, bool keep_dims,
                  int* temp_index, int* resolved_axis, U* temp_sum) {
-  // resets output data.
+  // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
-    num_outputs *= static_cast<size_t>(output_dims[idx]);
+    size_t current = static_cast<size_t>(output_dims[idx]);
+    // Overflow prevention.
+    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_outputs *= current;
   }
   for (size_t idx = 0; idx < num_outputs; ++idx) {
     output_data[idx] = T();
     temp_sum[idx] = U();
   }
-  // resets temp index.
-  for (int idx = 0; idx < input_num_dims; ++idx) {
-    temp_index[idx] = 0;
-  }
-  // resolves axis.
+
+  // Resolve axis.
   int num_resolved_axis = 0;
-  for (int idx = 0; idx < num_axis_dimensions; ++idx) {
-    int current = axis[idx];
-    TFLITE_DCHECK(current < input_num_dims && current + input_num_dims >= 0);
-    if (current < 0) {
-      current += input_num_dims;
-    }
-    bool is_dup = false;
-    for (int j = 0; j < num_resolved_axis; ++j) {
-      if (resolved_axis[j] == current) {
-        is_dup = true;
-        break;
-      }
-    }
-    if (!is_dup) {
-      resolved_axis[num_resolved_axis++] = current;
-    }
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
   }
-  // iterates through input_data.
-  for (bool has_next = true; has_next;
-       has_next = NextIndex(input_num_dims, input_dims, temp_index)) {
-    size_t input_offset =
-        ReducedOutputOffset(input_num_dims, input_dims, temp_index, 0, nullptr);
-    size_t output_offset =
-        ReducedOutputOffset(input_num_dims, input_dims, temp_index,
-                            num_resolved_axis, resolved_axis);
-    temp_sum[output_offset] += static_cast<U>(input_data[input_offset]);
+
+  if (!ReduceSumImpl<T, U>(input_data, input_dims, output_dims, input_num_dims,
+                           output_num_dims, resolved_axis, num_resolved_axis,
+                           temp_index, temp_sum)) {
+    return false;
   }
-  // takes average by num of elements added to get mean.
-  size_t num_elements_in_axis = 1;
+
+  // Calculate mean by dividing output_data by num of aggregated element.
+  U num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
+    // Overflow prevention.
     if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;
   }
+
   if (num_elements_in_axis > 0) {
     for (size_t idx = 0; idx < num_outputs; ++idx) {
       output_data[idx] =
@@ -3850,10 +3911,14 @@ inline void Comparison(int left_shift, const T* input1_data,
     const int32 input2_val = input2_offset + input2_data[i];
     const int32 shifted_input1_val = input1_val * (1 << left_shift);
     const int32 shifted_input2_val = input2_val * (1 << left_shift);
-    const int32 scaled_input1_val = MultiplyByQuantizedMultiplierSmallerThanOne(
-        shifted_input1_val, input1_multiplier, input1_shift);
-    const int32 scaled_input2_val = MultiplyByQuantizedMultiplierSmallerThanOne(
-        shifted_input2_val, input2_multiplier, input2_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, input1_multiplier,
+            kReverseShift * input1_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, input2_multiplier,
+            kReverseShift * input2_shift);
     output_data[i] = F(scaled_input1_val, scaled_input2_val);
   }
 }
@@ -3902,11 +3967,13 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           output_data[Offset(output_dims, c, x, y, b)] =
               F(scaled_input1_val, scaled_input2_val);
         }
@@ -3997,6 +4064,42 @@ inline void RankOneSelect(const D* input_condition_data,
     const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
     memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
     offset += inner_size;
+  }
+}
+
+// For easy implementation, the indices is always a vector of size-4 vectors.
+template <typename T, typename I>
+inline void SparseToDense(const std::vector<std::vector<I>>& indices,
+                          const T* values, T default_value, T* output_data,
+                          const Dims<4>& output_dims, bool value_is_scalar) {
+  const int value_count = indices.size();
+
+  // First fill the output_data with default value.
+  const int num_elements = FlatSize(output_dims);
+  for (int i = 0; i < num_elements; ++i) {
+    output_data[i] = default_value;
+  }
+
+  // Special handle for value is scalar case to avoid checking the boolean
+  // condition within the loop every time.
+  if (value_is_scalar) {
+    for (int i = 0; i < value_count; ++i) {
+      const std::vector<I>& index = indices[i];
+      TFLITE_DCHECK_EQ(index.size(), 4);
+      const T value = *values;  // just use the first value.
+      output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
+          value;
+    }
+    return;
+  }
+
+  // Go through the values and indices to fill the sparse values.
+  for (int i = 0; i < value_count; ++i) {
+    const std::vector<I>& index = indices[i];
+    TFLITE_DCHECK_EQ(index.size(), 4);
+    const T value = values[i];
+    output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
+        value;
   }
 }
 

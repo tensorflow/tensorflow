@@ -37,7 +37,7 @@ ENTRY main {
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [2 x [3 x [2 x float]]]
+CHECK: private constant [12 x float]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

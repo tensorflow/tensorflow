@@ -500,37 +500,6 @@ cc_library(
 )
 
 cc_library(
-    name = "scanner",
-    srcs = ["scanner.cc"],
-    hdrs = ["scanner.h"],
-    visibility = [":internal"],
-    deps = [
-        ":status",
-        ":status_macros",
-        ":types",
-        ":util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_cc_test(
-    name = "scanner_test",
-    srcs = ["scanner_test.cc"],
-    deps = [
-        ":scanner",
-        ":status",
-        ":status_macros",
-        ":test",
-        ":types",
-        ":util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
     name = "text_literal_reader",
     srcs = ["text_literal_reader.cc"],
     hdrs = ["text_literal_reader.h"],

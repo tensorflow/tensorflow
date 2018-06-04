@@ -2729,7 +2729,8 @@ class WhileContext(ControlFlowContext):
           self.outer_context.Exit()
       else:
         shape_acc = array_ops.zeros_like(
-            array_ops.shape_internal(op.inputs[0], optimize=False),
+            array_ops.shape_internal(op.inputs[0], optimize=False,
+                                     out_type=dense_shape.dtype),
             optimize=False)
 
     if self.outer_context:

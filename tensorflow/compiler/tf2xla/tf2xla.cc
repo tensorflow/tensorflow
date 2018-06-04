@@ -263,8 +263,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
-  DeviceType device_type(DEVICE_CPU_XLA_JIT);
-  compiler_options.device_type = &device_type;
+  compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;

@@ -1351,32 +1351,6 @@ TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
       op::Tuple(op::Bitcast(), dimensions_wrong_reshape, layout_wrong_reshape));
 }
 
-TEST_F(AlgebraicSimplifierTest, ReshapeAfterEffectiveUnary) {
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {2, 3, 4, 5}), "param"));
-  HloInstruction* movable_reshape =
-      builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(F32, {1, 2, 3, 4, 5}), param));
-  HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {1, 2, 3, 4, 5}),
-                                   HloOpcode::kMaximum, movable_reshape, zero));
-  auto computation = module().AddEntryComputation(builder.Build());
-
-  EXPECT_THAT(computation->root_instruction(),
-              op::Maximum(op::Reshape(param), zero));
-
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
-
-  simplifier.Run(&module()).ValueOrDie();
-  EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Maximum(param, zero)));
-}
-
 // Regression test for a bug in the reshape sinking transformation, where
 // moving a reshape to a scalar led to a crash.
 TEST_F(AlgebraicSimplifierTest, ReshapeToScalarNotHoistedAfterEffectiveUnary) {

@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test", "py_test", "tf_py_test")
 
 py_test(
     name = "batch_dataset_op_test",
-    size = "large",
+    size = "medium",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -128,6 +128,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:error_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//third_party/py/numpy",
     ],

@@ -71,6 +71,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools:__pkg__",
+        "//tensorflow/tools/api/generator:__pkg__",
     ],
     deps = [
         ":array_ops",
@@ -713,6 +714,38 @@ py_library(
     deps = [
         ":op_def_registry",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "function_def_to_graph",
+    srcs = ["framework/function_def_to_graph.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":function",
+        ":op_def_registry",
+        ":tensor_shape",
+        ":versions",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "function_def_to_graph_test",
+    size = "small",
+    srcs = ["framework/function_def_to_graph_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":function_def_to_graph",
+        ":graph_to_function_def",
+        ":math_ops",
+        ":test_ops",
     ],
 )
 
@@ -2699,7 +2732,6 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
@@ -4308,7 +4340,7 @@ py_test(
 
 py_test(
     name = "warm_starting_util_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/warm_starting_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [

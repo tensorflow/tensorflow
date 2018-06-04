@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -76,6 +77,13 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_hlo_profile(bool enabled);
   tensorflow::gtl::optional<bool> hlo_profile() const;
 
+  void add_disabled_hlo_pass(tensorflow::StringPiece pass_name) {
+    disabled_hlo_passes_.push_back(std::string(pass_name));
+  }
+  const tensorflow::gtl::ArraySlice<std::string> disabled_hlo_passes() const {
+    return disabled_hlo_passes_;
+  }
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
@@ -89,6 +97,7 @@ class ExecutableBuildOptions {
   tensorflow::gtl::optional<string> dump_optimized_hlo_proto_to_;
   tensorflow::gtl::optional<string> dump_per_pass_hlo_proto_to_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
+  std::vector<std::string> disabled_hlo_passes_;
 };
 
 }  // namespace xla

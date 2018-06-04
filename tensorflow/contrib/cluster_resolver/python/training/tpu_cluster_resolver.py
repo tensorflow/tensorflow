@@ -170,10 +170,11 @@ class TPUClusterResolver(ClusterResolver):
 
     if service is None and should_resolve:
       if not _GOOGLE_API_CLIENT_INSTALLED:
-        raise ImportError('googleapiclient must be installed before using the '
-                          'TPU cluster resolver. Execute: `pip install '
-                          '--upgrade google-api-python-client` to install with '
-                          'pip.')
+        raise ImportError('googleapiclient and oauth2client must be installed '
+                          'before using the TPU cluster resolver. Execute: '
+                          '`pip install --upgrade google-api-python-client` '
+                          'and `pip install --upgrade oauth2lclient` to '
+                          'install with pip.')
 
       final_discovery_url = self._discoveryUrl() or discovery_url
       if final_discovery_url:

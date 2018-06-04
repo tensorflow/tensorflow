@@ -987,6 +987,23 @@ std::unique_ptr<Literal> LiteralBase::Transpose(
   return new_literal;
 }
 
+template <typename NativeT>
+std::unique_ptr<Literal> LiteralBase::SliceInternal(
+    const Shape& result_shape,
+    tensorflow::gtl::ArraySlice<int64> start_indices) const {
+  auto result_literal = MakeUnique<Literal>(result_shape);
+  DimensionVector new_indices(ShapeUtil::Rank(result_shape));
+  result_literal->EachCell<NativeT>(
+      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT /*value*/) {
+        for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
+          new_indices[i] = indices[i] + start_indices[i];
+        }
+        NativeT value = Get<NativeT>(new_indices);
+        result_literal->Set<NativeT>(indices, value);
+      });
+  return result_literal;
+}
+
 std::unique_ptr<Literal> LiteralBase::Slice(
     tensorflow::gtl::ArraySlice<int64> start_indices,
     tensorflow::gtl::ArraySlice<int64> limit_indices) const {
@@ -1004,51 +1021,17 @@ std::unique_ptr<Literal> LiteralBase::Slice(
   const auto result_shape =
       ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
                                      LayoutUtil::MinorToMajor(shape()));
-
-  auto result_literal = MakeUnique<Literal>(result_shape);
-
-  DimensionVector new_indices(ShapeUtil::Rank(result_shape));
   switch (result_shape.element_type()) {
     case F32:
-      result_literal->EachCell<float>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, float /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            float value = Get<float>(new_indices);
-            result_literal->Set<float>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<float>(result_shape, start_indices);
+    case BF16:
+      return SliceInternal<bfloat16>(result_shape, start_indices);
     case C64:
-      result_literal->EachCell<complex64>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, complex64 /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            complex64 value = Get<complex64>(new_indices);
-            result_literal->Set<complex64>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<complex64>(result_shape, start_indices);
     case S32:
-      result_literal->EachCell<int32>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, int32 /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            int32 value = Get<int32>(new_indices);
-            result_literal->Set<int32>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<int32>(result_shape, start_indices);
     case U32:
-      result_literal->EachCell<uint32>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            uint32 value = Get<uint32>(new_indices);
-            result_literal->Set<uint32>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<uint32>(result_shape, start_indices);
     default:
       LOG(FATAL) << "not yet implemented: "
                  << PrimitiveType_Name(result_shape.element_type());
