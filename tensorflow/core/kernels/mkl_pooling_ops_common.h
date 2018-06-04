@@ -543,23 +543,6 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
     CHECK_NOTNULL(*output_tensor);
   }
 
-  void PrepareAndExecuteNet(
-      const pooling_forward::primitive_desc& pool_fwd_desc,
-      const MklDnnData<T>* src, MklDnnData<T>* dst,
-      MklDnnData<uint8>* wksp = nullptr) {
-    std::vector<primitive> net;
-
-    // Create pooling primitive and add it to net
-    if (wksp != nullptr) {
-      net.push_back(pooling_forward(pool_fwd_desc, src->GetOpMem(),
-                                    dst->GetOpMem(), wksp->GetOpMem()));
-    } else {
-      net.push_back(
-          pooling_forward(pool_fwd_desc, src->GetOpMem(), dst->GetOpMem()));
-    }
-    stream(stream::kind::eager).submit(net).wait();
-  }
-
   void SanityCheckInput(OpKernelContext* context, const Tensor& input_tensor,
                         const MklDnnShape& input_mkl_shape) {
     if (!input_mkl_shape.IsMklTensor()) {
@@ -607,67 +590,6 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
     AllocateOutputSetMklShape(context, kOutputTensorIndexOutput, output_tensor,
                               output_tf_shape, output_mkl_shape);
     CHECK_NOTNULL(*output_tensor);
-  }
-
-  void PrepareAndExecuteNet(
-      const pooling_backward::primitive_desc& pool_bkwd_desc,
-      MklDnnData<T>* input_gradient_diff_dst, MklDnnData<T>* output_diff_src,
-      const memory::primitive_desc& target_diff_dst_pd,
-      const MklDnnData<uint8>* workspace = nullptr) {
-    std::vector<primitive> net;
-
-    // If the input gradient isn't in the same format as the output
-    // reorder it to the same format as the output
-    input_gradient_diff_dst->CheckReorderToOpMem(target_diff_dst_pd, &net);
-
-    // Create pooling primitive and add it to net
-    if (nullptr == workspace) {
-      net.push_back(pooling_backward(pool_bkwd_desc,
-                                     input_gradient_diff_dst->GetOpMem(),
-                                     output_diff_src->GetOpMem()));
-    } else {
-      net.push_back(
-          pooling_backward(pool_bkwd_desc, input_gradient_diff_dst->GetOpMem(),
-                           workspace->GetOpMem(), output_diff_src->GetOpMem()));
-    }
-    stream(stream::kind::eager).submit(net).wait();
-  }
-
-  // Max Pooling and Avg Pooling have slightly different implementations
-  // Takes the Tensor containing original input data and the original
-  // mkl Dnn Shape and populates other data
-  memory::desc ConfigureOriginalInput(
-      OpKernelContext* context, const Tensor& tensor_original_input_shape,
-      const MklDnnShape& original_input_mkl_shape,
-      memory::dims* original_input_dims_nchw, MklPoolParameters* pool_params,
-      const TensorShape& input_tensor_shape) {
-    CHECK_NOTNULL(original_input_dims_nchw);
-    CHECK_NOTNULL(pool_params);
-    this->InitMklPoolParameters(context, pool_params, original_input_mkl_shape,
-                                input_tensor_shape);
-
-    *original_input_dims_nchw =
-        original_input_mkl_shape.IsMklTensor()
-            ? original_input_mkl_shape.GetSizesAsMklDnnDims()
-            : TFShapeToMklDnnDimsInNCHW(input_tensor_shape,
-                                        this->data_format_tf_);
-
-    return original_input_mkl_shape.IsMklTensor()
-               ? original_input_mkl_shape.GetMklLayout()
-               : memory::desc(*original_input_dims_nchw, MklDnnType<T>(),
-                              this->data_format_mkldnn_);
-  }
-
-  memory::desc ConfigureOriginalOutput(
-      const MklPoolParameters& pool_params,
-      const MklDnnShape& original_output_mkl_shape,
-      const memory::dims& output_dims_mkl_order) {
-    this->GetOutputDims(pool_params, &output_dims_mkl_order);
-
-    return original_output_mkl_shape.IsMklTensor()
-               ? original_output_mkl_shape.GetMklLayout()
-               : memory::desc(output_dims_mkl_order, MklDnnType<T>(),
-                              this->data_format_mkldnn_);
   }
 
   memory::desc ConfigureInputGradient(

@@ -658,29 +658,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   // 1. Input("grad: T")
   const int kInputTensorIndexInputShape = 0;
   const int kInputTensorIndexInputGradient = 1;
-
   engine cpu_engine_ = engine(engine::cpu, 0);
-
-  memory::desc ConfigureOriginalInput(OpKernelContext* context,
-        const Tensor& tensor_original_input_shape,
-        const MklDnnShape& original_input_mkl_shape,
-        memory::dims* original_input_dims_mkl_order,
-        MklPoolParameters* pool_params,
-        TensorShape* input_tensor_shape) {
-    CHECK_NOTNULL(original_input_dims_mkl_order);
-    CHECK_NOTNULL(pool_params);
-    CHECK_NOTNULL(input_tensor_shape);
-    // For AvgPoolGrad, we only get the size of the original input because
-    // The original data is irrelvant.
-    auto shape_vec = tensor_original_input_shape.vec<int32>();
-    for (int64 i = 0; i < tensor_original_input_shape.NumElements(); ++i) {
-      input_tensor_shape->AddDim(shape_vec(i));
-    }
-
-    return MklPoolingBackwardOpBase<T>::ConfigureOriginalInput(
-        context, tensor_original_input_shape, original_input_mkl_shape,
-        original_input_dims_mkl_order, pool_params, *input_tensor_shape);
-  }
 
   void SanityCheckInputs(OpKernelContext* context,
                          const Tensor& tensor_in_shape,
