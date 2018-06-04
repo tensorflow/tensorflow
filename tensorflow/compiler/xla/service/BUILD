@@ -3020,3 +3020,19 @@ cc_library(
         "//tensorflow/core:regexp_internal",
     ],
 )
+
+cc_library(
+    name = "hlo_casting_utils",
+    hdrs = ["hlo_casting_utils.h"],
+    deps = [":hlo"],
+)
+
+tf_cc_test(
+    name = "hlo_casting_utils_test",
+    srcs = ["hlo_casting_utils_test.cc"],
+    deps = [
+        ":hlo_casting_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
+    ],
+)
