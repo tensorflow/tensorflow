@@ -762,18 +762,6 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   const int kInputTensorIndexOrigOutput = 1;
   const int kInputTensorIndexGradient = 2;
   const int kInputTensorIndexWorkspace = 3;
-  //  Output("output: T") in Base Class
-
-  memory::desc ConfigureOriginalInput(
-      OpKernelContext* context, const Tensor& tensor_original_input,
-      const MklDnnShape& original_input_mkl_shape,
-      memory::dims* original_input_dims_mkl_order,
-      MklPoolParameters* pool_params, TensorShape* input_tensor_shape) {
-    *input_tensor_shape = tensor_original_input.shape();
-    return MklPoolingBackwardOpBase<T>::ConfigureOriginalInput(
-        context, tensor_original_input, original_input_mkl_shape,
-        original_input_dims_mkl_order, pool_params, *input_tensor_shape);
-  }
 
   void ConfigureWorkspace(const Tensor& workspace_tensor,
                           memory::primitive_desc workspace_pd,
