@@ -199,6 +199,10 @@ bool IsFusedDepthwiseConv(const HloInstruction* inst,
   return IsPoplibsFusion(inst, "depthwise_conv");
 }
 
+bool Is1DVector(const HloInstruction* inst, const CompilerAnnotations&) {
+  return ShapeUtil::Rank(inst->shape()) == 1;
+}
+
 }  // namespace poplarplugin
 }  // namespace xla
 

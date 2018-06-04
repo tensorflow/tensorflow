@@ -31,6 +31,7 @@ bool IsTfReluGradOp(const HloInstruction*, const CompilerAnnotations&);
 bool IsTrueParameter(const HloInstruction*, const CompilerAnnotations&);
 bool IsFusedReverseInputConv(const HloInstruction*, const CompilerAnnotations&);
 bool IsFusedDepthwiseConv(const HloInstruction*, const CompilerAnnotations&);
+bool Is1DVector(const HloInstruction*, const CompilerAnnotations&);
 
 }  // namespace poplarplugin
 }  // namespace xla

@@ -109,6 +109,38 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
+  def testConv1x1_WithBias(self):
+    with tf.device("/device:IPU:0"):
+      inp = tf.placeholder(tf.float32, [1,1,1,4], name="inp")
+      wei = tf.placeholder(tf.float32, [1,1,4,16], name="wei")
+      bia = tf.placeholder(tf.float32, [16], name="bia")
+      output = nn_ops.conv2d(inp, wei, strides=[1,1,1,1], padding="VALID")
+      output = output + bia
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        inp: np.zeros([1,1,1,4]),
+        wei: np.zeros([1,1,4,16]),
+        bia: np.zeros([16]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([1, 1, 1, 16]))
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Conv2D/convolution.*clone/Conv_1x1',
+            'add/add.*/Op/Add']
+# TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
   def testConvBackpropInput(self):
     with tf.device("/device:IPU:0"):
       ins = tf.constant([2,8,8,3], tf.int32)
@@ -177,7 +209,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with tf.device("/device:IPU:0"):
       pa = tf.placeholder(tf.float32, [1,2,2,3], name="a")
       pb = tf.placeholder(tf.float32, [1,1,3,2], name="b")
-      pc = tf.placeholder(tf.float32, [1,2,2,6], name="c")
+      pc = tf.placeholder(tf.float32, [6], name="c")
       c = tf.nn.depthwise_conv2d(pa, pb, strides=[1,1,1,1], padding="SAME")
       output = c + pc
 
@@ -195,10 +227,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
         pb: [[[[6,5],
                [4,3],
                [2,1]]]],
-        pc: [[[[1,1,1,1,1,1],
-               [1,1,1,1,1,1]],
-              [[1,1,1,1,1,1],
-               [1,1,1,1,1,1]]]]
+        pc: [1,1,1,1,1,1]
       }
       result = sess.run(output, fd)
       self.assertAllClose(result, [[[[7, 6, 9, 7, 7, 4],
@@ -211,8 +240,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      print(cs_list)
-
       ok = ['depthwise/call.*clone/Conv_1x1',
             'Copy_partials_to_depthwise',
             'add/call/addToChannel']
@@ -222,7 +249,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with tf.device("/device:IPU:0"):
       pa = tf.placeholder(tf.float32, [1,2,2,3], name="a")
       pb = tf.placeholder(tf.float32, [1,1,3,1], name="b")
-      pc = tf.placeholder(tf.float32, [1,2,2,3], name="c")
+      pc = tf.placeholder(tf.float32, [3], name="c")
       c = tf.nn.depthwise_conv2d(pa, pb, strides=[1,1,1,1], padding="SAME")
       output = c + pc
 
@@ -240,10 +267,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
         pb: [[[[6],
                [4],
                [2]]]],
-        pc: [[[[1,1,1],
-               [1,1,1]],
-              [[1,1,1],
-               [1,1,1]]]]
+        pc: [1,1,1]
       }
       result = sess.run(output, fd)
       self.assertAllClose(result, [[[[7, 9, 7],

@@ -38,8 +38,6 @@ static FusedGraphInfo fuse_info[] = {
     {"sigmoidgrad", 0},
     {"biasadd", 0},
     {"biasadd", 0},
-    {"biasadd", 0},
-    {"biasadd", 0},
     {"zero_pad", 0},
     {"trunc_norm_scale_add", 5},
     {"trunc_norm", 1},
@@ -156,23 +154,13 @@ static const std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
      {HloOpcode::kCall, false, 0, IsPoplarConvolution, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
 
     // BiasAdd on convolution (w/ broadcast)
     {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
      {HloOpcode::kConvolution, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // BiasAdd on convolution
-    {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-     {HloOpcode::kCall, false, 0, IsPoplarConvolution, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // BiasAdd on convolution
-    {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-     {HloOpcode::kConvolution, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
 
     // External padding with constant zero
     {{HloOpcode::kPad, true, 0, IsExternalPadding, {2, 1}},
