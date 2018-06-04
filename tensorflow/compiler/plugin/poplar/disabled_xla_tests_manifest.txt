@@ -238,7 +238,7 @@ HloTestBase.ReduceWindowIdentity POPLAR
 HloTestBase.ReduceWindowS32 POPLAR
 ReduceWindowTest.NonstandardReduceFunction POPLAR
 
-MultiOutputFusionTest.MultiOutputLoopFeedingMap POPLAR // Don't support fusion
+MultiOutputFusionTest POPLAR // Don't support fusion
 
 ReduceTest.AddReduce2DScalarToR0 POPLAR // Reduction is too big for poplibs CPU mode
 ReduceTest.MaxReduce2DScalarToR0 POPLAR
