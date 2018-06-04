@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -425,6 +426,13 @@ class SymbolicShapeRefiner {
     return it->second.inference_context.get();
   }
 
+  // Forward the shapes from the function's fanin to the function body,
+  // then call PropagateShapes.
+  // Returns an error if 'node' is not a function node.
+  Status UpdateFunction(const NodeDef* node, bool* refined) {
+    return UpdateNode(node, refined);
+  }
+
   Status UpdateNode(const NodeDef* node, bool* refined) {
     NodeContext* node_context = GetNodeContext(node);
     if (node_context == nullptr) {
@@ -677,9 +685,15 @@ class SymbolicShapeRefiner {
     return true;
   }
 
+  Status AddFunction(const NodeDef* node) { return Status::OK(); }
+
   Status AddNode(const NodeDef* node) {
     NodeContext& node_ctx = node_to_context_[node];
     TF_RETURN_IF_ERROR(function_library_.LookUp(node->op(), &node_ctx.op_data));
+
+    if (node_ctx.op_data->is_function_op) {
+      TF_RETURN_IF_ERROR(AddFunction(node));
+    }
 
     TF_RETURN_IF_ERROR(InOutTypesForNode(*node, node_ctx.op_data->op_def,
                                          &node_ctx.input_types,
@@ -1069,8 +1083,13 @@ Status GraphProperties::UpdateShapes(
     TF_RETURN_IF_ERROR(
         UpdateEnqueue(n, resource_handles, shape_refiner, new_shapes));
   } else {
-    // Rely on regular TF shape refinement for all the other nodes.
-    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
+    auto c = shape_refiner->GetNodeContext(n);
+    if (c && c->op_data && c->op_data->is_function_op) {
+      TF_RETURN_IF_ERROR(shape_refiner->UpdateFunction(n, new_shapes));
+    } else {
+      // Rely on regular TF shape refinement for all the other nodes.
+      TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
+    }
   }
   return Status::OK();
 }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
+#include "tensorflow/contrib/lite/util.h"
 
 namespace toco {
 
@@ -72,22 +73,10 @@ struct OperatorKey {
 
   struct Hash {
     size_t operator()(const OperatorKey& key) const {
-      return CombineHashes({std::hash<size_t>()(static_cast<size_t>(key.type)),
-                            std::hash<std::string>()(key.custom_code),
-                            std::hash<int>()(key.version)});
-    }
-
-   private:
-    // TODO(ycling): Refactoring and extract this function into a common
-    // utility module.
-    static size_t CombineHashes(std::initializer_list<size_t> hashes) {
-      size_t result = 0;
-      // Hash combiner used by TensorFlow core.
-      for (size_t hash : hashes) {
-        result = result ^ (hash + 0x9e3779b97f4a7800ULL + (result << 10) +
-                           (result >> 4));
-      }
-      return result;
+      return ::tflite::CombineHashes(
+          {std::hash<size_t>()(static_cast<size_t>(key.type)),
+           std::hash<std::string>()(key.custom_code),
+           std::hash<int>()(key.version)});
     }
   };
 };

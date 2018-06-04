@@ -93,10 +93,12 @@ typedef enum {
   kTfLiteBuiltinSlice = 65,
   kTfLiteBuiltinSin = 66,
   kTfLiteBuiltinTransposeConv = 67,
+  kTfLiteBuiltinSparseToDense = 68,
+  kTfLiteBuiltinTile = 69,
+  kTfLiteBuiltinExpandDims = 70,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 #endif  // TENSORFLOW_CONTRIB_LITE_BUILTIN_OPS_H_
-}

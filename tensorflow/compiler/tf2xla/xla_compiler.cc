@@ -83,12 +83,9 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(options),
       initialization_status_(Status::OK()),
       next_step_id_(1),
-      device_(
-          new XlaCompilationDevice(SessionOptions(), *options_.device_type)),
+      device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
       device_mgr_({device_}) {
-  // We no longer need the device_type.
-  options_.device_type = nullptr;
-
+  CHECK(!options_.device_type.type_string().empty());
   if (options_.populate_resource_manager) {
     initialization_status_ =
         (*options_.populate_resource_manager)(device_->resource_manager());
@@ -228,7 +225,7 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
 // Computes the XLA shape for argument 'arg'.
 Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
                                         bool is_entry_computation,
-                                        xla::Shape* xla_shape) {
+                                        xla::Shape* xla_shape) const {
   switch (arg.kind) {
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
@@ -659,6 +656,65 @@ Status XlaCompiler::CompileSingleOp(
   return CompileGraph(options, name, std::move(graph), args, result);
 }
 
+namespace {
+
+// Check that the ops of all non-functional nodes have been registered.
+string ValidateFunctionDef(const FunctionDef* fdef,
+                           const FunctionLibraryDefinition& flib_def) {
+  std::vector<string> invalid_ops;
+  for (const NodeDef& node : fdef->node_def()) {
+    const string& op = node.op();
+    if (op == FunctionLibraryDefinition::kGradientOp || flib_def.Find(op)) {
+      continue;
+    }
+    const OpDef* op_def;
+    if (!OpRegistry::Global()->LookUpOpDef(op, &op_def).ok()) {
+      invalid_ops.push_back(op);
+    }
+  }
+  return tensorflow::str_util::Join(invalid_ops, ", ");
+}
+
+// Check that the graph doesn't have any invalid nodes (e.g. incompatible with
+// given device_type, invalid data type, missing attributes...)
+Status ValidateGraph(const Graph* graph,
+                     const FunctionLibraryDefinition& flib_def,
+                     const DeviceType& device_type, const string& name) {
+  std::vector<string> invalid_ops;
+  for (const Node* node : graph->nodes()) {
+    if (node->type_string() == FunctionLibraryDefinition::kGradientOp) {
+      continue;
+    }
+    const FunctionDef* fdef = flib_def.Find(node->def().op());
+    if (fdef) {
+      string error_msg = ValidateFunctionDef(fdef, flib_def);
+      if (!error_msg.empty()) {
+        invalid_ops.push_back(
+            strings::StrCat(node->def().op(), ":{", error_msg, "}"));
+      }
+      continue;
+    }
+    const OpDef* op_def;
+    if (!OpRegistry::Global()->LookUpOpDef(node->def().op(), &op_def).ok()) {
+      invalid_ops.push_back(node->def().op());
+      continue;
+    }
+    TF_RETURN_IF_ERROR(ValidateNodeDef(node->def(), *op_def));
+    if (!FindKernelDef(device_type, node->def(), nullptr, nullptr).ok()) {
+      invalid_ops.push_back(node->def().op());
+    }
+  }
+  if (!invalid_ops.empty()) {
+    return errors::InvalidArgument(strings::StrCat(
+        "Detected unsupported operations when trying to compile graph ", name,
+        " on ", device_type.type_string(), ":",
+        tensorflow::str_util::Join(invalid_ops, ", ")));
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  string const& name,
                                  std::unique_ptr<Graph> graph,
@@ -680,6 +736,11 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   TF_RETURN_IF_ERROR(
       FunctionalizeControlFlow(flib_runtime_->GetFunctionLibraryDefinition(),
                                graph.get(), local_flib_def_.get()));
+
+  // Detect invalid nodes.
+  // FunctionalizeControlFlow may remove some nodes from the graph.
+  TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
+                                   options_.device_type, name));
 
   xla::XlaBuilder builder(name);
   XlaContext* context = new XlaContext(

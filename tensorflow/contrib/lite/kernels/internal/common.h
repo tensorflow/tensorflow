@@ -87,12 +87,12 @@ float ActivationFunction(float x) {
                                       output_activation_max);
 }
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOne(
-    int32 x, int32 quantized_multiplier, int right_shift) {
+inline int32 MultiplyByQuantizedMultiplierSmallerThanOneExp(
+    int32 x, int32 quantized_multiplier, int left_shift) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   return RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), right_shift);
+      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), -left_shift);
 }
 
 inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(

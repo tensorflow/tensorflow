@@ -276,6 +276,15 @@ const XlaComputation& LocalComputation::computation() const {
   return computation_;
 }
 
+string LocalComputation::GetSerializedProto() const {
+  string result;
+  if (!computation_.proto().SerializeToString(&result)) {
+    LOG(ERROR) << "Failed to serialize the HloModuleProto.";
+    return "";
+  }
+  return result;
+}
+
 StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation_.GetProgramShape());

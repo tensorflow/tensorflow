@@ -109,6 +109,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const std::unordered_map<const HloInstruction*, const Literal*>&
           substitutions);
 
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseBinaryOp(
+      HloOpcode opcode, const Literal& lhs, const Literal& rhs);
+
+  StatusOr<std::unique_ptr<Literal>> EvaluateElementwiseUnaryOp(
+      HloOpcode opcode, const Literal& operand);
+
  protected:
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
@@ -165,6 +171,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
+
+  Status HandleBroadcast(HloInstruction* broadcast) override;
 
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be

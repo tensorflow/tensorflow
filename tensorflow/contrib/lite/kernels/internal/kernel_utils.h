@@ -41,6 +41,9 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
 // values of hidden_state_ptr_batch and input_ptr_batch, respectively.
 // These temporary storages are expected to be preallocated to the same size as
 // the respective pointers.
+// An additional preallocated temporary storage 'scaling_factors' (of size
+// batch_size) is used to store the scaling factors of the quantization (used
+// for recovery).
 // {input,recurrent}_weights_scale params are used for dequantization/recovery.
 void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
                   float input_weights_scale,
@@ -50,7 +53,8 @@ void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
                   TfLiteFusedActivation activation,
                   int8_t* quantized_input_ptr_batch,
                   int8_t* quantized_hidden_state_ptr_batch,
-                  float* hidden_state_ptr_batch, float* output_ptr_batch);
+                  float* scaling_factors, float* hidden_state_ptr_batch,
+                  float* output_ptr_batch);
 
 // Performs an LSTM batch inference step for input specified by input_ptr_batch.
 // The LSTM cell is specified by the pointers to its weights (*_weights_ptr) and

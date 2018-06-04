@@ -5,11 +5,31 @@ works. The units are as follows:
 
 ## High Level APIs
 
-  * @{$programmers_guide/eager}, which is the easiest way to use TensorFlow.
-  * @{$programmers_guide/estimators}, which introduces a high-level
-    TensorFlow API that greatly simplifies ML programming.
-  * @{$programmers_guide/datasets}, which explains how to
-    set up data pipelines to read data sets into your TensorFlow program.
+  * @{$programmers_guide/keras}, TensorFlow's high-level API for building and
+    training deep learning models.
+  * @{$programmers_guide/eager}, an API for writing TensorFlow code
+    imperatively, like you would use Numpy.
+  * @{$programmers_guide/estimators}, a high-level API that provides
+    fully-packaged models ready for large-scale training and production.
+  * @{$programmers_guide/datasets}, easy input pipelines to bring your data into
+    your TensorFlow program.
+
+## Estimators
+
+* @{$estimators} provides an introduction.
+* @{$premade_estimators}, introduces Estimators for machine learning.
+* @{$custom_estimators}, which demonstrates how to build and train models you
+  design yourself.
+* @{$feature_columns}, which shows how an Estimator can handle a variety of input
+  data types without changes to the model.
+* @{$checkpoints}, which explains how to save training progress and resume where
+  you left off.
+
+## Accelerators
+
+  * @{$using_gpu} explains how TensorFlow assigns operations to
+    devices and how you can change the arrangement manually.
+  * @{$using_tpu} explains how to modify `Estimator` programs to run on a TPU.
 
 ## Low Level APIs
 
@@ -31,13 +51,6 @@ works. The units are as follows:
     can still be helpful.
   * @{$programmers_guide/saved_model}, which
     explains how to save and restore variables and models.
-
-## Accelerators
-
-  * @{$using_gpu} explains how TensorFlow assigns operations to
-    devices and how you can change the arrangement manually.
-  * @{$using_tpu} explains how to modify `Estimator` programs to run on a TPU.
-
 
 ## ML Concepts
 

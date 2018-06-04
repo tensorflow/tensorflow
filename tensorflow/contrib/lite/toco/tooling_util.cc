@@ -393,6 +393,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
     HANDLE_OPERATORTYPENAME_CASE(Select)
+    HANDLE_OPERATORTYPENAME_CASE(SparseToDense)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE

@@ -39,7 +39,7 @@ if [[ -z $pip35_version ]]; then
 fi
 
 set -e
-pip3.5 install --upgrade setuptools
+pip3.5 install --upgrade setuptools==39.1.0
 pip3.5 install --upgrade pip
 
 pip3.5 install --upgrade virtualenv

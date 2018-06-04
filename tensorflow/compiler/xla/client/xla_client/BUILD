@@ -37,7 +37,6 @@ cc_library(
     ],
 )
 
-# TODO(b/74197823): Replace computation_builder with xla_builder.
 cc_library(
     name = "xla_builder",
     srcs = ["xla_builder.cc"],

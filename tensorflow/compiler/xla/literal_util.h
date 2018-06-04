@@ -277,6 +277,12 @@ class LiteralBase {
   StatusOr<std::unique_ptr<Literal>> Reshape(
       tensorflow::gtl::ArraySlice<int64> dimensions) const;
 
+  // Creates a new literal by broadcasting this literal with `dimensions` to
+  // yield a literal of shape `result_shape`.
+  StatusOr<std::unique_ptr<Literal>> Broadcast(
+      const Shape& result_shape,
+      tensorflow::gtl::ArraySlice<int64> dimensions) const;
+
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
   // in the original literal, and it specifies the order of the new dimensions
@@ -536,6 +542,12 @@ class LiteralBase {
   friend class Literal;
   friend class LiteralSlice;
   friend class BorrowingLiteral;
+
+ private:
+  template <typename NativeT>
+  std::unique_ptr<Literal> SliceInternal(
+      const Shape& result_shape,
+      tensorflow::gtl::ArraySlice<int64> start_indices) const;
 };
 
 // Class representing literal values in XLA.

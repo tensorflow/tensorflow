@@ -99,6 +99,9 @@ class HloSharding {
   static bool IsReservedDevice(int64 device) { return device < 0; }
 
   OpSharding ToProto() const;
+
+  // Note that this string canonically has outer curly braces, e.g.
+  // "{replicated}".
   string ToString() const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
@@ -160,19 +163,9 @@ class HloSharding {
   // tuple, if IsTuple, or a ShapeTree with a single element containing this
   // sharding. Only the leaf elements are populated. This creates a new
   // ShapeTree object so is not cheap.
+  StatusOr<ShapeTree<HloSharding>> AsShapeTree(const Shape& shape) const;
   ShapeTree<HloSharding> GetAsShapeTree(const Shape& shape) const {
-    if (IsTuple()) {
-      ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
-      CHECK_EQ(std::distance(result.leaf_begin(), result.leaf_end()),
-               tuple_elements_.size());
-      auto it = tuple_elements_.begin();
-      for (auto& index_to_sharding : result.leaves()) {
-        index_to_sharding.second = *it++;
-      }
-      return result;
-    } else {
-      return ShapeTree<HloSharding>(shape, *this);
-    }
+    return AsShapeTree(shape).ValueOrDie();
   }
 
   // Retrieves the sub sharding at a given index, out of a tuple sharding.
@@ -207,6 +200,12 @@ class HloSharding {
     }
     return h;
   }
+
+  struct Hasher {
+    size_t operator()(const HloSharding& sharding) const {
+      return sharding.Hash();
+    }
+  };
 
   // Gets the tile shape.
   // REQUIRES: !IsTileMaximal() && !IsTuple()

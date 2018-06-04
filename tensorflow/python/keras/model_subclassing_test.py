@@ -56,8 +56,8 @@ class SimpleTestModel(keras.Model):
     if self.use_bn:
       self.bn = keras.layers.BatchNormalization(axis=-1)
 
-  def call(self, inputs):
-    x = self.dense1(inputs)
+  def call(self, x):
+    x = self.dense1(x)
     if self.use_dp:
       x = self.dp(x)
     if self.use_bn:
@@ -621,6 +621,51 @@ class ModelSubclassingTest(test.TestCase):
     self.assertEqual(1, len(m._checkpoint_dependencies))
     self.assertIs(m.isdep, m._checkpoint_dependencies[0].ref)
     self.assertEqual('notdep_var:0', m.notdep_var.name)
+
+  def test_extra_variable(self):
+
+    class ExtraVar(keras.Model):
+
+      def __init__(self):
+        super(ExtraVar, self).__init__()
+        self.dense = keras.layers.Dense(1)
+        self.var = resource_variable_ops.ResourceVariable(1.)
+        self.not_trainable_var = resource_variable_ops.ResourceVariable(
+            2., trainable=False)
+
+      def call(self, inputs):
+        return self.dense(inputs + self.var)
+
+    m = ExtraVar()
+    self.assertTrue(m.trainable)
+    self.assertEqual([m.dense], m.layers)
+    self.assertEqual([m.var, m.not_trainable_var], m.variables)
+    self.assertEqual([m.var], m.trainable_variables)
+    self.assertEqual([m.not_trainable_var], m.non_trainable_variables)
+    m.trainable = False
+    self.assertEqual([m.var, m.not_trainable_var], m.variables)
+    self.assertEqual([], m.trainable_variables)
+    self.assertEqual([m.var, m.not_trainable_var], m.non_trainable_variables)
+    m.trainable = True
+
+    m(array_ops.ones([1, 1]))
+
+    self.assertEqual([m.dense.kernel, m.dense.bias], m.dense.variables)
+    self.assertEqual([m.dense.kernel, m.dense.bias], m.dense.weights)
+
+    self.assertEqual([m.dense.kernel, m.dense.bias, m.var, m.not_trainable_var],
+                     m.variables)
+    self.assertEqual([m.dense.kernel, m.dense.bias, m.var],
+                     m.trainable_variables)
+    self.assertEqual([m.not_trainable_var], m.non_trainable_variables)
+
+    m.dense.trainable = False
+    self.assertEqual(
+        [m.var, m.dense.kernel, m.dense.bias, m.not_trainable_var],
+        m.variables)
+    self.assertEqual([m.var], m.trainable_variables)
+    self.assertEqual([m.dense.kernel, m.dense.bias, m.not_trainable_var],
+                     m.non_trainable_variables)
 
 
 class CustomCallModel(keras.Model):
