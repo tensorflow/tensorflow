@@ -357,6 +357,9 @@ REGISTER_OP("AdjustContrastv2")
     .Input("contrast_factor: float")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) {
+      // The contrast_factor should be scalar only.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
