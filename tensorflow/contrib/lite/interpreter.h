@@ -219,7 +219,7 @@ class Interpreter {
 
   // Get a pointer to an operation and registration data structure if in bounds.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
-      int node_index) const {
+      size_t node_index) const {
     if (node_index >= nodes_and_registration_.size() || node_index < 0)
       return nullptr;
     return &nodes_and_registration_[node_index];
