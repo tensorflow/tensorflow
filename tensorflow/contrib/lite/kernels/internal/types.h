@@ -358,6 +358,14 @@ bool IsPackedWithoutStrides(const Dims<N>& dims) {
   return true;
 }
 
+template <int N>
+void ComputeStrides(Dims<N>* dims) {
+  dims->strides[0] = 1;
+  for (int d = 1; d < N; d++) {
+    dims->strides[d] = dims->strides[d - 1] * dims->sizes[d - 1];
+  }
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TYPES_H_

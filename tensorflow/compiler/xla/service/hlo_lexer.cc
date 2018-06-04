@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/tools/parser/hlo_lexer.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 
 #include <unordered_map>
 
@@ -26,9 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
-namespace tools {
 
-using tensorflow::StringPiece;
+using ::tensorflow::StringPiece;
 
 namespace {
 
@@ -67,12 +66,12 @@ bool HloLexer::CanDereference(const char* ptr) const {
   return ptr < buf_.end() && ptr >= buf_.begin();
 }
 
-StringPiece HloLexer::StringPieceFromPointers(const char* begin,
-                                              const char* end) const {
+tensorflow::StringPiece HloLexer::StringPieceFromPointers(
+    const char* begin, const char* end) const {
   CHECK(begin <= end);
   CHECK(begin == buf_.end() || CanDereference(begin));
   CHECK(end == buf_.end() || CanDereference(end));
-  return StringPiece(begin, end - begin);
+  return tensorflow::StringPiece(begin, end - begin);
 }
 
 tensorflow::RegexpStringPiece HloLexer::RegexpStringPieceFromPointers(
@@ -197,7 +196,8 @@ TokKind HloLexer::LexIdentifier() {
     return TokKind::kAttributeName;
   }
 
-  StringPiece identifier = StringPieceFromPointers(token_start_, current_ptr_);
+  tensorflow::StringPiece identifier =
+      StringPieceFromPointers(token_start_, current_ptr_);
 
   // See if this is a keyword.
 #define KEYWORD(STR)            \
@@ -332,23 +332,24 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
   line_no_cache_.last_query = ptr;
   line_no_cache_.line_no_of_query = line_no;
   size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
-  if (line_offset == StringPiece::npos) {
+  if (line_offset == tensorflow::StringPiece::npos) {
     line_offset = 0;
   }
   return {line_no, ptr - start - line_offset};
 }
 
-StringPiece HloLexer::GetLine(LocTy loc) const {
+tensorflow::StringPiece HloLexer::GetLine(LocTy loc) const {
   if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
   size_t line_start =
       StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
-  const char* start = line_start == StringPiece::npos
+  const char* start = line_start == tensorflow::StringPiece::npos
                           ? buf_.begin()
                           : buf_.begin() + line_start + 1;
   size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
-  const char* end = line_end == StringPiece::npos ? buf_.end() : loc + line_end;
+  const char* end =
+      line_end == tensorflow::StringPiece::npos ? buf_.end() : loc + line_end;
 
   return StringPieceFromPointers(start, end);
 }
@@ -370,7 +371,7 @@ TokKind HloLexer::LexString() {
   static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
   if (RE2::Consume(&consumable, *escaping_pattern)) {
     current_ptr_ = consumable.begin();
-    StringPiece raw =
+    tensorflow::StringPiece raw =
         StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
     string error;
     if (!tensorflow::str_util::CUnescape(raw, &str_val_, &error)) {
@@ -453,5 +454,4 @@ string TokKindToString(TokKind kind) {
   }
 }
 
-}  // namespace tools
 }  // namespace xla

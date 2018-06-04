@@ -527,7 +527,15 @@ struct LstmCellOperator : Operator {
     ACTIV_TEMP = 3,
     NUM_OUTPUTS = 4
   };
-  LstmCellOperator() : Operator(OperatorType::kLstmCell) {}
+  enum KernelType {
+    KERNEL_BASIC = 0,
+    KERNEL_FULL = 1,
+  };
+
+  LstmCellOperator()
+      : Operator(OperatorType::kLstmCell), kernel_type(KERNEL_BASIC) {}
+
+  KernelType kernel_type;
 };
 
 // Element-wise multiplication operator.

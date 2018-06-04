@@ -17,10 +17,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -68,7 +68,7 @@ class HloDomainTest : public HloTestBase {
       tensorflow::StringPiece hlo_string) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    return tools::Parse(hlo_string, config);
+    return ParseHloString(hlo_string, config);
   }
 };
 
