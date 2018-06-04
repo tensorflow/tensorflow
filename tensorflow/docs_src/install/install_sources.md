@@ -81,7 +81,7 @@ or
 [macOS](#PrepareMac)
 
 
-<a name="#PrepareLinux"></a>
+<a name="PrepareLinux"></a>
 ## Prepare environment for Linux
 
 Before building TensorFlow on Linux, install the following build
@@ -373,9 +373,9 @@ The build and installation problems you encounter typically depend on the
 operating system.  See the "Common installation problems" section
 of one of the following guides:
 
-  * @{$install_linux#CommonInstallationProblems$Installing TensorFlow on Linux}
-  * @{$install_mac#CommonInstallationProblems$Installing TensorFlow on Mac OS}
-  * @{$install_windows#CommonInstallationProblems$Installing TensorFlow on Windows}
+  * @{$install_linux#common_installation_problems$Installing TensorFlow on Linux}
+  * @{$install_mac#common_installation_problems$Installing TensorFlow on Mac OS}
+  * @{$install_windows#common_installation_problems$Installing TensorFlow on Windows}
 
 Beyond the errors documented in those two guides, the following table
 notes additional errors specific to building TensorFlow.  Note that we
