@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 #include "tensorflow/core/framework/kernel_def.pb.h"
@@ -38,13 +39,29 @@ const char* const PLATFORM_NAME = "Poplar";
 constexpr std::array<DataType, 6> kIpuAllTypes = {
     {DT_INT32, DT_INT64, DT_FLOAT, DT_HALF, DT_BOOL, DT_RESOURCE}};
 
+namespace {
+
+Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
+  const tensorflow::XlaTensor* xla_tensor =
+      tensorflow::XlaTensor::FromTensor(&tensor);
+  if (xla_tensor == nullptr) {
+    return TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), shape);
+  }
+
+  const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
+  *shape = shaped_buffer.on_device_shape();
+  return Status::OK();
+}
+
+}
+
 class IpuDevice : public XlaDevice {
  public:
   IpuDevice(const SessionOptions& options, const DeviceAttributes& attrs,
             int device_ordinal, const DeviceType& jit_device_name,
             se::Platform* platform, bool transfer_as_literal)
       : XlaDevice(options, attrs, device_ordinal, jit_device_name, platform,
-                  transfer_as_literal, {}),
+                  transfer_as_literal, {}, DefaultPaddedShapeFn),
         ordinal_(device_ordinal),
         poplar_platform_(static_cast<xp::PoplarPlatform*>(platform)) {}
 
