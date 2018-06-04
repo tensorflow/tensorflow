@@ -73,6 +73,10 @@ if [[ "$release_build" != 1 ]]; then
   echo "build --define=override_eigen_strong_inline=true" >> "${TMP_BAZELRC}"
 fi
 
+# The host and target platforms are the same in Windows build. So we don't have
+# to distinct them. This helps avoid building the same targets twice.
+echo "build --distinct_host_configuration=false" >> "${TMP_BAZELRC}"
+
 echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
 
 run_configure_for_cpu_build
