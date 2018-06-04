@@ -12,19 +12,29 @@ package_group(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
         "dump_ir_pass.cc",
-        "gpu_backend_lib.cc",
         "utils.cc",
-    ],
+    ] + if_cuda_is_configured(if_cuda([
+        "nvptx_backend_lib.cc",
+    ])) + if_rocm_is_configured(if_rocm([
+        "amdgpu_backend_lib.cc",
+    ])),
     hdrs = [
         "dump_ir_pass.h",
-        "gpu_backend_lib.h",
         "utils.h",
-    ],
+    ] + if_cuda_is_configured(if_cuda([
+        "nvptx_backend_lib.h",
+    ])) + if_rocm_is_configured(if_rocm([
+        "amdgpu_backend_lib.h",
+    ])),
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -43,6 +53,7 @@ cc_library(
         "@llvm//:ir_reader",
         "@llvm//:linker",
         "@llvm//:nvptx_code_gen",  # buildcleaner: keep
+        "@llvm//:amdgpu_code_gen",
         "@llvm//:objc_arc",  # buildcleaner: keep
         "@llvm//:scalar",
         "@llvm//:support",
