@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/benchmark_model.h"
+#include "tensorflow/contrib/lite/tools/benchmark/benchmark_model.h"
 
 #include <time.h>
 
@@ -21,7 +21,7 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/contrib/lite/profiling/time.h"
-#include "tensorflow/contrib/lite/tools/logging.h"
+#include "tensorflow/contrib/lite/tools/benchmark/logging.h"
 
 namespace {
 void SleepForSeconds(double sleep_seconds) {

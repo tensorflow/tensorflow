@@ -876,7 +876,6 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
-    deps = [":platform_base"],
 )
 
 cc_library(
