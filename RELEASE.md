@@ -4,8 +4,10 @@
 * Update tf.keras to the Keras 2.1.6 API.
 * `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
 * Adding support of core feature columns and losses to gradient boosted trees estimators.
-* The Bijector API now requires 'event_ndims' passed in to the `log_det_jacobian` methods, while `event_ndims` is removed from the base class and replaced with `forward_min_event_ndims`. The signature is now `log_det_jacobian(x, event_ndims)`. The main rationale for this change is that it allows Bijectors to broadcast.
-RELNOTES: If you were using layers from `tf.keras.layers` in conjunction with custom variable scopes, your layer variable names might have changed. If you were using layers from `tf.layers` in a subclassed `tf.keras.Model` class, then your variable names have changed (you can restore the prior names by importing the same layers from `tf.keras.layers` instead of `tf.layers`).
+* The distributions.Bijector API supports broadcasting for Bijectors with new API changes. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/distributions/bijectors/Bijector) for more details.
+* Layered variable names have changed in the following conditions:
+  * Using `tf.keras.layers` with custom variable scopes.
+  * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
 
 ## Breaking Chances
   * If you're opening empty variable scopes; replace `variable_scope`('', ...) by `variable_scope`(`tf.get_variable_scope()`, ...).
