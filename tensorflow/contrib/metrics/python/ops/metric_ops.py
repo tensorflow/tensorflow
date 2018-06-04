@@ -1544,7 +1544,7 @@ def precision_recall_at_equal_thresholds(labels,
     result: A named tuple (See PrecisionRecallData within the implementation of
       this function) with properties that are variables of shape
       `[num_thresholds]`. The names of the properties are tp, fp, tn, fn,
-      precision, recall, thresholds.
+      precision, recall, thresholds. Types are same as that of predictions.
     update_op: An op that accumulates values.
 
   Raises:
@@ -1570,7 +1570,6 @@ def precision_recall_at_equal_thresholds(labels,
 
   check_ops.assert_type(labels, dtypes.bool)
 
-  dtype = predictions.dtype
   with variable_scope.variable_scope(name,
                                      'precision_recall_at_equal_thresholds',
                                      (labels, predictions, weights)):
@@ -1592,11 +1591,16 @@ def precision_recall_at_equal_thresholds(labels,
 
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    # We cast to float to ensure we have 0.0 or 1.0.
-    f_labels = math_ops.cast(labels, dtype)
+    # It's important we aggregate using float64 since we're accumulating a lot
+    # of 1.0's for the true/false labels, and accumulating to float32 will
+    # be quite inaccurate even with just a modest amount of values (~20M).
+    # We use float64 instead of integer primarily since GPU scatter kernel
+    # only support floats.
+    agg_dtype = dtypes.float64
 
-    # Get weighted true/false labels.
-    true_labels = f_labels * weights
+    f_labels = math_ops.cast(labels, agg_dtype)
+    weights = math_ops.cast(weights, agg_dtype)
+    true_labels = f_labels  * weights
     false_labels = (1.0 - f_labels) * weights
 
     # Flatten predictions and labels.
@@ -1638,9 +1642,9 @@ def precision_recall_at_equal_thresholds(labels,
 
     with ops.name_scope('variables'):
       tp_buckets_v = metrics_impl.metric_variable(
-          [num_thresholds], dtype, name='tp_buckets')
+          [num_thresholds], agg_dtype, name='tp_buckets')
       fp_buckets_v = metrics_impl.metric_variable(
-          [num_thresholds], dtype, name='fp_buckets')
+          [num_thresholds], agg_dtype, name='fp_buckets')
 
     with ops.name_scope('update_op'):
       update_tp = state_ops.scatter_add(
@@ -1660,18 +1664,21 @@ def precision_recall_at_equal_thresholds(labels,
     fn = tp[0] - tp
 
     # We use a minimum to prevent division by 0.
-    epsilon = 1e-7
+    epsilon = ops.convert_to_tensor(1e-7, dtype=agg_dtype)
     precision = tp / math_ops.maximum(epsilon, tp + fp)
     recall = tp / math_ops.maximum(epsilon, tp + fn)
 
+    # Convert all tensors back to predictions' dtype (as per function contract).
+    out_dtype = predictions.dtype
+    _convert = lambda tensor: math_ops.cast(tensor, out_dtype)
     result = PrecisionRecallData(
-        tp=tp,
-        fp=fp,
-        tn=tn,
-        fn=fn,
-        precision=precision,
-        recall=recall,
-        thresholds=math_ops.lin_space(0.0, 1.0, num_thresholds))
+        tp=_convert(tp),
+        fp=_convert(fp),
+        tn=_convert(tn),
+        fn=_convert(fn),
+        precision=_convert(precision),
+        recall=_convert(recall),
+        thresholds=_convert(math_ops.lin_space(0.0, 1.0, num_thresholds)))
     update_op = control_flow_ops.group(update_tp, update_fp)
     return result, update_op
 
