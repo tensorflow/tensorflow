@@ -18101,8 +18101,9 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 }
 
 // Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
-//
 // if < 0, `scale * features` otherwise.
+//
+// Assumes weights to have zero mean and variance 1.0 / fan_in.
 //
 // See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
 func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
@@ -24359,8 +24360,7 @@ type DecodeProtoV2Attr func(optionalAttr)
 // If not specified, defaults to "local://"
 func DecodeProtoV2DescriptorSource(value string) DecodeProtoV2Attr {
 	return func(m optionalAttr) {
-		m["descriptor_source"] = value
-	}
+		m["descriptor_source"] = value	}
 }
 
 // DecodeProtoV2MessageFormat sets the optional message_format attribute to value.
