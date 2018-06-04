@@ -124,13 +124,6 @@ static std::string GetConvolutionPass(const HloInstruction* inst,
   return "INFERENCE_FWD";
 }
 
-static bool is_identity_shuffle(const std::vector<unsigned int> shuffle) {
-  for (unsigned int i = 0; i < 4; i++) {
-    if (shuffle[i] != i) return false;
-  }
-  return true;
-}
-
 StatusOr<poplar::Tensor> ShuffleConvolutionInputToPoplar(
     const HloInstruction* inst, const poplar::Tensor& tensor) {
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
@@ -142,7 +135,7 @@ StatusOr<poplar::Tensor> ShuffleConvolutionInputToPoplar(
     shuffle[2 + i] = d.input_spatial_dimensions(i);
   }
 
-  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+  return tensor.dimShuffle(shuffle);
 }
 
 StatusOr<poplar::Tensor> ShuffleConvolutionWeightsToPoplar(
@@ -162,7 +155,7 @@ StatusOr<poplar::Tensor> ShuffleConvolutionWeightsToPoplar(
     shuffle[2 + i] = d.kernel_spatial_dimensions(i);
   }
 
-  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+  return tensor.dimShuffle(shuffle);
 }
 
 StatusOr<poplar::Tensor> ShuffleConvolutionInputToTensorflow(
@@ -176,7 +169,7 @@ StatusOr<poplar::Tensor> ShuffleConvolutionInputToTensorflow(
     shuffle[d.input_spatial_dimensions(i)] = i + 2;
   }
 
-  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+  return tensor.dimShuffle(shuffle);
 }
 
 StatusOr<poplar::Tensor> ShuffleConvolutionWeightsToTensorflow(
@@ -190,7 +183,7 @@ StatusOr<poplar::Tensor> ShuffleConvolutionWeightsToTensorflow(
     shuffle[d.kernel_spatial_dimensions(i)] = i + 2;
   }
 
-  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+  return tensor.dimShuffle(shuffle);
 }
 
 StatusOr<poplar::Tensor> ShuffleConvolutionOutputToTensorflow(
@@ -204,7 +197,7 @@ StatusOr<poplar::Tensor> ShuffleConvolutionOutputToTensorflow(
     shuffle[d.output_spatial_dimensions(i)] = i + 2;
   }
 
-  return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
+  return tensor.dimShuffle(shuffle);
 }
 
 // This function operates on the popconv format weights (GOI...)
@@ -215,29 +208,13 @@ poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
 
   if (p.getNumConvGroups() == 1) {
     // Non-grouped case
-    std::vector<std::size_t> shape;
-    for (int64 i = 1; i < out.rank(); i++) {
-      shape.push_back(out.dim(i));
-    }
-    return out.reshape(shape);
+    return out.reshapePartial(0, 1, {});
   } else {
     // GOI... -> OGI...
-    std::vector<unsigned int> shuffle(out.rank());
-    std::iota(shuffle.begin(), shuffle.end(), 0);
-    shuffle[0] = 1;
-    shuffle[1] = 0;
-    out = out.dimShuffle(shuffle);
+    out = out.dimShufflePartial({0}, {1});
 
     // OGI... -> O(GI)...
-    std::vector<std::size_t> shape;
-    shape.push_back(out.dim(0));
-    shape.push_back(out.dim(1) * out.dim(2));
-
-    for (int64 i = 3; i < out.rank(); i++) {
-      shape.push_back(out.dim(i));
-    }
-
-    return out.reshape(shape);
+    return out.reshapePartial(1, 3, {out.dim(1) * out.dim(2)});
   }
 }
 
@@ -252,44 +229,21 @@ poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
 
   if (p.getNumConvGroups() == 1) {
     // Non-grouped case
-    std::vector<std::size_t> shape;
-    shape.push_back(1);
-    for (int64 i = 0; i < out.rank(); i++) {
-      shape.push_back(out.dim(i));
-    }
-    return out.reshape(shape);
+    return out.reshapePartial(0, 0, {1});
   } else {
     unsigned int chan_div[2];
     chan_div[in_dim] = out.dim(in_dim) / p.getNumInputChansPerConvGroup();
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    std::vector<std::size_t> shape;
-    shape.push_back(chan_div[0]);
-    shape.push_back(out.dim(0) / chan_div[0]);
-    shape.push_back(chan_div[1]);
-    shape.push_back(out.dim(1) / chan_div[1]);
-    for (int64 i = 2; i < out.rank(); i++) {
-      shape.push_back(out.dim(i));
-    }
-    out = out.reshape(shape);
+    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
+                                    chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
-    std::vector<unsigned int> shuffle(out.rank());
-    std::iota(shuffle.begin(), shuffle.end(), 0);
-    shuffle[1] = 2;
-    shuffle[2] = 1;
-    out = out.dimShuffle(shuffle);
+    out = out.dimShufflePartial({2}, {1});
 
     // (GG)OI... -> GOI...
-    shape.clear();
-    shape.push_back(out.dim(0) * out.dim(1));
-    for (int64 i = 2; i < out.rank(); i++) {
-      shape.push_back(out.dim(i));
-    }
-    out = out.reshape(shape);
-
-    return out;
+    return out.reshapePartial(0, 2, {out.dim(0) * out.dim(1)});
   }
 }
 
