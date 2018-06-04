@@ -17,6 +17,14 @@ limitations under the License.
 
 #include <Python.h>
 
+#undef toupper
+#undef tolower
+#undef isspace
+#undef isupper
+#undef islower
+#undef isalpha
+#undef isalnum
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
