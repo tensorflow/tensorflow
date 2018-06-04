@@ -230,6 +230,16 @@ typedef struct {
   TfLiteType output_type;
 } TfLiteArgMaxParams;
 
+typedef struct {
+  TfLitePadding padding;
+  int stride_width;
+  int stride_height;
+} TfLiteTransposeConvParams;
+
+typedef struct {
+  bool validate_indices;
+} TfLiteSparseToDenseParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

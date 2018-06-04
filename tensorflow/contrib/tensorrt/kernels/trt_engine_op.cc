@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
@@ -59,7 +60,8 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     infer->setGpuAllocator(allocator_.get());
 #endif
     trt_engine_ptr_.reset(infer->deserializeCudaEngine(
-        serialized_engine_.c_str(), serialized_engine_.size(), nullptr));
+        serialized_engine_.c_str(), serialized_engine_.size(),
+        PluginFactoryTensorRT::GetInstance()));
     trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
     // Runtime is safe to delete after engine creation
     infer->destroy();

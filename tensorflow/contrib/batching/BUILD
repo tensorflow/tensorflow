@@ -96,6 +96,7 @@ py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
+    shard_count = 5,
     srcs_version = "PY2AND3",
     tags = [
         "manual",

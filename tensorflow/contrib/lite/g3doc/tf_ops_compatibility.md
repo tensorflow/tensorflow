@@ -132,9 +132,7 @@ TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
-*   [tf.gather](https://www.tensorflow.org/api_docs/python/tf/gather)
 *   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
-*   [tf.slice](https://www.tensorflow.org/api_docs/python/tf/slice)
 *   [tf.tanh](https://www.tensorflow.org/api_docs/python/tf/tanh)
 
 ## TensorFlow Lite Operations
@@ -222,6 +220,23 @@ Options {
 }
 ```
 
+**CONV_2D_TRANSPOSE**
+
+```
+Inputs {
+  0: output_shape
+  1: filter
+  2: 4D tensor
+}
+Outputs {
+  0: the transpose (gradient) of conv2d
+}
+Options {
+  padding: SAME|VALID
+  stride_w,stride_h: stride of the filter window
+}
+```
+
 **DEPTHWISE_CONV_2D**
 
 ```
@@ -278,6 +293,19 @@ Outputs {
 }
 Options {
   fused_activation_function:  NONE|RELU|RELU6
+}
+```
+
+**GATHER**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
+  2: axis tensor (optional)
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
 }
 ```
 
@@ -523,6 +551,19 @@ Options {
 }
 ```
 
+**SLICE**
+
+```
+Inputs {
+  0: tensor
+  1: 1D tensor
+  2: 1D tensor
+}
+Outputs {
+  0: slice of the input tensor of the given size from the given begin index.
+}
+```
+
 **SOFTMAX**
 
 ```
@@ -563,6 +604,21 @@ Inputs {
 Outputs {
   0: a tensor rearranged using block_shape. See tf.space_to_batch_nd for
      details.
+}
+```
+
+**SPARSE_TO_DENSE**
+
+```
+Inputs {
+  0: 0D or 1D or 2D tensor
+  1: 1D tensor
+  2: 0D or 1D tensor
+  3: 0D tensor
+  4: a boolean value
+}
+Outputs {
+  0: Dense Tensor of shape output_shape. Has the same type as sparse_values.
 }
 ```
 
@@ -608,7 +664,7 @@ Outputs {
   0: slice of the input tensor of the given size
 }
 Options {
-  begin_mask: mask for begin indicies
+  begin_mask: mask for begin indices
   end_mask: mask for end indices
   shrink_axis_mask: mask that indicates which dimensions to remove
 }
@@ -623,7 +679,7 @@ Inputs {
 }
 Outputs {
   0: k largest element along each last dimensional slice
-  1: indicies of values within the last dimension of the input ensor
+  1: indices of values within the last dimension of the input ensor
 }
 ```
 

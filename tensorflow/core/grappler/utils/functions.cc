@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -380,16 +381,6 @@ GrapplerFunctionItem& GrapplerFunctionItem::SwapFunctionBody(GraphDef&& other) {
   return *this;
 }
 
-std::vector<string> OutputTensors(const GrapplerFunctionItem& item) {
-  std::vector<string> output_tensors;
-  for (const OutputArgExpansion& output : item.outputs()) {
-    for (const string& tensor : output.output_tensors) {
-      output_tensors.push_back(tensor);
-    }
-  }
-  return output_tensors;
-}
-
 bool HasParametrizedType(const FunctionDef& func) {
   const auto is_type_parametrized = [](const OpDef::ArgDef& arg) {
     return !arg.type_attr().empty() || !arg.number_attr().empty() ||
@@ -535,7 +526,9 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     NodeDef* placeholder = function_body.add_node();
     placeholder->set_name(input.name());
     placeholder->set_op("Placeholder");
-    (*placeholder->mutable_attr())["T"].set_type(input_data_type);
+    (*placeholder->mutable_attr())["dtype"].set_type(input_data_type);
+    (*placeholder->mutable_attr())["shape"].mutable_shape()->set_unknown_rank(
+        true);
 
     InputArgExpansion input_expansion{/*input_name=*/input.name(),
                                       /*data_type=*/input_data_type,

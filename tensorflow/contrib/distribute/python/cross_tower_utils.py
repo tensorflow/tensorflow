@@ -21,9 +21,11 @@ from __future__ import print_function
 import collections as pycoll
 
 from tensorflow.contrib import nccl
+from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 
 
@@ -337,3 +339,46 @@ def unpack_small_tensors(tower_grads, packing):
         new_gv_list.insert(idx, gv[gi])
     new_tower_grads.append(new_gv_list)
   return new_tower_grads
+
+
+def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
+  """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
+  if any(isinstance(v, ops.IndexedSlices) for v in values):
+    return gradients_impl._AggregateIndexedSlicesGradients(values)  # pylint: disable=protected-access
+  else:
+    return accumulation_fn(values)
+
+
+def divide_by_n_tensors_or_indexed_slices(value, n):
+  if isinstance(value, ops.IndexedSlices):
+    value = gradients_impl._HandleNestedIndexedSlices(value)  # pylint: disable=protected-access
+    return ops.IndexedSlices(
+        value.values / n, value.indices, value.dense_shape)
+  else:
+    return value / n
+
+
+def copy_tensor_or_indexed_slices_to_device(value, device):
+  with ops.device(device):
+    if isinstance(value, ops.IndexedSlices):
+      copied_values = array_ops.identity(value.values)
+      copied_indices = array_ops.identity(value.indices)
+      copied_shape = array_ops.identity(value.dense_shape)
+      result = ops.IndexedSlices(copied_values, copied_indices, copied_shape)
+    else:
+      result = array_ops.identity(value)
+  return result
+
+
+def contains_indexed_slices(value):
+  """Check whether the value is `IndexedSlices` or contains `IndexedSlices`."""
+  if isinstance(value, ops.IndexedSlices):
+    return True
+  elif isinstance(value, (list, tuple)) and value:
+    return any(contains_indexed_slices(v) for v in value)
+  elif isinstance(value, value_lib.DistributedValues):
+    return contains_indexed_slices(list(value._index.values()))  # pylint: disable=protected-access
+  elif isinstance(value, value_lib.MapOutput):
+    return contains_indexed_slices(value.get())
+  else:
+    return False

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import functools
 import linecache
 import os
 import re
@@ -60,11 +59,9 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Temporary global switch determining if we should enable the work-in-progress
-# calls to the C API. Currently disabled by default but can be manually enabled
-# in code or via the environment variable. This will be removed once all
-# functionality is supported and there's no performance penalty with it enabled.
-_USE_C_API = os.getenv("TF_C_API_GRAPH_CONSTRUCTION", "1") is not "0"
+# Temporary global switches determining if we should enable the work-in-progress
+# calls to the C API. These will be removed once all functionality is supported.
+_USE_C_API = True
 _USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "0") is not "0"
 
 
@@ -3455,8 +3452,9 @@ class Graph(object):
     # the name will still appear in _names_in_use even though the name hasn't
     # been used. This is ok, just leave _names_in_use as-is in this case.
     # TODO(skyewm): make the C API guarantee no name conflicts.
-    if ret.name not in self._names_in_use:
-      self._names_in_use[ret.name] = 1
+    name_key = ret.name.lower()
+    if name_key not in self._names_in_use:
+      self._names_in_use[name_key] = 1
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
@@ -3861,6 +3859,9 @@ class Graph(object):
       assert c.graph is g
     ```
 
+    If eager execution is enabled ops created under this context manager will be
+    added to the graph instead of executed eagerly.
+
     Returns:
       A context manager for using this graph as the default graph.
     """
@@ -4172,20 +4173,27 @@ class Graph(object):
     """
     if self._name_stack:
       name = self._name_stack + "/" + name
-    i = self._names_in_use.get(name, 0)
-    # Increment the number for "name".
+
+    # For the sake of checking for names in use, we treat names as case
+    # insensitive (e.g. foo = Foo).
+    name_key = name.lower()
+    i = self._names_in_use.get(name_key, 0)
+    # Increment the number for "name_key".
     if mark_as_used:
-      self._names_in_use[name] = i + 1
+      self._names_in_use[name_key] = i + 1
     if i > 0:
-      base_name = name
-      # Make sure the composed name is not already used.
-      while name in self._names_in_use:
-        name = "%s_%d" % (base_name, i)
+      base_name_key = name_key
+      # Make sure the composed name key is not already used.
+      while name_key in self._names_in_use:
+        name_key = "%s_%d" % (base_name_key, i)
         i += 1
-      # Mark the composed name as used in case someone wants
+      # Mark the composed name_key as used in case someone wants
       # to call unique_name("name_1").
       if mark_as_used:
-        self._names_in_use[name] = 1
+        self._names_in_use[name_key] = 1
+
+      # Return the new name with the original capitalization of the given name.
+      name = "%s_%d" % (name, i-1)
     return name
 
   def get_name_scope(self):
@@ -5270,33 +5278,13 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     try:
-      if context.executing_eagerly():
-        # A Graph alone on the context stack would keep init_scope-wrapped
-        # operations graph building when entered (assuming init_scope is called
-        # in a graph building context). Instead, we push a context which first
-        # enables eager execution and then re-enters the Graph.
-        context.context().context_switches.push(
-            default.building_function,
-            functools.partial(
-                _enter_context_and_graph,
-                context.eager_mode,
-                default.as_default))
-      else:
-        # This Graph is being used from a graph building context. A lack of
-        # context switch implies that the context is graph building.
-        context.context().context_switches.push(default.building_function,
-                                                default.as_default)
-      with super(_DefaultGraphStack, self).get_controller(default) as g:
+      context.context().context_switches.push(
+          default.building_function, default.as_default)
+      with super(_DefaultGraphStack, self).get_controller(
+          default) as g, context.graph_mode():
         yield g
     finally:
       context.context().context_switches.pop()
-
-
-@tf_contextlib.contextmanager
-def _enter_context_and_graph(context_fn, graph_fn):
-  """Combines two context managers."""
-  with context_fn(), graph_fn():
-    yield
 
 
 _default_graph_stack = _DefaultGraphStack()
@@ -5347,6 +5335,7 @@ def init_scope():
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
       scope = scope + '/'
+    inner_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
     outer_context = None
     if not _default_graph_stack.stack:
@@ -5375,9 +5364,23 @@ def init_scope():
       raise RuntimeError("All graphs are building functions, and no "
                          "eager context was previously active.")
 
-    with outer_context(), name_scope(scope), control_dependencies(
-        None), tape.stop_recording():
-      yield
+    outer_graph = None
+    outer_device_stack = None
+    try:
+      with outer_context(), name_scope(scope), control_dependencies(
+          None), tape.stop_recording():
+        if not context.executing_eagerly():
+          # The device stack is preserved when lifting into a graph. Eager
+          # execution doesn't implement device stacks and in particular it
+          # doesn't support device functions, so in general it's not possible
+          # to do the same when lifting into the eager context.
+          outer_graph = get_default_graph()
+          outer_device_stack = outer_graph._device_function_stack  # pylint: disable=protected-access
+          outer_graph._device_function_stack = inner_device_stack  # pylint: disable=protected-access
+        yield
+    finally:
+      if outer_graph is not None:
+        outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
 @tf_export("enable_eager_execution")
@@ -5458,8 +5461,8 @@ def enable_eager_execution(config=None, device_policy=None,
   # pylint: disable=protected-access
   if context._default_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
-        _default_session_stack.stack or
-        _default_graph_stack._global_default_graph is not None)
+        _default_session_stack.stack
+        or len(get_default_graph().get_operations()) > 0)  # pylint: disable=g-explicit-length-test
     if graph_mode_has_been_used:
       raise ValueError(
           "tf.enable_eager_execution must be called at program startup.")
@@ -5555,6 +5558,10 @@ def get_default_graph():
     The default `Graph` being used in the current thread.
   """
   return _default_graph_stack.get_default()
+
+def has_default_graph():
+  """Returns True if there is a default graph."""
+  return len(_default_graph_stack.stack) >= 1
 
 
 def get_name_scope():

@@ -77,12 +77,12 @@ def _all_devices_match(value_destination_pairs):
   return True
 
 
-def _simple_broadcast(tensor, destinations):
+def _simple_broadcast(value, destinations):
   index = {}
   devices = _get_devices_from(destinations)
   for d in devices:
-    with ops.device(d):
-      index[d] = array_ops.identity(tensor)
+    index[d] = cross_tower_utils.copy_tensor_or_indexed_slices_to_device(
+        value, d)
   return value_lib.Mirrored(index)
 
 
@@ -98,7 +98,9 @@ def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
         continue
       count += len(v_list)
       # Sum within each device before aggregating across devices.
-      v = math_ops.add_n(v_list)
+      # TODO(yuefengz): Check whether it helps to use accumulation_fn here.
+      v = cross_tower_utils.aggregate_tensors_or_indexed_slices(
+          v_list, math_ops.add_n)
     else:
       count += 1
     all_values.append(v)
@@ -107,11 +109,12 @@ def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
 
   with ops.device(reduce_to_device):
     with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
-      if method_string == "sum":
-        reduced = accumulation_fn(all_values)
-      elif method_string == "mean":
-        reduced = accumulation_fn(all_values) / count
-      else:
+      reduced = cross_tower_utils.aggregate_tensors_or_indexed_slices(
+          all_values, accumulation_fn)
+      if method_string == "mean":
+        reduced = cross_tower_utils.divide_by_n_tensors_or_indexed_slices(
+            reduced, count)
+      elif method_string != "sum":
         raise ValueError("`method_string` must be 'sum' or 'mean'")
   return reduced
 
@@ -444,10 +447,18 @@ class AllReduceCrossTowerOps(CrossTowerOps):
     super(AllReduceCrossTowerOps, self).__init__()
 
   def _reduce(self, method_string, per_device_value, destinations):
+    contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
+        per_device_value)
     if ((destinations is None or _devices_match(per_device_value, destinations))
-        and not context.executing_eagerly()):
+        and not context.executing_eagerly()
+        and not contains_indexed_slices):
       return self._batch_all_reduce(method_string, [per_device_value])[0]
     else:
+      if contains_indexed_slices:
+        logging.log_first_n(
+            logging.WARN,
+            "Efficient allreduce is not supported for IndexedSlices.", 10)
+
       devices = _get_devices_from(destinations or per_device_value)
       reduce_to_device = devices[0]
       reduced = _simple_reduce(per_device_value, reduce_to_device,
@@ -455,14 +466,18 @@ class AllReduceCrossTowerOps(CrossTowerOps):
       return self.broadcast(reduced, devices)
 
   def _batch_reduce(self, method_string, value_destination_pairs):
-    if (_all_devices_match(value_destination_pairs) and
-        not context.executing_eagerly()):
+    all_devices_match = _all_devices_match(value_destination_pairs)
+    contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
+        value_destination_pairs)
+    if (all_devices_match and not context.executing_eagerly()
+        and not contains_indexed_slices):
       return self._batch_all_reduce(method_string,
                                     [v[0] for v in value_destination_pairs])
     else:
-      if not context.executing_eagerly():
+      if not all_devices_match:
         logging.warning("Efficient batch_reduce is not supported if "
                         "destinations are different.")
+
       return [
           self._reduce(method_string, t, destinations=v)
           for t, v in value_destination_pairs

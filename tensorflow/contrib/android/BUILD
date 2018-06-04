@@ -72,7 +72,7 @@ cc_binary(
         "-s",
         "-Wl,--gc-sections",
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
-        LINKER_SCRIPT,
+        "$(location {})".format(LINKER_SCRIPT),
     ]),
     linkshared = 1,
     linkstatic = 1,

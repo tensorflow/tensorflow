@@ -124,7 +124,6 @@ cc_library(
     srcs = ["xla_tensor.cc"],
     hdrs = ["xla_tensor.h"],
     deps = [
-        ":common",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
@@ -176,11 +175,12 @@ cc_library(
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:no_op",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:variable_ops",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -217,6 +217,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
@@ -272,7 +273,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )
@@ -293,7 +293,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@com_google_absl//absl/memory",
     ],
 )
 

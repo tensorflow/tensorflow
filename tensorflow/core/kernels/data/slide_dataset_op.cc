@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -33,10 +33,9 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override {
     int64 window_size = 0;
     int64 stride = 1;
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<int64>(ctx, "window_size", &window_size));
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<int64>(ctx, "stride", &stride));
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "stride", &stride));
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
@@ -50,8 +49,12 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
  private:
   class Dataset : public GraphDatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 window_size, int64 stride, const DatasetBase* input)
-        : GraphDatasetBase(ctx), window_size_(window_size), stride_(stride), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 window_size, int64 stride,
+            const DatasetBase* input)
+        : GraphDatasetBase(ctx),
+          window_size_(window_size),
+          stride_(stride),
+          input_(input) {
       input_->Ref();
 
       const auto& input_shapes = input_->output_shapes();
@@ -64,7 +67,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
           Iterator::Params{this, strings::StrCat(prefix, "::Slide")}));
@@ -78,8 +81,9 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
-      return strings::StrCat("SlideDatasetOp(", window_size_, ", ", stride_, ")::Dataset");
+    string DebugString() const override {
+      return strings::StrCat("SlideDatasetOp(", window_size_, ", ", stride_,
+                             ")::Dataset");
     }
 
    protected:
@@ -101,8 +105,11 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,

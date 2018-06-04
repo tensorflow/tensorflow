@@ -16,11 +16,7 @@ limitations under the License.
 #include "cuda/include/cublas_v2.h"
 #include "cuda/include/cuda.h"
 
-#if CUDA_VERSION >= 8000
 #define SE_CUDA_DATA_HALF CUDA_R_16F
-#else
-#define SE_CUDA_DATA_HALF CUBLAS_DATA_HALF
-#endif
 
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
 
@@ -45,9 +41,7 @@ limitations under the License.
 // approach when the issue is fixed.
 #if CUDA_VERSION < 9000
 #include "cuda/include/cuda_fp16.h"
-#if CUDA_VERSION >= 7050
 #define EIGEN_HAS_CUDA_FP16
-#endif
 #endif
 
 #include "third_party/eigen3/Eigen/Core"
@@ -547,9 +541,7 @@ cublasSideMode_t CUDABlasSide(blas::Side side) {
 // blas::ComputationType to a cudaDataType_t.
 //
 // These are used to build the argument type and computation type args to
-// cublasGemmEx.  cublasGemmEx and cudaDataType_t are available only on
-// CUDA >= 8.0.
-#if CUDA_VERSION >= 8000
+// cublasGemmEx.
 template <typename T>
 struct CUDADataType;
 
@@ -624,15 +616,13 @@ cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
       return CUDA_C_64F;
   }
 }
-#endif
-
 }  // namespace
 
 template <typename FuncT, typename... Args>
 bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                   bool pointer_mode_host, bool err_on_failure,
                                   bool use_tensor_op_math, Args... args) {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
@@ -2233,7 +2223,6 @@ bool CUDABlas::GetBlasGemmAlgorithms(
 // Note that when CUDA version and compute capability is not sufficient, we
 // still return the out_algorithms. Caller needs to make sure that in this case,
 // the returned vector is empty.
-#if CUDA_VERSION >= 8000
   for (cublasGemmAlgo_t algo : {
          CUBLAS_GEMM_DFALT, CUBLAS_GEMM_ALGO0, CUBLAS_GEMM_ALGO1,
              CUBLAS_GEMM_ALGO2, CUBLAS_GEMM_ALGO3, CUBLAS_GEMM_ALGO4,
@@ -2249,7 +2238,6 @@ bool CUDABlas::GetBlasGemmAlgorithms(
        }) {
     out_algorithms->push_back(algo);
   }
-#endif
   return true;
 }
 

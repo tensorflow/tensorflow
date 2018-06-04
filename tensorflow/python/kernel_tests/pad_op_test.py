@@ -317,6 +317,11 @@ class PadOpTest(test.TestCase):
                            [constant_op.constant(1, shape=[2]), [0, unknown]])
     self.assertEqual([6, None], padded.get_shape().as_list())
 
+    # Zero padding on a known dimension.
+    inp = array_ops.placeholder(dtypes.int32, [None, None, 20])
+    padded = array_ops.pad(inp, [[0, 0], [0, unknown], [0, 0]])
+    self.assertEqual([None, None, 20], padded.get_shape().as_list())
+
   def testScalars(self):
     paddings = np.zeros((0, 2), dtype=np.int32)
     inp = np.asarray(7)

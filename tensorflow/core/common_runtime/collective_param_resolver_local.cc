@@ -34,7 +34,8 @@ void CollectiveParamResolverLocal::CompleteGroupAsync(
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
     const string& device, CollectiveParams* cp, const GroupRecCallback& done) {
-  VLOG(1) << "CompleteGroupLocal " << cp << ": " << cp->ToString();
+  VLOG(1) << "CompleteGroupLocal device=" << device << " cp: " << cp << ": "
+          << cp->ToString();
   std::vector<StatusCallback> to_be_called;
   GroupRec* gr = nullptr;
   {
@@ -317,9 +318,6 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
 // ring order implicit in the device order.
 void GenerateSubdivPerms(const string& device, int source_rank,
                          CollectiveParams* cp) {
-  CHECK_GT(cp->instance.impl_details.subdiv_offsets.size(), 0);
-  cp->instance.impl_details.subdiv_permutations.resize(
-      cp->instance.impl_details.subdiv_offsets.size());
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
   // sense when each task has the same number of devices but we can't
@@ -434,8 +432,9 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
   }
 }
 
-Status CollectiveParamResolverLocal::InitInstanceSharedParams(
-    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
+void CollectiveParamResolverLocal::InitInstanceSharedParams(
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
+    const StatusCallback& done) {
   VLOG(1) << "InitInstanceSharedParams " << ir;
   ir->shared.instance = cp->instance;
   {
@@ -461,19 +460,19 @@ Status CollectiveParamResolverLocal::InitInstanceSharedParams(
   // called by a derived class, some of the devices may be non-local and
   // GetDeviceLocalitiesAsync will use those fields to launch RPCs.
   CompleteTaskIsLocal(task_name_, &ir->shared);
-  std::vector<DeviceLocality> localities;
-  Notification note;
-  Status status;
-  dev_resolver_->GetDeviceLocalitiesAsync(ir->shared.instance, &localities,
-                                          [&note, &status](const Status& s) {
-                                            status = s;
-                                            note.Notify();
-                                          });
-  note.WaitForNotification();
-  if (status.ok()) {
-    CompleteDefaultRanking(gr, cp, ir, localities);
-  }
-  return status;
+  std::vector<DeviceLocality>* localities = new std::vector<DeviceLocality>;
+  dev_resolver_->GetDeviceLocalitiesAsync(
+      ir->shared.instance, localities,
+      [this, gr, cp, ir, localities, done](const Status& s)
+          EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu) {
+            if (s.ok()) {
+              CompleteDefaultRanking(gr, cp, ir, *localities);
+              done(Status::OK());
+            } else {
+              done(s);
+            }
+            delete localities;
+          });
 }
 
 void CollectiveParamResolverLocal::CompleteDefaultRanking(
@@ -548,28 +547,50 @@ void CollectiveParamResolverLocal::FindInstanceRec(
     CallbackWithStatus(done, irec);
     return;
   }
-  // Initialize the new InstanceRec while holding out_mu.
-  {
-    mutex_lock il(irec->out_mu);
-    irec->known.resize(cp->group.group_size, false);
-    irec->status = InitInstanceSharedParams(gr, cp, irec);
-  }
-  // Prepare to invoke any waiters that accumlated during initialization.
-  std::vector<IRConsumer> init_waiters;
-  {
-    mutex_lock tl(instance_mu_);
-    {
-      mutex_lock l(irec->in_mu);
-      irec->is_init = true;
-      if (!irec->init_waiters.empty()) {
-        std::swap(init_waiters, irec->init_waiters);
-      }
-    }
-  }
-  CallbackWithStatus(done, irec);
-  for (auto& f : init_waiters) {
-    f(irec);
-  }
+
+  CallInitInstanceSharedParams(gr, cp, irec, done);
+}
+
+void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
+    const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
+    const InstanceRecCallback& done) NO_THREAD_SAFETY_ANALYSIS {
+  // This function serves merely to make a function call that should
+  // be thread/mutex safe but violates the simple model applied by
+  // static analysis, so we turn off analysis only within this
+  // function body.
+  //
+  // A lock on ir->out_mu must be held throughout the _bodies_ of the
+  // chain of function calls initiated here, each of which calls
+  // another as its last action, but it will be dropped within the
+  // callback defined below, which means that the lock can be dropped
+  // before all the function stack frames pop. The static analysis will
+  // not allow that.
+  ir->out_mu.lock();
+  ir->known.resize(cp->group.group_size, false);
+  InitInstanceSharedParams(
+      gr, cp, ir,
+      [this, ir, done](const Status& s) UNLOCK_FUNCTION(ir->out_mu) {
+        DCHECK(!ir->out_mu.try_lock());
+        ir->status.Update(s);
+        ir->out_mu.unlock();
+        // Prepare to invoke any waiters that accumlated during
+        // initialization.
+        std::vector<IRConsumer> init_waiters;
+        {
+          mutex_lock tl(instance_mu_);
+          {
+            mutex_lock l(ir->in_mu);
+            ir->is_init = true;
+            if (!ir->init_waiters.empty()) {
+              std::swap(init_waiters, ir->init_waiters);
+            }
+          }
+        }
+        CallbackWithStatus(done, ir);
+        for (auto& f : init_waiters) {
+          f(ir);
+        }
+      });
 }
 
 void CollectiveParamResolverLocal::CompleteParamsAsync(

@@ -387,7 +387,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
   if (!VerifyModel(buf, capacity)) {
     throwException(env, kIllegalArgumentException,
-                   "MappedByteBuffer is not a valid flatbuffer model");
+                   "ByteBuffer is not a valid flatbuffer model");
     return 0;
   }
 
@@ -395,8 +395,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       buf, static_cast<size_t>(capacity), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
-                   "MappedByteBuffer does not encode a valid "
-                   "TensorFlowLite model: %s",
+                   "ByteBuffer does not encode a valid model: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
   }
@@ -426,7 +425,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   status = interpreter->AllocateTensors();
   if (status != kTfLiteOk) {
     throwException(env, kNullPointerException,
-                   "Internal error: Cannot allocate memory for the interpreter",
+                   "Internal error: Cannot allocate memory for the interpreter:"
+                   " %s",
                    error_reporter->CachedErrorMessage());
     return 0;
   }

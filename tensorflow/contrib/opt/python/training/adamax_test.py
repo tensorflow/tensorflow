@@ -198,11 +198,11 @@ class AdaMaxOptimizerTest(test.TestCase):
         self.assertTrue(beta1_power is not None)
         self.assertIn(beta1_power, opt_variables)
 
-        with ops.Graph().as_default():
-          # Shouldn't return non-slot variables from other graphs.
-          self.assertEqual(0, len(opt.variables()))
-
         if not context.executing_eagerly():
+          with ops.Graph().as_default():
+            # Shouldn't return non-slot variables from other graphs.
+            self.assertEqual(0, len(opt.variables()))
+
           self.evaluate(variables.global_variables_initializer())
           # Fetch params to validate initial values
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))

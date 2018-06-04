@@ -54,6 +54,7 @@ gradients.
 *   @{tf.global_norm}
 
 ## Decaying the learning rate
+
 *   @{tf.train.exponential_decay}
 *   @{tf.train.inverse_time_decay}
 *   @{tf.train.natural_exp_decay}

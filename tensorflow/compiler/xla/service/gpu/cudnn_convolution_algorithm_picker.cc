@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -35,35 +36,22 @@ class ScratchAllocator : public se::ScratchAllocator {
   ScratchAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator)
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
-  ~ScratchAllocator() override;
-
   int64 GetMemoryLimitInBytes(se::Stream* stream) override {
     return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
   }
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override;
+  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(se::Stream* stream,
+                                                  int64 byte_size) override;
 
  private:
   const int device_ordinal_;
   DeviceMemoryAllocator* memory_allocator_;
-  std::vector<se::DeviceMemoryBase> allocated_buffers_;
+  std::vector<OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 
-ScratchAllocator::~ScratchAllocator() {
-  for (auto& allocated_buffer : allocated_buffers_) {
-    if (!memory_allocator_->Deallocate(device_ordinal_, &allocated_buffer)
-             .ok()) {
-      // The program can still continue with failed deallocation.
-      LOG(ERROR) << "Failed to deallocate the allocated buffer: "
-                 << allocated_buffer.opaque();
-    }
-  }
-}
-
-se::port::StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
+StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
     se::Stream* stream, int64 byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes(stream)) {
@@ -74,19 +62,14 @@ se::port::StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
             byte_size, GetMemoryLimitInBytes(stream)));
   }
 
-  auto status_or_memory =
-      memory_allocator_->Allocate(device_ordinal_, byte_size,
-                                  /*retry_on_failure=*/false);
-  if (!status_or_memory.ok()) {
-    return se::port::Status(se::port::error::RESOURCE_EXHAUSTED,
-                            tensorflow::strings::Printf(
-                                "Failed to allocate %lld bytes on device %d.",
-                                byte_size, device_ordinal_));
-  }
-  se::DeviceMemoryBase allocated_buffer = status_or_memory.ValueOrDie();
-  allocated_buffers_.push_back(allocated_buffer);
+  TF_ASSIGN_OR_RETURN(OwningDeviceMemory allocated_buffer,
+                      memory_allocator_->Allocate(device_ordinal_, byte_size,
+                                                  /*retry_on_failure=*/false));
   total_allocated_bytes_ += byte_size;
-  return se::DeviceMemory<uint8>(allocated_buffer);
+
+  se::DeviceMemoryBase buffer_addr = allocated_buffer.AsDeviceMemoryBase();
+  allocated_buffers_.push_back(std::move(allocated_buffer));
+  return se::DeviceMemory<uint8>(buffer_addr);
 }
 
 // Determines whether we can safely perform a winograd non-fused convolution for
@@ -334,21 +317,20 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   Shape new_call_shape =
       ShapeUtil::MakeTupleShape({instr->shape().tuple_shapes(0),
                                  ShapeUtil::MakeShape(U8, {scratch_bytes})});
-  HloInstruction* algorithm_hlo = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int64>(algorithm)));
-  HloInstruction* tensor_ops_enabled_hlo =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR0<bool>(tensor_ops_enabled)));
+
+  CudnnConvBackendConfig backend_config;
+  backend_config.set_algorithm(algorithm);
+  backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
 
   HloInstruction* new_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           new_call_shape,
-          {instr->mutable_operand(0), instr->mutable_operand(1), algorithm_hlo,
-           tensor_ops_enabled_hlo},
+          {instr->mutable_operand(0), instr->mutable_operand(1)},
           instr->custom_call_target()));
   new_call->set_window(instr->window());
   new_call->set_convolution_dimension_numbers(
       instr->convolution_dimension_numbers());
+  TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
   // Repackage new_call so it has the same shape as the original call, namely
   // (conv_result, u8[0]).

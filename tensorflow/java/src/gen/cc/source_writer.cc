@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 #include <algorithm>
 #include <list>
+#include <string>
 
 #include "tensorflow/java/src/gen/cc/source_writer.h"
 
@@ -123,7 +124,7 @@ SourceWriter& SourceWriter::EndBlock() {
 }
 
 SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers,
-    const Javadoc* javadoc) {
+                                        const Javadoc* javadoc) {
   GenericNamespace* generic_namespace = PushGenericNamespace(modifiers);
   if (!method.constructor()) {
     generic_namespace->Visit(method.return_type());
@@ -165,7 +166,8 @@ SourceWriter& SourceWriter::EndMethod() {
 }
 
 SourceWriter& SourceWriter::BeginType(const Type& type, int modifiers,
-    const std::list<Type>* extra_dependencies, const Javadoc* javadoc) {
+                                      const std::list<Type>* extra_dependencies,
+                                      const Javadoc* javadoc) {
   if (!type.package().empty()) {
     Append("package ").Append(type.package()).Append(";").EndLine();
   }
@@ -186,7 +188,7 @@ SourceWriter& SourceWriter::BeginType(const Type& type, int modifiers,
 }
 
 SourceWriter& SourceWriter::BeginInnerType(const Type& type, int modifiers,
-    const Javadoc* javadoc) {
+                                           const Javadoc* javadoc) {
   GenericNamespace* generic_namespace = PushGenericNamespace(modifiers);
   generic_namespace->Visit(type);
   EndLine();
@@ -226,7 +228,7 @@ SourceWriter& SourceWriter::EndType() {
 }
 
 SourceWriter& SourceWriter::WriteField(const Variable& field, int modifiers,
-    const Javadoc* javadoc) {
+                                       const Javadoc* javadoc) {
   // If present, write field javadoc only as one brief line
   if (javadoc != nullptr && !javadoc->brief().empty()) {
     Append("/** ").Append(javadoc->brief()).Append(" */").EndLine();
@@ -345,8 +347,8 @@ void SourceWriter::TypeVisitor::Visit(const Type& type) {
 
 void SourceWriter::GenericNamespace::DoVisit(const Type& type) {
   // ignore non-generic parameters, wildcards and generics already declared
-  if (type.kind() == Type::GENERIC && !type.wildcard()
-      && generic_names_.find(type.name()) == generic_names_.end()) {
+  if (type.kind() == Type::GENERIC && !type.wildcard() &&
+      generic_names_.find(type.name()) == generic_names_.end()) {
     declared_types_.push_back(&type);
     generic_names_.insert(type.name());
   }

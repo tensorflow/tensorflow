@@ -97,6 +97,22 @@ class NextIterationOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(NextIterationOp);
 };
 
+// A LoopCond op has one input and one output. The input is a boolean
+// scalar representing the taken branches of the "pivot" Switch that
+// determines loop termination. As a contract, any high-level front-end
+// should always use port '0' of the "pivot" switches for loop exit.
+class LoopCondOp : public OpKernel {
+ public:
+  explicit LoopCondOp(OpKernelConstruction* context);
+  ~LoopCondOp() override;
+
+  void Compute(OpKernelContext* context) override;
+
+  bool IsExpensive() override;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(LoopCondOp);
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONTROL_FLOW_OPS_H_

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
-#include "tensorflow/compiler/xla/service/user_computation.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"

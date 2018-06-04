@@ -29,13 +29,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 jit_scope = jit.experimental_jit_scope
@@ -80,10 +78,10 @@ def InLabels(labels, substr):
 
 
 def MetadataHasXlaLaunch(run_metadata):
-  """Returns true if there is a _XlaLaunch kernel in run_metadata's timeline."""
+  """Returns true if there is a XlaLaunch kernel in run_metadata's timeline."""
 
   # TODO(phawkins): find a less hacky way to test whether a kernel ran.
-  return InLabels(RunMetadataLabels(run_metadata), "_XlaLaunch")
+  return InLabels(RunMetadataLabels(run_metadata), "XlaLaunch")
 
 
 class JitLaunchTest(test.TestCase):
@@ -92,8 +90,8 @@ class JitLaunchTest(test.TestCase):
   # Verifies that the outputs match and that XLA was invoked. 'fn' must take
   # the same number of tensors as arguments that are in 'args', and must return
   # a tuple of output tensors.
-  # If 'require_kernel_launch' is True, then we verify that a _XlaLaunch node
-  # actually ran. However, it is sometimes possible for _XlaLaunch ops to be
+  # If 'require_kernel_launch' is True, then we verify that a XlaLaunch node
+  # actually ran. However, it is sometimes possible for XlaLaunch ops to be
   # constant-folded away, so the check is optional.
   def _compare(self, fn, args, require_kernel_launch=True, noinline=None):
     with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
@@ -127,7 +125,7 @@ class JitLaunchTest(test.TestCase):
           for (x, y) in zip(compiled, direct):
             self.assertAllClose(x, y, rtol=1e-1)
         else:
-          self.assertAllClose(compiled, direct)
+          self.assertAllClose(compiled, direct, rtol=1e-2)
 
   def testNoOutputs(self):
     with session_lib.Session() as sess:
@@ -443,31 +441,14 @@ class XlaCompilationTest(test.TestCase):
     self.assertFalse(InLabels(labels, "Log"))
     self.assertTrue(InLabels(labels, "Reciprocal"))
     self.assertTrue(InLabels(labels, "Mul"))
-    self.assertFalse(InLabels(labels, "_XlaLaunch"))
+    self.assertFalse(InLabels(labels, "XlaLaunch"))
 
-    # Compile the backprop. One _XlaLaunch.
+    # Compile the backprop. One XlaLaunch.
     labels = _Run(compiled=True)
     self.assertFalse(InLabels(labels, "Log"))
     self.assertFalse(InLabels(labels, "Reciprocal"))
     self.assertFalse(InLabels(labels, "Mul"))
-    self.assertTrue(InLabels(labels, "_XlaLaunch"))
-
-  def testDenseLayer(self):
-    """Tests that the dense layer node is properly compiled."""
-
-    with self.test_session(config=NoRewriteSessionConfig()) as sess:
-      x = array_ops.placeholder(shape=[2, 3], dtype=np.float32)
-      with jit_scope():
-        y = layers.dense(x, 3)
-
-      sess.run(variables.initialize_all_variables())
-      run_metadata = config_pb2.RunMetadata()
-      sess.run(y, {x: np.array([[1, 2, 3], [4, 5, 6]])},
-               run_metadata=run_metadata,
-               options=config_pb2.RunOptions(
-                   trace_level=config_pb2.RunOptions.FULL_TRACE))
-
-    self.assert_(MetadataHasXlaLaunch(run_metadata))
+    self.assertTrue(InLabels(labels, "XlaLaunch"))
 
 
 class ElementWiseFusionTest(test.TestCase):
@@ -501,7 +482,7 @@ class ElementWiseFusionTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
 
       labels = RunMetadataLabels(run_metadata)
-      count = sum("_XlaLaunch(" in x for x in labels)
+      count = sum("XlaLaunch(" in x for x in labels)
 
       return output, count
 

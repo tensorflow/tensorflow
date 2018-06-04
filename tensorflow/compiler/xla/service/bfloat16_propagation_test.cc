@@ -149,12 +149,12 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   EXPECT_TRUE(OutputsBF16(dot->operand(1)));
   EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConstant);
-  LiteralTestUtil::ExpectEqual(
+  EXPECT_TRUE(LiteralTestUtil::Equal(
       dot->operand(0)->literal(),
-      *LiteralTestUtil::ConvertF32ToBF16(*Literal::CreateFromArray(array_a)));
-  LiteralTestUtil::ExpectEqual(
+      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_a))));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
       dot->operand(1)->literal(),
-      *LiteralTestUtil::ConvertF32ToBF16(*Literal::CreateFromArray(array_b)));
+      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_b))));
 }
 
 // Tests that BF16 can be propagated through nested tuples.

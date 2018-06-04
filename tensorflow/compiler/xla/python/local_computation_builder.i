@@ -906,6 +906,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
 %unignore xla::swig::LocalComputation::GetReturnValueShape;
+%unignore xla::swig::LocalComputation::GetSerializedProto;
 %unignore xla::swig::LocalOp;
 %unignore xla::swig::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;

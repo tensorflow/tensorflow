@@ -29,7 +29,7 @@ GENDIR := $(MAKEFILE_DIR)/gen/obj/
 CXX := $(CC_PREFIX)gcc
 CXXFLAGS := --std=c++11 -O3 -DNDEBUG
 CC := $(CC_PREFIX)gcc
-CFLAGS := -O3 -DNDEBUG
+CCFLAGS := -O3 -DNDEBUG
 LDOPTS :=
 LDOPTS += -L/usr/local/lib
 ARFLAGS := -r

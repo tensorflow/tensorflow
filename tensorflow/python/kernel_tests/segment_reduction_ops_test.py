@@ -91,16 +91,18 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     ]
 
     # Each item is np_op1, np_op2, tf_op
-    ops_list = [(np.add, None, math_ops.segment_sum), (self._mean_cum_op,
-                                                       self._mean_reduce_op,
-                                                       math_ops.segment_mean),
+    ops_list = [(np.add, None, math_ops.segment_sum),
+                (self._mean_cum_op, self._mean_reduce_op,
+                 math_ops.segment_mean),
                 (np.ndarray.__mul__, None, math_ops.segment_prod),
                 (np.minimum, None, math_ops.segment_min),
                 (np.maximum, None, math_ops.segment_max)]
 
     # A subset of ops has been enabled for complex numbers
     complex_ops_list = [(np.add, None, math_ops.segment_sum),
-                        (np.ndarray.__mul__, None, math_ops.segment_prod)]
+                        (np.ndarray.__mul__, None, math_ops.segment_prod),
+                        (self._mean_cum_op, self._mean_reduce_op,
+                         math_ops.segment_mean)]
 
     n = 10
     shape = [n, 2]
