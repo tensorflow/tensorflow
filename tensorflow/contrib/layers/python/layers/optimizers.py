@@ -176,10 +176,7 @@ def optimize_loss(loss,
       elif isinstance(learning_rate, float):
         if learning_rate < 0.0:
           raise ValueError("Invalid learning_rate %s.", learning_rate)
-        lr = vs.get_variable(
-            "learning_rate", [],
-            trainable=False,
-            initializer=init_ops.constant_initializer(learning_rate))
+        lr = constant_op.constant(learning_rate)
       else:
         raise ValueError("Learning rate should be 0d Tensor or float. "
                          "Got %s of type %s" % (str(learning_rate),
