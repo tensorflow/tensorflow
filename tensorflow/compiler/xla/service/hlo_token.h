@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_TOKEN_H_
-#define TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_TOKEN_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_TOKEN_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_TOKEN_H_
 
 #include <string>
 
@@ -22,9 +22,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-namespace tools {
 
 // Defines different kinds of tokens in a hlo module string.
+//
+// You shouldn't need to use this directly unless you're using HloLexer
+// directly, and you probably don't need to do that.  Use hlo_parser instead.
 enum class TokKind {
   // Markers
   kEof,
@@ -72,7 +74,6 @@ enum class TokKind {
 
 string TokKindToString(TokKind kind);
 
-}  // namespace tools
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_TOOLS_PARSER_HLO_TOKEN_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_TOKEN_H_

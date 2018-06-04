@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
@@ -60,7 +60,7 @@ CHECK-NOT: private constant [12 x float]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
@@ -105,7 +105,7 @@ CHECK-NOT: private constant [2 x float]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",

@@ -61,6 +61,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool combine_add_to_addn = true;
     bool convert_sqrt_div_to_rsqrt_mul = false;
     bool dedup_computations = true;
+    bool fold_multiply_into_conv = true;
     bool hoist_common_factor_out_of_aggregation = true;
     bool hoist_cwise_unary_chains = false;
     bool minimize_broadcasts = true;
