@@ -18,6 +18,7 @@ limitations under the License.
 
 // LOG and CHECK macros for benchmarks.
 
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 
@@ -72,4 +73,4 @@ class LoggingWrapper {
 
 #define TFLITE_BENCHMARK_CHECK_EQ(a, b) TFLITE_BENCHMARK_CHECK(a == b)
 
-#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_LOGGING_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_LOGGING_H_
