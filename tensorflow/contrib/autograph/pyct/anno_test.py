@@ -44,6 +44,7 @@ class AnnoTest(test.TestCase):
     self.assertFalse(anno.hasanno(node, 'foo'))
     with self.assertRaises(AttributeError):
       anno.getanno(node, 'foo')
+    self.assertIsNone(anno.getanno(node, 'foo', default=None))
 
   def test_copyanno(self):
     node_1 = ast.Name()
