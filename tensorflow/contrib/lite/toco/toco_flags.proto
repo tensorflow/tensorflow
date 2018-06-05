@@ -37,7 +37,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 19.
+// Next ID to use: 21.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -165,4 +165,13 @@ message TocoFlags {
   // Minimum size of constant arrays to deduplicate; arrays smaller will not be
   // deduplicated.
   optional int64 dedupe_array_min_size_bytes = 18 [default = 64];
+
+  // Split the LSTM inputs from 5 tensors to 18 tensors for TFLite.
+  // Ignored if the output format is not TFLite.
+  optional bool split_tflite_lstm_inputs = 19 [default = true];
+
+  // Store weights as quantized weights followed by dequantize operations.
+  // Computation is still done in float, but reduces model size (at the cost of
+  // accuracy and latency).
+  optional bool quantize_weights = 20 [default = false];
 }

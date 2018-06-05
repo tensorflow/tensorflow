@@ -203,6 +203,10 @@ have.
     graph transformations on them, at the cost of no longer faithfully matching
     inference and training arithmetic.
 
+*   `--quantize_weights`. Type: boolean. Default: false. Store weights as
+    quantized weights followed by dequantize operations. Computation is still
+    done in float, but reduces model size (at the cost of accuracy and latency).
+
 ## Logging flags
 
 The following are standard Google logging flags:

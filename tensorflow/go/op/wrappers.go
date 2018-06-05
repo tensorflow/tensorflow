@@ -2724,6 +2724,174 @@ func MatrixDiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
 	return op.Output(0)
 }
 
+// Returns a batched diagonal tensor with a given batched diagonal values.
+//
+// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+// everything else padded with zeros. The diagonal is computed as follows:
+//
+// Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+// tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+//
+// `output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+//
+// For example:
+//
+// ```
+// # 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+//
+// and diagonal.shape = (2, 4)
+//
+// tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+//                                      [0, 2, 0, 0]
+//                                      [0, 0, 3, 0]
+//                                      [0, 0, 0, 4]],
+//                                     [[5, 0, 0, 0]
+//                                      [0, 6, 0, 0]
+//                                      [0, 0, 7, 0]
+//                                      [0, 0, 0, 8]]]
+//
+// which has shape (2, 4, 4)
+// ```
+//
+// Arguments:
+//	diagonal: Rank `k`, where `k >= 1`.
+//
+// Returns Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
+func MatrixDiag(scope *Scope, diagonal tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixDiag",
+		Input: []tf.Input{
+			diagonal,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// QuantizedInstanceNormAttr is an optional argument to QuantizedInstanceNorm.
+type QuantizedInstanceNormAttr func(optionalAttr)
+
+// QuantizedInstanceNormOutputRangeGiven sets the optional output_range_given attribute to value.
+//
+// value: If True, `given_y_min` and `given_y_min`
+// and `given_y_max` are used as the output range. Otherwise,
+// the implementation computes the output range.
+// If not specified, defaults to false
+func QuantizedInstanceNormOutputRangeGiven(value bool) QuantizedInstanceNormAttr {
+	return func(m optionalAttr) {
+		m["output_range_given"] = value
+	}
+}
+
+// QuantizedInstanceNormGivenYMin sets the optional given_y_min attribute to value.
+//
+// value: Output in `y_min` if `output_range_given` is True.
+// If not specified, defaults to 0
+func QuantizedInstanceNormGivenYMin(value float32) QuantizedInstanceNormAttr {
+	return func(m optionalAttr) {
+		m["given_y_min"] = value
+	}
+}
+
+// QuantizedInstanceNormGivenYMax sets the optional given_y_max attribute to value.
+//
+// value: Output in `y_max` if `output_range_given` is True.
+// If not specified, defaults to 0
+func QuantizedInstanceNormGivenYMax(value float32) QuantizedInstanceNormAttr {
+	return func(m optionalAttr) {
+		m["given_y_max"] = value
+	}
+}
+
+// QuantizedInstanceNormVarianceEpsilon sets the optional variance_epsilon attribute to value.
+//
+// value: A small float number to avoid dividing by 0.
+// If not specified, defaults to 1e-05
+func QuantizedInstanceNormVarianceEpsilon(value float32) QuantizedInstanceNormAttr {
+	return func(m optionalAttr) {
+		m["variance_epsilon"] = value
+	}
+}
+
+// QuantizedInstanceNormMinSeparation sets the optional min_separation attribute to value.
+//
+// value: Minimum value of `y_max - y_min`
+// If not specified, defaults to 0.001
+func QuantizedInstanceNormMinSeparation(value float32) QuantizedInstanceNormAttr {
+	return func(m optionalAttr) {
+		m["min_separation"] = value
+	}
+}
+
+// Quantized Instance normalization.
+//
+// Arguments:
+//	x: A 4D input Tensor.
+//	x_min: The value represented by the lowest quantized input.
+//	x_max: The value represented by the highest quantized input.
+//
+// Returns A 4D Tensor.The value represented by the lowest quantized output.The value represented by the highest quantized output.
+func QuantizedInstanceNorm(scope *Scope, x tf.Output, x_min tf.Output, x_max tf.Output, optional ...QuantizedInstanceNormAttr) (y tf.Output, y_min tf.Output, y_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedInstanceNorm",
+		Input: []tf.Input{
+			x, x_min, x_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Returns the diagonal part of the tensor.
+//
+// This operation returns a tensor with the `diagonal` part
+// of the `input`. The `diagonal` part is computed as follows:
+//
+// Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+// tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+//
+// `diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+//
+// For example:
+//
+// ```
+// # 'input' is [[1, 0, 0, 0]
+//               [0, 2, 0, 0]
+//               [0, 0, 3, 0]
+//               [0, 0, 0, 4]]
+//
+// tf.diag_part(input) ==> [1, 2, 3, 4]
+// ```
+//
+// Arguments:
+//	input: Rank k tensor where k is even and not zero.
+//
+// Returns The extracted diagonal.
+func DiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DiagPart",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a sequence of numbers.
 //
 // This operation creates a sequence of numbers that begins at `start` and
@@ -2829,57 +2997,6 @@ func StackPopV2(scope *Scope, handle tf.Output, elem_type tf.DataType) (elem tf.
 			handle,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the sum along sparse segments of a tensor.
-//
-// Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is
-// misisng, the `output` tensor at that position will be zeroed.
-//
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
-//
-// For example:
-//
-// ```python
-// c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
-//
-// tf.sparse_segment_sum_with_num_segments(
-//     c, tf.constant([0, 1]), tf.constant([0, 0]), num_segments=3)
-// # => [[0 0 0 0]
-// #     [0 0 0 0]
-// #     [0 0 0 0]]
-//
-// tf.sparse_segment_sum_with_num_segments(c,
-//                                         tf.constant([0, 1]),
-//                                         tf.constant([0, 2],
-//                                         num_segments=4))
-// # => [[ 1  2  3  4]
-// #     [ 0  0  0  0]
-// #     [-1 -2 -3 -4]
-// #     [ 0  0  0  0]]
-// ```
-//
-// Arguments:
-//
-//	indices: A 1-D tensor. Has same rank as `segment_ids`.
-//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
-//	num_segments: Should equal the number of distinct segment IDs.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `num_segments`.
-func SparseSegmentSumWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSegmentSumWithNumSegments",
-		Input: []tf.Input{
-			data, indices, segment_ids, num_segments,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -5198,53 +5315,6 @@ func FloorDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// Returns a batched diagonal tensor with a given batched diagonal values.
-//
-// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
-// everything else padded with zeros. The diagonal is computed as follows:
-//
-// Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
-// tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
-//
-// `output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
-//
-// For example:
-//
-// ```
-// # 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
-//
-// and diagonal.shape = (2, 4)
-//
-// tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
-//                                      [0, 2, 0, 0]
-//                                      [0, 0, 3, 0]
-//                                      [0, 0, 0, 4]],
-//                                     [[5, 0, 0, 0]
-//                                      [0, 6, 0, 0]
-//                                      [0, 0, 7, 0]
-//                                      [0, 0, 0, 8]]]
-//
-// which has shape (2, 4, 4)
-// ```
-//
-// Arguments:
-//	diagonal: Rank `k`, where `k >= 1`.
-//
-// Returns Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
-func MatrixDiag(scope *Scope, diagonal tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixDiag",
-		Input: []tf.Input{
-			diagonal,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the inverse permutation of a tensor.
 //
 // This operation computes the inverse of an index permutation. It takes a 1-D
@@ -6847,53 +6917,6 @@ func SerializeTensor(scope *Scope, tensor tf.Output) (serialized tf.Output) {
 		Input: []tf.Input{
 			tensor,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MatrixSolveAttr is an optional argument to MatrixSolve.
-type MatrixSolveAttr func(optionalAttr)
-
-// MatrixSolveAdjoint sets the optional adjoint attribute to value.
-//
-// value: Boolean indicating whether to solve with `matrix` or its (block-wise)
-// adjoint.
-// If not specified, defaults to false
-func MatrixSolveAdjoint(value bool) MatrixSolveAttr {
-	return func(m optionalAttr) {
-		m["adjoint"] = value
-	}
-}
-
-// Solves systems of linear equations.
-//
-// `Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
-// a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
-// satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
-// If `adjoint` is `True` then each output matrix satisfies
-// `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
-//
-// Arguments:
-//	matrix: Shape is `[..., M, M]`.
-//	rhs: Shape is `[..., M, K]`.
-//
-// Returns Shape is `[..., M, K]`.
-func MatrixSolve(scope *Scope, matrix tf.Output, rhs tf.Output, optional ...MatrixSolveAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixSolve",
-		Input: []tf.Input{
-			matrix, rhs,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -18101,8 +18124,9 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 }
 
 // Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
-//
 // if < 0, `scale * features` otherwise.
+//
+// Assumes weights to have zero mean and variance 1.0 / fan_in.
 //
 // See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
 func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
@@ -21773,6 +21797,122 @@ func TensorListGetItem(scope *Scope, input_handle tf.Output, index tf.Output, el
 	return op.Output(0)
 }
 
+// Returns a diagonal tensor with a given diagonal values.
+//
+// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+// everything else padded with zeros. The diagonal is computed as follows:
+//
+// Assume `diagonal` has dimensions [D1,..., Dk], then the output is a tensor of
+// rank 2k with dimensions [D1,..., Dk, D1,..., Dk] where:
+//
+// `output[i1,..., ik, i1,..., ik] = diagonal[i1, ..., ik]` and 0 everywhere else.
+//
+// For example:
+//
+// ```
+// # 'diagonal' is [1, 2, 3, 4]
+// tf.diag(diagonal) ==> [[1, 0, 0, 0]
+//                        [0, 2, 0, 0]
+//                        [0, 0, 3, 0]
+//                        [0, 0, 0, 4]]
+// ```
+//
+// Arguments:
+//	diagonal: Rank k tensor where k is at most 1.
+func Diag(scope *Scope, diagonal tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Diag",
+		Input: []tf.Input{
+			diagonal,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ParameterizedTruncatedNormalAttr is an optional argument to ParameterizedTruncatedNormal.
+type ParameterizedTruncatedNormalAttr func(optionalAttr)
+
+// ParameterizedTruncatedNormalSeed sets the optional seed attribute to value.
+//
+// value: If either `seed` or `seed2` are set to be non-zero, the random number
+// generator is seeded by the given seed.  Otherwise, it is seeded by a
+// random seed.
+// If not specified, defaults to 0
+func ParameterizedTruncatedNormalSeed(value int64) ParameterizedTruncatedNormalAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// ParameterizedTruncatedNormalSeed2 sets the optional seed2 attribute to value.
+//
+// value: A second seed to avoid seed collision.
+// If not specified, defaults to 0
+func ParameterizedTruncatedNormalSeed2(value int64) ParameterizedTruncatedNormalAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Outputs random values from a normal distribution. The parameters may each be a
+//
+// scalar which applies to the entire output, or a vector of length shape[0] which
+// stores the parameters for each batch.
+//
+// Arguments:
+//	shape: The shape of the output tensor. Batches are indexed by the 0th dimension.
+//	means: The mean parameter of each batch.
+//	stdevs: The standard deviation parameter of each batch. Must be greater than 0.
+//	minvals: The minimum cutoff. May be -infinity.
+//	maxvals: The maximum cutoff. May be +infinity, and must be more than the minval
+// for each batch.
+//
+// Returns A matrix of shape num_batches x samples_per_batch, filled with random
+// truncated normal values using the parameters for each row.
+func ParameterizedTruncatedNormal(scope *Scope, shape tf.Output, means tf.Output, stdevs tf.Output, minvals tf.Output, maxvals tf.Output, optional ...ParameterizedTruncatedNormalAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ParameterizedTruncatedNormal",
+		Input: []tf.Input{
+			shape, means, stdevs, minvals, maxvals,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Sets the index-th position of the list to contain the given tensor.
+//
+// input_handle: the list
+// index: the position in the list to which the tensor will be assigned
+// item: the element to be assigned to that position
+// output_handle: the new list, with the element in the proper position
+//
+func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, item tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListSetItem",
+		Input: []tf.Input{
+			input_handle, index, item,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the matrix exponential of one or more square matrices:
 //
 // exp(A) = \sum_{n=0}^\infty A^n/n!
@@ -22143,6 +22283,53 @@ func AdjustSaturation(scope *Scope, images tf.Output, scale tf.Output) (output t
 		Input: []tf.Input{
 			images, scale,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MatrixSolveAttr is an optional argument to MatrixSolve.
+type MatrixSolveAttr func(optionalAttr)
+
+// MatrixSolveAdjoint sets the optional adjoint attribute to value.
+//
+// value: Boolean indicating whether to solve with `matrix` or its (block-wise)
+// adjoint.
+// If not specified, defaults to false
+func MatrixSolveAdjoint(value bool) MatrixSolveAttr {
+	return func(m optionalAttr) {
+		m["adjoint"] = value
+	}
+}
+
+// Solves systems of linear equations.
+//
+// `Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
+// a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
+// satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+// If `adjoint` is `True` then each output matrix satisfies
+// `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
+//
+// Arguments:
+//	matrix: Shape is `[..., M, M]`.
+//	rhs: Shape is `[..., M, K]`.
+//
+// Returns Shape is `[..., M, K]`.
+func MatrixSolve(scope *Scope, matrix tf.Output, rhs tf.Output, optional ...MatrixSolveAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixSolve",
+		Input: []tf.Input{
+			matrix, rhs,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -24359,8 +24546,7 @@ type DecodeProtoV2Attr func(optionalAttr)
 // If not specified, defaults to "local://"
 func DecodeProtoV2DescriptorSource(value string) DecodeProtoV2Attr {
 	return func(m optionalAttr) {
-		m["descriptor_source"] = value
-	}
+		m["descriptor_source"] = value	}
 }
 
 // DecodeProtoV2MessageFormat sets the optional message_format attribute to value.
@@ -25353,6 +25539,57 @@ func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, out
 			input_dataset, filename,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the sum along sparse segments of a tensor.
+//
+// Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is
+// misisng, the `output` tensor at that position will be zeroed.
+//
+// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
+// segments.
+//
+// For example:
+//
+// ```python
+// c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+//
+// tf.sparse_segment_sum_with_num_segments(
+//     c, tf.constant([0, 1]), tf.constant([0, 0]), num_segments=3)
+// # => [[0 0 0 0]
+// #     [0 0 0 0]
+// #     [0 0 0 0]]
+//
+// tf.sparse_segment_sum_with_num_segments(c,
+//                                         tf.constant([0, 1]),
+//                                         tf.constant([0, 2],
+//                                         num_segments=4))
+// # => [[ 1  2  3  4]
+// #     [ 0  0  0  0]
+// #     [-1 -2 -3 -4]
+// #     [ 0  0  0  0]]
+// ```
+//
+// Arguments:
+//
+//	indices: A 1-D tensor. Has same rank as `segment_ids`.
+//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+//	num_segments: Should equal the number of distinct segment IDs.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `num_segments`.
+func SparseSegmentSumWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentSumWithNumSegments",
+		Input: []tf.Input{
+			data, indices, segment_ids, num_segments,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -27243,122 +27480,6 @@ func TensorArrayConcatV3(scope *Scope, handle tf.Output, flow_in tf.Output, dtyp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// ParameterizedTruncatedNormalAttr is an optional argument to ParameterizedTruncatedNormal.
-type ParameterizedTruncatedNormalAttr func(optionalAttr)
-
-// ParameterizedTruncatedNormalSeed sets the optional seed attribute to value.
-//
-// value: If either `seed` or `seed2` are set to be non-zero, the random number
-// generator is seeded by the given seed.  Otherwise, it is seeded by a
-// random seed.
-// If not specified, defaults to 0
-func ParameterizedTruncatedNormalSeed(value int64) ParameterizedTruncatedNormalAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// ParameterizedTruncatedNormalSeed2 sets the optional seed2 attribute to value.
-//
-// value: A second seed to avoid seed collision.
-// If not specified, defaults to 0
-func ParameterizedTruncatedNormalSeed2(value int64) ParameterizedTruncatedNormalAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Outputs random values from a normal distribution. The parameters may each be a
-//
-// scalar which applies to the entire output, or a vector of length shape[0] which
-// stores the parameters for each batch.
-//
-// Arguments:
-//	shape: The shape of the output tensor. Batches are indexed by the 0th dimension.
-//	means: The mean parameter of each batch.
-//	stdevs: The standard deviation parameter of each batch. Must be greater than 0.
-//	minvals: The minimum cutoff. May be -infinity.
-//	maxvals: The maximum cutoff. May be +infinity, and must be more than the minval
-// for each batch.
-//
-// Returns A matrix of shape num_batches x samples_per_batch, filled with random
-// truncated normal values using the parameters for each row.
-func ParameterizedTruncatedNormal(scope *Scope, shape tf.Output, means tf.Output, stdevs tf.Output, minvals tf.Output, maxvals tf.Output, optional ...ParameterizedTruncatedNormalAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ParameterizedTruncatedNormal",
-		Input: []tf.Input{
-			shape, means, stdevs, minvals, maxvals,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Sets the index-th position of the list to contain the given tensor.
-//
-// input_handle: the list
-// index: the position in the list to which the tensor will be assigned
-// item: the element to be assigned to that position
-// output_handle: the new list, with the element in the proper position
-//
-func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, item tf.Output) (output_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListSetItem",
-		Input: []tf.Input{
-			input_handle, index, item,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns a diagonal tensor with a given diagonal values.
-//
-// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
-// everything else padded with zeros. The diagonal is computed as follows:
-//
-// Assume `diagonal` has dimensions [D1,..., Dk], then the output is a tensor of
-// rank 2k with dimensions [D1,..., Dk, D1,..., Dk] where:
-//
-// `output[i1,..., ik, i1,..., ik] = diagonal[i1, ..., ik]` and 0 everywhere else.
-//
-// For example:
-//
-// ```
-// # 'diagonal' is [1, 2, 3, 4]
-// tf.diag(diagonal) ==> [[1, 0, 0, 0]
-//                        [0, 2, 0, 0]
-//                        [0, 0, 3, 0]
-//                        [0, 0, 0, 4]]
-// ```
-//
-// Arguments:
-//	diagonal: Rank k tensor where k is at most 1.
-func Diag(scope *Scope, diagonal tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Diag",
-		Input: []tf.Input{
-			diagonal,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Split the data from the input value into TensorArray elements.
@@ -30584,127 +30705,6 @@ func ZerosLike(scope *Scope, x tf.Output) (y tf.Output) {
 		Type: "ZerosLike",
 		Input: []tf.Input{
 			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// QuantizedInstanceNormAttr is an optional argument to QuantizedInstanceNorm.
-type QuantizedInstanceNormAttr func(optionalAttr)
-
-// QuantizedInstanceNormOutputRangeGiven sets the optional output_range_given attribute to value.
-//
-// value: If True, `given_y_min` and `given_y_min`
-// and `given_y_max` are used as the output range. Otherwise,
-// the implementation computes the output range.
-// If not specified, defaults to false
-func QuantizedInstanceNormOutputRangeGiven(value bool) QuantizedInstanceNormAttr {
-	return func(m optionalAttr) {
-		m["output_range_given"] = value
-	}
-}
-
-// QuantizedInstanceNormGivenYMin sets the optional given_y_min attribute to value.
-//
-// value: Output in `y_min` if `output_range_given` is True.
-// If not specified, defaults to 0
-func QuantizedInstanceNormGivenYMin(value float32) QuantizedInstanceNormAttr {
-	return func(m optionalAttr) {
-		m["given_y_min"] = value
-	}
-}
-
-// QuantizedInstanceNormGivenYMax sets the optional given_y_max attribute to value.
-//
-// value: Output in `y_max` if `output_range_given` is True.
-// If not specified, defaults to 0
-func QuantizedInstanceNormGivenYMax(value float32) QuantizedInstanceNormAttr {
-	return func(m optionalAttr) {
-		m["given_y_max"] = value
-	}
-}
-
-// QuantizedInstanceNormVarianceEpsilon sets the optional variance_epsilon attribute to value.
-//
-// value: A small float number to avoid dividing by 0.
-// If not specified, defaults to 1e-05
-func QuantizedInstanceNormVarianceEpsilon(value float32) QuantizedInstanceNormAttr {
-	return func(m optionalAttr) {
-		m["variance_epsilon"] = value
-	}
-}
-
-// QuantizedInstanceNormMinSeparation sets the optional min_separation attribute to value.
-//
-// value: Minimum value of `y_max - y_min`
-// If not specified, defaults to 0.001
-func QuantizedInstanceNormMinSeparation(value float32) QuantizedInstanceNormAttr {
-	return func(m optionalAttr) {
-		m["min_separation"] = value
-	}
-}
-
-// Quantized Instance normalization.
-//
-// Arguments:
-//	x: A 4D input Tensor.
-//	x_min: The value represented by the lowest quantized input.
-//	x_max: The value represented by the highest quantized input.
-//
-// Returns A 4D Tensor.The value represented by the lowest quantized output.The value represented by the highest quantized output.
-func QuantizedInstanceNorm(scope *Scope, x tf.Output, x_min tf.Output, x_max tf.Output, optional ...QuantizedInstanceNormAttr) (y tf.Output, y_min tf.Output, y_max tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QuantizedInstanceNorm",
-		Input: []tf.Input{
-			x, x_min, x_max,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Returns the diagonal part of the tensor.
-//
-// This operation returns a tensor with the `diagonal` part
-// of the `input`. The `diagonal` part is computed as follows:
-//
-// Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
-// tensor of rank `k` with dimensions `[D1,..., Dk]` where:
-//
-// `diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
-//
-// For example:
-//
-// ```
-// # 'input' is [[1, 0, 0, 0]
-//               [0, 2, 0, 0]
-//               [0, 0, 3, 0]
-//               [0, 0, 0, 4]]
-//
-// tf.diag_part(input) ==> [1, 2, 3, 4]
-// ```
-//
-// Arguments:
-//	input: Rank k tensor where k is even and not zero.
-//
-// Returns The extracted diagonal.
-func DiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DiagPart",
-		Input: []tf.Input{
-			input,
 		},
 	}
 	op := scope.AddOperation(opspec)

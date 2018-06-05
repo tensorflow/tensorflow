@@ -262,15 +262,19 @@ class TocoConverter(object):
 
     Raises:
       ValueError:
+        Input shape is not specified.
         None value for dimension in input_tensor.
     """
     # Checks dimensions in input tensor.
     for tensor in self._input_tensors:
+      if not tensor.get_shape():
+        raise ValueError("Provide an input shape for input array '{0}'.".format(
+            tensor_name(tensor)))
       shape = tensor.get_shape().as_list()
       if None in shape[1:]:
         raise ValueError(
             "None is only supported in the 1st dimension. Tensor '{0}' has "
-            "invalid shape '{1}'.".format(tensor.name, shape))
+            "invalid shape '{1}'.".format(tensor_name(tensor), shape))
       elif shape[0] is None:
         self._set_batch_size(batch_size=1)
 

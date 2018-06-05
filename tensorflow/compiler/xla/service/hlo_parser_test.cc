@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include <string>
 #include "tensorflow/compiler/xla/window_util.h"
@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
-namespace tools {
+
 namespace {
 
-using tensorflow::StringPiece;
+using ::tensorflow::StringPiece;
 
 struct TestData {
   string test_name;
@@ -901,12 +901,12 @@ class HloParserTest : public ::testing::Test,
         << "'" << s << "' does not contain '" << expected << "'";
   }
 
-  // Expects "ToString(Parse(string)) == string", that is, parses the string,
-  // asserts that it succeeded, stringifies the parsed module, and checks that
-  // the it equals the original string.
+  // Expects "ToString(ParseHloString(string)) == string", that is, parses the
+  // string, asserts that it succeeded, stringifies the parsed module, and
+  // checks that the it equals the original string.
   void ExpectEqual() {
     const string& original = GetParam().module_string;
-    auto result = Parse(original);
+    auto result = ParseHloString(original);
     TF_ASSERT_OK(result.status());
     EXPECT_EQ(original, result.ValueOrDie()->ToString(
                             HloPrintOptions().set_print_large_constants(true)));
@@ -917,7 +917,7 @@ class HloParserShortTest : public HloParserTest {
  protected:
   void ExpectEqualShort() {
     const string& original = GetParam().module_string;
-    auto result = Parse(original);
+    auto result = ParseHloString(original);
     TF_ASSERT_OK(result.status());
     EXPECT_EQ(original,
               result.ValueOrDie()->ToString(HloPrintOptions::ShortParsable()));
@@ -938,13 +938,13 @@ INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserShortTest,
 
 TEST_F(HloParserTest, Empty) {
   const string original = "";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
 }
 
 TEST_F(HloParserTest, Garbage) {
   const string original = "HloModule thi$ str1ng makes# N0 sen$e @all!*&^%$";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
 }
 
@@ -958,7 +958,7 @@ ENTRY %blabla (x: f32[], y: f32[]) -> f32[] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
 }
 
@@ -970,7 +970,7 @@ ENTRY %blabla (x: g32[]) -> g32[] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
 }
 
@@ -983,7 +983,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
 }
 
@@ -994,7 +994,7 @@ ENTRY %blabla (x: f32[]) -> pred[] {
   %eq = pred[]{} equal-to(f32[]{} %x, f32[]{} %y)
 }
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
 }
 
@@ -1009,7 +1009,7 @@ ENTRY %SelectScalarS32True.v4 () -> s32[] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   TF_EXPECT_OK(result.status());
   // Constant instructions have no name. The string will be parsed successfully
   // but the constant names will not be exactly the same.
@@ -1020,7 +1020,7 @@ TEST_F(HloParserTest, ConfigurationField) {
 ENTRY %configuration_test() -> s32[] {
   %constant = s32[] constant(42), backend_config="foo bar"
 })";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   TF_ASSERT_OK(result.status());
   EXPECT_EQ("foo bar", result.ValueOrDie()
                            ->entry_computation()
@@ -1036,7 +1036,7 @@ ENTRY %some_2 () -> f32[2] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 1, but sees larger");
@@ -1050,7 +1050,7 @@ ENTRY %some_2x3 () -> f32[2,3] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects nested array in rank 2, but sees 1");
@@ -1064,7 +1064,7 @@ ENTRY %some_2x3x2 () -> f32[2,3,2] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "expects 3 elements in the [0]th element");
@@ -1079,7 +1079,7 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   EXPECT_NE(Status::OK(), result.status());
   ExpectHasSubstr(result.status().error_message(),
                   "is out of range for literal's primitive type F16");
@@ -1093,7 +1093,7 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
 }
 
 )";
-  auto result = Parse(original);
+  auto result = ParseHloString(original);
   TF_EXPECT_OK(result.status());
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
@@ -1111,7 +1111,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 }
 
 )";
-  TF_EXPECT_OK(Parse(original).status());
+  TF_EXPECT_OK(ParseHloString(original).status());
 }
 
 TEST_F(HloParserTest, InvalidDimLabels) {
@@ -1127,17 +1127,18 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )";
 
-  ExpectHasSubstr(
-      Parse(tensorflow::strings::StrCat(prefix, ",dim_labels=00_01_10", suffix))
-          .status()
-          .error_message(),
-      "expects dim labels pattern");
-
-  ExpectHasSubstr(Parse(tensorflow::strings::StrCat(
-                            prefix, ",dim_labels=010_1100->010", suffix))
+  ExpectHasSubstr(ParseHloString(tensorflow::strings::StrCat(
+                                     prefix, ",dim_labels=00_01_10", suffix))
                       .status()
                       .error_message(),
-                  "must have the same rank");
+                  "expects dim labels pattern");
+
+  ExpectHasSubstr(
+      ParseHloString(tensorflow::strings::StrCat(
+                         prefix, ",dim_labels=010_1100->010", suffix))
+          .status()
+          .error_message(),
+      "must have the same rank");
 }
 
 TEST_F(HloParserTest, UnexpectedAttribute) {
@@ -1152,7 +1153,7 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 }
 
 )";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "unexpected attribute \"calls\"");
 }
 
@@ -1168,7 +1169,7 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 }
 
 )";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "attribute channel_id is expected but not seen");
 }
 
@@ -1184,7 +1185,7 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
 }
 
 )";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "'done' is not defined");
 }
 
@@ -1197,7 +1198,7 @@ ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
 }
 
 )";
-  TF_EXPECT_OK(Parse(original).status());
+  TF_EXPECT_OK(ParseHloString(original).status());
 }
 
 TEST_F(HloParserTest, PaddingConfigIsNotWindowPad) {
@@ -1211,7 +1212,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 }
 
 )";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "expects padding_low and padding_high separated by '_'");
 }
 
@@ -1223,7 +1224,7 @@ ENTRY %test_comma.v4 () -> f32[] {
 }
 
 )";
-  TF_EXPECT_OK(Parse(original).status());
+  TF_EXPECT_OK(ParseHloString(original).status());
 }
 
 TEST_F(HloParserTest, ComputationShapeDoesNotMatchRootShape) {
@@ -1233,7 +1234,7 @@ ENTRY %CustomCall () -> f32[1] {
   %constant = f32[1]{0} constant({12345})
   ROOT %foo = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar"
 })";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "Shape of computation CustomCall, f32[1], is not compatible "
                   "with that of its root instruction foo, f32[1,2,3]");
 }
@@ -1252,7 +1253,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
   ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
 })";
 
-  auto module = Parse(original);
+  auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
   auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
@@ -1275,7 +1276,7 @@ c1 {
 c2 {
   const2 = f32[1]{0} constant({67890})
 })";
-  auto module = Parse(original);
+  auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
   EXPECT_EQ(module.ValueOrDie()->entry_computation()->name(), "c2");
 }
@@ -1286,7 +1287,7 @@ ENTRY consts {
   first = f32[1]{0} constant({12345})
   last = f32[1]{0} constant({67890})
 })";
-  auto module = Parse(original);
+  auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
   EXPECT_EQ(
       module.ValueOrDie()->entry_computation()->root_instruction()->name(),
@@ -1301,7 +1302,7 @@ ENTRY c1 {
 ENTRY c2 {
   const2 = f32[1]{0} constant({67890})
 })";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "expects only one ENTRY");
 }
 
@@ -1311,7 +1312,7 @@ ENTRY consts {
   ROOT const1 = f32[1]{0} constant({12345})
   ROOT const2 = f32[1]{0} constant({12345})
 })";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   "one computation should have only one ROOT");
 }
 
@@ -1323,7 +1324,7 @@ comp {
 comp {
   const2 = f32[1]{0} constant({67890})
 })";
-  ExpectHasSubstr(Parse(original).status().error_message(),
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
                   R"(was parsing 2:1: error: computation previously defined here
 comp {
 ^)");
@@ -1346,7 +1347,7 @@ ENTRY entry {
   ROOT call1 = s32[] call(param), to_apply=tcallb
 })";
   ExpectHasSubstr(
-      Parse(original).status().error_message(),
+      ParseHloString(original).status().error_message(),
       "was parsing 8:39: error: instruction does not exist: aparam");
 }
 
@@ -1371,5 +1372,4 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
 }
 
 }  // namespace
-}  // namespace tools
 }  // namespace xla

@@ -457,8 +457,8 @@ class WhileBodyComputationMatcher : public MatcherBase {
         return InvalidArgument("Unexpected tuple index instruction : %s",
                                inst->name().c_str());
       } else if (tag == "loop_increment") {
-        // Parse the constant which represents the loop induction variable
-        // increment value.
+        // ParseHloString the constant which represents the loop induction
+        // variable increment value.
         TF_RETURN_IF_ERROR(ParseConstInteger(inst, &loop_increment_));
       } else if (tag == "param0" &&
                  inst != computation_->parameter_instruction(0)) {

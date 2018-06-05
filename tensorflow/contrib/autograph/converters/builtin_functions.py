@@ -48,7 +48,7 @@ class BuiltinFunctionTransformer(transformer.Base):
     # TODO(mdan): This won't work if the function was hidden.
     # TODO(mdan): Rely on the live_val and use inspect_utils.is_builtin instead.
     if (isinstance(node.func, gast.Name) and
-        node.func.id in ('len', 'range', 'xrange')):
+        node.func.id in ('len', 'range', 'xrange', 'float', 'int')):
       return self._convert_builtin(node)
     # Print needs to be handled separately because it can be read as statement.
     if isinstance(node.func, gast.Name) and node.func.id == 'print':

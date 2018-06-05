@@ -1777,6 +1777,100 @@ inline void ExtractPatchIntoBufferColumn(
 }
 
 template <typename T>
+void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
+                   const Dims<4>& filter_dims, int stride_width,
+                   int stride_height, int dilation_width_factor,
+                   int dilation_height_factor, int pad_width, int pad_height,
+                   const Dims<4>& output_dims, uint8 byte_zero,
+                   T* im2col_data) {
+  // For dilated convolution, the input pixels are not contiguous therefore we
+  // can't use the same opitimizations as Im2Col(). Though note this code would
+  // work fine for the non-dilated case too (though likely a bit slower).
+  gemmlowp::ScopedProfilingLabel label("DilatedIm2col");
+  TFLITE_DCHECK(dilation_width_factor != 1 || dilation_height_factor != 1);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  TFLITE_DCHECK(im2col_data);
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
+  const int filter_height = ArraySize(filter_dims, 2);
+  const int filter_width = ArraySize(filter_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
+  MatchingArraySize(output_dims, 0, filter_dims, 3);
+
+  // Construct the MxN sized im2col matrix.
+  // The rows M, are sub-ordered B x H x W
+  Dims<4> row_dims;
+  row_dims.sizes[0] = output_width;
+  row_dims.sizes[1] = output_height;
+  row_dims.sizes[2] = batches;
+  row_dims.sizes[3] = 1;
+  ComputeStrides(&row_dims);
+
+  // The columns, N, are sub-ordered Kh x Kw x Din
+  Dims<4> col_dims;
+  col_dims.sizes[0] = input_depth;
+  col_dims.sizes[1] = filter_width;
+  col_dims.sizes[2] = filter_height;
+  col_dims.sizes[3] = 1;
+  ComputeStrides(&col_dims);
+
+  // Use dimensions M and N to construct dims for indexing directly into im2col
+  Dims<4> im2col_dims;
+  im2col_dims.sizes[0] = col_dims.strides[3];
+  im2col_dims.sizes[1] = row_dims.strides[3];
+  im2col_dims.sizes[2] = 1;
+  im2col_dims.sizes[3] = 1;
+  ComputeStrides(&im2col_dims);
+
+  // Loop through the output rows (B x H x W)
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        // Each row is an output pixel. Arrange the input data into this row in
+        // an order we can conveniently multiply with the filter data.
+        int row_offset = Offset(row_dims, out_x, out_y, batch, 0);
+        const int in_x_origin = (out_x * stride_width) - pad_width;
+        const int in_y_origin = (out_y * stride_height) - pad_height;
+        // Loop through all the pixels of the filter (Kh x Kw)
+        for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+          const int in_y = in_y_origin + dilation_height_factor * filter_y;
+          if ((in_y >= 0) && (in_y < input_height)) {
+            // Filter row is within the input data.
+            // Loop through all the filter pixels in this row.
+            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              const int in_x = in_x_origin + dilation_width_factor * filter_x;
+              int col_offset = Offset(col_dims, 0, filter_x, filter_y, 0);
+              T* dst = im2col_data +
+                       Offset(im2col_dims, col_offset, row_offset, 0, 0);
+              if ((in_x >= 0) && (in_x < input_width)) {
+                // Filter pixel is within the input, copy the data.
+                T const* src =
+                    input_data + Offset(input_dims, 0, in_x, in_y, batch);
+                memcpy(dst, src, input_depth * sizeof(T));
+              } else {
+                // Filter pixel is outside the input, zero it out.
+                memset(dst, byte_zero, input_depth * sizeof(T));
+              }
+            }
+          } else {
+            // Filter row is outside the input, zero out the entire im2col row.
+            int col_offset = Offset(col_dims, 0, 0, filter_y, 0);
+            T* dst =
+                im2col_data + Offset(im2col_dims, col_offset, row_offset, 0, 0);
+            memset(dst, byte_zero, filter_width * input_depth * sizeof(T));
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
 void Im2col(const T* input_data, const Dims<4>& input_dims, int stride_width,
             int stride_height, int pad_width, int pad_height, int kheight,
             int kwidth, uint8 byte_zero, T* output_data,
@@ -1816,74 +1910,6 @@ void Im2col(const T* input_data, const Dims<4>& input_dims, int stride,
          kwidth, byte_zero, output_data, output_dims);
 }
 
-inline void DilatedConv(const float* input_data, const Dims<4>& input_dims,
-                        const float* filter_data, const Dims<4>& filter_dims,
-                        const float* bias_data, const Dims<4>& bias_dims,
-                        int stride_width, int stride_height,
-                        int dilation_width_factor, int dilation_height_factor,
-                        int pad_width, int pad_height,
-                        float output_activation_min,
-                        float output_activation_max, float* output_data,
-                        const Dims<4>& output_dims, float* im2col_data,
-                        const Dims<4>& im2col_dims) {
-  gemmlowp::ScopedProfilingLabel label("DilatedConv");
-  // This is a copy of the reference Conv implementation. We do not currently
-  // have an optimized path for dilation.
-  (void)im2col_data;  // only used in optimized code.
-  (void)im2col_dims;  // only used in optimized code.
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
-  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
-  if (bias_data) {
-    TFLITE_DCHECK_EQ(ArraySize(filter_dims, 3), ArraySize(bias_dims, 0));
-  }
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int filter_height = ArraySize(filter_dims, 2);
-  const int filter_width = ArraySize(filter_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
-          float total = 0.f;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // If the location is outside the bounds of the input image,
-                // use zero as a default value.
-                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height)) {
-                  float input_value = input_data[Offset(input_dims, in_channel,
-                                                        in_x, in_y, batch)];
-                  float filter_value =
-                      filter_data[Offset(filter_dims, in_channel, filter_x,
-                                         filter_y, out_channel)];
-                  total += (input_value * filter_value);
-                }
-              }
-            }
-          }
-          float bias_value = 0.0f;
-          if (bias_data) {
-            bias_value = bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
-          }
-          output_data[Offset(output_dims, out_channel, out_x, out_y, batch)] =
-              ActivationFunctionWithMinMax(total + bias_value,
-                                           output_activation_min,
-                                           output_activation_max);
-        }
-      }
-    }
-  }
-}
-
 inline void Conv(const float* input_data, const Dims<4>& input_dims,
                  const float* filter_data, const Dims<4>& filter_dims,
                  const float* bias_data, const Dims<4>& bias_dims,
@@ -1892,29 +1918,32 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
                  float output_activation_min, float output_activation_max,
                  float* output_data, const Dims<4>& output_dims,
                  float* im2col_data, const Dims<4>& im2col_dims) {
-  if ((dilation_width_factor != 1) || (dilation_height_factor != 1)) {
-    return DilatedConv(input_data, input_dims, filter_data, filter_dims,
-                       bias_data, bias_dims, stride_width, stride_height,
-                       dilation_width_factor, dilation_height_factor, pad_width,
-                       pad_height, output_activation_min, output_activation_max,
-                       output_data, output_dims, im2col_data, im2col_dims);
-  }
-
   (void)im2col_data;
   (void)im2col_dims;
   gemmlowp::ScopedProfilingLabel label("Conv");
 
+  // A float set to 0x00000000h == 0.0f
+  const uint8 float_zero_byte = 0x00;
   const float* gemm_input_data = nullptr;
   const Dims<4>* gemm_input_dims = nullptr;
   const int filter_width = ArraySize(filter_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
-  if (need_im2col) {
+  if (need_dilated_im2col) {
+    DilatedIm2col(input_data, input_dims, filter_dims, stride_width,
+                  stride_height, dilation_width_factor, dilation_height_factor,
+                  pad_width, pad_height, output_dims, float_zero_byte,
+                  im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_dims = &im2col_dims;
+  } else if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
     Im2col(input_data, input_dims, stride_width, stride_height, pad_width,
-           pad_height, filter_height, filter_width, 0, im2col_data,
-           im2col_dims);
+           pad_height, filter_height, filter_width, float_zero_byte,
+           im2col_data, im2col_dims);
     gemm_input_data = im2col_data;
     gemm_input_dims = &im2col_dims;
   } else {
