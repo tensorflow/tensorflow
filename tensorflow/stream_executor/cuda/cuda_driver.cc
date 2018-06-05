@@ -924,6 +924,37 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   }
 }
 
+/* static */ void *CUDADriver::UnifiedMemoryAllocate(CudaContext *context,
+                                                     uint64 bytes) {
+  ScopedActivateContext activation(context);
+  CUdeviceptr result = 0;
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  CUresult res = cuMemAllocManaged(&result, bytes, CU_MEM_ATTACH_GLOBAL);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to alloc " << bytes
+               << " bytes unified memory; result: " << ToString(res);
+    return nullptr;
+  }
+  void *ptr = reinterpret_cast<void *>(result);
+  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
+          << bytes << " bytes in unified memory";
+  return ptr;
+}
+
+/* static */ void CUDADriver::UnifiedMemoryDeallocate(CudaContext *context,
+                                                      void *location) {
+  ScopedActivateContext activation(context);
+  CUdeviceptr pointer = port::bit_cast<CUdeviceptr>(location);
+  CUresult res = cuMemFree(pointer);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to free unified memory at " << location
+               << "; result: " << ToString(res);
+  } else {
+    VLOG(2) << "deallocated unified memory at " << location << " for context "
+            << context;
+  }
+}
+
 /* static */ void *CUDADriver::HostAllocate(CudaContext *context,
                                             uint64 bytes) {
   ScopedActivateContext activation(context);

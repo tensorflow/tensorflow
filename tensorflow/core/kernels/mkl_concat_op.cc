@@ -870,7 +870,7 @@ class MklConcatOp : public OpKernel {
       int concat_dim, bool* is_reorder_needed, int64* concat_dim_size) {
     *is_reorder_needed = false;
     *concat_dim_size = 0;
-    std::unordered_map<memory::format, int> occurrence_map;
+    std::unordered_map<int, int> occurrence_map;
     if (input_shapes.size() == 0)
       return memory::format::any;
 
@@ -878,7 +878,7 @@ class MklConcatOp : public OpKernel {
     for (int k=0; k <input_shapes.size(); k++) {
       auto src_dims = TFShapeToMklDnnDims(input_shapes[k].GetTfShape());
       *concat_dim_size += src_dims[concat_dim];
-      memory::format fmt = static_cast<memory::format>(
+      int fmt = static_cast<int>(
           input_shapes[k].GetMklLayout().data.format);
       occurrence_map[fmt] += 1;
     }
@@ -898,7 +898,7 @@ class MklConcatOp : public OpKernel {
     *is_reorder_needed = true;
     for (auto item : occurrence_map) {
       if (item.second > max_occurrence) {
-        commonest_format = item.first;
+        commonest_format = static_cast<memory::format>(item.first);
         max_occurrence = item.second;
       }
     }

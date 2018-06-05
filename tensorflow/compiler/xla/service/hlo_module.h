@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -94,8 +95,10 @@ class HloModule {
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
-  // the called computations as well.
-  HloComputation* DeepCloneComputation(HloComputation* computation);
+  // the called computations as well. If the clone context is specified, it
+  // will be populated with the cloned object mappings.
+  HloComputation* DeepCloneComputation(HloComputation* computation,
+                                       HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module..
   const HloComputation* entry_computation() const {

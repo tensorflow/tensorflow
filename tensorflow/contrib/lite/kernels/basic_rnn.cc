@@ -36,7 +36,7 @@ constexpr int kOutputTensor = 1;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* scratch_tensor_index = new int;
-  context->AddTensors(context, /*tensors_to_add=*/2, scratch_tensor_index);
+  context->AddTensors(context, /*tensors_to_add=*/3, scratch_tensor_index);
   return scratch_tensor_index;
 }
 
@@ -91,7 +91,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type == kTfLiteFloat32 && input_weights->type == kTfLiteUInt8) {
     int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
     TfLiteIntArrayFree(node->temporaries);
-    node->temporaries = TfLiteIntArrayCreate(2);
+    node->temporaries = TfLiteIntArrayCreate(3);
     node->temporaries->data[0] = *scratch_tensor_index;
     TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
     input_quantized->type = kTfLiteUInt8;
@@ -113,6 +113,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, hidden_state_quantized,
                                               hidden_state_quantized_size));
+    }
+    node->temporaries->data[2] = *scratch_tensor_index + 2;
+    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/2);
+    scaling_factors->type = kTfLiteFloat32;
+    scaling_factors->allocation_type = kTfLiteArenaRw;
+    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+    scaling_factors_size->data[0] = batch_size;
+    if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
+                                                       scaling_factors_size));
     }
   }
 
@@ -145,14 +155,14 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
   return kTfLiteOk;
 }
 
-TfLiteStatus EvalQuantized(const TfLiteTensor* input,
-                           const TfLiteTensor* input_weights,
-                           const TfLiteTensor* recurrent_weights,
-                           const TfLiteTensor* bias,
-                           const TfLiteRNNParams* params,
-                           TfLiteTensor* input_scratch,
-                           TfLiteTensor* hidden_state_scratch,
-                           TfLiteTensor* hidden_state, TfLiteTensor* output) {
+TfLiteStatus EvalHybrid(const TfLiteTensor* input,
+                        const TfLiteTensor* input_weights,
+                        const TfLiteTensor* recurrent_weights,
+                        const TfLiteTensor* bias, const TfLiteRNNParams* params,
+                        TfLiteTensor* input_scratch,
+                        TfLiteTensor* hidden_state_scratch,
+                        TfLiteTensor* scaling_factors,
+                        TfLiteTensor* hidden_state, TfLiteTensor* output) {
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -176,12 +186,14 @@ TfLiteStatus EvalQuantized(const TfLiteTensor* input,
       reinterpret_cast<int8_t*>(input_scratch->data.uint8);
   int8_t* quantized_hidden_state_ptr =
       reinterpret_cast<int8_t*>(hidden_state_scratch->data.uint8);
+  float* scaling_factors_ptr = scaling_factors->data.f;
 
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, input_weights_scale,
       recurrent_weights_ptr, recurrent_weights_scale, bias_ptr, input_size,
       num_units, batch_size, params->activation, quantized_input_ptr,
-      quantized_hidden_state_ptr, hidden_state_ptr_batch, output_ptr_batch);
+      quantized_hidden_state_ptr, scaling_factors_ptr, hidden_state_ptr_batch,
+      output_ptr_batch);
   return kTfLiteOk;
 }
 
@@ -205,12 +217,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       // TODO(mirkov): implement eval with quantized inputs as well.
       TfLiteTensor* input_quantized = GetTemporary(context, node, 0);
       TfLiteTensor* hidden_state_quantized = GetTemporary(context, node, 1);
-      return EvalQuantized(input, input_weights, recurrent_weights, bias,
-                           params, input_quantized, hidden_state_quantized,
-                           hidden_state, output);
+      TfLiteTensor* scaling_factors = GetTemporary(context, node, 2);
+      return EvalHybrid(input, input_weights, recurrent_weights, bias, params,
+                        input_quantized, hidden_state_quantized,
+                        scaling_factors, hidden_state, output);
     }
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input_weights->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

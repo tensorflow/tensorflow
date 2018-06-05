@@ -148,10 +148,20 @@ typedef struct {
   float beta;
 } TfLiteLocalResponseNormParams;
 
+typedef enum {
+  kTfLiteLSTMFullKernel = 0,
+  kTfLiteLSTMBasicKernel
+} TfLiteLSTMKernelType;
+
 typedef struct {
+  // Parameters for LSTM version 1.
   TfLiteFusedActivation activation;
   float cell_clip;
   float proj_clip;
+
+  // Parameters for LSTM version 2.
+  // kTfLiteLSTMBasicKernel is only supported in version 2 or above.
+  TfLiteLSTMKernelType kernel_type;
 } TfLiteLSTMParams;
 
 typedef struct {
@@ -235,6 +245,10 @@ typedef struct {
   int stride_width;
   int stride_height;
 } TfLiteTransposeConvParams;
+
+typedef struct {
+  bool validate_indices;
+} TfLiteSparseToDenseParams;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -33,12 +32,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
@@ -82,7 +81,7 @@ const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
 
 class BufferAssignmentTest : public HloTestBase {
  protected:
-  BufferAssignmentTest() : computation_tracker_() {}
+  BufferAssignmentTest() {}
   ~BufferAssignmentTest() override {}
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
@@ -251,9 +250,6 @@ class BufferAssignmentTest : public HloTestBase {
     }
     return total_size;
   }
-
-  // Computation tracker for nested computations.
-  ComputationTracker computation_tracker_;
 
   // Shapes for use in the examples.
   Shape s32_ = ShapeUtil::MakeShape(xla::S32, {});
@@ -1797,7 +1793,7 @@ ENTRY %test_module {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(module_str));
+                          ParseHloString(module_str));
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.

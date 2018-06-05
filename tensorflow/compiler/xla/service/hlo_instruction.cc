@@ -37,9 +37,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -109,7 +111,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->name_ = proto.name();
 
   instruction->metadata_ = proto.metadata();
-  instruction->set_backend_config(proto.backend_config());
+  instruction->backend_config_ = proto.backend_config();
   if (proto.has_literal()) {
     TF_ASSIGN_OR_RETURN(instruction->literal_,
                         Literal::CreateFromProto(proto.literal()));
@@ -256,6 +258,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kClz:
+    case HloOpcode::kDomain:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -821,6 +824,15 @@ HloInstruction::CreateBroadcastSequence(
   return instruction;
 }
 
+void HloInstruction::set_device_sharding(int64 device) {
+  HloSharding device_sharding = HloSharding::AssignDevice(device);
+  if (ShapeUtil::IsTuple(shape())) {
+    set_sharding(HloSharding::Tuple(device_sharding.GetAsShapeTree(shape())));
+  } else {
+    set_sharding(device_sharding);
+  }
+}
+
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
   if (sharding_ != nullptr) {
@@ -1225,21 +1237,28 @@ bool HloInstruction::HasSideEffect() const {
   return gather_dim_numbers;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
+    const Shape& shape, HloInstruction* operand,
+    std::unique_ptr<DomainMetadata> operand_side_metadata,
+    std::unique_ptr<DomainMetadata> user_side_metadata) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kDomain, shape));
+  instruction->operand_side_metadata_ = std::move(operand_side_metadata);
+  instruction->user_side_metadata_ = std::move(user_side_metadata);
+  instruction->AppendOperand(operand);
+  return instruction;
+}
+
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
-    HloModule* module, CloneMap* clone_map) const {
+    HloCloneContext* context) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
     VLOG(3) << "    %" << new_operand->name();
   }
-  if (module == nullptr) {
-    module = GetModule();
-  }
 
   std::unique_ptr<HloInstruction> clone;
-
   // Explicitly call the factory for the instruction type. This is more robust
   // in the face of code changes than copying fields explicitly. This also
   // properly sets the user fields of the operands.
@@ -1311,6 +1330,14 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kCustomCall:
       clone = CreateCustomCall(shape, new_operands, custom_call_target_);
+      if (window_ != nullptr) {
+        clone->window_ = MakeUnique<Window>(*window_);
+      }
+      if (convolution_dimension_numbers_ != nullptr) {
+        clone->convolution_dimension_numbers_ =
+            MakeUnique<ConvolutionDimensionNumbers>(
+                *convolution_dimension_numbers_);
+      }
       break;
     case HloOpcode::kHostCompute:
       clone = CreateHostCompute(shape, new_operands, channel_name_,
@@ -1419,9 +1446,16 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateConstant(literal_->CloneToUnique());
       break;
     case HloOpcode::kFusion: {
-      CHECK_NE(module, nullptr);
-      auto new_fused_computation = module->AddEmbeddedComputation(
-          fused_instructions_computation()->Clone("clone", module, clone_map));
+      HloModule* module = context != nullptr ? context->module() : GetModule();
+      HloComputation* new_fused_computation = nullptr;
+      if (context != nullptr) {
+        new_fused_computation =
+            context->FindComputation(fused_instructions_computation());
+      }
+      if (new_fused_computation == nullptr) {
+        new_fused_computation = module->AddEmbeddedComputation(
+            fused_instructions_computation()->Clone("clone", context));
+      }
       clone = CreateFusion(/*shape=*/shape, /*fusion_kind=*/fusion_kind(),
                            /*operands=*/new_operands,
                            /*fusion_computation=*/new_fused_computation);
@@ -1485,14 +1519,25 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateGather(shape, new_operands[0], new_operands[1],
                            *gather_dimension_numbers_, gather_window_bounds_);
       break;
+    case HloOpcode::kDomain:
+      CHECK_EQ(new_operands.size(), 1);
+      clone =
+          CreateDomain(shape, new_operands[0], operand_side_metadata_->Clone(),
+                       user_side_metadata_->Clone());
+      break;
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
-  clone->set_backend_config(backend_config());
-  if (clone_map != nullptr) {
-    InsertOrDie(clone_map, this, clone.get());
+  clone->set_raw_backend_config_string(backend_config_);
+  if (context != nullptr) {
+    context->MapInstruction(this, clone.get());
+    clone->ReplaceCalledComputations([&](HloComputation* callee) {
+      return callee->parent() != context->module()
+                 ? context->module()->DeepCloneComputation(callee, context)
+                 : callee;
+    });
   }
   return clone;
 }
@@ -1500,9 +1545,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 HloInstruction::~HloInstruction() {}
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const string& suffix, HloModule* module, CloneMap* clone_map) const {
+    const string& suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape_, operands_, module, clone_map);
+      CloneWithNewOperands(shape_, operands_, context);
   if (suffix.empty()) {
     clone->name_ = name();
   } else {
@@ -1612,6 +1657,17 @@ int64 HloInstruction::operand_index(const HloInstruction* target) const {
     }
   }
   LOG(FATAL) << "target was not an operand: " << target->ToString();
+}
+
+HloInstruction::InstructionVector HloInstruction::unique_operands() const {
+  InstructionVector unique;
+  tensorflow::gtl::FlatSet<const HloInstruction*> seen;
+  for (HloInstruction* operand : operands()) {
+    if (seen.insert(operand).second) {
+      unique.push_back(operand);
+    }
+  }
+  return unique;
 }
 
 Status HloInstruction::AddControlDependencyTo(HloInstruction* instruction) {
@@ -1758,6 +1814,7 @@ bool HloInstruction::IdenticalSlowPath(
                              other.fused_instructions_computation());
 
     // These opcodes have complex or special behavior so just return false.
+    case HloOpcode::kDomain:
     case HloOpcode::kRng:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
@@ -1833,6 +1890,19 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kCustomCall:
+      if ((window_ == nullptr) != (other.window_ == nullptr) ||
+          (window_ != nullptr &&
+           !protobuf_util::ProtobufEquals(window(), other.window()))) {
+        return false;
+      }
+      if ((convolution_dimension_numbers_ == nullptr) !=
+              (other.convolution_dimension_numbers_ == nullptr) ||
+          (convolution_dimension_numbers_ != nullptr &&
+           !protobuf_util::ProtobufEquals(
+               convolution_dimension_numbers(),
+               other.convolution_dimension_numbers()))) {
+        return false;
+      }
       return custom_call_target_ == other.custom_call_target_;
     case HloOpcode::kReverse:
       return dimensions() == other.dimensions();
@@ -2134,8 +2204,8 @@ string HloInstruction::ToStringWithCanonicalNameMap(
        !metadata_.source_file().empty())) {
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
-  if (options.print_backend_config() && !backend_config().empty()) {
-    StrAppend(&result, ", backend_config=\"", CEscape(backend_config()), "\"");
+  if (options.print_backend_config() && !backend_config_.empty()) {
+    StrAppend(&result, ", backend_config=\"", CEscape(backend_config_), "\"");
   }
   return result;
 }
@@ -2251,7 +2321,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   }
 
   if (convolution_dimension_numbers_ != nullptr) {
-    extra.push_back(ConvolutionDimensionNumbersToString());
+    extra.push_back(StrCat(
+        "dim_labels=",
+        ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_)));
   }
   if (dot_dimension_numbers_ != nullptr) {
     extra.push_back(DotDimensionNumbersToString());
@@ -2369,7 +2441,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("exponent_bits=", exponent_bits_));
     extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
   }
-
+  if (operand_side_metadata_ != nullptr) {
+    extra.push_back(
+        StrCat("operand_side=", operand_side_metadata_->ToString()));
+  }
+  if (user_side_metadata_ != nullptr) {
+    extra.push_back(StrCat("user_side=", user_side_metadata_->ToString()));
+  }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
   // an HloComputation.
@@ -2407,7 +2485,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_metadata() = metadata_;
-  proto.set_backend_config(backend_config());
+  proto.set_backend_config(backend_config_);
   if (literal_ != nullptr) {
     *proto.mutable_literal() = literal_->ToProto();
   }
@@ -2546,6 +2624,7 @@ bool HloInstruction::IsFusable() const {
   }
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
+    case HloOpcode::kDomain:
     case HloOpcode::kParameter:
       return false;
     // Side effecting instrutions cannot be fused.
@@ -2558,7 +2637,9 @@ HloComputation* HloInstruction::fused_instructions_computation() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(!called_computations_.empty());
   auto* fused_instructions_computation = called_computations_.front();
-  CHECK(fused_instructions_computation->IsFusionComputation());
+  CHECK(fused_instructions_computation->IsFusionComputation())
+      << "Computation " << fused_instructions_computation->name()
+      << " is not a fusion kind";
   return fused_instructions_computation;
 }
 
@@ -2773,6 +2854,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSendDone(this);
     case HloOpcode::kGather:
       return visitor->HandleGather(this);
+    case HloOpcode::kDomain:
+      return visitor->HandleDomain(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -3360,42 +3443,8 @@ string RandomDistributionToString(const RandomDistribution& distribution) {
   return tensorflow::str_util::Lowercase(RandomDistribution_Name(distribution));
 }
 
-StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
-  static std::unordered_map<string, RandomDistribution>* map = [] {
-    static auto* map = new std::unordered_map<string, RandomDistribution>;
-    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
-      if (RandomDistribution_IsValid(i)) {
-        auto value = static_cast<RandomDistribution>(i);
-        (*map)[RandomDistributionToString(value)] = value;
-      }
-    }
-    return map;
-  }();
-  auto found = map->find(tensorflow::str_util::Lowercase(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown distribution");
-  }
-  return found->second;
-}
-
-std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
-  return os << ToString(kind);
-}
-
-string HloInstruction::ConvolutionDimensionNumbersToString() const {
-  string result;
-  if (convolution_dimension_numbers_ == nullptr) {
-    return result;
-  }
-  const ConvolutionDimensionNumbers& dnums = *convolution_dimension_numbers_;
-  // Show the given dimension labels in order of major to minor based on the
-  // shape's layout.
-  const auto append_dims = [&](const std::vector<string>& dims,
-                               const Shape& shape) {
-    CHECK_EQ(dims.size(), ShapeUtil::Rank(shape));
-    StrAppend(&result, Join(dims, ""));
-  };
-
+string ConvolutionDimensionNumbersToString(
+    const ConvolutionDimensionNumbers& dnums) {
   // lhs_dims[i] is the symbol of the logical dimension i for the lhs
   // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
   std::vector<string> lhs_dims(2 + dnums.input_spatial_dimensions().size());
@@ -3419,19 +3468,8 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
     output_dims[dnums.output_spatial_dimensions(i)] = StrCat(i);
   }
 
-  result += "dim_labels=";
-  append_dims(lhs_dims, operand(0)->shape());
-  result += "_";
-  append_dims(rhs_dims, operand(1)->shape());
-  result += "->";
-
-  // A convolution can be represented as a kConvolution HLO or as a CustomCall
-  // that returns a tuple, the first element of which is the result of the
-  // convolution.
-  Shape this_shape =
-      ShapeUtil::IsTuple(shape()) ? shape().tuple_shapes(0) : shape();
-  append_dims(output_dims, this_shape);
-  return result;
+  return StrCat(Join(lhs_dims, ""), "_", Join(rhs_dims, ""), "->",
+                Join(output_dims, ""));
 }
 
 string HloInstruction::DotDimensionNumbersToString() const {
@@ -3455,6 +3493,28 @@ string HloInstruction::DotDimensionNumbersToString() const {
                           Join(dnums.rhs_contracting_dimensions(), ","), "}"));
 
   return Join(result, ", ");
+}
+
+StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
+  static std::unordered_map<string, RandomDistribution>* map = [] {
+    static auto* map = new std::unordered_map<string, RandomDistribution>;
+    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
+      if (RandomDistribution_IsValid(i)) {
+        auto value = static_cast<RandomDistribution>(i);
+        (*map)[RandomDistributionToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(tensorflow::str_util::Lowercase(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown distribution");
+  }
+  return found->second;
+}
+
+std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
+  return os << ToString(kind);
 }
 
 string HloInstruction::GatherDimensionNumbersToString() const {
@@ -3486,6 +3546,31 @@ bool HloInstruction::CouldBeBitcast() const {
     default:
       return false;
   }
+}
+
+Status HloInstruction::GetBackendConfigInternal(
+    tensorflow::protobuf::Message* proto) const {
+  proto->Clear();
+
+  // Empty string does not parse as valid JSON, but it's a valid backend config,
+  // corresponding to the empty proto.
+  if (backend_config_.empty()) {
+    return Status::OK();
+  }
+  return tensorflow::HumanReadableJsonToProto(backend_config_, proto);
+}
+
+Status HloInstruction::set_backend_config(
+    const tensorflow::protobuf::Message& proto) {
+  TF_ASSIGN_OR_RETURN(backend_config_, BackendConfigToRawString(proto));
+  return Status::OK();
+}
+
+/* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
+    const tensorflow::protobuf::Message& proto) {
+  string ret;
+  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(proto, &ret));
+  return ret;
 }
 
 HloModule* HloInstruction::GetModule() const {

@@ -18,6 +18,7 @@ tf_kernel_library(
         "bcast_ops.cc",
         "bias_ops.cc",
         "binary_ops.cc",
+        "bucketize_op.cc",
         "cast_op.cc",
         "categorical_op.cc",
         "cholesky_op.cc",

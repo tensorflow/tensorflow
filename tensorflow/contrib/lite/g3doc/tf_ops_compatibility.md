@@ -607,6 +607,21 @@ Outputs {
 }
 ```
 
+**SPARSE_TO_DENSE**
+
+```
+Inputs {
+  0: 0D or 1D or 2D tensor
+  1: 1D tensor
+  2: 0D or 1D tensor
+  3: 0D tensor
+  4: a boolean value
+}
+Outputs {
+  0: Dense Tensor of shape output_shape. Has the same type as sparse_values.
+}
+```
+
 **SPLIT**
 
 ```

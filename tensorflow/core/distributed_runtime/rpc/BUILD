@@ -314,18 +314,6 @@ tf_cc_binary(
     ],
 )
 
-tf_cuda_library(
-    name = "grpc_testlib_ops",
-    testonly = 1,
-    srcs = ["grpc_testlib_ops.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-    alwayslink = 1,
-)
-
 tf_cc_binary(
     name = "grpc_testlib_server",
     testonly = 1,
@@ -334,11 +322,11 @@ tf_cc_binary(
     ],
     deps = [
         ":grpc_server_lib",
-        ":grpc_testlib_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:cwise_op",
@@ -362,12 +350,12 @@ tf_cuda_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":grpc_session",
-        ":grpc_testlib_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
     ],
     alwayslink = 1,
 )

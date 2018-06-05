@@ -145,6 +145,9 @@ enum BuiltinOperator : byte {
   SLICE = 65,
   SIN = 66,
   TRANSPOSE_CONV = 67,
+  SPARSE_TO_DENSE = 68,
+  TILE = 69,
+  EXPAND_DIMS = 70,
 }
 
 // Options for the builtin operators.
@@ -198,6 +201,9 @@ union BuiltinOptions {
   SelectOptions,
   SliceOptions,
   TransposeConvOptions,
+  SparseToDenseOptions,
+  TileOptions,
+  ExpandDimsOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -309,11 +315,23 @@ table LocalResponseNormalizationOptions {
   beta:float;
 }
 
+enum LSTMKernelType : byte {
+  // Full LSTM kernel which supports peephole and projection.
+  FULL = 0,
+  // Basic LSTM kernels. Equivalent to TensorFlow BasicLSTMCell.
+  BASIC = 1,
+}
+
 // An implementation of TensorFlow LSTMCell and CoupledInputForgetGateLSTMCell
 table LSTMOptions {
+  // Parameters for LSTM version 1 or above.
   fused_activation_function:ActivationFunctionType;
   cell_clip: float; // Optional, 0.0 means no clipping
   proj_clip: float; // Optional, 0.0 means no clipping
+
+  // Parameters for LSTM version 2 or above.
+  // Basic kernel is only supported in version 2 or above.
+  kernel_type: LSTMKernelType = FULL;
 }
 
 table ResizeBilinearOptions {
@@ -419,6 +437,9 @@ table DequantizeOptions {
 table MaximumMinimumOptions {
 }
 
+table TileOptions {
+}
+
 table ArgMaxOptions {
   output_type : TensorType;
 }
@@ -448,6 +469,13 @@ table TransposeConvOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+}
+
+table ExpandDimsOptions {
+}
+
+table SparseToDenseOptions {
+  validate_indices:bool;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

@@ -72,7 +72,7 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
       estimator: A `tf.estimator.Estimator` instance to call evaluate.
       input_fn:  Equivalent to the `input_fn` arg to `estimator.evaluate`. A
         function that constructs the input data for evaluation.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
 

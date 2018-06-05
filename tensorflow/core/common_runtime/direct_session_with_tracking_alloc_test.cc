@@ -113,13 +113,13 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
           // MKL is used. Now they are 9 and 10 for MKL. 
           EXPECT_EQ(19, cm->AllocationId(node, 0));
 #else
-          EXPECT_EQ(13, cm->AllocationId(node, 0));
+          EXPECT_EQ(21, cm->AllocationId(node, 0));
 #endif 
         } else {
 #ifdef INTEL_MKL
           EXPECT_EQ(20, cm->AllocationId(node, 0));
 #else
-          EXPECT_EQ(14, cm->AllocationId(node, 0));
+          EXPECT_EQ(22, cm->AllocationId(node, 0));
 #endif 
         }
       }

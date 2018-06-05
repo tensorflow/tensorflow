@@ -69,6 +69,7 @@ namespace xla {
   V(kCrossReplicaSum, "cross-replica-sum")                   \
   V(kCustomCall, "custom-call")                              \
   V(kDivide, "divide")                                       \
+  V(kDomain, "domain")                                       \
   V(kDot, "dot")                                             \
   V(kDynamicSlice, "dynamic-slice")                          \
   V(kDynamicUpdateSlice, "dynamic-update-slice")             \

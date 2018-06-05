@@ -340,6 +340,7 @@ py_test(
     size = "medium",
     srcs = ["python/estimator/hooks_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":hooks",
         "//tensorflow/python:client_testlib",

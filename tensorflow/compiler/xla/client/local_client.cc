@@ -304,6 +304,11 @@ StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
                                                                  shaped_buffer);
 }
 
+StatusOr<const ShapedBuffer*> LocalClient::GlobalDataToShapedBuffer(
+    const GlobalDataHandle& data, int replica_number) {
+  return local_service_->GlobalDataToShapedBuffer(data, replica_number);
+}
+
 Status LocalClient::TransferToInfeedLocal(const Literal& literal,
                                           int device_ordinal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
