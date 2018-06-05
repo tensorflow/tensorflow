@@ -66,10 +66,10 @@ is the sparsity_function_begin_step. In this equation, the
 sparsity_function_exponent is set to 3.
 ### Adding pruning ops to the training graph
 
-The final step involves adding ops to the training graph that monitors the
-distribution of the layer's weight magnitudes and determines the layer threshold
-such masking all the weights below this threshold achieves the sparsity level
-desired for the current training step. This can be achieved as follows:
+The final step involves adding ops to the training graph that monitor the
+distribution of the layer's weight magnitudes and determine the layer threshold,
+such that masking all the weights below this threshold achieves the sparsity
+level desired for the current training step. This can be achieved as follows:
 
 ```python
 tf.app.flags.DEFINE_string(
@@ -79,7 +79,7 @@ tf.app.flags.DEFINE_string(
 with tf.graph.as_default():
 
   # Create global step variable
-  global_step = tf.train.get_global_step()
+  global_step = tf.train.get_or_create_global_step()
 
   # Parse pruning hyperparameters
   pruning_hparams = pruning.get_pruning_hparams().parse(FLAGS.pruning_hparams)
