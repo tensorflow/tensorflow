@@ -139,10 +139,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void DisableAllStages(ArithmeticOptimizer* optimizer) {
     ArithmeticOptimizer::ArithmeticOptimizerOptions options;
     options.dedup_computations = false;
-    options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
     options.convert_sqrt_div_to_rsqrt_mul = false;
+    options.fold_conjugate_into_transpose = false;
     options.fold_multiply_into_conv = false;
+    options.fold_transpose_into_matmul = false;
     options.hoist_common_factor_out_of_aggregation = false;
     options.hoist_cwise_unary_chains = false;
     options.minimize_broadcasts = false;
@@ -169,9 +170,19 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.combine_add_to_addn = true;
   }
 
+  void EnableOnlyFoldConjugateIntoTranspose(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.fold_conjugate_into_transpose = true;
+  }
+
   void EnableOnlyFoldMultipleIntoConv(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.fold_multiply_into_conv = true;
+  }
+
+  void EnableOnlyFoldTransposeIntoMatMul(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.fold_transpose_into_matmul = true;
   }
 
   void EnableOnlyHoistCommonFactor(ArithmeticOptimizer* optimizer) {
@@ -845,11 +856,14 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
   Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
   Output conj = ops::Conj(s.WithOpName("conj"), z);
   Output transp = ops::Transpose(s.WithOpName("trans"), conj, perm);
+
   GrapplerItem item;
+  item.fetch = {"trans"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  std::vector<string> fetch = {"trans"};
-  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(1, tensors_expected.size());
+
   ArithmeticOptimizer optimizer;
   GraphDef output;
   OptimizeTwice(&optimizer, &item, &output);
@@ -857,20 +871,23 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
 
   EXPECT_EQ(7, output.node_size());
 
-  const NodeDef* trans_fused_node =
-      node_map.GetNode(OptimizedName("trans_fused"));
+  const string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
+  const string optimized_name = strings::StrCat(p, "_", "trans");
+
+  const NodeDef* trans_fused_node = node_map.GetNode(optimized_name);
   ASSERT_NE(trans_fused_node, nullptr);
   EXPECT_EQ("ConjugateTranspose", trans_fused_node->op());
   EXPECT_EQ("z", trans_fused_node->input(0));
   EXPECT_EQ("perm", trans_fused_node->input(1));
 
-  auto tensors = EvaluateNodes(output, fetch);
+  auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorEqual<complex64>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, FuseConjAndConjugateTranspose) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
   Output re = ops::Const(s.WithOpName("re"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
   Output im = ops::Const(s.WithOpName("im"), {5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
   Output z = ops::Complex(s.WithOpName("z"), re, im);
@@ -878,10 +895,12 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndConjugateTranspose) {
   Output conj = ops::Conj(s.WithOpName("conj"), z);
   Output transp =
       ops::ConjugateTranspose(s.WithOpName("conjugate_trans"), conj, perm);
+
   GrapplerItem item;
+  item.fetch = {"conjugate_trans"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  std::vector<string> fetch = {"conjugate_trans"};
-  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(1, tensors_expected.size());
 
   ArithmeticOptimizer optimizer;
@@ -891,12 +910,16 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndConjugateTranspose) {
 
   EXPECT_EQ(7, output.node_size());
 
-  const NodeDef* conjugate_trans_fused_node =
-      node_map.GetNode(OptimizedName("conjugate_trans_fused"));
+  const string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
+  const string optimized_name = strings::StrCat(p, "_", "conjugate_trans");
+
+  const NodeDef* conjugate_trans_fused_node = node_map.GetNode(optimized_name);
+  ASSERT_NE(conjugate_trans_fused_node, nullptr);
   EXPECT_EQ("Transpose", conjugate_trans_fused_node->op());
   EXPECT_EQ("z", conjugate_trans_fused_node->input(0));
   EXPECT_EQ("perm", conjugate_trans_fused_node->input(1));
-  auto tensors = EvaluateNodes(output, fetch);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorEqual<complex64>(tensors_expected[0], tensors[0]);
 }
@@ -909,10 +932,12 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
   Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
   Output trans = ops::Transpose(s.WithOpName("trans"), z, perm);
   Output conj = ops::Conj(s.WithOpName("conj"), trans);
+
   GrapplerItem item;
+  item.fetch = {"conj"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  std::vector<string> fetch = {"conj"};
-  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(1, tensors_expected.size());
 
   ArithmeticOptimizer optimizer;
@@ -922,12 +947,16 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
 
   EXPECT_EQ(7, output.node_size());
 
-  const NodeDef* conj_fused_node =
-      node_map.GetNode(OptimizedName("conj_fused"));
+  const string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
+  const string optimized_name = strings::StrCat(p, "_", "conj");
+
+  const NodeDef* conj_fused_node = node_map.GetNode(optimized_name);
+  ASSERT_NE(conj_fused_node, nullptr);
   EXPECT_EQ("ConjugateTranspose", conj_fused_node->op());
   EXPECT_EQ("z", conj_fused_node->input(0));
   EXPECT_EQ("perm", conj_fused_node->input(1));
-  auto tensors = EvaluateNodes(output, fetch);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorEqual<complex64>(tensors_expected[0], tensors[0]);
 }
@@ -935,38 +964,45 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
 TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
   for (const string matmul_type : {"MatMul", "SparseMatMul", "BatchMatMul"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
     Output a = ops::Const(s.WithOpName("a"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
     Output b = ops::Const(s.WithOpName("b"), {5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
     Output perm = ops::Const(s.WithOpName("perm"), {1, 0}, {2});
     Output trans_a = ops::Transpose(s.WithOpName("trans_a"), a, perm);
     Output trans_b = ops::Transpose(s.WithOpName("trans_b"), b, perm);
+
+    auto matmul_op = s.WithOpName("matmul");
     if (matmul_type == "MatMul") {
-      Output matmul = ops::MatMul(s.WithOpName("matmul"), trans_a, trans_b);
+      Output matmul = ops::MatMul(matmul_op, trans_a, trans_b);
     } else if (matmul_type == "SparseMatMul") {
-      Output matmul =
-          ops::SparseMatMul(s.WithOpName("matmul"), trans_a, trans_b);
+      Output matmul = ops::SparseMatMul(matmul_op, trans_a, trans_b);
     } else if (matmul_type == "BatchMatMul") {
-      Output matmul =
-          ops::BatchMatMul(s.WithOpName("matmul"), trans_a, trans_b);
+      Output matmul = ops::BatchMatMul(matmul_op, trans_a, trans_b);
     }
+
     GrapplerItem item;
+    item.fetch = {"matmul"};
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
-    std::vector<string> fetch = {"matmul"};
-    auto tensors_expected = EvaluateNodes(item.graph, fetch);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
     EXPECT_EQ(1, tensors_expected.size());
 
     ArithmeticOptimizer optimizer;
+    EnableOnlyFoldTransposeIntoMatMul(&optimizer);
     GraphDef output;
     OptimizeTwice(&optimizer, &item, &output);
     NodeMap node_map(&output);
 
     EXPECT_EQ(7, output.node_size());
 
-    const NodeDef* matmul_fused_node =
-        node_map.GetNode(OptimizedName("matmul_fused"));
+    const string p = "ArithmeticOptimizer/FoldTransposeIntoMatMul";
+    const string optimized_name = strings::StrCat(p, "_", "matmul");
+
+    const NodeDef* matmul_fused_node = node_map.GetNode(optimized_name);
     ASSERT_NE(matmul_fused_node, nullptr);
     EXPECT_EQ("a", matmul_fused_node->input(0));
     EXPECT_EQ("b", matmul_fused_node->input(1));
+
     if (matmul_type == "BatchMatMul") {
       EXPECT_TRUE(matmul_fused_node->attr().at("adj_x").b());
       EXPECT_TRUE(matmul_fused_node->attr().at("adj_y").b());
@@ -974,7 +1010,8 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
       EXPECT_TRUE(matmul_fused_node->attr().at("transpose_a").b());
       EXPECT_TRUE(matmul_fused_node->attr().at("transpose_b").b());
     }
-    auto tensors = EvaluateNodes(output, fetch);
+
+    auto tensors = EvaluateNodes(output, item.fetch);
     EXPECT_EQ(1, tensors.size());
     test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
   }
@@ -982,6 +1019,7 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
 
 TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
   Output re_a =
       ops::Const(s.WithOpName("re_a"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
   Output im_a =
@@ -996,24 +1034,32 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   Output trans_a = ops::ConjugateTranspose(s.WithOpName("trans_a"), a, perm);
   Output trans_b = ops::ConjugateTranspose(s.WithOpName("trans_b"), b, perm);
   Output matmul = ops::BatchMatMul(s.WithOpName("matmul"), trans_a, trans_b);
+
   GrapplerItem item;
+  item.fetch = {"matmul"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  std::vector<string> fetch = {"matmul"};
-  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(1, tensors_expected.size());
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  OptimizeTwice(&optimizer, &item, &output);
 
-  EXPECT_EQ(11, output.node_size());
-  EXPECT_EQ(OptimizedName("matmul_fused"), output.node(10).name());
-  EXPECT_EQ("a", output.node(10).input(0));
-  EXPECT_EQ("b", output.node(10).input(1));
-  EXPECT_TRUE(output.node(10).attr().at("adj_x").b());
-  EXPECT_TRUE(output.node(10).attr().at("adj_y").b());
-  auto tensors = EvaluateNodes(output, fetch);
+  NodeMap node_map(&output);
+  ASSERT_EQ(11, output.node_size());
+
+  const string p = "ArithmeticOptimizer/FoldTransposeIntoMatMul";
+  const string optimized_name = strings::StrCat(p, "_", "matmul");
+
+  const NodeDef* optimized_matmul = node_map.GetNode(optimized_name);
+  ASSERT_NE(optimized_matmul, nullptr);
+  EXPECT_EQ("a", optimized_matmul->input(0));
+  EXPECT_EQ("b", optimized_matmul->input(1));
+  EXPECT_TRUE(optimized_matmul->attr().at("adj_x").b());
+  EXPECT_TRUE(optimized_matmul->attr().at("adj_y").b());
+
+  auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorNear<complex64>(tensors_expected[0], tensors[0], 1e-6);
 }

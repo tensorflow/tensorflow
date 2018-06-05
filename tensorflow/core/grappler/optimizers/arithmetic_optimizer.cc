@@ -101,38 +101,6 @@ bool ValuesFromConstNode(const NodeDef& node, std::vector<T>* values) {
   return false;
 }
 
-template <typename T>
-bool IsInnerMatrixTranspose(const std::vector<T>& perm) {
-  const T n = perm.size();
-  if (n < 2) {
-    return false;
-  }
-  for (T i = 0; i < n - 2; ++i) {
-    if (perm[i] != i) {
-      return false;
-    }
-  }
-  return perm[n - 1] == n - 2 && perm[n - 2] == n - 1;
-}
-
-bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
-                                const NodeMap* node_map) {
-  if (transpose_node.op() != "Transpose" &&
-      transpose_node.op() != "ConjugateTranspose") {
-    return false;
-  }
-  const NodeDef* perm_node = node_map->GetNode(transpose_node.input(1));
-  std::vector<int> perm32;
-  if (ValuesFromConstNode(*perm_node, &perm32)) {
-    return IsInnerMatrixTranspose(perm32);
-  }
-  std::vector<int64> perm64;
-  if (ValuesFromConstNode(*perm_node, &perm64)) {
-    return IsInnerMatrixTranspose(perm64);
-  }
-  return false;
-}
-
 bool MaybeAddControlInput(const string& new_input, NodeDef* node,
                           GraphDef* graph, NodeMap* node_map) {
   bool already_exists = false;
@@ -153,12 +121,6 @@ bool MaybeAddControlInput(const string& new_input, NodeDef* node,
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
   (*node->mutable_attr())[attr_name].set_type(dtype);
-}
-
-void FlipBooleanAttr(const string& attr_name, NodeDef* node) {
-  const bool old_value =
-      !node->attr().count(attr_name) ? false : node->attr().at(attr_name).b();
-  (*node->mutable_attr())[attr_name].set_b(!old_value);
 }
 
 string SourceDataTypeAttrName(const NodeDef& node) {
@@ -2079,6 +2041,153 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
   }
 };
 
+// Fold Transpose into matrix multiplication.
+class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
+ public:
+  explicit FoldTransposeIntoMatMul(const GraphOptimizerContext& ctx,
+                                   const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FoldTransposeIntoMatMul", ctx, ctx_ext) {}
+  ~FoldTransposeIntoMatMul() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsMatMul(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const NodeScopeAndName matmul = ParseNodeScopeAndName(node->name());
+    const string optimized_node_name = OptimizedNodeName(matmul);
+    if (ctx().node_map->NodeExists(optimized_node_name)) return Status::OK();
+
+    NodeDef* a;
+    NodeDef* b;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &a));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &b));
+
+    bool is_complex = false;
+    if (node->op() != "SparseMatMul") {
+      const DataType type = GetDataTypeFromAttr(*node, "T");
+      is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
+    }
+
+    const std::set<string> foldable_transpose_ops =
+        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
+                    : (node->op() == "BatchMatMul"
+                           ? std::set<string>{"ConjugateTranspose"}
+                           : std::set<string>{"Transpose"});
+
+    const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
+                               IsInnerMatrixTransposeNode(*a, ctx().node_map);
+    const bool b_is_foldable = foldable_transpose_ops.count(b->op()) > 0 &&
+                               IsInnerMatrixTransposeNode(*b, ctx().node_map);
+    if (!a_is_foldable && !b_is_foldable) return Status::OK();
+
+    NodeDef* new_op = AddCopyNode(optimized_node_name, node);
+
+    if (a_is_foldable) {
+      const string attr_a =
+          node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
+      FlipBooleanAttr(attr_a, new_op);
+      new_op->set_input(0, a->input(0));
+      ctx().node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
+    }
+
+    if (b_is_foldable) {
+      const string attr_b =
+          node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
+      FlipBooleanAttr(attr_b, new_op);
+      new_op->set_input(1, b->input(0));
+      ctx().node_map->UpdateInput(new_op->name(), b->name(), b->input(0));
+    }
+
+    std::vector<const NodeDef*> deps_to_forward = {node};
+    if (a_is_foldable) deps_to_forward.push_back(a);
+    if (b_is_foldable) deps_to_forward.push_back(b);
+    ForwardControlDependencies(new_op, deps_to_forward);
+
+    return Status::OK();
+  }
+
+ private:
+  void FlipBooleanAttr(const string& attr_name, NodeDef* node) {
+    const bool old_value =
+        !node->attr().count(attr_name) ? false : node->attr().at(attr_name).b();
+    (*node->mutable_attr())[attr_name].set_b(!old_value);
+  }
+
+  template <typename T>
+  bool IsInnerMatrixTranspose(const std::vector<T>& perm) {
+    const T n = perm.size();
+    if (n < 2) {
+      return false;
+    }
+    for (T i = 0; i < n - 2; ++i) {
+      if (perm[i] != i) {
+        return false;
+      }
+    }
+    return perm[n - 1] == n - 2 && perm[n - 2] == n - 1;
+  }
+
+  bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
+                                  const NodeMap* node_map) {
+    if (transpose_node.op() != "Transpose" &&
+        transpose_node.op() != "ConjugateTranspose") {
+      return false;
+    }
+    const NodeDef* perm_node = node_map->GetNode(transpose_node.input(1));
+    std::vector<int> perm32;
+    if (ValuesFromConstNode(*perm_node, &perm32)) {
+      return IsInnerMatrixTranspose(perm32);
+    }
+    std::vector<int64> perm64;
+    if (ValuesFromConstNode(*perm_node, &perm64)) {
+      return IsInnerMatrixTranspose(perm64);
+    }
+    return false;
+  }
+};
+
+// Fold Transpose into matrix multiplication.
+class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
+ public:
+  explicit FoldConjugateIntoTranspose(const GraphOptimizerContext& ctx,
+                                      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FoldConjugateIntoTranspose", ctx, ctx_ext) {}
+  ~FoldConjugateIntoTranspose() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsConj(*node) || IsTranspose(*node) || IsConjugateTranspose(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const NodeScopeAndName matmul = ParseNodeScopeAndName(node->name());
+    const string optimized_node_name = OptimizedNodeName(matmul);
+    if (ctx().node_map->NodeExists(optimized_node_name)) return Status::OK();
+
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+
+    const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
+    const NodeDef* conj_op = node->op() == "Conj" ? node : input;
+
+    if ((IsTranspose(*transpose_op) || IsConjugateTranspose(*transpose_op)) &&
+        IsConj(*conj_op)) {
+      NodeDef* new_op = AddCopyNode(optimized_node_name, transpose_op);
+
+      // Flip the type of transpose op to absorb the conjugation.
+      new_op->set_op(transpose_op->op() == "Transpose" ? "ConjugateTranspose"
+                                                       : "Transpose");
+      new_op->set_input(0, input->input(0));
+      ctx().node_map->UpdateInput(new_op->name(), node->name(),
+                                  input->input(0));
+      ForwardControlDependencies(new_op, {node, input});
+      *simplified_node_name = new_op->name();
+    }
+
+    return Status::OK();
+  }
+};
+
 // Replace Mul node with identical inputs with a Square.
 class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
  public:
@@ -2323,33 +2432,6 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   return true;
 }
 
-NodeDef* ArithmeticOptimizer::AddNode(const NodeDef& node, StringPiece suffix,
-                                      bool copy_node) {
-  return AddNode(OptimizedNodeName(node, suffix), copy_node ? &node : nullptr);
-}
-
-NodeDef* ArithmeticOptimizer::AddNode(const string& name,
-                                      const NodeDef* node_to_copy) {
-  NodeDef* new_node = optimized_graph_->add_node();
-  node_map_->AddNode(NodeName(name), new_node);
-  if (node_to_copy != nullptr) {
-    *new_node = *node_to_copy;
-  }
-  new_node->set_name(name);
-  return new_node;
-}
-
-string ArithmeticOptimizer::OptimizedNodeName(const NodeDef& node,
-                                              StringPiece suffix) const {
-  return AddPrefixToNodeName(strings::StrCat(node.name(), "_", suffix),
-                             kArithmeticOptimizer);
-}
-
-bool ArithmeticOptimizer::OptimizedNodeExists(const NodeDef& node,
-                                              StringPiece suffix) const {
-  return node_map_->NodeExists(OptimizedNodeName(node, suffix));
-}
-
 namespace {
 
 bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
@@ -2473,83 +2555,6 @@ void ArithmeticOptimizer::ForwardControlDependencies(
   DedupControlInputs(target_node);
 }
 
-// TODO(ezhulenev): extract each individual simplify rewrite into separate
-// ArithmeticOptimizerStage
-string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
-    const NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify) {
-  // Fold Transpose into matrix multiplication.
-  if ((node->op() == "MatMul" || node->op() == "SparseMatMul" ||
-       node->op() == "BatchMatMul") &&
-      !OptimizedNodeExists(*node, "fused")) {
-    const NodeDef* a = node_map_->GetNode(node->input(0));
-    const NodeDef* b = node_map_->GetNode(node->input(1));
-    bool is_complex = false;
-    if (node->op() != "SparseMatMul") {
-      const DataType type = GetDataTypeFromAttr(*node, "T");
-      is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
-    }
-    const std::set<string> foldable_transpose_ops =
-        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
-                    : (node->op() == "BatchMatMul"
-                           ? std::set<string>{"ConjugateTranspose"}
-                           : std::set<string>{"Transpose"});
-    const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
-                               IsInnerMatrixTransposeNode(*a, node_map_.get());
-    const bool b_is_foldable = foldable_transpose_ops.count(b->op()) > 0 &&
-                               IsInnerMatrixTransposeNode(*b, node_map_.get());
-    if (a_is_foldable || b_is_foldable) {
-      NodeDef* new_op = AddNode(*node, "fused", /*copy_node=*/true);
-      if (a_is_foldable) {
-        const string attr_a =
-            node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
-        FlipBooleanAttr(attr_a, new_op);
-        new_op->set_input(0, a->input(0));
-        node_map_->UpdateInput(new_op->name(), a->name(), a->input(0));
-      }
-      if (b_is_foldable) {
-        const string attr_b =
-            node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
-        FlipBooleanAttr(attr_b, new_op);
-        new_op->set_input(1, b->input(0));
-        node_map_->UpdateInput(new_op->name(), b->name(), b->input(0));
-      }
-      std::vector<const NodeDef*> deps_to_forward({node});
-      if (a_is_foldable) {
-        deps_to_forward.push_back(a);
-      }
-      if (b_is_foldable) {
-        deps_to_forward.push_back(b);
-      }
-      ForwardControlDependencies(new_op, deps_to_forward);
-    }
-  }
-
-  // Fold Conj into Transpose or ConjugateTranspose.
-  if ((node->op() == "Conj" || node->op() == "Transpose" ||
-       node->op() == "ConjugateTranspose") &&
-      !OptimizedNodeExists(*node, "fused")) {
-    const NodeDef* input = node_map_->GetNode(node->input(0));
-    const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
-    const NodeDef* conj_op = node->op() == "Conj" ? node : input;
-
-    if ((transpose_op->op() == "Transpose" ||
-         transpose_op->op() == "ConjugateTranspose") &&
-        conj_op->op() == "Conj") {
-      NodeDef* new_op =
-          AddNode(OptimizedNodeName(*node, "fused"), transpose_op);
-      // Flip the type of transpose op to absorb the conjugation.
-      new_op->set_op(transpose_op->op() == "Transpose" ? "ConjugateTranspose"
-                                                       : "Transpose");
-      new_op->set_input(0, input->input(0));
-      node_map_->UpdateInput(new_op->name(), node->name(), input->input(0));
-      ForwardControlDependencies(new_op, {node, input});
-      return new_op->name();
-    }
-  }
-
-  return "";
-}
-
 Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   SetVector<NodeDef*> nodes_to_simplify;
   nodes_to_simplify.Reserve(optimized_graph_->node_size());
@@ -2567,8 +2572,12 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
 
   if (options_.combine_add_to_addn && can_use_shapes)
     pipeline.AddStage<AddOpsRewriteStage>(ctx, ctx_ext);
+  if (options_.fold_conjugate_into_transpose)
+    pipeline.AddStage<FoldConjugateIntoTranspose>(ctx, ctx_ext);
   if (options_.fold_multiply_into_conv)
     pipeline.AddStage<FoldMultiplyIntoConv>(ctx, ctx_ext);
+  if (options_.fold_transpose_into_matmul)
+    pipeline.AddStage<FoldTransposeIntoMatMul>(ctx, ctx_ext);
   if (options_.hoist_common_factor_out_of_aggregation && can_use_shapes)
     pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
   if (options_.minimize_broadcasts && can_use_shapes)
@@ -2606,19 +2615,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   while (!nodes_to_simplify.Empty()) {
     NodeDef* node = nodes_to_simplify.PopBack();
 
-    // TODO(ezhulenev): move all rewrites into separate stages
     string simplified_tensor = "";
-    if (options_.enable_try_simplify_and_replace) {
-      simplified_tensor = TrySimplifyAndReplaceUses(node, &nodes_to_simplify);
-    }
+    bool optimized = pipeline.PassThroughAllStages(node, &simplified_tensor);
 
-    // if it was not simplified try to run it through all configured stages
-    if (!stop(simplified_tensor)) {
-      bool optimized = pipeline.PassThroughAllStages(node, &simplified_tensor);
-      if (!optimized) {
-        continue;
-      }
-    }
+    // If the node was not optimized by any of the stages, go to the next one.
+    if (!optimized) continue;
 
     // re-wire consumers of an old node to the new one
     if (NodeName(simplified_tensor) != node->name()) {
