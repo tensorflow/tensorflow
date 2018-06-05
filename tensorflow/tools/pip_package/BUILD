@@ -72,6 +72,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/graph_editor:graph_editor_pip",
     "//tensorflow/contrib/keras:keras",
     "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
+    "//tensorflow/contrib/lms:lms_pip",
     "//tensorflow/contrib/nn:nn_py",
     "//tensorflow/contrib/predictor:predictor_pip",
     "//tensorflow/contrib/proto:proto_pip",

@@ -928,7 +928,11 @@ static bool IsSwappable(GraphView::InputPort input) {
   if (!InputTypeForNode(node, *op_def, input.port_id, &dtype).ok()) {
     return false;
   }
-
+  
+  const string& assign_device = node.device();
+  if (assign_device.find("CPU") != string::npos) {
+    return false;
+  }
   return !IsRefType(dtype);
 }
 
