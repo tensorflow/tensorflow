@@ -103,6 +103,7 @@ with tf.graph.as_default():
     mon_sess.run(mask_update_op)
 
 ```
+Ensure that `global_step` is being [incremented](https://www.tensorflow.org/api_docs/python/tf/train/Optimizer#minimize), otherwise pruning will not work!
 
 ## Example: Pruning and training deep CNNs on the cifar10 dataset
 
