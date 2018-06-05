@@ -20,6 +20,25 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <cstring> // for strcmp()
+
+#ifdef __ANDROID__
+// there is no std::to_string() in libstdc++ used by NDK,
+// which is used by bazel android_{arm,arm64} targets
+#include <sstream>
+namespace std {
+
+template <typename T>
+std::string to_string(T value)
+{
+    std::ostringstream os ;
+    os << value ;
+    return os.str() ;
+}
+
+}
+#endif
+
 namespace tflite {
 // A simple command-line argument parsing module.
 // Dependency free simplified port of core/util/command_line_flags.

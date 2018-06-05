@@ -21,6 +21,8 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
+#include <cstdlib> // for std::abort() on Android
+
 namespace tflite {
 namespace logging {
 // A wrapper that logs to stderr.
