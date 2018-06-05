@@ -64,7 +64,8 @@ class SDCAOptimizer(object):
   of workers running the train steps. It defaults to 1 (single machine).
   `num_table_shards` defines the number of shards for the internal state
   table, typically set to match the number of parameter servers for large
-  data sets.
+  data sets. You can also specify a `partitioner` object to partition the primal
+  weights during training (`div` partitioning strategy will be used).
   """
 
   def __init__(self,
@@ -73,13 +74,15 @@ class SDCAOptimizer(object):
                num_table_shards=None,
                symmetric_l1_regularization=0.0,
                symmetric_l2_regularization=1.0,
-               adaptive=True):
+               adaptive=True,
+               partitioner=None):
     self._example_id_column = example_id_column
     self._num_loss_partitions = num_loss_partitions
     self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
     self._adaptive = adaptive
+    self._partitioner = partitioner
 
   def get_name(self):
     return 'SDCAOptimizer'
@@ -107,6 +110,10 @@ class SDCAOptimizer(object):
   @property
   def adaptive(self):
     return self._adaptive
+
+  @property
+  def partitioner(self):
+    return self._partitioner
 
   def get_train_step(self, columns_to_variables, weight_column_name, loss_type,
                      features, targets, global_step):
@@ -175,10 +182,12 @@ class SDCAOptimizer(object):
           sparse_feature_column = _dense_tensor_to_sparse_feature_column(
               dense_bucket_tensor)
           sparse_feature_with_values.append(sparse_feature_column)
-          # For bucketized columns, the variables list contains exactly one
-          # element.
-          sparse_feature_with_values_weights.append(
-              columns_to_variables[column][0])
+          # If a partitioner was used during variable creation, we will have a
+          # list of Variables here larger than 1.
+          vars_to_append = columns_to_variables[column][0]
+          if len(columns_to_variables[column]) > 1:
+            vars_to_append = columns_to_variables[column]
+          sparse_feature_with_values_weights.append(vars_to_append)
         elif isinstance(
             column,
             (
@@ -226,8 +235,12 @@ class SDCAOptimizer(object):
                                             array_ops.shape(ids)[0]), [-1])
           sparse_feature_with_values.append(
               SparseFeatureColumn(example_ids_filtered, reproject_ids, weights))
-          sparse_feature_with_values_weights.append(
-              columns_to_variables[column][0])
+          # If a partitioner was used during variable creation, we will have a
+          # list of Variables here larger than 1.
+          vars_to_append = columns_to_variables[column][0]
+          if len(columns_to_variables[column]) > 1:
+            vars_to_append = columns_to_variables[column]
+          sparse_feature_with_values_weights.append(vars_to_append)
         else:
           raise ValueError('SDCAOptimizer does not support column type %s.' %
                            type(column).__name__)

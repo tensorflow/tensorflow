@@ -370,13 +370,21 @@ typedef struct _TfLiteRegistration {
 
   // Builtin codes. If this kernel refers to a builtin this is the code
   // of the builtin. This is so we can do marshaling to other frameworks like
-  // NN API. Note, it is the responsibility of the registration binder to
-  // set this properly.
+  // NN API.
+  // Note: It is the responsibility of the registration binder to set this
+  // properly.
   int32_t builtin_code;
 
   // Custom op name. If the op is a builtin, this will be null.
+  // Note: It is the responsibility of the registration binder to set this
+  // properly.
   // WARNING: This is an experimental interface that is subject to change.
   const char* custom_name;
+
+  // The version of the op.
+  // Note: It is the responsibility of the registration binder to set this
+  // properly.
+  int version;
 } TfLiteRegistration;
 
 // WARNING: This is an experimental interface that is subject to change.

@@ -65,6 +65,16 @@ class SeedStreamTest(test.TestCase):
     self.assertAllUnique(
         outputs + [strm2() for _ in range(50)] + [strm3() for _ in range(50)])
 
+  def testInitFromOtherSeedStream(self):
+    strm1 = seed_stream.SeedStream(seed=4, salt="salt")
+    strm2 = seed_stream.SeedStream(strm1, salt="salt")
+    strm3 = seed_stream.SeedStream(strm1, salt="another salt")
+    out1 = [strm1() for _ in range(50)]
+    out2 = [strm2() for _ in range(50)]
+    out3 = [strm3() for _ in range(50)]
+    self.assertAllEqual(out1, out2)
+    self.assertAllUnique(out1 + out3)
+
 
 if __name__ == "__main__":
   test.main()

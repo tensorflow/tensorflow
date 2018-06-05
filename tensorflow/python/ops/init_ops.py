@@ -463,7 +463,8 @@ class VarianceScaling(Initializer):
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
     if self.distribution == "normal":
-      stddev = math.sqrt(scale)
+      # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
+      stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     else:
@@ -488,9 +489,9 @@ class Orthogonal(Initializer):
 
   If the shape of the tensor to initialize is two-dimensional, it is initialized
   with an orthogonal matrix obtained from the QR decomposition of a matrix of
-  uniform random numbers. If the matrix has fewer rows than columns then the
-  output will have orthogonal rows. Otherwise, the output will have orthogonal
-  columns.
+  random numbers drawn from a normal distribution.
+  If the matrix has fewer rows than columns then the output will have orthogonal
+  rows. Otherwise, the output will have orthogonal columns.
 
   If the shape of the tensor to initialize is more than two-dimensional,
   a matrix of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])`

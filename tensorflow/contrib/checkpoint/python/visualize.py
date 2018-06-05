@@ -18,8 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.training import checkpointable
-from tensorflow.python.training import checkpointable_utils
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 def dot_graph_from_checkpoint(save_path):

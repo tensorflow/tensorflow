@@ -51,6 +51,8 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
     return nullptr;
   }
 
+  tensorflow::ImportNumpy();
+
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (interpreter) {
@@ -340,9 +342,14 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
-    const char* data, size_t len) {
+    PyObject* data) {
+  char * buf = nullptr;
+  Py_ssize_t length;
+  if (PY_TO_CPPSTRING(data, &buf, &length) == -1) {
+    return nullptr;
+  }
   std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromBuffer(data, len);
+      tflite::FlatBufferModel::BuildFromBuffer(buf, length);
   return model ? new InterpreterWrapper(std::move(model)) : nullptr;
 }
 

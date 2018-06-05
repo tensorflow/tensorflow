@@ -141,6 +141,10 @@ string PadAlignmentString(PadAlignment alignment) {
   return "unknown pad alignment";
 }
 
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment) {
+  return str << PadAlignmentString(alignment);
+}
+
 string ShortPoolingModeString(PoolingMode mode) {
   switch (mode) {
     case PoolingMode::kMaximum:
@@ -407,6 +411,8 @@ string FilterDescriptor::ToShortString() const {
   switch (layout_) {
     case FilterLayout::kOutputInputYX:
       return port::StrCat(od, id, spatial);
+    case FilterLayout::kOutputYXInput:
+      return port::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
       return port::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:

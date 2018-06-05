@@ -65,6 +65,16 @@ void SetDefaultLayoutToContainer(
   return layout;
 }
 
+/* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
+    tensorflow::gtl::ArraySlice<int64> major_to_minor) {
+  Layout layout;
+  layout.set_format(DENSE);
+  for (int i = major_to_minor.size() - 1; i >= 0; i--) {
+    layout.add_minor_to_major(major_to_minor[i]);
+  }
+  return layout;
+}
+
 /* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
   Layout layout;
   layout.set_format(SPARSE);
@@ -140,8 +150,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ tensorflow::Status LayoutUtil::ValidateLayoutInShape(
-    const Shape& shape) {
+/* static */ Status LayoutUtil::ValidateLayoutInShape(const Shape& shape) {
   if (ShapeUtil::IsTuple(shape)) {
     // Tuple shape.
     if (shape.has_layout()) {
@@ -150,12 +159,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     for (auto& element_shape : shape.tuple_shapes()) {
       TF_RETURN_IF_ERROR(ValidateLayoutInShape(element_shape));
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   } else if (ShapeUtil::IsOpaque(shape)) {
     if (shape.has_layout()) {
       return InvalidArgument("opaque should not have a layout field");
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   } else {
     // Array shape.
     if (!shape.has_layout()) {
@@ -166,14 +175,14 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 }
 
-/* static */ tensorflow::Status LayoutUtil::ValidateLayoutForShape(
-    const Layout& layout, const Shape& shape) {
+/* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
+                                                       const Shape& shape) {
   if (ShapeUtil::IsTuple(shape)) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
 
   if (ShapeUtil::IsOpaque(shape)) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   if (layout.format() == INVALID_FORMAT) {
@@ -225,7 +234,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     }
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 /* static */ void LayoutUtil::ClearLayout(Shape* shape) {
@@ -384,7 +393,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 namespace {
 
 // Internal helper for recursively copying layouts.
-tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+Status CopyLayoutInternal(const Shape& src, Shape* dst) {
   if (ShapeUtil::IsTuple(src) != ShapeUtil::IsTuple(*dst)) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
@@ -411,14 +420,13 @@ tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       dst->clear_layout();
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace
 
 /* static */
-tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
-                                                       Shape* dst) {
+Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 

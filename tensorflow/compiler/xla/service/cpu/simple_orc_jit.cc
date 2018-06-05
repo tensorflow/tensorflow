@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -73,23 +74,33 @@ llvm::StringRef GetHostCpuName() {
 }
 }  // namespace
 
+/*static*/ std::unique_ptr<llvm::TargetMachine>
+SimpleOrcJIT::InferTargetMachineForJIT(
+    const llvm::TargetOptions& target_options,
+    llvm::CodeGenOpt::Level opt_level) {
+  std::unique_ptr<llvm::TargetMachine> target_machine(
+      llvm::EngineBuilder()
+          .setTargetOptions(target_options)
+          .setOptLevel(opt_level)
+          .selectTarget(
+              /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
+              /*MCPU=*/GetHostCpuName(),
+              /*MAttrs=*/DetectMachineAttributes()));
+  CHECK(target_machine != nullptr);
+  return target_machine;
+}
+
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
                            bool optimize_for_size, bool enable_fast_math,
                            bool disable_expensive_passes,
                            LLVMCompiler::ModuleHook pre_optimization_hook,
                            LLVMCompiler::ModuleHook post_optimization_hook)
-    : target_machine_(
-          CHECK_NOTNULL(llvm::EngineBuilder()
-                            .setTargetOptions(target_options)
-                            .setOptLevel(opt_level)
-                            .selectTarget(
-                                /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-                                /*MCPU=*/GetHostCpuName(),
-                                /*MAttrs=*/DetectMachineAttributes()))),
+    : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
+          execution_session_,
           [this](const std::string& name) -> llvm::JITSymbol {
             return this->ResolveRuntimeSymbol(name);
           },
@@ -192,6 +203,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);

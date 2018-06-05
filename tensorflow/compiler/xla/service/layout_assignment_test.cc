@@ -29,13 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -53,7 +53,7 @@ class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {
-    LayoutAssignment layout_assignment(*entry_computation_layout);
+    LayoutAssignment layout_assignment(entry_computation_layout);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 };
@@ -285,7 +285,7 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   TF_CHECK_OK(computation_layout.mutable_result_layout()->CopyLayoutFromShape(
       result_shape));
 
-  LayoutAssignment layout_assignment(computation_layout);
+  LayoutAssignment layout_assignment(&computation_layout);
   AssignLayouts(module.get(), &computation_layout);
 
   // Layout assignment should have deep copied the result of the computation to
@@ -488,7 +488,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
  public:
   explicit OperandsMustBeTheSameLayoutAssignment(
       ComputationLayout* entry_computation_layout)
-      : LayoutAssignment(*entry_computation_layout) {}
+      : LayoutAssignment(entry_computation_layout) {}
 
  protected:
   Status PropagateBufferConstraint(
@@ -651,7 +651,7 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
     }
   )";
 
-  auto module = tools::Parse(module_str).ValueOrDie();
+  auto module = ParseHloString(module_str).ValueOrDie();
 
   module =
       backend()
@@ -660,13 +660,12 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
                          /*device_allocator=*/nullptr)
           .ConsumeValueOrDie();
 
-  EXPECT_EQ(
-      ::tensorflow::Status::OK(),
-      backend()
-          .compiler()
-          ->RunBackend(std::move(module), backend().default_stream_executor(),
-                       /*device_allocator=*/nullptr)
-          .status());
+  EXPECT_EQ(Status::OK(), backend()
+                              .compiler()
+                              ->RunBackend(std::move(module),
+                                           backend().default_stream_executor(),
+                                           /*device_allocator=*/nullptr)
+                              .status());
 }
 
 // A GTE inside of a fusion node inherits the layout of its operand (which
@@ -692,7 +691,7 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
     }
   )";
 
-  auto module = tools::Parse(module_str).ValueOrDie();
+  auto module = ParseHloString(module_str).ValueOrDie();
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape());
   Shape param_shape = ShapeUtil::MakeTupleShape(
@@ -808,7 +807,7 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape());
-  LayoutAssignment layout_assignment(computation_layout);
+  LayoutAssignment layout_assignment(&computation_layout);
   Status error_status = layout_assignment.Run(module.get()).status();
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(

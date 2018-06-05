@@ -26,6 +26,9 @@ message VariableDef {
 
   // Whether to represent this as a ResourceVariable.
   bool is_resource = 5;
+
+  // Whether this variable should be trained.
+  bool trainable = 7;
 }
 
 message SaveSliceInfoDef {

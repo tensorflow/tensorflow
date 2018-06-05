@@ -78,6 +78,12 @@ bool IsCheckNumerics(const NodeDef& node) {
   return node.op() == "CheckNumerics";
 }
 
+bool IsCollective(const NodeDef& node) {
+  return node.op() == "CollectiveReduce" ||
+         node.op() == "CollectiveBcastSend" ||
+         node.op() == "CollectiveBcastRecv";
+}
+
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }
@@ -105,6 +111,8 @@ bool IsConv2DBackpropFilter(const NodeDef& node) {
 bool IsConv2DBackpropInput(const NodeDef& node) {
   return node.op() == "Conv2DBackpropInput";
 }
+
+bool IsConv3D(const NodeDef& node) { return node.op() == "Conv3D"; }
 
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
   return node.op() == "DepthwiseConv2dNative";
@@ -200,6 +208,8 @@ bool IsMatMul(const NodeDef& node) {
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
 
 bool IsMaximum(const NodeDef& node) { return node.op() == "Maximum"; }
+
+bool IsMaxPoolGrad(const NodeDef& node) { return node.op() == "MaxPoolGrad"; }
 
 bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
@@ -408,6 +418,21 @@ bool IsPersistent(const NodeDef& node) {
   return IsConstant(node) || IsVariable(node);
 }
 
+bool MaybeHasRefInput(const NodeDef& node) {
+  const OpDef* op_def;
+  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (!status.ok()) {
+    return true;
+  }
+  // Nodes such as Assign or AssignAdd modify one of their inputs.
+  for (const auto& input : op_def->input_arg()) {
+    if (input.is_ref()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool IsFreeOfSideEffect(const NodeDef& node) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
@@ -427,6 +452,10 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     if (input.is_ref()) {
       return false;
     }
+  }
+  // Queue ops modify the queue which is a side effect.
+  if (node.op().find("Queue") != std::string::npos) {
+    return false;
   }
   return !ModifiesInputsInPlace(node);
 }

@@ -85,7 +85,10 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
-    tags = ["noasan"],  # times out b/63678675
+    tags = [
+        "noasan",  # times out, b/63678675
+        "optonly",  # times out, b/79171797
+    ],
 )
 
 cuda_py_test(
@@ -121,6 +124,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     shard_count = 5,
+    tags = ["optonly"],  # Test is flaky without optimization.
 )
 
 cuda_py_test(

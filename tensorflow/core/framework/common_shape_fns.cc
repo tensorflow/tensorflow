@@ -40,8 +40,8 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
       const int64 padding_needed =
-          std::max(0LL, (*output_size - 1) * stride + effective_filter_size -
-                            input_size);
+          std::max(int64{0}, (*output_size - 1) * stride +
+                                 effective_filter_size - input_size);
       // For odd values of total padding, add more padding at the 'right'
       // side of the given dimension.
       *padding_before = padding_needed / 2;
@@ -302,6 +302,9 @@ Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
   dims_actual[outer_c_index] = context->MakeDim(C);
   if (format == FORMAT_NCHW_VECT_C) {
     dims_actual[GetTensorInnerFeatureDimIndex(num_dims, format)] =
+        context->MakeDim(4);
+  } else if (format == FORMAT_NHWC_VECT_W) {
+    dims_actual[GetTensorInnerWidthDimIndex(num_dims, format)] =
         context->MakeDim(4);
   }
   for (int spatial_dim = 0; spatial_dim < spatial.size(); spatial_dim++) {
@@ -1414,6 +1417,21 @@ Status ExplicitShape(InferenceContext* c) {
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output_shape));
   c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+Status ExplicitShapes(InferenceContext* c) {
+  std::vector<PartialTensorShape> shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+  if (shapes.empty()) {
+    return errors::Internal("shapes attribute is empty");
+  }
+  for (int i = 0; i < shapes.size(); ++i) {
+    ShapeHandle output_shape;
+    TF_RETURN_IF_ERROR(
+        c->MakeShapeFromPartialTensorShape(shapes[i], &output_shape));
+    c->set_output(i, output_shape);
+  }
   return Status::OK();
 }
 

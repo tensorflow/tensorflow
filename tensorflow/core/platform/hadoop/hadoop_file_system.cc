@@ -21,11 +21,11 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
 namespace tensorflow {
@@ -115,18 +115,17 @@ class LibHDFS {
     const char* kLibHdfsDso = "libhdfs.so";
 #endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
-    if (hdfs_home == nullptr) {
-      status_ = errors::FailedPrecondition(
-          "Environment variable HADOOP_HDFS_HOME not set");
-      return;
+    if (hdfs_home != nullptr) {
+      string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
+      status_ = TryLoadAndBind(path.c_str(), &handle_);
+      if (status_.ok()) {
+        return;
+      }
     }
-    string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
-    status_ = TryLoadAndBind(path.c_str(), &handle_);
-    if (!status_.ok()) {
-      // try load libhdfs.so using dynamic loader's search path in case
-      // libhdfs.so is installed in non-standard location
-      status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
-    }
+
+    // Try to load the library dynamically in case it has been installed
+    // to a in non-standard location.
+    status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
   }
 
   Status status_;

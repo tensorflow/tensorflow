@@ -76,6 +76,13 @@ class RandomOpsTest(XLATestCase):
         self.assertTrue((y >= -2).sum() == 1000)
         self.assertTrue((y < 33).sum() == 1000)
 
+  def testTruncatedNormalIsNotConstant(self):
+    def rng(dtype):
+      return random_ops.truncated_normal(shape=[2], dtype=dtype)
+
+    # TODO(b/34339814): implement inverse erf support for non-F32 types.
+    self._testRngIsNotConstant(rng, dtypes.float32)
+
   def testTruncatedNormalIsInRange(self):
     count = 10000
     # TODO(b/34339814): implement inverse erf support for non-F32 types.

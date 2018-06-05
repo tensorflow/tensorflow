@@ -57,7 +57,6 @@ const char* kFileFooter =
 }  // extern "C"
 #endif  // __cplusplus
 #endif  // TENSORFLOW_CONTRIB_LITE_BUILTIN_OPS_H_
-}
 )";
 }  // anonymous namespace
 

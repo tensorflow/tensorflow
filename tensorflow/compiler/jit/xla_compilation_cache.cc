@@ -122,8 +122,7 @@ Status XlaCompilationCache::BuildSignature(
 
 namespace {
 
-// Builds a XlaCompiler::Argument vector from the arguments to the _XlaLaunch
-// op.
+// Builds a XlaCompiler::Argument vector from the arguments to the XlaLaunch op.
 Status BuildArguments(const std::map<int, Tensor>& constant_args,
                       const std::map<int, OptionalTensor>& variable_args,
                       OpKernelContext* ctx,

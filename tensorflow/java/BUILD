@@ -60,9 +60,7 @@ java_library(
 
 filegroup(
     name = "java_op_sources",
-    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [
-        ":java_op_gen_sources",
-    ],
+    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [":java_op_gen_sources"],
     visibility = [
         "//tensorflow/java:__pkg__",
     ],
@@ -87,6 +85,9 @@ tf_cc_binary(
     linkstatic = 1,
     deps = [
         ":java_op_gen_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:ops",
     ],
 )
@@ -111,6 +112,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 
@@ -303,6 +306,7 @@ tf_cc_test(
     ],
     deps = [
         ":java_op_gen_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -330,7 +334,7 @@ tf_cc_binary(
         "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
-            LINKER_EXPORTED_SYMBOLS,
+            "$(location {})".format(LINKER_EXPORTED_SYMBOLS),
         ],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
@@ -338,7 +342,7 @@ tf_cc_binary(
             "-z defs",
             "-s",
             "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
-            LINKER_VERSION_SCRIPT,
+            "$(location {})".format(LINKER_VERSION_SCRIPT),
         ],
     }),
     linkshared = 1,
