@@ -38,7 +38,8 @@ class AnnoTest(test.TestCase):
 
     anno.setanno(node, 'foo', 3)
     self.assertTrue(anno.hasanno(node, 'foo'))
-    self.assertEqual(3, anno.getanno(node, 'foo'))
+    self.assertEqual(anno.getanno(node, 'foo'), 3)
+    self.assertEqual(anno.getanno(node, 'bar', default=7), 7)
 
     anno.delanno(node, 'foo')
     self.assertFalse(anno.hasanno(node, 'foo'))
