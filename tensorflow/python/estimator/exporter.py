@@ -360,9 +360,10 @@ class BestExporter(Exporter):
           for value in event.summary.value:
             if value.HasField('simple_value'):
               event_eval_result[value.tag] = value.simple_value
-          if best_eval_result is None or self._compare_fn(
-              best_eval_result, event_eval_result):
-            best_eval_result = event_eval_result
+          if event_eval_result:
+            if best_eval_result is None or self._compare_fn(
+                best_eval_result, event_eval_result):
+              best_eval_result = event_eval_result
     return best_eval_result
 
 
