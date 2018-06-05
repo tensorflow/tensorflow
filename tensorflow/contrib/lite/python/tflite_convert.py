@@ -161,7 +161,8 @@ def _check_flags(flags, unparsed):
       output += _get_message_unparsed(flag, "--input_file", "--graph_def_file")
       output += _get_message_unparsed(flag, "--std_value", "--std_dev_values")
       output += _get_message_unparsed(flag, "--batch_size", "--input_shapes")
-    raise ValueError(output)
+    if output:
+      raise ValueError(output)
 
   # Check that flags are valid.
   if flags.graph_def_file and (not flags.input_arrays or
@@ -285,13 +286,13 @@ def run_main(_):
   # Graph manipulation flags.
   parser.add_argument(
       "--drop_control_dependency",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to drop control dependencies silently. "
             "This is due to TensorFlow not supporting control dependencies. "
             "(default True)"))
   parser.add_argument(
       "--reorder_across_fake_quant",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to reorder FakeQuant nodes in "
             "unexpected locations. Used when the location of the FakeQuant "
             "nodes is preventing graph transformations necessary to convert "
@@ -300,13 +301,13 @@ def run_main(_):
             "behavior. (default False)"))
   parser.add_argument(
       "--change_concat_input_ranges",
-      type=bool,
+      action="store_true",
       help=("Boolean to change behavior of min/max ranges for inputs and "
             "outputs of the concat operator for quantized models. Changes the "
             "ranges of concat operator overlap when true. (default False)"))
   parser.add_argument(
       "--allow_custom_ops",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to allow custom operations. When false "
             "any unknown operation is an error. When true, custom ops are "
             "created for any op that is unknown. The developer will need to "

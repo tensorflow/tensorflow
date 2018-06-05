@@ -209,16 +209,6 @@ have.
 
 ## Logging flags
 
-The following are standard Google logging flags:
-
-*   `--logtostderr` redirects Google logging to standard error, typically making
-    it visible in a terminal.
-*   `--v` sets verbose logging levels (for debugging purposes). Defined levels:
-    *   `--v=1`: log all graph transformations that did make a change on the
-        graph.
-    *   `--v=2`: log all graph transformations that did *not* make a change on
-        the graph.
-
 The following flags allow to generate graph visualizations of the actual graph
 at various points during transformations:
 
