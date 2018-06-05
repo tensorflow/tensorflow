@@ -2122,6 +2122,109 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
   }
 };
 
+// Simplify aggregation (e.g. AddN) nodes:
+//
+// 1. Discard aggregate nodes with a single input and no control dependencies.
+//
+// 2. Try to rewrite aggregations of N >= 2 identical terms (possibly due to
+//    deduping or other rewrites) so we can get rid of the sum entirely.
+//
+//    The expression (using AddN as an example of an aggregate op):
+//      AddN(x, x, x, ... ,x)
+//           <-- N terms -->
+//    can be rewritten to:
+//      Mul(Const(N), x))
+//
+class SimplifyAggregation : public ArithmeticOptimizerStage {
+ public:
+  explicit SimplifyAggregation(const GraphOptimizerContext& ctx,
+                               const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("SimplifyAggregation", ctx, ctx_ext) {}
+  ~SimplifyAggregation() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAggregate(*node) && NumNonControlInputs(*node) > 0;
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    // 1. Discard aggregate nodes with a single input and no control deps.
+    if (node->input_size() == 1) {
+      *simplified_node_name = node->input(0);
+      return Status::OK();
+    }
+
+    // 2. Rewrite aggregations of N >= 2 identical terms.
+
+    // All non-control inputs must be identical.
+    bool all_equal = true;
+    int num_inputs = 1;
+    for (int i = 1; i < node->input_size(); ++i) {
+      if (IsControlInput(node->input(i))) break;
+      ++num_inputs;
+      if (node->input(i) != node->input(0)) {
+        all_equal = false;
+        break;
+      }
+    }
+    if (!all_equal) return Status::OK();
+
+    // And node should not be optimized earlier.
+    const NodeScopeAndName node_scope_and_name =
+        ParseNodeScopeAndName(node->name());
+    const string optimized_const_name =
+        OptimizedNodeName(node_scope_and_name, "Const");
+    const string optimized_mul_name =
+        OptimizedNodeName(node_scope_and_name, "Mul");
+
+    bool is_already_optimized =
+        ctx().node_map->NodeExists(optimized_const_name) ||
+        ctx().node_map->NodeExists(optimized_mul_name);
+
+    if (is_already_optimized) return Status::OK();
+
+    // At this point all preconditions are met, and we safely do the rewrite.
+    VLOG(3) << "Simplify aggregation with identical inputs: node="
+            << node->name() << " num_inputs=" << num_inputs;
+
+    // 1. Create constant node with value N.
+    const auto type = GetDataTypeFromAttr(*node, "T");
+    Tensor t(type, TensorShape({}));
+    Status status = SetTensorValue(type, num_inputs, &t);
+    if (!status.ok()) {
+      return errors::Internal("Failed to create const node: ",
+                              status.error_message());
+    }
+
+    TensorValue value(&t);
+    NodeDef* new_const_node = AddEmptyNode(optimized_const_name);
+    status = ConstantFolding::CreateNodeDef(new_const_node->name(), value,
+                                            new_const_node);
+    if (!status.ok()) {
+      return errors::Internal("Failed to create const node: ",
+                              status.error_message());
+    }
+    new_const_node->set_device(node->device());
+    MaybeAddControlInput(NodeName(node->input(0)), new_const_node,
+                         ctx().optimized_graph, ctx().node_map);
+    AddToOptimizationQueue(new_const_node);
+
+    // 2. Replace the aggregate node with Mul(Const(N), x).
+    NodeDef* new_mul_node = AddEmptyNode(optimized_mul_name);
+    new_mul_node->set_op("Mul");
+    new_mul_node->set_device(node->device());
+    SetDataTypeToAttr(type, "T", new_mul_node);
+    new_mul_node->add_input(new_const_node->name());
+    ctx().node_map->AddOutput(new_const_node->name(), new_mul_node->name());
+    new_mul_node->add_input(node->input(0));
+    ctx().node_map->AddOutput(node->input(0), new_mul_node->name());
+
+    ForwardControlDependencies(new_mul_node, {node});
+    *simplified_node_name = new_mul_node->name();
+
+    return Status::OK();
+  }
+};
+
 }  // namespace
 
 class UniqueNodes {
@@ -2374,72 +2477,6 @@ void ArithmeticOptimizer::ForwardControlDependencies(
 // ArithmeticOptimizerStage
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify) {
-  if (IsAggregate(*node) && NumNonControlInputs(*node) > 0) {
-    // Discard aggregate nodes with a single input and no control dependencies.
-    if (node->input_size() == 1) {
-      return node->input(0);
-    }
-
-    // Try to rewrite aggregations of N >= 2 identical terms (possibly due
-    // to deduping or other rewrites) so we can get rid of the sum entirely.
-    // The expression (using AddN as an example of an aggregate op):
-    //   AddN(x, x, x, ... ,x)
-    //        <-- N terms -->
-    // can be rewritten to
-    //   Mul(Const(N), x))
-    //
-    bool all_equal = true;
-    int num_inputs = 1;
-    for (int i = 1; i < node->input_size(); ++i) {
-      if (IsControlInput(node->input(i))) {
-        break;
-      }
-      ++num_inputs;
-      if (node->input(i) != node->input(0)) {
-        all_equal = false;
-        break;
-      }
-    }
-    if (all_equal && !OptimizedNodeExists(*node, "const") &&
-        !OptimizedNodeExists(*node, "mul")) {
-      // 1. Create constant node with value N.
-      const auto type = GetDataTypeFromAttr(*node, "T");
-      Tensor t(type, TensorShape({}));
-      Status status = SetTensorValue(type, num_inputs, &t);
-      if (!status.ok()) {
-        LOG(WARNING) << "Failed to create const node: "
-                     << status.error_message();
-        return "";
-      }
-      TensorValue value(&t);
-      NodeDef* new_const_node = AddNode(*node, "const", /*copy_node=*/false);
-      status = ConstantFolding::CreateNodeDef(new_const_node->name(), value,
-                                              new_const_node);
-      if (!status.ok()) {
-        LOG(WARNING) << "Failed to create const node: "
-                     << status.error_message();
-        return "";
-      }
-      new_const_node->set_device(node->device());
-      MaybeAddControlInput(NodeName(node->input(0)), new_const_node,
-                           optimized_graph_, node_map_.get());
-      nodes_to_simplify->PushBack(new_const_node);
-
-      // 2. Replace the aggregate node with Mul(Const(N), x).
-      NodeDef* new_mul_node = AddNode(*node, "mul", /*copy_node=*/false);
-      new_mul_node->set_op("Mul");
-      new_mul_node->set_device(node->device());
-      SetDataTypeToAttr(type, "T", new_mul_node);
-      new_mul_node->add_input(new_const_node->name());
-      node_map_->AddOutput(new_const_node->name(), new_mul_node->name());
-      new_mul_node->add_input(node->input(0));
-      node_map_->AddOutput(node->input(0), new_mul_node->name());
-
-      ForwardControlDependencies(new_mul_node, {node});
-      return new_mul_node->name();
-    }
-  }
-
   // Fold Transpose into matrix multiplication.
   if ((node->op() == "MatMul" || node->op() == "SparseMatMul" ||
        node->op() == "BatchMatMul") &&
@@ -2554,6 +2591,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.reorder_cast_and_transpose)
     pipeline.AddStage<ReorderCastAndTranspose>(ctx, ctx_ext);
+  if (options_.simplify_aggregation)
+    pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
     pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)
