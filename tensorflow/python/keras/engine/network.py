@@ -1457,7 +1457,8 @@ class Network(base_layer.Layer):
         ImportError: if yaml module is not found.
     """
     if yaml is None:
-      raise ImportError('Requires yaml module installed.')
+      raise ImportError(
+          'Requires yaml module installed (`pip install pyyaml`).')
     return yaml.dump(self._updated_config(), **kwargs)
 
   def summary(self, line_length=None, positions=None, print_fn=None):
