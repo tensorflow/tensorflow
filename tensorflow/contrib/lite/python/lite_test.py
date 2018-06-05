@@ -131,21 +131,31 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         'Quantization input stats are not available for input tensors '
         '\'inputB\'.', str(error.exception))
 
-  def testBatchSizeInvalid(self):
-    in_tensor = array_ops.placeholder(
-        shape=[None, 16, 16, 3], dtype=dtypes.float32)
+  def testSizeNoneInvalid(self):
+    in_tensor = array_ops.placeholder(dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
     # Test invalid shape. None after 1st dimension.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
+                     str(error.exception))
+
+  def testBatchSizeInvalid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, None, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Test invalid shape. None after 1st dimension.
     converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual(
         'None is only supported in the 1st dimension. Tensor '
-        '\'Placeholder_1:0\' has invalid shape \'[1, None, 16, 3]\'.',
+        '\'Placeholder\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
 
   def testBatchSizeValid(self):

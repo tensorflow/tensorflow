@@ -311,6 +311,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
+        "noguitar",  # TODO(b/109653107): test is flaky.
     ],
 )
 

@@ -57,6 +57,15 @@ class Dataset(object):
   def __init__(self):
     pass
 
+  def _as_serialized_graph(self):
+    """Produces serialized graph representation of the dataset.
+
+    Returns:
+      A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
+      serialized graph.
+    """
+    return gen_dataset_ops.dataset_to_graph(self._as_variant_tensor())
+
   @abc.abstractmethod
   def _as_variant_tensor(self):
     """Creates a scalar `tf.Tensor` of `tf.variant` representing this dataset.

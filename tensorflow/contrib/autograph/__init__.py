@@ -29,12 +29,24 @@ from tensorflow.contrib.autograph.impl.api import do_not_convert
 from tensorflow.contrib.autograph.impl.api import RunMode
 from tensorflow.contrib.autograph.impl.api import to_code
 from tensorflow.contrib.autograph.impl.api import to_graph
+from tensorflow.contrib.autograph.impl.special_functions import stack
 from tensorflow.contrib.autograph.pyct.transformer import AutographParseError
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'utils', 'convert', 'converted_call', 'do_not_convert', 'RunMode',
-    'to_code', 'to_graph', 'AutographParseError'
+    # Main API
+    'RunMode',
+    'convert',
+    'converted_call',
+    'do_not_convert',
+    'to_code',
+    'to_graph',
+    # Special functions
+    'stack',
+    # Exceptions
+    'AutographParseError',
+    # Utilities: to be removed
+    'utils',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)
