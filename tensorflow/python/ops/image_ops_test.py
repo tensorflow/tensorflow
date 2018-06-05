@@ -2461,7 +2461,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
-                                use_tensor_inputs):
+                          use_tensor_inputs):
     if use_tensor_inputs:
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
@@ -2472,7 +2472,7 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
       feed_dict = {}
 
     y = image_ops.resize_image_with_pad(x_tensor, target_height,
-                                                target_width)
+                                        target_width)
     if not use_tensor_inputs:
       self.assertTrue(y.get_shape().is_fully_defined())
 
@@ -2492,7 +2492,7 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
 
     for use_tensor_inputs in use_tensor_inputs_options:
       y_tf = self._ResizeImageWithPad(x, target_height, target_width,
-                                            use_tensor_inputs)
+                                      use_tensor_inputs)
       self.assertAllClose(y, y_tf)
 
   def _assertRaises(self,
@@ -2508,7 +2508,7 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
     for use_tensor_inputs in use_tensor_inputs_options:
       try:
         self._ResizeImageWithPad(x, target_height, target_width,
-                                       use_tensor_inputs)
+                                 use_tensor_inputs)
       except Exception as e:
         if err_msg not in str(e):
           raise
