@@ -115,6 +115,7 @@ from tensorflow.python.eager.execution_callbacks import seterr
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import eager_run as run
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
+from tensorflow.python.framework.test_util import run_all_in_graph_and_eager_modes as run_all_tests_in_graph_and_eager_modes
 from tensorflow.python.ops.custom_gradient import custom_gradient
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.ops.variable_scope import EagerVariableStore

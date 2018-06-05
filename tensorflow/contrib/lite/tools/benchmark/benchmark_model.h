@@ -23,7 +23,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/contrib/lite/tools//command_line_flags.h"
+#include "tensorflow/contrib/lite/tools/benchmark/command_line_flags.h"
 #include "tensorflow/core/util/stats_calculator.h"
 
 namespace tflite {
@@ -158,4 +158,4 @@ class BenchmarkModel {
 }  // namespace benchmark
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_MODEL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_

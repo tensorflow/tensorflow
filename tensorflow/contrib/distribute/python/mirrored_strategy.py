@@ -84,9 +84,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = devices
-    self._canonical_device_set = set(
-        [device_util.canonicalize(d) for d in devices])
+    self._devices = [device_util.resolve(d) for d in devices]
+    self._canonical_device_set = set(self._devices)
     self._device_index = values.PerDevice(
         dict((d, i) for i, d in enumerate(devices)))
     self._cross_tower_ops = cross_tower_ops
@@ -400,7 +399,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return list(colocate_with._index.keys())
     elif isinstance(colocate_with, six.string_types):
-      return [colocate_with]
+      return [device_util.resolve(colocate_with)]
+    elif isinstance(colocate_with, list):
+      return [device_util.resolve(d) for d in colocate_with]
     else:
       return colocate_with
 

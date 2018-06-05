@@ -513,8 +513,8 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
   CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();
   rma->buf_rendezvous()->ConsumeBuf(
       request->buf_rendezvous_key(),
-      [this, opts, request, response, done](const Status& status,
-                                            BufRendezvous::Hook* hook) {
+      [this, request, response, done](const Status& status,
+                                      BufRendezvous::Hook* hook) {
         Status s = status;
         if (s.ok()) {
           if (!DMAHelper::CanUseDMA(hook->prod_value)) {
