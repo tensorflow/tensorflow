@@ -21,9 +21,6 @@ set -e
 easy_install -U pip==9.0.3
 easy_install3 -U pip==9.0.3
 
-pip2 install --upgrade setuptools==39.1.0
-pip3 install --upgrade setuptools==39.1.0
-
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
@@ -56,6 +53,10 @@ pip3 install --upgrade markdown==2.6.8
 # Install protobuf.
 pip2 install --upgrade protobuf==3.3.0
 pip3 install --upgrade protobuf==3.3.0
+
+# Install last working version of setuptools.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
