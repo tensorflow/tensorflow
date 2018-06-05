@@ -88,6 +88,13 @@ class AssertEqualTest(test.TestCase):
       out = array_ops.identity(small)
     self.evaluate(out)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_scalar_comparison(self):
+    const_true = constant_op.constant(True, name="true")
+    const_false = constant_op.constant(False, name="false")
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+      check_ops.assert_equal(const_true, const_false, message="fail")
+
   def test_returns_none_with_eager(self):
     with context.eager_mode():
       small = constant_op.constant([1, 2], name="small")
