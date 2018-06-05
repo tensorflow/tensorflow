@@ -1391,8 +1391,8 @@ bool HloParser::SetValueInLiteral(tensorflow::int64 value,
       return SetValueInLiteralHelper<tensorflow::uint8>(value, linear_index,
                                                         literal);
     case U16:
-      return SetValueInLiteralHelper<tensorflow::uint8>(value, linear_index,
-                                                        literal);
+      return SetValueInLiteralHelper<tensorflow::uint16>(value, linear_index,
+                                                         literal);
     case U32:
       return SetValueInLiteralHelper<tensorflow::uint32>(value, linear_index,
                                                          literal);
