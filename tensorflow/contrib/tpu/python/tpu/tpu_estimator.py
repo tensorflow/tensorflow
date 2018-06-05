@@ -2641,7 +2641,7 @@ class _CapturedObject(object):
   def capture(self, o):
     if self._captured:
       raise RuntimeError(
-          'InternalError: Object can be captured only. Please file bug .')
+          'InternalError: Object can capture only once. Please file bug.')
 
     self._captured = True
     self._object = o
@@ -2650,7 +2650,7 @@ class _CapturedObject(object):
     if not self._captured:
       raise RuntimeError(
           'InternalError: Object is not captured properly before `get`. '
-          'Please file bug .')
+          'Please file bug.')
     return self._object
 
 

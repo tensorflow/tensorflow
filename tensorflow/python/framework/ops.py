@@ -3883,7 +3883,6 @@ class Graph(object):
         contains many standard names for collections.
       value: The value to add to the collection.
     """  # pylint: disable=g-doc-exception
-    _assert_collection_is_ok(name)
     self._check_not_finalized()
     with self._lock:
       if name not in self._collections:
@@ -3930,7 +3929,6 @@ class Graph(object):
       The list of values in the collection with the given `name`, or an empty
       list if no value has been added to that collection.
     """  # pylint: disable=g-doc-exception
-    _assert_collection_is_ok(name)
     with self._lock:
       coll_list = self._collections.get(name, None)
       if coll_list is None:
@@ -3960,7 +3958,6 @@ class Graph(object):
       list contains the values in the order under which they were
       collected.
     """  # pylint: disable=g-doc-exception
-    _assert_collection_is_ok(name)
     with self._lock:
       collection = self._collections.get(name, None)
       if collection is None:
@@ -5830,7 +5827,8 @@ def add_to_collection(name, value):
     value: The value to add to the collection.
 
   @compatibility(eager)
-  Collections are not supported when eager execution is enabled.
+  Collections are only supported in eager when variables are created inside an
+  EagerVariableStore (e.g. as part of a layer or template).
   @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
@@ -5848,7 +5846,8 @@ def add_to_collections(names, value):
     value: The value to add to the collections.
 
   @compatibility(eager)
-  Collections are not supported when eager execution is enabled.
+  Collections are only supported in eager when variables are created inside an
+  EagerVariableStore (e.g. as part of a layer or template).
   @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
@@ -6139,14 +6138,6 @@ def get_from_proto_function(collection_name):
     return _proto_function_registry.lookup(collection_name)[2]
   except LookupError:
     return None
-
-
-def _assert_collection_is_ok(collection_name):
-  if context.executing_eagerly():
-    if collection_name in GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
-      raise ValueError(
-          "variable collections are not supported when eager execution is enabled."
-      )
 
 
 def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):

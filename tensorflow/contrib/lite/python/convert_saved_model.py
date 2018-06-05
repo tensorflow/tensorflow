@@ -216,9 +216,9 @@ def set_tensor_shapes(tensors, shapes):
   """
   if shapes:
     for tensor in tensors:
-      shape = shapes.get(tensor.name)
+      shape = shapes.get(tensor_name(tensor))
       if shape is not None:
-        tensor.set_shape(shapes[tensor.name])
+        tensor.set_shape(shape)
 
 
 def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
