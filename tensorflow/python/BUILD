@@ -1050,7 +1050,10 @@ py_test(
 
 tf_gen_op_wrapper_private_py(
     name = "functional_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/contrib/control_flow:__pkg__",
+    ],
 )
 
 py_library(
