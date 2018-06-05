@@ -39,7 +39,6 @@ if [[ -z $pip35_version ]]; then
 fi
 
 set -e
-pip3.5 install --upgrade setuptools==39.1.0
 pip3.5 install --upgrade pip
 
 pip3.5 install --upgrade virtualenv
@@ -50,6 +49,9 @@ pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
 pip3.5 install --upgrade protobuf==3.3.0
+
+# Install last working version of setuptools.
+pip3.5 install --upgrade setuptools==39.1.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
