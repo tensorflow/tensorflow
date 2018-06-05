@@ -118,8 +118,6 @@ SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-'${WHEEL_ARCH}'.whl/;
 NEW_FN=$(echo "${OLD_FN}" | perl -ne "${SUB}")
 mv "${OUTDIR}/${OLD_FN}" "${OUTDIR}/${NEW_FN}"
 cp bazel-bin/tensorflow/tools/benchmark/benchmark_model "${OUTDIR}"
-cp bazel-bin/tensorflow/libtensorflow.so "${OUTDIR}"
-cp bazel-bin/tensorflow/libtensorflow_framework.so "${OUTDIR}"
 
 echo "Output can be found here:"
 find "${OUTDIR}"
