@@ -357,9 +357,9 @@ XLA_TEST_F(MultiOutputFusionTest,
       c0 = f32[] constant(0)
       r1 = f32[2]{0} reduce(p0, c0), dimensions={0,2}, to_apply=Add
       mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
-      c1 = f32[] constant(5)
+      c1 = f32[] constant(1.17549e-38)
       r2 = f32[2]{0} reduce(mul, c1), dimensions={0,2}, to_apply=Max
-      r3 = f32[2]{0} reduce(mul, c1), dimensions={0,2}, to_apply=Add
+      r3 = f32[2]{0} reduce(mul, c0), dimensions={0,2}, to_apply=Add
       ROOT tuple = (f32[2]{0}, f32[2]{0}, f32[2]{0}) tuple(r1, r2, r3)
     }
 
@@ -377,7 +377,7 @@ XLA_TEST_F(MultiOutputFusionTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *result, *Literal::MakeTupleOwned(Literal::CreateR1<float>({14, 22}),
                                         Literal::CreateR1<float>({36, 64}),
-                                        Literal::CreateR1<float>({391, 463}))));
+                                        Literal::CreateR1<float>({66, 138}))));
 }
 
 }  // namespace
