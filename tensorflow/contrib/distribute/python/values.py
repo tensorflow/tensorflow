@@ -65,9 +65,10 @@ class DistributedValues(object):
     device = device_util.canonicalize(device)
     try:
       return self._index[device]
-    except KeyError:
-      raise ValueError("Device %s not found in %s (current device %s)" %
-                       (device, self._index.keys(), device_util.current()))
+    except KeyError as e:
+      six.raise_from(
+          ValueError("Device %s not found in %s (current device %s)" %
+                     (device, self._index.keys(), device_util.current())), e)
 
   def on_device(self, device):
     device = device_util.canonicalize(device)
