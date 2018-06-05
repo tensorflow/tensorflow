@@ -404,8 +404,6 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
   Users should not instantiate or subclass this class. Instead, use an
   `Estimator`.
   """
-  __metaclass__ = abc.ABCMeta
-
   # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
   # TODO(wicke): Remove this once launcher takes over config functionality
@@ -1495,7 +1493,7 @@ class Estimator(BaseEstimator):
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
   """Scikit learn wrapper for TensorFlow Learn Estimator.
-  
+
   THIS CLASS IS DEPRECATED. See
   [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
   for general migration instructions.

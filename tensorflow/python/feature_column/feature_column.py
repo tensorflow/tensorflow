@@ -1904,6 +1904,7 @@ class _EmbeddingColumnLayer(base.Layer):
     return self._embedding_weight_var
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -1919,8 +1920,6 @@ class _FeatureColumn(object):
 
   This class is an abstract class. User should not create instances of this.
   """
-  __metaclass__ = abc.ABCMeta
-
   @abc.abstractproperty
   def name(self):
     """Returns string. Used for naming and for name_scope."""
@@ -1995,9 +1994,6 @@ class _DenseColumn(_FeatureColumn):
   Some examples of this type are: numeric_column, embedding_column,
   indicator_column.
   """
-
-  __metaclass__ = abc.ABCMeta
-
   @abc.abstractproperty
   def _variable_shape(self):
     """`TensorShape` of `_get_dense_tensor`, without batch dimension."""
@@ -2090,8 +2086,6 @@ class _CategoricalColumn(_FeatureColumn):
 
   A categorical feature typically handled with a `tf.SparseTensor` of IDs.
   """
-  __metaclass__ = abc.ABCMeta
-
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name
       'IdWeightPair', ['id_tensor', 'weight_tensor'])
 
@@ -2194,8 +2188,6 @@ def _create_categorical_column_weighted_sum(column,
 
 class _SequenceDenseColumn(_FeatureColumn):
   """Represents dense sequence data."""
-
-  __metaclass__ = abc.ABCMeta
 
   TensorSequenceLengthPair = collections.namedtuple(  # pylint: disable=invalid-name
       'TensorSequenceLengthPair', ['dense_tensor', 'sequence_length'])

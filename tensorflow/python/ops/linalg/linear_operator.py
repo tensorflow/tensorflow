@@ -22,6 +22,7 @@ import abc
 import contextlib
 
 import numpy as np
+import six
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -39,6 +40,7 @@ __all__ = ["LinearOperator"]
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
+@six.add_metaclass(abc.ABCMeta)
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
@@ -139,8 +141,6 @@ class LinearOperator(object):
   * If `is_X == None` (the default), callers should have no expectation either
     way.
   """
-  __metaclass__ = abc.ABCMeta
-
   def __init__(self,
                dtype,
                graph_parents=None,

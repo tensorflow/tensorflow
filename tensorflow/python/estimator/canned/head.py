@@ -99,6 +99,7 @@ def _create_eval_metrics_tuple(fn, kwargs):
   return (_fn, tensor_kwargs)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _Head(object):
   """Interface for the head/top of a model.
 
@@ -153,8 +154,6 @@ class _Head(object):
       ... update train_op and hooks in EstimatorSpec and return
     ```
   """
-  __metaclass__ = abc.ABCMeta
-
   @abc.abstractproperty
   def name(self):
     """The name of this head.

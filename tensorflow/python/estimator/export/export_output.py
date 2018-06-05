@@ -32,13 +32,12 @@ from tensorflow.python.util.tf_export import estimator_export
 
 
 @estimator_export('estimator.export.ExportOutput')
+@six.add_metaclass(abc.ABCMeta)
 class ExportOutput(object):
   """Represents an output of a model that can be served.
 
   These typically correspond to model heads.
   """
-
-  __metaclass__ = abc.ABCMeta
 
   _SEPARATOR_CHAR = '/'
 
@@ -240,8 +239,6 @@ class PredictOutput(ExportOutput):
 
 class _SupervisedOutput(ExportOutput):
   """Represents the output of a supervised training or eval process."""
-  __metaclass__ = abc.ABCMeta
-
   LOSS_NAME = 'loss'
   PREDICTIONS_NAME = 'predictions'
   METRICS_NAME = 'metrics'
