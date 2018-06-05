@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/benchmark_tflite_model.h"
+#include "tensorflow/contrib/lite/tools/benchmark/benchmark_tflite_model.h"
 
 #include <cstdarg>
 #include <cstdlib>
@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/string_util.h"
-#include "tensorflow/contrib/lite/tools/logging.h"
+#include "tensorflow/contrib/lite/tools/benchmark/logging.h"
 
 #ifdef TFLITE_CUSTOM_OPS_HEADER
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);

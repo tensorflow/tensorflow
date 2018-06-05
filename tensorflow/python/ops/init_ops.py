@@ -86,7 +86,7 @@ class Initializer(object):
 
 
 @tf_export("keras.initializers.Zeros", "initializers.zeros",
-           "zeros_initializer")
+           "zeros_initializer", "keras.initializers.zeros")
 class Zeros(Initializer):
   """Initializer that generates tensors initialized to 0."""
 
@@ -102,7 +102,8 @@ class Zeros(Initializer):
     return {"dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.Ones", "initializers.ones", "ones_initializer")
+@tf_export("keras.initializers.Ones", "initializers.ones", "ones_initializer",
+           "keras.initializers.ones")
 class Ones(Initializer):
   """Initializer that generates tensors initialized to 1."""
 
@@ -119,7 +120,7 @@ class Ones(Initializer):
 
 
 @tf_export("keras.initializers.Constant", "initializers.constant",
-           "constant_initializer")
+           "constant_initializer", "keras.initializers.constant")
 class Constant(Initializer):
   """Initializer that generates tensors with constant values.
 
@@ -225,7 +226,8 @@ class Constant(Initializer):
 
 
 @tf_export("keras.initializers.RandomUniform", "initializers.random_uniform",
-           "random_uniform_initializer")
+           "random_uniform_initializer", "keras.initializers.uniform",
+           "keras.initializers.random_uniform")
 class RandomUniform(Initializer):
   """Initializer that generates tensors with a uniform distribution.
 
@@ -262,7 +264,8 @@ class RandomUniform(Initializer):
 
 
 @tf_export("keras.initializers.RandomNormal", "initializers.random_normal",
-           "random_normal_initializer")
+           "random_normal_initializer", "keras.initializers.normal",
+           "keras.initializers.random_normal")
 class RandomNormal(Initializer):
   """Initializer that generates tensors with a normal distribution.
 
@@ -299,7 +302,8 @@ class RandomNormal(Initializer):
 
 
 @tf_export("keras.initializers.TruncatedNormal",
-           "initializers.truncated_normal", "truncated_normal_initializer")
+           "initializers.truncated_normal", "truncated_normal_initializer",
+           "keras.initializers.truncated_normal")
 class TruncatedNormal(Initializer):
   """Initializer that generates a truncated normal distribution.
 
@@ -483,7 +487,7 @@ class VarianceScaling(Initializer):
 
 
 @tf_export("keras.initializers.Orthogonal", "initializers.orthogonal",
-           "orthogonal_initializer")
+           "orthogonal_initializer", "keras.initializers.orthogonal")
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
@@ -1063,7 +1067,8 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     return self._dict_to_tensor(p, ksize, ksize, ksize)
 
 
-@tf_export("keras.initializers.Identity", "initializers.identity")
+@tf_export("keras.initializers.Identity", "initializers.identity",
+           "keras.initializers.identity")
 class Identity(Initializer):
   """Initializer that generates the identity matrix.
 

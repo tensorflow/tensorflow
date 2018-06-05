@@ -2441,12 +2441,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("exponent_bits=", exponent_bits_));
     extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
   }
-  if (operand_side_metadata_ != nullptr) {
-    extra.push_back(
-        StrCat("operand_side=", operand_side_metadata_->ToString()));
-  }
-  if (user_side_metadata_ != nullptr) {
-    extra.push_back(StrCat("user_side=", user_side_metadata_->ToString()));
+  if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
+    extra.push_back(StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
+                           "\", entry=", operand_side_metadata_->ToString(),
+                           ", exit=", user_side_metadata_->ToString(), "}"));
   }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not

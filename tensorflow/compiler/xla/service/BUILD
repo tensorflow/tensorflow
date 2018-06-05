@@ -2980,6 +2980,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_lexer",
+        ":hlo_sharding_metadata",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -3018,5 +3019,21 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
+    ],
+)
+
+cc_library(
+    name = "hlo_casting_utils",
+    hdrs = ["hlo_casting_utils.h"],
+    deps = [":hlo"],
+)
+
+tf_cc_test(
+    name = "hlo_casting_utils_test",
+    srcs = ["hlo_casting_utils_test.cc"],
+    deps = [
+        ":hlo_casting_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
     ],
 )

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/command_line_flags.h"
+#include "tensorflow/contrib/lite/tools/benchmark/command_line_flags.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/testing/util.h"
