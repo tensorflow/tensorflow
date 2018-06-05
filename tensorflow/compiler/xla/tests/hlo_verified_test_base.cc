@@ -41,17 +41,14 @@ void HloVerifiedTestBase::TearDown() {
       << "TearDown called more than once; it should be called exactly once.";
   tear_down_called_ = true;
   if (module_) {
-    VerifyModule(module_.get());
-  }
-  for (int i = 0; i < modules_.size(); ++i) {
-    VerifyModule(modules_.at(i).get());
+    VerifyModule();
   }
   HloTestBase::TearDown();
 }
 
-void HloVerifiedTestBase::VerifyModule(HloModule* module) {
-  HloVerifier verifier(/*allow_mixed_precision=*/true);
-  xla::StatusOr<bool> mutated = verifier.Run(module);
+void HloVerifiedTestBase::VerifyModule() {
+  HloVerifier verifier;
+  xla::StatusOr<bool> mutated = verifier.Run(module_.get());
   if (!mutated.ok()) {
     ADD_FAILURE() << "HloVerifier failed: " << mutated.status();
   } else {
@@ -62,20 +59,15 @@ void HloVerifiedTestBase::VerifyModule(HloModule* module) {
 
 HloModule& HloVerifiedTestBase::module() {
   if (!module_) {
-    module_ = HloTestBase::CreateNewModule();
+    module_ = CreateNewModule();
   }
   return *module_;
-}
-
-HloModule* HloVerifiedTestBase::CreateNewModule(const string& name) {
-  modules_.emplace_back(HloTestBase::CreateNewModule());
-  return modules_.back().get();
 }
 
 void HloVerifiedTestBase::ParseAndVerifyModule(
     tensorflow::StringPiece hlo_text) {
   CHECK(!module_) << "Called ParseModule when test already has a module.";
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
-  VerifyModule(module_.get());
+  VerifyModule();
 }
 }  // namespace xla
