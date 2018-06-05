@@ -3524,6 +3524,7 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
         "util/util.i",
     ],
+    # add win_def_file
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
         "//conditions:default": None,
