@@ -1,24 +1,24 @@
-FROM nvidia/cuda:9.0-base-ubuntu16.04
+FROM nvidia/cuda:9.2-base-ubuntu18.04
 
 LABEL maintainer="Craig Citro <craigcitro@google.com>"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-command-line-tools-9-0 \
-        cuda-cublas-dev-9-0 \
-        cuda-cudart-dev-9-0 \
-        cuda-cufft-dev-9-0 \
-        cuda-curand-dev-9-0 \
-        cuda-cusolver-dev-9-0 \
-        cuda-cusparse-dev-9-0 \
+        cuda-command-line-tools-9-2 \
+        cuda-cublas-dev-9-2 \
+        cuda-cudart-dev-9-2 \
+        cuda-cufft-dev-9-2 \
+        cuda-curand-dev-9-2 \
+        cuda-cusolver-dev-9-2 \
+        cuda-cusparse-dev-9-2 \
         curl \
         git \
-        libcudnn7=7.1.4.18-1+cuda9.0 \
-        libcudnn7-dev=7.1.4.18-1+cuda9.0 \
+        libcudnn7=7.1.4.18-1+cuda9.2 \
+        libcudnn7-dev=7.1.4.18-1+cuda9.2 \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
-        libpng12-dev \
+        libpng-dev \
         libzmq3-dev \
         pkg-config \
         python-dev \
@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         && \
     rm -rf /var/lib/apt/lists/* && \
-    find /usr/local/cuda-9.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
+    find /usr/local/cuda-9.2/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
 
 RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
@@ -92,7 +92,7 @@ ENV CI_BUILD_PYTHON python
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 ENV TF_NEED_CUDA 1
 ENV TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2,6.0,6.1
-ENV TF_CUDA_VERSION=9.0
+ENV TF_CUDA_VERSION=9.2
 ENV TF_CUDNN_VERSION=7
 
 RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
