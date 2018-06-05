@@ -49,7 +49,6 @@ cd Python-3.6.1
 make altinstall
 ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
-pip3 install --upgrade setuptools==39.1.0
 pip3 install --upgrade pip
 
 pip3 install --upgrade virtualenv
@@ -62,6 +61,9 @@ pip3 install --upgrade six==1.10.0
 
 # Install protobuf.
 pip3 install --upgrade protobuf==3.3.0
+
+# Install last working version of setuptools.
+pip3 install --upgrade setuptools==39.1.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
