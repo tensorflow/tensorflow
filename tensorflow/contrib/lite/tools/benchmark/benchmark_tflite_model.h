@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/profiling/profile_summarizer.h"
-#include "tensorflow/contrib/lite/tools/benchmark_model.h"
+#include "tensorflow/contrib/lite/tools/benchmark/benchmark_model.h"
 
 namespace tflite {
 namespace benchmark {
@@ -87,4 +87,4 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 }  // namespace benchmark
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_TFLITE_MODEL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_

@@ -322,7 +322,7 @@ class HloInstruction {
     kCustom,
   };
 
-  ~HloInstruction();
+  virtual ~HloInstruction();
 
   // Creates an instruction from the given proto. Arguments:
   //
@@ -1515,6 +1515,11 @@ class HloInstruction {
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
 
+ protected:
+  // Internal constructor for a given opcode/shape, other fields must be filled
+  // by factory methods.
+  HloInstruction(HloOpcode opcode, const Shape& shape);
+
  private:
   // Prints an instruction to a string.
   //
@@ -1559,10 +1564,6 @@ class HloInstruction {
 
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user);
-
-  // Internal constructor for a given opcode/shape, other fields must be filled
-  // by factory methods.
-  HloInstruction(HloOpcode opcode, const Shape& shape);
 
   // Fuses the given instruction into this fusion instruction. When add_output
   // is false (which is the default), instruction_to_fuse is cloned and the

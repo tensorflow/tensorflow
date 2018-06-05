@@ -10,14 +10,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/command_line_flags.h"
+#include "tensorflow/contrib/lite/tools/benchmark/command_line_flags.h"
 
+#include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>
 
 namespace tflite {
 namespace {
+
+template <typename T>
+std::string ToString(T val) {
+  std::ostringstream stream;
+  stream << val;
+  return stream.str();
+}
 
 bool ParseFlag(const std::string& arg, const std::string& flag,
                const std::function<bool(const std::string&)>& parse_func,
@@ -35,14 +43,16 @@ bool ParseFlag(const std::string& arg, const std::string& flag,
   return true;
 }
 
-bool ParseInt32Flag(const std::string& flag_value, int32_t* value) {
-  char extra;
-  return sscanf(flag_value.data(), "%d%c", value, &extra) == 1;
-}
-
-bool ParseInt64Flag(const std::string& flag_value, int64_t* value) {
-  char extra;
-  return sscanf(flag_value.data(), "%ld%c", value, &extra) == 1;
+template <typename T>
+bool ParseFlag(const std::string& flag_value, T* value) {
+  std::istringstream stream(flag_value);
+  T read_value;
+  stream >> read_value;
+  if (!stream.eof() && !stream.good()) {
+    return false;
+  }
+  *value = read_value;
+  return true;
 }
 
 bool ParseBoolFlag(const std::string& flag_value, bool* value) {
@@ -52,11 +62,6 @@ bool ParseBoolFlag(const std::string& flag_value, bool* value) {
 
   *value = (flag_value == "true");
   return true;
-}
-
-bool ParseFloatFlag(const std::string& flag_value, float* value) {
-  char extra;
-  return sscanf(flag_value.data(), "%f%c", value, &extra) == 1;
 }
 
 bool ParseStringFlag(const std::string& flag_value, std::string* value) {
@@ -70,27 +75,27 @@ Flag::Flag(const char* name, int32_t* dst, const std::string& usage_text)
     : name_(name),
       type_(TYPE_INT32),
       value_hook_([dst](const std::string& flag_value) {
-        return ParseInt32Flag(flag_value, dst);
+        return ParseFlag<int32_t>(flag_value, dst);
       }),
-      default_for_display_(std::to_string(*dst)),
+      default_for_display_(ToString(*dst)),
       usage_text_(usage_text) {}
 
 Flag::Flag(const char* name, int64_t* dst, const std::string& usage_text)
     : name_(name),
       type_(TYPE_INT64),
       value_hook_([dst](const std::string& flag_value) {
-        return ParseInt64Flag(flag_value, dst);
+        return ParseFlag<int64_t>(flag_value, dst);
       }),
-      default_for_display_(std::to_string(*dst)),
+      default_for_display_(ToString(*dst)),
       usage_text_(usage_text) {}
 
 Flag::Flag(const char* name, float* dst, const std::string& usage_text)
     : name_(name),
       type_(TYPE_FLOAT),
       value_hook_([dst](const std::string& flag_value) {
-        return ParseFloatFlag(flag_value, dst);
+        return ParseFlag<float>(flag_value, dst);
       }),
-      default_for_display_(std::to_string(*dst)),
+      default_for_display_(ToString(*dst)),
       usage_text_(usage_text) {}
 
 Flag::Flag(const char* name, bool* dst, const std::string& usage_text)
@@ -166,7 +171,7 @@ std::string Flag::GetTypeName() const {
   }
   argv[dst++] = nullptr;
   *argc = unknown_flags.size() + 1;
-  return result && (*argc < 2 || strcmp(argv[1], "--help") != 0);
+  return result && (*argc < 2 || std::strcmp(argv[1], "--help") != 0);
 }
 
 /*static*/ std::string Flags::Usage(const std::string& cmdline,

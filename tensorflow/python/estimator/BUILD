@@ -709,6 +709,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",

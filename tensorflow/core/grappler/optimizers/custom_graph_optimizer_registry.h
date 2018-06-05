@@ -50,7 +50,7 @@ class CustomGraphOptimizerRegistrar {
 
 #define REGISTER_GRAPH_OPTIMIZER_AS(MyCustomGraphOptimizerClass, name) \
   namespace {                                                          \
-  static CustomGraphOptimizerRegistrar                                 \
+  static ::tensorflow::grappler::CustomGraphOptimizerRegistrar         \
       MyCustomGraphOptimizerClass##_registrar(                         \
           []() { return new MyCustomGraphOptimizerClass; }, (name));   \
   }  // namespace
