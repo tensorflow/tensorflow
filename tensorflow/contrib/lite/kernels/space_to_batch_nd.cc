@@ -40,9 +40,9 @@ struct SpaceToBatchNDContext {
     paddings = GetInput(context, node, 2);
     output = GetOutput(context, node, 0);
   }
-  TfLiteTensor* input;
-  TfLiteTensor* block_shape;
-  TfLiteTensor* paddings;
+  const TfLiteTensor* input;
+  const TfLiteTensor* block_shape;
+  const TfLiteTensor* paddings;
   TfLiteTensor* output;
 };
 
@@ -152,8 +152,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type is currently not supported by SpaceToBatch.");
+      context->ReportError(
+          context, "Type %d is currently not supported by SpaceToBatch.",
+          op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_SPACE_TO_BATCH_ND

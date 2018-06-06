@@ -93,6 +93,13 @@ class HloTestBase : public ::testing::Test {
   // DebugOptions, e.g. when creating a module from a string or a file.
   static DebugOptions GetDebugOptionsForTest();
 
+  // Gets an HloModuleConfig with options appropriate for tests.
+  static HloModuleConfig GetModuleConfigForTest() {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    return config;
+  }
+
   // Executes the given module and return the result as a Literal.
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,

@@ -76,7 +76,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                 instruction_to_profile_idx,
             std::unordered_map<const HloComputation*, int64>
                 computation_to_profile_idx,
-            llvm::TargetMachine* target_machine,
+            const TargetMachineFeatures* target_machine,
             ExternalConstantPool* external_constant_pool);
   ~IrEmitter() override;
 
@@ -514,9 +514,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Calculate the alignment of a buffer allocated for a given primitive type.
   int MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type);
 
-  // Calculate the alignment of a buffer with a particular size.
-  int MinimumAlignmentForBufferSize(int64 buffer_size);
-
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
 
@@ -530,13 +527,14 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
 
-  llvm::GlobalVariable* EmitGlobalForLiteral(const Literal& literal);
+  // Returns a ConstExpr bitcast.
+  llvm::Constant* EmitGlobalForLiteral(const Literal& literal);
 
   const HloModuleConfig& hlo_module_config_;
 
   bool is_top_level_computation_;
 
-  TargetMachineFeatures target_machine_features_;
+  const TargetMachineFeatures& target_machine_features_;
 
   int64 external_global_constant_counter_ = 0;
   ExternalConstantPool* external_constant_pool_;
@@ -551,7 +549,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
     }
   };
 
-  tensorflow::gtl::FlatMap<const Literal*, llvm::GlobalVariable*,
+  tensorflow::gtl::FlatMap<const Literal*, llvm::Constant*,
                            LiteralPtrHashFunctor, LiteralPtrEqualityFunctor>
       emitted_literals_;
 

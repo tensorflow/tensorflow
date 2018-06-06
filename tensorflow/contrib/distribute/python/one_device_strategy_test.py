@@ -24,7 +24,6 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 
 
-@test_util.with_c_api
 class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
 
   def _get_distribution_strategy(self):

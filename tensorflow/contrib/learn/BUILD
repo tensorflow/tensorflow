@@ -284,6 +284,7 @@ py_test(
     tags = [
         "manual",
         "noasan",  # times out
+        "optonly",  # test is flaky without optimization.
     ],
     deps = [
         ":learn",
@@ -434,6 +435,7 @@ py_test(
     name = "kmeans_test",
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",  # b/73741358
@@ -745,7 +747,7 @@ py_test(
 
 tf_py_test(
     name = "graph_io_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
     additional_deps = [
         ":learn",

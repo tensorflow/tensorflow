@@ -125,6 +125,12 @@ Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   return Status::OK();
 }
 
+Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
+  // A kDomain instruction aliases its operand. That is, the buffer of its
+  // result *is* the buffer of its operand.
+  return Status::OK();
+}
+
 Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction*) {
   // RecvDone doesn't create a new buffer but rather aliases its input (Recv)
   // tuple element at {0} to its output.

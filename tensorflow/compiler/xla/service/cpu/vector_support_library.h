@@ -144,6 +144,12 @@ class VectorSupportLibrary {
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
                                     llvm::Value* offset_elements);
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
+                                    llvm::Value* offset_elements, int64 scale) {
+    return ComputeOffsetPointer(
+        base_pointer,
+        ir_builder_->CreateMul(ir_builder_->getInt64(scale), offset_elements));
+  }
+  llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
                                     int64 offset_elements) {
     return ComputeOffsetPointer(base_pointer,
                                 ir_builder()->getInt64(offset_elements));

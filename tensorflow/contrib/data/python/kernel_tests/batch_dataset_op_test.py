@@ -552,6 +552,44 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
+  def testMapAndBatchParallelGetNext(self):
+    iterator = (dataset_ops.Dataset.range(50000)
+                .apply(batching.map_and_batch(lambda x: x, batch_size=100))
+                .make_one_shot_iterator())
+    elements = []
+    for _ in range(100):
+      elements.append(iterator.get_next())
+    with self.test_session() as sess:
+      for i in range(5):
+        got = sess.run(elements)
+        got.sort(key=lambda x: x[0])
+        expected = []
+        for j in range(100):
+          expected.append(range(i*10000+j*100, i*10000+(j+1)*100))
+        self.assertAllEqual(got, expected)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elements)
+
+  def testMapAndBatchParallelGetNextDropRemainder(self):
+    iterator = (
+        dataset_ops.Dataset.range(49999).apply(
+            batching.map_and_batch(
+                lambda x: x, batch_size=100, drop_remainder=True))
+        .make_one_shot_iterator())
+    elements = []
+    for _ in range(100):
+      elements.append(iterator.get_next())
+    with self.test_session() as sess:
+      for i in range(4):
+        got = sess.run(elements)
+        got.sort(key=lambda x: x[0])
+        expected = []
+        for j in range(100):
+          expected.append(range(i*10000+j*100, i*10000+(j+1)*100))
+        self.assertAllEqual(got, expected)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elements)
+
   def testMapAndBatchSparse(self):
 
     def _sparse(i):

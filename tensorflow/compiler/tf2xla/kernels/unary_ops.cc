@@ -100,8 +100,7 @@ XLAJIT_MAKE_UNARY(Cosh,
 XLAJIT_MAKE_UNARY(Sin, b->Sin(x));
 XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
 
-// TODO(b/34703906): use a more accurate implementation of expm1.
-XLAJIT_MAKE_UNARY(Expm1, b->Sub(b->Exp(x), XlaHelpers::One(b, input_type(0))));
+XLAJIT_MAKE_UNARY(Expm1, b->Expm1(x));
 
 XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
 XLAJIT_MAKE_UNARY(IsFinite, b->IsFinite(x));
@@ -115,8 +114,7 @@ XLAJIT_MAKE_UNARY(Inv, b->Div(XlaHelpers::One(b, input_type(0)), x));
 XLAJIT_MAKE_UNARY(Reciprocal, b->Div(XlaHelpers::One(b, input_type(0)), x));
 XLAJIT_MAKE_UNARY(Log, b->Log(x));
 
-// TODO(b/34703906): use a more accurate implementation of log1p.
-XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
+XLAJIT_MAKE_UNARY(Log1p, b->Log1p(x));
 
 XLAJIT_MAKE_UNARY(Invert, b->Not(x));
 XLAJIT_MAKE_UNARY(LogicalNot, b->Not(x));
@@ -160,24 +158,17 @@ XLAJIT_MAKE_UNARY(Sinh,
                   b->Mul(b->Sub(b->Exp(x), b->Exp(b->Neg(x))),
                          XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 
-static xla::XlaOp Softplus(xla::XlaBuilder* b, DataType dtype,
-                           const xla::XlaOp& features) {
-  xla::XlaOp threshold = b->Add(b->Log(XlaHelpers::Epsilon(b, dtype)),
-                                XlaHelpers::FloatLiteral(b, dtype, 2.0));
-  // Value above which exp(x) may overflow, but softplus(x) == x
-  // is within machine epsilon.
-  xla::XlaOp too_large = b->Gt(features, b->Neg(threshold));
-  // Value below which exp(x) may underflow, but softplus(x) == exp(x)
-  // is within machine epsilon.
-  xla::XlaOp too_small = b->Lt(features, threshold);
-  xla::XlaOp features_exp = b->Exp(features);
-  xla::XlaOp output = b->Select(
-      too_large, features,
-      b->Select(too_small, features_exp,
-                b->Log(b->Add(features_exp, XlaHelpers::One(b, dtype)))));
-  return output;
-}
-XLAJIT_MAKE_UNARY(Softplus, Softplus(b, input_type(0), x));
+// softplus(x) = log(1 + exp(x))
+//
+// This is not numerically stable when x is large, it can easily overflow.
+// However, we can compute it as LogSumExp(x, 0):
+//   max(x, 0) + log(exp(x - max(x, 0)) + exp(0 - max(x, 0)))
+//
+// This is equivalent to:
+//   max(x, 0) + log1p(exp(-abs(x)))
+XLAJIT_MAKE_UNARY(Softplus,
+                  b->Add(b->Max(x, XlaHelpers::Zero(b, input_type(0))),
+                         b->Log1p(b->Exp(b->Neg(b->Abs(x))))));
 
 // softsign(x) = x / (abs(x) + 1)
 XLAJIT_MAKE_UNARY(Softsign,

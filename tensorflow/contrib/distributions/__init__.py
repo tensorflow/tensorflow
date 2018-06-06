@@ -32,6 +32,7 @@ from tensorflow.contrib.distributions.python.ops.conditional_distribution import
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular
+from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular_inverse
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.distribution_util import reduce_weighted_logsumexp
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
@@ -156,6 +157,7 @@ _allowed_symbols = [
     'kl_divergence',
     'RegisterKL',
     'fill_triangular',
+    'fill_triangular_inverse',
     'matrix_diag_transform',
     'reduce_weighted_logsumexp',
     'softplus_inverse',

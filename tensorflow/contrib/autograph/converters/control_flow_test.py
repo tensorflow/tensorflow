@@ -22,6 +22,7 @@ from tensorflow.contrib.autograph.converters import control_flow
 from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 
@@ -41,7 +42,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.while_loop) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual((10, 5, 5),
                          sess.run(result.test_fn(constant_op.constant(5))))
@@ -56,7 +57,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.while_loop) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual(0, sess.run(result.test_fn(constant_op.constant(5))))
 
@@ -74,7 +75,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.cond) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual((-1, 0),
                          sess.run(result.test_fn(constant_op.constant(1))))
@@ -91,9 +92,94 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.cond) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))
+
+  def test_imbalanced_aliasing(self):
+
+    def test_fn(n):
+      if n > 0:
+        n = 3
+      return n
+
+    node = self.parse_and_analyze(test_fn, {})
+    node = control_flow.transform(node, self.ctx)
+
+    with self.compiled(node, control_flow_ops.cond) as result:
+      with self.test_session() as sess:
+        self.assertEqual(3, sess.run(result.test_fn(constant_op.constant(2))))
+        self.assertEqual(-3, sess.run(result.test_fn(constant_op.constant(-3))))
+
+  def test_ignore_unread_variable(self):
+
+    def test_fn(n):
+      b = 3  # pylint: disable=unused-variable
+      if n > 0:
+        b = 4
+      return n
+
+    node = self.parse_and_analyze(test_fn, {})
+    node = control_flow.transform(node, self.ctx)
+
+    with self.compiled(node, control_flow_ops.cond, array_ops.ones) as result:
+      with self.test_session() as sess:
+        self.assertEqual(3, sess.run(result.test_fn(constant_op.constant(3))))
+        self.assertEqual(-3, sess.run(result.test_fn(constant_op.constant(-3))))
+
+  def test_handle_temp_variable(self):
+
+    def test_fn_using_temp(x, y, w):
+      if x < y:
+        z = x + y
+      else:
+        w = 2
+        tmp = w
+        z = x - tmp
+      return z, w
+
+    node = self.parse_and_analyze(test_fn_using_temp, {})
+    node = control_flow.transform(node, self.ctx)
+
+    with self.compiled(node, control_flow_ops.cond, array_ops.ones) as result:
+      with self.test_session() as sess:
+        z, w = sess.run(
+            result.test_fn_using_temp(
+                constant_op.constant(-3), constant_op.constant(3),
+                constant_op.constant(3)))
+        self.assertEqual(0, z)
+        self.assertEqual(3, w)
+        z, w = sess.run(
+            result.test_fn_using_temp(
+                constant_op.constant(3), constant_op.constant(-3),
+                constant_op.constant(3)))
+        self.assertEqual(1, z)
+        self.assertEqual(2, w)
+
+    def test_fn_ignoring_temp(x, y, w):
+      if x < y:
+        z = x + y
+      else:
+        w = 2
+        tmp = w
+        z = x - tmp
+      return z
+
+    node = self.parse_and_analyze(test_fn_ignoring_temp, {})
+    node = control_flow.transform(node, self.ctx)
+
+    with self.compiled(node, control_flow_ops.cond, array_ops.ones) as result:
+      with self.test_session() as sess:
+        z = sess.run(
+            result.test_fn_ignoring_temp(
+                constant_op.constant(-3), constant_op.constant(3),
+                constant_op.constant(3)))
+        self.assertEqual(0, z)
+        z = sess.run(
+            result.test_fn_ignoring_temp(
+                constant_op.constant(3), constant_op.constant(-3),
+                constant_op.constant(3)))
+        self.assertEqual(1, z)
 
   def test_simple_for(self):
 

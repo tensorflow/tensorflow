@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -78,6 +79,29 @@ public final class Interpreter implements AutoCloseable {
       return;
     }
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), numThreads);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file.
+   *
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   */
+  public Interpreter(@NonNull ByteBuffer byteBuffer) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and specifies the
+   * number of threads used for inference.
+   *
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   */
+  public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer, numThreads);
   }
 
   /**
@@ -215,11 +239,11 @@ public final class Interpreter implements AutoCloseable {
     }
   }
 
-  public void setNumThreads(int num_threads) {
+  public void setNumThreads(int numThreads) {
     if (wrapper == null) {
       throw new IllegalStateException("The interpreter has already been closed.");
     }
-    wrapper.setNumThreads(num_threads);
+    wrapper.setNumThreads(numThreads);
   }
 
   /** Release resources associated with the {@code Interpreter}. */
@@ -227,6 +251,15 @@ public final class Interpreter implements AutoCloseable {
   public void close() {
     wrapper.close();
     wrapper = null;
+  }
+
+  @Override
+  protected void finalize() throws Throwable {
+    try {
+      close();
+    } finally {
+      super.finalize();
+    }
   }
 
   NativeInterpreterWrapper wrapper;

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <iostream>
 
+#include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/testing/split.h"
 
 namespace tflite {
@@ -143,6 +144,7 @@ void TfLiteDriver::AllocateTensors() {
       Invalidate("Failed to allocate tensors");
       return;
     }
+    ResetLSTMStateTensors();
     must_allocate_tensors_ = false;
   }
 }
@@ -279,6 +281,37 @@ bool TfLiteDriver::CheckResults() {
   }
   expected_output_.clear();
   return success;
+}
+
+void TfLiteDriver::ResetLSTMStateTensors() {
+  // This is a workaround for initializing state tensors for LSTM.
+  // TODO(ycling): Refactoring and find a better way to initialize state
+  // tensors. Maybe write the reset instructions into the test data.
+  for (auto node_index : interpreter_->execution_plan()) {
+    const auto& node_and_reg = interpreter_->node_and_registration(node_index);
+    const auto& node = node_and_reg->first;
+    const auto& registration = node_and_reg->second;
+
+    if (registration.builtin_code == tflite::BuiltinOperator_LSTM) {
+      const auto* params =
+          reinterpret_cast<const TfLiteLSTMParams*>(node.builtin_data);
+      if (params->kernel_type == kTfLiteLSTMFullKernel &&
+          node.outputs->size >= 2) {
+        // The first 2 outputs of LSTM are state tensors.
+        for (int i = 0; i < 2; ++i) {
+          int node_index = node.outputs->data[i];
+          ResetTensor(node_index);
+        }
+      } else if (params->kernel_type == kTfLiteLSTMBasicKernel &&
+                 node.inputs->size == 5) {
+        // The 2th and 5th inputs are state tensors.
+        for (int i : {1, 4}) {
+          int node_index = node.inputs->data[i];
+          ResetTensor(node_index);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace testing

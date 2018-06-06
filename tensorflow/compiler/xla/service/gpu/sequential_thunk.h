@@ -31,16 +31,17 @@ namespace gpu {
 // require multiple kernel launches or library calls.
 class SequentialThunk : public Thunk {
  public:
-  SequentialThunk(std::vector<std::unique_ptr<Thunk>>&& thunks,
+  SequentialThunk(std::vector<std::unique_ptr<Thunk>> thunks,
                   const HloInstruction* hlo);
   SequentialThunk(const SequentialThunk&) = delete;
   SequentialThunk& operator=(const SequentialThunk&) = delete;
 
   const std::vector<std::unique_ptr<Thunk>>& thunks() const { return thunks_; }
 
-  tensorflow::Status Initialize(const GpuExecutable& executable) override;
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream) override;
 
  private:
   // The list of sub-thunks.

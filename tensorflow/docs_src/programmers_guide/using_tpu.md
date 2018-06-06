@@ -22,8 +22,8 @@ Standard `Estimators` can drive models on CPU and GPUs. You must use
 @{tf.contrib.tpu.TPUEstimator} to drive a model on TPUs.
 
 Refer to TensorFlow's Getting Started section for an introduction to the basics
-of using a @{$get_started/premade_estimators$pre-made `Estimator`}, and
-@{$get_started/custom_estimators$custom `Estimator`s}.
+of using a @{$premade_estimators$pre-made `Estimator`}, and
+@{$custom_estimators$custom `Estimator`s}.
 
 The `TPUEstimator` class differs somewhat from the `Estimator` class.
 
