@@ -279,8 +279,13 @@ void Generator::AppendFieldValueAppend(const FieldDescriptor& field,
       if (omit_default) {
         Print("if (", field_expr, " != 0) {").Nest();
       }
-      Print("o->AppendEnumName(\"", field.name(), "\", ",
-            GetQualifiedEnumNameFn(*field.enum_type()), "(", field_expr, "));");
+      Print("const char* enum_name = ",
+            GetQualifiedEnumNameFn(*field.enum_type()), "(", field_expr, ");");
+      Print("if (enum_name[0]) {").Nest();
+      Print("o->AppendEnumName(\"", field.name(), "\", enum_name);");
+      Unnest().Print("} else {").Nest();
+      Print("o->AppendNumeric(\"", field.name(), "\", ", field_expr, ");");
+      Unnest().Print("}");
       if (omit_default) {
         Unnest().Print("}");
       }
@@ -540,18 +545,24 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
       for (int enum_i = 0; enum_i < enum_d->value_count(); ++enum_i) {
         const auto* value_d = enum_d->value(enum_i);
         const string& value_name = value_d->name();
-        string condition = StrCat("value == \"", value_name,
-                                  "\" || value == \"", value_d->number(), "\"");
-        if (value_d->number() == 0) {
-          StrAppend(&condition, " || value == \"-0\"");
-        }
+        string condition = StrCat("value == \"", value_name, "\"");
 
         Print(enum_i == 0 ? "" : "} else ", "if (", condition, ") {");
         Nest();
         Print(set_value_prefix, "(", value_prefix, value_name, ");");
         Unnest();
       }
+      Print("} else {");
+      Nest();
+      // Proto3 allows all numeric values.
+      Print("int32 int_value;");
+      Print("if (strings::SafeStringToNumeric(value, &int_value)) {");
+      Nest();
+      Print(set_value_prefix, "(static_cast<", GetQualifiedName(*enum_d),
+            ">(int_value));");
+      Unnest();
       Print("} else {").Nest().Print("return false;").Unnest().Print("}");
+      Unnest().Print("}");
     } else {
       Print(field->cpp_type_name(), " value;");
       switch (field->cpp_type()) {
