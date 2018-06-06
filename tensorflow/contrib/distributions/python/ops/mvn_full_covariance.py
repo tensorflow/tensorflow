@@ -155,7 +155,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
     Raises:
       ValueError: if neither `loc` nor `covariance_matrix` are specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
 
     # Convert the covariance_matrix up to a scale_tril and call MVNTriL.
     with ops.name_scope(name) as name:

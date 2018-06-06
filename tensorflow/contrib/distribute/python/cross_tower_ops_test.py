@@ -31,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.training import device_util
 
 
 def _make_per_device(values, devices):
@@ -56,19 +57,46 @@ def _fake_mirrored(value, devices):
       {d: v for d, v in zip(devices, [value] * len(devices))})
 
 
+def _make_indexed_slices(values, indices, dense_shape, device):
+  with ops.device(device):
+    tensor = ops.IndexedSlices(
+        values=constant_op.constant(values),
+        indices=constant_op.constant(indices),
+        dense_shape=constant_op.constant(dense_shape))
+  return tensor
+
+
+def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
+  return value_lib.Mirrored({
+      d: _make_indexed_slices(values, indices, dense_shape, d) for d in devices
+  })
+
+
 _cpu_device = "/device:CPU:0"
 
 
 class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
 
-  def _assert_value_equal(self, left, right):
+  def _assert_indexed_slices_equal(self, left, right):
+    self.assertIsInstance(left, ops.IndexedSlices)
+    self.assertIsInstance(right, ops.IndexedSlices)
+    self.assertEqual(device_util.resolve(left.device),
+                     device_util.resolve(right.device))
+    self.assertAllEqual(
+        self.evaluate(ops.convert_to_tensor(left)),
+        self.evaluate(ops.convert_to_tensor(right)))
+
+  def _assert_values_equal(self, left, right):
     if isinstance(left, list):
       for l, r in zip(left, right):
-        self._assert_value_equal(l, r)
+        self._assert_values_equal(l, r)
     else:
       self.assertEqual(type(left), type(right))
       self.assertEqual(left.devices, right.devices)
-      if context.executing_eagerly():
+      if isinstance(list(left._index.values())[0], ops.IndexedSlices):
+        for (d, v) in left._index.iteritems():
+          self._assert_indexed_slices_equal(v, right._index[d])
+      elif context.executing_eagerly():
         self.assertEqual([v.numpy() for v in left._index.values()],
                          list(right._index.values()))
       else:
@@ -143,29 +171,29 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
 
     # test reduce()
     for destinations in all_destinations:
-      self._assert_value_equal(
+      self._assert_values_equal(
           cross_tower_ops.reduce("mean", per_device, destinations=destinations),
           _fake_mirrored(mean, destinations or per_device))
-      self._assert_value_equal(
+      self._assert_values_equal(
           cross_tower_ops.reduce(
               "mean", per_device_2, destinations=destinations),
           _fake_mirrored(mean_2, destinations or per_device))
-      self._assert_value_equal(
+      self._assert_values_equal(
           cross_tower_ops.reduce("sum", per_device, destinations=destinations),
           _fake_mirrored(mean * len(devices), destinations or per_device))
-      self._assert_value_equal(
+      self._assert_values_equal(
           cross_tower_ops.reduce(
               "sum", per_device_2, destinations=destinations),
           _fake_mirrored(mean_2 * len(devices), destinations or per_device))
 
     # test batch_reduce()
     for d1, d2 in itertools.product(all_destinations, all_destinations):
-      self._assert_value_equal(
+      self._assert_values_equal(
           cross_tower_ops.batch_reduce(
               "mean", [(per_device, d1), (per_device_2, d2)]),
           [_fake_mirrored(mean, d1 or per_device),
            _fake_mirrored(mean_2, d2 or per_device_2)])
-      self._assert_value_equal(
+      self._assert_values_equal(
           cross_tower_ops.batch_reduce(
               "sum", [(per_device, d1), (per_device_2, d2)]),
           [_fake_mirrored(mean * len(devices), d1 or per_device),
@@ -176,7 +204,7 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
       if destinations is None:
         continue
       else:
-        self._assert_value_equal(
+        self._assert_values_equal(
             cross_tower_ops.broadcast(constant_op.constant(1.), destinations),
             _fake_mirrored(1., destinations))
 
@@ -184,16 +212,14 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
     device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7],
                     [0, 5, 6, 7], [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertTrue(
-        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
     self.assertEqual(result.all_reduce_alg, "hierarchical_copy")
     self.assertEqual(result.num_packs, 8)
 
     # if there are only 4 devices
     device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertTrue(
-        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
     self.assertEqual(result.all_reduce_alg, "nccl")
     self.assertEqual(result.num_packs, 1)
 
@@ -202,8 +228,7 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
                     [0, 1, 2, 3, 7], [0, 4, 5, 6, 7], [1, 4, 5, 6, 7],
                     [2, 4, 5, 6, 7], [3, 4, 5, 6, 7]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertTrue(
-        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
     self.assertEqual(result.all_reduce_alg, "hierarchical_copy")
     self.assertEqual(result.num_packs, 8)
 
@@ -211,10 +236,84 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
     device_links = [[0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7], [0, 5, 6, 7],
                     [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6], [1, 2, 3, 4]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertTrue(
-        isinstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps))
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
     self.assertEqual(result.all_reduce_alg, "nccl")
     self.assertEqual(result.num_packs, 1)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      required_gpus=1))
+  def testSimpleReduceWithIndexedSlices(self):
+    devices = ["/cpu:0", "/gpu:0"]
+    t0 = _make_indexed_slices([[1., 2.]], [1], [5, 2], devices[0])
+    t1 = _make_indexed_slices([[3., 4.], [5., 6.]], [1, 3], [5, 2], devices[1])
+    per_device = value_lib.PerDevice({devices[0]: t0, devices[1]: t1})
+    result = cross_tower_ops_lib._simple_reduce(per_device, devices[0],
+                                                math_ops.add_n, "sum")
+
+    # Test that the result is semantically equal to both the concatenated
+    # IndexedSlices with and without duplicate indices.
+    total_with_dups = _make_indexed_slices(
+        [[1., 2.], [3., 4.], [5., 6.]], [1, 1, 3], [5, 2], devices[0])
+    total_without_dups = _make_indexed_slices(
+        [[4., 6.], [5., 6.]], [1, 3], [5, 2], devices[0])
+    self._assert_indexed_slices_equal(total_with_dups, result)
+    self._assert_indexed_slices_equal(total_without_dups, result)
+
+  @combinations.generate(combinations.combine(
+      cross_tower_ops_instance=[
+          combinations.NamedObject(
+              "ReductionToOneDeviceCrossTowerOps",
+              cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps()),
+          combinations.NamedObject(
+              "AllReduceCrossTowerOps",
+              cross_tower_ops_lib.AllReduceCrossTowerOps())
+      ],
+      method_string=["sum", "mean"],
+      batch_reduce=[True, False],
+      mode=["graph", "eager"],
+      required_gpus=1))
+  def testIndexedSlicesAllReduce(self, cross_tower_ops_instance,
+                                 method_string, batch_reduce):
+    devices = ["/cpu:0", "/gpu:0"]
+    dense_shape = [5, 2]
+    t0 = _make_indexed_slices([[1., 2.]], [1], dense_shape, devices[0])
+    t1 = _make_indexed_slices(
+        [[3., 4.], [5., 6.]], [1, 3], dense_shape, devices[1])
+    per_device = value_lib.PerDevice({devices[0]: t0, devices[1]: t1})
+
+    if batch_reduce:
+      result = cross_tower_ops_instance.batch_reduce(method_string,
+                                                     [(per_device, devices)])
+    else:
+      result = cross_tower_ops_instance.reduce(method_string, per_device,
+                                               devices)
+
+    total_indices_with_dups = [1, 1, 3]
+    total_indices_without_dups = [1, 3]
+
+    if method_string == "sum":
+      total_values_with_dups = [[1., 2.], [3., 4.], [5., 6.]]
+      total_values_without_dups = [[4., 6.], [5., 6.]]
+    else:
+      assert method_string == "mean"
+      total_values_with_dups = [[0.5, 1.], [1.5, 2.], [2.5, 3.]]
+      total_values_without_dups = [[2., 3.], [2.5, 3.]]
+
+    total_mirrored_with_dups = _make_mirrored_indexed_slices(
+        devices, total_values_with_dups, total_indices_with_dups, dense_shape)
+    total_mirrored_without_dups = _make_mirrored_indexed_slices(
+        devices, total_values_without_dups, total_indices_without_dups,
+        dense_shape)
+
+    # Test that the result is semantically equal to both the concatenated
+    # IndexedSlices, as well as when the duplicate indices are summed up.
+    if batch_reduce:
+      total_mirrored_with_dups = [total_mirrored_with_dups]
+      total_mirrored_without_dups = [total_mirrored_without_dups]
+
+    self._assert_values_equal(total_mirrored_with_dups, result)
+    self._assert_values_equal(total_mirrored_without_dups, result)
 
 
 if __name__ == "__main__":

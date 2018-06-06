@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import threading
 import six
 
@@ -37,6 +38,16 @@ from tensorflow.python.training import distribute as distribute_lib
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
+
+
+@contextlib.contextmanager
+def _enter_graph(g):
+  if context.executing_eagerly():
+    with g.as_default(), context.eager_mode():
+      yield
+  else:
+    with g.as_default():
+      yield
 
 
 def _cpu_device(device):
@@ -73,13 +84,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = devices
-    self._canonical_device_set = set(
-        [device_util.canonicalize(d) for d in devices])
+    self._devices = [device_util.resolve(d) for d in devices]
+    self._canonical_device_set = set(self._devices)
     self._device_index = values.PerDevice(
         dict((d, i) for i, d in enumerate(devices)))
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
+    # TODO(yuefengz): consider setting the default device.
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -110,10 +121,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
             kwargs["name"] = "%s/replica_%d" % (var0name, i)
             # Initialize replicas with the same value:
             if context.executing_eagerly():
-              initial_value = index[devices[0]].value()
+              kwargs["initial_value"] = array_ops.identity(
+                  index[devices[0]].value())
             else:
-              initial_value = index[devices[0]].initial_value
-            kwargs["initial_value"] = array_ops.identity(initial_value)
+              def initial_value_fn(device=d):
+                with ops.device(device):
+                  return array_ops.identity(index[devices[0]].initial_value)
+              kwargs["initial_value"] = initial_value_fn
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.DistributedVariable)
@@ -321,7 +335,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""
-    assert isinstance(destination, six.string_types)
     if isinstance(val, values.TowerLocalVariable):
       val = self.reduce(val.reduce_method, val, destinations=destination)
       with ops.device(destination):
@@ -386,7 +399,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return list(colocate_with._index.keys())
     elif isinstance(colocate_with, six.string_types):
-      return [colocate_with]
+      return [device_util.resolve(colocate_with)]
+    elif isinstance(colocate_with, list):
+      return [device_util.resolve(d) for d in colocate_with]
     else:
       return colocate_with
 
@@ -455,7 +470,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         with self.coord.stop_on_exception(), \
             context.context()._mode(self.context_mode), \
             context.context().device_policy(self.context_device_policy), \
-            self.graph.as_default(), \
+            _enter_graph(self.graph), \
             MirroredTowerContext(self.distribution, self.tower_id), \
             ops.device(self.device), \
             ops.name_scope(self._captured_name_scope), \

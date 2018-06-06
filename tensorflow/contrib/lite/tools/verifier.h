@@ -26,12 +26,13 @@ namespace tflite {
 class AlwaysTrueResolver : public OpResolver {
  public:
   AlwaysTrueResolver() {}
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override {
     static TfLiteRegistration null_registration = {nullptr, nullptr, nullptr,
                                                    nullptr};
     return &null_registration;
   }
-  TfLiteRegistration* FindOp(const char* op) const override {
+  const TfLiteRegistration* FindOp(const char* op, int version) const override {
     static TfLiteRegistration null_registration = {nullptr, nullptr, nullptr,
                                                    nullptr};
     return &null_registration;

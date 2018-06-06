@@ -89,6 +89,7 @@ class Executor {
     SessionState* session_state = nullptr;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
+    CollectiveExecutor* collective_executor = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;

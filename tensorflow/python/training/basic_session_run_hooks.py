@@ -28,6 +28,7 @@ from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import timeline
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
@@ -203,7 +204,7 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       self._tag_order = tensors
       tensors = {item: item for item in tensors}
     else:
-      self._tag_order = tensors.keys()
+      self._tag_order = sorted(tensors.keys())
     self._tensors = tensors
     self._formatter = formatter
     self._timer = (
@@ -336,6 +337,8 @@ class CheckpointSaverListener(object):
 
     def after_save(self, session, global_step_value):
       print('Done writing checkpoint.')
+      if decided_to_stop_training():
+        return True
 
     def end(self, session, global_step_value):
       print('Done with the session.')
@@ -354,6 +357,11 @@ class CheckpointSaverListener(object):
   implementors should implement the `end()` method to handle actions related to
   the last checkpoint save. But the listener should not act twice if
   `after_save()` already handled this last checkpoint save.
+
+  A `CheckpointSaverListener` can request training to be stopped, by returning
+  True in `after_save`. Please note that, in replicated distributed training
+  setting, only `chief` should use this behavior. Otherwise each worker will do
+  their own evaluation, which may be wasteful of resources.
   """
 
   def begin(self):
@@ -380,8 +388,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
                saver=None,
                checkpoint_basename="model.ckpt",
                scaffold=None,
-               listeners=None,
-               steps_per_run=1):
+               listeners=None):
     """Initializes a `CheckpointSaverHook`.
 
     Args:
@@ -394,9 +401,6 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       listeners: List of `CheckpointSaverListener` subclass instances.
         Used for callbacks that run immediately before or after this hook saves
         the checkpoint.
-      steps_per_run: `int`, number of steps that occur between each invocation
-        of the hook. Primarily used for TPU workloads which run multiple steps
-        in a while loop in a single Session.run.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
@@ -412,6 +416,9 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._timer = SecondOrStepTimer(every_secs=save_secs,
                                     every_steps=save_steps)
     self._listeners = listeners or []
+    self._steps_per_run = 1
+
+  def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run
 
   def begin(self):
@@ -454,7 +461,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       global_step = run_context.session.run(self._global_step_tensor)
       if self._timer.should_trigger_for_step(global_step):
         self._timer.update_last_triggered_step(global_step)
-        self._save(run_context.session, global_step)
+        if self._save(run_context.session, global_step):
+          run_context.request_stop()
 
   def end(self, session):
     last_step = session.run(self._global_step_tensor)
@@ -464,7 +472,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       l.end(session, last_step)
 
   def _save(self, session, step):
-    """Saves the latest checkpoint."""
+    """Saves the latest checkpoint, returns should_stop."""
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
 
     for l in self._listeners:
@@ -476,8 +484,14 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
             status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
         step)
 
+    should_stop = False
     for l in self._listeners:
-      l.after_save(session, step)
+      if l.after_save(session, step):
+        logging.info(
+            "A CheckpointSaverListener requested that training be stopped. "
+            "listener: {}".format(l))
+        should_stop = True
+    return should_stop
 
   def _get_saver(self):
     if self._saver is not None:
@@ -522,6 +536,10 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     self._output_dir = output_dir
     self._last_global_step = None
     self._global_step_check_count = 0
+    self._steps_per_run = 1
+
+  def _set_steps_per_run(self, steps_per_run):
+    self._steps_per_run = steps_per_run
 
   def begin(self):
     if self._summary_writer is None and self._output_dir:
@@ -547,7 +565,8 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     _ = run_context
 
     stale_global_step = run_values.results
-    if self._timer.should_trigger_for_step(stale_global_step+1):
+    if self._timer.should_trigger_for_step(
+        stale_global_step + self._steps_per_run):
       # get the real value after train op.
       global_step = run_context.session.run(self._global_step_tensor)
       if self._timer.should_trigger_for_step(global_step):
@@ -800,8 +819,25 @@ class FinalOpsHook(session_run_hook.SessionRunHook):
 
   def end(self, session):
     if self._final_ops is not None:
-      self._final_ops_values = session.run(self._final_ops,
-                                           feed_dict=self._final_ops_feed_dict)
+      try:
+        self._final_ops_values = session.run(
+            self._final_ops, feed_dict=self._final_ops_feed_dict)
+      except (errors.OutOfRangeError, StopIteration) as e:
+        logging.warning(
+            "An OutOfRangeError or StopIteration exception is raised by the "
+            "code in FinalOpsHook. This typically means the Ops running by the "
+            "FinalOpsHook have a dependency back to some input source, which "
+            "should not happen. For example, for metrics in "
+            "tf.estimator.Estimator, all metrics functions return two Ops: "
+            "`value_op` and  `update_op`. Estimator.evaluate calls the "
+            "`update_op` for each batch of the data in input source and, once "
+            "it is exhausted, it call the `value_op` to get the metric values. "
+            "The `value_op` here should have dependency back to variables "
+            "reading only, rather than reading another batch from input. "
+            "Otherwise, the `value_op`, executed by `FinalOpsHook`, triggers "
+            "another data reading, which ends OutOfRangeError/StopIteration. "
+            "Please fix that.")
+        raise e
 
 
 @tf_export("train.FeedFnHook")

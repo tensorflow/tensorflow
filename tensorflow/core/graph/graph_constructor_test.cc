@@ -157,7 +157,7 @@ class GraphConstructorTest : public ::testing::Test {
     }
     StringPiece loc(value[0]);
     return str_util::ConsumePrefix(&loc, kColocationGroupPrefix)
-               ? loc.ToString()
+               ? std::string(loc)
                : "";
   }
 
@@ -3170,7 +3170,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
       {"Make sure the Op and Kernel are registered in the "
        "binary running in this process. Note that if you "
        "are loading a saved graph which used ops from "
-       "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done"
+       "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
        "before importing the graph, as contrib ops are lazily registered "
        "when the module is first accessed."});
 }

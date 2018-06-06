@@ -52,6 +52,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
@@ -90,9 +91,13 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
     batch_size = array_ops.shape(inputs, out_type=tag_indices.dtype)[0]
     example_inds = array_ops.reshape(
         math_ops.range(batch_size, dtype=tag_indices.dtype), [-1, 1])
-    return array_ops.gather_nd(
+    sequence_scores = array_ops.gather_nd(
         array_ops.squeeze(inputs, [1]),
         array_ops.concat([example_inds, tag_indices], axis=1))
+    sequence_scores = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                                      array_ops.zeros_like(sequence_scores),
+                                      sequence_scores)
+    return sequence_scores
 
   def _multi_seq_fn():
     # Compute the scores of the given tag sequence.
@@ -128,7 +133,12 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
   # If max_seq_len is 1, we skip the algorithm and simply reduce_logsumexp over
   # the "initial state" (the unary potentials).
   def _single_seq_fn():
-    return math_ops.reduce_logsumexp(first_input, [1])
+    log_norm = math_ops.reduce_logsumexp(first_input, [1])
+    # Mask `log_norm` of the sequences with length <= zero.
+    log_norm = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                               array_ops.zeros_like(log_norm),
+                               log_norm)
+    return log_norm
 
   def _multi_seq_fn():
     """Forward computation of alpha values."""
@@ -137,13 +147,21 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
     # Compute the alpha values in the forward algorithm in order to get the
     # partition function.
     forward_cell = CrfForwardRnnCell(transition_params)
+    # Sequence length is not allowed to be less than zero.
+    sequence_lengths_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_lengths.dtype),
+        sequence_lengths - 1)
     _, alphas = rnn.dynamic_rnn(
         cell=forward_cell,
         inputs=rest_of_input,
-        sequence_length=sequence_lengths - 1,
+        sequence_length=sequence_lengths_less_one,
         initial_state=first_input,
         dtype=dtypes.float32)
     log_norm = math_ops.reduce_logsumexp(alphas, [1])
+    # Mask `log_norm` of the sequences with length <= zero.
+    log_norm = array_ops.where(math_ops.less_equal(sequence_lengths, 0),
+                               array_ops.zeros_like(log_norm),
+                               log_norm)
     return log_norm
 
   max_seq_len = array_ops.shape(inputs)[1]
@@ -479,7 +497,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     initial_state = array_ops.slice(potentials, [0, 0, 0], [-1, 1, -1])
     initial_state = array_ops.squeeze(initial_state, axis=[1])  # [B, O]
     inputs = array_ops.slice(potentials, [0, 1, 0], [-1, -1, -1])  # [B, T-1, O]
-    # sequence length is not allowed to be less than zero
+    # Sequence length is not allowed to be less than zero.
     sequence_length_less_one = math_ops.maximum(0, sequence_length - 1)
     backpointers, last_score = rnn.dynamic_rnn(  # [B, T - 1, O], [B, O]
         crf_fwd_cell,

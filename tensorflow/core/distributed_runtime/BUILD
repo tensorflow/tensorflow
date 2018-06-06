@@ -452,17 +452,128 @@ cc_library(
     ],
 )
 
-# TODO(mrry): Move executor_test.cc to ../common_runtime when once it no longer depends
-# on grpc_testlib.
-tf_cuda_cc_tests(
-    name = "executor_tests",
+cc_library(
+    name = "collective_rma_distributed",
+    srcs = ["collective_rma_distributed.cc"],
+    hdrs = ["collective_rma_distributed.h"],
+    deps = [
+        ":worker_cache",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",  # protobuf::Any
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "collective_rma_distributed_test",
+    size = "small",
+    srcs = ["collective_rma_distributed_test.cc"],
+    deps = [
+        ":collective_rma_distributed",
+        ":device_resolver_distributed",
+        ":test_utils",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "collective_param_resolver_distributed",
+    srcs = ["collective_param_resolver_distributed.cc"],
+    hdrs = ["collective_param_resolver_distributed.h"],
+    deps = [
+        ":call_options",
+        ":device_resolver_distributed",
+        ":worker_cache",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    srcs = [],
+    hdrs = ["test_utils.h"],
+    deps = [
+        ":worker_cache",
+        ":worker_interface",
+    ],
+)
+
+tf_cc_test(
+    name = "collective_param_resolver_distributed_test",
+    size = "small",
+    srcs = ["collective_param_resolver_distributed_test.cc"],
+    deps = [
+        ":collective_param_resolver_distributed",
+        ":device_resolver_distributed",
+        ":test_utils",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "device_resolver_distributed",
+    srcs = ["device_resolver_distributed.cc"],
+    hdrs = ["device_resolver_distributed.h"],
+    deps = [
+        ":worker_cache",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "device_resolver_distributed_test",
+    size = "small",
+    srcs = ["device_resolver_distributed_test.cc"],
+    deps = [
+        ":device_resolver_distributed",
+        ":test_utils",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "master_test",
     size = "medium",
     srcs = [
-        "executor_test.cc",
-        #"master_test.cc",  # TODO(b/27683709): Re-enable when not flaky.
+        "master_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "manual",  # TODO(b/27683709): Re-enable when not flaky.
+        "notap",  # TODO(b/27683709): Re-enable when not flaky.
+        "noguitar",  # TODO(b/27683709): Re-enable when not flaky.
+        "nooss",  # TODO(b/27683709): Re-enable when not flaky.
+    ],
     deps = [
         ":master",
         ":remote_device",
@@ -479,6 +590,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_master_service_impl",
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
@@ -539,10 +651,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_testlib_ops",
         "//tensorflow/core/kernels:aggregate_ops",
         "//tensorflow/core/kernels:array",
     ],

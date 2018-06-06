@@ -30,6 +30,7 @@
 @@Invert
 @@Kumaraswamy
 @@MaskedAutoregressiveFlow
+@@MatrixInverseTriL
 @@Ordered
 @@Permute
 @@PowerTransform
@@ -68,6 +69,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
 from tensorflow.contrib.distributions.python.ops.bijectors.kumaraswamy import *
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import *
+from tensorflow.contrib.distributions.python.ops.bijectors.matrix_inverse_tril import *
 from tensorflow.contrib.distributions.python.ops.bijectors.ordered import *
 from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *

@@ -40,7 +40,7 @@ Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal) {
   return Status::OK();
 }
 
-Status CopyLiteralToHostTensor(const xla::Literal& literal,
+Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
                                Tensor* host_tensor) {
   TF_RET_CHECK(xla::ShapeUtil::IsArray(literal.shape()) &&
                xla::ShapeUtil::ElementsIn(literal.shape()) ==
@@ -63,8 +63,8 @@ Status CopyLiteralToHostTensor(const xla::Literal& literal,
   return Status::OK();
 }
 
-Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
-                           Tensor* host_tensor) {
+Status LiteralToHostTensor(const xla::LiteralSlice& literal,
+                           DataType target_type, Tensor* host_tensor) {
   TensorShape shape;
   TF_RETURN_IF_ERROR(XLAShapeToTensorShape(literal.shape(), &shape));
   *host_tensor = Tensor(target_type, shape);

@@ -449,7 +449,6 @@ py_binary(
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -573,6 +572,7 @@ py_test(
         ":source_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
@@ -1004,6 +1004,7 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
         "noasan",  # Times out due to size of test (b/73731462).
+        "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
 )

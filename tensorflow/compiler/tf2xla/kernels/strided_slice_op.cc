@@ -90,7 +90,7 @@ class StridedSliceOp : public XlaOpKernel {
       }
     }
 
-    xla::ComputationDataHandle slice = ctx->Input(0);
+    xla::XlaOp slice = ctx->Input(0);
     if (!dimensions_to_reverse.empty()) {
       slice = ctx->builder()->Rev(slice, dimensions_to_reverse);
     }
@@ -168,7 +168,7 @@ class StridedSliceGradOp : public XlaOpKernel {
 
     auto zero = XlaHelpers::Zero(ctx->builder(), ctx->expected_output_dtype(0));
 
-    xla::ComputationDataHandle grad = ctx->Input(4);
+    xla::XlaOp grad = ctx->Input(4);
 
     // Undo any new/shrink axes.
     grad = ctx->builder()->Reshape(grad, processing_shape.dim_sizes());
@@ -255,7 +255,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
                                             &strides_tensor));
 
     TensorShape lhs_shape;
-    xla::ComputationDataHandle lhs;
+    xla::XlaOp lhs;
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &lhs_shape, &lhs));
 
     const TensorShape rhs_shape = ctx->InputShape(4);
@@ -284,7 +284,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
                     " does not match r-value shape ", rhs_shape.DebugString(),
                     ". Automatic broadcasting not yet implemented."));
 
-    xla::ComputationDataHandle rhs = ctx->Input(4);
+    xla::XlaOp rhs = ctx->Input(4);
 
     gtl::InlinedVector<int64, 4> dimensions_to_reverse;
     gtl::InlinedVector<int64, 4> slice_begin, slice_dims;
