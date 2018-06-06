@@ -558,15 +558,9 @@ Kernels under tensorflow/core/kernels
 |   O    |        | hexagon/soc_interface.cc
 |   O    |        | hexagon/soc_interface.h
 |   O    |        | hinge-loss.h
-<<<<<<< HEAD
-|   P    |cub     | histogram_op.cc
-|   P    |cub     | histogram_op.h
-|   P    |cub     | histogram_op_gpu.cu.cc
-=======
 |   O    |rocPRIM | histogram_op.cc
 |   O    |rocPRIM | histogram_op.h
 |   O    |rocPRIM | histogram_op_gpu.cu.cc
->>>>>>> develop-upstream
 |   O    |        | i_remote_fused_graph_executor.h
 |   O    |        | i_remote_fused_graph_ops_definitions.cc
 |   O    |        | i_remote_fused_graph_ops_definitions.h
