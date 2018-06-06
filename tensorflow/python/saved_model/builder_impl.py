@@ -270,6 +270,18 @@ class SavedModelBuilder(object):
 
     self._add_train_op(train_op)
 
+  def _maybe_create_saver(self, saver=None):
+    """Creates a sharded saver if one does not already exist."""
+    if not saver:
+      # Initialize a saver to generate a sharded output for all saveables in the
+      # current scope.
+      saver = tf_saver.Saver(
+          variables._all_saveable_objects(),  # pylint: disable=protected-access
+          sharded=True,
+          write_version=saver_pb2.SaverDef.V2,
+          allow_empty=True)
+    return saver
+
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
@@ -277,7 +289,8 @@ class SavedModelBuilder(object):
                      legacy_init_op=None,
                      clear_devices=False,
                      main_op=None,
-                     strip_default_attrs=False):
+                     strip_default_attrs=False,
+                     saver=None):
     # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel.
 
@@ -302,6 +315,9 @@ class SavedModelBuilder(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      saver: An instance of tf.train.Saver that will be used to export the
+        metagraph. If None, a sharded Saver that restores all variables will
+        be used.
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
@@ -320,18 +336,11 @@ class SavedModelBuilder(object):
     # Add assets and ops
     self._add_collections(assets_collection, legacy_init_op, main_op, None)
 
-    # Initialize a saver to generate a sharded output for all saveables in the
-    # current scope.
-    saver = tf_saver.Saver(
-        variables._all_saveable_objects(),  # pylint: disable=protected-access
-        sharded=True,
-        write_version=saver_pb2.SaverDef.V2,
-        allow_empty=True)
+    saver = self._maybe_create_saver(saver)
 
     # The graph almost certainly previously contained at least one Saver, and
     # possibly several (e.g. one for loading a pretrained embedding, and another
-    # for the model weights).  However, a *new* Saver was just created that
-    # includes all of the variables.  Removing the preexisting ones was the
+    # for the model weights).  Removing the preexisting ones was the
     # motivation for the clear_extraneous_savers option, but it turns out that
     # there are edge cases where that option breaks the graph.  Until that is
     # resolved, we just leave the option set to False for now.
@@ -350,7 +359,8 @@ class SavedModelBuilder(object):
                                    legacy_init_op=None,
                                    clear_devices=False,
                                    main_op=None,
-                                   strip_default_attrs=False):
+                                   strip_default_attrs=False,
+                                   saver=None):
     # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel and saves variables.
 
@@ -377,6 +387,9 @@ class SavedModelBuilder(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      saver: An instance of tf.train.Saver that will be used to export the
+        metagraph and save variables. If None, a sharded Saver that restores
+        all variables will be used.
 
     """
     # pylint: enable=line-too-long
@@ -403,13 +416,7 @@ class SavedModelBuilder(object):
         compat.as_text(variables_dir),
         compat.as_text(constants.VARIABLES_FILENAME))
 
-    # Initialize a saver to generate a sharded output for all saveables in the
-    # current scope.
-    saver = tf_saver.Saver(
-        variables._all_saveable_objects(),  # pylint: disable=protected-access
-        sharded=True,
-        write_version=saver_pb2.SaverDef.V2,
-        allow_empty=True)
+    saver = self._maybe_create_saver(saver)
 
     # Save the variables. Also, disable writing the checkpoint state proto. The
     # file is not used during SavedModel loading. In addition, since a
@@ -421,8 +428,7 @@ class SavedModelBuilder(object):
 
     # The graph almost certainly previously contained at least one Saver, and
     # possibly several (e.g. one for loading a pretrained embedding, and another
-    # for the model weights).  However, a *new* Saver was just created that
-    # includes all of the variables.  Removing the preexisting ones was the
+    # for the model weights).  Removing the preexisting ones was the
     # motivation for the clear_extraneous_savers option, but it turns out that
     # there are edge cases where that option breaks the graph.  Until that is
     # resolved, we just leave the option set to False for now.
