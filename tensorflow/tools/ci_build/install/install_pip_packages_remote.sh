@@ -20,10 +20,8 @@ if [ ! -f /usr/bin/x86_64-linux-gnu-gcc ]; then
   ln -s /usr/local/bin/clang /usr/bin/x86_64-linux-gnu-gcc
 fi
 
-pip2 install -U pip
-pip3 install -U pip
-pip2  install -U setuptools
-pip3 install -U setuptools
+easy_install -U pip==9.0.3
+easy_install3 -U pip==9.0.3
 
 # The rest of the pip packages will be installed in
 # `install_pip_packages.sh`

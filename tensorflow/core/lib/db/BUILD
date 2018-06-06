@@ -29,6 +29,7 @@ cc_library(
         "@org_sqlite",
         "@snappy",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(

@@ -124,6 +124,15 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       SetDataTypeForAllOutputs(model, op, rand_op->dtype);
       break;
     }
+    case OperatorType::kTopK_V2: {
+      // topk(values: T, k: int32) -> values: T, indices: int32
+      CHECK_EQ(op->inputs.size(), 2);
+      CHECK_EQ(op->outputs.size(), 2);
+      CHECK(model->GetArray(op->inputs[1]).data_type == ArrayDataType::kInt32);
+      model->GetArray(op->outputs[0]).data_type = model->GetArray(op->inputs[0]).data_type;
+      model->GetArray(op->outputs[1]).data_type = ArrayDataType ::kInt32;
+      break;
+    }
     case OperatorType::kTensorFlowUnsupported: {
       auto* unsupported_op = static_cast<TensorFlowUnsupportedOperator*>(op);
       // Some output tensors from the op could be eliminated by optimization.
@@ -142,6 +151,17 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kExpandDims: {
       // Yield on ExpandDim until it is converted to Reshape
       return false;
+    }
+    case OperatorType::kSelect: {
+      // Select produces outputs with the same type as their 2nd input
+      CHECK_EQ(op->inputs.size(), 3);
+      const ArrayDataType data_type_x =
+          model->GetArray(op->inputs[1]).data_type;
+      const ArrayDataType data_type_y =
+          model->GetArray(op->inputs[2]).data_type;
+      CHECK(data_type_x == data_type_y);
+      SetDataTypeForAllOutputs(model, op, data_type_x);
+      break;
     }
     default: {
       // These operators produce outputs with the same type as their 1st input

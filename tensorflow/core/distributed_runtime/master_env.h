@@ -83,7 +83,8 @@ struct MasterEnv {
       SessionOptions, MasterEnv*,
       std::unique_ptr<std::vector<std::unique_ptr<Device>>>,
       std::unique_ptr<WorkerCacheInterface>,
-      std::unique_ptr<DeviceSet> device_set)>
+      std::unique_ptr<DeviceSet> device_set,
+      std::vector<string> filtered_worker_list)>
       master_session_factory;
 
   std::function<Status(const WorkerCacheFactoryOptions&,

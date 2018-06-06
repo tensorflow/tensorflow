@@ -255,8 +255,8 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
       TypeError: if `quadrature_grid` and `quadrature_probs` have different base
         `dtype`.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[loc, scale]) as name:
       if loc is not None:
         loc = ops.convert_to_tensor(loc, name="loc")
       if scale is not None:

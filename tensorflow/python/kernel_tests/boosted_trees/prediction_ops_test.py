@@ -49,7 +49,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -116,7 +115,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values],
@@ -189,7 +187,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=4,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -299,7 +296,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=4,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -429,7 +425,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -562,7 +557,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=3,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -705,7 +699,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=3,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -782,7 +775,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=1,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -799,6 +791,28 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
 class PredictionOpsTest(test_util.TensorFlowTestCase):
   """Tests prediction ops for inference."""
+
+  def testPredictionOnEmptyEnsemble(self):
+    """Tests that prediction on a empty ensemble does not fail."""
+    with self.test_session() as session:
+      # Create an empty ensemble.
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto='')
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [36, 32]
+      feature_1_values = [11, 27]
+      expected_logits = [[0.0], [0.0]]
+
+      # Prediction should work fine.
+      predict_op = boosted_trees_ops.predict(
+          tree_ensemble_handle,
+          bucketized_features=[feature_0_values, feature_1_values],
+          logits_dimension=1)
+
+      logits = session.run(predict_op)
+      self.assertAllClose(expected_logits, logits)
 
   def testPredictionMultipleTree(self):
     """Tests the predictions work when we have multiple trees."""
@@ -901,22 +915,11 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       #            logit= 0.1*1.14+0.2*7.0-1*7.0
       expected_logits = [[6.114], [-5.486]]
 
-      # Do with parallelization, e.g. EVAL
+      # Prediction should work fine.
       predict_op = boosted_trees_ops.predict(
           tree_ensemble_handle,
           bucketized_features=[feature_0_values, feature_1_values],
-          logits_dimension=1,
-          max_depth=2)
-
-      logits = session.run(predict_op)
-      self.assertAllClose(expected_logits, logits)
-
-      # Do without parallelization, e.g. INFER - the result is the same
-      predict_op = boosted_trees_ops.predict(
-          tree_ensemble_handle,
-          bucketized_features=[feature_0_values, feature_1_values],
-          logits_dimension=1,
-          max_depth=2)
+          logits_dimension=1)
 
       logits = session.run(predict_op)
       self.assertAllClose(expected_logits, logits)

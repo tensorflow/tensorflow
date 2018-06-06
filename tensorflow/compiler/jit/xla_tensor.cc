@@ -31,16 +31,15 @@ namespace tensorflow {
   return FromTensor(const_cast<Tensor*>(tensor));
 }
 
-/*static*/ perftools::gputools::DeviceMemoryBase
-XlaTensor::DeviceMemoryFromTensor(const Tensor& tensor) {
+/*static*/ se::DeviceMemoryBase XlaTensor::DeviceMemoryFromTensor(
+    const Tensor& tensor) {
   const XlaTensor* xla_tensor = FromTensor(&tensor);
   if (xla_tensor) {
     CHECK(xla_tensor->has_shaped_buffer());
     return xla_tensor->shaped_buffer().root_buffer();
   } else {
-    return perftools::gputools::DeviceMemoryBase(
-        const_cast<char*>(tensor.tensor_data().data()),
-        tensor.tensor_data().size());
+    return se::DeviceMemoryBase(const_cast<char*>(tensor.tensor_data().data()),
+                                tensor.tensor_data().size());
   }
 }
 
@@ -53,22 +52,22 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
       client->backend().transfer_manager()->HostShapeToDeviceShape(
           on_host_shape);
 
-  xla::ShapedBuffer buffer(on_host_shape, on_device_shape, client->platform(),
-                           device_ordinal);
-  for (auto& index_to_buffer : buffer.buffers()) {
+  xla::ScopedShapedBuffer shaped_buffer(on_host_shape, on_device_shape,
+                                        client->backend().memory_allocator(),
+                                        device_ordinal);
+  for (auto& index_to_buffer : shaped_buffer.buffers()) {
     xla::Shape subshape =
         xla::ShapeUtil::GetSubshape(on_device_shape, index_to_buffer.first);
     uint64 size =
         client->backend().transfer_manager()->GetByteSizeRequirement(subshape);
-    TF_ASSIGN_OR_RETURN(index_to_buffer.second,
+    TF_ASSIGN_OR_RETURN(xla::OwningDeviceMemory buffer,
                         client->backend().memory_allocator()->Allocate(
                             device_ordinal, size, /*retry_on_failure=*/false));
+    // Move our buffer into shaped_buffer, which takes ownership of it.
+    index_to_buffer.second = buffer.Forget();
   }
 
-  TF_ASSIGN_OR_RETURN(auto scoped_buffer,
-                      xla::ScopedShapedBuffer::MakeScoped(
-                          &buffer, client->backend().memory_allocator()));
-  set_shaped_buffer(std::move(scoped_buffer));
+  set_shaped_buffer(std::move(shaped_buffer));
   return Status::OK();
 }
 

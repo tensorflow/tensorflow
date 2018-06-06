@@ -31,11 +31,25 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
+#include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace optimized_ops {
+
+// Unoptimized reference ops:
+using reference_ops::BroadcastGreater;
+using reference_ops::BroadcastGreaterEqual;
+using reference_ops::BroadcastLess;
+using reference_ops::BroadcastLessEqual;
+using reference_ops::Greater;
+using reference_ops::GreaterEqual;
+using reference_ops::Less;
+using reference_ops::LessEqual;
+using reference_ops::RankOneSelect;
+using reference_ops::Select;
 
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
@@ -53,7 +67,7 @@ using VectorMap = typename std::conditional<
 
 template <typename Scalar, int N>
 VectorMap<Scalar> MapAsVector(Scalar* data, const Dims<N>& dims) {
-  const int size = RequiredBufferSizeForDims(dims);
+  const int size = FlatSize(dims);
   return VectorMap<Scalar>(data, size, 1);
 }
 
@@ -235,8 +249,8 @@ inline void AddBiasAndEvalActivationFunction(const float* bias_data,
                                              float output_activation_max) {
 #ifdef USE_NEON
   gemmlowp::ScopedProfilingLabel label("AddBiasAndEvalActivationFunction");
-  const int bias_size = bias_dims.sizes[3] * bias_dims.strides[3];
-  const int array_size = array_dims.sizes[3] * array_dims.strides[3];
+  const int bias_size = FlatSize(bias_dims);
+  const int array_size = FlatSize(array_dims);
   TFLITE_DCHECK_EQ((array_size % bias_size), 0);
   float* array_ptr = array_data;
   float* array_end_ptr = array_ptr + array_size;
@@ -286,8 +300,8 @@ inline void AddBiasAndEvalActivationFunction(const float* bias_data,
   }
 #else  // not NEON
   gemmlowp::ScopedProfilingLabel label("AddBiasAndEvalActivationFunction");
-  const int bias_size = bias_dims.sizes[3] * bias_dims.strides[3];
-  const int array_size = array_dims.sizes[3] * array_dims.strides[3];
+  const int bias_size = FlatSize(bias_dims);
+  const int array_size = FlatSize(array_dims);
   TFLITE_DCHECK_EQ((array_size % bias_size), 0);
   for (int array_offset = 0; array_offset < array_size;
        array_offset += bias_size) {
@@ -358,10 +372,8 @@ inline void GEMVForLstmCell(const uint8* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                       ArraySize(output_dims, 3),
-                   1);
-  const int input_size = input_dims.strides[3];
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_dims, 0), 1);
+  const int input_size = FlatSizeSkipDim(input_dims, 3);
   const int output_size = MatchingArraySize(weights_dims, 1, output_dims, 0);
   // This special fast path for quantized LSTM cells does not try to support
   // odd sizes that we haven't encountered in any LSTM cell, that would
@@ -544,10 +556,8 @@ inline void GEMVForLstmCellWithSymmetricRange(
   TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                       ArraySize(output_dims, 3),
-                   1);
-  const int input_size = input_dims.strides[3];
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_dims, 0), 1);
+  const int input_size = FlatSizeSkipDim(input_dims, 3);
   const int output_size = MatchingArraySize(weights_dims, 1, output_dims, 0);
   // This special fast path for quantized LSTM cells does not try to support
   // odd sizes that we haven't encountered in any LSTM cell, that would
@@ -880,10 +890,8 @@ inline void FullyConnectedAsGEMV(
   TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(bias_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                       ArraySize(output_dims, 3),
-                   1);
-  const int input_size = input_dims.strides[3];
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_dims, 0), 1);
+  const int input_size = FlatSizeSkipDim(input_dims, 3);
   const int output_size = MatchingArraySize(filter_dims, 1, output_dims, 0);
   static constexpr int kPeel = 4;
   for (int k = 0; k < input_size; k += 64) {
@@ -1064,8 +1072,7 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
   // array of which dimension is the batch dimension in it.
-  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                      ArraySize(output_dims, 3);
+  const int batches = FlatSizeSkipDim(output_dims, 0);
 #ifdef USE_NEON
   const int output_size = MatchingArraySize(filter_dims, 1, output_dims, 0);
   if (batches == 1 && !(output_size % 4)) {
@@ -1121,8 +1128,7 @@ inline void FullyConnected(
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
   // array of which dimension is the batch dimension in it.
-  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                      ArraySize(output_dims, 3);
+  const int batches = FlatSizeSkipDim(output_dims, 0);
   const int output_depth = MatchingArraySize(filter_dims, 1, output_dims, 0);
   const int accum_depth = ArraySize(filter_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
@@ -1203,13 +1209,330 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  output_activation_max, output_data, output_dims, gemm_context);
 }
 
+// Internal function doing the actual arithmetic work for
+// ExperimentalShuffledFullyConnected.
+// May be called either directly by it (single-threaded case) or may be used
+// as the 'task' for worker threads to run (multi-threaded case, see
+// ExperimentalShuffledFullyConnectedWorkerTask below).
+inline void ExperimentalShuffledFullyConnectedWorkerImpl(
+    const uint8* shuffled_input_workspace_data,
+    const int8* shuffled_weights_data, int batches, int output_depth,
+    int output_stride, int accum_depth, const int32* bias_data,
+    int32 output_multiplier, int output_shift, int16* output_data) {
+#if defined USE_NEON
+  const int8* shuffled_weights_ptr = shuffled_weights_data;
+  if (batches == 1) {
+    const int right_shift = output_shift > 0 ? output_shift : 0;
+    const int left_shift = output_shift > 0 ? 0 : -output_shift;
+    for (int c = 0; c < output_depth; c += 4) {
+      // Accumulation loop.
+      int32x4_t row_accum0 = vdupq_n_s32(0);
+      int32x4_t row_accum1 = vdupq_n_s32(0);
+      int32x4_t row_accum2 = vdupq_n_s32(0);
+      int32x4_t row_accum3 = vdupq_n_s32(0);
+      for (int d = 0; d < accum_depth; d += 16) {
+        int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
+        int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
+        int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
+        int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
+        shuffled_weights_ptr += 64;
+        int8x16_t input =
+            vreinterpretq_s8_u8(vld1q_u8(shuffled_input_workspace_data + d));
+        int16x8_t local_accum0 =
+            vmull_s8(vget_low_s8(weights0), vget_low_s8(input));
+        int16x8_t local_accum1 =
+            vmull_s8(vget_low_s8(weights1), vget_low_s8(input));
+        int16x8_t local_accum2 =
+            vmull_s8(vget_low_s8(weights2), vget_low_s8(input));
+        int16x8_t local_accum3 =
+            vmull_s8(vget_low_s8(weights3), vget_low_s8(input));
+        local_accum0 =
+            vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input));
+        local_accum1 =
+            vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input));
+        local_accum2 =
+            vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input));
+        local_accum3 =
+            vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input));
+        row_accum0 = vpadalq_s16(row_accum0, local_accum0);
+        row_accum1 = vpadalq_s16(row_accum1, local_accum1);
+        row_accum2 = vpadalq_s16(row_accum2, local_accum2);
+        row_accum3 = vpadalq_s16(row_accum3, local_accum3);
+      }
+      // Horizontally reduce accumulators
+      int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
+          pairwise_reduced_acc_2, pairwise_reduced_acc_3;
+      pairwise_reduced_acc_0 =
+          vpadd_s32(vget_low_s32(row_accum0), vget_high_s32(row_accum0));
+      pairwise_reduced_acc_1 =
+          vpadd_s32(vget_low_s32(row_accum1), vget_high_s32(row_accum1));
+      pairwise_reduced_acc_2 =
+          vpadd_s32(vget_low_s32(row_accum2), vget_high_s32(row_accum2));
+      pairwise_reduced_acc_3 =
+          vpadd_s32(vget_low_s32(row_accum3), vget_high_s32(row_accum3));
+      const int32x2_t reduced_lo =
+          vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
+      const int32x2_t reduced_hi =
+          vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
+      int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
+      // Add bias values.
+      int32x4_t bias_vec = vld1q_s32(bias_data + c);
+      reduced = vaddq_s32(reduced, bias_vec);
+      reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
+      // Multiply by the fixed-point multiplier.
+      reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
+      // Rounding-shift-right.
+      using gemmlowp::RoundingDivideByPOT;
+      reduced = RoundingDivideByPOT(reduced, right_shift);
+      // Narrow values down to 16 bit signed.
+      const int16x4_t res16 = vqmovn_s32(reduced);
+      vst1_s16(output_data + c, res16);
+    }
+  } else if (batches == 4) {
+    const int right_shift = output_shift > 0 ? output_shift : 0;
+    const int left_shift = output_shift > 0 ? 0 : -output_shift;
+    for (int c = 0; c < output_depth; c += 4) {
+      const int8* shuffled_input_ptr =
+          reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+      // Accumulation loop.
+      int32x4_t row_accum00 = vdupq_n_s32(0);
+      int32x4_t row_accum10 = vdupq_n_s32(0);
+      int32x4_t row_accum20 = vdupq_n_s32(0);
+      int32x4_t row_accum30 = vdupq_n_s32(0);
+      int32x4_t row_accum01 = vdupq_n_s32(0);
+      int32x4_t row_accum11 = vdupq_n_s32(0);
+      int32x4_t row_accum21 = vdupq_n_s32(0);
+      int32x4_t row_accum31 = vdupq_n_s32(0);
+      int32x4_t row_accum02 = vdupq_n_s32(0);
+      int32x4_t row_accum12 = vdupq_n_s32(0);
+      int32x4_t row_accum22 = vdupq_n_s32(0);
+      int32x4_t row_accum32 = vdupq_n_s32(0);
+      int32x4_t row_accum03 = vdupq_n_s32(0);
+      int32x4_t row_accum13 = vdupq_n_s32(0);
+      int32x4_t row_accum23 = vdupq_n_s32(0);
+      int32x4_t row_accum33 = vdupq_n_s32(0);
+      for (int d = 0; d < accum_depth; d += 16) {
+        int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
+        int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
+        int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
+        int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
+        shuffled_weights_ptr += 64;
+        int8x16_t input0 = vld1q_s8(shuffled_input_ptr + 0);
+        int8x16_t input1 = vld1q_s8(shuffled_input_ptr + 16);
+        int8x16_t input2 = vld1q_s8(shuffled_input_ptr + 32);
+        int8x16_t input3 = vld1q_s8(shuffled_input_ptr + 48);
+        shuffled_input_ptr += 64;
+        int16x8_t local_accum0, local_accum1, local_accum2, local_accum3;
+#define TFLITE_SHUFFLED_FC_ACCUM(B)                                           \
+  local_accum0 = vmull_s8(vget_low_s8(weights0), vget_low_s8(input##B));      \
+  local_accum1 = vmull_s8(vget_low_s8(weights1), vget_low_s8(input##B));      \
+  local_accum2 = vmull_s8(vget_low_s8(weights2), vget_low_s8(input##B));      \
+  local_accum3 = vmull_s8(vget_low_s8(weights3), vget_low_s8(input##B));      \
+  local_accum0 =                                                              \
+      vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input##B)); \
+  local_accum1 =                                                              \
+      vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input##B)); \
+  local_accum2 =                                                              \
+      vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input##B)); \
+  local_accum3 =                                                              \
+      vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input##B)); \
+  row_accum0##B = vpadalq_s16(row_accum0##B, local_accum0);                   \
+  row_accum1##B = vpadalq_s16(row_accum1##B, local_accum1);                   \
+  row_accum2##B = vpadalq_s16(row_accum2##B, local_accum2);                   \
+  row_accum3##B = vpadalq_s16(row_accum3##B, local_accum3);
+
+        TFLITE_SHUFFLED_FC_ACCUM(0)
+        TFLITE_SHUFFLED_FC_ACCUM(1)
+        TFLITE_SHUFFLED_FC_ACCUM(2)
+        TFLITE_SHUFFLED_FC_ACCUM(3)
+
+#undef TFLITE_SHUFFLED_FC_ACCUM
+      }
+      // Horizontally reduce accumulators
+
+#define TFLITE_SHUFFLED_FC_STORE(B)                                           \
+  {                                                                           \
+    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,                 \
+        pairwise_reduced_acc_2, pairwise_reduced_acc_3;                       \
+    pairwise_reduced_acc_0 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum0##B), vget_high_s32(row_accum0##B)); \
+    pairwise_reduced_acc_1 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum1##B), vget_high_s32(row_accum1##B)); \
+    pairwise_reduced_acc_2 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum2##B), vget_high_s32(row_accum2##B)); \
+    pairwise_reduced_acc_3 =                                                  \
+        vpadd_s32(vget_low_s32(row_accum3##B), vget_high_s32(row_accum3##B)); \
+    const int32x2_t reduced_lo =                                              \
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);            \
+    const int32x2_t reduced_hi =                                              \
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);            \
+    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);                 \
+    int32x4_t bias_vec = vld1q_s32(bias_data + c);                            \
+    reduced = vaddq_s32(reduced, bias_vec);                                   \
+    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));                    \
+    reduced = vqrdmulhq_n_s32(reduced, output_multiplier);                    \
+    using gemmlowp::RoundingDivideByPOT;                                      \
+    reduced = RoundingDivideByPOT(reduced, right_shift);                      \
+    const int16x4_t res16 = vqmovn_s32(reduced);                              \
+    vst1_s16(output_data + c + B * output_stride, res16);                     \
+  }
+
+      TFLITE_SHUFFLED_FC_STORE(0);
+      TFLITE_SHUFFLED_FC_STORE(1);
+      TFLITE_SHUFFLED_FC_STORE(2);
+      TFLITE_SHUFFLED_FC_STORE(3);
+
+#undef TFLITE_SHUFFLED_FC_STORE
+    }
+  } else {
+    TFLITE_DCHECK(false);
+    return;
+  }
+#else
+  if (batches == 1) {
+    int16* output_ptr = output_data;
+    // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+    // so that just reinterpreting them as int8 values is equivalent to
+    // subtracting 128 from them, thus implementing for free the subtraction of
+    // the zero_point value 128.
+    const int8* shuffled_weights_ptr =
+        reinterpret_cast<const int8*>(shuffled_weights_data);
+    // Likewise, we preshuffled and pre-xored the input data above.
+    const int8* shuffled_input_data =
+        reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+    for (int c = 0; c < output_depth; c += 4) {
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32 accum[4] = {0};
+      // Accumulation loop.
+      for (int d = 0; d < accum_depth; d += 16) {
+        for (int i = 0; i < 4; i++) {
+          for (int j = 0; j < 16; j++) {
+            int8 input_val = shuffled_input_data[d + j];
+            int8 weights_val = *shuffled_weights_ptr++;
+            accum[i] += weights_val * input_val;
+          }
+        }
+      }
+      for (int i = 0; i < 4; i++) {
+        // Add bias value
+        int acc = accum[i] + bias_data[c + i];
+        // Down-scale the final int32 accumulator to the scale used by our
+        // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+        // multiplier and shift here have been pre-computed offline
+        // (e.g. by toco).
+        acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                            -output_shift);
+        // Saturate, cast to int16, and store to output array.
+        acc = std::max(acc, -32768);
+        acc = std::min(acc, 32767);
+        output_ptr[c + i] = acc;
+      }
+    }
+  } else if (batches == 4) {
+    int16* output_ptr = output_data;
+    // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
+    // so that just reinterpreting them as int8 values is equivalent to
+    // subtracting 128 from them, thus implementing for free the subtraction of
+    // the zero_point value 128.
+    const int8* shuffled_weights_ptr =
+        reinterpret_cast<const int8*>(shuffled_weights_data);
+    // Likewise, we preshuffled and pre-xored the input data above.
+    const int8* shuffled_input_data =
+        reinterpret_cast<const int8*>(shuffled_input_workspace_data);
+    for (int c = 0; c < output_depth; c += 4) {
+      const int8* shuffled_input_ptr = shuffled_input_data;
+      // Accumulation loop.
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32 accum[4][4];
+      for (int i = 0; i < 4; i++) {
+        for (int b = 0; b < 4; b++) {
+          accum[i][b] = 0;
+        }
+      }
+      for (int d = 0; d < accum_depth; d += 16) {
+        for (int i = 0; i < 4; i++) {
+          for (int b = 0; b < 4; b++) {
+            for (int j = 0; j < 16; j++) {
+              int8 input_val = shuffled_input_ptr[16 * b + j];
+              int8 weights_val = shuffled_weights_ptr[16 * i + j];
+              accum[i][b] += weights_val * input_val;
+            }
+          }
+        }
+        shuffled_input_ptr += 64;
+        shuffled_weights_ptr += 64;
+      }
+      for (int i = 0; i < 4; i++) {
+        for (int b = 0; b < 4; b++) {
+          // Add bias value
+          int acc = accum[i][b] + bias_data[c + i];
+          // Down-scale the final int32 accumulator to the scale used by our
+          // (16-bit, typically 3 integer bits) fixed-point format. The
+          // quantized multiplier and shift here have been pre-computed offline
+          // (e.g. by toco).
+          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                              -output_shift);
+          // Saturate, cast to int16, and store to output array.
+          acc = std::max(acc, -32768);
+          acc = std::min(acc, 32767);
+          output_ptr[b * output_stride + c + i] = acc;
+        }
+      }
+    }
+  } else {
+    TFLITE_DCHECK(false);
+    return;
+  }
+#endif
+}
+
+// Wraps ExperimentalShuffledFullyConnectedWorkerImpl into a Task class
+// to allow using gemmlowp's threadpool.
+struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
+  ExperimentalShuffledFullyConnectedWorkerTask(
+      const uint8* input_data, const int8* shuffled_weights_data, int batches,
+      int output_depth, int output_stride, int accum_depth,
+      const int32* bias_data, int32 output_multiplier, int output_shift,
+      int16* output_data)
+      : input_data_(input_data),
+        shuffled_weights_data_(shuffled_weights_data),
+        batches_(batches),
+        output_depth_(output_depth),
+        output_stride_(output_stride),
+        accum_depth_(accum_depth),
+        bias_data_(bias_data),
+        output_multiplier_(output_multiplier),
+        output_shift_(output_shift),
+        output_data_(output_data) {}
+
+  void Run() override {
+    ExperimentalShuffledFullyConnectedWorkerImpl(
+        input_data_, shuffled_weights_data_, batches_, output_depth_,
+        output_stride_, accum_depth_, bias_data_, output_multiplier_,
+        output_shift_, output_data_);
+  }
+
+  const uint8* input_data_;
+  const int8* shuffled_weights_data_;
+  int batches_;
+  int output_depth_;
+  int output_stride_;
+  int accum_depth_;
+  const int32* bias_data_;
+  int32 output_multiplier_;
+  int output_shift_;
+  int16* output_data_;
+};
+
 inline void ExperimentalShuffledFullyConnected(
     const uint8* input_data, const Dims<4>& input_dims,
     const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
     const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
     int output_shift, int32 output_activation_min, int32 output_activation_max,
     int16* output_data, const Dims<4>& output_dims,
-    gemmlowp::GemmContext* gemm_context) {
+    uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label(
       "ExperimentalShuffledFullyConnected/8bit");
   (void)gemm_context;  // only used in optimized code.
@@ -1220,123 +1543,105 @@ inline void ExperimentalShuffledFullyConnected(
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
   // array of which dimension is the batch dimension in it.
-  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
-                      ArraySize(output_dims, 3);
+  const int batches = FlatSizeSkipDim(output_dims, 0);
   const int output_depth = MatchingArraySize(weights_dims, 1, output_dims, 0);
   const int accum_depth = ArraySize(weights_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(weights_dims));
-  // The experimental shuffling is an optimization for matrix*vector product.
-  // We aren't interested in supporting non-matrix*vector-product cases, i.e.
-  // batches>1.
-  TFLITE_DCHECK_EQ(batches, 1);
+  TFLITE_DCHECK((accum_depth % 16) == 0);
+  TFLITE_DCHECK((output_depth % 4) == 0);
   // Shuffled weights have had their sign bit (0x80) pre-flipped (xor'd)
   // so that just reinterpreting them as int8 values is equivalent to
   // subtracting 128 from them, thus implementing for free the subtraction of
   // the zero_point value 128.
-  const int8* shuffled_weights_ptr =
+  const int8* int8_shuffled_weights_data =
       reinterpret_cast<const int8*>(shuffled_weights_data);
-#if defined USE_NEON
-  // We'll only need to xor signbit to the input activation values, as
-  // that xor-ing is pre-built into the shuffled weights values.
-  const uint8x16_t signbit = vdupq_n_u8(0x80);
-  const int right_shift = output_shift > 0 ? output_shift : 0;
-  const int left_shift = output_shift > 0 ? 0 : -output_shift;
-  for (int c = 0; c < output_depth; c += 4) {
-    // Accumulation loop.
-    int32x4_t row_accum0 = vdupq_n_s32(0);
-    int32x4_t row_accum1 = vdupq_n_s32(0);
-    int32x4_t row_accum2 = vdupq_n_s32(0);
-    int32x4_t row_accum3 = vdupq_n_s32(0);
-    for (int d = 0; d < accum_depth; d += 16) {
-      int8x16_t weights0 = vld1q_s8(shuffled_weights_ptr + 0);
-      int8x16_t weights1 = vld1q_s8(shuffled_weights_ptr + 16);
-      int8x16_t weights2 = vld1q_s8(shuffled_weights_ptr + 32);
-      int8x16_t weights3 = vld1q_s8(shuffled_weights_ptr + 48);
-      shuffled_weights_ptr += 64;
-      int8x16_t input =
-          vreinterpretq_s8_u8(veorq_u8(signbit, vld1q_u8(input_data + d)));
-      int16x8_t local_accum0 =
-          vmull_s8(vget_low_s8(weights0), vget_low_s8(input));
-      int16x8_t local_accum1 =
-          vmull_s8(vget_low_s8(weights1), vget_low_s8(input));
-      int16x8_t local_accum2 =
-          vmull_s8(vget_low_s8(weights2), vget_low_s8(input));
-      int16x8_t local_accum3 =
-          vmull_s8(vget_low_s8(weights3), vget_low_s8(input));
-      local_accum0 =
-          vmlal_s8(local_accum0, vget_high_s8(weights0), vget_high_s8(input));
-      local_accum1 =
-          vmlal_s8(local_accum1, vget_high_s8(weights1), vget_high_s8(input));
-      local_accum2 =
-          vmlal_s8(local_accum2, vget_high_s8(weights2), vget_high_s8(input));
-      local_accum3 =
-          vmlal_s8(local_accum3, vget_high_s8(weights3), vget_high_s8(input));
-      row_accum0 = vpadalq_s16(row_accum0, local_accum0);
-      row_accum1 = vpadalq_s16(row_accum1, local_accum1);
-      row_accum2 = vpadalq_s16(row_accum2, local_accum2);
-      row_accum3 = vpadalq_s16(row_accum3, local_accum3);
+
+  // Shuffling and xoring of input activations into the workspace buffer
+  if (batches == 1) {
+#ifdef USE_NEON
+    const uint8x16_t signbit = vdupq_n_u8(0x80);
+    for (int i = 0; i < accum_depth; i += 16) {
+      uint8x16_t val = vld1q_u8(input_data + i);
+      val = veorq_u8(val, signbit);
+      vst1q_u8(shuffled_input_workspace_data + i, val);
     }
-    // Horizontally reduce accumulators
-    int32x2_t pairwise_reduced_acc_0, pairwise_reduced_acc_1,
-        pairwise_reduced_acc_2, pairwise_reduced_acc_3;
-    pairwise_reduced_acc_0 =
-        vpadd_s32(vget_low_s32(row_accum0), vget_high_s32(row_accum0));
-    pairwise_reduced_acc_1 =
-        vpadd_s32(vget_low_s32(row_accum1), vget_high_s32(row_accum1));
-    pairwise_reduced_acc_2 =
-        vpadd_s32(vget_low_s32(row_accum2), vget_high_s32(row_accum2));
-    pairwise_reduced_acc_3 =
-        vpadd_s32(vget_low_s32(row_accum3), vget_high_s32(row_accum3));
-    const int32x2_t reduced_lo =
-        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
-    const int32x2_t reduced_hi =
-        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
-    int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
-    // Add bias values.
-    int32x4_t bias_vec = vld1q_s32(bias_data + c);
-    reduced = vaddq_s32(reduced, bias_vec);
-    reduced = vshlq_s32(reduced, vdupq_n_s32(left_shift));
-    // Multiply by the fixed-point multiplier.
-    reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
-    // Rounding-shift-right.
-    using gemmlowp::RoundingDivideByPOT;
-    reduced = RoundingDivideByPOT(reduced, right_shift);
-    // Narrow values down to 16 bit signed.
-    const int16x4_t res16 = vqmovn_s32(reduced);
-    vst1_s16(output_data + c, res16);
-  }
 #else
-  for (int c = 0; c < output_depth; c += 4) {
-    // Internal accumulation.
-    // Initialize accumulator with the bias-value.
-    int32 accum[4] = {0};
-    // Accumulation loop.
-    for (int d = 0; d < accum_depth; d += 16) {
-      for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < accum_depth; i++) {
+      shuffled_input_workspace_data[i] = input_data[i] ^ 0x80;
+    }
+#endif
+  } else if (batches == 4) {
+    uint8* shuffled_input_workspace_ptr = shuffled_input_workspace_data;
+    int c = 0;
+#ifdef USE_NEON
+    const uint8x16_t signbit = vdupq_n_u8(0x80);
+    for (c = 0; c < accum_depth; c += 16) {
+      const uint8* src_data_ptr = input_data + c;
+      uint8x16_t val0 = vld1q_u8(src_data_ptr + 0 * accum_depth);
+      uint8x16_t val1 = vld1q_u8(src_data_ptr + 1 * accum_depth);
+      uint8x16_t val2 = vld1q_u8(src_data_ptr + 2 * accum_depth);
+      uint8x16_t val3 = vld1q_u8(src_data_ptr + 3 * accum_depth);
+      val0 = veorq_u8(val0, signbit);
+      val1 = veorq_u8(val1, signbit);
+      val2 = veorq_u8(val2, signbit);
+      val3 = veorq_u8(val3, signbit);
+      vst1q_u8(shuffled_input_workspace_ptr + 0, val0);
+      vst1q_u8(shuffled_input_workspace_ptr + 16, val1);
+      vst1q_u8(shuffled_input_workspace_ptr + 32, val2);
+      vst1q_u8(shuffled_input_workspace_ptr + 48, val3);
+      shuffled_input_workspace_ptr += 64;
+    }
+#else
+    for (c = 0; c < accum_depth; c += 16) {
+      for (int b = 0; b < 4; b++) {
+        const uint8* src_data_ptr = input_data + b * accum_depth + c;
         for (int j = 0; j < 16; j++) {
-          int8 input_val = input_data[d + j] - 128;
-          int8 weights_val = *shuffled_weights_ptr++;
-          accum[i] += weights_val * input_val;
+          uint8 src_val = *src_data_ptr++;
+          // Flip the sign bit, so that the kernel will only need to
+          // reinterpret these uint8 values as int8, getting for free the
+          // subtraction of the zero_point value 128.
+          uint8 dst_val = src_val ^ 0x80;
+          *shuffled_input_workspace_ptr++ = dst_val;
         }
       }
     }
-    for (int i = 0; i < 4; i++) {
-      // Add bias value
-      int acc = accum[i] + bias_data[c + i];
-      // Down-scale the final int32 accumulator to the scale used by our
-      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
-      // multiplier and shift here have been pre-computed offline
-      // (e.g. by toco).
-      acc =
-          MultiplyByQuantizedMultiplier(acc, output_multiplier, -output_shift);
-      // Saturate, cast to int16, and store to output array.
-      acc = std::max(acc, output_activation_min);
-      acc = std::min(acc, output_activation_max);
-      output_data[c + i] = acc;
-    }
-  }
 #endif
+  } else {
+    TFLITE_DCHECK(false);
+    return;
+  }
+
+  static constexpr int kKernelRows = 4;
+  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+      gemm_context->max_num_threads(), output_depth, batches, accum_depth);
+  if (thread_count == 1) {
+    // Single-thread case: do the computation on the current thread, don't
+    // use a threadpool
+    ExperimentalShuffledFullyConnectedWorkerImpl(
+        shuffled_input_workspace_data, int8_shuffled_weights_data, batches,
+        output_depth, output_depth, accum_depth, bias_data, output_multiplier,
+        output_shift, output_data);
+    return;
+  }
+
+  // Multi-threaded case: use the gemmlowp context's threadpool.
+  TFLITE_DCHECK_GT(thread_count, 1);
+  std::vector<gemmlowp::Task*> tasks(thread_count);
+  const int kRowsPerWorker =
+      gemmlowp::RoundUp<kKernelRows>(output_depth / thread_count);
+  int row_start = 0;
+  for (int i = 0; i < thread_count; i++) {
+    int row_end = std::min(output_depth, row_start + kRowsPerWorker);
+    tasks[i] = new ExperimentalShuffledFullyConnectedWorkerTask(
+        shuffled_input_workspace_data,
+        int8_shuffled_weights_data + row_start * accum_depth, batches,
+        row_end - row_start, output_depth, accum_depth, bias_data + row_start,
+        output_multiplier, output_shift, output_data + row_start);
+    row_start = row_end;
+  }
+  TFLITE_DCHECK_EQ(row_start, output_depth);
+  gemm_context->workers_pool()->Execute(tasks);
 }
 
 template <typename T>
@@ -1674,15 +1979,11 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   }
 
   const int gemm_input_rows = gemm_input_dims->sizes[0];
-  const int gemm_input_cols = gemm_input_dims->sizes[1] *
-                              gemm_input_dims->sizes[2] *
-                              gemm_input_dims->sizes[3];
+  const int gemm_input_cols = FlatSizeSkipDim(*gemm_input_dims, 0);
   const int filter_rows = filter_dims.sizes[3];
-  const int filter_cols =
-      filter_dims.sizes[0] * filter_dims.sizes[1] * filter_dims.sizes[2];
+  const int filter_cols = FlatSizeSkipDim(filter_dims, 3);
   const int output_rows = output_dims.sizes[0];
-  const int output_cols =
-      output_dims.sizes[1] * output_dims.sizes[2] * output_dims.sizes[3];
+  const int output_cols = FlatSizeSkipDim(output_dims, 0);
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
@@ -1836,14 +2137,11 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
                     Ac == FusedActivationFunctionType::kRelu1,
                 "");
   const int input_rows = input_dims.sizes[0];
-  const int input_cols =
-      input_dims.sizes[1] * input_dims.sizes[2] * input_dims.sizes[3];
+  const int input_cols = FlatSizeSkipDim(input_dims, 0);
   const int filter_rows = filter_dims.sizes[3];
-  const int filter_cols =
-      filter_dims.sizes[0] * filter_dims.sizes[1] * filter_dims.sizes[2];
+  const int filter_cols = FlatSizeSkipDim(filter_dims, 3);
   const int output_rows = output_dims.sizes[0];
-  const int output_cols =
-      output_dims.sizes[1] * output_dims.sizes[2] * output_dims.sizes[3];
+  const int output_cols = FlatSizeSkipDim(output_dims, 0);
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(output_cols, input_cols);
   TFLITE_DCHECK_EQ(filter_cols, input_rows);
@@ -1907,27 +2205,15 @@ void NonGlobalBatchNormalization(
     const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("NonGlobalBatchNormalization");
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height =
-      MatchingArraySize(input_dims, 2, mean_dims, 2, multiplier_dims, 2,
-                        offset_dims, 2, output_dims, 2);
-  const int width =
-      MatchingArraySize(input_dims, 1, mean_dims, 1, multiplier_dims, 1,
-                        offset_dims, 1, output_dims, 1);
-  const int depth =
-      MatchingArraySize(input_dims, 0, mean_dims, 0, multiplier_dims, 0,
-                        offset_dims, 0, output_dims, 0);
+  const int inner_size = MatchingFlatSizeSkipDim(
+      input_dims, 3, mean_dims, multiplier_dims, offset_dims, output_dims);
 
   for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              (input_data[Offset(input_dims, c, x, y, b)] -
-               mean_data[Offset(mean_dims, c, x, y, 0)]) *
-                  multiplier_data[Offset(multiplier_dims, c, x, y, 0)] +
-              offset_data[Offset(offset_dims, c, x, y, 0)]);
-        }
-      }
+    for (int i = 0; i < inner_size; ++i) {
+      *output_data = ActivationFunction<Ac>(
+          (*input_data - mean_data[i]) * multiplier_data[i] + offset_data[i]);
+      ++output_data;
+      ++input_data;
     }
   }
 }
@@ -1942,24 +2228,17 @@ void GlobalBatchNormalization(const float* input_data,
                               const Dims<4>& offset_dims, float* output_data,
                               const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("GlobalBatchNormalization");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
   const int depth =
       MatchingArraySize(input_dims, 0, mean_dims, 0, multiplier_dims, 0,
                         offset_dims, 0, output_dims, 0);
 
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              (input_data[Offset(input_dims, c, x, y, b)] -
-               mean_data[Offset(mean_dims, c, 0, 0, 0)]) *
-                  multiplier_data[Offset(multiplier_dims, c, 0, 0, 0)] +
-              offset_data[Offset(offset_dims, c, 0, 0, 0)]);
-        }
-      }
+  for (int i = 0; i < outer_size; ++i) {
+    for (int c = 0; c < depth; ++c) {
+      *output_data = ActivationFunction<Ac>(
+          (*input_data - mean_data[c]) * multiplier_data[c] + offset_data[c]);
+      ++output_data;
+      ++input_data;
     }
   }
 }
@@ -1976,44 +2255,26 @@ inline void Relu(const float* input_data, const Dims<4>& input_dims,
 inline void Relu1(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          float val = input_data[Offset(input_dims, c, x, y, b)];
-          const float upper = 1;
-          const float lower = -1;
-          float clamped = val > upper ? upper : val < lower ? lower : val;
-          output_data[Offset(output_dims, c, x, y, b)] = clamped;
-        }
-      }
-    }
+  const int flat_size = MatchingFlatSize(input_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    const float val = input_data[i];
+    const float upper = 1;
+    const float lower = -1;
+    const float clamped = val > upper ? upper : val < lower ? lower : val;
+    output_data[i] = clamped;
   }
 }
 
 inline void Relu6(const float* input_data, const Dims<4>& input_dims,
                   float* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Relu6 (not fused)");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          float val = input_data[Offset(input_dims, c, x, y, b)];
-          const float upper = 6;
-          const float lower = 0;
-          float clamped = val > upper ? upper : val < lower ? lower : val;
-          output_data[Offset(output_dims, c, x, y, b)] = clamped;
-        }
-      }
-    }
+  const int flat_size = MatchingFlatSize(input_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    const float val = input_data[i];
+    const float upper = 6;
+    const float lower = 0;
+    const float clamped = val > upper ? upper : val < lower ? lower : val;
+    output_data[i] = clamped;
   }
 }
 
@@ -2022,24 +2283,19 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization");
   static_assert(Ac == FusedActivationFunctionType::kNone, "");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
   const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        float squared_l2_norm = 0;
-        for (int c = 0; c < depth; ++c) {
-          float val = input_data[Offset(input_dims, c, x, y, b)];
-          squared_l2_norm += val * val;
-        }
-        float inverse_l2_norm = 1.0f / std::sqrt(squared_l2_norm);
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              input_data[Offset(input_dims, c, x, y, b)] * inverse_l2_norm;
-        }
-      }
+  for (int i = 0; i < outer_size; ++i) {
+    float squared_l2_norm = 0;
+    for (int c = 0; c < depth; ++c) {
+      const float val = input_data[c];
+      squared_l2_norm += val * val;
+    }
+    const float l2_norm = std::sqrt(squared_l2_norm);
+    for (int c = 0; c < depth; ++c) {
+      *output_data = *input_data / l2_norm;
+      ++output_data;
+      ++input_data;
     }
   }
 }
@@ -2093,15 +2349,11 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
                             int32 input_zero_point, uint8* output_data,
                             const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization/8bit");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  TFLITE_DCHECK_EQ(batches, 1);
-  TFLITE_DCHECK_EQ(height, 1);
-  TFLITE_DCHECK_EQ(width, 1);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  TFLITE_DCHECK_EQ(outer_size, 1);
   int32 square_l2_norm = 0;
   for (int i = 0; i < depth; i++) {
     int32 diff = input_data[i] - input_zero_point;
@@ -2127,20 +2379,12 @@ inline void Add(const float* input1_data, const Dims<4>& input1_dims,
                 float output_activation_min, float output_activation_max,
                 float* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Add");
-  /* const int batches = */ MatchingArraySize(input1_dims, 3, input2_dims, 3,
-                                              output_dims, 3);
-  /* const int height = */ MatchingArraySize(input1_dims, 2, input2_dims, 2,
-                                             output_dims, 2);
-  /* const int width = */ MatchingArraySize(input1_dims, 1, input2_dims, 1,
-                                            output_dims, 1);
-  /* const int depth = */ MatchingArraySize(input1_dims, 0, input2_dims, 0,
-                                            output_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input1_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(input2_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
 
   int i = 0;
-  const int size = input1_dims.sizes[3] * input1_dims.strides[3];
+  const int size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
 #ifdef USE_NEON
   const auto activation_min = vdupq_n_f32(output_activation_min);
   const auto activation_max = vdupq_n_f32(output_activation_max);
@@ -2187,52 +2431,17 @@ inline void Add(const float* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void Add(const float* input1_data, const Dims<4>& input1_dims,
-         const float* input2_data, const Dims<4>& input2_dims,
-         float* output_data, const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-
-  Add(input1_data, input1_dims, input2_data, input2_dims, output_activation_min,
-      output_activation_max, output_data, output_dims);
-}
-
-template <FusedActivationFunctionType Ac>
-inline void Add(int left_shift, const uint8* input1_data,
-                const Dims<4>& input1_dims, int32 input1_offset,
-                int32 input1_multiplier, int input1_shift,
-                const uint8* input2_data, const Dims<4>& input2_dims,
-                int32 input2_offset, int32 input2_multiplier, int input2_shift,
-                int32 output_offset, int32 output_multiplier, int output_shift,
-                int32 output_activation_min, int32 output_activation_max,
-                uint8* output_data, const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, 0);
-    TFLITE_DCHECK_EQ(output_activation_max, 255);
-  }
-  gemmlowp::ScopedProfilingLabel label("Add/8bit");
-  /* const int batches = */ MatchingArraySize(input1_dims, 3, input2_dims, 3,
-                                              output_dims, 3);
-  /* const int height = */ MatchingArraySize(input1_dims, 2, input2_dims, 2,
-                                             output_dims, 2);
-  /* const int width = */ MatchingArraySize(input1_dims, 1, input2_dims, 1,
-                                            output_dims, 1);
-  /* const int depth = */ MatchingArraySize(input1_dims, 0, input2_dims, 0,
-                                            output_dims, 0);
-  TFLITE_DCHECK(IsPackedWithoutStrides(input1_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(input2_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-
+// Element-wise add that can often be used for inner loop of broadcast add as
+// well as the non-broadcast add.
+inline void AddElementwise(int size, int left_shift, const uint8* input1_data,
+                           int32 input1_offset, int32 input1_multiplier,
+                           int input1_shift, const uint8* input2_data,
+                           int32 input2_offset, int32 input2_multiplier,
+                           int input2_shift, int32 output_offset,
+                           int32 output_multiplier, int output_shift,
+                           int32 output_activation_min,
+                           int32 output_activation_max, uint8* output_data) {
   int i = 0;
-  const int size = input1_dims.sizes[3] * input1_dims.strides[3];
   TFLITE_DCHECK_GT(input1_offset, -256);
   TFLITE_DCHECK_GT(input2_offset, -256);
   TFLITE_DCHECK_LT(input1_offset, 256);
@@ -2292,7 +2501,7 @@ inline void Add(int left_shift, const uint8* input1_data,
   }
 #endif  // NEON
 
-  for (; i < size; i++) {
+  for (; i < size; ++i) {
     const int32 input1_val = input1_offset + input1_data[i];
     const int32 input2_val = input2_offset + input2_data[i];
     const int32 shifted_input1_val = input1_val * (1 << left_shift);
@@ -2309,6 +2518,54 @@ inline void Add(int left_shift, const uint8* input1_data,
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = static_cast<uint8>(clamped_output);
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void Add(const float* input1_data, const Dims<4>& input1_dims,
+         const float* input2_data, const Dims<4>& input2_dims,
+         float* output_data, const Dims<4>& output_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  Add(input1_data, input1_dims, input2_data, input2_dims, output_activation_min,
+      output_activation_max, output_data, output_dims);
+}
+
+template <FusedActivationFunctionType Ac>
+inline void Add(int left_shift, const uint8* input1_data,
+                const Dims<4>& input1_dims, int32 input1_offset,
+                int32 input1_multiplier, int input1_shift,
+                const uint8* input2_data, const Dims<4>& input2_dims,
+                int32 input2_offset, int32 input2_multiplier, int input2_shift,
+                int32 output_offset, int32 output_multiplier, int output_shift,
+                int32 output_activation_min, int32 output_activation_max,
+                uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  gemmlowp::ScopedProfilingLabel label("Add/8bit");
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input1_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(input2_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+
+  TFLITE_DCHECK_GT(input1_offset, -256);
+  TFLITE_DCHECK_GT(input2_offset, -256);
+  TFLITE_DCHECK_LT(input1_offset, 256);
+  TFLITE_DCHECK_LT(input2_offset, 256);
+  AddElementwise(flat_size, left_shift, input1_data, input1_offset,
+                 input1_multiplier, input1_shift, input2_data, input2_offset,
+                 input2_multiplier, input2_shift, output_offset,
+                 output_multiplier, output_shift, output_activation_min,
+                 output_activation_max, output_data);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -2331,9 +2588,7 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
     TFLITE_DCHECK_EQ(output_activation_max, 32767);
   }
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   TFLITE_DCHECK(input1_shift == 0 || input2_shift == 0);
   TFLITE_DCHECK_GE(input1_shift, 0);
@@ -2369,10 +2624,10 @@ void Add(const int32* input1_data, const Dims<4>& input1_dims,
   auto output_map = MapAsVector(output_data, output_dims);
   if (AreSameDims(input1_dims, input2_dims)) {
     output_map.array() = input1_map.array() + input2_map.array();
-  } else if (RequiredBufferSizeForDims(input2_dims) == 1) {
+  } else if (FlatSize(input2_dims) == 1) {
     auto scalar = input2_data[0];
     output_map.array() = input1_map.array() + scalar;
-  } else if (RequiredBufferSizeForDims(input1_dims) == 1) {
+  } else if (FlatSize(input1_dims) == 1) {
     auto scalar = input1_data[0];
     output_map.array() = scalar + input2_map.array();
   } else {
@@ -2449,7 +2704,7 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                          int32 output_activation_min,
                          int32 output_activation_max, uint8* output_data,
                          const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd/8bit");
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddGeneric/8bit");
 
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
@@ -2498,6 +2753,44 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
   }
 }
 
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/8bit");
+
+  // Fivefold nested loops. The second input resets its position for each
+  // iteration of the second loop. The first input resets its position at the
+  // beginning of the fourth loop. The innermost loop is an elementwise add of
+  // sections of the arrays.
+  uint8* output_data_ptr = output_data;
+  const uint8* input1_data_ptr = input1_data;
+  const uint8* input2_data_reset = input2_data;
+  for (int i4 = 0; i4 < y4; ++i4) {
+    const uint8* input2_data_ptr;
+    for (int i3 = 0; i3 < y3; ++i3) {
+      input2_data_ptr = input2_data_reset;
+      for (int i2 = 0; i2 < y2; ++i2) {
+        for (int i1 = 0; i1 < y1; ++i1) {
+          AddElementwise(
+              y0, left_shift, input1_data_ptr, input1_offset, input1_multiplier,
+              input1_shift, input2_data_ptr, input2_offset, input2_multiplier,
+              input2_shift, output_offset, output_multiplier, output_shift,
+              output_activation_min, output_activation_max, output_data_ptr);
+          input2_data_ptr += y0;
+          output_data_ptr += y0;
+        }
+        input1_data_ptr += y0;
+      }
+    }
+    input2_data_reset = input2_data_ptr;
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                          const Dims<4>& input1_dims, int32 input1_offset,
@@ -2526,25 +2819,44 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                output_activation_max, output_data, output_dims);
 }
 
+template <FusedActivationFunctionType Ac>
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  BroadcastAddFivefold(y0, y1, y2, y3, y4, left_shift, input1_data, input1_dims,
+                       input1_offset, input1_multiplier, input1_shift,
+                       input2_data, input2_dims, input2_offset,
+                       input2_multiplier, input2_shift, output_offset,
+                       output_multiplier, output_shift, output_activation_min,
+                       output_activation_max, output_data, output_dims);
+}
+
 inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
                 const float* input2_data, const Dims<4>& input2_dims,
                 float output_activation_min, float output_activation_max,
                 float* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Mul");
-  /* const int batches = */ MatchingArraySize(input1_dims, 3, input2_dims, 3,
-                                              output_dims, 3);
-  /* const int height = */ MatchingArraySize(input1_dims, 2, input2_dims, 2,
-                                             output_dims, 2);
-  /* const int width = */ MatchingArraySize(input1_dims, 1, input2_dims, 1,
-                                            output_dims, 1);
-  /* const int depth = */ MatchingArraySize(input1_dims, 0, input2_dims, 0,
-                                            output_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input1_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(input2_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
 
   int i = 0;
-  const int size = input1_dims.sizes[3] * input1_dims.strides[3];
+  const int size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
 #ifdef USE_NEON
   const auto activation_min = vdupq_n_f32(output_activation_min);
   const auto activation_max = vdupq_n_f32(output_activation_max);
@@ -2619,10 +2931,10 @@ void Mul(const int32* input1_data, const Dims<4>& input1_dims,
   auto output_map = MapAsVector(output_data, output_dims);
   if (AreSameDims(input1_dims, input2_dims)) {
     output_map.array() = input1_map.array() * input2_map.array();
-  } else if (RequiredBufferSizeForDims(input2_dims) == 1) {
+  } else if (FlatSize(input2_dims) == 1) {
     auto scalar = input2_data[0];
     output_map.array() = input1_map.array() * scalar;
-  } else if (RequiredBufferSizeForDims(input1_dims) == 1) {
+  } else if (FlatSize(input1_dims) == 1) {
     auto scalar = input1_data[0];
     output_map.array() = scalar * input2_map.array();
   } else {
@@ -2638,9 +2950,7 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -2662,9 +2972,7 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
   // properly optimized version.
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -2807,26 +3115,11 @@ inline void Div(const float* input1_data, const Dims<4>& input1_dims,
                 const float* input2_data, const Dims<4>& input2_dims,
                 float output_activation_min, float output_activation_max,
                 float* output_data, const Dims<4>& output_dims) {
-  const int batches =
-      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
-  const int height =
-      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
-  const int width =
-      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
-  const int depth =
-      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[Offset(input1_dims, c, x, y, b)] /
-                      input2_data[Offset(input2_dims, c, x, y, b)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
+  for (int i = 0; i < flat_size; i++) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] / input2_data[i], output_activation_min,
+        output_activation_max);
   }
 }
 
@@ -2880,26 +3173,12 @@ inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
                 const float* input2_data, const Dims<4>& input2_dims,
                 float output_activation_min, float output_activation_max,
                 float* output_data, const Dims<4>& output_dims) {
-  const int batches =
-      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
-  const int height =
-      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
-  const int width =
-      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
-  const int depth =
-      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[Offset(input1_dims, c, x, y, b)] -
-                      input2_data[Offset(input2_dims, c, x, y, b)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
+  gemmlowp::ScopedProfilingLabel label("Sub");
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] - input2_data[i], output_activation_min,
+        output_activation_max);
   }
 }
 
@@ -3054,7 +3333,7 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
                           const int32 output_zeropoint,
                           const float output_scale) {
   // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization paramaters for all the inputs to the concat
+  // that have the quantization parameters for all the inputs to the concat
   // operator.
   gemmlowp::ScopedProfilingLabel label("Concatenation");
   TFLITE_DCHECK_GT(inputs_count, 1);
@@ -3208,15 +3487,9 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
   gemmlowp::ScopedProfilingLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
   // Gather dimensions information, and perform consistency checks.
-  const int batches =
-      MatchingArraySize(input_dims, 3, prev_activ_dims, 3, prev_state_dims, 3,
-                        output_state_dims, 3, output_activ_dims, 3);
-  const int height =
-      MatchingArraySize(input_dims, 2, prev_activ_dims, 2, prev_state_dims, 2,
-                        output_state_dims, 2, output_activ_dims, 2);
-  const int width =
-      MatchingArraySize(input_dims, 1, prev_activ_dims, 1, prev_state_dims, 1,
-                        output_state_dims, 1, output_activ_dims, 1);
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_dims, 0, prev_activ_dims, prev_state_dims,
+                              output_state_dims, output_activ_dims);
   TFLITE_CHECK_EQ(ArraySize(weights_dims, 2), 1);
   TFLITE_CHECK_EQ(ArraySize(weights_dims, 3), 1);
   const int input_depth = ArraySize(input_dims, 0);
@@ -3232,9 +3505,7 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       MatchingArraySize(prev_state_dims, 0, prev_activ_dims, 0,
                         output_state_dims, 0, output_activ_dims, 0);
   TFLITE_CHECK_EQ(output_depth, intern_activ_depth / 4);
-  const int fc_batches = ArraySize(activ_temp_dims, 1) *
-                         ArraySize(activ_temp_dims, 2) *
-                         ArraySize(activ_temp_dims, 3);
+  const int fc_batches = FlatSizeSkipDim(activ_temp_dims, 0);
   const int fc_output_depth =
       MatchingArraySize(weights_dims, 1, activ_temp_dims, 0);
   const int fc_accum_depth = ArraySize(weights_dims, 0);
@@ -3290,7 +3561,6 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
 
   // Rest of the LSTM cell: tanh and logistic math functions, and some adds
   // and muls, all done in 16-bit fixed-point.
-  const int outer_size = batches * width * height;
   const int16* input_gate_input_ptr = activ_temp_data_int16;
   const int16* input_modulation_gate_input_ptr =
       activ_temp_data_int16 + output_depth;
@@ -3456,20 +3726,15 @@ void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
   gemmlowp::ScopedProfilingLabel label("TensorFlowSplit");
   TFLITE_DCHECK_GE(outputs_count, 1);
   for (int i = 0; i < outputs_count; i++) {
-    /* batches = */ MatchingArraySize(*output_dims[i], 3, input_dims, 3);
-    /* height = */ MatchingArraySize(*output_dims[i], 2, input_dims, 2);
-    /* width = */ MatchingArraySize(*output_dims[i], 1, input_dims, 1);
+    MatchingFlatSizeSkipDim(*output_dims[i], 0, input_dims);
   }
-  const int batches = MatchingArraySize(*output_dims[0], 3, input_dims, 3);
-  const int height = MatchingArraySize(*output_dims[0], 2, input_dims, 2);
-  const int width = MatchingArraySize(*output_dims[0], 1, input_dims, 1);
+  const int outer_size = FlatSizeSkipDim(input_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  // for now we dont have a model with a TensorFlowSplit
+  // For now we don't have a model with a TensorFlowSplit
   // with fused activation function.
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
-  const int whb = width * height * batches;
   const Scalar* input_ptr = input_data;
-  for (int k = 0; k < whb; k++) {
+  for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < outputs_count; ++i) {
       memcpy(output_data[i] + k * output_dims[i]->sizes[0], input_ptr,
              output_dims[i]->sizes[0] * sizeof(Scalar));
@@ -3994,10 +4259,7 @@ inline void LocalResponseNormalization(const float* input_data,
                                        float* output_data,
                                        const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("LocalResponseNormalization");
-  /* const int batches = */ MatchingArraySize(input_dims, 3, output_dims, 3);
-  /* const int height = */ MatchingArraySize(input_dims, 2, output_dims, 2);
-  /* const int width = */ MatchingArraySize(input_dims, 1, output_dims, 1);
-  /* const int depth = */ MatchingArraySize(input_dims, 0, output_dims, 0);
+  MatchingFlatSize(input_dims, output_dims);
 
   const auto data_in = MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
   auto data_out = MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
@@ -4040,10 +4302,7 @@ inline void Softmax(const float* input_data, const Dims<4>& input_dims,
                     float beta, float* output_data,
                     const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Softmax");
-  /* const int batches = */ MatchingArraySize(input_dims, 3, output_dims, 3);
-  /* const int height = */ MatchingArraySize(input_dims, 2, output_dims, 2);
-  /* const int width = */ MatchingArraySize(input_dims, 1, output_dims, 1);
-  /* const int depth = */ MatchingArraySize(input_dims, 0, output_dims, 0);
+  MatchingFlatSize(input_dims, output_dims);
 
   const auto in_mat = MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
   auto out_mat = MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
@@ -4074,13 +4333,9 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
   const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-
-  const int outer_size = batches * height * width;
 
   for (int b = 0; b < outer_size; ++b) {
     const uint8* input_data_ptr = input_data + b * depth;
@@ -4273,35 +4528,30 @@ gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
 inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
                        float* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("LogSoftmax");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
   const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
 
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        // Find max element value which we'll use to ensure numerical stability
-        // taking advantage of the following equality:
-        // log(exp(x[i])/sum(exp(x[i]))) == log(exp(x[i]+C)/sum(exp(x[i]+C)))
-        float max = std::numeric_limits<float>::lowest();
-        for (int c = 0; c < depth; ++c) {
-          max = std::max(max, input_data[Offset(input_dims, c, x, y, b)]);
-        }
+  for (int i = 0; i < outer_size; ++i) {
+    const float* block_input_data = input_data + i * depth;
+    float* block_output_data = output_data + i * depth;
+    // Find max element value which we'll use to ensure numerical stability
+    // taking advantage of the following equality:
+    // log(exp(x[i])/sum(exp(x[i]))) == log(exp(x[i]+C)/sum(exp(x[i]+C)))
+    float max = std::numeric_limits<float>::lowest();
+    for (int c = 0; c < depth; ++c) {
+      max = std::max(max, block_input_data[c]);
+    }
 
-        // Compute sum.
-        float sum = 0.f;
-        for (int c = 0; c < depth; ++c) {
-          sum += std::exp(input_data[Offset(input_dims, c, x, y, b)] - max);
-        }
+    // Compute sum.
+    float sum = 0.f;
+    for (int c = 0; c < depth; ++c) {
+      sum += std::exp(block_input_data[c] - max);
+    }
 
-        // Compute result.
-        const float log_sum = std::log(sum);
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              input_data[Offset(input_dims, c, x, y, b)] - max - log_sum;
-        }
-      }
+    // Compute result.
+    const float log_sum = std::log(sum);
+    for (int c = 0; c < depth; ++c) {
+      block_output_data[c] = block_input_data[c] - max - log_sum;
     }
   }
 }
@@ -4330,15 +4580,16 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
   const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
+    const uint8* block_input_data = input_data + i * depth;
+    uint8* block_output_data = output_data + i * depth;
     uint8 max_in_row = 0;
     for (int c = 0; c < depth; ++c) {
-      max_in_row = std::max(max_in_row, input_data[i * depth + c]);
+      max_in_row = std::max(max_in_row, block_input_data[c]);
     }
 
     FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
       if (input_diff >= diff_min) {
         const int32 input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
@@ -4372,8 +4623,7 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
                      reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
       if (input_diff > adjusted_diff_min) {
         const int32 input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
@@ -4384,11 +4634,11 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
                 31 - kScaledDiffIntegerBits - kOutputIntegerBits) +
             255;
 
-        output_data[i * depth + c] = static_cast<uint8>(
+        block_output_data[c] = static_cast<uint8>(
             std::max(std::min(unsat_output, static_cast<int32>(255)), 0));
       } else {
         // Set output to smallest value.
-        output_data[i * depth + c] = 0;
+        block_output_data[c] = 0;
       }
     }
   }
@@ -4408,11 +4658,7 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
                      int32 input_multiplier, int input_left_shift,
                      uint8* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
-  /* batches */ MatchingArraySize(input_dims, 3, output_dims, 3);
-  /* height */ MatchingArraySize(input_dims, 2, output_dims, 2);
-  /* width */ MatchingArraySize(input_dims, 1, output_dims, 1);
-  /* depth */ MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int size = RequiredBufferSizeForDims(input_dims);
+  const int size = MatchingFlatSize(input_dims, output_dims);
 
   int c = 0;
 #ifdef USE_NEON
@@ -4547,8 +4793,7 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
 inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
                      int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   for (int i = 0; i < flat_size; i++) {
   }
@@ -4619,11 +4864,7 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
                  uint8* output_data, const Dims<4>& output_dims) {
   // Note that this is almost the exact same code as in Logistic().
   gemmlowp::ScopedProfilingLabel label("Tanh");
-  /* batches */ MatchingArraySize(input_dims, 3, output_dims, 3);
-  /* height */ MatchingArraySize(input_dims, 2, output_dims, 2);
-  /* width */ MatchingArraySize(input_dims, 1, output_dims, 1);
-  /* depth */ MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int size = RequiredBufferSizeForDims(input_dims);
+  const int size = MatchingFlatSize(input_dims, output_dims);
 
   int c = 0;
   int32_t output_zero_point = 128;
@@ -4773,8 +5014,7 @@ inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK_GE(input_left_shift, 0);
   TFLITE_DCHECK_LE(input_left_shift, 1);
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   int c = 0;
   const int16* input_data_ptr = input_data;
@@ -4869,20 +5109,11 @@ inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
                        int32 zero_point, double scale, float* output_data,
                        const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Dequantize");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          int32 val = input_data[Offset(input_dims, c, x, y, b)];
-          float result = static_cast<float>(scale * (val - zero_point));
-          output_data[Offset(output_dims, c, x, y, b)] = result;
-        }
-      }
-    }
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    int32 val = input_data[i];
+    float result = static_cast<float>(scale * (val - zero_point));
+    output_data[i] = result;
   }
 }
 
@@ -4905,25 +5136,15 @@ inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
                          &nudged_max, &nudged_scale);
   const float inv_nudged_scale = 1.0f / nudged_scale;
 
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          const float src_val = input_data[Offset(input_dims, c, x, y, b)];
-          const float clamped =
-              std::min(nudged_max, std::max(nudged_min, src_val));
-          const float clamped_shifted = clamped - nudged_min;
-          const float dst_val =
-              TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
-              nudged_min;
-          output_data[Offset(output_dims, c, x, y, b)] = dst_val;
-        }
-      }
-    }
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    const float src_val = input_data[i];
+    const float clamped = std::min(nudged_max, std::max(nudged_min, src_val));
+    const float clamped_shifted = clamped - nudged_min;
+    const float dst_val =
+        TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
+        nudged_min;
+    output_data[i] = dst_val;
   }
 }
 
@@ -5469,11 +5690,30 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+void TypedMemset(void* ptr, T value, size_t num) {
+  // Optimization for common cases where memset() will suffice.
+  if (value == 0 || std::is_same<T, uint8_t>::value) {
+    memset(ptr, value, num * sizeof(T));
+  } else {
+    // Default implementation for cases where memset() will not preserve the
+    // bytes, e.g., typically when sizeof(T) > sizeof(uint8_t).
+    char* pos = static_cast<char*>(ptr);
+    for (size_t i = 0; i < num; ++i) {
+      memcpy(pos, &value, sizeof(T));
+      pos = pos + sizeof(T);
+    }
+  }
+}
+
+template <typename T>
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
   gemmlowp::ScopedProfilingLabel label("Pad");
+  TFLITE_DCHECK_EQ(left_paddings.size(), 4);
+  TFLITE_DCHECK_EQ(right_paddings.size(), 4);
+
   const int output_batch = ArraySize(output_dims, 3);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
@@ -5492,27 +5732,28 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   const int input_depth = ArraySize(input_dims, 0);
 
   if (left_b_padding != 0) {
-    memset(output_data, pad_value,
-           left_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data, pad_value,
+        left_b_padding * output_height * output_width * output_depth);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
     if (left_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0, 0, out_b), pad_value,
-             left_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(output_data + Offset(output_dims, 0, 0, 0, out_b),
+                     pad_value, left_h_padding * output_width * output_depth);
     }
     for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
          ++out_h) {
       if (left_w_padding != 0) {
-        memset(output_data + Offset(output_dims, 0, 0, out_h, out_b), pad_value,
-               left_w_padding * output_depth * sizeof(T));
+        TypedMemset<T>(output_data + Offset(output_dims, 0, 0, out_h, out_b),
+                       pad_value, left_w_padding * output_depth);
       }
       for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
            ++out_w) {
         if (left_d_padding != 0) {
-          memset(output_data + Offset(output_dims, 0, out_w, out_h, out_b),
-                 pad_value, left_d_padding * sizeof(T));
+          TypedMemset<T>(
+              output_data + Offset(output_dims, 0, out_w, out_h, out_b),
+              pad_value, left_d_padding);
         }
 
         T* out = output_data +
@@ -5523,33 +5764,44 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
         memcpy(out, in, input_depth * sizeof(T));
 
         if (right_d_padding != 0) {
-          memset(
+          TypedMemset<T>(
               output_data + Offset(output_dims, output_depth - right_d_padding,
                                    out_w, out_h, out_b),
-              pad_value, right_d_padding * sizeof(T));
+              pad_value, right_d_padding);
         }
       }
       if (right_w_padding != 0) {
-        memset(
+        TypedMemset<T>(
             output_data + Offset(output_dims, 0, output_width - right_w_padding,
                                  out_h, out_b),
-            pad_value, right_w_padding * output_depth * sizeof(T));
+            pad_value, right_w_padding * output_depth);
       }
     }
     if (right_h_padding != 0) {
-      memset(output_data + Offset(output_dims, 0, 0,
-                                  output_height - right_h_padding, out_b),
-             pad_value,
-             right_h_padding * output_width * output_depth * sizeof(T));
+      TypedMemset<T>(
+          output_data +
+              Offset(output_dims, 0, 0, output_height - right_h_padding, out_b),
+          pad_value, right_h_padding * output_width * output_depth);
     }
   }
   if (right_b_padding != 0) {
-    memset(output_data +
-               Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
-           0,
-           right_b_padding * output_height * output_width * output_depth *
-               sizeof(T));
+    TypedMemset<T>(
+        output_data +
+            Offset(output_dims, 0, 0, 0, output_batch - right_b_padding),
+        pad_value,
+        right_b_padding * output_height * output_width * output_depth);
   }
+}
+
+// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T>
+inline void Pad(const T* input_data, const Dims<4>& input_dims,
+                const std::vector<int>& left_paddings,
+                const std::vector<int>& right_paddings, T* output_data,
+                const Dims<4>& output_dims, const int32_t pad_value) {
+  const T converted_pad_value = static_cast<T>(pad_value);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, converted_pad_value);
 }
 
 template <typename T>
@@ -5561,43 +5813,48 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
       output_dims, 0);
 }
 
+// UNOPTIMIZED COPY of StridedSlice from reference_ops.h.
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
-                         const std::vector<int>& starts,
-                         const std::vector<int>& stops,
+                         const std::vector<int>& start_indices,
+                         const std::vector<int>& stop_indices,
                          const std::vector<int>& strides, T* output_data,
                          const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("StridedSlice");
-  const int start_b = (begin_mask & 8) ? 0 : starts[3];
-  const int stop_b = (end_mask & 8) ? input_dims.sizes[3] : stops[3];
-  const int start_h = (begin_mask & 4) ? 0 : starts[2];
-  const int stop_h = (end_mask & 4) ? input_dims.sizes[2] : stops[2];
-  const int start_w = (begin_mask & 2) ? 0 : starts[1];
-  const int stop_w = (end_mask & 2) ? input_dims.sizes[1] : stops[1];
-  const int start_d = (begin_mask & 1) ? 0 : starts[0];
-  const int stop_d = (end_mask & 1) ? input_dims.sizes[0] : stops[0];
+  TFLITE_DCHECK_EQ(start_indices.size(), 4);
+  TFLITE_DCHECK_EQ(stop_indices.size(), 4);
+  TFLITE_DCHECK_EQ(strides.size(), 4);
+  const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 3);
+  const int stop_b = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 3);
+  const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 2);
+  const int stop_h = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 2);
+  const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 1);
+  const int stop_w = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 1);
+  const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
+                                                  strides, input_dims.sizes, 0);
+  const int stop_d = strided_slice::StopForAxis(end_mask, stop_indices, strides,
+                                                input_dims.sizes, 0);
 
   T* out_ptr = output_data;
-  if (strides[0] == 0) {
-    for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-      for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-        for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-          const int len = stop_d - start_d;
-          memcpy(out_ptr,
-                 input_data + Offset(input_dims, start_d, in_w, in_h, in_b),
-                 len * sizeof(T));
-          out_ptr += len;
-        }
-      }
-    }
-  } else {
-    for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-      for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-        for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-          for (int in_d = start_d; in_d < stop_d; in_d += strides[0]) {
-            *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
-          }
+  for (int in_b = start_b;
+       !strided_slice::LoopCondition(in_b, stop_b, strides[3]);
+       in_b += strides[3]) {
+    for (int in_h = start_h;
+         !strided_slice::LoopCondition(in_h, stop_h, strides[2]);
+         in_h += strides[2]) {
+      for (int in_w = start_w;
+           !strided_slice::LoopCondition(in_w, stop_w, strides[1]);
+           in_w += strides[1]) {
+        for (int in_d = start_d;
+             !strided_slice::LoopCondition(in_d, stop_d, strides[0]);
+             in_d += strides[0]) {
+          *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
         }
       }
     }
@@ -5616,10 +5873,10 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
       size[3] == -1 ? input_dims.sizes[3] - start_b : start_b + size[3];
   const int start_h = begin[2];
   const int stop_h =
-      size[2] == -1 ? input_dims.sizes[2] - start_b : start_b + size[2];
+      size[2] == -1 ? input_dims.sizes[2] - start_h : start_h + size[2];
   const int start_w = begin[1];
   const int stop_w =
-      size[1] == -1 ? input_dims.sizes[1] - start_b : start_b + size[1];
+      size[1] == -1 ? input_dims.sizes[1] - start_w : start_w + size[1];
   const int start_d = begin[0];
   const int stop_d =
       size[0] == -1 ? input_dims.sizes[0] - start_d : start_d + size[0];
@@ -5718,10 +5975,10 @@ void Sub(const T* input1_data, const Dims<4>& input1_dims, const T* input2_data,
   auto output_map = MapAsVector(output_data, output_dims);
   if (AreSameDims(input1_dims, input2_dims)) {
     output_map.array() = input1_map.array() - input2_map.array();
-  } else if (RequiredBufferSizeForDims(input1_dims) == 1) {
+  } else if (FlatSize(input1_dims) == 1) {
     auto scalar = input1_data[0];
     output_map.array() = scalar - input2_map.array();
-  } else if (RequiredBufferSizeForDims(input2_dims) == 1) {
+  } else if (FlatSize(input2_dims) == 1) {
     auto scalar = input2_data[0];
     output_map.array() = input1_map.array() - scalar;
   } else {
@@ -5759,32 +6016,28 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
 
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
-  TFLITE_DCHECK_EQ(axis[0], 3);
 
   // For ArgMax, the number of output dimensions = (number of input dimensions -
   // 1). For the sake of simplicity, the output dimensions are equal to the
   // input dimensions here. We enforce the constraint that the last dimension
   // must always be 1.
   TFLITE_DCHECK_EQ(ArraySize(output_dims, 0), 1);
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
   const int depth = ArraySize(input_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        auto max_value = input_data[Offset(input_dims, 0, x, y, b)];
-        int max_index = 0;
-        for (int d = 1; d < depth; ++d) {
-          const auto& curr_value = input_data[Offset(input_dims, d, x, y, b)];
-          if (curr_value > max_value) {
-            max_value = curr_value;
-            max_index = d;
-          }
-        }
-        output_data[Offset(output_dims, 0, x, y, b)] = max_index;
+  for (int i = 0; i < outer_size; ++i) {
+    auto max_value = *input_data;
+    ++input_data;
+    int max_index = 0;
+    for (int d = 1; d < depth; ++d) {
+      const auto& curr_value = *input_data;
+      if (curr_value > max_value) {
+        max_value = curr_value;
+        max_index = d;
       }
+      ++input_data;
     }
+    *output_data = max_index;
+    ++output_data;
   }
 }
 
@@ -5864,7 +6117,7 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
           const int out_y_origin = (in_y * stride_height) - pad_height;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int out_channel = 0; out_channel < input_depth;
+              for (int out_channel = 0; out_channel < output_depth;
                    ++out_channel) {
                 // Compute output element location
                 const int out_x = out_x_origin + filter_x;

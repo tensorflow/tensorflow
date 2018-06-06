@@ -923,7 +923,7 @@ void OpKernelContext::clear_recorded_memory() {
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
                      kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(c.ToString()), factory(f) {}
+      : def(d), kernel_class_name(std::string(c)), factory(f) {}
   const KernelDef def;
   const string kernel_class_name;
   const kernel_factory::OpKernelRegistrar::Factory factory;
@@ -1273,51 +1273,59 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
 }
 #endif
 
+namespace {
+template <class OpKernelT>
+void CtxFailureInternal(OpKernelT* op_kernel, const char* file, int line,
+                        const Status& s) {
+  const string logging_prefix =
+      file == nullptr ? "CtxFailure: "
+                      : strings::StrCat("CtxFailure at ", io::Basename(file),
+                                        ":", line, ": ");
+
+  if (errors::IsOutOfRange(s)) {
+    // VLOG OutOfRange errors. Dataset ops create OutOfRange errors when they
+    // reach end-of-sequence.
+    VLOG(1) << logging_prefix << s;
+  } else {
+    LOG(WARNING) << logging_prefix << s;
+  }
+  op_kernel->SetStatus(s);
+}
+}  // anonymous namespace
+
 void OpKernelConstruction::CtxFailure(const Status& s) {
-  VLOG(1) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
-  LOG(WARNING) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelConstruction::CtxFailure(const char* file, int line,
                                       const Status& s) {
-  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-          << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
                                                  const Status& s) {
-  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-               << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 void OpKernelContext::CtxFailure(const Status& s) {
-  VLOG(1) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const Status& s) {
-  LOG(WARNING) << s;
-  SetStatus(s);
+  CtxFailureInternal(this, nullptr, 0, s);
 }
 
 void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
-  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-          << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
                                             const Status& s) {
-  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
-               << " : " << s;
-  SetStatus(s);
+  CtxFailureInternal(this, file, line, s);
 }
 
 }  // namespace tensorflow

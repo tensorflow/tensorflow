@@ -38,8 +38,10 @@ Estimators automatically write the following to disk:
     uses to create visualizations.
 
 To specify the top-level directory in which the Estimator stores its
-information, assign a value to the optional `model_dir` argument of any
-Estimator's constructor.  For example, the following code sets the `model_dir`
+information, assign a value to the optional `model_dir` argument of *any*
+`Estimator`'s constructor.
+Taking `DNNClassifier` as an example,
+the following code sets the `model_dir`
 argument to the `models/iris` directory:
 
 ```python

@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-namespace se = ::perftools::gputools;
-
 using xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
@@ -50,29 +48,51 @@ LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
       << "Must have a valid device ordinal that the executable was built for.";
 }
 
-tensorflow::Status LocalExecutable::ValidateExecutionOptions(
+Status LocalExecutable::ValidateExecutionOptions(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutableRunOptions& run_options, const Backend& backend) {
-  const ComputationLayout& computation_layout =
-      executable_->module_config().entry_computation_layout();
+  const ComputationLayout& host_computation_layout =
+      executable_->module_config().host_entry_computation_layout();
+  const ComputationLayout& device_computation_layout =
+      executable_->module_config().device_entry_computation_layout();
 
   // Check argument number, shapes, and layouts.
-  if (arguments.size() != computation_layout.parameter_count()) {
+  if (arguments.size() != host_computation_layout.parameter_count()) {
     return InvalidArgument(
         "invalid number of arguments for computation: expected %d, got %zu",
-        computation_layout.parameter_count(), arguments.size());
+        host_computation_layout.parameter_count(), arguments.size());
+  }
+  if (arguments.size() != device_computation_layout.parameter_count()) {
+    return InvalidArgument(
+        "invalid number of arguments for computation: expected %d, got %zu",
+        device_computation_layout.parameter_count(), arguments.size());
   }
   for (int i = 0; i < arguments.size(); ++i) {
-    if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
+    if (!host_computation_layout.parameter_layout(i).MatchesLayoutInShape(
             arguments[i]->on_host_shape())) {
       return InvalidParameterArgument(
           executable_.get(), i,
-          "Argument does not match shape or layout of computation parameter "
+          "Argument does not match host shape or layout of computation "
+          "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
+          ShapeUtil::HumanString(
+              host_computation_layout.parameter_layout(i).shape())
               .c_str(),
           ShapeUtil::HumanString(arguments[i]->on_host_shape()).c_str());
+    }
+    if (!device_computation_layout.parameter_layout(i).MatchesLayoutInShape(
+            arguments[i]->on_device_shape())) {
+      return InvalidParameterArgument(
+          executable_.get(), i,
+          "Argument does not match device shape or layout of computation "
+          "parameter "
+          "%d: want %s, got %s",
+          i,
+          ShapeUtil::HumanString(
+              device_computation_layout.parameter_layout(i).shape())
+              .c_str(),
+          ShapeUtil::HumanString(arguments[i]->on_device_shape()).c_str());
     }
   }
 
@@ -136,7 +156,7 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
+StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     ExecutableRunOptions run_options) {
   TF_RETURN_IF_ERROR(
@@ -168,31 +188,26 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);
   }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result,
-      executable_->ExecuteOnStreamWrapper(
-          &service_options, run_options.execution_profile(), arguments));
-
-  return MakeUnique<ScopedShapedBuffer>(std::move(*result),
-                                        run_options.allocator());
+  return executable_->ExecuteOnStreamWrapper(
+      &service_options, run_options.execution_profile(), arguments);
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::ExecuteAndDump(
+StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   executable_->session_module()->set_execution_platform(
       backend_->platform()->Name());
   TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->session_module()));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result,
+      ScopedShapedBuffer result,
       executable_->ExecuteOnStream(run_options, arguments,
                                    /*hlo_execution_profile=*/nullptr));
-  TF_RETURN_IF_ERROR(RecordResult(result.get(), executable_->session_module()));
+  TF_RETURN_IF_ERROR(RecordResult(&result, executable_->session_module()));
   TF_RETURN_IF_ERROR(executable_->DumpSessionModule());
-  return ScopedShapedBuffer::MakeScoped(result.get(), run_options->allocator());
+  return std::move(result);
 }
 
-tensorflow::Status LocalExecutable::RecordArguments(
+Status LocalExecutable::RecordArguments(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     SessionModule* session_module) {
   session_module->clear_arguments();
@@ -204,8 +219,8 @@ tensorflow::Status LocalExecutable::RecordArguments(
   return Status::OK();
 }
 
-tensorflow::Status LocalExecutable::RecordResult(
-    const ShapedBuffer* result, SessionModule* session_module) {
+Status LocalExecutable::RecordResult(const ShapedBuffer* result,
+                                     SessionModule* session_module) {
   session_module->clear_result();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                       LiteralFromShapedBuffer(*result));
@@ -247,25 +262,6 @@ Backend* LocalClient::mutable_backend() {
 }
 
 StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
-    const Computation& computation,
-    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const ExecutableBuildOptions& options) {
-  ExecutableBuildOptions updated_options = options;
-  if (options.device_ordinal() == -1) {
-    updated_options.set_device_ordinal(default_device_ordinal());
-    VLOG(3) << "Set device ordinal to default value of: "
-            << updated_options.device_ordinal();
-  }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      local_service_->CompileExecutable(computation.handle(), argument_layouts,
-                                        updated_options));
-  return WrapUnique(new LocalExecutable(std::move(executable),
-                                        local_service_->mutable_backend(),
-                                        updated_options));
-}
-
-StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
     const XlaComputation& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
     const ExecutableBuildOptions& options) {
@@ -283,9 +279,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
                                         updated_options));
 }
 
-StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
-                                   DeviceMemoryAllocator* allocator) {
+StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
+    const Literal& literal, int device_ordinal,
+    DeviceMemoryAllocator* allocator) {
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }
@@ -295,7 +291,7 @@ LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-      executor, literal, *scoped_buffer));
+      executor, literal, scoped_buffer));
   return std::move(scoped_buffer);
 }
 

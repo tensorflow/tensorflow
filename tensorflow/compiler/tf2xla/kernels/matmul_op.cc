@@ -66,8 +66,8 @@ class MatMulOp : public XlaOpKernel {
                                         a_shape.DebugString(), ", In[1]: ",
                                         b_shape.DebugString()));
 
-    xla::ComputationDataHandle a = ctx->Input(0);
-    xla::ComputationDataHandle b = ctx->Input(1);
+    xla::XlaOp a = ctx->Input(0);
+    xla::XlaOp b = ctx->Input(1);
     if (is_sparse_) {
       if (a_type_ == DT_BFLOAT16) {
         a = ctx->builder()->ConvertElementType(a, xla::F32);

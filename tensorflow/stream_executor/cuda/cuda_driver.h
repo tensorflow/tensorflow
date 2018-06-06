@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "cuda/include/cuda.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Identifies the memory space where an allocation resides. See
@@ -148,7 +147,7 @@ class CUDADriver {
   // userspace processes is given here:
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
   static port::Status CreateContext(CUdevice device,
-                                    DeviceOptions device_options,
+                                    const DeviceOptions& device_options,
                                     CudaContext** context);
 
   // Destroys the provided context via cuCtxDestroy.
@@ -506,7 +505,6 @@ class CudaContext {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_

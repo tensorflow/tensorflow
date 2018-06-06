@@ -34,7 +34,7 @@ class CompileOnlyService : public Service {
   // platform that the service should target. If platform is null then the
   // default platform is used.
   static StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
-      perftools::gputools::Platform* platform);
+      se::Platform* platform);
   static StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
       const ServiceOptions& options);
 
@@ -53,51 +53,64 @@ class CompileOnlyService : public Service {
       const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
       const AotCompilationOptions& Options);
 
+  // A description of a xla computation to compile using CompileAheadOfTime.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  struct AotXlaComputationInstance {
+    HloModuleProto computation;
+    std::vector<const Shape*> argument_layouts;
+    const Shape* result_layout = nullptr;
+  };
+
+  // Compiles a list of xla computations for ahead-of-time execution.  This is
+  // intended for use in static compilation.  See
+  // |CompileOnlyClient::CompileAheadOfTime| for additional details.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(
+      const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+      const AotCompilationOptions& options);
+
   // Override Service methods that require or imply the existence of an
   // execute backend.  Note that this does not include TransferToClient, as
   // computing constants produces global data that we may wish to transfer.
-  tensorflow::Status Execute(const ExecuteRequest* arg,
-                             ExecuteResponse* result) override {
+  Status Execute(const ExecuteRequest* arg, ExecuteResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");
   }
-  tensorflow::Status ExecuteParallel(const ExecuteParallelRequest* arg,
-                                     ExecuteParallelResponse* result) override {
+  Status ExecuteParallel(const ExecuteParallelRequest* arg,
+                         ExecuteParallelResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");
   }
-  tensorflow::Status GetDeviceHandles(
-      const GetDeviceHandlesRequest* arg,
-      GetDeviceHandlesResponse* result) override {
+  Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                          GetDeviceHandlesResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
   }
-  tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
-                                  ExecuteAsyncResponse* result) override {
+  Status ExecuteAsync(const ExecuteAsyncRequest* arg,
+                      ExecuteAsyncResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");
   }
-  tensorflow::Status WaitForExecution(
-      const WaitForExecutionRequest* arg,
-      WaitForExecutionResponse* result) override {
+  Status WaitForExecution(const WaitForExecutionRequest* arg,
+                          WaitForExecutionResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");
   }
-  tensorflow::Status TransferToServer(
-      const TransferToServerRequest* arg,
-      TransferToServerResponse* result) override {
+  Status TransferToServer(const TransferToServerRequest* arg,
+                          TransferToServerResponse* result) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  tensorflow::Status TransferToInfeed(
-      const TransferToInfeedRequest* arg,
-      TransferToInfeedResponse* result) override {
+  Status TransferToInfeed(const TransferToInfeedRequest* arg,
+                          TransferToInfeedResponse* result) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  tensorflow::Status TransferFromOutfeed(
-      const TransferFromOutfeedRequest* arg,
-      TransferFromOutfeedResponse* result) override {
+  Status TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
+                             TransferFromOutfeedResponse* result) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
-                                 ResetDeviceResponse* result) override {
+  Status ResetDevice(const ResetDeviceRequest* arg,
+                     ResetDeviceResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
   }
 

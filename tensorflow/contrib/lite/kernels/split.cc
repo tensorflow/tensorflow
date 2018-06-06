@@ -34,8 +34,8 @@ struct OpContext {
     input = GetInput(context, node, 1);
   }
   TfLiteSplitParams* params;
-  TfLiteTensor* axis;
-  TfLiteTensor* input;
+  const TfLiteTensor* axis;
+  const TfLiteTensor* input;
 };
 
 TfLiteStatus UseDynamicOutputTensors(TfLiteContext* context, TfLiteNode* node) {
@@ -46,8 +46,8 @@ TfLiteStatus UseDynamicOutputTensors(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
-                                 TfLiteTensor* axis, TfLiteTensor* input,
-                                 int num_splits) {
+                                 const TfLiteTensor* axis,
+                                 const TfLiteTensor* input, int num_splits) {
   int axis_value = GetTensorData<int>(axis)[0];
   if (axis_value < 0) {
     axis_value += NumDimensions(input);

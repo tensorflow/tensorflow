@@ -178,7 +178,9 @@ class LinearOperatorDerivedClassTest(test.TestCase):
       SkipTest Exception, if test_name is in self._tests_to_skip.
     """
     if test_name in self._tests_to_skip:
-      self.skipTest("%s skipped because it was added to self._tests_to_skip.")
+      self.skipTest(
+          "{} skipped because it was added to self._tests_to_skip.".format(
+              test_name))
 
   def test_to_dense(self):
     self._skip_if_tests_to_skip_contains("to_dense")
@@ -233,6 +235,12 @@ class LinearOperatorDerivedClassTest(test.TestCase):
   def _test_matmul(self, with_batch):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
+        # If batch dimensions are omitted, but there are
+        # no batch dimensions for the linear operator, then
+        # skip the test case. This is already checked with
+        # with_batch=True.
+        if not with_batch and len(build_info.shape) <= 2:
+          continue
         for dtype in self._dtypes_to_test:
           for adjoint in self._adjoint_options:
             for adjoint_arg in self._adjoint_arg_options:
@@ -270,6 +278,12 @@ class LinearOperatorDerivedClassTest(test.TestCase):
   def _test_solve(self, with_batch):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
+        # If batch dimensions are omitted, but there are
+        # no batch dimensions for the linear operator, then
+        # skip the test case. This is already checked with
+        # with_batch=True.
+        if not with_batch and len(build_info.shape) <= 2:
+          continue
         for dtype in self._dtypes_to_test:
           for adjoint in self._adjoint_options:
             for adjoint_arg in self._adjoint_arg_options:

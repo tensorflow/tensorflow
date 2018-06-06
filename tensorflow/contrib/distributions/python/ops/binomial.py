@@ -163,8 +163,8 @@ class Binomial(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)

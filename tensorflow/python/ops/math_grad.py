@@ -171,7 +171,9 @@ def _ProdGrad(op, grad):
   # Calculate product, leaving out the current entry
   left = math_ops.cumprod(reshaped, axis=0, exclusive=True)
   right = math_ops.cumprod(reshaped, axis=0, exclusive=True, reverse=True)
-  y = array_ops.reshape(left * right, permuted_shape)
+  # For complex inputs, the gradient is in the conjugate direction.
+  y = array_ops.reshape(math_ops.conj(left) * math_ops.conj(right),
+                        permuted_shape)
 
   # Invert the transpose and reshape operations.
   # Make sure to set the statically known shape information through a reshape.

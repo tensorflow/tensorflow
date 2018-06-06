@@ -19,6 +19,27 @@ cc_library(
 )
 
 cc_library(
+    name = "directed_interleave_dataset_op",
+    srcs = ["directed_interleave_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "csv_dataset_op",
+    srcs = ["csv_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
     name = "ignore_errors_dataset_op",
     srcs = ["ignore_errors_dataset_op.cc"],
     deps = [
@@ -52,6 +73,8 @@ cc_library(
 cc_library(
     name = "dataset_kernels",
     deps = [
+        ":csv_dataset_op",
+        ":directed_interleave_dataset_op",
         ":ignore_errors_dataset_op",
         ":prefetching_kernels",
         ":threadpool_dataset_op",

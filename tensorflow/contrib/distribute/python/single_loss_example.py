@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import step_fn
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.layers import normalization
 from tensorflow.python.ops import array_ops
@@ -29,7 +31,10 @@ from tensorflow.python.ops import math_ops
 
 def single_loss_example(optimizer_fn, distribution, use_bias=False):
   """Build a very simple network to use in tests and examples."""
-  dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
+  def dataset_fn():
+    return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
   optimizer = optimizer_fn()
   layer = core.Dense(1, use_bias=use_bias)
 
@@ -37,8 +42,8 @@ def single_loss_example(optimizer_fn, distribution, use_bias=False):
     y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
     return y * y
 
-  single_loss_step = step_fn.StandardSingleLossStep(dataset, loss_fn, optimizer,
-                                                    distribution)
+  single_loss_step = step_fn.StandardSingleLossStep(dataset_fn, loss_fn,
+                                                    optimizer, distribution)
 
   # Layer is returned for inspecting the kernels in tests.
   return single_loss_step, layer
@@ -49,7 +54,14 @@ def minimize_loss_example(optimizer_fn,
                           use_callable_loss=True,
                           create_optimizer_inside_model_fn=False):
   """Example of non-distribution-aware legacy code."""
-  dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
+  def dataset_fn():
+    dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+    # TODO(isaprykin): map_and_batch with drop_remainder causes shapes to be
+    # fully defined for TPU.  Remove this when XLA supports dynamic shapes.
+    return dataset.apply(
+        batching.map_and_batch(lambda x: x, batch_size=1, drop_remainder=True))
+
   # An Optimizer instance is created either outside or inside model_fn.
   outer_optimizer = None
   if not create_optimizer_inside_model_fn:
@@ -71,32 +83,43 @@ def minimize_loss_example(optimizer_fn,
     else:
       return optimizer.minimize(loss_fn())
 
-  return model_fn, dataset, layer
+  return model_fn, dataset_fn, layer
 
 
 def batchnorm_example(optimizer_fn,
                       batch_per_epoch=1,
                       momentum=0.9,
-                      renorm=False):
+                      renorm=False,
+                      update_ops_in_tower_mode=False):
   """Example of non-distribution-aware legacy code with batch normalization."""
-  # input shape is [16, 8], input values are increasing in both dimensions.
-  dataset = dataset_ops.Dataset.from_tensor_slices(
-      [[[float(x * 8 + y + z * 100)
-         for y in range(8)]
-        for x in range(16)]
-       for z in range(batch_per_epoch)]).repeat()
+
+  def dataset_fn():
+    # input shape is [16, 8], input values are increasing in both dimensions.
+    return dataset_ops.Dataset.from_tensor_slices(
+        [[[float(x * 8 + y + z * 100)
+           for y in range(8)]
+          for x in range(16)]
+         for z in range(batch_per_epoch)]).repeat()
+
   optimizer = optimizer_fn()
   batchnorm = normalization.BatchNormalization(
       renorm=renorm, momentum=momentum, fused=False)
+  layer = core.Dense(1, use_bias=False)
 
   def model_fn(x):
+    """A model that uses batchnorm."""
 
     def loss_fn():
-      y = math_ops.reduce_sum(batchnorm(x, training=True), axis=1)
-      loss = math_ops.reduce_mean(y - constant_op.constant(1.))
+      y = batchnorm(x, training=True)
+      with ops.control_dependencies(
+          ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+          if update_ops_in_tower_mode else []):
+        loss = math_ops.reduce_mean(
+            math_ops.reduce_sum(layer(y)) - constant_op.constant(1.))
+      # `x` and `y` will be fetched by the gradient computation, but not `loss`.
       return loss
 
     # Callable loss.
     return optimizer.minimize(loss_fn)
 
-  return model_fn, dataset, batchnorm
+  return model_fn, dataset_fn, batchnorm

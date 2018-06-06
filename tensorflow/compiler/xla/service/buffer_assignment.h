@@ -206,17 +206,15 @@ class BufferAllocation {
     return heap_traces_;
   }
 
-  // Compute and return the LogicalBuffers which are live at the point of peak
-  // memory usage for the given allocation. The point of peak memory usage is
-  // the point at which the total size of all live logical buffers is
-  // maximal. If peak memory is reached at multiple points, the set of logical
-  // buffers live at the earliest maximal point is returned. The vector is
-  // stabily asserted by LogicalBuffer::Index.
-  //
-  // The return value is a pair of total size of the logical buffers at peak,
-  // and the buffers themselves.
-  std::pair<int64, std::vector<const LogicalBuffer*>>
-  ComputePeakMemoryLogicalBuffers() const;
+  // Returns the LogicalBuffers which are live at the point of peak memory usage
+  // for this allocation. The point of peak memory usage is the point at which
+  // the total size of all live logical buffers is maximal. If peak memory is
+  // reached at multiple points, the set of logical buffers live at the earliest
+  // maximal point is returned. The vector is stabily sorted by
+  // LogicalBuffer::Index.
+  const std::vector<const LogicalBuffer*>& PeakMemoryLogicalBuffers() const {
+    return peak_buffers_;
+  }
 
   // Get the number of bytes lost to fragmentation. This is equal to the
   // difference between the size of the allocation and the size of the maximal
@@ -291,6 +289,9 @@ class BufferAllocation {
 
   int64 fragmentation_bytes_ = 0;
   std::vector<HeapSimulatorTrace> heap_traces_;
+
+  // Set of buffers live at the point of peak memory usage for this allocation.
+  std::vector<const LogicalBuffer*> peak_buffers_;
 };
 
 // Add stream operators for nicer output of CHECK/RET_CHECK failures.
@@ -414,10 +415,10 @@ class BufferAssignment {
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
 
-  explicit BufferAssignment(const HloModule* module,
-                            std::unique_ptr<BufferLiveness> liveness,
-                            LogicalBuffer::SizeFunction buffer_size,
-                            LogicalBuffer::AlignmentFunction color_alignment)
+  BufferAssignment(const HloModule* module,
+                   std::unique_ptr<BufferLiveness> liveness,
+                   LogicalBuffer::SizeFunction buffer_size,
+                   LogicalBuffer::AlignmentFunction color_alignment)
       : module_(module),
         liveness_(std::move(liveness)),
         buffer_size_(std::move(buffer_size)),

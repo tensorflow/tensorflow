@@ -26,16 +26,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
+#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/notification.h"
-#include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
@@ -45,8 +45,7 @@ bool FLAGS_gpuexec_cuda_device_0_only = false;
 // matches the expected one.
 constexpr bool kVerifyCudaContext = false;
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 namespace {
@@ -63,14 +62,14 @@ class CreatedContexts {
  public:
   // Returns whether context is a member of the live set.
   static bool Has(CUcontext context) {
-    tf_shared_lock lock{mu_};
+    tf_shared_lock lock(mu_);
     return Live()->find(context) != Live()->end();
   }
 
   // Adds context to the live set.
   static CudaContext* Add(CUcontext context) {
     CHECK(context != nullptr);
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     auto cuda_context = new CudaContext(context, next_id_++);
     Live()->insert(
         std::make_pair(context, std::unique_ptr<CudaContext>(cuda_context)));
@@ -80,7 +79,7 @@ class CreatedContexts {
   // Removes context from the live set.
   static void Remove(CUcontext context) {
     CHECK(context != nullptr);
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     auto it = Live()->find(context);
     CHECK(it != Live()->end()) << context;
     Live()->erase(it);
@@ -205,11 +204,11 @@ string ToString(CUresult result) {
     case 719:
       return "CUDA_ERROR_LAUNCH_FAILED";
 
-    OSTREAM_CUDA_ERROR(CONTEXT_ALREADY_IN_USE)
-    OSTREAM_CUDA_ERROR(PEER_ACCESS_UNSUPPORTED)
-    OSTREAM_CUDA_ERROR(NOT_PERMITTED)
-    OSTREAM_CUDA_ERROR(NOT_SUPPORTED)
-    OSTREAM_CUDA_ERROR(UNKNOWN)  // Unknown internal error to CUDA.
+      OSTREAM_CUDA_ERROR(CONTEXT_ALREADY_IN_USE)
+      OSTREAM_CUDA_ERROR(PEER_ACCESS_UNSUPPORTED)
+      OSTREAM_CUDA_ERROR(NOT_PERMITTED)
+      OSTREAM_CUDA_ERROR(NOT_SUPPORTED)
+      OSTREAM_CUDA_ERROR(UNKNOWN)  // Unknown internal error to CUDA.
     default:
       return port::StrCat("CUresult(", static_cast<int>(result), ")");
   }
@@ -397,8 +396,8 @@ static port::Status InternalInit() {
 
   LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   Diagnostician::LogDiagnosticInformation();
-  return port::Status{port::error::ABORTED,
-                      port::StrCat("failed call to cuInit: ", ToString(res))};
+  return port::Status(port::error::ABORTED,
+                      port::StrCat("failed call to cuInit: ", ToString(res)));
 }
 
 }  // namespace
@@ -426,9 +425,9 @@ static port::Status InternalInit() {
     return port::Status::OK();
   }
 
-  return port::Status{
+  return port::Status(
       port::error::INTERNAL,
-      port::StrCat("failed call to cuDeviceGet: ", ToString(res))};
+      port::StrCat("failed call to cuDeviceGet: ", ToString(res)));
 }
 
 /* static */ bool CUDADriver::GetDeviceName(CUdevice device,
@@ -471,7 +470,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
 }
 
 /* static */ port::Status CUDADriver::CreateContext(
-    CUdevice device, DeviceOptions device_options, CudaContext** context) {
+    CUdevice device, const DeviceOptions &device_options,
+    CudaContext **context) {
   *context = nullptr;
 
   int flags = 0;
@@ -482,62 +482,45 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
   CUresult res;
   CUcontext former_context;
   CUcontext new_context;
-  {
-    // TODO(leary) Need to see if NVIDIA can expunge the leakiness in their
-    // context creation: see http://b/13248943
 
-#if CUDA_VERSION >= 7000
-    {
-      unsigned int former_primary_context_flags;
-      int former_primary_context_is_active;
-      CHECK_EQ(CUDA_SUCCESS,
-               cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
-                                          &former_primary_context_is_active));
-      if (former_primary_context_flags != flags) {
-        if (former_primary_context_is_active) {
-          LOG(ERROR)
-              << "The primary context is active and has a different flag set ("
-              << former_primary_context_flags << ") than the desired flag set ("
-              << flags << ").";
+  unsigned int former_primary_context_flags;
+  int former_primary_context_is_active;
+  CHECK_EQ(CUDA_SUCCESS,
+           cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
+                                      &former_primary_context_is_active));
+  if (former_primary_context_flags != flags) {
+    if (former_primary_context_is_active) {
+      LOG(ERROR)
+          << "The primary context is active and has a different flag set ("
+          << former_primary_context_flags << ") than the desired flag set ("
+          << flags << ").";
+    } else {
+      CHECK_EQ(CUDA_SUCCESS, cuDevicePrimaryCtxSetFlags(device, flags));
+    }
+  }
+
+  former_context = CUDADriver::CurrentContextOrDie();
+  res = cuDevicePrimaryCtxRetain(&new_context, device);
+  if (former_context != nullptr) {
+    CUdevice former_device;
+    if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
+      if (former_device == device) {
+        if (former_context == new_context) {
+          VLOG(2) << "The primary context " << former_context << " for device "
+                  << device
+                  << " exists before initializing the StreamExecutor.";
         } else {
-          CHECK_EQ(CUDA_SUCCESS, cuDevicePrimaryCtxSetFlags(device, flags));
+          LOG(WARNING) << "A non-primary context " << former_context
+                       << " for device " << device
+                       << " exists before initializing the StreamExecutor. The "
+                       << "primary context is now " << new_context << ". We "
+                       << "haven't verified StreamExecutor works with that.";
         }
       }
+    } else {
+      LOG(ERROR) << "Failed to get the device of the current context "
+                 << former_context;
     }
-
-    former_context = CUDADriver::CurrentContextOrDie();
-    res = cuDevicePrimaryCtxRetain(&new_context, device);
-    if (former_context != nullptr) {
-      CUdevice former_device;
-      if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
-        if (former_device == device) {
-          if (former_context == new_context) {
-            VLOG(2) << "The primary context " << former_context
-                    << " for device " << device
-                    << " exists before initializing the StreamExecutor.";
-          } else {
-            LOG(WARNING)
-                << "A non-primary context " << former_context << " for device "
-                << device
-                << " exists before initializing the StreamExecutor. The "
-                << "primary context is now " << new_context << ". We "
-                << "haven't verified StreamExecutor works with that.";
-          }
-        }
-      } else {
-        LOG(ERROR) << "Failed to get the device of the current context "
-                   << former_context;
-      }
-    }
-#else
-    former_context = CurrentContext();
-    if (former_context != nullptr) {
-      LOG(WARNING)
-          << "creating context when one is currently active; existing: "
-          << former_context;
-    }
-    res = cuCtxCreate(&new_context, flags, device);
-#endif
   }
   CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(former_context));
 
@@ -549,11 +532,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     return port::Status::OK();
   }
 
-#if CUDA_VERSION >= 7000
   string message = "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
-#else
-  string message = "failed call to cuCtxCreate: " + ToString(res);
-#endif
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
     uint64 total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
@@ -563,14 +542,13 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     }
   }
 
-  return port::Status{port::error::INTERNAL, message};
+  return port::Status(port::error::INTERNAL, message);
 }
 
 /* static */ void CUDADriver::DestroyContext(CudaContext* context) {
   if (context == nullptr) {
     return;
   }
-#if CUDA_VERSION >= 7000
   CUcontext former_context = CurrentContext();
   CUresult res = cuCtxSetCurrent(context->context());
   CUdevice device;
@@ -578,9 +556,6 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
   cuCtxSetCurrent(former_context);
 
   res = cuDevicePrimaryCtxRelease(device);
-#else
-  CUresult res = cuCtxDestroy(context->context());
-#endif
 
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to release CUDA context; leaking: " << ToString(res);
@@ -616,7 +591,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
 /* static */ port::StatusOr<CUsharedconfig>
 CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   CUsharedconfig shared_mem_config;
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult result = cuCtxGetSharedMemConfig(&shared_mem_config);
   if (result != CUDA_SUCCESS) {
     CUdevice device;
@@ -624,16 +599,16 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     LOG(ERROR) << "failed to get CUDA device shared memory config. "
                << "Context device ID: " << device
                << ", result: " << ToString(result);
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
-        port::StrCat("failed to get shared memory config: ", ToString(result))};
+        port::StrCat("failed to get shared memory config: ", ToString(result)));
   }
   return shared_mem_config;
 }
 
 /* static */ port::Status CUDADriver::ContextSetSharedMemConfig(
     CudaContext* context, CUsharedconfig shared_mem_config) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult result = cuCtxSetSharedMemConfig(shared_mem_config);
   if (result != CUDA_SUCCESS) {
     CUdevice device;
@@ -642,9 +617,9 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                << "Context device ID: " << device
                << ", config: " << shared_mem_config
                << ", result: " << ToString(result);
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
-        port::StrCat("failed to set shared memory config: ", ToString(result))};
+        port::StrCat("failed to set shared memory config: ", ToString(result)));
   }
   return port::Status::OK();
 }
@@ -655,7 +630,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     unsigned int block_dim_y, unsigned int block_dim_z,
     unsigned int shared_mem_bytes, CUstream stream, void **kernel_params,
     void **extra) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   VLOG(2) << "launching kernel: " << function << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
@@ -675,11 +650,11 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 /* static */ port::Status CUDADriver::LoadCubin(CudaContext* context,
                                                 const char *cubin_bytes,
                                                 CUmodule *module) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult result = cuModuleLoadFatBinary(module, cubin_bytes);
   if (result != CUDA_SUCCESS) {
-    return port::Status{port::error::INTERNAL,
-                        "failed to load in-memory CUBIN: " + ToString(result)};
+    return port::Status(port::error::INTERNAL,
+                        "failed to load in-memory CUBIN: " + ToString(result));
   }
 
   return port::Status::OK();
@@ -692,7 +667,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   bool ret = true;
   GetDriverExecutor()->Schedule([context, ptx_contents, module, &ret,
                                  &notification]() {
-    ScopedActivateContext activation{context};
+    ScopedActivateContext activation(context);
     void *ptx_data = const_cast<char *>(ptx_contents);
     static const unsigned int kLogBufferBytesLimit = 1024;
     unsigned int error_log_buffer_bytes = kLogBufferBytesLimit;
@@ -758,7 +733,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 /* static */ bool CUDADriver::SynchronousMemsetUint8(CudaContext* context,
                                                      CUdeviceptr location,
                                                      uint8 value, size_t size) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemsetD8(location, value, size);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
@@ -771,7 +746,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                       CUdeviceptr location,
                                                       uint32 value,
                                                       size_t uint32_count) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemsetD32(location, value, uint32_count);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
@@ -785,7 +760,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                       uint8 value,
                                                       size_t uint32_count,
                                                       CUstream stream) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemsetD8Async(location, value, uint32_count, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
@@ -800,7 +775,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                        uint32 value,
                                                        size_t uint32_count,
                                                        CUstream stream) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemsetD32Async(location, value, uint32_count, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
@@ -878,9 +853,9 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     return device;
   }
 
-  return port::Status{
+  return port::Status(
       port::error::INTERNAL,
-      port::StrCat("failed to get device for context: ", ToString(result))};
+      port::StrCat("failed to get device for context: ", ToString(result)));
 }
 
 /* static */ bool CUDADriver::CreateStream(CudaContext *context,
@@ -938,7 +913,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
 /* static */ void CUDADriver::DeviceDeallocate(CudaContext* context,
                                                void *location) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUdeviceptr pointer = port::bit_cast<CUdeviceptr>(location);
   CUresult res = cuMemFree(pointer);
   if (res != CUDA_SUCCESS) {
@@ -951,7 +926,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
 /* static */ void *CUDADriver::HostAllocate(CudaContext *context,
                                             uint64 bytes) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   void *host_mem = nullptr;
   // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
   CUresult res = cuMemHostAlloc(&host_mem, bytes, CU_MEMHOSTALLOC_PORTABLE);
@@ -964,7 +939,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
 /* static */ void CUDADriver::HostDeallocate(CudaContext* context,
                                              void *location) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemFreeHost(location);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "error deallocating host memory at " << location << ": "
@@ -974,7 +949,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
 /* static */ bool CUDADriver::HostRegister(CudaContext* context, void *location,
                                            uint64 bytes) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
   CUresult res =
       cuMemHostRegister(location, bytes, CU_MEMHOSTREGISTER_PORTABLE);
@@ -988,7 +963,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
 /* static */ bool CUDADriver::HostUnregister(CudaContext* context,
                                              void *location) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemHostUnregister(location);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "error unregistering host memory at " << location << ": "
@@ -1001,8 +976,8 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 /* static */ port::Status CUDADriver::DestroyEvent(CudaContext* context,
                                                    CUevent *event) {
   if (*event == nullptr) {
-    return port::Status{port::error::INVALID_ARGUMENT,
-                        "input event cannot be null"};
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "input event cannot be null");
   }
 
   ScopedActivateContext activated{context};
@@ -1014,15 +989,15 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
       return port::Status::OK();
     case CUDA_ERROR_DEINITIALIZED:
     case CUDA_ERROR_NOT_INITIALIZED:
-      return port::Status{
+      return port::Status(
           port::error::FAILED_PRECONDITION,
           port::Printf("error destroying CUDA event in context %p: %s", context,
-                       ToString(res).c_str())};
+                       ToString(res).c_str()));
     default:
-      return port::Status{
+      return port::Status(
           port::error::INTERNAL,
           port::Printf("error destroying CUDA event in context %p: %s", context,
-                       ToString(res).c_str())};
+                       ToString(res).c_str()));
   }
 }
 
@@ -1036,15 +1011,15 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
       return port::Status::OK();
     case CUDA_ERROR_DEINITIALIZED:
     case CUDA_ERROR_NOT_INITIALIZED:
-      return port::Status{
+      return port::Status(
           port::error::FAILED_PRECONDITION,
           port::Printf("error recording CUDA event on stream %p: %s", stream,
-                       ToString(res).c_str())};
+                       ToString(res).c_str()));
     default:
-      return port::Status{
+      return port::Status(
           port::error::INVALID_ARGUMENT,
           port::Printf("error recording CUDA event on stream %p: %s", stream,
-                       ToString(res).c_str())};
+                       ToString(res).c_str()));
   }
 }
 
@@ -1053,9 +1028,9 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   ScopedActivateContext activated{context};
   CUresult res = cuEventQuery(event);
   if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
-        port::Printf("failed to query event: %s", ToString(res).c_str())};
+        port::Printf("failed to query event: %s", ToString(res).c_str()));
   }
 
   return res;
@@ -1085,7 +1060,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 /* static */ bool CUDADriver::WaitStreamOnEvent(CudaContext* context,
                                                 CUstream stream,
                                                 CUevent event) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuStreamWaitEvent(stream, event, 0 /* = flags */);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not wait stream on event: " << ToString(res);
@@ -1096,7 +1071,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 }
 
 /* static */ bool CUDADriver::SynchronizeContext(CudaContext* context) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuCtxSynchronize();
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not synchronize on CUDA context: " << ToString(res)
@@ -1142,7 +1117,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                            void *host_dst,
                                                            CUdeviceptr gpu_src,
                                                            uint64 size) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemcpyDtoH(host_dst, gpu_src, size);
   if (res != CUDA_SUCCESS) {
     return port::InternalError(
@@ -1160,7 +1135,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                            CUdeviceptr gpu_dst,
                                                            const void *host_src,
                                                            uint64 size) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemcpyHtoD(gpu_dst, host_src, size);
   if (res != CUDA_SUCCESS) {
     return port::InternalError(port::Printf(
@@ -1177,7 +1152,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                            CUdeviceptr gpu_dst,
                                                            CUdeviceptr gpu_src,
                                                            uint64 size) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemcpyDtoD(gpu_dst, gpu_src, size);
   if (res != CUDA_SUCCESS) {
     return port::InternalError(port::Printf(
@@ -1195,7 +1170,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                     CUdeviceptr gpu_src,
                                                     uint64 size,
                                                     CUstream stream) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << port::Printf(
@@ -1215,7 +1190,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                     const void *host_src,
                                                     uint64 size,
                                                     CUstream stream) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult res = cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << port::Printf(
@@ -1234,7 +1209,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                                                     CUdeviceptr gpu_src,
                                                     uint64 size,
                                                     CUstream stream) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   CUresult result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   if (result != CUDA_SUCCESS) {
     LOG(ERROR) << port::Printf(
@@ -1276,12 +1251,12 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   if (res == CUDA_SUCCESS) {
     return port::Status::OK();
   } else if (res == CUDA_ERROR_OUT_OF_MEMORY) {
-    return port::Status{port::error::RESOURCE_EXHAUSTED,
-                        "could not create CUDA event: out of device memory"};
+    return port::Status(port::error::RESOURCE_EXHAUSTED,
+                        "could not create CUDA event: out of device memory");
   } else {
-    return port::Status{
+    return port::Status(
         port::error::FAILED_PRECONDITION,
-        port::StrCat("could not create CUDA event: ", ToString(res))};
+        port::StrCat("could not create CUDA event: ", ToString(res)));
   }
 }
 
@@ -1309,10 +1284,10 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     return context;
   }
 
-  return port::Status{
+  return port::Status(
       port::error::INTERNAL,
       port::StrCat("failed to query device pointer for context: ",
-                   ToString(result))};
+                   ToString(result)));
 }
 
 /* static */ port::StatusOr<MemorySpace> CUDADriver::GetPointerMemorySpace(
@@ -1327,16 +1302,16 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
       case CU_MEMORYTYPE_HOST:
         return MemorySpace::kHost;
       default:
-        return port::Status{
+        return port::Status(
             port::error::INTERNAL,
-            port::StrCat("unknown memory space provided by CUDA API: ", value)};
+            port::StrCat("unknown memory space provided by CUDA API: ", value));
     }
   }
 
-  return port::Status{
+  return port::Status(
       port::error::INTERNAL,
       port::StrCat("failed to query device pointer for memory space: ",
-                   ToString(result))};
+                   ToString(result)));
 }
 
 /* static */ port::Status CUDADriver::GetPointerAddressRange(CUdeviceptr dptr,
@@ -1349,16 +1324,16 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     // We differentiate between "this pointer is unknown" (return here) and
     // "there was an internal error while performing this operation" (return
     // below).
-    return port::Status{
+    return port::Status(
         port::error::NOT_FOUND,
         port::Printf("not a device pointer %p; %s",
-                     reinterpret_cast<void *>(dptr), ToString(result).c_str())};
+                     reinterpret_cast<void *>(dptr), ToString(result).c_str()));
   }
 
-  return port::Status{
+  return port::Status(
       port::error::INTERNAL,
       port::Printf("failed to get pointer into for device pointer %p; %s",
-                   reinterpret_cast<void *>(dptr), ToString(result).c_str())};
+                   reinterpret_cast<void *>(dptr), ToString(result).c_str()));
 }
 
 /* static */ port::StatusOr<CUdevice> CUDADriver::GetPointerDevice(
@@ -1381,10 +1356,10 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     return port::Status::OK();
   }
 
-  return port::Status{
+  return port::Status(
       port::error::INTERNAL,
       port::Printf("failed to get compute capability for device: %s; %d",
-                   ToString(result).c_str(), device)};
+                   ToString(result).c_str(), device));
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
@@ -1395,10 +1370,10 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   int value = -1;
   CUresult result = cuDeviceGetAttribute(&value, attribute, device);
   if (result != CUDA_SUCCESS) {
-    return port::Status{
+    return port::Status(
         port::error::NOT_FOUND,
         port::StrCat("could not retrieve CUDA device attribute (", attribute,
-                     "): ", ToString(result))};
+                     "): ", ToString(result)));
   }
   T converted = value;
   return converted;
@@ -1500,10 +1475,10 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   int val;
   CUresult res = cuDeviceGetAttribute(&val, attribute, device);
   if (res != CUDA_SUCCESS) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf("failed to get device attribute %d for device %d: %s",
-                     attribute, device, ToString(res).c_str())};
+                     attribute, device, ToString(res).c_str()));
   }
   return val;
 }
@@ -1524,7 +1499,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
 /* static */ bool CUDADriver::GetDeviceMemoryInfo(CudaContext* context,
                                                   int64 *free_out,
                                                   int64 *total_out) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
   size_t free = 0;
   size_t total = 0;
   CUresult res = cuMemGetInfo(&free, &total);
@@ -1604,10 +1579,10 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   CUresult result = cuCtxEnablePeerAccess(to->context(), 0 /* = flags */);
   if (result != CUDA_SUCCESS &&
       result != CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf("failed to enable peer access from %p to %p: %s", from, to,
-                     ToString(result).c_str())};
+                     ToString(result).c_str()));
   }
 
   return port::Status::OK();
@@ -1616,16 +1591,16 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
 /* static */ port::StatusOr<int> CUDADriver::GetMaxOccupiedBlocksPerCore(
     CudaContext* context, CUfunction kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {
-  ScopedActivateContext activation{context};
+  ScopedActivateContext activation(context);
 
   int max_blocks;
   CUresult result = cuOccupancyMaxActiveBlocksPerMultiprocessor(
       &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes);
   if (result != CUDA_SUCCESS) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf("failed to calculate occupancy of kernel %p: %s", kernel,
-                     ToString(result).c_str())};
+                     ToString(result).c_str()));
   }
 
   return max_blocks;
@@ -1641,5 +1616,4 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

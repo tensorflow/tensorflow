@@ -39,7 +39,22 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 
 
-class ExportTest(test_util.TensorFlowTestCase):
+class LabeledTensorMock(object):
+  """Mock class emulating LabeledTensor."""
+
+  def __init__(self):
+    self.tensor = constant_op.constant([1])
+
+
+def _convert_labeled_tensor_mock_to_tensor(value, *args, **kwargs):
+  return ops.internal_convert_to_tensor(value.tensor, *args, **kwargs)
+
+
+ops.register_tensor_conversion_function(LabeledTensorMock,
+                                        _convert_labeled_tensor_mock_to_tensor)
+
+
+class ServingInputReceiverTest(test_util.TensorFlowTestCase):
 
   def test_serving_input_receiver_constructor(self):
     """Tests that no errors are raised when input is expected."""
@@ -135,11 +150,175 @@ class ExportTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       _ = export.ServingInputReceiver(feature, receiver_tensor)
 
+  def test_feature_labeled_tensor(self):
+    feature = LabeledTensorMock()
+    receiver_tensor = array_ops.placeholder(dtypes.string)
+    _ = export.ServingInputReceiver(feature, receiver_tensor)
+
   def test_receiver_wrong_type(self):
     feature = constant_op.constant(5)
     receiver_tensor = "not a tensor"
     with self.assertRaises(ValueError):
       _ = export.ServingInputReceiver(feature, receiver_tensor)
+
+
+class SupervisedInputReceiverTest(test_util.TensorFlowTestCase):
+
+  def test_input_receiver_constructor(self):
+    """Tests that no errors are raised when input is expected."""
+    features = {
+        "feature0": constant_op.constant([0]),
+        u"feature1": constant_op.constant([1]),
+        "feature2": sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+    }
+    labels = {
+        "classes": constant_op.constant([0] * 100),
+    }
+
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+    export.SupervisedInputReceiver(features, labels, receiver_tensors)
+
+  def test_input_receiver_raw_values(self):
+    """Tests that no errors are raised when input is expected."""
+    features = {
+        "feature0": constant_op.constant([0]),
+        u"feature1": constant_op.constant([1]),
+        "feature2": sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+    }
+
+    labels = {
+        "classes": constant_op.constant([0] * 100),
+    }
+
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+    rec = export.SupervisedInputReceiver(
+        features["feature2"], labels, receiver_tensors)
+    self.assertIsInstance(rec.features, sparse_tensor.SparseTensor)
+
+    rec = export.SupervisedInputReceiver(
+        features, labels["classes"], receiver_tensors)
+    self.assertIsInstance(rec.labels, ops.Tensor)
+
+  def test_input_receiver_features_invalid(self):
+    features = constant_op.constant([0] * 100)
+    labels = constant_op.constant([0])
+    receiver_tensors = {
+        "example0": array_ops.placeholder(dtypes.string, name="example0"),
+        u"example1": array_ops.placeholder(dtypes.string, name="example1"),
+    }
+
+    with self.assertRaisesRegexp(ValueError, "features must be defined"):
+      export.SupervisedInputReceiver(
+          features=None,
+          labels=labels,
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(ValueError, "feature keys must be strings"):
+      export.SupervisedInputReceiver(
+          features={1: constant_op.constant([1])},
+          labels=labels,
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(ValueError, "label keys must be strings"):
+      export.SupervisedInputReceiver(
+          features=features,
+          labels={1: constant_op.constant([1])},
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(
+        ValueError, "feature feature1 must be a Tensor or SparseTensor"):
+      export.SupervisedInputReceiver(
+          features={"feature1": [1]},
+          labels=labels,
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(
+        ValueError, "feature must be a Tensor or SparseTensor"):
+      export.SupervisedInputReceiver(
+          features=[1],
+          labels=labels,
+          receiver_tensors=receiver_tensors)
+
+    with self.assertRaisesRegexp(
+        ValueError, "label must be a Tensor or SparseTensor"):
+      export.SupervisedInputReceiver(
+          features=features,
+          labels=100,
+          receiver_tensors=receiver_tensors)
+
+  def test_input_receiver_receiver_tensors_invalid(self):
+    features = {
+        "feature0": constant_op.constant([0]),
+        u"feature1": constant_op.constant([1]),
+        "feature2": sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+    }
+    labels = constant_op.constant([0])
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensors must be defined"):
+      export.SupervisedInputReceiver(
+          features=features,
+          labels=labels,
+          receiver_tensors=None)
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensors keys must be strings"):
+      export.SupervisedInputReceiver(
+          features=features,
+          labels=labels,
+          receiver_tensors={
+              1: array_ops.placeholder(dtypes.string, name="example0")})
+
+    with self.assertRaisesRegexp(
+        ValueError, "receiver_tensor example1 must be a Tensor"):
+      export.SupervisedInputReceiver(
+          features=features,
+          labels=labels,
+          receiver_tensors={"example1": [1]})
+
+  def test_single_feature_single_receiver(self):
+    feature = constant_op.constant(5)
+    label = constant_op.constant(5)
+    receiver_tensor = array_ops.placeholder(dtypes.string)
+    input_receiver = export.SupervisedInputReceiver(
+        feature, label, receiver_tensor)
+
+    # single receiver is automatically named
+    receiver_key, = input_receiver.receiver_tensors.keys()
+    self.assertEqual("input", receiver_key)
+
+  def test_multi_feature_single_receiver(self):
+    features = {"foo": constant_op.constant(5),
+                "bar": constant_op.constant(6)}
+    labels = {"value": constant_op.constant(5)}
+    receiver_tensor = array_ops.placeholder(dtypes.string)
+    _ = export.SupervisedInputReceiver(features, labels, receiver_tensor)
+
+  def test_multi_feature_multi_receiver(self):
+    features = {"foo": constant_op.constant(5),
+                "bar": constant_op.constant(6)}
+    labels = {"value": constant_op.constant(5)}
+    receiver_tensors = {"baz": array_ops.placeholder(dtypes.int64),
+                        "qux": array_ops.placeholder(dtypes.float32)}
+    _ = export.SupervisedInputReceiver(features, labels, receiver_tensors)
+
+  def test_feature_labeled_tensor(self):
+    feature = LabeledTensorMock()
+    label = constant_op.constant(5)
+    receiver_tensor = array_ops.placeholder(dtypes.string)
+    _ = export.SupervisedInputReceiver(feature, label, receiver_tensor)
+
+
+class ExportTest(test_util.TensorFlowTestCase):
 
   def test_build_parsing_serving_input_receiver_fn(self):
     feature_spec = {"int_feature": parsing_ops.VarLenFeature(dtypes.int64),
@@ -216,6 +395,69 @@ class ExportTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           dtypes.int32,
           serving_input_receiver.receiver_tensors["feature_2"].dtype)
+
+  def test_build_raw_supervised_input_receiver_fn(self):
+    features = {"feature_1": constant_op.constant(["hello"]),
+                "feature_2": constant_op.constant([42])}
+    labels = {"foo": constant_op.constant([5]),
+              "bar": constant_op.constant([6])}
+    input_receiver_fn = export.build_raw_supervised_input_receiver_fn(
+        features, labels)
+    with ops.Graph().as_default():
+      input_receiver = input_receiver_fn()
+      self.assertEqual(set(["feature_1", "feature_2"]),
+                       set(input_receiver.features.keys()))
+      self.assertEqual(set(["foo", "bar"]),
+                       set(input_receiver.labels.keys()))
+      self.assertEqual(set(["feature_1", "feature_2", "foo", "bar"]),
+                       set(input_receiver.receiver_tensors.keys()))
+      self.assertEqual(
+          dtypes.string, input_receiver.receiver_tensors["feature_1"].dtype)
+      self.assertEqual(
+          dtypes.int32, input_receiver.receiver_tensors["feature_2"].dtype)
+
+  def test_build_raw_supervised_input_receiver_fn_raw_tensors(self):
+    features = {"feature_1": constant_op.constant(["hello"]),
+                "feature_2": constant_op.constant([42])}
+    labels = {"foo": constant_op.constant([5]),
+              "bar": constant_op.constant([6])}
+    input_receiver_fn1 = export.build_raw_supervised_input_receiver_fn(
+        features["feature_1"], labels)
+    input_receiver_fn2 = export.build_raw_supervised_input_receiver_fn(
+        features["feature_1"], labels["foo"])
+    with ops.Graph().as_default():
+      input_receiver = input_receiver_fn1()
+      self.assertIsInstance(input_receiver.features, ops.Tensor)
+      self.assertEqual(set(["foo", "bar"]),
+                       set(input_receiver.labels.keys()))
+      self.assertEqual(set(["input", "foo", "bar"]),
+                       set(input_receiver.receiver_tensors.keys()))
+
+      input_receiver = input_receiver_fn2()
+      self.assertIsInstance(input_receiver.features, ops.Tensor)
+      self.assertIsInstance(input_receiver.labels, ops.Tensor)
+      self.assertEqual(set(["input", "label"]),
+                       set(input_receiver.receiver_tensors.keys()))
+
+  def test_build_raw_supervised_input_receiver_fn_batch_size(self):
+    features = {"feature_1": constant_op.constant(["hello"]),
+                "feature_2": constant_op.constant([42])}
+    labels = {"foo": constant_op.constant([5]),
+              "bar": constant_op.constant([6])}
+    input_receiver_fn = export.build_raw_supervised_input_receiver_fn(
+        features, labels, default_batch_size=10)
+    with ops.Graph().as_default():
+      input_receiver = input_receiver_fn()
+      self.assertEqual([10], input_receiver.receiver_tensors["feature_1"].shape)
+      self.assertEqual([10], input_receiver.features["feature_1"].shape)
+
+  def test_build_raw_supervised_input_receiver_fn_overlapping_keys(self):
+    features = {"feature_1": constant_op.constant(["hello"]),
+                "feature_2": constant_op.constant([42])}
+    labels = {"feature_1": constant_op.constant([5]),
+              "bar": constant_op.constant([6])}
+    with self.assertRaises(ValueError):
+      export.build_raw_supervised_input_receiver_fn(features, labels)
 
   def test_build_all_signature_defs_without_receiver_alternatives(self):
     receiver_tensor = array_ops.placeholder(dtypes.string)
@@ -383,6 +625,35 @@ class ExportTest(test_util.TensorFlowTestCase):
 
     self.assertTrue(int(time_1) < int(time_2))
     self.assertTrue(int(time_2) < int(time_3))
+
+  def test_build_all_signature_defs_serving_only(self):
+    receiver_tensor = {"input": array_ops.placeholder(dtypes.string)}
+    output_1 = constant_op.constant([1.])
+    export_outputs = {
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+            export_output.PredictOutput(outputs=output_1),
+        "train": export_output.TrainOutput(loss=output_1),
+    }
+
+    signature_defs = export.build_all_signature_defs(
+        receiver_tensor, export_outputs)
+
+    expected_signature_defs = {
+        "serving_default": signature_def_utils.predict_signature_def(
+            receiver_tensor, {"output": output_1})
+    }
+
+    self.assertDictEqual(expected_signature_defs, signature_defs)
+
+    signature_defs = export.build_all_signature_defs(
+        receiver_tensor, export_outputs, serving_only=False)
+
+    expected_signature_defs.update({
+        "train": signature_def_utils.supervised_train_signature_def(
+            receiver_tensor, loss={"loss": output_1})
+    })
+
+    self.assertDictEqual(expected_signature_defs, signature_defs)
 
 
 class TensorServingReceiverTest(test_util.TensorFlowTestCase):

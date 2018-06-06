@@ -184,6 +184,7 @@ library {
   return std::move(functions[0]);
 }
 
+#if not defined(PLATFORM_WINDOWS)
 //  On success, returns a set of TF_Function instances encoding a dataset
 //  node stack that reads a Imagenet TFRecordFile dataset from `file_path`, and
 //  sets `dataset_name` to the created dataset name. The returned functions must
@@ -7076,7 +7077,9 @@ library {
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
 #endif
 }
+#endif
 
+#if not defined(PLATFORM_WINDOWS)
 //  On success, returns a set of TF_Function instances encoding a dataset
 //  node stack that reads an MNIST file dataset from `file_path`, and
 //  sets `dataset_name` to the created dataset name. The returned functions must
@@ -8221,6 +8224,7 @@ library {
   return CreateFunctionsFromTextProto(func_def, &mutate_proto_func, status);
 #endif
 }
+#endif
 
 // Adds the input functions to `graph`.  On success, returns the created
 // IteratorGetNext node.
@@ -8314,6 +8318,13 @@ TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(TF_Graph* graph,
 TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
     TF_Graph* graph, const char* file_path, int batch_size,
     unsigned char is_mnist, TF_Status* status) {
+#if defined(PLATFORM_WINDOWS)
+  // TODO(ashankar): get these functions working on Windows.
+  status->status = tensorflow::errors::Unimplemented(
+      "TF_MakeFileBasedIteratorGetNextWithDatasets in the experimental C API "
+      "is not implemented for Windows");
+  return nullptr;
+#else
   tensorflow::Status s;
 
   std::string dataset_name;
@@ -8355,4 +8366,92 @@ TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
           << graph->graph.ToGraphDefDebug().DebugString();
 
   return getnext_node;
+#endif
+}
+
+TF_Tensor* TF_DequeueNamedTensor(TF_Session* session, int tensor_id,
+                                 TF_Status* status) {
+  assert(session);
+  {
+    tensorflow::mutex_lock c(session->graph->mu);
+    VLOG(1) << "Dequeuing named tensor with id " << tensor_id
+            << ", with input graph: "
+            << session->graph->graph.ToGraphDefDebug().DebugString();
+  }
+
+  TF_Operation* dequeue_op = TF_GraphOperationByName(
+      session->graph,
+      tensorflow::strings::StrCat("fifo_queue_dequeue_", tensor_id).c_str());
+  if (dequeue_op == nullptr) {
+    status->status = tensorflow::errors::Internal(
+        "Unable to find the dequeue node in the TF graph.");
+    return nullptr;
+  }
+
+  VLOG(1) << "Running the dequeue op";
+  TF_Output output{dequeue_op, 0};
+  TF_Tensor* ret;
+  TF_SessionRun(session, /*run_options*/ nullptr,
+                // input related parameters
+                /*inputs*/ nullptr, /*input_values*/ nullptr, /*ninputs*/ 0,
+                // output related parameters
+                /*outputs*/ &output, /*output_values*/ &ret,
+                /*noutputs*/ 1,
+                /*targets*/ nullptr, /*ntargets*/ 0,
+                /*run_metadata*/ nullptr, status);
+  if (VLOG_IS_ON(1) && status->status.ok()) {
+    tensorflow::Tensor tensor;
+    if (tensorflow::TF_TensorToTensor(ret, &tensor).ok()) {
+      VLOG(1) << "Dequeued tensor content: " << tensor.DebugString();
+    }
+  }
+  return ret;
+}
+
+void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
+                           TF_Tensor* tensor, TF_Status* status) {
+  assert(session);
+  {
+    tensorflow::mutex_lock c(session->graph->mu);
+    if (VLOG_IS_ON(1)) {
+      VLOG(1) << "Enqueuing named tensor with id " << tensor_id
+              << ", with input graph: "
+              << session->graph->graph.ToGraphDefDebug().DebugString();
+      tensorflow::Tensor internal_tensor;
+      if (tensorflow::TF_TensorToTensor(tensor, &internal_tensor).ok()) {
+        VLOG(1) << "Enqueu'ing tensor content: "
+                << internal_tensor.DebugString();
+      }
+    }
+  }
+
+  TF_Operation* enqueue_op = TF_GraphOperationByName(
+      session->graph,
+      tensorflow::strings::StrCat("fifo_queue_enqueue_", tensor_id).c_str());
+  if (enqueue_op == nullptr) {
+    status->status = tensorflow::errors::Internal(
+        "Unable to find the enqueue node in the TF graph.");
+    return;
+  }
+
+  TF_Operation* placeholder_op = TF_GraphOperationByName(
+      session->graph,
+      tensorflow::strings::StrCat("arg_tensor_enqueue_", tensor_id).c_str());
+  if (placeholder_op == nullptr) {
+    status->status = tensorflow::errors::Internal(
+        "Unable to find the placeholder node as input to enqueue in the TF "
+        "graph.");
+    return;
+  }
+
+  VLOG(1) << "Running the enqueue op";
+  TF_Output input{placeholder_op, 0};
+  TF_SessionRun(session, /*run_options*/ nullptr,
+                // input related parameters
+                /*inputs*/ &input, /*input_values*/ &tensor, /*ninputs*/ 1,
+                // output related parameters
+                /*outputs*/ nullptr, /*output_values*/ nullptr, /*noutputs*/ 0,
+                /*targets*/ &enqueue_op, /*ntargets*/ 1,
+                /*run_metadata*/ nullptr, status);
+  VLOG(1) << "Enqueuing is done.";
 }

@@ -35,18 +35,18 @@ ConditionalThunk::ConditionalThunk(
       true_thunk_(std::move(true_thunk_sequence), hlo),
       false_thunk_(std::move(false_thunk_sequence), hlo) {}
 
-Status ConditionalThunk::Initialize(const GpuExecutable& executable) {
-  TF_RETURN_IF_ERROR(true_thunk_.Initialize(executable));
-  TF_RETURN_IF_ERROR(false_thunk_.Initialize(executable));
+Status ConditionalThunk::Initialize(const GpuExecutable& executable,
+                                    se::StreamExecutor* executor) {
+  TF_RETURN_IF_ERROR(true_thunk_.Initialize(executable, executor));
+  TF_RETURN_IF_ERROR(false_thunk_.Initialize(executable, executor));
   return Status::OK();
 }
 
 Status ConditionalThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // Copy the predicate value from device.
   bool predicate;
-  perftools::gputools::DeviceMemoryBase predicate_address =
+  se::DeviceMemoryBase predicate_address =
       buffer_allocations.GetDeviceAddress(predicate_buffer_index_);
   stream->ThenMemcpy(&predicate, predicate_address, sizeof(bool));
 

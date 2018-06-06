@@ -14,6 +14,7 @@ py_library(
     name = "opt_py",
     srcs = [
         "__init__.py",
+        "python/training/adamax.py",
         "python/training/addsign.py",
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/elastic_average_optimizer.py",
@@ -24,6 +25,7 @@ py_library(
         "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
         "python/training/powersign.py",
+        "python/training/reg_adagrad_optimizer.py",
         "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
     ],
@@ -43,8 +45,24 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "adamax_test",
+    srcs = ["python/training/adamax_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -133,6 +151,25 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "reg_adagrad_optimizer_test",
+    srcs = ["python/training/reg_adagrad_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

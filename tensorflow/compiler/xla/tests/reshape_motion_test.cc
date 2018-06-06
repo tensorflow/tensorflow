@@ -20,10 +20,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -45,7 +43,7 @@ namespace {
 using ReshapeMotionTest = ClientLibraryTestBase;
 
 TEST_F(ReshapeMotionTest, ElementwiseOfReshapesWithNonSameInputShapes) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a = builder.ConstantR2<int32>({{2, 3, 5}, {7, 11, 13}});
   auto b = builder.ConstantR2<int32>({{17, 19}, {23, 29}, {31, 37}});
   auto c = builder.Reshape(a, {6});

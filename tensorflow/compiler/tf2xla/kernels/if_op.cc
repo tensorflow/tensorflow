@@ -37,7 +37,7 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 // TODO(b/35949885): There is duplication here with the handling of the
 // while_op. Refactor the common code out/rework.
 void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
-  xla::ComputationBuilder* b = ctx->builder();
+  xla::XlaBuilder* b = ctx->builder();
 
   OP_REQUIRES(ctx, cond_type_ == DT_BOOL,
               errors::InvalidArgument(
@@ -48,7 +48,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
 
   VLOG(1) << "Building If: " << input_types_.size() << " inputs";
 
-  std::vector<xla::ComputationDataHandle> inputs(input_types_.size());
+  std::vector<xla::XlaOp> inputs(input_types_.size());
   std::vector<XlaCompiler::Argument> arguments(input_types_.size());
   for (int i = 0; i < input_types_.size(); ++i) {
     XlaCompiler::Argument& arg = arguments[i];
@@ -175,19 +175,19 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
             "Mismatch in resource of then and else branch for resource ", i));
   }
 
-  xla::ComputationDataHandle outputs =
+  xla::XlaOp outputs =
       b->Conditional(ctx->Input(0), b->Tuple(inputs), *then_result.computation,
                      b->Tuple(inputs), *else_result.computation);
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
-      xla::ComputationDataHandle output_handle = b->GetTupleElement(outputs, i);
+      xla::XlaOp output_handle = b->GetTupleElement(outputs, i);
       if (VLOG_IS_ON(2)) {
         LOG(INFO) << "Setting output " << i;
         auto shape_or = b->GetShape(output_handle);
         if (shape_or.ok()) {
           LOG(INFO) << "Shape for output " << i << ": "
-                    << xla::ShapeUtil::HumanString(*shape_or.ValueOrDie());
+                    << xla::ShapeUtil::HumanString(shape_or.ValueOrDie());
         } else {
           LOG(INFO) << "Shape unknown for output " << i;
         }

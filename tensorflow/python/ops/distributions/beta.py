@@ -150,8 +150,8 @@ class Beta(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration1, concentration0]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
       self._concentration1 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration1, name="concentration1"),
           validate_args)
@@ -321,9 +321,9 @@ class BetaWithSoftplusConcentration(Beta):
                validate_args=False,
                allow_nan_stats=True,
                name="BetaWithSoftplusConcentration"):
-    parameters = locals()
+    parameters = distribution_util.parent_frame_arguments()
     with ops.name_scope(name, values=[concentration1,
-                                      concentration0]) as ns:
+                                      concentration0]) as name:
       super(BetaWithSoftplusConcentration, self).__init__(
           concentration1=nn.softplus(concentration1,
                                      name="softplus_concentration1"),
@@ -331,7 +331,7 @@ class BetaWithSoftplusConcentration(Beta):
                                      name="softplus_concentration0"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 

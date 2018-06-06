@@ -27,16 +27,18 @@ import weakref
 import six
 
 from tensorflow.contrib.data.python.ops import batching
+from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.contrib.distribute.python import prefetching_ops_v2
-from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.eager import context
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.training import checkpointable
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 
 
@@ -59,7 +61,7 @@ class DistributedValues(object):
       else:
         device = distribute_lib.get_update_device()
         if device is None:
-          device = device_util.current()
+          return self._get_cross_tower()
     device = device_util.canonicalize(device)
     try:
       return self._index[device]
@@ -313,6 +315,18 @@ class MirroredVariable(DistributedVariable, Mirrored,
   def assign(self, *args, **kwargs):
     return self.get(device=_get_update_device()).assign(*args, **kwargs)
 
+  def _get_cross_tower(self):
+    device = device_util.canonicalize(device_util.current())
+    if device in self._index:
+      return array_ops.identity(self._index[device])
+    return array_ops.identity(self._primary_var)
+
+  def _as_graph_element(self):
+    # pylint: disable=protected-access
+    if distribute_lib.get_cross_tower_context():
+      return self._primary_var._as_graph_element()
+    return self.get()._as_graph_element()
+
   def _gather_saveables_for_checkpoint(self):
     """Overrides CheckpointableBase method.
 
@@ -357,6 +371,12 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
         for d, v in six.iteritems(self._tower_local_variable._index)])  # pylint: disable=protected-access
 
 
+def _assert_tower_context():
+  if not distribute_lib.get_tower_context():
+    raise RuntimeError(
+        "Tower-local variables may only be assigned in a tower context.")
+
+
 class TowerLocalVariable(DistributedVariable, PerDevice,
                          checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are reduced on save."""
@@ -367,17 +387,34 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     super(TowerLocalVariable, self).__init__(index)
 
   def assign_sub(self, *args, **kwargs):
+    _assert_tower_context()
     return self.get().assign_sub(*args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
+    _assert_tower_context()
     return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
+    _assert_tower_context()
     return self.get().assign(*args, **kwargs)
 
   @property
   def reduce_method(self):
     return self._reduce_method
+
+  def _get_cross_tower(self):
+    all_components = tuple(self._index.values())
+    # TODO(josh11b): Use a strategy-specific method.
+    total = math_ops.add_n(all_components)
+    if self._reduce_method == "mean":
+      return total * (1./ len(all_components))
+    return total
+
+  def _as_graph_element(self):
+    # pylint: disable=protected-access
+    if distribute_lib.get_cross_tower_context():
+      return self._get_cross_tower()
+    return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides CheckpointableBase method.
@@ -510,6 +547,10 @@ class PerDeviceDataIterator(object):
     self._devices = devices
     self._prefetch_on_device = prefetch_on_device
 
+  @property
+  def initializer(self):
+    return self._iterator.initializer
+
   def get_next(self, name=None):
     """Scatter the input across devices."""
     if self._prefetch_on_device:
@@ -545,7 +586,8 @@ class PerDeviceDataset(object):
         "Prefetching is only supported in graph mode currently")
 
     if self._prefetch_on_device:
-      self._dataset = dataset
+      self._dataset = dataset.apply(
+          prefetching_ops_v2.prefetch_to_devices(self._devices))
     else:
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
@@ -555,17 +597,203 @@ class PerDeviceDataset(object):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""
-    if self._prefetch_on_device:
-      on_device_dataset = self._dataset.apply(
-          prefetching_ops_v2.prefetch_to_devices(self._devices))
-      dataset_iterator = on_device_dataset.make_one_shot_iterator()
-    elif context.executing_eagerly():
-      dataset_iterator = datasets.Iterator(self._dataset)
-    else:
-      dataset_iterator = self._dataset.make_one_shot_iterator()
-
+    dataset_iterator = self._dataset.make_one_shot_iterator()
     return PerDeviceDataIterator(
         dataset_iterator, self._devices, self._prefetch_on_device)
+
+  def make_initializable_iterator(self):
+    """Get an initializable iterator for the distributed PerDeviceDataset."""
+    dataset_iterator = self._dataset.make_initializable_iterator()
+    return PerDeviceDataIterator(
+        dataset_iterator, self._devices, self._prefetch_on_device)
+
+
+class MultiWorkerDataIterator(object):
+  """An iterator (like `tf.data.Iterator`) into a `MultiWorkerDataset`."""
+
+  def __init__(self, iterators, worker_device_map):
+    """Initialize the MultiWorkerDataIterator object.
+
+    Args:
+      iterators: a dict mapping from each worker to an iterator for
+        that worker.
+      worker_device_map: a dict mapping from each worker's devices to a list of
+        devices that belong to this worker.
+
+    Raises:
+      ValueError: if iterators and worker_device_map are not compatible.
+    """
+    self._iterators = iterators
+    self._worker_device_map = worker_device_map
+    if set(self._iterators) != set(self._worker_device_map):
+      raise ValueError("iterators and worker_device_map are not compatible.")
+
+  @property
+  def initializer(self):
+    return control_flow_ops.group(
+        [iterator.initializer for iterator in self._iterators.values()])
+
+  def get_next(self, name=None):
+    """Scatter the input across hosts and devices."""
+    index = {}
+    for worker, iterator in six.iteritems(self._iterators):
+      if name is not None:
+        d = tf_device.DeviceSpec.from_string(worker)
+        new_name = "%s_%s_%d" % (name, d.job, d.task)
+      else:
+        new_name = None
+      with ops.device(worker):
+        data_per_worker = iterator.get_next(name=new_name)
+
+      worker_devices = self._worker_device_map[worker]
+      # Ungroup these per-device value so as to get a flat map from devices to
+      # values.
+      for d in worker_devices:
+        v = select_device(d, data_per_worker)
+        if d in index:
+          raise ValueError("Duplicated devices in worker_device_map: %r" % v)
+        index[d] = v
+
+    return regroup(index)
+
+
+class MultiWorkerDataset(object):
+  """Like a `tf.data.Dataset` that distributes data to different workers.
+
+  Each worker gets one shard of the input dataset. It is currently not working
+  in
+  eager mode.
+  """
+
+  def __init__(self, dataset_fn, worker_device_map, prefetch_on_device=None):
+    """Initialize the MultiWorkerDataset object.
+
+    Args:
+      dataset_fn: a function that returns a `tf.data.Dataset`.
+      worker_device_map: a dict mapping from each worker to a list of devices
+        that belong to this worker.
+      prefetch_on_device: whether to prefetch to devices.
+    """
+    self._worker_device_map = worker_device_map
+    self._datasets = {}
+    # TODO(yuefengz, priyag): support different set of jobs for input
+    # processing.
+    for i, (worker, worker_devices) in enumerate(
+        six.iteritems(worker_device_map)):
+      with ops.device(worker):
+        worker_input = dataset_fn()
+        worker_input = input_ops.auto_shard_dataset(
+            worker_input, len(worker_device_map), i)
+        self._datasets[worker] = PerDeviceDataset(
+            worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
+
+  def make_one_shot_iterator(self):
+    iterators = {}
+    for worker, dataset in six.iteritems(self._datasets):
+      with ops.device(worker):
+        iterators[worker] = dataset.make_one_shot_iterator()
+    return MultiWorkerDataIterator(iterators, self._worker_device_map)
+
+  def make_initializable_iterator(self):
+    iterators = {}
+    for worker, dataset in six.iteritems(self._datasets):
+      with ops.device(worker):
+        iterators[worker] = dataset.make_initializable_iterator()
+    return MultiWorkerDataIterator(iterators, self._worker_device_map)
+
+
+class _PerKey(object):
+  """Holds data associated by keys."""
+
+  def __init__(self, *index):
+    # pylint: disable=protected-access
+    self._index = list(index)
+
+  def get(self, iteration):
+    return array_ops.gather(self._index, iteration)
+
+  def get_shape(self):
+    return self._index[-1][-1].get_shape()
+
+  def get_dtype(self):
+    return self._index[-1][-1].dtype
+
+  def __str__(self):
+    return "%s:%s" % (self.__class__.__name__, self._index)
+
+  def __repr__(self):
+    return "%s(%r)" % (self.__class__.__name__, self._index)
+
+
+class PerIteration(_PerKey):
+  """Holds input for multiple iterations at once."""
+
+  def __init__(self, *index):
+    # pylint: disable=protected-access
+    super(PerIteration, self).__init__(*[batch._index for batch in index])
+
+
+class Batches(_PerKey):
+  pass
+
+
+class MultiIterator(object):
+  """Iterator that returns results of multiple get_next()s."""
+
+  def __init__(self, dataset_iterator, iterations, batches_per_iteration):
+    self._dataset_iterator = dataset_iterator
+    self._iterations = iterations
+    self._batches_per_iteration = batches_per_iteration
+
+  def get_next(self, name=None):
+    """Return PerIteration with `iterations x batches_per_iteration` inputs."""
+    data = []
+    for _ in range(self._batches_per_iteration):
+      batch = []
+      for _ in range(self._iterations):
+        batch.append(self._dataset_iterator.get_next(name=name))
+      data.append(batch)
+
+    # Here is an example.  Suppose each get_next returns a tuple of two tensors.
+    # For 3 `iterations` and 2 `batches_per_iteration`, the `data` is:
+    # [[(a,z), (b,y), (c,x)], [(A,Z), (B,Y), (C,X)]]
+    #
+    # After the first `map_structure` it gets transformed to:
+    #  [(Batches(a, A), Batches(z, Z)),
+    #   (Batches(b, B), Batches(y, Y)),
+    #   (Batches(c, C), Batches(x, X))]
+    #
+    # After the second `map_structure` it gets transformed to a tuple of:
+    # (PerIteration([Batches(a, A), Batches(b, B), Batches(c, C)]),
+    #  PerIteration([Batches(z, Z), Batches(y, Y), Batches(x, X)]))
+
+    data = nest.map_structure(Batches, *data)
+    data = nest.map_structure(PerIteration, *data)
+
+    return data
+
+  @property
+  def initializer(self):
+    return self._dataset_iterator.initializer
+
+
+class PerIterationDataset(object):
+  """A dataset that returns MultiIterators."""
+
+  def __init__(self, dataset, iterations, batches_per_iteration):
+    self._dataset = dataset
+    self._iterations = iterations
+    self._batches_per_iteration = batches_per_iteration
+
+  def make_one_shot_iterator(self):
+    iterator = self._dataset.make_one_shot_iterator()
+    return MultiIterator(iterator, self._iterations,
+                         self._batches_per_iteration)
+
+  def make_initializable_iterator(self):
+    iterator = self._dataset.make_initializable_iterator()
+    return MultiIterator(iterator, self._iterations,
+                         self._batches_per_iteration)
 
 
 class MapOutput(object):

@@ -62,8 +62,13 @@ class GANHeadTest(test.TestCase):
         generator_loss_fn=dummy_loss,
         discriminator_loss_fn=dummy_loss,
         generator_optimizer=training.GradientDescentOptimizer(1.0),
-        discriminator_optimizer=training.GradientDescentOptimizer(1.0))
+        discriminator_optimizer=training.GradientDescentOptimizer(1.0),
+        get_eval_metric_ops_fn=self.get_metrics)
     self.assertTrue(isinstance(self.gan_head, head.GANHead))
+
+  def get_metrics(self, gan_model):
+    self.assertTrue(isinstance(gan_model, tfgan_tuples.GANModel))
+    return {}
 
   def _test_modes_helper(self, mode):
     self.gan_head.create_estimator_spec(
