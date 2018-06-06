@@ -25,7 +25,6 @@ from tensorflow.contrib.gan.python import train as tfgan_train
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.canned import head
 from tensorflow.python.framework import ops
-from tensorflow.python.training import optimizer
 
 __all__ = [
     'GANHead',
@@ -96,10 +95,6 @@ class GANHead(head._Head):  # pylint: disable=protected-access
       raise TypeError('generator_loss_fn must be callable.')
     if not callable(discriminator_loss_fn):
       raise TypeError('discriminator_loss_fn must be callable.')
-    if not isinstance(generator_optimizer, optimizer.Optimizer):
-      raise TypeError('generator_optimizer must be Optimizer.')
-    if not isinstance(discriminator_optimizer, optimizer.Optimizer):
-      raise TypeError('discriminator_optimizer must be Optimizer.')
     if not use_loss_summaries in [True, False, None]:
       raise ValueError('use_loss_summaries must be True, False or None.')
     if get_hooks_fn is not None and not callable(get_hooks_fn):
