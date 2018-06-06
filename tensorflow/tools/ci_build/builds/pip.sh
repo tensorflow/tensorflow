@@ -315,6 +315,7 @@ create_activate_virtualenv_and_install_tensorflow() {
   # Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
   echo "Upgrade pip in virtualenv"
   pip install --upgrade pip==9.0.1
+  pip install --upgrade setuptools==39.1.0
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
