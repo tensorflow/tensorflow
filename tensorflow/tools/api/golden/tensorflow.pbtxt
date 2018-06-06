@@ -489,12 +489,20 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "sparse"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "spectral"
     mtype: "<type \'module\'>"
   }
   member {
     name: "string"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "strings"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "summary"
@@ -783,6 +791,10 @@ tf_module {
   member_method {
     name: "broadcast_static_shape"
     argspec: "args=[\'shape_x\', \'shape_y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "broadcast_to"
+    argspec: "args=[\'input\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "case"
@@ -1525,6 +1537,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "print"
+    argspec: "args=[\'input_\', \'data\', \'message\', \'first_n\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "py_func"
     argspec: "args=[\'func\', \'inp\', \'Tout\', \'stateful\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -1686,7 +1702,7 @@ tf_module {
   }
   member_method {
     name: "scan"
-    argspec: "args=[\'fn\', \'elems\', \'initializer\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'True\', \'None\'], "
+    argspec: "args=[\'fn\', \'elems\', \'initializer\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'reverse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'True\', \'False\', \'None\'], "
   }
   member_method {
     name: "scatter_add"

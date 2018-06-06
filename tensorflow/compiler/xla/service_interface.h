@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERFACE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INTERFACE_H_
 
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -31,99 +32,52 @@ class ServiceInterface {
   virtual ~ServiceInterface() = default;
 
   // TODO(b/31824348): Convert to use StatusOr.
-  virtual tensorflow::Status TransferToClient(
-      const TransferToClientRequest* arg, TransferToClientResponse* result) = 0;
+  virtual Status TransferToClient(const TransferToClientRequest* arg,
+                                  TransferToClientResponse* result) = 0;
 
-  virtual tensorflow::Status TransferToServer(
-      const TransferToServerRequest* arg, TransferToServerResponse* result) = 0;
+  virtual Status TransferToServer(const TransferToServerRequest* arg,
+                                  TransferToServerResponse* result) = 0;
 
-  virtual tensorflow::Status TransferToInfeed(
-      const TransferToInfeedRequest* arg, TransferToInfeedResponse* result) = 0;
+  virtual Status TransferToInfeed(const TransferToInfeedRequest* arg,
+                                  TransferToInfeedResponse* result) = 0;
 
-  virtual tensorflow::Status TransferFromOutfeed(
-      const TransferFromOutfeedRequest* arg,
-      TransferFromOutfeedResponse* result) = 0;
+  virtual Status TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
+                                     TransferFromOutfeedResponse* result) = 0;
 
-  virtual tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
-                                         ResetDeviceResponse* result) = 0;
+  virtual Status ResetDevice(const ResetDeviceRequest* arg,
+                             ResetDeviceResponse* result) = 0;
 
-  virtual tensorflow::Status LoadComputationSnapshot(
-      const LoadComputationSnapshotRequest* request,
-      LoadComputationSnapshotResponse* result) = 0;
+  virtual Status ExecuteGraph(const ExecuteGraphRequest* arg,
+                              ExecuteResponse* result) = 0;
 
-  virtual tensorflow::Status Execute(const ExecuteRequest* arg,
-                                     ExecuteResponse* result) = 0;
+  virtual Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
+                                      ExecuteParallelResponse* result) = 0;
 
-  virtual tensorflow::Status ExecuteGraph(const ExecuteGraphRequest* arg,
-                                          ExecuteResponse* result) = 0;
+  virtual Status WaitForExecution(const WaitForExecutionRequest* arg,
+                                  WaitForExecutionResponse* result) = 0;
 
-  virtual tensorflow::Status ExecuteParallel(
-      const ExecuteParallelRequest* arg, ExecuteParallelResponse* result) = 0;
+  virtual Status DeconstructTuple(const DeconstructTupleRequest* arg,
+                                  DeconstructTupleResponse* result) = 0;
 
-  virtual tensorflow::Status ExecuteGraphParallel(
-      const ExecuteGraphParallelRequest* arg,
-      ExecuteParallelResponse* result) = 0;
-
-  virtual tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
-                                          ExecuteAsyncResponse* result) = 0;
-
-  virtual tensorflow::Status WaitForExecution(
-      const WaitForExecutionRequest* arg, WaitForExecutionResponse* result) = 0;
-
-  virtual tensorflow::Status DeconstructTuple(
-      const DeconstructTupleRequest* arg, DeconstructTupleResponse* result) = 0;
-
-  virtual tensorflow::Status GetComputationStats(
-      const ComputationStatsRequest* arg, ComputationStatsResponse* result) = 0;
-
-  virtual tensorflow::Status GetComputationGraphStats(
+  virtual Status GetComputationGraphStats(
       const ComputationGraphStatsRequest* arg,
       ComputationStatsResponse* result) = 0;
 
-  virtual tensorflow::Status GetComputationShape(
-      const GetComputationShapeRequest* arg,
-      GetComputationShapeResponse* result) = 0;
+  virtual Status GetShape(const GetShapeRequest* arg,
+                          GetShapeResponse* result) = 0;
 
-  virtual tensorflow::Status GetShape(const GetShapeRequest* arg,
-                                      GetShapeResponse* result) = 0;
+  virtual Status CreateChannelHandle(const CreateChannelHandleRequest* arg,
+                                     CreateChannelHandleResponse* result) = 0;
 
-  virtual tensorflow::Status CreateChannelHandle(
-      const CreateChannelHandleRequest* arg,
-      CreateChannelHandleResponse* result) = 0;
+  virtual Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                                  GetDeviceHandlesResponse* result) = 0;
 
-  virtual tensorflow::Status GetDeviceHandles(
-      const GetDeviceHandlesRequest* arg, GetDeviceHandlesResponse* result) = 0;
-
-  // Methods used by ComputationBuilder.
-  virtual tensorflow::Status Computation(const ComputationRequest* arg,
-                                         ComputationResponse* result) = 0;
-
-  virtual tensorflow::Status Op(const OpRequest* arg, OpResponse* result) = 0;
-
-  virtual tensorflow::Status GetLocalShape(const GetLocalShapeRequest* arg,
-                                           GetLocalShapeResponse* result) = 0;
-
-  virtual tensorflow::Status SetReturnValue(
-      const SetReturnValueRequest* arg, SetReturnValueResponse* results) = 0;
-
-  virtual tensorflow::Status IsConstant(const IsConstantRequest* arg,
-                                        IsConstantResponse* result) = 0;
-
-  virtual tensorflow::Status ComputeConstant(
-      const ComputeConstantRequest* arg, ComputeConstantResponse* result) = 0;
-
-  virtual tensorflow::Status ComputeConstantGraph(
-      const ComputeConstantGraphRequest* arg,
-      ComputeConstantResponse* result) = 0;
-
-  // Methods used by Computation.
-  virtual tensorflow::Status SnapshotComputation(
-      const SnapshotComputationRequest* ag,
-      SnapshotComputationResponse* result) = 0;
+  virtual Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
+                                      ComputeConstantResponse* result) = 0;
 
   // Methods used by GlobalData.
-  virtual tensorflow::Status Unregister(const UnregisterRequest* arg,
-                                        UnregisterResponse* result) = 0;
+  virtual Status Unregister(const UnregisterRequest* arg,
+                            UnregisterResponse* result) = 0;
 };
 
 }  // namespace xla

@@ -126,7 +126,8 @@ def _dnn_model_fn(features,
                   activation_fn=nn.relu,
                   dropout=None,
                   input_layer_partitioner=None,
-                  config=None):
+                  config=None,
+                  tpu_estimator_spec=False):
   """Deep Neural Net model_fn.
 
   Args:
@@ -147,6 +148,8 @@ def _dnn_model_fn(features,
     input_layer_partitioner: Partitioner for input layer. Defaults
       to `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
     config: `RunConfig` object to configure the runtime settings.
+    tpu_estimator_spec: Whether to return a `_TPUEstimatorSpec` or
+      or `model_fn.EstimatorSpec` instance.
 
   Returns:
     An `EstimatorSpec` instance.
@@ -182,12 +185,20 @@ def _dnn_model_fn(features,
         input_layer_partitioner=input_layer_partitioner)
     logits = logit_fn(features=features, mode=mode)
 
-    return head.create_estimator_spec(
-        features=features,
-        mode=mode,
-        labels=labels,
-        optimizer=optimizer,
-        logits=logits)
+    if tpu_estimator_spec:
+      return head._create_tpu_estimator_spec(  # pylint: disable=protected-access
+          features=features,
+          mode=mode,
+          labels=labels,
+          optimizer=optimizer,
+          logits=logits)
+    else:
+      return head.create_estimator_spec(
+          features=features,
+          mode=mode,
+          labels=labels,
+          optimizer=optimizer,
+          logits=logits)
 
 
 @tf_export('estimator.DNNClassifier')
@@ -320,17 +331,8 @@ class DNNClassifier(estimator.Estimator):
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
     """
-    if n_classes == 2:
-      head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_column=weight_column,
-          label_vocabulary=label_vocabulary,
-          loss_reduction=loss_reduction)
-    else:
-      head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary,
-          loss_reduction=loss_reduction)
-
+    head = head_lib._binary_logistic_or_multi_class_head(  # pylint: disable=protected-access
+        n_classes, weight_column, label_vocabulary, loss_reduction)
     def _model_fn(features, labels, mode, config):
       """Call the defined shared _dnn_model_fn."""
       return _dnn_model_fn(
@@ -481,8 +483,7 @@ class DNNRegressor(estimator.Estimator):
           features=features,
           labels=labels,
           mode=mode,
-          head=head_lib.  # pylint: disable=protected-access
-          _regression_head_with_mean_squared_error_loss(
+          head=head_lib._regression_head(  # pylint: disable=protected-access
               label_dimension=label_dimension, weight_column=weight_column,
               loss_reduction=loss_reduction),
           hidden_units=hidden_units,

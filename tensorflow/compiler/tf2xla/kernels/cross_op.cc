@@ -53,7 +53,7 @@ class CrossOp : public XlaOpKernel {
     }
     std::vector<int64> strides(in0_shape.dims(), 1);
 
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
     auto in0 = ctx->Input(0);
     auto in1 = ctx->Input(1);
     starts.back() = 0;

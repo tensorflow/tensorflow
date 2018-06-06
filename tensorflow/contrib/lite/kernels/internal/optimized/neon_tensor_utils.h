@@ -32,6 +32,14 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                    vector, n_batch, result, result_stride);
 }
 
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                   vectors, scaling_factors, n_batch, result, result_stride);
+}
+
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
                               int v_size, float* result) {
   NEON_OR_PORTABLE(VectorVectorCwiseProduct, vector1, vector2, v_size, result);
@@ -91,6 +99,11 @@ void ZeroVector(float* vector, int v_size) {
 }
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
+
+// Check if all entries of a vector are zero.
+bool IsZeroVector(const float* vector, int v_size) {
+  return NEON_OR_PORTABLE(IsZeroVector, vector, v_size);
+}
 
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result) {

@@ -25,12 +25,12 @@ from __future__ import print_function
 
 import os
 from tensorflow.contrib.lite.python import convert_saved_model
-from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
@@ -38,13 +38,68 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import training as train
 
 
-class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
+class TensorFunctionsTest(test_util.TensorFlowTestCase):
+
+  def testGetTensorsValid(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    tensors = convert_saved_model.get_tensors_from_tensor_names(
+        sess.graph, ["Placeholder"])
+    self.assertEqual("Placeholder:0", tensors[0].name)
+
+  def testGetTensorsInvalid(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    with self.assertRaises(ValueError) as error:
+      convert_saved_model.get_tensors_from_tensor_names(sess.graph,
+                                                        ["invalid-input"])
+    self.assertEqual("Invalid tensors 'invalid-input' were found.",
+                     str(error.exception))
+
+  def testSetTensorShapeValid(self):
+    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+    convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [5, 3, 5]})
+    self.assertEqual([5, 3, 5], tensor.shape.as_list())
+
+  def testSetTensorShapeNoneValid(self):
+    tensor = array_ops.placeholder(dtype=dtypes.float32)
+    self.assertEqual(None, tensor.shape)
+
+    convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [1, 3, 5]})
+    self.assertEqual([1, 3, 5], tensor.shape.as_list())
+
+  def testSetTensorShapeInvalid(self):
+    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+    convert_saved_model.set_tensor_shapes([tensor],
+                                          {"invalid-input": [5, 3, 5]})
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+  def testSetTensorShapeEmpty(self):
+    tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+    convert_saved_model.set_tensor_shapes([tensor], {})
+    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+
+
+class FreezeSavedModelTest(test_util.TensorFlowTestCase):
 
   def _createSimpleSavedModel(self, shape):
     """Create a simple SavedModel on the fly."""
@@ -57,82 +112,167 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
       saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
     return saved_model_dir
 
+  def _createSavedModelTwoInputArrays(self, shape):
+    """Create a simple SavedModel."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), "simple_savedmodel")
+    with session.Session() as sess:
+      in_tensor_1 = array_ops.placeholder(
+          shape=shape, dtype=dtypes.float32, name="inputB")
+      in_tensor_2 = array_ops.placeholder(
+          shape=shape, dtype=dtypes.float32, name="inputA")
+      out_tensor = in_tensor_1 + in_tensor_2
+      inputs = {"x": in_tensor_1, "y": in_tensor_2}
+      outputs = {"z": out_tensor}
+      saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return saved_model_dir
+
+  def _getArrayNames(self, tensors):
+    return [tensor.name for tensor in tensors]
+
+  def _getArrayShapes(self, tensors):
+    dims = []
+    for tensor in tensors:
+      dim_tensor = []
+      for dim in tensor.shape:
+        if isinstance(dim, tensor_shape.Dimension):
+          dim_tensor.append(dim.value)
+        else:
+          dim_tensor.append(dim)
+      dims.append(dim_tensor)
+    return dims
+
+  def _convertSavedModel(self,
+                         saved_model_dir,
+                         input_arrays=None,
+                         input_shapes=None,
+                         output_arrays=None,
+                         tag_set=None,
+                         signature_key=None):
+    if tag_set is None:
+      tag_set = set([tag_constants.SERVING])
+    if signature_key is None:
+      signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    graph_def, in_tensors, out_tensors = convert_saved_model.freeze_saved_model(
+        saved_model_dir=saved_model_dir,
+        input_arrays=input_arrays,
+        input_shapes=input_shapes,
+        output_arrays=output_arrays,
+        tag_set=tag_set,
+        signature_key=signature_key)
+    return graph_def, in_tensors, out_tensors
+
   def testSimpleSavedModel(self):
-    """Test a simple SavedModel created on the fly."""
-    # Create a simple SavedModel
+    """Test a SavedModel."""
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
-    # Convert to tflite
-    result = convert_saved_model.tflite_from_saved_model(
-        saved_model_dir=saved_model_dir)
-    self.assertTrue(result)
+    _, in_tensors, out_tensors = self._convertSavedModel(saved_model_dir)
+
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["Placeholder:0"])
+    self.assertEqual(self._getArrayShapes(in_tensors), [[1, 16, 16, 3]])
 
   def testSimpleSavedModelWithNoneBatchSizeInShape(self):
-    """Test a simple SavedModel, with None in input tensor's shape."""
+    """Test a SavedModel with None in input tensor's shape."""
     saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, 16, 3])
-    result = convert_saved_model.tflite_from_saved_model(
-        saved_model_dir=saved_model_dir)
-    self.assertTrue(result)
+    _, in_tensors, out_tensors = self._convertSavedModel(saved_model_dir)
 
-  def testSimpleSavedModelWithMoreNoneInShape(self):
-    """Test a simple SavedModel, fail as more None in input shape."""
-    saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, None, 3])
-    # Convert to tflite: this should raise ValueError, as 3rd dim is None.
-    with self.assertRaises(ValueError):
-      convert_saved_model.tflite_from_saved_model(
-          saved_model_dir=saved_model_dir)
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["Placeholder:0"])
+    self.assertEqual(self._getArrayShapes(in_tensors), [[None, 16, 16, 3]])
 
-  def testSimpleSavedModelWithWrongSignatureKey(self):
-    """Test a simple SavedModel, fail as given signature is invalid."""
+  def testSimpleSavedModelWithInvalidSignatureKey(self):
+    """Test a SavedModel that fails due to an invalid signature_key."""
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
-    # Convert to tflite: this should raise ValueError, as
-    # signature_key does not exit in the saved_model.
-    with self.assertRaises(ValueError):
-      convert_saved_model.tflite_from_saved_model(
-          saved_model_dir=saved_model_dir, signature_key="wrong-key")
+    with self.assertRaises(ValueError) as error:
+      self._convertSavedModel(saved_model_dir, signature_key="invalid-key")
+    self.assertEqual(
+        "No 'invalid-key' in the SavedModel's SignatureDefs. "
+        "Possible values are 'serving_default'.", str(error.exception))
 
-  def testSimpleSavedModelWithWrongOutputArray(self):
-    """Test a simple SavedModel, fail as given output_arrays is invalid."""
-    # Create a simple SavedModel
+  def testSimpleSavedModelWithInvalidOutputArray(self):
+    """Test a SavedModel that fails due to invalid output arrays."""
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
-    # Convert to tflite: this should raise ValueError, as
-    # output_arrays is not valid for the saved_model.
-    with self.assertRaises(ValueError):
-      convert_saved_model.tflite_from_saved_model(
-          saved_model_dir=saved_model_dir, output_arrays=["wrong-output"])
+    with self.assertRaises(ValueError) as error:
+      self._convertSavedModel(saved_model_dir, output_arrays=["invalid-output"])
+    self.assertEqual("Invalid tensors 'invalid-output' were found.",
+                     str(error.exception))
 
   def testSimpleSavedModelWithWrongInputArrays(self):
-    """Test a simple SavedModel, fail as given input_arrays is invalid."""
+    """Test a SavedModel that fails due to invalid input arrays."""
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
-    # Checks invalid input_arrays.
-    with self.assertRaises(ValueError):
-      convert_saved_model.tflite_from_saved_model(
-          saved_model_dir=saved_model_dir, input_arrays=["wrong-input"])
-    # Checks valid and invalid input_arrays.
-    with self.assertRaises(ValueError):
-      convert_saved_model.tflite_from_saved_model(
-          saved_model_dir=saved_model_dir,
-          input_arrays=["Placeholder", "wrong-input"])
+
+    # Check invalid input_arrays.
+    with self.assertRaises(ValueError) as error:
+      self._convertSavedModel(saved_model_dir, input_arrays=["invalid-input"])
+    self.assertEqual("Invalid tensors 'invalid-input' were found.",
+                     str(error.exception))
+
+    # Check valid and invalid input_arrays.
+    with self.assertRaises(ValueError) as error:
+      self._convertSavedModel(
+          saved_model_dir, input_arrays=["Placeholder", "invalid-input"])
+    self.assertEqual("Invalid tensors 'invalid-input' were found.",
+                     str(error.exception))
 
   def testSimpleSavedModelWithCorrectArrays(self):
-    """Test a simple SavedModel, with correct input_arrays and output_arrays."""
+    """Test a SavedModel with correct input_arrays and output_arrays."""
     saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, 16, 3])
-    result = convert_saved_model.tflite_from_saved_model(
+    _, in_tensors, out_tensors = self._convertSavedModel(
         saved_model_dir=saved_model_dir,
         input_arrays=["Placeholder"],
         output_arrays=["add"])
-    self.assertTrue(result)
+
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["Placeholder:0"])
+    self.assertEqual(self._getArrayShapes(in_tensors), [[None, 16, 16, 3]])
 
   def testSimpleSavedModelWithCorrectInputArrays(self):
-    """Test a simple SavedModel, with correct input_arrays and input_shapes."""
+    """Test a SavedModel with correct input_arrays and input_shapes."""
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
-    result = convert_saved_model.tflite_from_saved_model(
+    _, in_tensors, out_tensors = self._convertSavedModel(
         saved_model_dir=saved_model_dir,
         input_arrays=["Placeholder"],
         input_shapes={"Placeholder": [1, 16, 16, 3]})
-    self.assertTrue(result)
+
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["Placeholder:0"])
+    self.assertEqual(self._getArrayShapes(in_tensors), [[1, 16, 16, 3]])
+
+  def testTwoInputArrays(self):
+    """Test a simple SavedModel."""
+    saved_model_dir = self._createSavedModelTwoInputArrays(shape=[1, 16, 16, 3])
+
+    _, in_tensors, out_tensors = self._convertSavedModel(
+        saved_model_dir=saved_model_dir, input_arrays=["inputB", "inputA"])
+
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["inputA:0", "inputB:0"])
+    self.assertEqual(
+        self._getArrayShapes(in_tensors), [[1, 16, 16, 3], [1, 16, 16, 3]])
+
+  def testSubsetInputArrays(self):
+    """Test a SavedModel with a subset of the input array names of the model."""
+    saved_model_dir = self._createSavedModelTwoInputArrays(shape=[1, 16, 16, 3])
+
+    # Check case where input shape is given.
+    _, in_tensors, out_tensors = self._convertSavedModel(
+        saved_model_dir=saved_model_dir,
+        input_arrays=["inputA"],
+        input_shapes={"inputA": [1, 16, 16, 3]})
+
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["inputA:0"])
+    self.assertEqual(self._getArrayShapes(in_tensors), [[1, 16, 16, 3]])
+
+    # Check case where input shape is None.
+    _, in_tensors, out_tensors = self._convertSavedModel(
+        saved_model_dir=saved_model_dir, input_arrays=["inputA"])
+
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["inputA:0"])
+    self.assertEqual(self._getArrayShapes(in_tensors), [[1, 16, 16, 3]])
 
   def testMultipleMetaGraphDef(self):
-    """Test saved model with multiple MetaGraphDef."""
+    """Test saved model with multiple MetaGraphDefs."""
     saved_model_dir = os.path.join(self.get_temp_dir(), "savedmodel_two_mgd")
     builder = saved_model.builder.SavedModelBuilder(saved_model_dir)
     with session.Session(graph=ops.Graph()) as sess:
@@ -161,91 +301,13 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
       builder.save(True)
 
     # Convert to tflite
-    convert_saved_model.tflite_from_saved_model(
+    _, in_tensors, out_tensors = self._convertSavedModel(
         saved_model_dir=saved_model_dir,
         tag_set=set([saved_model.tag_constants.SERVING, "additional_test_tag"]))
 
-
-class ConvertSavedModelTestBasicGraphToText(test_util.TensorFlowTestCase):
-
-  def _createSimpleSavedModel(self, shape):
-    """Create a simple SavedModel."""
-    saved_model_dir = os.path.join(self.get_temp_dir(), "simple_savedmodel")
-    with session.Session() as sess:
-      in_tensor_1 = array_ops.placeholder(
-          shape=shape, dtype=dtypes.float32, name="inputB")
-      in_tensor_2 = array_ops.placeholder(
-          shape=shape, dtype=dtypes.float32, name="inputA")
-      out_tensor = in_tensor_1 + in_tensor_2
-      inputs = {"x": in_tensor_1, "y": in_tensor_2}
-      outputs = {"z": out_tensor}
-      saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
-    return saved_model_dir
-
-  def _getInputArrayNames(self, model_proto):
-    return [data.name for data in model_proto.input_arrays]
-
-  def _getInputArrayShapes(self, model_proto):
-    return [
-        [dim for dim in data.shape.dims] for data in model_proto.input_arrays
-    ]
-
-  def _get_model_flags_proto_from_file(self, filename):
-    proto = _model_flags_pb2.ModelFlags()
-    with gfile.Open(filename, "rb") as output_file:
-      proto.ParseFromString(output_file.read())
-      output_file.close()
-    return proto
-
-  def testSimpleSavedModel(self):
-    """Test a simple SavedModel."""
-    saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
-    output_file_model = os.path.join(self.get_temp_dir(), "model.pb")
-    output_file_flags = os.path.join(self.get_temp_dir(), "model.pbtxt")
-
-    convert_saved_model.saved_model_to_frozen_graphdef(
-        saved_model_dir=saved_model_dir,
-        output_file_model=output_file_model,
-        output_file_flags=output_file_flags,
-        input_arrays=["inputB", "inputA"])
-
-    proto = self._get_model_flags_proto_from_file(output_file_flags)
-    self.assertEqual(proto.output_arrays, ["add"])
-    self.assertEqual(self._getInputArrayNames(proto), ["inputA", "inputB"])
-    self.assertEqual(
-        self._getInputArrayShapes(proto), [[1, 16, 16, 3], [1, 16, 16, 3]])
-
-  def testSimpleSavedModelWithDifferentInputNames(self):
-    """Test a simple SavedModel."""
-    saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
-    output_file_model = os.path.join(self.get_temp_dir(), "model.pb")
-    output_file_flags = os.path.join(self.get_temp_dir(), "model.pbtxt")
-
-    # Check case where input shape is given.
-    convert_saved_model.saved_model_to_frozen_graphdef(
-        saved_model_dir=saved_model_dir,
-        output_file_model=output_file_model,
-        output_file_flags=output_file_flags,
-        input_arrays=["inputA"],
-        input_shapes={"inputA": [1, 16, 16, 3]})
-
-    proto = self._get_model_flags_proto_from_file(output_file_flags)
-    self.assertEqual(proto.output_arrays, ["add"])
-    self.assertEqual(self._getInputArrayNames(proto), ["inputA"])
-    self.assertEqual(self._getInputArrayShapes(proto), [[1, 16, 16, 3]])
-
-    # Check case where input shape is None.
-    convert_saved_model.saved_model_to_frozen_graphdef(
-        saved_model_dir=saved_model_dir,
-        output_file_model=output_file_model,
-        output_file_flags=output_file_flags,
-        input_arrays=["inputA"],
-        input_shapes={"inputA": None})
-
-    proto = self._get_model_flags_proto_from_file(output_file_flags)
-    self.assertEqual(proto.output_arrays, ["add"])
-    self.assertEqual(self._getInputArrayNames(proto), ["inputA"])
-    self.assertEqual(self._getInputArrayShapes(proto), [[1, 16, 16, 3]])
+    self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
+    self.assertEqual(self._getArrayNames(in_tensors), ["Placeholder:0"])
+    self.assertEqual(self._getArrayShapes(in_tensors), [[1, 28, 28]])
 
 
 class Model(keras.Model):
@@ -354,7 +416,7 @@ def dummy_input_fn():
   return image, labels
 
 
-class ConvertSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
+class FreezeSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
 
   def testTrainedMnistSavedModel(self):
     """Test mnist SavedModel, trained with dummy data and small steps."""
@@ -379,13 +441,16 @@ class ConvertSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
     # Convert to tflite and test output
     saved_model_name = os.listdir(saved_model_dir)[0]
     saved_model_final_dir = os.path.join(saved_model_dir, saved_model_name)
-    output_file = os.path.join(saved_model_dir, saved_model_final_dir + ".lite")
+
     # TODO(zhixianyan): no need to limit output_arrays to `Softmax'
     # once b/74205001 fixed and argmax implemented in tflite.
-    result = convert_saved_model.tflite_from_saved_model(
+    result = convert_saved_model.freeze_saved_model(
         saved_model_dir=saved_model_final_dir,
+        input_arrays=None,
+        input_shapes=None,
         output_arrays=["Softmax"],
-        output_file=output_file)
+        tag_set=set([tag_constants.SERVING]),
+        signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
 
     self.assertTrue(result)
 

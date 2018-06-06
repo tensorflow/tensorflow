@@ -23,12 +23,15 @@ limitations under the License.
 
 namespace xla {
 
-ComputationLayout::ComputationLayout(const ProgramShape& program_shape)
+ComputationLayout::ComputationLayout(const ProgramShape& program_shape,
+                                     bool ignore_layouts)
     : result_layout_(program_shape.result()) {
   for (auto& shape : program_shape.parameters()) {
     parameter_layouts_.emplace_back(shape);
   }
-  SetToDefaultLayout();
+  if (ignore_layouts) {
+    SetToDefaultLayout();
+  }
 }
 
 void ComputationLayout::SetToDefaultLayout() {

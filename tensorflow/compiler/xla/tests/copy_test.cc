@@ -49,7 +49,7 @@ class CopyOpTest : public HloTestBase {
     module->AddEntryComputation(std::move(computation));
 
     std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-    LiteralTestUtil::ExpectEqual(literal, *result);
+    EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result));
   }
 
   void TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3);
@@ -253,7 +253,7 @@ XLA_TEST_F(CopyOpClientTest, Copy0x0) {
 
   auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
                     .ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqual(*empty, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*empty, *actual));
 }
 
 }  // namespace

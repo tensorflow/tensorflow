@@ -84,10 +84,21 @@ typedef enum {
   kTfLiteBuiltinArgMax = 56,
   kTfLiteBuiltinMinimum = 57,
   kTfLiteBuiltinLess = 58,
+  kTfLiteBuiltinNeg = 59,
+  kTfLiteBuiltinPadv2 = 60,
+  kTfLiteBuiltinGreater = 61,
+  kTfLiteBuiltinGreaterEqual = 62,
+  kTfLiteBuiltinLessEqual = 63,
+  kTfLiteBuiltinSelect = 64,
+  kTfLiteBuiltinSlice = 65,
+  kTfLiteBuiltinSin = 66,
+  kTfLiteBuiltinTransposeConv = 67,
+  kTfLiteBuiltinSparseToDense = 68,
+  kTfLiteBuiltinTile = 69,
+  kTfLiteBuiltinExpandDims = 70,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 #endif  // TENSORFLOW_CONTRIB_LITE_BUILTIN_OPS_H_
-}

@@ -390,7 +390,7 @@ XLA_TEST_F(ScalarComputationsTest, DivU32s) {
                                      &execution_options_)
                 .ConsumeValueOrDie();
         auto expected_literal = Literal::CreateR0<uint32>(dividend / divisor);
-        LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+        EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *actual_literal));
       }
     }
   }
@@ -431,7 +431,7 @@ XLA_TEST_F(ScalarComputationsTest, RemU32s) {
                                      &execution_options_)
                 .ConsumeValueOrDie();
         auto expected_literal = Literal::CreateR0<uint32>(dividend % divisor);
-        LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+        EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *actual_literal));
       }
     }
   }

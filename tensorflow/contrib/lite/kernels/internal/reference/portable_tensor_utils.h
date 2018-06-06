@@ -25,6 +25,8 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
+bool PortableIsZeroVector(const float* vector, int v_size);
+
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min,
                                      float* max, float* scaling_factor);
@@ -36,6 +38,11 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
                                                  const float* vector,
                                                  int n_batch, float* result,
                                                  int result_stride);
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride);
 
 // Cwise product of two vectors.
 void PortableVectorVectorCwiseProduct(const float* vector1,
@@ -107,6 +114,10 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
+bool IsZeroVector(const float* vector, int v_size) {
+  return PortableIsZeroVector(vector, v_size);
+}
+
 void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float* min, float* max,
                              float* scaling_factor) {
@@ -120,6 +131,15 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int result_stride) {
   PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vector,
                                               n_batch, result, result_stride);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vector, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vector,
+                                              scaling_factors, n_batch, result,
+                                              result_stride);
 }
 
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
