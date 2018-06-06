@@ -6,9 +6,11 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import test_utils as tu
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 import numpy as np
 
@@ -185,6 +187,39 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                 result = sess.run(output, fd)
                 self.assertAllClose(result,
                                     np.ones([1,3,3,1]))
+
+    def testReductionSumVectorF16NoConverts(self):
+        with tf.device("/device:IPU:0"):
+            pa = tf.placeholder(tf.float16, [4096], name="a")
+            output = tf.reduce_sum(pa, reduction_indices=[0])
+
+        with tf.device('cpu'):
+            report = gen_ipu_ops.ipu_event_trace()
+
+        with tu.ipu_session() as sess:
+            sess.run(report)
+            fd = {
+                pa: np.ones([4096])
+            }
+            result = sess.run(output, fd)
+            self.assertAllClose(result, 4096)
+
+            result = sess.run(report)
+
+            s = tu.extract_all_strings_from_event_trace(result)
+            cs_list = tu.get_compute_sets_from_report(s)
+
+            # Check that there are no casts to float at the beginning
+            # Note that intermidiates are still floats, so there is a final cast
+            ok = ['Execution',
+                  '/ExchangePre',
+                  'Execution',
+                  'Execution',
+                  '/ExchangePre',
+                  'Execution',
+                  'Sum/reduce.*.clone_f16/final_stage/Cast/Cast',
+                  'Sum/reduce.*.clone_f16/final_stage/Cast/Cast/PostExchangeArrange']
+            self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 if __name__ == "__main__":
     import time

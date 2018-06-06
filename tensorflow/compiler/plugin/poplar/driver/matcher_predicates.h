@@ -32,6 +32,10 @@ bool IsTrueParameter(const HloInstruction*, const CompilerAnnotations&);
 bool IsFusedReverseInputConv(const HloInstruction*, const CompilerAnnotations&);
 bool IsFusedDepthwiseConv(const HloInstruction*, const CompilerAnnotations&);
 bool Is1DVector(const HloInstruction*, const CompilerAnnotations&);
+bool IsF16(const HloInstruction*, const CompilerAnnotations&);
+bool IsF32(const HloInstruction*, const CompilerAnnotations&);
+bool IsF32ToF16Convert(const HloInstruction*, const CompilerAnnotations&);
+bool IsF16ToF32Convert(const HloInstruction*, const CompilerAnnotations&);
 
 }  // namespace poplarplugin
 }  // namespace xla

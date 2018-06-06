@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -54,6 +54,8 @@ static FusedGraphInfo fuse_info[] = {
     {"conv_with_reverse", 0},
     {"depthwise_filter", 13},
     {"bias_apply", 0},
+    {"reduction_no_convert", 1},
+    {"reduction_no_convert", 1},
     {"wide_const", 1},
 };
 
@@ -324,6 +326,23 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kReduce, true, 0, IsBiasReduce, {7, 6}},
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
+
+    // Remove convert to/from F32 before/after reduction, where initial value is
+    // a constant
+    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
+     {HloOpcode::kReduce, true, 0, IsF32, {2, 3}},
+     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {4}},
+     {HloOpcode::kConstant, true, 0, IsF32, {}},
+     {HloOpcode::kParameter, false, 0, IsF16, {}}},
+
+    // Remove convert to/from F32 before/after reduction, where initial value is
+    // a convert from F16
+    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
+     {HloOpcode::kReduce, true, 0, IsF32, {2, 3}},
+     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {4}},
+     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {5}},
+     {HloOpcode::kParameter, false, 0, IsF16, {}},
+     {HloOpcode::kParameter, false, 1, IsF16, {}}},
 
     // Broadcast scalar constant (must be low priority)
     {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},

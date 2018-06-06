@@ -76,6 +76,7 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"bias_apply", ConvBiasApply},
     {"zero_pad", CreateZeroPadOp},
     {"depthwise_filter", CreateDepthwiseBackpropFilter},
+    {"reduction_no_convert", CreateReductionNoConvert},
 };
 
 BaseVisitor::BaseVisitor(poplar::Graph& graph, CompilerResources& res)
