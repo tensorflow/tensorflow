@@ -173,7 +173,7 @@ class TPUClusterResolver(ClusterResolver):
         raise ImportError('googleapiclient and oauth2client must be installed '
                           'before using the TPU cluster resolver. Execute: '
                           '`pip install --upgrade google-api-python-client` '
-                          'and `pip install --upgrade oauth2lclient` to '
+                          'and `pip install --upgrade oauth2client` to '
                           'install with pip.')
 
       final_discovery_url = self._discoveryUrl() or discovery_url

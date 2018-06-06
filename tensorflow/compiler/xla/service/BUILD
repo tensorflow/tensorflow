@@ -22,13 +22,6 @@ load(
 )
 
 xla_proto_library(
-    name = "session_proto",
-    srcs = ["session.proto"],
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
-)
-
-xla_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
     visibility = ["//visibility:public"],
@@ -608,7 +601,6 @@ cc_library(
         ":hlo_module_config",
         ":hlo_proto_util",
         ":platform_util",
-        ":session_proto",
         ":source_map_util",
         ":transfer_manager",
         ":versioned_computation_handle",
@@ -766,7 +758,6 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_proto",
         ":pool",
-        ":session_proto",
         ":shaped_buffer",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:executable_run_options",
@@ -870,7 +861,6 @@ cc_library(
     hdrs = ["channel_tracker.h"],
     deps = [
         ":hlo",
-        ":session_proto",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",

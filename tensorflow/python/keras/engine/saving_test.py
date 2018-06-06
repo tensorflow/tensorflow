@@ -288,6 +288,30 @@ class TestWholeModelSaving(test.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  def test_sequential_model_saving_without_compile(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+
+      x = np.random.random((1, 3))
+      out = model.predict(x)
+      fd, fname = tempfile.mkstemp('.h5')
+
+      # Save the model without any compilation or training.
+      keras.models.save_model(model, fname)
+
+      new_model = keras.models.load_model(fname)
+      os.close(fd)
+      os.remove(fname)
+
+      out2 = new_model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
   def test_sequential_model_saving_2(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
