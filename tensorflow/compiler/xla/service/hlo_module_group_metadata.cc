@@ -113,6 +113,9 @@ Status HloModuleGroupMetadata::Build() {
     }
   }
   TF_RETURN_IF_ERROR(VerifyCompanionSets());
+  if (VLOG_IS_ON(4)) {
+    DumpCollectedStats();
+  }
   return Status::OK();
 }
 
@@ -315,6 +318,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       TF_RETURN_IF_ERROR(computation->Accept(visitor));
     }
   }
+  VLOG(2) << "Created " << channels_.size() << " channels";
   return Status::OK();
 }
 
@@ -443,6 +447,38 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
     return Status::OK();
   }
   return FailedPrecondition("channel is used in disallowed computation");
+}
+
+void HloModuleGroupMetadata::DumpCollectedStats() const {
+  std::map<std::pair<int64, int64>, int64> communication_histogram;
+  for (auto& channel : channels_) {
+    auto from_device = GetInstructionDevice(*channel.send);
+    auto to_device = GetInstructionDevice(*channel.recv);
+    LOG(INFO) << "Channel " << channel.id << ": from_device=" << *from_device
+              << " to_device=" << *to_device << " send=" << channel.send->name()
+              << " send_done=" << channel.send_done->name()
+              << " recv=" << channel.recv->name()
+              << " recv_done=" << channel.recv_done->name();
+    communication_histogram[std::pair<int64, int64>(*from_device,
+                                                    *to_device)] += 1;
+  }
+  for (auto& fromto_count : communication_histogram) {
+    LOG(INFO) << "From " << fromto_count.first.first << " to "
+              << fromto_count.first.second << ": " << fromto_count.second;
+  }
+  for (auto& companion_set : companion_sets_) {
+    LOG(INFO) << "Companion set:";
+    for (HloInstruction* instruction : *companion_set) {
+      LOG(INFO) << "  " << instruction->name();
+    }
+  }
+  for (auto& instruction_comm : tracked_instructions_comms_) {
+    LOG(INFO) << "Communicating instruction " << instruction_comm.first->name();
+    for (HloInstruction* instruction : instruction_comm.second) {
+      auto device = GetInstructionDevice(*instruction);
+      LOG(INFO) << "  " << instruction->name() << " on device " << *device;
+    }
+  }
 }
 
 }  // namespace xla
