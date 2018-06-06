@@ -58,10 +58,11 @@ from tensorflow.python.ops import rnn
 parser = argparse.ArgumentParser(description="Script to generate TFLite tests.")
 parser.add_argument("output_path",
                     help="Directory where the outputs will be go.")
-parser.add_argument("--zip_to_output",
-                    type=str,
-                    help="Particular zip to output.",
-                    required=False)
+parser.add_argument(
+    "--zip_to_output",
+    type=str,
+    help="Particular zip to output.",
+    required=True)
 parser.add_argument("--toco",
                     type=str,
                     help="Path to toco tool.",
@@ -97,8 +98,6 @@ KNOWN_BUGS = {
     r"fully_connected.*transpose_.=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
-    # SpaceToDepth only supports float32.
-    r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
@@ -1621,7 +1620,7 @@ def make_space_to_depth_tests(zip_path):
   """Make a set of tests to do space_to_depth."""
 
   test_parameters = [{
-      "dtype": [tf.float32, tf.float16, tf.int32, tf.uint8, tf.int64],
+      "dtype": [tf.float32, tf.int32, tf.uint8, tf.int64],
       "input_shape": [[2, 12, 24, 1]],
       "block_size": [2, 3, 4],
   }]

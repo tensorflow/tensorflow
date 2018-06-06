@@ -313,6 +313,14 @@ class TocoConverter(object):
         allow_custom_ops=self.allow_custom_ops)
     return result
 
+  def get_input_arrays(self):
+    """Returns a list of the names of the input tensors.
+
+    Returns:
+      List of strings.
+    """
+    return [tensor_name(tensor) for tensor in self._input_tensors]
+
   def _set_batch_size(self, batch_size):
     """Sets the first dimension of the input tensor to `batch_size`.
 

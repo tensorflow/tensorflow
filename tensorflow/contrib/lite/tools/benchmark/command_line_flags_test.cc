@@ -53,6 +53,19 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(argc, 1);
 }
 
+TEST(CommandLineFlagsTest, EmptyStringFlag) {
+  int argc = 2;
+  std::string some_string = "invalid";
+  const char* argv_strings[] = {"program_name", "--some_string="};
+  bool parsed_ok =
+      Flags::Parse(&argc, reinterpret_cast<const char**>(argv_strings),
+                   {Flag("some_string", &some_string, "some string")});
+
+  EXPECT_EQ(true, parsed_ok);
+  EXPECT_EQ(some_string, "");
+  EXPECT_EQ(argc, 1);
+}
+
 TEST(CommandLineFlagsTest, BadIntValue) {
   int some_int = 10;
   int argc = 2;
