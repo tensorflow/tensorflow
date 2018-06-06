@@ -144,10 +144,9 @@ def toco_convert(input_data,
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: Dict of strings representing input tensor names
-      mapped to tuple of integers representing the mean and standard deviation
-      of the training data (e.g., {"foo" : (0., 1.)}). Only need if
-      `inference_type` is `QUANTIZED_UINT8`. (default None)
+    quantized_input_stats: List of tuples of integers representing the mean and
+      standard deviation. Each tuple maps to the corresponding input tensor.
+      Only need if `inference_type` is `QUANTIZED_UINT8`. (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)
