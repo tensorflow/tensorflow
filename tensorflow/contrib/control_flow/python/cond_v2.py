@@ -23,13 +23,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import function
+from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.util import compat
 
 
 # NOTE(skyewm): TensorFlow uses protected class methods and fields to signify
@@ -78,20 +81,13 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
         _create_new_tf_function(false_graph),
         name=scope)
 
-    # TODO(b/79883549): if we could make Graphs from FunctionDefs, we wouldn't
-    # need this extra state. Requiring extra state also prevents the ability to
-    # take the gradient of deserialized If ops.
-    tensors[0].op._true_graph = true_graph
-    tensors[0].op._false_graph = false_graph
-
     return tensors[:num_cond_outputs]
 
 
 @ops.RegisterGradient("If")
 def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of an If op produced by cond_v2."""
-  true_graph = op._true_graph
-  false_graph = op._false_graph
+  true_graph, false_graph = _get_func_graphs(op)
 
   # Create grad functions that compute the gradient of the true/false forward
   # graphs. These functions will capture tensors from the forward pass
@@ -136,11 +132,33 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
       op.inputs[0], grad_inputs, [t.dtype for t in true_grad_graph.outputs],
       _create_new_tf_function(true_grad_graph),
       _create_new_tf_function(false_grad_graph))
-  tensors[0].op._true_graph = true_grad_graph
-  tensors[0].op._false_graph = false_grad_graph
 
   # The predicate has no gradient.
   return [None] + tensors[:num_grad_outputs]
+
+
+def _get_func_graphs(if_op):
+  """Returns `_FuncGraph`s for the input op branches.
+
+  Args:
+    if_op: The _If Operation.
+
+  Returns:
+    A 2-tuple of the `_FuncGraph`s of the then_branch and else_branch.
+  """
+  def _get_func_graph_for_branch(branch_name):
+    extra_inputs = if_op.inputs[1:]  # First input is pred.
+    input_shapes = [t.shape for t in extra_inputs]
+    func_name = if_op.get_attr(branch_name).name
+    fdef = if_op.graph._get_function(func_name).definition
+    func_graph = function_def_to_graph.function_def_to_graph(fdef, input_shapes)
+    func_graph.extra_inputs = extra_inputs
+    func_graph.extra_args = func_graph.inputs
+    func_graph._captured = dict(zip(extra_inputs, func_graph.inputs))
+    return func_graph
+
+  return (_get_func_graph_for_branch("then_branch"),
+          _get_func_graph_for_branch("else_branch"))
 
 
 def _grad_fn(func_graph, grads):
@@ -245,7 +263,7 @@ def _create_new_tf_function(func_graph):
   func_graph.name = "%s_" % func_graph.name
   c_func = c_api.TF_GraphToFunction_wrapper(
       func_graph._c_graph,
-      func_graph.name,
+      compat.as_str(func_graph.name),
       False,  # append_hash_to_fn_name
       None,  # opers
       [t._as_tf_output() for t in func_graph.inputs],
@@ -256,6 +274,17 @@ def _create_new_tf_function(func_graph):
   c_func = c_api_util.ScopedTFFunction(c_func)
   c_api.TF_GraphCopyFunction(
       ops.get_default_graph()._c_graph, c_func.func, None)
+
+  # Add a _DefinedFunction to `Graph._functions` of the outer graph so that
+  # we can access it using `Graph._get_function` later.
+  # TODO(srbs): Consider adding a C API that can return a FunctionDef by name.
+  with c_api_util.tf_buffer() as buffer_:
+    c_api.TF_FunctionToFunctionDef(c_func.func, buffer_)
+    proto_data = c_api.TF_GetBuffer(buffer_)
+  function_def = function_pb2.FunctionDef()
+  function_def.ParseFromString(compat.as_bytes(proto_data))
+  func_graph._outer_graph._functions[
+      func_graph.name] = function._from_definition(function_def)
   return func_graph.name
 
 
