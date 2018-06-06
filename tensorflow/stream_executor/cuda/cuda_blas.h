@@ -107,12 +107,12 @@ class CUDABlas : public blas::BlasSupport {
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
-  template <typename T, typename FuncT>
+  template <typename T, typename Scalar, typename FuncT>
   port::Status DoBlasGemmBatchedInternal(
       FuncT cublas_func, Stream *stream, blas::Transpose transa,
-      blas::Transpose transb, uint64 m, uint64 n, uint64 k, T alpha,
+      blas::Transpose transb, uint64 m, uint64 n, uint64 k, Scalar alpha,
       const port::ArraySlice<DeviceMemory<T> *> &a_array, int lda,
-      const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, T beta,
+      const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, Scalar beta,
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
 

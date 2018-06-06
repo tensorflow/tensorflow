@@ -289,6 +289,9 @@ Status ScatterNdUpdateShape(InferenceContext* c);
 // Shape function for ops with an explicit "shape" attribute.
 Status ExplicitShape(InferenceContext* c);
 
+// Shape function for multiple-output ops with an explicit "shapes" attribute.
+Status ExplicitShapes(InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow

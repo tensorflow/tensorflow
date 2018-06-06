@@ -117,6 +117,15 @@ class EagerTest(XLATestCase):
       v.assign_add(2.0)
     self.assertEqual(3.0, v.numpy())
 
+  def testReadAssignRead(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      val1 = v.read_value()
+      v.assign_add(2.0)
+      val2 = v.read_value()
+    self.assertEqual(1.0, val1.numpy())
+    self.assertEqual(3.0, val2.numpy())
+
   def testGradient(self):
     def f(x):
       return x
@@ -135,6 +144,21 @@ class EagerTest(XLATestCase):
 
       grads = backprop.implicit_grad(f)()
     self.assertEqual(2., grads[0][0].numpy())
+
+  def testMultipleVariableReads(self):
+    # This test makes sure consecutive variable reads don't copy
+    # the underlying memory.
+    with self.test_scope():
+      # Create 128MiB variables
+      var = resource_variable_ops.ResourceVariable(
+          array_ops.ones([32, 1024, 1024]))
+
+      # Read the same variable 100 times. If the underlying tensor
+      # is not copied, this is a trivial operation. If it is copied,
+      # this will eat over 13GB and OOM.
+      values = []
+      for _ in range(100):
+        values.append(var.value())
 
 
 class EagerFunctionTest(XLATestCase):
@@ -233,6 +257,74 @@ class EagerFunctionTest(XLATestCase):
       self.assertAllEqual([[11., 21.], [31., 41.]], b.numpy())
       self.assertAllEqual([[1.]], c.numpy())
       self.assertAllEqual([[20., 40.], [90., 120.]], d.numpy())
+
+  def testDefunInGradientTape(self):
+    with self.test_scope():
+      v0 = resource_variable_ops.ResourceVariable(5.0)
+
+      @function.defun(compiled=True)
+      def f(x):
+        x = v0 * v0 * x
+        return x
+
+      x = constant_op.constant(3.0)
+      with backprop.GradientTape() as tape:
+        y = f(x)
+      dy = tape.gradient(y, v0)
+
+    self.assertEqual(75, y.numpy())
+    self.assertEqual(30, dy.numpy())
+
+
+class ExcessivePaddingTest(XLATestCase):
+  """Test that eager execution works with TPU flattened tensors.
+
+  Tensors that would normally be excessively padded when written
+  to TPU memory are reshaped to 1-D flat tensors.
+
+  This test case verifies that such tensors work with eager execution.
+
+  The flattening currently only happens on TPU, but tests should work
+  fine with all backends as flattening is transparent.
+  """
+
+  def testFromConstant(self):
+    with self.test_scope():
+      # Create constant of shape [100, 2, 1]. This tensor would be
+      # excessively padded on TPU.
+      tensor = constant_op.constant(100 * [[[10.0], [2.0]]])
+      # Use reduce_sum since it requires correctly working with
+      # a particular dimension.
+      reduced = math_ops.reduce_sum(tensor, axis=1)
+      self.assertAllEqual(100 * [[12.0]], reduced)
+
+  def testFromOperation(self):
+    with self.test_scope():
+      tensor = array_ops.ones([3, 100, 2, 2])
+      reduced = math_ops.reduce_sum(tensor, axis=[0, 2, 3])
+      self.assertAllEqual(100 * [12.0], reduced)
+
+  def testAsFunctionInput(self):
+    with self.test_scope():
+
+      @function.defun(compiled=True)
+      def f(x):
+        return math_ops.reduce_sum(x, axis=2)
+
+      tensor = constant_op.constant(100 * [[[10.0, 2.0]]])
+      reduced = f(tensor)
+      self.assertAllEqual(100 * [[12.0]], reduced)
+
+  def testAsFunctionOutput(self):
+    with self.test_scope():
+
+      @function.defun(compiled=True)
+      def f(x):
+        return x * constant_op.constant(100 * [[[10.0, 2.0]]])
+
+      y = f(3)
+      reduced = math_ops.reduce_sum(y, axis=2)
+      self.assertAllEqual(100 * [[36.0]], reduced)
 
 
 if __name__ == '__main__':

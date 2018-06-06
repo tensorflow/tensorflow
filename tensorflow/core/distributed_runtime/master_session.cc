@@ -119,7 +119,11 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     // it on/off and don't make use of the responses.
     for (auto& p : partitions_) {
       LoggingRequest* req = new LoggingRequest;
-      req->set_rpc_logging(active);
+      if (active) {
+        req->set_enable_rpc_logging(true);
+      } else {
+        req->set_disable_rpc_logging(true);
+      }
       LoggingResponse* resp = new LoggingResponse;
       Ref();
       p.worker->LoggingAsync(req, resp, [this, req, resp](const Status& s) {
@@ -152,8 +156,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
         LoggingResponse* resp = new LoggingResponse;
         p.worker->LoggingAsync(
             &req, resp,
-            [step_id, ss, resp, &scoped_mu, &waiting_for,
-             &all_done](const Status& s) {
+            [step_id, ss, resp, &scoped_mu, &all_done](const Status& s) {
               {
                 mutex_lock l(scoped_mu);
                 if (s.ok()) {
@@ -1203,7 +1206,7 @@ Status MasterSession::CreateWorkerSessions(
   std::vector<WorkerGroup> workers(worker_names.size());
 
   // Release the workers.
-  auto cleanup = gtl::MakeCleanup([this, &workers, worker_cache] {
+  auto cleanup = gtl::MakeCleanup([&workers, worker_cache] {
     for (auto&& worker_group : workers) {
       if (worker_group.worker != nullptr) {
         worker_cache->ReleaseWorker(*worker_group.name, worker_group.worker);
@@ -1285,7 +1288,7 @@ Status MasterSession::DeleteWorkerSessions() {
   std::vector<WorkerGroup> workers(worker_names.size());
 
   // Release the workers.
-  auto cleanup = gtl::MakeCleanup([this, &workers, worker_cache] {
+  auto cleanup = gtl::MakeCleanup([&workers, worker_cache] {
     for (auto&& worker_group : workers) {
       if (worker_group.worker != nullptr) {
         worker_cache->ReleaseWorker(*worker_group.name, worker_group.worker);

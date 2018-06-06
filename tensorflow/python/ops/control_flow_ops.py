@@ -1192,20 +1192,18 @@ class ControlFlowState(object):
       to backprop.
     """
     loop_exits = []
-    for _, grad_state in self._map.items():
-      # pylint: disable=protected-access
+    for grad_state in self._map.values():
       for y in grad_state.forward_loop_exits:
-        if pending_count[y.op._id] == 0:
+        if pending_count[y.op] == 0:
           grad_state.pending_exits_count -= 1
-          if y.op._id not in to_ops_set:
+          if y.op not in to_ops_set:
             grad_state.unused_exits.append(y)
           if grad_state.pending_exits_count == 0:
             loop_exits.extend(grad_state.unused_exits)
       # Need to include Enters in backprop for higher-order gradients.
       for y in grad_state.forward_context.loop_enters:
-        if pending_count[y.op._id] == 0:
-          pending_count[y.op._id] = 1
-      # pylint: enable=protected-access
+        if pending_count[y.op] == 0:
+          pending_count[y.op] = 1
     return loop_exits
 
   def EnterGradWhileContext(self, op, before):
@@ -1243,8 +1241,8 @@ class ControlFlowState(object):
 
       # We need to include all exits of a loop for backprop.
       for loop_exit in grad_state.forward_loop_exits:
-        if not between_ops[loop_exit.op._id]:
-          between_ops[loop_exit.op._id] = True
+        if loop_exit.op not in between_ops:
+          between_ops.add(loop_exit.op)
           between_op_list.append(loop_exit.op)
 
   def ZerosLikeForExit(self, val):
@@ -1685,12 +1683,12 @@ class CondContext(ControlFlowContext):
       self._pivot = pivot  # The predicate tensor in this branch
       self._branch = branch  # 0 or 1 representing this branch
 
-      # Values considered to have been already seen in this context. They are
-      # not included in this context.
+      # Values considered to have been already seen in this context. pred is not
+      # included in this context.
       self._values.add(pred.name)
       self._external_values[pred.name] = pred
       self._values.add(pivot.name)
-      self._external_values[pivot.name] = pivot
+      pivot.op._set_control_flow_context(self)  # pylint: disable=protected-access
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `CondContext` from protocol buffer.
@@ -2731,7 +2729,8 @@ class WhileContext(ControlFlowContext):
           self.outer_context.Exit()
       else:
         shape_acc = array_ops.zeros_like(
-            array_ops.shape_internal(op.inputs[0], optimize=False),
+            array_ops.shape_internal(op.inputs[0], optimize=False,
+                                     out_type=dense_shape.dtype),
             optimize=False)
 
     if self.outer_context:

@@ -32,8 +32,8 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Don't support string and bool.
@@ -68,8 +68,8 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
             GetTensorData<bool>(output), GetTensorDims(output));
 
 TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.
@@ -85,15 +85,16 @@ TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
 TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.
@@ -109,15 +110,16 @@ TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
 TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.
@@ -133,15 +135,16 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
 TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   // TODO(renjieliu): Support quantized data.
@@ -157,7 +160,8 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Does not support type other than float|int");
+                           "Does not support type %d, requires float|int",
+                           input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

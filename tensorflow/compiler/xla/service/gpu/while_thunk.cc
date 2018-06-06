@@ -34,9 +34,11 @@ WhileThunk::WhileThunk(
       body_thunk_sequence_(
           MakeUnique<SequentialThunk>(std::move(*body_thunk_sequence), hlo)) {}
 
-Status WhileThunk::Initialize(const GpuExecutable& executable) {
-  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(executable));
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable));
+Status WhileThunk::Initialize(const GpuExecutable& executable,
+                              se::StreamExecutor* executor) {
+  TF_RETURN_IF_ERROR(
+      condition_thunk_sequence_->Initialize(executable, executor));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
   return Status::OK();
 }
 

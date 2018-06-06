@@ -22,6 +22,8 @@ namespace {
 const char* const kXlaOptimizeForSizeCpuOption = "xla_cpu_optimize_for_size";
 const char* const kXlaDisableVectorizedReduce = "xla_disable_vectorized_reduce";
 const char* const kLlvmIrDotTilingFactor = "xla_llvm_dot_tiling_factor";
+const char* const kXlaEnableExperimentalLlvmIrGemm =
+    "xla_enable_experimental_llvm_ir_gemm";
 
 }  // namespace
 
@@ -52,6 +54,12 @@ tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
     return tiling_factor;
   }
   return tensorflow::gtl::nullopt;
+}
+
+bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kXlaEnableExperimentalLlvmIrGemm) > 0;
 }
 
 }  // namespace options

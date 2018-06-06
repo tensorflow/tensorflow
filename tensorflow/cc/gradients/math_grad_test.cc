@@ -31,7 +31,6 @@ using ops::AddN;
 using ops::BatchMatMul;
 using ops::Const;
 using ops::Div;
-using ops::Greater;
 using ops::MatMul;
 using ops::Max;
 using ops::Maximum;
@@ -46,7 +45,6 @@ using ops::RealDiv;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
-using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions

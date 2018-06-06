@@ -86,6 +86,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSlice);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
@@ -262,11 +263,14 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
       transformations.Add(new IdentifyLstmCell);
     }
-    if (output_format == TFLITE) {
+    if (output_format == TFLITE && toco_flags.split_tflite_lstm_inputs()) {
       transformations.Add(new toco::SplitLstmCellInputs);
     } else {
       transformations.Add(new toco::MergeLstmCellInputs);
     }
+  }
+  if (toco_flags.quantize_weights()) {
+    transformations.Add(new QuantizeWeights);
   }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
@@ -372,6 +376,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     LOG(INFO) << "Estimated count of arithmetic ops: " << 1e-9 * ops_count
               << " billion (note that a multiply-add is counted as 2 ops).";
   }
+  model->ops_count = ops_count;
 }
 
 void Export(const TocoFlags& toco_flags, const Model& model,

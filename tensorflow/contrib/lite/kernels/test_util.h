@@ -89,24 +89,37 @@ struct TensorData {
 class SingleOpResolver : public OpResolver {
  public:
   SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
-      : op_(op), registration_(registration) {}
-  TfLiteRegistration* FindOp(BuiltinOperator op) const override {
+      : op_(op), registration_(*registration) {
+    registration_.builtin_code = static_cast<int32_t>(op);
+    registration_.version = 1;
+  }
+  const TfLiteRegistration* FindOp(BuiltinOperator op,
+                                   int version) const override {
     if (op == op_) {
-      return registration_;
+      return &registration_;
     }
     return nullptr;
   }
-  TfLiteRegistration* FindOp(const char* op) const override { return nullptr; }
+  const TfLiteRegistration* FindOp(const char* op, int version) const override {
+    return nullptr;
+  }
 
  private:
   const BuiltinOperator op_;
-  TfLiteRegistration* registration_;
+  TfLiteRegistration registration_;
 };
 
 class SingleOpModel {
  public:
   SingleOpModel() {}
   ~SingleOpModel() {}
+
+  // Set a function callback that is run right after graph is prepared
+  // that allows applying external delegates. This is useful for testing
+  // other runtimes like NN API or GPU.
+  void SetApplyDelegate(std::function<void(Interpreter*)> apply_delegate_fn) {
+    apply_delegate_fn_ = apply_delegate_fn;
+  }
 
   // Copying or assignment is disallowed to simplify ownership semantics.
   SingleOpModel(const SingleOpModel&) = delete;
@@ -311,6 +324,9 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
+  // A function pointer that gets called after the interpreter is created but
+  // before evaluation happens. This is useful for applying a delegate.
+  std::function<void(Interpreter*)> apply_delegate_fn_;
 };
 
 // Base class for single op unit tests.

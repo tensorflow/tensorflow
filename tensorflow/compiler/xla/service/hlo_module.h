@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -42,10 +43,18 @@ namespace xla {
 
 // Describes a compilation unit at the HLO level.
 //
-// A HLO module contains one or more HLO computations. The module contains one
-// "entry" computation which produces the result. The module also includes any
-// embedded computations used by instructions such as "map" and "reduce". All
-// computations are owned by the module.
+// HloModule is the top-level unit in the HLO IR.  It corresponds to a whole
+// "program".  Running a module, from beginning to end, is the only way to run
+// an XLA program.
+//
+// A module contains one "entry computation"; this HloComputation is like main()
+// in a C program.  The result of running the module is the result of running
+// this computation.
+//
+// A module also contains some number of "nested computations".  Each nested
+// computation is attached to an HloInstruction within some other computation.
+// The meaning of the nested computation depends on the instruction it's
+// attached to.
 class HloModule {
  public:
   HloModule(const string& name,
@@ -86,8 +95,10 @@ class HloModule {
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
-  // the called computations as well.
-  HloComputation* DeepCloneComputation(HloComputation* computation);
+  // the called computations as well. If the clone context is specified, it
+  // will be populated with the cloned object mappings.
+  HloComputation* DeepCloneComputation(HloComputation* computation,
+                                       HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module..
   const HloComputation* entry_computation() const {

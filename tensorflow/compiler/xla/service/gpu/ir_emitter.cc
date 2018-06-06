@@ -94,7 +94,10 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
           << std::endl
           << "  its type: "
           << llvm_ir::DumpToString(*global_for_const->getType());
-  bindings_.BindHloToIrValue(*constant, global_for_const);
+  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
+      global_for_const,
+      llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
+  bindings_.BindHloToIrValue(*constant, shape_constant);
   return Status::OK();
 }
 

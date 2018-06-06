@@ -18,17 +18,20 @@ Framework utilities.
 *   @{tf.contrib.framework.with_same_shape}
 
 ## Deprecation
+
 *   @{tf.contrib.framework.deprecated}
 *   @{tf.contrib.framework.deprecated_args}
 *   @{tf.contrib.framework.deprecated_arg_values}
 
 ## Arg_Scope
+
 *   @{tf.contrib.framework.arg_scope}
 *   @{tf.contrib.framework.add_arg_scope}
 *   @{tf.contrib.framework.has_arg_scope}
 *   @{tf.contrib.framework.arg_scoped_arguments}
 
 ## Variables
+
 *   @{tf.contrib.framework.add_model_variable}
 *   @{tf.train.assert_global_step}
 *   @{tf.contrib.framework.assert_or_get_global_step}

@@ -85,8 +85,14 @@ TfLiteRegistration* Register_GREATER_EQUAL();
 TfLiteRegistration* Register_LESS();
 TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR();
+TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_SELECT();
+TfLiteRegistration* Register_SLICE();
+TfLiteRegistration* Register_SIN();
+TfLiteRegistration* Register_TRANSPOSE_CONV();
+TfLiteRegistration* Register_EXPAND_DIMS();
+TfLiteRegistration* Register_SPARSE_TO_DENSE();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -120,7 +126,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORMALIZATION());
-  AddBuiltin(BuiltinOperator_LSTM, Register_LSTM());
+  AddBuiltin(BuiltinOperator_LSTM, Register_LSTM(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
              Register_BIDIRECTIONAL_SEQUENCE_LSTM());
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
@@ -155,35 +162,18 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT());
+  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
+  AddBuiltin(BuiltinOperator_SIN, Register_SIN());
+  AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
+  AddBuiltin(BuiltinOperator_TILE, Register_TILE());
+  AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
+  AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
-}
-
-TfLiteRegistration* BuiltinOpResolver::FindOp(
-    tflite::BuiltinOperator op) const {
-  auto it = builtins_.find(op);
-  return it != builtins_.end() ? it->second : nullptr;
-}
-
-TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op) const {
-  auto it = custom_ops_.find(op);
-  return it != custom_ops_.end() ? it->second : nullptr;
-}
-
-void BuiltinOpResolver::AddBuiltin(tflite::BuiltinOperator op,
-                                   TfLiteRegistration* registration) {
-  registration->builtin_code = op;
-  builtins_.insert(std::make_pair(op, registration));
-}
-
-void BuiltinOpResolver::AddCustom(const char* name,
-                                  TfLiteRegistration* registration) {
-  registration->builtin_code = BuiltinOperator_CUSTOM;
-  custom_ops_.insert(std::make_pair(std::string(name), registration));
 }
 
 }  // namespace builtin

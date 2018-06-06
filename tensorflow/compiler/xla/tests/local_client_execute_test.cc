@@ -210,12 +210,12 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {0}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{10.0f, 20.0f}, {30.0f, 40.0f}},
-      LiteralView::Create(*result_literal, {1}));
+      LiteralSlice(*result_literal, {1}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {2}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {2}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
@@ -239,16 +239,16 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {1}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {1}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{1.0f, 2.0f}, {3.0f, 4.0f}},
-      LiteralView::Create(*result_literal, {0, 0}));
+      LiteralSlice(*result_literal, {0, 0}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{10.0f, 20.0f}, {30.0f, 40.0f}},
-      LiteralView::Create(*result_literal, {0, 1}));
+      LiteralSlice(*result_literal, {0, 1}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{1.0f, 2.0f}, {3.0f, 4.0f}},
-      LiteralView::Create(*result_literal, {0, 2}));
+      LiteralSlice(*result_literal, {0, 2}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
@@ -274,9 +274,9 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {0}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {1}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
@@ -321,9 +321,9 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
       {{56.0f, 46.0f}, {36.0f, 26.0f}},
-      LiteralView::Create(*result_literal, {0}));
+      LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR1Equal<float>(
-      {40.0f, 71.0f, 117.0f}, LiteralView::Create(*result_literal, {1}));
+      {40.0f, 71.0f, 117.0f}, LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
@@ -361,9 +361,9 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{-1.0, -2.0}, {-3.0, -4}}, LiteralView::Create(*result_literal, {0}));
+      {{-1.0, -2.0}, {-3.0, -4}}, LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR1Equal<float>(
-      {264.0, 73.0, 133.0}, LiteralView::Create(*result_literal, {1}));
+      {264.0, 73.0, 133.0}, LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
@@ -391,16 +391,16 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
   std::unique_ptr<Literal> result_0_literal = ShapedBufferToLiteral(result_0);
   LiteralTestUtil::ExpectR2Equal<float>(
       {{-1.0, -2.0}, {-3.0, -4.0}},
-      LiteralView::Create(*result_0_literal, {0}));
+      LiteralSlice(*result_0_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{22.0, 6.0}, {8.0, 10}}, LiteralView::Create(*result_0_literal, {1}));
+      {{22.0, 6.0}, {8.0, 10}}, LiteralSlice(*result_0_literal, {1}));
 
   ScopedShapedBuffer result_1 = ExecuteLocallyOrDie(computation, {&result_0});
   std::unique_ptr<Literal> result_1_literal = ShapedBufferToLiteral(result_1);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0, 2.0}, {3.0, 4.0}}, LiteralView::Create(*result_1_literal, {0}));
+      {{1.0, 2.0}, {3.0, 4.0}}, LiteralSlice(*result_1_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{44.0, 12.0}, {16.0, 20}}, LiteralView::Create(*result_1_literal, {1}));
+      {{44.0, 12.0}, {16.0, 20}}, LiteralSlice(*result_1_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
@@ -447,7 +447,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
 
   for (int i = 0; i < kElementCount; ++i) {
     LiteralTestUtil::ExpectR1Near<float>(
-        {2.0f * i, 0.0f}, LiteralView::Create(*result_literal, {i}),
+        {2.0f * i, 0.0f}, LiteralSlice(*result_literal, {i}),
         error_spec_);
   }
 }
@@ -502,7 +502,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   for (int i = 0; i < kFanout; ++i) {
     for (int j = 0; j < kFanout; ++j) {
       LiteralTestUtil::ExpectR0Near<float>(
-          i + j + i * kFanout + j, LiteralView::Create(*result_literal, {i, j}),
+          i + j + i * kFanout + j, LiteralSlice(*result_literal, {i, j}),
           error_spec_);
     }
   }
@@ -548,7 +548,7 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
     index.push_back(0);
   }
   LiteralTestUtil::ExpectR0Equal<float>(
-      165.0, LiteralView::Create(*result_literal, index));
+      165.0, LiteralSlice(*result_literal, index));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
@@ -754,9 +754,9 @@ XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
   std::unique_ptr<Literal> tuple_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR1Equal<float>(
-      {2.0f, 4.0f, 6.0f}, LiteralView::Create(*tuple_literal, {0}));
+      {2.0f, 4.0f, 6.0f}, LiteralSlice(*tuple_literal, {0}));
   LiteralTestUtil::ExpectR1Equal<float>(
-      {1.0f, 2.0f, 3.0f}, LiteralView::Create(*tuple_literal, {1}));
+      {1.0f, 2.0f, 3.0f}, LiteralSlice(*tuple_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {

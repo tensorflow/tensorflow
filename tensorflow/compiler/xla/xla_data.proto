@@ -66,11 +66,16 @@ enum PrimitiveType {
   // in the dimensions field.
   TUPLE = 13;
 
-  // An opaque type used for passing context specific data to a custom
-  // operation.
+  // An opaque type used for passing context-specific data to a custom
+  // operation. Shapes of this primitive type will have empty dimensions and
+  // tuple_shapes fields.
   OPAQUE = 14;
 
-  // Next = 17
+  // A token type threaded between side-effecting operations. Shapes of this
+  // primitive type will have empty dimensions and tuple_shapes fields.
+  TOKEN = 17;
+
+  // Next = 18
 }
 
 // Describes the value held inside padding elements.
@@ -814,6 +819,12 @@ enum UnaryOperation {
 
   // Elementwise, computes clz(x).
   UNOP_CLZ = 17;
+
+  // Elementwise, computes exp(x)-1.
+  UNOP_EXPM1 = 18;
+
+  // Elementwise, computes log(x+1).
+  UNOP_LOG1P = 19;
 }
 
 message UnaryOpRequest {

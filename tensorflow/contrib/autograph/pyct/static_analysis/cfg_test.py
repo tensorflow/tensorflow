@@ -115,19 +115,26 @@ class CFGTest(test.TestCase):
     if_body = body[0].body
     self._check_anno_matches(if_body[0], 'defined_out', ('x', 'y'))
 
-  # TODO(alexbw): b/73926938 split this test up
-  def test_live(self):
+  def _get_live_annotated_fnbody(self, f):
+    node, ctx = self._parse_and_analyze(f, {})
+    cfg.run_analyses(node, cfg.Liveness(ctx))
+    body = node.body[0].body
+    return body
 
-    def get_live_annotated_fnbody(f):
-      node, ctx = self._parse_and_analyze(f, {})
-      cfg.run_analyses(node, cfg.Liveness(ctx))
-      body = node.body[0].body
-      return body
+  def test_live_straightline(self):
 
     def f1(x):
       a = g(x)  # pylint: disable=undefined-variable
       b = h(a)  # pylint: disable=undefined-variable, unused-variable
       return x
+
+    body = self._get_live_annotated_fnbody(f1)
+    self._check_anno_matches(body[1], 'live_in', ('a', 'h', 'x'))
+    self._check_anno_matches(body[2], 'live_in', ('x'))
+    self._check_anno_matches(body[0], 'live_in', ('g', 'h', 'x'))
+    self._check_anno_matches(body[2], 'live_out', ())
+
+  def test_live_stacked_conds_with_else(self):
 
     def f2(x, a):  # pylint: disable=unused-argument
       if a > 0:  # x should not be live
@@ -137,6 +144,12 @@ class CFGTest(test.TestCase):
       else:
         x = 2
 
+    body = self._get_live_annotated_fnbody(f2)
+    self._check_anno_matches(body[0], 'live_in', ('a'))
+    self._check_anno_matches(body[1], 'live_in', ('a'))
+
+  def test_live_stacked_conds(self):
+
     def f3(x, a):
       if a > 0:  # x and a should be live
         x = 0
@@ -144,58 +157,58 @@ class CFGTest(test.TestCase):
         x = 1
       return x  # x should be live
 
+    body = self._get_live_annotated_fnbody(f3)
+    self._check_anno_matches(body[0], 'live_in', ('a', 'x'))
+    self._check_anno_matches(body[1], 'live_in', ('a', 'x'))
+    self._check_anno_matches(body[2], 'live_in', ('x'))
+
+  def test_live_possibly_unused_cond(self):
+
     def f4(x, a):
       if a > 0:  # x should be live
         x = 0
       x += 1
+
+    body = self._get_live_annotated_fnbody(f4)
+    self._check_anno_matches(body[0], 'live_in', ('x', 'a'))
+    self._check_anno_matches(body[1], 'live_in', ('x'))
+
+  def test_live_attribute_in_cond(self):
 
     def f5(x, a):
       if a > 0:  # x.y should be live
         x.y = 0
       return x.y
 
+    body = self._get_live_annotated_fnbody(f5)
+    self._check_anno_matches(body[0], 'live_in', ('x', 'x.y', 'a'))
+
+  def test_live_noop(self):
+
     def f6(x):
       return x  # should this cause x.* to be live?
+
+    body = self._get_live_annotated_fnbody(f6)
+    self._check_anno_matches(body[0], 'live_in', ('x'))
+
+  def test_live_loop(self):
 
     def f7(x, n):
       for i in range(n):
         x += i
       return x
 
+    body = self._get_live_annotated_fnbody(f7)
+    self._check_anno_matches(body[0], 'live_in', ('x', 'n', 'range'))
+    self._check_anno_matches(body[1], 'live_in', ('x'))
+
+  def test_live_context_manager(self):
+
     def f8(x, f):
       with f:
         x += 1
 
-    body = get_live_annotated_fnbody(f1)
-    self._check_anno_matches(body[1], 'live_in', ('a', 'h', 'x'))
-    self._check_anno_matches(body[2], 'live_in', ('x'))
-    self._check_anno_matches(body[0], 'live_in', ('g', 'h', 'x'))
-    self._check_anno_matches(body[2], 'live_out', ())
-
-    body = get_live_annotated_fnbody(f2)
-    self._check_anno_matches(body[0], 'live_in', ('a'))
-    self._check_anno_matches(body[1], 'live_in', ('a'))
-
-    body = get_live_annotated_fnbody(f3)
-    self._check_anno_matches(body[0], 'live_in', ('a', 'x'))
-    self._check_anno_matches(body[1], 'live_in', ('a', 'x'))
-    self._check_anno_matches(body[2], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f4)
-    self._check_anno_matches(body[0], 'live_in', ('x', 'a'))
-    self._check_anno_matches(body[1], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f5)
-    self._check_anno_matches(body[0], 'live_in', ('x', 'x.y', 'a'))
-
-    body = get_live_annotated_fnbody(f6)
-    self._check_anno_matches(body[0], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f7)
-    self._check_anno_matches(body[0], 'live_in', ('x', 'n', 'range'))
-    self._check_anno_matches(body[1], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f8)
+    body = self._get_live_annotated_fnbody(f8)
     self._check_anno_matches(body[0], 'live_in', ('f', 'x'))
 
   def test_node_equality(self):
@@ -246,6 +259,47 @@ class CFGTest(test.TestCase):
     self.assertEqual(
         anno.getanno(body[2], 'defined_in'),
         frozenset(map(qual_names.QN, ('x', 'g'))))
+
+  def test_loop_else(self):
+
+    # Disabling useless-else-on-loop error, because 'break' and 'continue'
+    # canonicalization are a separate analysis pass, and here we test
+    # the CFG analysis in isolation.
+    def for_orelse(x):
+      y = 0
+      for i in range(len(x)):
+        x += i
+      else:  # pylint: disable=useless-else-on-loop
+        y = 1
+      return x, y
+
+    def while_orelse(x, i):
+      y = 0
+      while x < 10:
+        x += i
+      else:  # pylint: disable=useless-else-on-loop
+        y = 1
+      return x, y
+
+    for f in (for_orelse, while_orelse):
+      node, ctx = self._parse_and_analyze(f, {})
+      cfg.run_analyses(node, cfg.ReachingDefinitions(ctx))
+      body = node.body[0].body
+      return_node = body[-1]
+      reaching_defs = anno.getanno(return_node, 'definitions_in')
+
+      # Y could be defined by Assign(Num(0)) or Assign(Num(1))
+      # X could be defined as an argument or an AugAssign.
+      y_defs = [node for var, node in reaching_defs if str(var) == 'y']
+      x_defs = [node for var, node in reaching_defs if str(var) == 'x']
+
+      self.assertEqual(set((gast.Assign,)), set(type(def_) for def_ in y_defs))
+      self.assertEqual(set((0, 1)), set(def_.value.n for def_ in y_defs))
+      self.assertEqual(len(y_defs), 2)
+      self.assertEqual(
+          set((gast.arguments, gast.AugAssign)),
+          set(type(def_) for def_ in x_defs))
+      self.assertEqual(len(x_defs), 2)
 
 
 if __name__ == '__main__':

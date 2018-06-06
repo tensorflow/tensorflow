@@ -71,6 +71,7 @@ py_library(
         "//tensorflow/contrib/memory_stats:memory_stats_py",
         "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/mixed_precision:mixed_precision",
         "//tensorflow/contrib/model_pruning",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",

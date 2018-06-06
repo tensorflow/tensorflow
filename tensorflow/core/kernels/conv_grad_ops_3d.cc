@@ -195,8 +195,8 @@ class Conv3DBackpropInputOp : public OpKernel {
     TensorShape input_shape;
     if (takes_shape_) {
       const Tensor& input_sizes = context->input(0);
-      OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                  input_sizes.vec<int32>(), &input_shape));
+      // MakeShape is able to handle both DT_INT32 and DT_INT64 for input_sizes.
+      OP_REQUIRES_OK(context, MakeShape(input_sizes, &input_shape));
     } else {
       input_shape = context->input(0).shape();
     }

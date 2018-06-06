@@ -37,6 +37,7 @@ bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=cuda --test_tag_filters=-no_gpu,-benchmark-test,-no_oss -k \
     --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
+    --test_size_filters=small,medium \
     --build_tests_only --test_output=errors --local_test_jobs=8 \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
     --config=xla -- \
