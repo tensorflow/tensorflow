@@ -614,7 +614,14 @@ void ConvertSpaceToDepthOperator(const NodeDef& node,
   CHECK_EQ(node.op(), "SpaceToDepth");
   CheckInputsCount(node, tf_import_flags, 1);
 
-  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  tensorflow::DataType dtype = GetDataTypeAttr(node, "T");
+  if (dtype != DT_FLOAT && dtype != DT_UINT8 && dtype != DT_INT32 &&
+      dtype != DT_INT64) {
+    const auto* enum_descriptor = tensorflow::DataType_descriptor();
+    LOG(FATAL) << "TFLite does not support SpaceToDepth with type T:"
+               << enum_descriptor->FindValueByNumber(dtype)->name() << ". "
+               << "T must be one of {DT_FLOAT, DT_INT8, DT_INT32, DT_INT64}.";
+  }
   auto* op = new SpaceToDepthOperator;
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());

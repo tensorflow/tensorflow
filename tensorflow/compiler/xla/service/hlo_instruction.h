@@ -426,10 +426,26 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, const int exponent_bits,
       const int mantissa_bits);
 
-  // Creates a cross replica sum op.
+  // Creates a cross replica reduction op.
+  //
+  // `reduction_computation`: the reduction function.
+  //
+  // `replica_group_ids`: maps replica ids to subgroup ids. If empty, all
+  // replicas belong to one group. Allreduce will be applied within subgroups.
+  // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
+  // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
+  //
+  // `channel_id`: for Allreduce nodes from different models, if they have the
+  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
+  // applied cross models.
+  //
+  // TODO(b/79737069): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* reduce_computation,
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
+      const tensorflow::gtl::optional<int64>& channel_id =
+          tensorflow::gtl::nullopt);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
