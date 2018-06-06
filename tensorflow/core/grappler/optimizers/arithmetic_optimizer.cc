@@ -101,38 +101,6 @@ bool ValuesFromConstNode(const NodeDef& node, std::vector<T>* values) {
   return false;
 }
 
-template <typename T>
-bool IsInnerMatrixTranspose(const std::vector<T>& perm) {
-  const T n = perm.size();
-  if (n < 2) {
-    return false;
-  }
-  for (T i = 0; i < n - 2; ++i) {
-    if (perm[i] != i) {
-      return false;
-    }
-  }
-  return perm[n - 1] == n - 2 && perm[n - 2] == n - 1;
-}
-
-bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
-                                const NodeMap* node_map) {
-  if (transpose_node.op() != "Transpose" &&
-      transpose_node.op() != "ConjugateTranspose") {
-    return false;
-  }
-  const NodeDef* perm_node = node_map->GetNode(transpose_node.input(1));
-  std::vector<int> perm32;
-  if (ValuesFromConstNode(*perm_node, &perm32)) {
-    return IsInnerMatrixTranspose(perm32);
-  }
-  std::vector<int64> perm64;
-  if (ValuesFromConstNode(*perm_node, &perm64)) {
-    return IsInnerMatrixTranspose(perm64);
-  }
-  return false;
-}
-
 bool MaybeAddControlInput(const string& new_input, NodeDef* node,
                           GraphDef* graph, NodeMap* node_map) {
   bool already_exists = false;
@@ -153,12 +121,6 @@ bool MaybeAddControlInput(const string& new_input, NodeDef* node,
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
   (*node->mutable_attr())[attr_name].set_type(dtype);
-}
-
-void FlipBooleanAttr(const string& attr_name, NodeDef* node) {
-  const bool old_value =
-      !node->attr().count(attr_name) ? false : node->attr().at(attr_name).b();
-  (*node->mutable_attr())[attr_name].set_b(!old_value);
 }
 
 string SourceDataTypeAttrName(const NodeDef& node) {
@@ -2079,6 +2041,449 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
   }
 };
 
+// Fold Transpose into matrix multiplication.
+class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
+ public:
+  explicit FoldTransposeIntoMatMul(const GraphOptimizerContext& ctx,
+                                   const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FoldTransposeIntoMatMul", ctx, ctx_ext) {}
+  ~FoldTransposeIntoMatMul() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsMatMul(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const NodeScopeAndName matmul = ParseNodeScopeAndName(node->name());
+    const string optimized_node_name = OptimizedNodeName(matmul);
+    if (ctx().node_map->NodeExists(optimized_node_name)) return Status::OK();
+
+    NodeDef* a;
+    NodeDef* b;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &a));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &b));
+
+    bool is_complex = false;
+    if (node->op() != "SparseMatMul") {
+      const DataType type = GetDataTypeFromAttr(*node, "T");
+      is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
+    }
+
+    const std::set<string> foldable_transpose_ops =
+        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
+                    : (node->op() == "BatchMatMul"
+                           ? std::set<string>{"ConjugateTranspose"}
+                           : std::set<string>{"Transpose"});
+
+    const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
+                               IsInnerMatrixTransposeNode(*a, ctx().node_map);
+    const bool b_is_foldable = foldable_transpose_ops.count(b->op()) > 0 &&
+                               IsInnerMatrixTransposeNode(*b, ctx().node_map);
+    if (!a_is_foldable && !b_is_foldable) return Status::OK();
+
+    NodeDef* new_op = AddCopyNode(optimized_node_name, node);
+
+    if (a_is_foldable) {
+      const string attr_a =
+          node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
+      FlipBooleanAttr(attr_a, new_op);
+      new_op->set_input(0, a->input(0));
+      ctx().node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
+    }
+
+    if (b_is_foldable) {
+      const string attr_b =
+          node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
+      FlipBooleanAttr(attr_b, new_op);
+      new_op->set_input(1, b->input(0));
+      ctx().node_map->UpdateInput(new_op->name(), b->name(), b->input(0));
+    }
+
+    std::vector<const NodeDef*> deps_to_forward = {node};
+    if (a_is_foldable) deps_to_forward.push_back(a);
+    if (b_is_foldable) deps_to_forward.push_back(b);
+    ForwardControlDependencies(new_op, deps_to_forward);
+
+    return Status::OK();
+  }
+
+ private:
+  void FlipBooleanAttr(const string& attr_name, NodeDef* node) {
+    const bool old_value =
+        !node->attr().count(attr_name) ? false : node->attr().at(attr_name).b();
+    (*node->mutable_attr())[attr_name].set_b(!old_value);
+  }
+
+  template <typename T>
+  bool IsInnerMatrixTranspose(const std::vector<T>& perm) {
+    const T n = perm.size();
+    if (n < 2) {
+      return false;
+    }
+    for (T i = 0; i < n - 2; ++i) {
+      if (perm[i] != i) {
+        return false;
+      }
+    }
+    return perm[n - 1] == n - 2 && perm[n - 2] == n - 1;
+  }
+
+  bool IsInnerMatrixTransposeNode(const NodeDef& transpose_node,
+                                  const NodeMap* node_map) {
+    if (transpose_node.op() != "Transpose" &&
+        transpose_node.op() != "ConjugateTranspose") {
+      return false;
+    }
+    const NodeDef* perm_node = node_map->GetNode(transpose_node.input(1));
+    std::vector<int> perm32;
+    if (ValuesFromConstNode(*perm_node, &perm32)) {
+      return IsInnerMatrixTranspose(perm32);
+    }
+    std::vector<int64> perm64;
+    if (ValuesFromConstNode(*perm_node, &perm64)) {
+      return IsInnerMatrixTranspose(perm64);
+    }
+    return false;
+  }
+};
+
+// Fold Transpose into matrix multiplication.
+class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
+ public:
+  explicit FoldConjugateIntoTranspose(const GraphOptimizerContext& ctx,
+                                      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FoldConjugateIntoTranspose", ctx, ctx_ext) {}
+  ~FoldConjugateIntoTranspose() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsConj(*node) || IsTranspose(*node) || IsConjugateTranspose(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const NodeScopeAndName matmul = ParseNodeScopeAndName(node->name());
+    const string optimized_node_name = OptimizedNodeName(matmul);
+    if (ctx().node_map->NodeExists(optimized_node_name)) return Status::OK();
+
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+
+    const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
+    const NodeDef* conj_op = node->op() == "Conj" ? node : input;
+
+    if ((IsTranspose(*transpose_op) || IsConjugateTranspose(*transpose_op)) &&
+        IsConj(*conj_op)) {
+      NodeDef* new_op = AddCopyNode(optimized_node_name, transpose_op);
+
+      // Flip the type of transpose op to absorb the conjugation.
+      new_op->set_op(transpose_op->op() == "Transpose" ? "ConjugateTranspose"
+                                                       : "Transpose");
+      new_op->set_input(0, input->input(0));
+      ctx().node_map->UpdateInput(new_op->name(), node->name(),
+                                  input->input(0));
+      ForwardControlDependencies(new_op, {node, input});
+      *simplified_node_name = new_op->name();
+    }
+
+    return Status::OK();
+  }
+};
+
+// Replace Mul node with identical inputs with a Square.
+class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
+ public:
+  explicit ReplaceMulWithSquare(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReplaceMulWithSquare", ctx, ctx_ext) {}
+  ~ReplaceMulWithSquare() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsMul(*node) && node->input(0) == node->input(1);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const NodeScopeAndName mul = ParseNodeScopeAndName(node->name());
+    const string optimized_node_name = OptimizedNodeName(mul);
+    if (ctx().node_map->NodeExists(optimized_node_name)) return Status::OK();
+
+    const DataType type = GetDataTypeFromAttr(*node, "T");
+    bool is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
+
+    string task;
+    string device;
+    bool is_on_cpu =
+        DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
+        str_util::StrContains(device, DEVICE_CPU);
+
+    if (!is_complex || is_on_cpu) {
+      NodeDef* new_square_node = AddCopyNode(optimized_node_name, node);
+      new_square_node->set_op("Square");
+      for (int i = 1; i < new_square_node->input_size(); ++i) {
+        new_square_node->set_input(i - 1, new_square_node->input(i));
+      }
+      new_square_node->mutable_input()->RemoveLast();
+      for (const string& input : new_square_node->input()) {
+        ctx().node_map->AddOutput(NodeName(input), new_square_node->name());
+      }
+      *simplified_node_name = new_square_node->name();
+    }
+
+    return Status::OK();
+  }
+};
+
+// Simplify aggregation (e.g. AddN) nodes:
+//
+// 1. Discard aggregate nodes with a single input and no control dependencies.
+//
+// 2. Try to rewrite aggregations of N >= 2 identical terms (possibly due to
+//    deduping or other rewrites) so we can get rid of the sum entirely.
+//
+//    The expression (using AddN as an example of an aggregate op):
+//      AddN(x, x, x, ... ,x)
+//           <-- N terms -->
+//    can be rewritten to:
+//      Mul(Const(N), x))
+//
+class SimplifyAggregation : public ArithmeticOptimizerStage {
+ public:
+  explicit SimplifyAggregation(const GraphOptimizerContext& ctx,
+                               const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("SimplifyAggregation", ctx, ctx_ext) {}
+  ~SimplifyAggregation() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAggregate(*node) && NumNonControlInputs(*node) > 0;
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    // 1. Discard aggregate nodes with a single input and no control deps.
+    if (node->input_size() == 1) {
+      *simplified_node_name = node->input(0);
+      return Status::OK();
+    }
+
+    // 2. Rewrite aggregations of N >= 2 identical terms.
+
+    // All non-control inputs must be identical.
+    bool all_equal = true;
+    int num_inputs = 1;
+    for (int i = 1; i < node->input_size(); ++i) {
+      if (IsControlInput(node->input(i))) break;
+      ++num_inputs;
+      if (node->input(i) != node->input(0)) {
+        all_equal = false;
+        break;
+      }
+    }
+    if (!all_equal) return Status::OK();
+
+    // And node should not be optimized earlier.
+    const NodeScopeAndName node_scope_and_name =
+        ParseNodeScopeAndName(node->name());
+    const string optimized_const_name =
+        OptimizedNodeName(node_scope_and_name, "Const");
+    const string optimized_mul_name =
+        OptimizedNodeName(node_scope_and_name, "Mul");
+
+    bool is_already_optimized =
+        ctx().node_map->NodeExists(optimized_const_name) ||
+        ctx().node_map->NodeExists(optimized_mul_name);
+
+    if (is_already_optimized) return Status::OK();
+
+    // At this point all preconditions are met, and we safely do the rewrite.
+    VLOG(3) << "Simplify aggregation with identical inputs: node="
+            << node->name() << " num_inputs=" << num_inputs;
+
+    // 1. Create constant node with value N.
+    const auto type = GetDataTypeFromAttr(*node, "T");
+    Tensor t(type, TensorShape({}));
+    Status status = SetTensorValue(type, num_inputs, &t);
+    if (!status.ok()) {
+      return errors::Internal("Failed to create const node: ",
+                              status.error_message());
+    }
+
+    TensorValue value(&t);
+    NodeDef* new_const_node = AddEmptyNode(optimized_const_name);
+    status = ConstantFolding::CreateNodeDef(new_const_node->name(), value,
+                                            new_const_node);
+    if (!status.ok()) {
+      return errors::Internal("Failed to create const node: ",
+                              status.error_message());
+    }
+    new_const_node->set_device(node->device());
+    MaybeAddControlInput(NodeName(node->input(0)), new_const_node,
+                         ctx().optimized_graph, ctx().node_map);
+    AddToOptimizationQueue(new_const_node);
+
+    // 2. Replace the aggregate node with Mul(Const(N), x).
+    NodeDef* new_mul_node = AddEmptyNode(optimized_mul_name);
+    new_mul_node->set_op("Mul");
+    new_mul_node->set_device(node->device());
+    SetDataTypeToAttr(type, "T", new_mul_node);
+    new_mul_node->add_input(new_const_node->name());
+    ctx().node_map->AddOutput(new_const_node->name(), new_mul_node->name());
+    new_mul_node->add_input(node->input(0));
+    ctx().node_map->AddOutput(node->input(0), new_mul_node->name());
+
+    ForwardControlDependencies(new_mul_node, {node});
+    *simplified_node_name = new_mul_node->name();
+
+    return Status::OK();
+  }
+};
+
+class ConvertPowStage : public ArithmeticOptimizerStage {
+ public:
+  explicit ConvertPowStage(const GraphOptimizerContext& ctx,
+                           const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ConvertPow", ctx, ctx_ext) {}
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsPow(*node) &&
+           ctx().graph_properties->GetInputProperties(node->name()).size() == 2;
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const auto& p = ctx().graph_properties->GetInputProperties(node->name())[1];
+    for (int i = 0; i < p.shape().dim_size(); ++i) {
+      if (p.shape().dim(i).size() < 0) {
+        // skip if p is is not fully defined.
+        return Status::OK();
+      }
+    }
+    if (TensorShape::IsValid(p.shape()) && p.has_value()) {
+      Tensor pow(p.dtype(), p.shape());
+      if (!pow.FromProto(p.value())) {
+        return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                       p.value().DebugString());
+      }
+
+      complex128 prev, curr;
+      for (int i = 0; i < pow.NumElements(); ++i) {
+        TF_RETURN_IF_ERROR(GetElement(pow, i, &curr));
+        if (i != 0 && curr != prev) {
+          // pow has different values on different elements. Skip.
+          return Status::OK();
+        }
+        prev = curr;
+      }
+      NodeDef *x, *y;
+      TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+      TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
+      if (curr == complex128(2, 0)) {
+        node->set_op("Square");
+        node->set_input(1, AsControlDependency(y->name()));
+        AddToOptimizationQueue(node);
+        AddToOptimizationQueue(y);
+      } else if (curr == complex128(1, 0)) {
+        node->set_op("Identity");
+        node->set_input(1, AsControlDependency(y->name()));
+        AddToOptimizationQueue(node);
+        AddToOptimizationQueue(y);
+      } else if (curr == complex128(0.5, 0)) {
+        node->set_op("Sqrt");
+        node->set_input(1, AsControlDependency(y->name()));
+        AddToOptimizationQueue(node);
+        AddToOptimizationQueue(y);
+      } else if (curr == complex128(0, 0)) {
+        const auto& b =
+            ctx().graph_properties->GetInputProperties(node->name())[0];
+        for (int i = 0; i < b.shape().dim_size(); ++i) {
+          if (b.shape().dim(i).size() < 0) {
+            // skip if b is is not fully defined.
+            return Status::OK();
+          }
+        }
+        if (TensorShape::IsValid(b.shape()) && b.has_value()) {
+          Tensor base(b.dtype(), b.shape());
+          if (!base.FromProto(b.value())) {
+            return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                           b.value().DebugString());
+          }
+          node->set_op("Const");
+          Tensor c(base.dtype(), base.shape());
+          for (int i = 0; i < c.NumElements(); ++i) {
+            TF_RETURN_IF_ERROR(SetElementToOne(i, &c));
+          }
+          (*node->mutable_attr())["dtype"].set_type(base.dtype());
+          c.AsProtoTensorContent(
+              (*node->mutable_attr())["value"].mutable_tensor());
+          node->mutable_attr()->erase("T");
+          node->set_input(0, AsControlDependency(x->name()));
+          node->set_input(1, AsControlDependency(y->name()));
+          AddToOptimizationQueue(node);
+          AddToOptimizationQueue(x);
+          AddToOptimizationQueue(y);
+        }
+      } else if (curr == complex128(-0.5, 0)) {
+        node->set_op("Rsqrt");
+        node->set_input(1, AsControlDependency(y->name()));
+        AddToOptimizationQueue(node);
+        AddToOptimizationQueue(y);
+      } else if (curr == complex128(-1, 0)) {
+        node->set_op("Reciprocal");
+        node->set_input(1, AsControlDependency(y->name()));
+        AddToOptimizationQueue(node);
+        AddToOptimizationQueue(y);
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  Status GetElement(const Tensor& t, int i, complex128* element) {
+    switch (t.dtype()) {
+      case DT_INT32:
+        *element = complex128(t.flat<int32>()(i));
+        return Status::OK();
+      case DT_INT64:
+        *element = complex128(t.flat<int64>()(i));
+        return Status::OK();
+      case DT_FLOAT:
+        *element = complex128(t.flat<float>()(i));
+        return Status::OK();
+      case DT_DOUBLE:
+        *element = complex128(t.flat<double>()(i));
+        return Status::OK();
+      case DT_COMPLEX64:
+        *element = complex128(t.flat<complex64>()(i));
+        return Status::OK();
+      case DT_COMPLEX128:
+        *element = t.flat<complex128>()(i);
+        return Status::OK();
+      default:
+        return errors::InvalidArgument("Invalid data type: ", t.dtype());
+    }
+  }
+
+  Status SetElementToOne(int i, Tensor* t) {
+    switch (t->dtype()) {
+      case DT_INT32:
+        t->flat<int32>()(i) = 1;
+        return Status::OK();
+      case DT_INT64:
+        t->flat<int64>()(i) = 1L;
+        return Status::OK();
+      case DT_FLOAT:
+        t->flat<float>()(i) = 1.0f;
+        return Status::OK();
+      case DT_DOUBLE:
+        t->flat<double>()(i) = 1.0;
+        return Status::OK();
+      case DT_COMPLEX64:
+        t->flat<complex64>()(i) = complex64(1);
+        return Status::OK();
+      case DT_COMPLEX128:
+        t->flat<complex128>()(i) = complex128(1);
+        return Status::OK();
+      default:
+        return errors::InvalidArgument("Invalid data type: ", t->dtype());
+    }
+  }
+};
+
 }  // namespace
 
 class UniqueNodes {
@@ -2175,33 +2580,6 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   }
 
   return true;
-}
-
-NodeDef* ArithmeticOptimizer::AddNode(const NodeDef& node, StringPiece suffix,
-                                      bool copy_node) {
-  return AddNode(OptimizedNodeName(node, suffix), copy_node ? &node : nullptr);
-}
-
-NodeDef* ArithmeticOptimizer::AddNode(const string& name,
-                                      const NodeDef* node_to_copy) {
-  NodeDef* new_node = optimized_graph_->add_node();
-  node_map_->AddNode(NodeName(name), new_node);
-  if (node_to_copy != nullptr) {
-    *new_node = *node_to_copy;
-  }
-  new_node->set_name(name);
-  return new_node;
-}
-
-string ArithmeticOptimizer::OptimizedNodeName(const NodeDef& node,
-                                              StringPiece suffix) const {
-  return AddPrefixToNodeName(strings::StrCat(node.name(), "_", suffix),
-                             kArithmeticOptimizer);
-}
-
-bool ArithmeticOptimizer::OptimizedNodeExists(const NodeDef& node,
-                                              StringPiece suffix) const {
-  return node_map_->NodeExists(OptimizedNodeName(node, suffix));
 }
 
 namespace {
@@ -2327,172 +2705,6 @@ void ArithmeticOptimizer::ForwardControlDependencies(
   DedupControlInputs(target_node);
 }
 
-// TODO(ezhulenev): extract each individual simplify rewrite into separate
-// ArithmeticOptimizerStage
-string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
-    const NodeDef* node, SetVector<NodeDef*>* nodes_to_simplify) {
-  if (node->op() == "Mul" && node->input(0) == node->input(1) &&
-      !OptimizedNodeExists(*node, "square")) {
-    const DataType type = GetDataTypeFromAttr(*node, "T");
-    bool is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
-    string dontcare;
-    string device;
-    bool is_on_cpu =
-        DeviceNameUtils::SplitDeviceName(node->device(), &dontcare, &device) &&
-        str_util::StrContains(device, DEVICE_CPU);
-    if (!is_complex || is_on_cpu) {
-      NodeDef* new_square_node = AddNode(*node, "square", /*copy_node=*/true);
-      new_square_node->set_op("Square");
-      for (int i = 1; i < new_square_node->input_size(); ++i) {
-        new_square_node->set_input(i - 1, new_square_node->input(i));
-      }
-      new_square_node->mutable_input()->RemoveLast();
-      for (const string& input : new_square_node->input()) {
-        node_map_->AddOutput(NodeName(input), new_square_node->name());
-      }
-      return new_square_node->name();
-    }
-  }
-
-  if (IsAggregate(*node) && NumNonControlInputs(*node) > 0) {
-    // Discard aggregate nodes with a single input and no control dependencies.
-    if (node->input_size() == 1) {
-      return node->input(0);
-    }
-
-    // Try to rewrite aggregations of N >= 2 identical terms (possibly due
-    // to deduping or other rewrites) so we can get rid of the sum entirely.
-    // The expression (using AddN as an example of an aggregate op):
-    //   AddN(x, x, x, ... ,x)
-    //        <-- N terms -->
-    // can be rewritten to
-    //   Mul(Const(N), x))
-    //
-    bool all_equal = true;
-    int num_inputs = 1;
-    for (int i = 1; i < node->input_size(); ++i) {
-      if (IsControlInput(node->input(i))) {
-        break;
-      }
-      ++num_inputs;
-      if (node->input(i) != node->input(0)) {
-        all_equal = false;
-        break;
-      }
-    }
-    if (all_equal && !OptimizedNodeExists(*node, "const") &&
-        !OptimizedNodeExists(*node, "mul")) {
-      // 1. Create constant node with value N.
-      const auto type = GetDataTypeFromAttr(*node, "T");
-      Tensor t(type, TensorShape({}));
-      Status status = SetTensorValue(type, num_inputs, &t);
-      if (!status.ok()) {
-        LOG(WARNING) << "Failed to create const node: "
-                     << status.error_message();
-        return "";
-      }
-      TensorValue value(&t);
-      NodeDef* new_const_node = AddNode(*node, "const", /*copy_node=*/false);
-      status = ConstantFolding::CreateNodeDef(new_const_node->name(), value,
-                                              new_const_node);
-      if (!status.ok()) {
-        LOG(WARNING) << "Failed to create const node: "
-                     << status.error_message();
-        return "";
-      }
-      new_const_node->set_device(node->device());
-      MaybeAddControlInput(NodeName(node->input(0)), new_const_node,
-                           optimized_graph_, node_map_.get());
-      nodes_to_simplify->PushBack(new_const_node);
-
-      // 2. Replace the aggregate node with Mul(Const(N), x).
-      NodeDef* new_mul_node = AddNode(*node, "mul", /*copy_node=*/false);
-      new_mul_node->set_op("Mul");
-      new_mul_node->set_device(node->device());
-      SetDataTypeToAttr(type, "T", new_mul_node);
-      new_mul_node->add_input(new_const_node->name());
-      node_map_->AddOutput(new_const_node->name(), new_mul_node->name());
-      new_mul_node->add_input(node->input(0));
-      node_map_->AddOutput(node->input(0), new_mul_node->name());
-
-      ForwardControlDependencies(new_mul_node, {node});
-      return new_mul_node->name();
-    }
-  }
-
-  // Fold Transpose into matrix multiplication.
-  if ((node->op() == "MatMul" || node->op() == "SparseMatMul" ||
-       node->op() == "BatchMatMul") &&
-      !OptimizedNodeExists(*node, "fused")) {
-    const NodeDef* a = node_map_->GetNode(node->input(0));
-    const NodeDef* b = node_map_->GetNode(node->input(1));
-    bool is_complex = false;
-    if (node->op() != "SparseMatMul") {
-      const DataType type = GetDataTypeFromAttr(*node, "T");
-      is_complex = (type == DT_COMPLEX64) || (type == DT_COMPLEX128);
-    }
-    const std::set<string> foldable_transpose_ops =
-        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
-                    : (node->op() == "BatchMatMul"
-                           ? std::set<string>{"ConjugateTranspose"}
-                           : std::set<string>{"Transpose"});
-    const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
-                               IsInnerMatrixTransposeNode(*a, node_map_.get());
-    const bool b_is_foldable = foldable_transpose_ops.count(b->op()) > 0 &&
-                               IsInnerMatrixTransposeNode(*b, node_map_.get());
-    if (a_is_foldable || b_is_foldable) {
-      NodeDef* new_op = AddNode(*node, "fused", /*copy_node=*/true);
-      if (a_is_foldable) {
-        const string attr_a =
-            node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
-        FlipBooleanAttr(attr_a, new_op);
-        new_op->set_input(0, a->input(0));
-        node_map_->UpdateInput(new_op->name(), a->name(), a->input(0));
-      }
-      if (b_is_foldable) {
-        const string attr_b =
-            node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
-        FlipBooleanAttr(attr_b, new_op);
-        new_op->set_input(1, b->input(0));
-        node_map_->UpdateInput(new_op->name(), b->name(), b->input(0));
-      }
-      std::vector<const NodeDef*> deps_to_forward({node});
-      if (a_is_foldable) {
-        deps_to_forward.push_back(a);
-      }
-      if (b_is_foldable) {
-        deps_to_forward.push_back(b);
-      }
-      ForwardControlDependencies(new_op, deps_to_forward);
-    }
-  }
-
-  // Fold Conj into Transpose or ConjugateTranspose.
-  if ((node->op() == "Conj" || node->op() == "Transpose" ||
-       node->op() == "ConjugateTranspose") &&
-      !OptimizedNodeExists(*node, "fused")) {
-    const NodeDef* input = node_map_->GetNode(node->input(0));
-    const NodeDef* transpose_op = node->op() == "Conj" ? input : node;
-    const NodeDef* conj_op = node->op() == "Conj" ? node : input;
-
-    if ((transpose_op->op() == "Transpose" ||
-         transpose_op->op() == "ConjugateTranspose") &&
-        conj_op->op() == "Conj") {
-      NodeDef* new_op =
-          AddNode(OptimizedNodeName(*node, "fused"), transpose_op);
-      // Flip the type of transpose op to absorb the conjugation.
-      new_op->set_op(transpose_op->op() == "Transpose" ? "ConjugateTranspose"
-                                                       : "Transpose");
-      new_op->set_input(0, input->input(0));
-      node_map_->UpdateInput(new_op->name(), node->name(), input->input(0));
-      ForwardControlDependencies(new_op, {node, input});
-      return new_op->name();
-    }
-  }
-
-  return "";
-}
-
 Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   SetVector<NodeDef*> nodes_to_simplify;
   nodes_to_simplify.Reserve(optimized_graph_->node_size());
@@ -2510,8 +2722,12 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
 
   if (options_.combine_add_to_addn && can_use_shapes)
     pipeline.AddStage<AddOpsRewriteStage>(ctx, ctx_ext);
+  if (options_.fold_conjugate_into_transpose)
+    pipeline.AddStage<FoldConjugateIntoTranspose>(ctx, ctx_ext);
   if (options_.fold_multiply_into_conv)
     pipeline.AddStage<FoldMultiplyIntoConv>(ctx, ctx_ext);
+  if (options_.fold_transpose_into_matmul)
+    pipeline.AddStage<FoldTransposeIntoMatMul>(ctx, ctx_ext);
   if (options_.hoist_common_factor_out_of_aggregation && can_use_shapes)
     pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
   if (options_.minimize_broadcasts && can_use_shapes)
@@ -2528,16 +2744,21 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantReshape>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
+  if (options_.replace_mul_with_square)
+    pipeline.AddStage<ReplaceMulWithSquare>(ctx, ctx_ext);
   if (options_.remove_logical_not)
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.reorder_cast_and_transpose)
     pipeline.AddStage<ReorderCastAndTranspose>(ctx, ctx_ext);
+  if (options_.simplify_aggregation)
+    pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
     pipeline.AddStage<HoistCWiseUnaryChainsStage>(ctx, ctx_ext);
   if (options_.convert_sqrt_div_to_rsqrt_mul)
     pipeline.AddStage<SqrtDivToRsqrtMulStage>(ctx, ctx_ext);
   if (options_.remove_idempotent)
     pipeline.AddStage<RemoveIdempotentStage>(ctx, ctx_ext);
+  if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");
@@ -2545,19 +2766,11 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   while (!nodes_to_simplify.Empty()) {
     NodeDef* node = nodes_to_simplify.PopBack();
 
-    // TODO(ezhulenev): move all rewrites into separate stages
     string simplified_tensor = "";
-    if (options_.enable_try_simplify_and_replace) {
-      simplified_tensor = TrySimplifyAndReplaceUses(node, &nodes_to_simplify);
-    }
+    bool optimized = pipeline.PassThroughAllStages(node, &simplified_tensor);
 
-    // if it was not simplified try to run it through all configured stages
-    if (!stop(simplified_tensor)) {
-      bool optimized = pipeline.PassThroughAllStages(node, &simplified_tensor);
-      if (!optimized) {
-        continue;
-      }
-    }
+    // If the node was not optimized by any of the stages, go to the next one.
+    if (!optimized) continue;
 
     // re-wire consumers of an old node to the new one
     if (NodeName(simplified_tensor) != node->name()) {

@@ -211,6 +211,17 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
 
 TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
   auto builder = HloComputation::Builder(TestName());
+
+  auto module = CreateNewModule();
+  HloComputation::Builder sum_builder("add");
+  auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
+  auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "y"));
+  sum_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, x, y));
+  HloComputation* sum = module->AddEmbeddedComputation(sum_builder.Build());
+
   Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
   Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
 
@@ -223,7 +234,8 @@ TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
 
   HloInstruction* crs =
       builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
-          ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}));
+          ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b},
+          sum));
   HloInstruction* gte_a = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(f32_shape, crs, 0));
   HloInstruction* gte_b = builder.AddInstruction(
@@ -233,7 +245,6 @@ TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
   HloInstruction* tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({gte_a, convert_gte_b}));
 
-  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(FoldConversions(module.get()));

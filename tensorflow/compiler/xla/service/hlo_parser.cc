@@ -587,11 +587,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kCrossReplicaSum: {
+      optional<HloComputation*> to_apply;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(
-          HloInstruction::CreateCrossReplicaSum(shape, operands));
+          HloInstruction::CreateCrossReplicaSum(shape, operands, *to_apply));
       break;
     }
     case HloOpcode::kReshape: {
