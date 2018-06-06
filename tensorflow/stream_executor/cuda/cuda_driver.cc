@@ -897,14 +897,14 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 /* static */ void *CUDADriver::DeviceAllocate(CudaContext *context,
                                               uint64 bytes) {
   ScopedActivateContext activated{context};
-  CUdeviceptr result = 0;
-  CUresult res = cuMemAlloc(&result, bytes);
-  if (res != CUDA_SUCCESS) {
+  void * result;
+  cudaError_t err = cudaMalloc((void**)&result, bytes);
+  if (err != cudaSuccess) {
     LOG(ERROR) << "failed to allocate "
                << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
-               << " bytes) from device: " << ToString(res);
-    return nullptr;
+               << " bytes) from device: " << cudaGetErrorString(err);
   }
+
   void *ptr = reinterpret_cast<void *>(result);
   VLOG(2) << "allocated " << ptr << " for context " << context << " of "
           << bytes << " bytes";

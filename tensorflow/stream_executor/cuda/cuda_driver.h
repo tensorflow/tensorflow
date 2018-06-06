@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "cuda/include/cuda.h"
+#include "cuda/include/cuda_runtime_api.h"
 
 namespace stream_executor {
 namespace cuda {
