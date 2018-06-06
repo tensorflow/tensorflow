@@ -967,7 +967,8 @@ class Dataset(object):
         scalar `tf.bool` tensor.
 
     Returns:
-      Dataset: A `Dataset`.
+      Dataset: The `Dataset` containing the elements of this dataset for which
+          `predicate` is `True`.
     """
     return FilterDataset(self, predicate)
 
