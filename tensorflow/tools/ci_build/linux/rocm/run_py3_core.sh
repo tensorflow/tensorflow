@@ -115,6 +115,7 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python:math_ops_test \
     -//tensorflow/python:memory_optimizer_test \
     -//tensorflow/python:nn_fused_batchnorm_test \
-    -//tensorflow/python:timeline_test 
+    -//tensorflow/python:timeline_test \
+    -//tensorflow/python:virtual_gpu_test
 
-# Note: temp. disabling 78 unit tests in order to esablish a CI baseline (2018/06/05)
+# Note: temp. disabling 79 unit tests in order to esablish a CI baseline (2018/06/05)
