@@ -23,6 +23,7 @@ from __future__ import print_function
 
 # TODO(mdan): Bring only the relevant symbols to the top level.
 from tensorflow.contrib.autograph import utils
+from tensorflow.contrib.autograph import operators
 from tensorflow.contrib.autograph.impl.api import convert
 from tensorflow.contrib.autograph.impl.api import converted_call
 from tensorflow.contrib.autograph.impl.api import do_not_convert
@@ -33,8 +34,20 @@ from tensorflow.contrib.autograph.pyct.transformer import AutographParseError
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'utils', 'convert', 'converted_call', 'do_not_convert', 'RunMode',
-    'to_code', 'to_graph', 'AutographParseError'
+    # Main API
+    'RunMode',
+    'convert',
+    'converted_call',
+    'do_not_convert',
+    'to_code',
+    'to_graph',
+    # Special functions and overloaded operators
+    'operators',
+    'stack',
+    # Exceptions
+    'AutographParseError',
+    # Utilities: to be removed
+    'utils',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)
