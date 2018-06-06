@@ -73,7 +73,7 @@ limitations under the License.
  */
 
 template <class T>
-using StatusOr = perftools::gputools::port::StatusOr<T>;
+using StatusOr = se::port::StatusOr<T>;
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;

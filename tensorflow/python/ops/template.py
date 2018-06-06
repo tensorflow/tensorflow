@@ -26,7 +26,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
@@ -295,42 +295,6 @@ class Template(checkpointable.CheckpointableBase):
     # which is not the same as whether the scope has been created.
     self._variables_created = False
 
-  @property
-  def _checkpoint_dependencies(self):
-    """Sanity checking for object-based saving.
-
-    Does not override Checkpointable dependency tracking, but checks that
-    variables accessible through Checkpointable dependencies on other `Template`
-    objects include all of the variable_scope-filtered `Template.variables`.
-
-    Returns:
-      A list of checkpointable.CheckpointableReference objects.
-    Raises:
-      ValueError: If this object is not compatible with object-based saving.
-    """
-    dependencies = super(Template, self)._checkpoint_dependencies
-    dependency_variables = []
-    for _, dependency in dependencies:
-      if isinstance(dependency, Template):
-        dependency_variables.extend(dependency.variables)
-      else:
-        dependency_variables.append(dependency)
-    dependency_variables = set(dependency_variables)
-    not_included_variables = []
-    for expected_variable in sorted(self.variables, key=lambda v: v.name):
-      if expected_variable not in dependency_variables:
-        not_included_variables.append(expected_variable)
-    if not_included_variables:
-      # Trying to save a Template which improperly tracks its variables.
-      raise ValueError(
-          ("The Template '%s' references variables which are not included via "
-           "object-based dependency tracking. Most likely a custom "
-           "getter/creator was registered which does not call Template's "
-           "custom variable creator (which is responsible for tracking "
-           "dependencies).\n\nExpected these variables to be dependencies: %s")
-          % (self, not_included_variables))
-    return dependencies
-
   def _checkpointable_custom_creator(self, next_creator, name, initial_value,
                                      checkpointable_parent=None, **kwargs):
     """A variable creation hook which adds Checkpointable dependencies.
@@ -452,8 +416,7 @@ class Template(checkpointable.CheckpointableBase):
       # Only reuse variables if they were already created.
       with variable_scope.variable_scope(
           self._variable_scope, reuse=self._variables_created):
-        result = self._call_func(args, kwargs)
-      return result
+        return self._call_func(args, kwargs)
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
@@ -461,8 +424,7 @@ class Template(checkpointable.CheckpointableBase):
           self._unique_name, self._name,
           custom_getter=self._custom_getter) as vs:
         self._variable_scope = vs
-        result = self._call_func(args, kwargs)
-        return result
+        return self._call_func(args, kwargs)
 
   @property
   def name(self):
@@ -730,8 +692,7 @@ class EagerTemplate(Template):
             self._variable_scope, reuse=variable_scope.AUTO_REUSE)
       with self._variable_scope_context_manager:
         with self._template_store.as_default():
-          result = self._call_func(args, kwargs)
-      return result
+          return self._call_func(args, kwargs)
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
@@ -743,8 +704,7 @@ class EagerTemplate(Template):
         # store's variable scope name is unset; set it here.
         self._template_store.set_variable_scope_name(vs.name)
         with self._template_store.as_default():
-          result = self._call_func(args, kwargs)
-        return result
+          return self._call_func(args, kwargs)
 
   @property
   def name(self):

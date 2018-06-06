@@ -285,6 +285,8 @@ class InferenceContext {
     return true;
   }
 
+  void SetInput(int idx, ShapeHandle shape) { inputs_[idx] = shape; }
+
   ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
@@ -315,6 +317,10 @@ class InferenceContext {
   void set_input_tensors_as_shapes(
       const std::vector<ShapeHandle>& input_tensors_as_shapes) {
     input_tensors_as_shapes_ = input_tensors_as_shapes;
+  }
+
+  const std::vector<ShapeHandle>& input_tensors_as_shapes() const {
+    return input_tensors_as_shapes_;
   }
 
   ShapeHandle output(int64 idx) const { return outputs_[idx]; }
@@ -426,6 +432,13 @@ class InferenceContext {
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
   Status Subshape(ShapeHandle s, int64 start, int64 end,
+                  ShapeHandle* out) TF_MUST_USE_RESULT;
+
+  // Returns in <*out> a sub-shape of <s>, with dimensions [start:end:stride].
+  // <start> and <end> can be negative, to index from the end of the shape.
+  // <start> and <end> are set to the rank of <s> if > rank of <s>.
+  // <stride> can be negative, to reverse the <s>.
+  Status Subshape(ShapeHandle s, int64 start, int64 end, int64 stride,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those
@@ -586,6 +599,12 @@ class InferenceContext {
   bool RelaxOutputHandleShapesAndMergeTypes(
       int idx,
       const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+
+  void set_input_handle_shapes_and_types(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+    input_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
+  }
 
   // Returns the output handle shapes and types, for the resource tensor output
   // at index <idx>. Returns NULL if the shape and types were never set.

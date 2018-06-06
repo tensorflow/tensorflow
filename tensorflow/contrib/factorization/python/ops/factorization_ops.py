@@ -107,7 +107,7 @@ class WALSModel(object):
       # the prep_gramian_op for row(column) can be run.
       worker_init_op = model.worker_init
 
-      # To be run once per integration sweep before the row(column) update
+      # To be run once per iteration sweep before the row(column) update
       # initialize ops can be run. Note that in the distributed training
       # situations, this should only be run by the chief trainer. All other
       # trainers need to block until this is done.
@@ -436,7 +436,7 @@ class WALSModel(object):
       gramian: Variable storing the gramian calculated from the factors.
 
     Returns:
-      A op that updates the gramian with the calculated value from the factors.
+      An op that updates the gramian with the calculated value from the factors.
     """
     partial_gramians = []
     for f in factors:

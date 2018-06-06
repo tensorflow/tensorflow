@@ -41,8 +41,8 @@ struct OpContext {
     input2 = GetInput(context, node, kInputTensor2);
     output = GetOutput(context, node, kOutputTensor);
   }
-  TfLiteTensor* input1;
-  TfLiteTensor* input2;
+  const TfLiteTensor* input1;
+  const TfLiteTensor* input2;
   TfLiteTensor* output;
 };
 

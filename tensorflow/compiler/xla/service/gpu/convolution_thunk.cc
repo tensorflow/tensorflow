@@ -25,17 +25,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
 using se::dnn::AlgorithmDesc;
-using se::dnn::BatchDescriptor;
-using se::dnn::ConvolutionDescriptor;
-using se::dnn::DataLayout;
-using se::dnn::FilterDescriptor;
-using se::dnn::FilterLayout;
 
 ConvolutionThunk::ConvolutionThunk(
     CudnnConvKind convolution_kind, const BufferAllocation::Slice& input_buffer,

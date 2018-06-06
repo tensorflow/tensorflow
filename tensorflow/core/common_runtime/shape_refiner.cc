@@ -232,13 +232,12 @@ Status ShapeRefiner::AddNode(const Node* node) {
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
 
-    // Only propagate handle data of edges which are carrying resource handles.
-    if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
-      const auto* in_v = c->output_handle_shapes_and_types(e->src_output());
-      if (in_v != nullptr) {
-        input_handle_shapes_and_types[e->dst_input()].reset(
-            new std::vector<ShapeAndType>(*in_v));
-      }
+    const auto* in_v = c->output_handle_shapes_and_types(e->src_output());
+    if (in_v != nullptr) {
+      DataType input_type = e->src()->output_type(e->src_output());
+      DCHECK(input_type == DT_RESOURCE || input_type == DT_VARIANT);
+      input_handle_shapes_and_types[e->dst_input()].reset(
+          new std::vector<ShapeAndType>(*in_v));
     }
   }
 
@@ -422,6 +421,28 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
                                 kMaxTensorSize, disable_constant_propagation_);
 }
 
+Status ShapeRefiner::EvaluateConstantIntScalarEdge(const Node* node,
+                                                   int dst_idx, bool* evaluated,
+                                                   int64* result) {
+  Tensor scalar;
+  TF_RETURN_IF_ERROR(
+      EvaluateConstantTensorForEdge(node, dst_idx, evaluated, &scalar));
+  if (*evaluated) {
+    DCHECK_EQ(scalar.NumElements(), 1)
+        << "EvaluateConstantIntScalarEdge called on non-scalar edge: "
+        << scalar.NumElements();
+    if (scalar.dtype() == DT_INT32) {
+      *result = scalar.scalar<int32>()();
+    } else {
+      DCHECK_EQ(scalar.dtype(), DT_INT64)
+          << "EvaluateConstantIntScalarEdge called on non-integer edge: "
+          << scalar.dtype();
+      *result = scalar.scalar<int64>()();
+    }
+  }
+  return Status::OK();
+}
+
 Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
                                           const Node* node, int dst_idx,
                                           ShapeHandle* result) {
@@ -472,19 +493,11 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
     std::vector<DimensionHandle> dims;
     // Pack is concatenating its input scalars to form the shape tensor vector.
     for (int i = 0; i < src_context->num_inputs(); ++i) {
-      Tensor scalar;
-      bool evaluated = false;
-      TF_RETURN_IF_ERROR(EvaluateConstantTensorForEdge(input_edge->src(), i,
-                                                       &evaluated, &scalar));
+      int64 size;
+      bool evaluated;
+      TF_RETURN_IF_ERROR(EvaluateConstantIntScalarEdge(input_edge->src(), i,
+                                                       &evaluated, &size));
       if (evaluated) {
-        int64 size;
-        if (scalar.dtype() == DT_INT32) {
-          size = scalar.scalar<int32>()();
-        } else if (scalar.dtype() == DT_INT64) {
-          size = scalar.scalar<int64>()();
-        } else {
-          return errors::InvalidArgument("Pack input must be int32 or int64");
-        }
         dims.push_back(size < 0 ? target_context->UnknownDim()
                                 : target_context->MakeDim(size));
       } else {
@@ -514,6 +527,9 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
       TF_RETURN_IF_ERROR(
           target_context->Concatenate(*result, sub_result, result));
     }
+  } else if (src_op == "StridedSlice") {
+    TF_RETURN_IF_ERROR(
+        PartialStridedSliceShape(input_edge->src(), src_context, result));
   } else {
     Tensor t;
     bool evaluated = false;
@@ -522,6 +538,78 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
     TF_RETURN_IF_ERROR(target_context->MakeShapeFromTensor(
         evaluated ? &t : nullptr, src_shape, result));
   }
+  return Status::OK();
+}
+
+Status ShapeRefiner::PartialStridedSliceShape(Node* slice_node,
+                                              InferenceContext* ctx,
+                                              ShapeHandle* result) {
+  // Only attempt to evaluate if begin/end/strides all are scalars.
+  for (int i = 1; i <= 3; ++i) {
+    ShapeHandle input_shape = ctx->input(i);
+    if (ctx->Value(ctx->Dim(input_shape, 0)) != 1) {
+      *result = ctx->UnknownShape();
+      return Status::OK();
+    }
+  }
+
+  int begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(slice_node->attrs(), "begin_mask", &begin_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttr(slice_node->attrs(), "end_mask", &end_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(slice_node->attrs(), "ellipsis_mask", &ellipsis_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(slice_node->attrs(), "new_axis_mask", &new_axis_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(slice_node->attrs(), "shrink_axis_mask", &shrink_axis_mask));
+
+  // Only attempt to evaluate if there are no special masks set (note that we
+  // can handle begin/end_mask == 1).
+  if (!(begin_mask == 0 || begin_mask == 1) ||
+      !(end_mask == 0 || end_mask == 1) || ellipsis_mask != 0 ||
+      new_axis_mask != 0 || shrink_axis_mask != 0) {
+    *result = ctx->UnknownShape();
+    return Status::OK();
+  }
+
+  bool evaluated;
+  int64 begin;
+  if (begin_mask == 1) {
+    begin = 0;
+  } else {
+    TF_RETURN_IF_ERROR(
+        EvaluateConstantIntScalarEdge(slice_node, 1, &evaluated, &begin));
+    if (!evaluated) {
+      *result = ctx->UnknownShape();
+      return Status::OK();
+    }
+  }
+
+  int64 end;
+  if (end_mask == 1) {
+    end = std::numeric_limits<int64>::max();
+  } else {
+    TF_RETURN_IF_ERROR(
+        EvaluateConstantIntScalarEdge(slice_node, 2, &evaluated, &end));
+    if (!evaluated) {
+      *result = ctx->UnknownShape();
+      return Status::OK();
+    }
+  }
+
+  int64 stride;
+  TF_RETURN_IF_ERROR(
+      EvaluateConstantIntScalarEdge(slice_node, 3, &evaluated, &stride));
+  if (!evaluated) {
+    *result = ctx->UnknownShape();
+    return Status::OK();
+  }
+
+  // Apply stride to input interpreted as a partial shape.
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(ConstantPartialShape(ctx, slice_node, 0, &input));
+  TF_RETURN_IF_ERROR(ctx->Subshape(input, begin, end, stride, result));
   return Status::OK();
 }
 

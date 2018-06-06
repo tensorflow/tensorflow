@@ -27,6 +27,17 @@ from tensorflow.python.platform import test
 
 class TransformerTest(test.TestCase):
 
+  def _context_for_nodetesting(self):
+    return context.EntityContext(
+        namer=None,
+        source_code=None,
+        source_file=None,
+        namespace=None,
+        arg_values=None,
+        arg_types=None,
+        owner_type=None,
+        recursive=False)
+
   def test_entity_scope_tracking(self):
 
     class TestTransformer(transformer.Base):
@@ -42,16 +53,7 @@ class TransformerTest(test.TestCase):
         anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
         return self.generic_visit(node)
 
-    tr = TestTransformer(
-        context.EntityContext(
-            namer=None,
-            source_code=None,
-            source_file=None,
-            namespace=None,
-            arg_values=None,
-            arg_types=None,
-            owner_type=None,
-            recursive=False))
+    tr = TestTransformer(self._context_for_nodetesting())
 
     def test_function():
       a = 0
@@ -91,6 +93,86 @@ class TransformerTest(test.TestCase):
     self.assertEqual((test_function_node, test_class, test_method,
                       inner_function, lambda_node),
                      anno.getanno(lambda_expr, 'enclosing_entities'))
+
+  def test_statement_info_stack(self):
+
+    class TestTransformer(transformer.Base):
+
+      # Extract all string constants from the block.
+      def visit_Str(self, node):
+        self.set_local('string', self.get_local('string', default='') + node.s)
+        return self.generic_visit(node)
+
+      def _annotate_result(self, node):
+        self.enter_local_scope()
+        node = self.generic_visit(node)
+        anno.setanno(node, 'test', self.get_local('string'))
+        self.exit_local_scope()
+        return node
+
+      def visit_While(self, node):
+        return self._annotate_result(node)
+
+      def visit_For(self, node):
+        return self._annotate_result(node)
+
+    tr = TestTransformer(self._context_for_nodetesting())
+
+    def test_function(a):
+      """Docstring."""
+      assert a == 'This should not be counted'
+      for i in range(3):
+        _ = 'a'
+        if i > 2:
+          return 'b'
+        else:
+          _ = 'c'
+          while True:
+            raise '1'
+      return 'nor this'
+
+    node, _ = parser.parse_entity(test_function)
+    node = tr.visit(node)
+
+    for_node = node.body[0].body[2]
+    while_node = for_node.body[1].orelse[1]
+
+    self.assertFalse(anno.hasanno(for_node, 'string'))
+    self.assertEqual('abc', anno.getanno(for_node, 'test'))
+    self.assertFalse(anno.hasanno(while_node, 'string'))
+    self.assertEqual('1', anno.getanno(while_node, 'test'))
+
+  def test_statement_info_stack_checks_integrity(self):
+
+    class TestTransformer(transformer.Base):
+
+      def visit_If(self, node):
+        self.enter_local_scope()
+        return self.generic_visit(node)
+
+      def visit_For(self, node):
+        node = self.generic_visit(node)
+        self.exit_local_scope()
+        return node
+
+    tr = TestTransformer(self._context_for_nodetesting())
+
+    def no_exit(a):
+      if a > 0:
+        print(a)
+      return None
+
+    node, _ = parser.parse_entity(no_exit)
+    with self.assertRaises(AssertionError):
+      tr.visit(node)
+
+    def no_entry(a):
+      for _ in a:
+        print(a)
+
+    node, _ = parser.parse_entity(no_entry)
+    with self.assertRaises(AssertionError):
+      tr.visit(node)
 
 
 if __name__ == '__main__':

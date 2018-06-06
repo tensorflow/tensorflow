@@ -90,11 +90,15 @@ class BaseGPUDevice : public LocalDevice {
 
   // Returns the CUDA GPU id of this device within the native driver system;
   // e.g., for CUDA this is the ordinal of the GPU within the system.
-  int gpu_id() const { return GpuIdManager::TfToCudaGpuId(tf_gpu_id_).value(); }
+  int gpu_id() const {
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id_, &cuda_gpu_id));
+    return cuda_gpu_id.value();
+  }
 
   // The executor that provides control for the device; e.g., for CUDA this
   // corresponds to the cuda context.
-  gpu::StreamExecutor* executor() const { return executor_; }
+  se::StreamExecutor* executor() const { return executor_; }
 
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
                                 int64 step_id) override;
@@ -107,15 +111,15 @@ class BaseGPUDevice : public LocalDevice {
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
-  gpu::StreamExecutor* executor_;  // not owned
+  se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
  private:
   struct StreamGroup {
-    gpu::Stream* compute = nullptr;
-    gpu::Stream* host_to_device = nullptr;
-    gpu::Stream* device_to_host = nullptr;
-    gpu::Stream* device_to_device = nullptr;
+    se::Stream* compute = nullptr;
+    se::Stream* host_to_device = nullptr;
+    se::Stream* device_to_host = nullptr;
+    se::Stream* device_to_device = nullptr;
   };
   class StreamGroupFactory;
 
@@ -134,6 +138,9 @@ class BaseGPUDevice : public LocalDevice {
                           int stream_id, Allocator* allocator);
 
   void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
+
+  string ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                    const int& stream_id);
 
   // This method returns an initialization status, in addition to
   // calling the "done" StatusCallback, if there is a failure to
@@ -168,7 +175,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // pathways between GPUs.
   virtual Status GetInterconnectMaps(
       const std::vector<CudaGpuId>& visible_gpu_order,
-      gpu::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
+      se::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
 
   struct TfGpuIdHash {
     std::size_t operator()(const TfGpuId& id) const noexcept {

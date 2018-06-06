@@ -60,6 +60,39 @@ class ShapeRefinerTest : public ::testing::Test {
   }
 
   static constexpr int64 kMaxTensorSize = ShapeRefiner::kMaxTensorSize;
+
+  void TestStridedSlice(const PartialTensorShape& input_shape, int begin,
+                        int end, int stride, const char* expected,
+                        int begin_mask = 0, int end_mask = 0,
+                        int ellipsis_mask = 0) {
+    Scope root = Scope::DisabledShapeInferenceScope();
+    auto placeholder =
+        ops::Placeholder(root, DT_INT32, ops::Placeholder::Shape(input_shape));
+    auto input = ops::Shape(root, placeholder);
+    auto begin_op = ops::Const(root, {begin});
+    auto end_op = ops::Const(root, {end});
+    auto stride_op = ops::Const(root, {stride});
+    auto slice = ops::StridedSlice(root, input, begin_op, end_op, stride_op,
+                                   ops::StridedSlice::BeginMask(begin_mask)
+                                       .EndMask(end_mask)
+                                       .EllipsisMask(ellipsis_mask));
+    Node* result;
+    TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                     .Input(slice.node())
+                     .Finalize(root.graph(), &result));
+
+    ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+    TF_ASSERT_OK(m.AddNode(placeholder.node()));
+    TF_ASSERT_OK(m.AddNode(input.node()));
+    TF_ASSERT_OK(m.AddNode(begin_op.node()));
+    TF_ASSERT_OK(m.AddNode(end_op.node()));
+    TF_ASSERT_OK(m.AddNode(stride_op.node()));
+    TF_ASSERT_OK(m.AddNode(slice.node()));
+    TF_ASSERT_OK(m.AddNode(result));
+
+    shape_inference::InferenceContext* ctx = m.GetContext(result);
+    EXPECT_EQ(ctx->DebugString(ctx->output(0)), expected);
+  }
 };
 
 namespace {
@@ -1154,6 +1187,73 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
   TF_ASSERT_OK(m.AddNode(concat.node()));
   EXPECT_EQ("Invalid value in tensor used for shape: -2",
             m.AddNode(result).error_message());
+}
+
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSlice) {
+  TestStridedSlice(
+      /*input_shape=*/{1, -1, 3, -1, 5},
+      /*begin=*/2,
+      /*end=*/5,
+      /*stride=*/1,
+      /*expected=*/"[3,?,5]");
+}
+
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSliceNegativeStride) {
+  // clang-format off
+  TestStridedSlice(
+      /*input_shape=*/{1, -1, 3, -1, 5},
+      /*begin=*/10,
+      /*end=*/0,
+      /*stride=*/-1,
+      /*expected=*/"[5,?,3,?]");
+  // clang-format on
+}
+
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSliceMasks) {
+  TestStridedSlice(
+      /*input_shape=*/{1, -1, 3, -1, 5},
+      /*begin=*/3,
+      /*end=*/4,
+      /*stride=*/1,
+      /*expected=*/"[1,?,3,?,5]",
+      /*begin_mask=*/1,
+      /*end_mask=*/1);
+}
+
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSliceInvalidMask) {
+  TestStridedSlice(
+      /*input_shape=*/{1, -1, 3},
+      /*begin=*/2,
+      /*end=*/3,
+      /*stride=*/1,
+      /*expected=*/"[?,?,?]",
+      /*begin_mask=*/0,
+      /*end_mask=*/0,
+      /*ellipsis_mask=*/1);
+}
+
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSliceMulti) {
+  Scope root = Scope::DisabledShapeInferenceScope();
+  auto input = ops::Placeholder(root, DT_INT32);
+  auto begin = ops::Const(root, {0, 0});
+  auto end = ops::Const(root, {2, 2});
+  auto stride = ops::Const(root, {1, 1});
+  auto slice = ops::StridedSlice(root, input, begin, end, stride);
+  Node* result;
+  TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
+                   .Input(slice.node())
+                   .Finalize(root.graph(), &result));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(begin.node()));
+  TF_ASSERT_OK(m.AddNode(end.node()));
+  TF_ASSERT_OK(m.AddNode(stride.node()));
+  TF_ASSERT_OK(m.AddNode(slice.node()));
+  TF_ASSERT_OK(m.AddNode(result));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(result);
+  EXPECT_EQ(ctx->DebugString(ctx->output(0)), "?");
 }
 
 namespace {

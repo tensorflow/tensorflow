@@ -36,24 +36,13 @@ DeviceMemoryAllocator* ExecutableRunOptions::allocator() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_stream(
-    perftools::gputools::Stream* stream) {
+    stream_executor::Stream* stream) {
   stream_ = stream;
   return *this;
 }
 
-perftools::gputools::Stream* ExecutableRunOptions::stream() const {
+stream_executor::Stream* ExecutableRunOptions::stream() const {
   return stream_;
-}
-
-ExecutableRunOptions& ExecutableRunOptions::set_inter_op_thread_pool(
-    tensorflow::thread::ThreadPool* inter_op_thread_pool) {
-  inter_op_thread_pool_ = inter_op_thread_pool;
-  return *this;
-}
-
-tensorflow::thread::ThreadPool* ExecutableRunOptions::inter_op_thread_pool()
-    const {
-  return inter_op_thread_pool_;
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_intra_op_thread_pool(

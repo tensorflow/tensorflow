@@ -129,13 +129,23 @@ class FFTCPU : public FFTBase {
     auto device = ctx->eigen_device<CPUDevice>();
 
     if (!IsReal()) {
-      auto input = Tensor(in).flat_inner_dims<complex64, FFTRank + 1>();
-      // Compute the FFT using eigen.
-      auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
+      // Compute the FFT using Eigen.
       constexpr auto direction =
           Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE;
-      output.device(device) =
-          input.template fft<Eigen::BothParts, direction>(axes);
+      if (in.dtype() == DT_COMPLEX64) {
+        DCHECK_EQ(out->dtype(), DT_COMPLEX64);
+        auto input = Tensor(in).flat_inner_dims<complex64, FFTRank + 1>();
+        auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
+        output.device(device) =
+            input.template fft<Eigen::BothParts, direction>(axes);
+      } else {
+        DCHECK_EQ(DT_COMPLEX128, in.dtype());
+        DCHECK_EQ(DT_COMPLEX128, out->dtype());
+        auto input = Tensor(in).flat_inner_dims<complex128, FFTRank + 1>();
+        auto output = out->flat_inner_dims<complex128, FFTRank + 1>();
+        output.device(device) =
+            input.template fft<Eigen::BothParts, direction>(axes);
+      }
     } else {
       if (IsForward()) {
         auto input = Tensor(in).flat_inner_dims<float, FFTRank + 1>();
@@ -277,20 +287,19 @@ REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
 #undef FFT_LABEL
 
 #if GOOGLE_CUDA
-namespace gpu = ::perftools::gputools;
 
 namespace {
 template <typename T>
-gpu::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  gpu::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
-  gpu::DeviceMemory<T> typed(wrapped);
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
 template <typename T>
-gpu::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  gpu::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
-  gpu::DeviceMemory<T> typed(wrapped);
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
@@ -299,19 +308,19 @@ gpu::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // the kernel finishes.
 // TODO(yangzihao): Refactor redundant code in subclasses of ScratchAllocator
 // into base class.
-class CufftScratchAllocator : public gpu::ScratchAllocator {
+class CufftScratchAllocator : public se::ScratchAllocator {
  public:
   ~CufftScratchAllocator() override {}
   CufftScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes(gpu::Stream* stream) override {
+  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
     return memory_limit_;
   }
-  gpu::port::StatusOr<gpu::DeviceMemory<uint8>> AllocateBytes(
-      gpu::Stream* stream, int64 byte_size) override {
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      se::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
-      return gpu::port::StatusOr<gpu::DeviceMemory<uint8>>();
+      return se::port::StatusOr<se::DeviceMemory<uint8>>();
     }
     AllocationAttributes allocation_attr;
     allocation_attr.no_retry_on_failure = true;
@@ -319,13 +328,13 @@ class CufftScratchAllocator : public gpu::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return gpu::port::StatusOr<gpu::DeviceMemory<uint8>>();
+      return se::port::StatusOr<se::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return gpu::port::StatusOr<gpu::DeviceMemory<uint8>>(
+    return se::port::StatusOr<se::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
@@ -393,10 +402,16 @@ class FFTGPUBase : public FFTBase {
     }
 
     constexpr bool kInPlaceFft = false;
+    const bool is_complex128 = in.dtype() == DT_COMPLEX128;
+    // complex128 real FFT is not supported yet.
+    DCHECK(!IsReal() || !is_complex128);
+
     const auto kFftType =
-        IsReal() ? (IsForward() ? gpu::fft::Type::kR2C : gpu::fft::Type::kC2R)
-                 : (IsForward() ? gpu::fft::Type::kC2CForward
-                                : gpu::fft::Type::kC2CInverse);
+        IsReal() ? (IsForward() ? se::fft::Type::kR2C : se::fft::Type::kC2R)
+                 : (IsForward() ? (is_complex128 ? se::fft::Type::kZ2ZForward
+                                                 : se::fft::Type::kC2CForward)
+                                : (is_complex128 ? se::fft::Type::kZ2ZInverse
+                                                 : se::fft::Type::kC2CInverse));
 
     CufftScratchAllocator scratch_allocator(CufftScratchSize, ctx);
     auto plan =
@@ -429,20 +444,42 @@ class FFTGPUBase : public FFTBase {
                              input_shape.DebugString()));
       }
     } else {
-      auto src = AsDeviceMemory<complex64>(in.flat<complex64>().data());
-      auto dst = AsDeviceMemory<complex64>(out->flat<complex64>().data());
-      OP_REQUIRES(
-          ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
-          errors::Internal("fft failed : type=", static_cast<int>(kFftType),
-                           " in.shape=", input_shape.DebugString()));
-      if (!IsForward()) {
-        auto alpha = complex64(1.f / output_distance);
+      if (!is_complex128) {
+        DCHECK_EQ(in.dtype(), DT_COMPLEX64);
+        DCHECK_EQ(out->dtype(), DT_COMPLEX64);
+        auto src = AsDeviceMemory<complex64>(in.flat<complex64>().data());
+        auto dst = AsDeviceMemory<complex64>(out->flat<complex64>().data());
         OP_REQUIRES(
-            ctx,
-            stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-                .ok(),
-            errors::Internal("BlasScal failed : in.shape=",
-                             input_shape.DebugString()));
+            ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
+            errors::Internal("fft failed : type=", static_cast<int>(kFftType),
+                             " in.shape=", input_shape.DebugString()));
+        if (!IsForward()) {
+          float alpha = 1.f / output_distance;
+          OP_REQUIRES(
+              ctx,
+              stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
+                  .ok(),
+              errors::Internal("BlasScal failed : in.shape=",
+                               input_shape.DebugString()));
+        }
+      } else {
+        DCHECK_EQ(in.dtype(), DT_COMPLEX128);
+        DCHECK_EQ(out->dtype(), DT_COMPLEX128);
+        auto src = AsDeviceMemory<complex128>(in.flat<complex128>().data());
+        auto dst = AsDeviceMemory<complex128>(out->flat<complex128>().data());
+        OP_REQUIRES(
+            ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
+            errors::Internal("fft failed : type=", static_cast<int>(kFftType),
+                             " in.shape=", input_shape.DebugString()));
+        if (!IsForward()) {
+          double alpha = 1.0 / output_distance;
+          OP_REQUIRES(
+              ctx,
+              stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
+                  .ok(),
+              errors::Internal("BlasScal failed : in.shape=",
+                               input_shape.DebugString()));
+        }
       }
     }
   }

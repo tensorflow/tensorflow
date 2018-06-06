@@ -126,8 +126,8 @@ class Gamma(distribution.Distribution):
     Raises:
       TypeError: if `concentration` and `rate` are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -261,8 +261,8 @@ class GammaWithSoftplusConcentrationRate(Gamma):
                validate_args=False,
                allow_nan_stats=True,
                name="GammaWithSoftplusConcentrationRate"):
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       super(GammaWithSoftplusConcentrationRate, self).__init__(
           concentration=nn.softplus(concentration,
                                     name="softplus_concentration"),

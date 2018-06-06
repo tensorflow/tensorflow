@@ -181,16 +181,6 @@ StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
                            PyObjectCppRepr(o).c_str());
   };
 
-  auto get_attr = [o, &error](const string& field) -> StatusOr<PyObject*> {
-    PyObject* result =
-        PyObject_GetAttrString(o, const_cast<char*>(field.c_str()));
-    if (result == nullptr) {
-      return error(tensorflow::strings::StrCat(
-          "Failed to get attribute of Shape object:", field));
-    }
-    return result;
-  };
-
   auto call_method = [o, &error](const string& method) -> StatusOr<PyObject*> {
     PyObject* result =
         PyObject_CallMethod(o, const_cast<char*>(method.c_str()), nullptr);
@@ -202,12 +192,16 @@ StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
   };
 
   PyObject* np_type;
-  TF_ASSIGN_OR_RETURN(np_type, get_attr("np_dtype"));
+  TF_ASSIGN_OR_RETURN(np_type, call_method("numpy_dtype"));
   if (np_type->ob_type != &PyArrayDescr_Type) {
-    return error("Shape attribute np_dtype is not an integer numpy dtype");
+    return error(
+        "Return value of shape method numpy_dtype "
+        "is not an integer numpy dtype");
   }
   if (!NumpyTypeIsValid(NumpyTypenum(np_type))) {
-    return error("Shape attribute np_dtype is not a valid integer numpy dtype");
+    return error(
+        "Return value of shape method numpy_dtype "
+        "is not a valid integer numpy dtype");
   }
   const PrimitiveType element_type =
       NumpyTypeToPrimitiveType(NumpyTypenum(np_type));
@@ -346,13 +340,13 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
   return result;
 }
 
-PyObject* PyObjectFromXlaLiteral(const Literal& literal) {
+PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   if (ShapeUtil::IsTuple(literal.shape())) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {
-      PyTuple_SET_ITEM(
-          tuple, i, PyObjectFromXlaLiteral(LiteralView::Create(literal, {i})));
+      PyTuple_SET_ITEM(tuple, i,
+                       PyObjectFromXlaLiteral(LiteralSlice(literal, {i})));
     }
     return tuple;
   } else {
@@ -437,7 +431,7 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
   return Status::OK();
 }
 
-void CopyLiteralToNumpyArray(int np_type, const Literal& literal,
+void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
                              PyArrayObject* py_array) {
   switch (np_type) {
     case NPY_BOOL:

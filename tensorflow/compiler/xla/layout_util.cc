@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -139,8 +140,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ tensorflow::Status LayoutUtil::ValidateLayoutInShape(
-    const Shape& shape) {
+/* static */ Status LayoutUtil::ValidateLayoutInShape(const Shape& shape) {
   if (ShapeUtil::IsTuple(shape)) {
     // Tuple shape.
     if (shape.has_layout()) {
@@ -149,12 +149,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     for (auto& element_shape : shape.tuple_shapes()) {
       TF_RETURN_IF_ERROR(ValidateLayoutInShape(element_shape));
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   } else if (ShapeUtil::IsOpaque(shape)) {
     if (shape.has_layout()) {
       return InvalidArgument("opaque should not have a layout field");
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   } else {
     // Array shape.
     if (!shape.has_layout()) {
@@ -165,14 +165,14 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 }
 
-/* static */ tensorflow::Status LayoutUtil::ValidateLayoutForShape(
-    const Layout& layout, const Shape& shape) {
+/* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
+                                                       const Shape& shape) {
   if (ShapeUtil::IsTuple(shape)) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
 
   if (ShapeUtil::IsOpaque(shape)) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   if (layout.format() == INVALID_FORMAT) {
@@ -224,7 +224,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     }
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 /* static */ void LayoutUtil::ClearLayout(Shape* shape) {
@@ -383,7 +383,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 namespace {
 
 // Internal helper for recursively copying layouts.
-tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+Status CopyLayoutInternal(const Shape& src, Shape* dst) {
   if (ShapeUtil::IsTuple(src) != ShapeUtil::IsTuple(*dst)) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
@@ -410,14 +410,13 @@ tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       dst->clear_layout();
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace
 
 /* static */
-tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
-                                                       Shape* dst) {
+Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 
@@ -463,6 +462,27 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
 std::ostream& operator<<(std::ostream& out, const Layout& layout) {
   out << LayoutUtil::HumanString(layout);
   return out;
+}
+
+/*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
+  using tensorflow::hash;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = hash<Format>()(layout.format());
+
+  for (int64 minor_to_major : layout.minor_to_major()) {
+    hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
+  }
+
+  for (int64 padded_dim : layout.padded_dimensions()) {
+    hash_value = Hash64Combine(hash_value, hash<int64>()(padded_dim));
+  }
+
+  hash_value =
+      Hash64Combine(hash_value, hash<PaddingValue>()(layout.padding_value()));
+  hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
+
+  return hash_value;
 }
 
 }  // namespace xla

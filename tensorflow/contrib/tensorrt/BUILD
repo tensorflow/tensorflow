@@ -11,6 +11,7 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -66,6 +67,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
+        ":trt_plugins",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
@@ -85,6 +87,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
+        ":trt_plugins",
         ":trt_resources",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -101,9 +104,6 @@ tf_gen_op_libs(
         "trt_engine_op",
         "trt_calib_op",
     ],
-    deps = if_tensorrt([
-        "@local_config_tensorrt//:nv_infer",
-    ]),
 )
 
 tf_cuda_library(
@@ -137,8 +137,15 @@ tf_custom_op_py_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
+    kernels = [
+        ":trt_engine_op_kernel",
+        ":trt_engine_op_op_lib",
+        ":trt_calib_op_op_lib",
+        ":trt_shape_function",
+    ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resources",
     ],
@@ -173,6 +180,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":wrap_conversion",
+        "//tensorflow/python:tf_optimizer",
     ],
 )
 
@@ -191,10 +199,12 @@ tf_py_wrap_cc(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
+        "resources/trt_allocator.cc",
         "resources/trt_int8_calibrator.cc",
         "resources/trt_resource_manager.cc",
     ],
     hdrs = [
+        "resources/trt_allocator.h",
         "resources/trt_int8_calibrator.h",
         "resources/trt_resource_manager.h",
         "resources/trt_resources.h",
@@ -215,18 +225,25 @@ tf_cuda_library(
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
+        "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
         "convert/convert_graph.h",
         "convert/convert_nodes.h",
+        "convert/trt_optimization_pass.h",
     ],
     deps = [
         ":segment",
+        ":trt_plugins",
         ":trt_logging",
         ":trt_resources",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -235,8 +252,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/optimizers:constant_folding",
-        "//tensorflow/core/grappler/optimizers:layout_optimizer",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
@@ -250,7 +266,6 @@ cc_library(
         "segment/segment.h",
         "segment/union_find.h",
     ],
-    linkstatic = 1,
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
@@ -270,5 +285,61 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+# Library for the plugin factory
+tf_cuda_library(
+    name = "trt_plugins",
+    srcs = [
+        "plugin/trt_plugin.cc",
+        "plugin/trt_plugin_factory.cc",
+        "plugin/trt_plugin_utils.cc",
+    ],
+    hdrs = [
+        "plugin/trt_plugin.h",
+        "plugin/trt_plugin_factory.h",
+        "plugin/trt_plugin_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:platform_base",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
+tf_cuda_cc_test(
+    name = "trt_plugin_factory_test",
+    size = "small",
+    srcs = ["plugin/trt_plugin_factory_test.cc"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":trt_plugins",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
+py_test(
+    name = "tf_trt_integration_test",
+    srcs = ["test/tf_trt_integration_test.py"],
+    main = "test/tf_trt_integration_test.py",
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":init_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )

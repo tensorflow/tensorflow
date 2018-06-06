@@ -37,6 +37,17 @@ REGISTER_OP("RegexReplace")
       return Status::OK();
     });
 
+REGISTER_OP("RegexFullMatch")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
     .Output("output: int64")
@@ -122,6 +133,11 @@ REGISTER_OP("StringSplit")
       c->set_output(2, c->Vector(2));
       return Status::OK();
     });
+
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")
     .Input("input: string")

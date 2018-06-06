@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -35,7 +34,7 @@ class SegmentTest : public ::testing::Test {
   TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                     TF_Status* s, const char* name);
 
-  std::function<bool(const Node*)> MakeCandidateFn(
+  std::function<bool(const tensorflow::Node*)> MakeCandidateFn(
       const std::set<string>& node_names);
 
  protected:
@@ -60,9 +59,9 @@ bool SegmentTest::GetGraphDef(TF_Graph* graph,
   return ret;
 }
 
-std::function<bool(const Node*)> SegmentTest::MakeCandidateFn(
+std::function<bool(const tensorflow::Node*)> SegmentTest::MakeCandidateFn(
     const std::set<string>& node_names) {
-  return [node_names](const Node* node) -> bool {
+  return [node_names](const tensorflow::Node* node) -> bool {
     return node_names.find(node->name()) != node_names.end();
   };
 }
@@ -165,7 +164,7 @@ TEST_F(SegmentTest, Simple) {
   ASSERT_EQ(segments.size(), 1);
   std::vector<string> expected{"add0", "add1", "add2", "add3", "add4"};
   for (const auto& ex : expected) {
-    EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
+    EXPECT_TRUE(segments[0].first.find(ex) != segments[0].first.end())
         << "Missing expected node " << ex;
   }
   TF_DeleteGraph(graph);
@@ -278,13 +277,13 @@ TEST_F(SegmentTest, Multiple) {
 
   std::vector<string> expected0{"add0", "add1", "add2", "add3"};
   for (const auto& ex : expected0) {
-    EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
+    EXPECT_TRUE(segments[0].first.find(ex) != segments[0].first.end())
         << "Missing expected node " << ex;
   }
 
   std::vector<string> expected1{"add6", "add8"};
   for (const auto& ex : expected1) {
-    EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
+    EXPECT_TRUE(segments[1].first.find(ex) != segments[1].first.end())
         << "Missing expected node " << ex;
   }
   TF_DeleteGraph(graph);
@@ -348,13 +347,13 @@ TEST_F(SegmentTest, BigIfElse) {
 
   std::vector<string> expected0{"add3", "add4", "add5", "add6", "add7"};
   for (const auto& ex : expected0) {
-    EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
+    EXPECT_TRUE(segments[0].first.find(ex) != segments[0].first.end())
         << "Missing expected node " << ex;
   }
 
   std::vector<string> expected1{"add0", "add1"};
   for (const auto& ex : expected1) {
-    EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
+    EXPECT_TRUE(segments[1].first.find(ex) != segments[1].first.end())
         << "Missing expected node " << ex;
   }
   TF_DeleteGraph(graph);

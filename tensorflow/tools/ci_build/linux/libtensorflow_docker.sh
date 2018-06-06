@@ -45,7 +45,6 @@ ${DOCKER_BINARY} run \
   -v ${ROOT_DIR}:/workspace \
   -w /workspace \
   -e "PYTHON_BIN_PATH=/usr/bin/python" \
-  -e "TF_NEED_GCP=0" \
   -e "TF_NEED_HDFS=0" \
   -e "TF_NEED_CUDA=${TF_NEED_CUDA}" \
   -e "TF_NEED_OPENCL_SYCL=0" \

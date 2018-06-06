@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -56,25 +56,24 @@ class ArithmeticOptimizer : public GraphOptimizer {
   struct ArithmeticOptimizerOptions {
     // TODO(ezhulenev): flag do disable TrySimplifyAndReplaceUses in tests.
     // Remove when all optimizers will be migrated to separate stages.
+    bool dedup_computations = true;
     bool enable_try_simplify_and_replace = true;
-    bool combine_add_to_addn = false;
+    bool combine_add_to_addn = true;
     bool hoist_common_factor_out_of_aggregation = true;
-    bool minimize_broadcasts = false;
+    bool minimize_broadcasts = true;
     bool remove_identity_transpose = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
     bool remove_negation = true;
+    bool hoist_cwise_unary_chains = false;
+    bool convert_sqrt_div_to_rsqrt_mul = false;
+    bool remove_idempotent = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
       ArithmeticOptimizerOptions options;
-      // TODO(ezhulenev): enable by default after 1.8 release cut
-      if (opt_level == RewriterConfig::AGGRESSIVE) {
-        options.combine_add_to_addn = true;
-        options.minimize_broadcasts = true;
-      }
       return options;
     }
   };
@@ -109,7 +108,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   Status SimplifyArithmeticOps(bool can_use_shapes);
   // Tries to simplify the expression that roots at `node` and replaces the uses
   // of `node` to the simplified expression. Returns the name of the simplified
-  // tensor (e.g. "split:1") or an emtpy string if no simplification is
+  // tensor (e.g. "split:1") or an empty string if no simplification is
   // performed.
   //
   // `node_map` stores the mapping from node names to NodeDef*, and will be
@@ -138,4 +137,4 @@ class ArithmeticOptimizer : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_

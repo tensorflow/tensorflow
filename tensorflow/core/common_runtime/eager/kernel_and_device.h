@@ -32,6 +32,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Forward declaration for proto class NodeExecStats so we do not need to
+// include the proto header
+class NodeExecStats;
+
 // KernelAndDevice encapsulates an instantiated kernel and the device it is on.
 //
 // Also see:

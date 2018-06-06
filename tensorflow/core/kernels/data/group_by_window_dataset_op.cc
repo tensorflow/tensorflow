@@ -241,7 +241,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
                   key_func_output[0].NumElements() != 1) {
-                // TODO(mrry): Support non-int64 keys.
+                // TODO(b/78665031): Support non-int64 keys.
                 return errors::InvalidArgument(
                     "`key_func` must return a scalar int64.");
               }

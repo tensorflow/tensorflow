@@ -656,6 +656,7 @@ _PYTHON_TO_TF = {
     bool: bool,
 }
 
+
 @tf_export("as_dtype")
 def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.

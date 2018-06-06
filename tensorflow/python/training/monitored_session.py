@@ -25,7 +25,6 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.estimator import util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,6 +40,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -202,7 +202,7 @@ class Scaffold(object):
     if self._local_init_op is None:
       self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
-          Scaffold._default_local_init_op)
+          Scaffold.default_local_init_op)
     if self._summary_op is None:
       self._summary_op = Scaffold.get_or_default('summary_op',
                                                  ops.GraphKeys.SUMMARY_OP,
@@ -267,7 +267,17 @@ class Scaffold(object):
     return op
 
   @staticmethod
-  def _default_local_init_op():
+  def default_local_init_op():
+    """Returns an op that groups the default local init ops.
+
+    This op is used during session initialization when a Scaffold is
+    initialized without specifying the local_init_op arg. It includes
+    `tf.local_variables_initializer`, `tf.tables_initializer`, and also
+    initializes local session resources.
+
+    Returns:
+      The default Scaffold local init op.
+    """
     return control_flow_ops.group(
         variables.local_variables_initializer(),
         lookup_ops.tables_initializer(),
@@ -610,7 +620,7 @@ class _MonitoredSession(object):
         `step_context`. It may also optionally have `self` for cases when it
         belongs to an object.
     """
-    step_fn_arguments = util.fn_args(step_fn)
+    step_fn_arguments = function_utils.fn_args(step_fn)
     if step_fn_arguments != ('step_context',) and step_fn_arguments != (
         'self',
         'step_context',

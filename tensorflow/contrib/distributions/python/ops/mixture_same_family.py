@@ -130,8 +130,8 @@ class MixtureSameFamily(distribution.Distribution):
       ValueError: if `mixture_distribution` categories does not equal
         `components_distribution` rightmost batch shape.
     """
-    parameters = locals()
-    with ops.name_scope(name):
+    parameters = distribution_util.parent_frame_arguments()
+    with ops.name_scope(name) as name:
       self._mixture_distribution = mixture_distribution
       self._components_distribution = components_distribution
       self._runtime_assertions = []

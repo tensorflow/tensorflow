@@ -35,7 +35,7 @@ namespace xla {
 
 // Tries to replace a conditional with a call operation of the corresponding
 // computation. If the given conditional has a constant predicate, tries to
-// replace it with a call to its true/false computation as appropirate and then
+// replace it with a call to its true/false computation as appropriate and then
 // inline that computation.
 //
 // Returns true if it made a change to the graph.
@@ -69,7 +69,7 @@ static StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
         conditional->shape(), {conditional->mutable_operand(2)},
         conditional->false_computation()));
   }
-
+  conditional->SetupDerivedInstruction(call_op);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
   TF_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
 

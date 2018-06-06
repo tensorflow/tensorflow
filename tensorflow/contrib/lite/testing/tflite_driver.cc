@@ -226,8 +226,8 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
   if (expected_output_.count(id) != 0) {
-    fprintf(stderr, "Overriden expectation for tensor %d\n", id);
-    Invalidate("Overriden expectation");
+    fprintf(stderr, "Overridden expectation for tensor %d\n", id);
+    Invalidate("Overridden expectation");
   }
   expected_output_[id].reset(new Expectation);
   switch (tensor->type) {

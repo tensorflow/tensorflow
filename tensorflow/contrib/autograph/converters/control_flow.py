@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Handles control flow statements: while, if."""
+"""Handles control flow statements: while, for, if."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,6 +25,7 @@ from tensorflow.contrib.autograph.pyct import ast_util
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import templates
 from tensorflow.contrib.autograph.pyct import transformer
+from tensorflow.contrib.autograph.pyct.static_analysis import cfg
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
@@ -46,9 +47,6 @@ class SymbolNamer(object):
 
 class ControlFlowTransformer(transformer.Base):
   """Transforms control flow structures like loops an conditionals."""
-
-  def __init__(self, context):
-    super(ControlFlowTransformer, self).__init__(context)
 
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
@@ -78,7 +76,7 @@ class ControlFlowTransformer(transformer.Base):
   def _create_cond_expr(self, results, test, body_name, orelse_name):
     if results is not None:
       template = """
-        results = autograph_utils.run_cond(test, body_name, orelse_name)
+        results = ag__.utils.run_cond(test, body_name, orelse_name)
       """
       return templates.replace(
           template,
@@ -88,7 +86,7 @@ class ControlFlowTransformer(transformer.Base):
           orelse_name=orelse_name)
     else:
       template = """
-        autograph_utils.run_cond(test, body_name, orelse_name)
+        ag__.utils.run_cond(test, body_name, orelse_name)
       """
       return templates.replace(
           template, test=test, body_name=body_name, orelse_name=orelse_name)
@@ -98,30 +96,63 @@ class ControlFlowTransformer(transformer.Base):
 
     body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     orelse_scope = anno.getanno(node, NodeAnno.ORELSE_SCOPE)
+    body_defs = body_scope.created | body_scope.modified
+    orelse_defs = orelse_scope.created | orelse_scope.modified
+    live = anno.getanno(node, 'live_out')
 
-    if body_scope.created - orelse_scope.created:
-      raise ValueError(
-          'The if branch creates new symbols that the else branch does not.')
-    if orelse_scope.created - body_scope.created:
-      raise ValueError(
-          'The else branch creates new symbols that the if branch does not.')
+    # We'll need to check if we're closing over variables that are defined
+    # elsewhere in the function
+    # NOTE: we can only detect syntactic closure in the scope
+    # of the code passed in. If the AutoGraph'd function itself closes
+    # over other variables, this analysis won't take that into account.
+    defined = anno.getanno(node, 'defined_in')
 
-    modified = tuple(body_scope.modified | orelse_scope.modified)
-    all_referenced = body_scope.referenced | orelse_scope.referenced
+    # We only need to return variables that are
+    # - modified by one or both branches
+    # - live (or has a live parent) at the end of the conditional
+    modified = []
+    for def_ in body_defs | orelse_defs:
+      def_with_parents = set((def_,)) | def_.support_set
+      if live & def_with_parents:
+        modified.append(def_)
+
+    # We need to check if live created variables are balanced
+    # in both branches
+    created = live & (body_scope.created | orelse_scope.created)
+
+    # The if statement is illegal if there are variables that are created,
+    # that are also live, but both branches don't create them.
+    if created:
+      if created != (body_scope.created & live):
+        raise ValueError(
+            'The main branch does not create all live symbols that the else '
+            'branch does.')
+      if created != (orelse_scope.created & live):
+        raise ValueError(
+            'The else branch does not create all live symbols that the main '
+            'branch does.')
 
     # Alias the closure variables inside the conditional functions
     # to avoid errors caused by the local variables created in the branch
     # functions.
-    need_alias = (
-        (body_scope.modified | orelse_scope.modified) -
-        (body_scope.created | orelse_scope.created))
-    aliased_orig_names = tuple(need_alias)
-    aliased_new_names = tuple(
-        self.context.namer.new_symbol(s.ssf(), all_referenced)
-        for s in aliased_orig_names)
-    alias_map = dict(zip(aliased_orig_names, aliased_new_names))
-    node_body = ast_util.rename_symbols(node.body, alias_map)
-    node_orelse = ast_util.rename_symbols(node.orelse, alias_map)
+    # We will alias variables independently for body and orelse scope,
+    # because different branches might write different variables.
+    aliased_body_orig_names = tuple(body_scope.modified - body_scope.created)
+    aliased_orelse_orig_names = tuple(orelse_scope.modified -
+                                      orelse_scope.created)
+    aliased_body_new_names = tuple(
+        self.context.namer.new_symbol(s.ssf(), body_scope.referenced)
+        for s in aliased_body_orig_names)
+    aliased_orelse_new_names = tuple(
+        self.context.namer.new_symbol(s.ssf(), orelse_scope.referenced)
+        for s in aliased_orelse_orig_names)
+
+    alias_body_map = dict(zip(aliased_body_orig_names, aliased_body_new_names))
+    alias_orelse_map = dict(
+        zip(aliased_orelse_orig_names, aliased_orelse_new_names))
+
+    node_body = ast_util.rename_symbols(node.body, alias_body_map)
+    node_orelse = ast_util.rename_symbols(node.orelse, alias_orelse_map)
 
     if not modified:
       # When the cond would return no value, we leave the cond called without
@@ -134,26 +165,47 @@ class ControlFlowTransformer(transformer.Base):
     else:
       results = gast.Tuple([s.ast() for s in modified], None)
 
-    body_name = self.context.namer.new_symbol('if_true', all_referenced)
-    orelse_name = self.context.namer.new_symbol('if_false', all_referenced)
+    body_name = self.context.namer.new_symbol('if_true', body_scope.referenced)
+    orelse_name = self.context.namer.new_symbol('if_false',
+                                                orelse_scope.referenced)
     if modified:
-      body_returns = tuple(
-          alias_map[s] if s in aliased_orig_names else s for s in modified)
+
+      def build_returns(aliased_names, alias_map, scope):
+        """Builds list of return variables for a branch of a conditional."""
+        returns = []
+        for s in modified:
+          if s in aliased_names:
+            returns.append(alias_map[s])
+          else:
+            if s not in scope.created | defined:
+              raise ValueError(
+                  'Attempting to return variable "%s" from the true branch of '
+                  'a conditional, but it was not closed over, or created in '
+                  'this branch.' % str(s))
+            else:
+              returns.append(s)
+        return tuple(returns)
+
+      body_returns = build_returns(aliased_body_orig_names, alias_body_map,
+                                   body_scope)
+      orelse_returns = build_returns(aliased_orelse_orig_names,
+                                     alias_orelse_map, orelse_scope)
+
     else:
-      body_returns = templates.replace('tf.ones(())')[0].value
+      body_returns = orelse_returns = templates.replace('tf.ones(())')[0].value
 
     body_def = self._create_cond_branch(
         body_name,
-        aliased_orig_names=tuple(aliased_orig_names),
-        aliased_new_names=tuple(aliased_new_names),
+        aliased_orig_names=tuple(aliased_body_orig_names),
+        aliased_new_names=tuple(aliased_body_new_names),
         body=node_body,
         returns=body_returns)
     orelse_def = self._create_cond_branch(
         orelse_name,
-        aliased_orig_names=tuple(aliased_orig_names),
-        aliased_new_names=tuple(aliased_new_names),
+        aliased_orig_names=tuple(aliased_orelse_orig_names),
+        aliased_new_names=tuple(aliased_orelse_new_names),
         body=node_orelse,
-        returns=body_returns)
+        returns=orelse_returns)
     cond_expr = self._create_cond_expr(results, node.test, body_name,
                                        orelse_name)
 
@@ -207,7 +259,7 @@ class ControlFlowTransformer(transformer.Base):
       def body_name(state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = __ops.while_loop(
+      state_ast_tuple = ag__.while_stmt(
           test_name, body_name, (state,), (extra_deps,))
     """
     node = templates.replace(
@@ -252,31 +304,31 @@ class ControlFlowTransformer(transformer.Base):
       state_ast_tuple = gast.Tuple([n.ast() for n in state], None)
 
     node_body = ast_util.rename_symbols(node.body, ssf_map)
-    if anno.hasanno(node, 'extra_cond'):
-      extra_cond = anno.getanno(node, 'extra_cond')
-      extra_cond = ast_util.rename_symbols(extra_cond, ssf_map)
+    if anno.hasanno(node, 'extra_test'):
+      extra_test = anno.getanno(node, 'extra_test')
+      extra_test = ast_util.rename_symbols(extra_test, ssf_map)
     else:
-      extra_cond = parser.parse_expression('True')
+      extra_test = parser.parse_expression('True')
 
     template = """
-      def extra_cond_name(state_ssf):
-        return extra_cond_expr
+      def extra_test_name(state_ssf):
+        return extra_test_expr
       def body_name(iterate, state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = __ops.for_loop(
-          iterated, extra_cond_name, body_name, (state,))
+      state_ast_tuple = ag__.for_stmt(
+          iter_, extra_test_name, body_name, (state,))
     """
     node = templates.replace(
         template,
         state=state,
         state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
-        iterated=node.iter,
+        iter_=node.iter,
         iterate=node.target,
-        extra_cond_name=self.context.namer.new_symbol('extra_cond',
+        extra_test_name=self.context.namer.new_symbol('extra_test',
                                                       all_referenced),
-        extra_cond_expr=extra_cond,
+        extra_test_expr=extra_test,
         body_name=self.context.namer.new_symbol('loop_body', all_referenced),
         body=node_body)
 
@@ -284,6 +336,7 @@ class ControlFlowTransformer(transformer.Base):
 
 
 def transform(node, context):
-  t = ControlFlowTransformer(context)
-  node = t.visit(node)
+  cfg.run_analyses(node, cfg.Liveness(context))
+  cfg.run_analyses(node, cfg.Defined(context))
+  node = ControlFlowTransformer(context).visit(node)
   return node

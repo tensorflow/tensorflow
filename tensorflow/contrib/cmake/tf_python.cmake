@@ -244,13 +244,11 @@ add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
 # tf_python_op_gen_main library
 ########################################################
 set(tf_python_op_gen_main_srcs
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
-    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
-    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
 )
 
 add_library(tf_python_op_gen_main OBJECT ${tf_python_op_gen_main_srcs})
@@ -330,8 +328,10 @@ GENERATE_PYTHON_OP_LIB("ctc_ops")
 GENERATE_PYTHON_OP_LIB("cudnn_rnn_ops")
 GENERATE_PYTHON_OP_LIB("data_flow_ops")
 GENERATE_PYTHON_OP_LIB("dataset_ops")
-GENERATE_PYTHON_OP_LIB("decode_proto_ops")
-GENERATE_PYTHON_OP_LIB("encode_proto_ops")
+GENERATE_PYTHON_OP_LIB("decode_proto_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/proto/python/ops/gen_decode_proto_op.py)
+GENERATE_PYTHON_OP_LIB("encode_proto_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/proto/python/ops/gen_encode_proto_op.py)
 GENERATE_PYTHON_OP_LIB("image_ops")
 GENERATE_PYTHON_OP_LIB("io_ops")
 GENERATE_PYTHON_OP_LIB("linalg_ops")
@@ -345,7 +345,8 @@ GENERATE_PYTHON_OP_LIB("random_ops")
 GENERATE_PYTHON_OP_LIB("remote_fused_graph_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/remote_fused_graph/pylib/python/ops/gen_remote_fused_graph_ops.py)
 GENERATE_PYTHON_OP_LIB("resource_variable_ops")
-GENERATE_PYTHON_OP_LIB("rpc_ops")
+GENERATE_PYTHON_OP_LIB("rpc_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rpc/python/ops/gen_rpc_op.py)
 GENERATE_PYTHON_OP_LIB("script_ops")
 GENERATE_PYTHON_OP_LIB("sdca_ops")
 GENERATE_PYTHON_OP_LIB("set_ops")
@@ -461,12 +462,12 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"
@@ -551,12 +552,13 @@ if(WIN32)
         set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.def")
     endif()
     set_source_files_properties(${pywrap_tensorflow_deffile} PROPERTIES GENERATED TRUE)
-
+    math(EXPR tensorflow_target_bitness "${CMAKE_SIZEOF_VOID_P}*8")
     add_custom_command(TARGET pywrap_tensorflow_internal_static POST_BUILD
         COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/create_def_file.py
             --input "${pywrap_tensorflow_internal_static_dependencies}"
             --output "${pywrap_tensorflow_deffile}"
             --target _pywrap_tensorflow_internal.pyd
+            --bitness "${tensorflow_target_bitness}"
         BYPRODUCTS ${pywrap_tensorflow_deffile} # Required for Ninja
     )
 endif(WIN32)
