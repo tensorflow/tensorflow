@@ -21,11 +21,8 @@
 
 #include <poplin/MatMul.hpp>
 #include <popnn/NonLinearity.hpp>
-#include <popops/Add.hpp>
 #include <popops/Cast.hpp>
 #include <popops/ElementWise.hpp>
-#include <popops/HadamardProduct.hpp>
-#include <popops/SubtractFrom.hpp>
 
 namespace se = ::stream_executor;
 
@@ -159,23 +156,6 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
                                  HloOpcodeString(opcode)));
 }
 
-StatusOr<popops_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction* inst) {
-  HloOpcode opcode = inst->opcode();
-  switch (opcode) {
-    case HloOpcode::kAdd:
-      return popops::addTo;
-    case HloOpcode::kMultiply:
-      return popops::hadamardProduct;
-    case HloOpcode::kSubtract:
-      return popops::subtractFrom;
-    default:
-      break;
-  }
-  return Status(tensorflow::error::UNKNOWN,
-                se::port::StrCat("[Poplar] Invalid opcode lookup ",
-                                 HloOpcodeString(opcode)));
-}
-
 static std::string GetMatMulPass(const HloInstruction* inst,
                                  const CompilerAnnotations& annotations) {
   if (IsForward(inst, annotations)) {
@@ -222,11 +202,11 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
   if (res.annotations.inplace_instructions.count(inst) == 1 &&
       (in0.shape() == in1.shape()) && in0.isParallelWriteable()) {
-    popops_inplace_fn fn;
-    TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst));
+    popops::expr::BinaryOpType op;
+    TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
 
     poplar::program::Sequence seq;
-    fn(graph, in0, in1, seq, GetDebugName(inst));
+    popops::mapInPlace(graph, op, in0, in1, seq);
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
 
@@ -257,8 +237,8 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
 
     poplar::program::Sequence seq;
-    poplar::Tensor out = popops::map(graph, op, in0, in1, seq,
-                                     GetDebugName(inst));
+    poplar::Tensor out =
+        popops::map(graph, op, in0, in1, seq, GetDebugName(inst));
 
     // Occasionally, due to an interplay of implicit broadcasting and
     // arithmetic re-arrangement, the output of an op is larger than the inputs
@@ -331,9 +311,8 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   poplar::OptionFlags opts;
   opts.set("fullyConnectedPass", GetMatMulPass(inst, res.annotations));
 
-  out =
-      poplin::matMul(graph, in0, in1, seq, GetDebugName(inst), opts,
-                     &res.dot_cache);
+  out = poplin::matMul(graph, in0, in1, seq, GetDebugName(inst), opts,
+                       &res.dot_cache);
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -390,8 +369,8 @@ StatusOr<poplar::program::Program> CreateCastOp(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = popops::cast(graph, in, poplar_type, seq,
-                                    GetDebugName(inst));
+  poplar::Tensor out =
+      popops::cast(graph, in, poplar_type, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
@@ -504,9 +483,9 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
   TF_ASSIGN_OR_RETURN(outgrad, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::program::Sequence seq;
-  poplar::Tensor t = popnn::nonLinearityInputGradient(
-      graph, popnn::NON_LINEARITY_SIGMOID, out, outgrad, seq,
-      GetDebugName(inst));
+  poplar::Tensor t =
+      popnn::nonLinearityInputGradient(graph, popnn::NON_LINEARITY_SIGMOID, out,
+                                       outgrad, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 

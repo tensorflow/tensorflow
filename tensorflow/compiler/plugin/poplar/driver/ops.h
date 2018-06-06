@@ -47,8 +47,6 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction*);
 
 StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(const HloInstruction*);
 
-StatusOr<popops_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction*);
-
 Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                       const Literal& literal);
 
