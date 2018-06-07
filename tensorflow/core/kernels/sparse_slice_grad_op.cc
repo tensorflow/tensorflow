@@ -71,6 +71,11 @@ class SparseSliceGradOp : public OpKernel {
                     input_start->shape().DebugString()));
 
     const int num_dims = input_indices->dim_size(1);
+    OP_REQUIRES(ctx, num_dims == input_start->NumElements(),
+                errors::InvalidArgument(
+                    "Expected input_start to be a vector of length ", num_dims,
+                    " but got length ", input_start->NumElements()));
+
     const int64 input_nnz = input_indices->dim_size(0);
 
     Tensor *val_grad;
