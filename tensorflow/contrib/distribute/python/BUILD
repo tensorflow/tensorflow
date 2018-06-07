@@ -508,6 +508,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
+    shard_count = 15,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
