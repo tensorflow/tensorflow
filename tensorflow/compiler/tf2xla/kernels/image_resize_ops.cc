@@ -197,8 +197,8 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
     dimension_numbers.add_output_spatial_dimensions(1 + i);
     dimension_numbers.add_kernel_spatial_dimensions(i);
   }
-  dimension_numbers.set_kernel_input_feature_dimension(num_spatial_dims);
-  dimension_numbers.set_kernel_output_feature_dimension(num_spatial_dims + 1);
+  dimension_numbers.set_kernel_input_feature_dimension(num_spatial_dims + 1);
+  dimension_numbers.set_kernel_output_feature_dimension(num_spatial_dims);
 
   ResizeConvolutionDims dims =
       ComputeResizeConvolutionParameters(in_size, out_size);

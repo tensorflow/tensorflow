@@ -1031,7 +1031,15 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
                             rnn_mode, direction_mode, num_layers));
 
 #if CUDNN_VERSION >= 7000
-    if (RnnTensorOpMathEnabled()) {
+    // Require explicit algorithm config to enable tensor cores. Some configs
+    // return CUDNN_NOT_SUPPORTED when tensor ops are enabled (which is against
+    // the idiom that enabling tensor ops is only a hint: see nvbugs/2172799).
+    // We can only reasonably expect the user to handle the subsequent failure
+    // in profile mode, which is run with algorithms returned from
+    // GetRnnAlgorithms() (which are non-default and explicitly set whether to
+    // use tensor ops).
+    if (RnnTensorOpMathEnabled() &&
+        !algorithm_config.algorithm().is_default()) {
       cudnnMathType_t math_type =
           algorithm_config.algorithm().tensor_ops_enabled()
               ? CUDNN_TENSOR_OP_MATH

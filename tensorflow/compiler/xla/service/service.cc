@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -61,33 +60,6 @@ using ::xla::source_map_util::InvalidParameterArgument;
 namespace xla {
 
 namespace {
-
-// Records the arguments used to invoke a computation in a SessionModule
-// proto.
-Status RecordArguments(
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    se::StreamExecutor* executor, TransferManager* transfer_manager,
-    SessionModule* module) {
-  module->clear_arguments();
-  for (const ShapedBuffer* argument : arguments) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Literal> literal,
-        transfer_manager->TransferLiteralFromDevice(executor, *argument));
-    *module->add_arguments() = literal->ToProto();
-  }
-  return Status::OK();
-}
-
-// Records the result of a computation in a SessionModule proto.
-Status RecordResult(const ShapedBuffer& result, se::StreamExecutor* executor,
-                    TransferManager* transfer_manager, SessionModule* module) {
-  module->clear_result();
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Literal> literal,
-      transfer_manager->TransferLiteralFromDevice(executor, result));
-  *module->mutable_result() = literal->ToProto();
-  return Status::OK();
-}
 
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
 Status RecordArguments(

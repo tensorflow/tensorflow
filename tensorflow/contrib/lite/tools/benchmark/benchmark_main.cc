@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/benchmark_tflite_model.h"
-#include "tensorflow/contrib/lite/tools/logging.h"
+#include "tensorflow/contrib/lite/tools/benchmark/benchmark_tflite_model.h"
+#include "tensorflow/contrib/lite/tools/benchmark/logging.h"
 
 namespace tflite {
 namespace benchmark {

@@ -169,7 +169,7 @@ class ShapeUtil {
   // may not actually be able to store this number of elements. See
   // LayoutUtil::MaxSparseElements(shape) to obtain the maximum number of
   // elements that can be stored in a sparse shape.
-  // Precondition: !IsTuple(shape)
+  // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
   // Returns true if 'shape' has zero elements.
@@ -180,13 +180,11 @@ class ShapeUtil {
   // shapes. This includes only the size of the top-level buffer. For example, a
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
-  // Precondition: (!ShapeUtil::IsTuple(shape) || pointer_size > 0) &&
-  //               !ShapeUtil::IsOpaque(shape)
   static int64 ByteSizeOf(const Shape& shape, int64 pointer_size = -1);
 
   // Returns the number of bytes used to store the primitive_type.
   //
-  // Precondition: !ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)
+  // Precondition: ShapeUtil::IsArray(shape)
   static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes required to store the tuple member pointers for
@@ -245,7 +243,7 @@ class ShapeUtil {
   }
 
   // Returns the higher-precision element type if a and b are both floating
-  // point types; otherwise, checks that they have the same element type
+  // point types; otherwise, checks that that they have the same element type
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
@@ -293,10 +291,10 @@ class ShapeUtil {
   // Scalar-specific
 
   static bool IsScalar(const Shape& shape) {
-    return !IsTuple(shape) && !IsOpaque(shape) && Rank(shape) == 0;
+    return IsArray(shape) && Rank(shape) == 0;
   }
   static bool IsEffectiveScalar(const Shape& shape) {
-    return !IsTuple(shape) && !IsOpaque(shape) && TrueRank(shape) == 0;
+    return IsArray(shape) && TrueRank(shape) == 0;
   }
   static bool IsScalarF32(const Shape& shape);
 
@@ -324,6 +322,10 @@ class ShapeUtil {
   // Creates an opaque shape. These are generally used for threading a context
   // into a custom operation.
   static Shape MakeOpaqueShape();
+
+  // Creates a token shape. Values of this shape are used for ordering
+  // side-effecting operations.
+  static Shape MakeTokenShape();
 
   // Appends a shape to the given tuple.
   static void AppendShapeToTuple(const Shape& shape, Shape* tuple_shape);
@@ -424,11 +426,15 @@ class ShapeUtil {
     return shape.element_type() == OPAQUE;
   }
 
+  // Returns whether the shape is an token value used for ordering
+  // side-effecting operations.
+  static bool IsToken(const Shape& shape) {
+    return shape.element_type() == TOKEN;
+  }
+
   // Returns whether the shape is an array.  Note that scalars are considered
   // arrays.
-  static bool IsArray(const Shape& shape) {
-    return !IsTuple(shape) && !IsOpaque(shape);
-  }
+  static bool IsArray(const Shape& shape);
 
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.

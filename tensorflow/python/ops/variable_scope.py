@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+ # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -794,6 +794,14 @@ class _VariableStore(object):
         validate_shape=validate_shape,
         constraint=constraint,
         use_resource=use_resource)
+    if context.executing_eagerly() and self._store_eager_variables:
+      if collections:
+        ops.add_to_collections(collections, v)
+      else:
+        ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, v)
+      if trainable:
+        ops.add_to_collection(ops.GraphKeys.TRAINABLE_VARIABLES, v)
+
     if not context.executing_eagerly() or self._store_eager_variables:
       # In eager mode we do not want to keep default references to Variable
       # objects as this will prevent their memory from being released.
