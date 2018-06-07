@@ -28,7 +28,7 @@ namespace xla {
 class TupleSimplifier : public HloPassInterface {
  public:
   TupleSimplifier() : TupleSimplifier(false) {}
-  TupleSimplifier(bool exclude_entry_computation);
+  explicit TupleSimplifier(bool exclude_entry_computation);
   ~TupleSimplifier() override {}
   tensorflow::StringPiece name() const override { return "tuple-simplifier"; }
 
@@ -37,6 +37,9 @@ class TupleSimplifier : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
+  // When set, this pipeline stage will perform optimization of all computations
+  // apart from the module's entry computation. This is used by Graphcore's
+  // backend.
   bool exclude_entry_computation_;
 };
 
