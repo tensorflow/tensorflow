@@ -260,7 +260,9 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingAdd", \
                                     scatter_nd_op::UpdateOp::ADD);        \
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdSub",            \
-                                    scatter_nd_op::UpdateOp::SUB);
+                                    scatter_nd_op::UpdateOp::SUB);        \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
+      type, dev, "ResourceScatterNdAdd", scatter_nd_op::UpdateOp::ADD);
 
 #define REGISTER_SCATTER_ND(type, dev) \
   REGISTER_SCATTER_ND_KERNEL(type, dev, "ScatterNd");
