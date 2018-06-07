@@ -149,3 +149,15 @@ during tuning. Furthermore, you can enable `debug=True` and `debug_level=1`
 and LMS will print out the name and type of the starting operations it
 finds. These names could be passed in on the `starting_op_names` parameter on
 subsequent runs.
+
+### TensorFlow and LMS
+
+TensorFlow has a mechanism for memory optimization. Though the mechanism totally
+works well with this LMS module, it is recommended to switch its mode to
+`SCHEDULING_HEURISTICS` to allow training as large a model as possible. This
+can be done via the following snippet code:
+```python
+config = tf.ConfigProto()
+config.graph_options.rewrite_options.memory_optimization = \
+	rewriter_config_pb2.RewriterConfig.SCHEDULING_HEURISTICS
+```
