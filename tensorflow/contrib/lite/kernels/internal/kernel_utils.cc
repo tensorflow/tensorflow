@@ -350,7 +350,7 @@ void LstmStep(
 
     for (int b = 0; b < n_batch; ++b) {
       product_scaling_factors[b] =
-          scaling_factors[b] * input_to_cell_weights_scale;
+          scaling_factors[b] * input_to_output_weights_scale;
     }
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_output_weights_ptr, n_cell, n_input, quantized_input_ptr_batch,
