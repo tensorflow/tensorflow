@@ -12,6 +12,10 @@ import test_utils as tu
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
+
+def count_event_type(events, type):
+  return sum(map((lambda x: 1 if x==type else 0), events))
 
 class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
@@ -39,7 +43,13 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
         rep = sess.run(report)
 
-        print(tu.extract_all_strings_from_event_trace(rep))
+        events = tu.extract_all_types_from_event_trace(rep)
+
+        # Check that there is only one compile
+        self.assertEqual(count_event_type(events, IpuTraceEvent.COMPILE), 1)
+
+        # Check that there is only one execute
+        self.assertEqual(count_event_type(events, IpuTraceEvent.EXECUTE), 1)
 
 if __name__ == "__main__":
     googletest.main()

@@ -63,7 +63,8 @@ def extract_all_io_events(events):
   result = []
   for e in events:
     evt = IpuTraceEvent.FromString(e)
-    if evt.type in [1,2]:
+    if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
+                    IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
       result += [(evt.type, evt.data_str)]
   return result
 

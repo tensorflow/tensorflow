@@ -117,31 +117,6 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   };
 
   for (Edge const* edge : graph->edges()) {
-    if (edge->dst()->IsEnter()) {
-      // Lift edges to an "Enter" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->dst()->id()].frame_name;
-      int dst = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(edge->src()->id(), dst)) {
-        return errors::Internal(
-            "Cycle detected when adding enter->frame edge: ",
-            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
-      }
-      continue;
-    }
-    if (edge->src()->IsExit()) {
-      // Lift edges from an "Exit" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->src()->id()].frame_name;
-      int src = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(src, edge->dst()->id())) {
-        return errors::Internal(
-            "Cycle detected when adding frame->exit edge: ",
-            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
-      }
-      // Drop the original edge.
-      continue;
-    }
     if (edge->src()->IsNextIteration()) {
       // Break loop back-edges.
       continue;
