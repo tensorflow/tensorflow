@@ -54,6 +54,8 @@ bool IsConstantOne(const HloInstruction *inst, const CompilerAnnotations &) {
 
 bool IsPoplarConvolution(const HloInstruction *inst,
                          const CompilerAnnotations &) {
+  if (inst->to_apply()->name().substr(0, 17) == "pop_backprop_conv")
+    return true;
   if (inst->to_apply()->name().substr(0, 15) == "pop_convolution") return true;
   if (inst->to_apply()->name().substr(0, 14) == "pop_depth_conv") return true;
   return false;
@@ -208,6 +210,17 @@ bool IsF32ToF16Convert(const HloInstruction *inst,
 bool IsF16ToF32Convert(const HloInstruction *inst,
                        const CompilerAnnotations &annotations) {
   return IsF32(inst, annotations) && IsF16(inst->operand(0), annotations);
+}
+
+bool IsPopOpsConvolution(const HloInstruction *inst,
+                         const CompilerAnnotations &) {
+  if (inst->to_apply()->name().substr(0, 22) == "_pop_op_depthwise_conv")
+    return true;
+  if (inst->to_apply()->name().substr(0, 25) == "_pop_op_conv_with_reverse")
+    return true;
+  if (inst->to_apply()->name().substr(0, 24) == "_pop_op_depthwise_filter")
+    return true;
+  return false;
 }
 
 }  // namespace poplarplugin

@@ -1,0 +1,209 @@
+# Copyright 2018 Graphcore Ltd
+#
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import tensorflow as tf
+import test_utils as tu
+
+from tensorflow.python.platform import googletest
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import nn_ops
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+
+import numpy as np
+
+
+class IpuXlaConvTest(test_util.TensorFlowTestCase):
+
+  def test3DConv1x1x1_Stride2x1x1_In1x1x5(self):
+    with tf.device("/device:IPU:0"):
+      pa = tf.placeholder(tf.float32, [1,1,1,5,1], name="a")
+      pb = tf.placeholder(tf.float32, [1,1,1,1,1], name="b")
+      output = nn_ops.convolution(pa, pb, strides=[1,1,2], padding="VALID")
+
+    with tf.Session() as sess:
+      fd = {
+        pa: [[[[[1], [2], [3], [4], [5]]]]],
+        pb: [[[[[10]]]]]
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, [[[[[10], [30], [50]]]]])
+
+  def test3DConv3x3x3_Pad1x1x1(self):
+    with tf.device("/device:IPU:0"):
+      pa = tf.placeholder(tf.float32, [1,14,14,14,64], name="a")
+      pb = tf.placeholder(tf.float32, [3,3,3,64,128], name="b")
+      output = nn_ops.convolution(pa, pb, padding="SAME")
+
+    with tf.Session() as sess:
+      fd = {
+        pa: np.zeros([1,14,14,14,64]),
+        pb: np.zeros([3,3,3,64,128])
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([1,14,14,14,128]))
+
+  def test3DConv3x3x3_WithBias(self):
+    with tf.device("/device:IPU:0"):
+      pa = tf.placeholder(tf.float32, [1,14,14,14,16], name="a")
+      pb = tf.placeholder(tf.float32, [3,3,3,16,32], name="b")
+      bi = tf.placeholder(tf.float32, [32], name="b")
+      output = nn_ops.convolution(pa, pb, padding="SAME")
+      output = nn_ops.bias_add(output, bi)
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        pa: np.zeros([1,14,14,14,16]),
+        pb: np.zeros([3,3,3,16,32]),
+        bi: np.zeros([32]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([1,14,14,14,32]))
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_XLA_Args/arg1.*_weights_to_weightsRearranged',
+            'convolution/convolution.*clone/Conv_3x3x3',
+            'BiasAdd/call/addToChannel']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def test3DConv8x8x8_WithBias(self):
+    with tf.device("/device:IPU:0"):
+      inp = tf.placeholder(tf.float32, [1,84,84,84,2], name="inp")
+      wei = tf.placeholder(tf.float32, [8,8,8,2,4], name="wei")
+      bia = tf.placeholder(tf.float32, [4], name="bia")
+      output = nn_ops.conv3d(inp, wei, strides=[1,4,4,4,1], padding="VALID")
+      output = nn_ops.bias_add(output, bia)
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        inp: np.zeros([1,84,84,84,2]),
+        wei: np.zeros([8,8,8,2,4]),
+        bia: np.zeros([4]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([1, 20, 20, 20, 4]))
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Conv3D/convolution.*clone/Conv_8x8x8_stride4x4x4',
+            'BiasAdd/call/addToChannel']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def test3DConv1x1x1_WithBias(self):
+    with tf.device("/device:IPU:0"):
+      inp = tf.placeholder(tf.float32, [1,1,1,1,4], name="inp")
+      wei = tf.placeholder(tf.float32, [1,1,1,4,8], name="wei")
+      bia = tf.placeholder(tf.float32, [8], name="bia")
+      output = nn_ops.conv3d(inp, wei, strides=[1,1,1,1,1], padding="VALID")
+      output = output + bia
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        inp: np.zeros([1,1,1,1,4]),
+        wei: np.zeros([1,1,1,4,8]),
+        bia: np.zeros([8]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([1, 1, 1, 1, 8]))
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Conv3D/convolution.*clone/Conv_1x1',
+            'add/add.*/Op/Add']
+# TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def test3DConvBackpropInput(self):
+    with tf.device("/device:IPU:0"):
+      ins = tf.constant([2,8,8,8,3], tf.int32)
+      fil = tf.placeholder(tf.float32, [2,2,2,3,5], name="inp")
+      bck = tf.placeholder(tf.float32, [2,8,8,8,5], name="wei")
+
+      output = nn_ops.conv3d_backprop_input_v2(ins, fil, bck, strides=[1,1,1,1,1],
+                                            padding="SAME")
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        fil: np.zeros([2,2,2,3,5]),
+        bck: np.zeros([2,8,8,8,5]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([2,8,8,8,3]))
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_{<const>,XLA_Args/arg0.*,XLA_Args/arg1.*}_to_{bwdWeights,inRearranged}',
+            'Copy_bwdWeights_to_weightsRearranged',
+            'Conv3DBackpropInputV2/convolution.*clone/Conv_2x2x2']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+
+  def test3DConvBackpropFilter(self):
+    with tf.device("/device:IPU:0"):
+      inp = tf.placeholder(tf.float32, [2,8,8,8,3])
+      fil = tf.constant([2,2,2,3,5], tf.int32)
+      bck = tf.placeholder(tf.float32, [2,8,8,8,5], name="wei")
+
+      output = nn_ops.conv3d_backprop_filter_v2(inp, fil, bck, strides=[1,1,1,1,1],
+                                            padding="SAME")
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        inp: np.zeros([2,8,8,8,3]),
+        bck: np.zeros([2,8,8,8,5]),
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, np.zeros([2,2,2,3,5]))
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_{<const>,XLA_Args/arg0.*_input}_to_inRearranged',
+            'Conv3DBackpropFilterV2/convolution.*clone/Conv_8x8x8']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+if __name__ == "__main__":
+    googletest.main()

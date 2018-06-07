@@ -36,6 +36,7 @@ bool IsF16(const HloInstruction*, const CompilerAnnotations&);
 bool IsF32(const HloInstruction*, const CompilerAnnotations&);
 bool IsF32ToF16Convert(const HloInstruction*, const CompilerAnnotations&);
 bool IsF16ToF32Convert(const HloInstruction*, const CompilerAnnotations&);
+bool IsPopOpsConvolution(const HloInstruction*, const CompilerAnnotations&);
 
 }  // namespace poplarplugin
 }  // namespace xla

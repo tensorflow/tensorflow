@@ -361,6 +361,16 @@ py_test(
 )
 
 py_test(
+    name = "conv3d_test",
+    size = "large",
+    srcs = ["tests/conv3d_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "variable_test",
     size = "small",
     srcs = ["tests/variable_test.py"],
@@ -509,6 +519,7 @@ test_suite(
         "expression_outliner_test",
         "convolution_classifier_test",
         "while_loop_condition_simplify_test",
+        "conv3d_test",
     ],
 )
 
@@ -536,6 +547,7 @@ test_suite(
         "expression_outliner_test",
         "convolution_classifier_test",
         "while_loop_condition_simplify_test",
+        "conv3d_test",
     ],
 )
 

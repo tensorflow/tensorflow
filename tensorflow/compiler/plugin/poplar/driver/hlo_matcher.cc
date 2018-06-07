@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -23,6 +24,33 @@ using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {
+namespace {
+
+void CopyConvolutionData(HloInstruction* inst, const HloInstruction* old) {
+  inst->set_window(old->window());
+  inst->set_convolution_dimension_numbers(old->convolution_dimension_numbers());
+}
+
+void CopyMetadataToInstruction(HloInstruction* inst, const HloInstruction* old,
+                               const CompilerAnnotations& annotations) {
+  // Copy instruction data
+  // Note that some data is protected by opcode and can't be copied
+  switch (old->opcode()) {
+    case HloOpcode::kCall:
+      if (IsPopOpsConvolution(old, annotations)) {
+        CopyConvolutionData(inst, old);
+      }
+      break;
+    case HloOpcode::kConvolution:
+      CopyConvolutionData(inst, old);
+      break;
+    default:
+      break;
+  }
+
+  inst->set_metadata(old->metadata());
+}
+}  // namespace
 
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
                        const CompilerAnnotations& annotations,
@@ -277,8 +305,8 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   HloInstruction* call = matched.computation->AddInstruction(
       HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
 
-  call->set_metadata(instructions_to_outline[metadata_index]->metadata());
-
+  CopyMetadataToInstruction(call, instructions_to_outline[metadata_index],
+                            annotations);
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   ReplacedInstructions replaced;

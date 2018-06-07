@@ -138,6 +138,20 @@ StatusOr<poplar::Tensor> ShuffleConvolutionInputToPoplar(
   return tensor.dimShuffle(shuffle);
 }
 
+StatusOr<poplar::Tensor> ShuffleConvolutionOutputToPoplar(
+    const HloInstruction* inst, const poplar::Tensor& tensor) {
+  const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
+
+  std::vector<unsigned int> shuffle(2 + d.output_spatial_dimensions().size());
+  shuffle[0] = d.output_batch_dimension();
+  shuffle[1] = d.output_feature_dimension();
+  for (int64 i = 0; i < d.output_spatial_dimensions().size(); ++i) {
+    shuffle[2 + i] = d.output_spatial_dimensions(i);
+  }
+
+  return tensor.dimShuffle(shuffle);
+}
+
 StatusOr<poplar::Tensor> ShuffleConvolutionWeightsToPoplar(
     const HloInstruction* inst, const poplar::Tensor& tensor,
     bool swap_features) {
@@ -236,8 +250,9 @@ poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
-                                    chan_div[1], out.dim(1) / chan_div[1]});
+    out = out.reshapePartial(0, 2,
+                             {chan_div[0], out.dim(0) / chan_div[0],
+                              chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
     out = out.dimShufflePartial({2}, {1});
@@ -280,9 +295,9 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
 
   kernel = AddGroupsDimensionToWeights(params, kernel, false);
 
-  auto out = popconv::convolution(graph, in, kernel, params, false, prog,
-                                  GetDebugName(inst), opts,
-                                  &res.convolution_cache);
+  auto out =
+      popconv::convolution(graph, in, kernel, params, false, prog,
+                           GetDebugName(inst), opts, &res.convolution_cache);
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
@@ -385,8 +400,9 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
   poplar::Tensor bias;
   TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 1));
 
-  // Should this be taken from the convolution dimension numbers?
-  poplar::Tensor shuffled_in = in.dimShuffle({0, 3, 1, 2});
+  poplar::Tensor shuffled_in;
+  TF_ASSIGN_OR_RETURN(shuffled_in,
+                      ShuffleConvolutionOutputToPoplar(inst->operand(0), in));
 
   poplar::program::Sequence prog;
   popconv::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
