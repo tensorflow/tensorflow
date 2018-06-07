@@ -641,7 +641,7 @@ StatusOr<poplar::program::Program> CreateReductionNoConvert(
 
   const HloInstruction* reduction_in = reduction->operand(0)->operand(0);
   const HloInstruction* init = reduction->operand(1);
-  Shape shape_init_fp16 = ShapeUtil::MakeShape(F16, init->shape().dimensions());
+  Shape shape_init_fp16 = ShapeUtil::ChangeElementType(init->shape(), F16);
 
   // init has to be of type F16, there are 2 cases here
   poplar::Tensor init_val;
