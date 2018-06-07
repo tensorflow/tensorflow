@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 
 #include <stdlib.h>
 #include <atomic>
@@ -43,15 +43,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
@@ -94,8 +94,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-/* static */ const char* GpuCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
-/* static */ const char* GpuCompiler::kDataLayout =
+/* static */ const char* NVPTXCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
+/* static */ const char* NVPTXCompiler::kDataLayout =
     "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 namespace {
@@ -473,14 +473,14 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
 
 }  // namespace
 
-GpuCompiler::GpuCompiler()
+NVPTXCompiler::NVPTXCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout)
                         .getPointerSize(0 /* default address space */)) {}
 
-StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
+StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
   Tracing::TraceMe annotation("HLO Transforms", module->name(),
                               /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
@@ -488,10 +488,10 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
+StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
+  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
 
@@ -551,7 +551,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
   {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(
         entry_computation->root_instruction()->Accept(&ir_emitter));
   }
@@ -579,7 +579,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - Running LLVM verifier");
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - Running LLVM verifier");
 
     std::string err;
     llvm::raw_string_ostream err_stream(err);
@@ -619,7 +619,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   string ptx;
   {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                           module->config(), libdevice_dir));
   }
@@ -677,21 +677,21 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
   }
 
-  auto* gpu_executable = new GpuExecutable(
+  auto* nvptx_executable = new NVPTXExecutable(
       ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
       std::move(module), std::move(buffer_assignment),
       std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
-    gpu_executable->set_ir_module_string(ir_module_string_before_opt);
+    nvptx_executable->set_ir_module_string(ir_module_string_before_opt);
   }
-  return std::unique_ptr<Executable>(gpu_executable);
+  return std::unique_ptr<Executable>(nvptx_executable);
 }
 
-std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
+std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
                                                             int cc_major,
                                                             int cc_minor) {
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::CompilePtxOrGetCachedResult");
+  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompilePtxOrGetCachedResult");
   Tracing::TraceMe annotation("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
@@ -764,12 +764,12 @@ std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-GpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
+NVPTXCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
                                 const AotCompilationOptions& options) {
-  return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
+  return Unimplemented("not yet implemented: NVPTXCompiler::CompileAheadOfTime");
 }
 
-se::Platform::Id GpuCompiler::PlatformId() const {
+se::Platform::Id NVPTXCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
 }
 
@@ -779,7 +779,7 @@ se::Platform::Id GpuCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId,
-      []() { return xla::MakeUnique<xla::gpu::GpuCompiler>(); });
+      []() { return xla::MakeUnique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

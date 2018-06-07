@@ -126,23 +126,7 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
   KernelThunk* kernel_thunk = static_cast<KernelThunk*>(thunk);
   kernel_thunk->SetLaunchDimensions(launch_dims);
 
-  // Add __launch_bounds__ to metadata. This limits registers per thread to
-  // avoid out-of-resources launching errors.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
-  llvm::Function* ir_kernel =
-      llvm_module->getFunction(kernel_thunk->kernel_name().c_str());
-  llvm::LLVMContext& llvm_context = llvm_module->getContext();
-  llvm::ConstantInt* threads_per_block_ir_value = llvm::ConstantInt::get(
-      llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
-      launch_dims.threads_per_block());
-  // Our launch bounds are exact, so we can specify them as reqntidx rather than
-  // maxntidx.
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      llvm_context,
-      {llvm::ConstantAsMetadata::get(ir_kernel),
-       llvm::MDString::get(llvm_context, "reqntidx"),
-       llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
+  // XXX FIXME add proper AMDGPU function attributes or metadata
 }
 
 }  // namespace
@@ -214,6 +198,8 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
                              kernel_name.c_str(), module);
 
+  kernel->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+
   // Add dereferenceable and alignment information to each of the kernel's
   // parameters.
   auto arg_it = kernel->arg_begin();
@@ -236,15 +222,6 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
-
-  // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-  // treats it as a CUDA kernel.
-  llvm::NamedMDNode* nvvm_annotations_node =
-      module->getOrInsertNamedMetadata("nvvm.annotations");
-  nvvm_annotations_node->addOperand(llvm::MDNode::get(
-      context, {llvm::ConstantAsMetadata::get(kernel),
-                llvm::MDString::get(context, "kernel"),
-                llvm::ConstantAsMetadata::get(ir_builder_.getInt32(1))}));
 
   // Update the insert point to the entry basic block.
   llvm::BasicBlock* entry_bb =
@@ -687,7 +664,7 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
 
   // let x = threadIdx.x
   llvm::Value* x = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, builder);
+      llvm::Intrinsic::amdgcn_workitem_id_x, {}, {}, builder);
   llvm_ir::AddRangeMetadata(0, num_rows * tile_size,
                             static_cast<llvm::Instruction*>(x));
   x = builder->CreateIntCast(x, builder->getInt64Ty(), /*isSigned=*/true,
@@ -785,7 +762,7 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
           llvm_ir::AddRangeMetadata(
               0, num_tiles,
               static_cast<llvm::Instruction*>(llvm_ir::EmitCallToIntrinsic(
-                  llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {},
+                  llvm::Intrinsic::amdgcn_workgroup_id_x, {}, {},
                   builder))),
           builder->getInt64Ty(), /*isSigned=*/true, "block.id.x"),
       ShapeUtil::MakeShapeWithDescendingLayout(
@@ -826,8 +803,7 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
 
   // Wait for all threads to reach this point, lest we copy a value from tile to
   // output before the other thread copies it from input to tile.
-  // This is `__syncthreads` in CUDA.
-  llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, builder);
+  llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::amdgcn_s_barrier, {}, {}, builder);
 
   const llvm_ir::IrArray::Index output_tile_index(
       Permute({0, 2, 1}, input_tile_index.multidim()));
@@ -949,8 +925,10 @@ Status IrEmitterUnnested::EmitReductionToScalar(
       [=](const llvm_ir::IrArray::Index& tile_index) -> Status {
     llvm::Type* element_ir_type =
         llvm_ir::PrimitiveTypeToIrType(input_shape.element_type(), module_);
-    llvm::Value* partial_reduction_result_address = ir_builder_.CreateAlloca(
-        element_ir_type, /*ArraySize=*/nullptr, "partial_reduction_result");
+    llvm::Value* partial_reduction_result_address =
+        llvm_ir::EmitAllocaAtFunctionEntry(element_ir_type,
+                                           "partial_reduction_result",
+                                           &ir_builder_);
     {
       TF_ASSIGN_OR_RETURN(llvm::Value * init_ir_value,
                           init_value_gen(llvm_ir::IrArray::Index({})));
@@ -1034,7 +1012,8 @@ Status IrEmitterUnnested::EmitReductionToScalar(
           element_ir_type, nullptr, "result_from_other_lane");
       ir_builder_.CreateStore(
           EmitShuffleDown(partial_reduction_result,
-                          ir_builder_.getInt32(shuffle_distance), &ir_builder_),
+                          ir_builder_.getInt32(shuffle_distance),
+                          &ir_builder_, module_),
           ir_builder_.CreateBitCast(result_from_other_lane,
                                     shuffle_ir_type->getPointerTo()));
       TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
@@ -1466,7 +1445,7 @@ Status IrEmitterUnnested::EmitRowReduction(
     llvm::Type* shuffle_ir_type = element_ir_type->isStructTy()
                                       ? ir_builder_.getIntNTy(bit_width)
                                       : element_ir_type;
-    for (int shuffle_distance = 16; shuffle_distance >= 1;
+    for (int shuffle_distance = (kWarpSize / 2); shuffle_distance >= 1;
          shuffle_distance /= 2) {
       llvm::Value* partial_reduction_result = ir_builder_.CreateLoad(
           ir_builder_.CreateBitCast(partial_reduction_result_address,
@@ -1476,7 +1455,8 @@ Status IrEmitterUnnested::EmitRowReduction(
           element_ir_type, nullptr, "result_from_other_lane");
       ir_builder_.CreateStore(
           EmitShuffleDown(partial_reduction_result,
-                          ir_builder_.getInt32(shuffle_distance), &ir_builder_),
+                          ir_builder_.getInt32(shuffle_distance),
+                          &ir_builder_, module_),
           ir_builder_.CreateBitCast(result_from_other_lane,
                                     shuffle_ir_type->getPointerTo()));
       TF_RETURN_IF_ERROR(EmitCallToNestedComputation(

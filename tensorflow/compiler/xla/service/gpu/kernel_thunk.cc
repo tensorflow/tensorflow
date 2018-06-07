@@ -43,16 +43,19 @@ tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
   }
 
   loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
-  tensorflow::StringPiece ptx = executable.ptx();
+  tensorflow::StringPiece text = executable.text();
   // Convert tensorflow::StringPiece to se::port::StringPiece because
   // StreamExecutor uses the latter.
   loader_spec_->AddCudaPtxInMemory(
-      se::port::StringPiece(ptx.data(), ptx.size()), kernel_name_);
+      se::port::StringPiece(text.data(), text.size()), kernel_name_);
 
+  // XXX figure out how to cope with both CUDA and ROCm platforms
+#if GOOGLE_CUDA
   if (!executable.cubin().empty()) {
     loader_spec_->AddCudaCubinInMemory(
         reinterpret_cast<const char*>(executable.cubin().data()), kernel_name_);
   }
+#endif
 
   return tensorflow::Status::OK();
 }

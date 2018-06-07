@@ -117,6 +117,9 @@ load(
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
     "tf_additional_libdevice_srcs",
+    "tf_additional_rocdl_data",
+    "tf_additional_rocdl_deps",
+    "tf_additional_rocdl_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_env_time_hdrs",
@@ -1175,6 +1178,7 @@ filegroup(
             "util/events_writer.*",
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
+            "platform/**/rocm_rocdl_path.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
@@ -1767,6 +1771,7 @@ cc_library(
             "lib/jpeg/**/*",
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
+            "platform/**/rocm_rocdl_path.cc",
             "platform/**/device_tracer.cc",
             "platform/abi.cc",
             "platform/variant_coding.cc",
@@ -1778,6 +1783,8 @@ cc_library(
             "lib/core/stringpiece.cc",
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
+            "platform/**/rocm.h",
+            "platform/**/rocm_rocdl_path.cc",
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
@@ -3403,6 +3410,20 @@ tf_cc_test_gpu(
     ],
 )
 
+tf_cc_test_gpu(
+    name = "rocm_rocdl_path_test",
+    size = "small",
+    srcs = ["platform/rocm_rocdl_path_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_gpu_tests_tags(),
+    deps = [
+        ":rocm_rocdl_path",
+        ":lib",
+        ":test",
+        ":test_main",
+    ],
+)
+
 tf_gpu_only_cc_test(
     name = "util_gpu_kernel_helper_test",
     srcs = [
@@ -4150,6 +4171,19 @@ cc_library(
         ":lib",
     ] + tf_additional_libdevice_deps(),
 )
+
+cc_library(
+    name = "rocm_rocdl_path",
+    srcs = ["platform/rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
+    hdrs = ["platform/rocm_rocdl_path.h"],
+    copts = tf_copts(),
+    data = tf_additional_rocdl_data(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+    ] + tf_additional_rocdl_deps(),
+)
+
 
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).

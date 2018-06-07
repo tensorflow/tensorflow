@@ -74,7 +74,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   std::vector<llvm_ir::IrArray::Index> array_indices;
 
   llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, ir_builder_);
+      llvm::Intrinsic::amdgcn_workgroup_id_x, {}, {}, ir_builder_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_count(),
                             static_cast<llvm::Instruction*>(block_id));
   block_id =
@@ -85,7 +85,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   //
   // %ntid.x is currently specified as 1024.
   llvm::Value* thread_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, ir_builder_);
+      llvm::Intrinsic::amdgcn_workitem_id_x, {}, {}, ir_builder_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.threads_per_block(),
                             static_cast<llvm::Instruction*>(thread_id));
   thread_id = ir_builder_->CreateZExt(thread_id, ir_builder_->getInt64Ty(),

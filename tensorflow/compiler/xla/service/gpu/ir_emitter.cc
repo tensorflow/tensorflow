@@ -46,6 +46,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
+namespace {
+
+static llvm::Value* MayAddrSpaceCastArg(llvm::Value* arg, llvm::IRBuilder<>& builder) {
+  llvm::Type* arg_type = arg->getType();
+  CHECK_EQ(true, arg_type->isPointerTy());
+  if (arg_type->getPointerAddressSpace() != 0) {
+    llvm::Type* generic_arg_type = arg_type->getPointerElementType()->getPointerTo(0);
+    llvm::Value* addrspacecast_arg = builder.CreateAddrSpaceCast(arg, generic_arg_type);
+    return addrspacecast_arg;
+  }
+  return arg;
+}
+
+}
+
 namespace xla {
 
 using llvm_ir::IrName;
@@ -88,7 +103,10 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
   llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
       *module_, initializer->getType(),
       /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, initializer,
-      /*Name=*/"");
+      /*Name=*/"",
+      /*insertBefore*/nullptr,
+      llvm::GlobalValue::NotThreadLocal,
+      /*AddressSpace=*/1 /* GPU global memory */);
   VLOG(2) << "HandleConstant: " << constant->ToString() << std::endl
           << "  emitted_value: " << llvm_ir::DumpToString(*global_for_const)
           << std::endl
@@ -168,8 +186,19 @@ Status IrEmitter::EmitCallToNestedComputation(
     emitted_function = ir_emitter_nested.GetEmittedFunction();
   }
 
-  std::vector<llvm::Value*> arguments(operands.begin(), operands.end());
-  arguments.push_back(output);
+  // For AMDGPU target, may need to addrspacecast alloca variables from
+  // addrspace 5 to addrspace 0
+  std::vector<llvm::Value*> arguments;
+  for (auto& arg : operands) {
+    llvm::Value* casted_arg = MayAddrSpaceCastArg(arg, ir_builder_);
+    arguments.push_back(casted_arg);
+  }
+
+  llvm::Value* casted_output = MayAddrSpaceCastArg(output, ir_builder_);
+  arguments.push_back(casted_output);
+
+  // temp buffer base is always in addrspace 0 so it's not required to
+  // do addrspacecast
   arguments.push_back(bindings_.GetTempBufferBase());
   ir_builder_.CreateCall(emitted_function, arguments);
 
@@ -193,14 +222,6 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       computation.root_instruction()->shape().element_type();
   llvm::Value* source = ir_builder_.CreateLoad(source_address, "source");
   if (root_opcode == HloOpcode::kAdd) {
-    // NVPTX supports atomicAdd on F32 and integer types.
-    if (element_type == F32) {
-      // F32 + F32
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_atomic_load_add_f32,
-                                   {output_address, source},
-                                   {output_address->getType()}, &ir_builder_);
-      return true;
-    }
     if (primitive_util::IsIntegralType(element_type)) {
       // integral + integral
       ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, output_address,

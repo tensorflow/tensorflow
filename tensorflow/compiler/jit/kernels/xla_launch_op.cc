@@ -51,7 +51,9 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   if (device_type_ == DeviceType(DEVICE_CPU)) {
     platform_id_ = se::host::kHostPlatformId;
   } else if (device_type_ == DeviceType(DEVICE_GPU)) {
-    platform_id_ = se::cuda::kCudaPlatformId;
+    // XXX FIXME devise a way to cope with multiple platforms
+    //platform_id_ = se::cuda::kCudaPlatformId;
+    platform_id_ = se::rocm::kROCmPlatformId;
   } else {
     platform_id_ = nullptr;
   }
