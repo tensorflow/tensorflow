@@ -18,7 +18,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-/*static*/ XlaTensor* XlaTensor::FromTensor(Tensor* tensor) {
+/*static*/ XlaTensor* XlaTensor::FromTensor(const Tensor* tensor) {
   if (tensor->NumElements() == 0) {
     return nullptr;
   }
@@ -27,8 +27,8 @@ namespace tensorflow {
   return xla_tensor;
 }
 
-/*static*/ const XlaTensor* XlaTensor::FromTensor(const Tensor* tensor) {
-  return FromTensor(const_cast<Tensor*>(tensor));
+/*static*/ bool XlaTensor::RefCountIsOne(const Tensor& tensor) {
+  return tensor.RefCountIsOne();
 }
 
 /*static*/ se::DeviceMemoryBase XlaTensor::DeviceMemoryFromTensor(
@@ -52,20 +52,24 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
       client->backend().transfer_manager()->HostShapeToDeviceShape(
           on_host_shape);
 
-  xla::ShapedBuffer buffer(on_host_shape, on_device_shape, client->platform(),
-                           device_ordinal);
-  for (auto& index_to_buffer : buffer.buffers()) {
+  xla::ScopedShapedBuffer shaped_buffer(on_host_shape, on_device_shape,
+                                        client->backend().memory_allocator(),
+                                        device_ordinal);
+  for (auto& index_to_buffer : shaped_buffer.buffers()) {
     xla::Shape subshape =
         xla::ShapeUtil::GetSubshape(on_device_shape, index_to_buffer.first);
     uint64 size =
         client->backend().transfer_manager()->GetByteSizeRequirement(subshape);
-    TF_ASSIGN_OR_RETURN(index_to_buffer.second,
+    TF_ASSIGN_OR_RETURN(xla::OwningDeviceMemory buffer,
                         client->backend().memory_allocator()->Allocate(
                             device_ordinal, size, /*retry_on_failure=*/false));
+    // Move our buffer into shaped_buffer, which takes ownership of it.
+    index_to_buffer.second = buffer.Forget();
   }
 
-  set_shaped_buffer(xla::ScopedShapedBuffer(
-      std::move(buffer), client->backend().memory_allocator()));
+  VLOG(4) << shaped_buffer.ToString();
+
+  set_shaped_buffer(std::move(shaped_buffer));
   return Status::OK();
 }
 

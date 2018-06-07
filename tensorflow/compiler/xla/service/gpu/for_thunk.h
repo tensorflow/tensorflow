@@ -36,9 +36,10 @@ class ForThunk : public Thunk {
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
-  tensorflow::Status Initialize(const GpuExecutable& executable) override;
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream) override;
 
  private:
   const int64 loop_limit_;

@@ -16,11 +16,6 @@
 """Python functions for directly manipulating TFRecord-formatted files.
 
 See the @{$python/python_io} guide.
-
-@@TFRecordWriter
-@@tf_record_iterator
-@@TFRecordCompressionType
-@@TFRecordOptions
 """
 
 from __future__ import absolute_import

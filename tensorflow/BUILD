@@ -19,6 +19,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_binary_deps",
 )
+load(
+    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "gen_api_init_files",  # @unused
+)
 
 # Config setting for determining if we are building for Android.
 config_setting(
@@ -478,7 +482,7 @@ tf_cc_shared_object(
 # excludes all but a subset of function names.
 # On MacOS, the linker does not support version_script, but has an
 # an "-exported_symbols_list" command.  -z defs disallows undefined
-# symbols in object files and -s strips the output.
+# symbols in object files.
 
 tf_cc_shared_object(
     name = "libtensorflow.so",
@@ -492,7 +496,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow/c:version_script.lds)",
         ],
@@ -518,7 +521,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow:tf_version_script.lds)",
         ],
@@ -543,13 +545,16 @@ exports_files(
     ],
 )
 
+gen_api_init_files(
+    name = "python_api_gen",
+    srcs = ["api_template.__init__.py"],
+    root_init_template = "api_template.__init__.py",
+)
+
 py_library(
     name = "tensorflow_py",
-    srcs = ["__init__.py"],
+    srcs = [":python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/python",
-        "//tensorflow/tools/api/generator:python_api",
-    ],
+    deps = ["//tensorflow/python"],
 )

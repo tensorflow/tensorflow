@@ -24,35 +24,6 @@ limitations under the License.
 // non-GPU targets. This only breaks in clang, because it's more strict for
 // template code and GpuAtomicMax is used in template context.
 
-
-// This file requires the following include because it uses GpuAtomicMax:
-// #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-// Unfortunately we can't add the #include, since it breaks compilation for
-// non-GPU targets. This only breaks in clang, because it's more strict for
-// template code and GpuAtomicMax is used in template context.
-
-// This file requires the following include because it uses GpuAtomicMax:
-// #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-// Unfortunately we can't add the #include, since it breaks compilation for
-// non-GPU targets. This only breaks in clang, because it's more strict for
-// template code and GpuAtomicMax is used in template context.
-
-// This file requires the following include because it uses GpuAtomicMax:
-// #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-// Unfortunately we can't add the #include, since it breaks compilation for
-// non-GPU targets. This only breaks in clang, because it's more strict for
-// template code and GpuAtomicMax is used in template context.
-
-// This file requires the following include because it uses GpuAtomicMax:
-// #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-// Unfortunately we can't add the #include, since it breaks compilation for
-// non-GPU targets. This only breaks in clang, because it's more strict for
-// template code and GpuAtomicMax is used in template context.
-
 // This file requires the following include because it uses GpuAtomicMax:
 // #include "tensorflow/core/util/gpu_kernel_helper.h"
 

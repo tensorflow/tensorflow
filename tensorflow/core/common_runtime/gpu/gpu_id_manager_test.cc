@@ -16,40 +16,45 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace test {
+namespace {
+
+PhysicalGpuId TfToPhysicalGpuId(TfGpuId tf) {
+  PhysicalGpuId cuda;
+  TF_CHECK_OK(GpuIdManager::TfToPhysicalGpuId(tf, &cuda));
+  return cuda;
+}
 
 TEST(GpuIdManagerTest, Basics) {
   TfGpuId key_0(0);
   PhysicalGpuId value_0(0);
-  GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0);
-  EXPECT_EQ(value_0, GpuIdManager::TfToPhysicalGpuId(key_0));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0));
+  EXPECT_EQ(value_0, TfToPhysicalGpuId(key_0));
 
   // Multiple calls to map the same value is ok.
-  GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0);
-  EXPECT_EQ(value_0, GpuIdManager::TfToPhysicalGpuId(key_0));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0));
+  EXPECT_EQ(value_0, TfToPhysicalGpuId(key_0));
 
   // Map a different TfGpuId to a different value.
   TfGpuId key_1(3);
   PhysicalGpuId value_1(2);
-  GpuIdManager::InsertTfPhysicalGpuIdPair(key_1, value_1);
-  EXPECT_EQ(value_1, GpuIdManager::TfToPhysicalGpuId(key_1));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_1, value_1));
+  EXPECT_EQ(value_1, TfToPhysicalGpuId(key_1));
 
   // Mapping a different TfGpuId to the same value is ok.
   TfGpuId key_2(10);
-  GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_1);
-  EXPECT_EQ(value_1, GpuIdManager::TfToPhysicalGpuId(key_2));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_1));
+  EXPECT_EQ(value_1, TfToPhysicalGpuId(key_2));
 
-  // Mapping the same TfGpuId to a different value will crash the program.
-  ASSERT_DEATH(GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_0),
-               "Mapping the same TfGpuId to a different physical GPU id");
+  // Mapping the same TfGpuId to a different value.
+  ASSERT_FALSE(GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_0).ok());
 
-  // Getting an nonexistent mapping will crash the program.
-  ASSERT_DEATH(GpuIdManager::TfToPhysicalGpuId(TfGpuId(100)),
-               "Could not find the mapping for TfGpuId");
+  // Getting a nonexistent mapping.
+  ASSERT_FALSE(GpuIdManager::TfToPhysicalGpuId(TfGpuId(100), &value_0).ok());
 }
 
-}  // namespace test
+}  // namespace
 }  // namespace tensorflow

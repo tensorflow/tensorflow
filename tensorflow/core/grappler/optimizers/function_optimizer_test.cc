@@ -111,6 +111,82 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(FunctionOptimizerTest, InlineFunction_SkipErrorsIfGraphNotModified) {
+  using test::function::NDef;
+
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+
+  // Standard XTimesTwo() function.
+  FunctionDef x_times_two = test::function::XTimesTwo();
+
+  // Function with sequence of tensors as an input (currently not supported).
+  FunctionDef my_identity_n = FunctionDefHelper::Create(
+      // Name
+      "MyIdentityN",
+      // Args
+      {"x: N*T"},
+      // Return values
+      {"out: N*T"},
+      // Attrs
+      {"N:int", "T:{float, double, int32, int64}"},
+      // Nodes (just forward inputs through IdentityN)
+      {
+          {{"Id"}, "IdentityN", {"x"}, {{"T", "$T"}, {"N", "$N"}}},
+      },
+      // Output mapping
+      {{"out", "Id:output:0"}});
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("y1", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("y2", "MyIdentityN", {"x"}, {{"T", DT_FLOAT}, {"N", 1}}, kDevice),
+       NDef("z1", "Identity", {"y1:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("z2", "Identity", {"y2:0"}, {{"T", DT_FLOAT}}, kDevice)},
+      // FunctionLib
+      {x_times_two, my_identity_n});
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Verify that only MyIdentityN is in the function library after optimization.
+  ASSERT_EQ(1, output.library().function().size());
+  EXPECT_EQ("MyIdentityN", output.library().function(0).signature().name());
+
+  // And that XTimesTwo was successfully inlined.
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "y1/inlined_inputs") {
+      found++;
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    } else if (node.name() == "y1") {
+      found++;
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("y1/y", node.input(0));
+    } else if (node.name() == "y2") {
+      found++;
+      EXPECT_EQ("MyIdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    }
+  }
+  EXPECT_EQ(3, found);
+
+  Tensor pi = test::AsScalar<float>(3.14f);
+  item.fetch = {"z1"};
+  item.feed.emplace_back("x", pi);
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
   using test::function::NDef;
 
@@ -655,6 +731,209 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_XTimesTwo) {
   GrapplerItem optimized(item, std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
+TEST_F(FunctionOptimizerTest, SpecializeFunction_PushDownConstInput) {
+  using test::function::NDef;
+
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
+      {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+
+  // Mark MyMul as noinline.
+  (*mul_func.mutable_attr())["_noinline"].set_b(true);
+  std::vector<FunctionDef> function_library = {mul_func};
+
+  // Build a graph to compute y = MyMul(x, 2.0).
+  const Tensor kTwo = test::AsScalar<float>(2.0);
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("init", "NoOp", {}, {}, kDevice),
+       NDef("two", "Const", {"^init", "^x"},
+            {{"dtype", DT_FLOAT}, {"value", kTwo}}, kDevice),
+       NDef("y", "MyMul", {"x", "two"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, kDevice)},
+      function_library);
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Make sure that specialized function was added to the library and original
+  // function was removed.
+  ASSERT_EQ(1, output.library().function_size());
+
+  const FunctionDef& specialized = output.library().function(0);
+  EXPECT_EQ("MyMul_specialized_for_y", specialized.signature().name());
+  EXPECT_EQ(1, specialized.signature().input_arg_size());
+
+  // And 'y' node has control dependencies of a pushed down const node.
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "y" && count++) {
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+    }
+  }
+  EXPECT_EQ(1, count);
+
+  // And that graph evaluation yields the same result.
+  Tensor pi = test::AsScalar<float>(3.14f);
+  item.fetch = {"z"};
+  item.feed.emplace_back("x", pi);
+
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
+TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
+  using test::function::NDef;
+
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+
+  // Mark MyMul as noinline.
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, int32}"},
+      {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "output:z:0"}});
+  (*mul_func.mutable_attr())["_noinline"].set_b(true);
+  std::vector<FunctionDef> function_library = {mul_func};
+
+  const Tensor kTwo = test::AsScalar<float>(2.0);
+  const Tensor kThree = test::AsScalar<float>(3.0);
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("init", "NoOp", {}, {}, kDevice),
+
+       // Float placeholders.
+       NDef("xf", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("yf", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+
+       // Int32 placeholders.
+       NDef("xi", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
+       NDef("yi", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
+
+       // Consts. Control inputs has to be attached to specialized func calls.
+       NDef("two", "Const", {"^init", "^xf"},
+            {{"dtype", DT_FLOAT}, {"value", kTwo}}, kDevice),
+       NDef("three", "Const", {"^init", "^xf"},
+            {{"dtype", DT_FLOAT}, {"value", kThree}}, kDevice),
+
+       // Specialization #1: DT_FLOAT type parameter.
+       NDef("mul_1", "MyMul", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("mul_2", "MyMul", {"yf", "xf"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #2: DT_INT32 type parameter.
+       NDef("mul_3", "MyMul", {"xi", "yi"}, {{"T", DT_INT32}}, kDevice),
+
+       // Specialization #3: DT_FLOAT type parameter + const input kTwo.
+       NDef("mul_4", "MyMul", {"xf", "two"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("mul_5", "MyMul", {"yf", "two"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #4: DT_FLOAT type parameter + const input kThree.
+       NDef("mul_6", "MyMul", {"three", "xf"}, {{"T", DT_FLOAT}}, kDevice)},
+      function_library);
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Make sure that MyMul was specialized once per unique context.
+  EXPECT_EQ(4, output.library().function_size());
+
+  // And graph nodes calling specialized functions.
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "mul_1" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_1", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("yf", node.input(1));
+
+    } else if (node.name() == "mul_2" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_1", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("yf", node.input(0));
+      EXPECT_EQ("xf", node.input(1));
+
+    } else if (node.name() == "mul_3" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_3", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xi", node.input(0));
+      EXPECT_EQ("yi", node.input(1));
+
+    } else if (node.name() == "mul_4" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_4", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+
+    } else if (node.name() == "mul_5" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_4", node.op());
+      ASSERT_EQ(3, node.input_size());
+      EXPECT_EQ("yf", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+      EXPECT_EQ("^xf", node.input(2));
+
+    } else if (node.name() == "mul_6" && count++) {
+      EXPECT_EQ("MyMul_specialized_for_mul_6", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("^init", node.input(1));
+    }
+  }
+  EXPECT_EQ(6, count);
+
+  // And that graph evaluation yields the same result.
+  Tensor pi = test::AsScalar<float>(3.14f);
+  Tensor four = test::AsScalar<int32>(4);
+  item.fetch = {"mul_1", "mul_2", "mul_3", "mul_4", "mul_5", "mul_6"};
+  item.feed = {{"xf", pi}, {"yf", pi}, {"xi", four}, {"yi", four}};
+
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
+  test::ExpectTensorEqual<int32>(tensors_expected[2], tensors[2]);
+  test::ExpectTensorEqual<float>(tensors_expected[3], tensors[3]);
+  test::ExpectTensorEqual<float>(tensors_expected[4], tensors[4]);
+  test::ExpectTensorEqual<float>(tensors_expected[5], tensors[5]);
+}
+
+TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
+  using test::function::NDef;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+  DisableFunctionSpecialization(&optimizer);
+  auto func = test::function::XTimesTwo();
+  (*func.mutable_attr())["_noinline"].set_b(true);
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, "/device:CPU:0"),
+       NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
+       NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, "/device:CPU:0")},
+      // FunctionLib
+      {
+          func,
+          test::function::XTimesTwoInt32(),
+          test::function::XTimes16(),
+      });
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.library().function().size(), 1);
+  EXPECT_EQ(output.library().function(0).signature().name(), "XTimesTwo");
 }
 
 }  // namespace grappler

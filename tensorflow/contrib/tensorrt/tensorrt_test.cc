@@ -95,9 +95,9 @@ nvinfer1::IHostMemory* CreateNetwork() {
 }
 
 // Executes the network.
-void Execute(nvinfer1::IExecutionContext& context, const float* input,
+void Execute(nvinfer1::IExecutionContext* context, const float* input,
              float* output) {
-  const nvinfer1::ICudaEngine& engine = context.getEngine();
+  const nvinfer1::ICudaEngine& engine = context->getEngine();
 
   // We have two bindings: input and output.
   ASSERT_EQ(engine.getNbBindings(), 2);
@@ -118,7 +118,7 @@ void Execute(nvinfer1::IExecutionContext& context, const float* input,
   // could be removed.
   ASSERT_EQ(0, cudaMemcpyAsync(buffers[input_index], input, sizeof(float),
                                cudaMemcpyHostToDevice, stream));
-  context.enqueue(1, buffers, stream, nullptr);
+  context->enqueue(1, buffers, stream, nullptr);
   ASSERT_EQ(0, cudaMemcpyAsync(output, buffers[output_index], sizeof(float),
                                cudaMemcpyDeviceToHost, stream));
   cudaStreamSynchronize(stream);
@@ -143,7 +143,7 @@ TEST(TensorrtTest, BasicFunctions) {
   // Execute the network.
   float input = 1234;
   float output;
-  Execute(*context, &input, &output);
+  Execute(context, &input, &output);
   EXPECT_EQ(output, input * 2 + 3);
 
   // Destroy the engine.

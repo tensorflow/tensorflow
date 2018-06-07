@@ -31,7 +31,9 @@ GPUBFCAllocator::GPUBFCAllocator(PhysicalGpuId physical_gpu_id, size_t total_mem
                                  const string& name)
     : BFCAllocator(
           new GPUMemAllocator(
-              GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie()),
+              GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie(),
+              gpu_options.per_process_gpu_memory_fraction() > 1.0 ||
+                  gpu_options.experimental().use_unified_memory()),
           total_memory, gpu_options.allow_growth(), name) {}
 
 }  // namespace tensorflow

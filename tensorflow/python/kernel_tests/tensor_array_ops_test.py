@@ -438,7 +438,6 @@ class TensorArrayTest(test.TestCase):
           "Tried to read from index 3 but array size is: 3"):
         self.evaluate(ta.read(3))
 
-  @test_util.run_in_graph_and_eager_modes()
   def testTensorArrayWriteMultipleFails(self):
     with self.test_session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
@@ -615,8 +614,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(c(-2.0), grad_vals[1])
 
   def testTensorArrayGradientWriteRead(self):
-    for dtype in (np.float32, np.float64, np.int32, np.int64, np.complex64,
-                  np.complex128):
+    for dtype in (np.float32, np.float64, np.complex64, np.complex128):
       self._testTensorArrayGradientWriteReadType(dtype)
 
   def _testTensorArrayGradientWritePackConcatAndRead(self):

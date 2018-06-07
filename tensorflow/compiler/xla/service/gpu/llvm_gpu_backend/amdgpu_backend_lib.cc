@@ -248,7 +248,7 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
 
-    target_machine->addPassesToEmitFile(codegen_passes, pstream,
+    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
                                         llvm::TargetMachine::CGFT_ObjectFile);
     codegen_passes.run(*module);
   }

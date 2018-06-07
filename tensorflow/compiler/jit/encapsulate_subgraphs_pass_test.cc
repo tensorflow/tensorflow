@@ -1050,7 +1050,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
                          .WithAttr("_outside", "O1"));
     Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
                              {DT_FLOAT, DT_FLOAT}, shape2.opts());
-    Node* h = Binary(ops::NodeOut(recv2, 0), e,
+    Node* h = Binary(ops::NodeOut(recv2, 1), e,
                      shape2.opts()
                          .WithName("H")
                          .WithAttr("_encapsulate", "F1")
@@ -1075,7 +1075,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O2_host_compute"},
            "XlaHostCompute",
-           {"D:o:0", "F:o:0"},
+           {"F:o:0", "D:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"ancestors",
@@ -1123,13 +1123,13 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
 
     Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
                              {DT_FLOAT, DT_FLOAT}, b2.opts());
-    Node* g = Binary(e, ops::NodeOut(recv2, 1),
+    Node* g = Binary(e, ops::NodeOut(recv2, 0),
                      b2.opts()
                          .WithName("G")
                          .WithControlInputs({recv2, e})
                          .WithAttr("_encapsulate", "F1")
                          .WithAttr("_outside", "O2"));
-    Node* h = Binary(ops::NodeOut(recv2, 0), e,
+    Node* h = Binary(ops::NodeOut(recv2, 1), e,
                      b2.opts()
                          .WithName("H")
                          .WithAttr("_encapsulate", "F1")

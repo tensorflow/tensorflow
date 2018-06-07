@@ -100,7 +100,7 @@ namespace gpu {
 
 namespace {
 
-using tensorflow::port::Tracing;
+namespace tracing = tensorflow::tracing;
 
 // Returns the directory containing ROCm-Device-Libs files. This function is
 // called in AMDGPUCompiler's constructor, so can't return an error. But
@@ -253,7 +253,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("layout_assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout());
+        hlo_module->mutable_device_entry_computation_layout(), stream_exec);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -323,7 +323,7 @@ StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunHloPasses");
-  Tracing::TraceMe annotation("HLO Transforms", module->name(),
+  tracing::ScopedActivity activity("HLO Transforms", module->name(),
                               /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), stream_exec, device_allocator));

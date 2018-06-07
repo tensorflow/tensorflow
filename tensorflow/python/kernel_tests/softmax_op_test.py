@@ -24,14 +24,12 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 
-@test_util.with_c_api
 class SoftmaxTest(test.TestCase):
 
   def _npSoftmax(self, features, dim=-1, log=False):

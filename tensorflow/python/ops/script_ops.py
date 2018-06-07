@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Script Language Operators. See the @{$python/script_ops} guide.
-
-@@py_func
-"""
+"""Script Language Operators. See the @{$python/script_ops} guide."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -27,6 +24,7 @@ import threading
 
 # Used by py_util.cc to get tracebacks.
 import traceback  # pylint: disable=unused-import
+import weakref
 
 import numpy as np
 import six
@@ -91,11 +89,14 @@ class FuncRegistry(object):
   def __init__(self):
     self._lock = threading.Lock()
     self._unique_id = 0  # GUARDED_BY(self._lock)
-    self._funcs = {}
+    # Only store weakrefs to the funtions. The strong reference is stored in
+    # the graph.
+    self._funcs = weakref.WeakValueDictionary()
 
   def insert(self, func):
     """Registers `func` and returns a unique token for this entry."""
     token = self._next_unique_token()
+    # Store a weakref to the function
     self._funcs[token] = func
     return token
 
@@ -148,7 +149,7 @@ class FuncRegistry(object):
     Raises:
       ValueError: if no function is registered for `token`.
     """
-    func = self._funcs[token]
+    func = self._funcs.get(token, None)
     if func is None:
       raise ValueError("callback %s is not found" % token)
     if isinstance(func, EagerFunc):
@@ -183,19 +184,6 @@ _py_funcs = FuncRegistry()
 pywrap_tensorflow.InitializePyTrampoline(_py_funcs)
 
 
-class CleanupFunc(object):
-  """A helper class to remove a registered function from _py_funcs."""
-
-  def __init__(self, token):
-    self._token = token
-
-  def __del__(self):
-    if _py_funcs is not None:
-      # If _py_funcs is None, the program is most likely in shutdown, and the
-      # _py_funcs object has been destroyed already.
-      _py_funcs.remove(self._token)
-
-
 def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
   """See documentation for py_func and eager_py_func."""
 
@@ -219,17 +207,15 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
     # bound to that of the outer graph instead.
     graph = graph._outer_graph
 
-  cleanup = CleanupFunc(token)
-
   # TODO(zhifengc): Consider adding a Graph method to collect
   # `cleanup` objects in one of its member.
-  if not hasattr(graph, "_cleanup_py_funcs_used_in_graph"):
-    graph._cleanup_py_funcs_used_in_graph = []
+  if not hasattr(graph, "_py_funcs_used_in_graph"):
+    graph._py_funcs_used_in_graph = []
 
-  # When `graph` is destroyed, elements in _cleanup_py_funcs_used_in_graph
-  # will be destroyed and their __del__ will remove the 'token' from
-  # the funcs registry.
-  graph._cleanup_py_funcs_used_in_graph.append(cleanup)
+  # Store a reference to the function in the graph to ensure it stays alive
+  # as long as the graph lives. When the graph is destroyed, the function
+  # is left to the garbage collector for destruction as well.
+  graph._py_funcs_used_in_graph.append(func)
   # pylint: enable=protected-access
 
   if eager:
@@ -246,14 +232,68 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
 
 
 def eager_py_func(func, inp, Tout, name=None):
-  """Wraps a python function into a TensorFlow op.
+  """Wraps a python function into a TensorFlow op that executes it eagerly.
 
-  When the returned op is executed, `func` is invoked with eager execution
-  enabled. Inputs are Tensor objects and func must return None or objects
-  that may be converted to Tensor objects.
+  This function allows expressing computations in a TensorFlow graph as
+  Python functions. In particular, it wraps a Python function `func`
+  in a TensorFlow operation that executes it with eager exeuction enabled. As a
+  consequence, `tf.contrib.eager.py_func` makes it possible to express control
+  flow using Python constructs (`if`, `while`, `for`, etc.), instead of
+  TensorFlow control flow constructs (@{tf.cond}, @{tf.while_loop}). For
+  example, you might use `tf.contrib.eager.py_func` to implement the log huber
+  function:
 
-  This function has the same limitations as `py_func` with respect to
-  serialization and distribution.
+  ```python
+  def log_huber(x, m):
+    if tf.abs(x) <= m:
+      return x ** 2
+    else:
+      return m ** 2 * (1 - 2 * tf.log(m) + tf.log(x ** 2))
+
+  x = tf.placeholder(tf.float32)
+  m = tf.placeholder(tf.float32)
+
+  y = tf.contrib.eager.py_func(func=log_huber, inp=[x, m], Tout=tf.float32)
+
+  with tf.Session() as sess:
+    # The session executes `log_huber` eagerly. Given the feed values below,
+    # it will take the second branch, so `output` evaluates to 7.24372.
+    output = sess.run(y, feed_dict={x: 3.0, m: 2.0})
+  ```
+
+  You can also use `tf.contrib.eager.py_func` to debug your models at runtime
+  using Python tools, i.e., you can isolate portions of your code that
+  you want to debug, wrap them in Python functions and insert `pdb` tracepoints
+  or print statements as desired, and wrap those functions in
+  `tf.contrib.eager.py_func`.
+
+  For more information on eager execution, see @{$programmers_guide/eager}.
+
+  `tf.contrib.eager.py_func` is similar in spirit to @{tf.py_func}, but unlike
+  the latter, the former lets you use TensorFlow operations in the wrapped
+  Python function. In particular, while @{tf.py_func} only runs on CPUs and
+  wraps functions that take NumPy arrays as inputs and return NumPy arrays as
+  outputs, `tf.contrib.eager.py_func` can be placed on GPUs and wraps functions
+  that take Tensors as inputs, execute TensorFlow operations in their bodies,
+  and return Tensors as outputs.
+
+  `tf.contrib.eager.py_func` is not differentiable, though a gradient may be
+  implemented in the future; if you would like to differentiate through it,
+  please file an issue on Github.
+
+  Like @{tf.py_func}, `tf.contrib.eager.py_func` has the following limitations
+  with respect to serialization and distribution:
+
+  * The body of the function (i.e. `func`) will not be serialized in a
+    `GraphDef`. Therefore, you should not use this function if you need to
+    serialize your model and restore it in a different environment.
+
+  * The operation must run in the same address space as the Python program
+    that calls `tf.contrib.eager.py_func()`. If you are using distributed
+    TensorFlow, you must run a `tf.train.Server` in the same process as the
+    program that calls `tf.contrib.eager.py_func()` and you must pin the created
+    operation to a device in that server (e.g. using `with tf.device():`).
+
 
   Args:
     func: A Python function which accepts a list of `Tensor` objects

@@ -37,18 +37,18 @@ class SDCAOptimizer(object):
   Example usage:
 
   ```python
-    real_feature_column = real_valued_column(...)
-    sparse_feature_column = sparse_column_with_hash_bucket(...)
-    sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
-                                          num_loss_partitions=1,
-                                          num_table_shards=1,
-                                          symmetric_l2_regularization=2.0)
-    classifier = tf.contrib.learn.LinearClassifier(
-        feature_columns=[real_feature_column, sparse_feature_column],
-        weight_column_name=...,
-        optimizer=sdca_optimizer)
-    classifier.fit(input_fn_train, steps=50)
-    classifier.evaluate(input_fn=input_fn_eval)
+  real_feature_column = real_valued_column(...)
+  sparse_feature_column = sparse_column_with_hash_bucket(...)
+  sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
+                                        num_loss_partitions=1,
+                                        num_table_shards=1,
+                                        symmetric_l2_regularization=2.0)
+  classifier = tf.contrib.learn.LinearClassifier(
+      feature_columns=[real_feature_column, sparse_feature_column],
+      weight_column_name=...,
+      optimizer=sdca_optimizer)
+  classifier.fit(input_fn_train, steps=50)
+  classifier.evaluate(input_fn=input_fn_eval)
   ```
 
   Here the expectation is that the `input_fn_*` functions passed to train and
@@ -64,7 +64,8 @@ class SDCAOptimizer(object):
   of workers running the train steps. It defaults to 1 (single machine).
   `num_table_shards` defines the number of shards for the internal state
   table, typically set to match the number of parameter servers for large
-  data sets.
+  data sets. You can also specify a `partitioner` object to partition the primal
+  weights during training (`div` partitioning strategy will be used).
   """
 
   def __init__(self,
@@ -73,13 +74,15 @@ class SDCAOptimizer(object):
                num_table_shards=None,
                symmetric_l1_regularization=0.0,
                symmetric_l2_regularization=1.0,
-               adaptive=True):
+               adaptive=True,
+               partitioner=None):
     self._example_id_column = example_id_column
     self._num_loss_partitions = num_loss_partitions
     self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
     self._adaptive = adaptive
+    self._partitioner = partitioner
 
   def get_name(self):
     return 'SDCAOptimizer'
@@ -107,6 +110,10 @@ class SDCAOptimizer(object):
   @property
   def adaptive(self):
     return self._adaptive
+
+  @property
+  def partitioner(self):
+    return self._partitioner
 
   def get_train_step(self, columns_to_variables, weight_column_name, loss_type,
                      features, targets, global_step):
@@ -175,10 +182,12 @@ class SDCAOptimizer(object):
           sparse_feature_column = _dense_tensor_to_sparse_feature_column(
               dense_bucket_tensor)
           sparse_feature_with_values.append(sparse_feature_column)
-          # For bucketized columns, the variables list contains exactly one
-          # element.
-          sparse_feature_with_values_weights.append(
-              columns_to_variables[column][0])
+          # If a partitioner was used during variable creation, we will have a
+          # list of Variables here larger than 1.
+          vars_to_append = columns_to_variables[column][0]
+          if len(columns_to_variables[column]) > 1:
+            vars_to_append = columns_to_variables[column]
+          sparse_feature_with_values_weights.append(vars_to_append)
         elif isinstance(
             column,
             (
@@ -198,6 +207,14 @@ class SDCAOptimizer(object):
           example_ids = array_ops.reshape(id_tensor.indices[:, 0], [-1])
 
           flat_ids = array_ops.reshape(id_tensor.values, [-1])
+          # Prune invalid IDs (< 0) from the flat_ids, example_ids, and
+          # weight_tensor.  These can come from looking up an OOV entry in the
+          # vocabulary (default value being -1).
+          is_id_valid = math_ops.greater_equal(flat_ids, 0)
+          flat_ids = array_ops.boolean_mask(flat_ids, is_id_valid)
+          example_ids = array_ops.boolean_mask(example_ids, is_id_valid)
+          weight_tensor = array_ops.boolean_mask(weight_tensor, is_id_valid)
+
           projection_length = math_ops.reduce_max(flat_ids) + 1
           # project ids based on example ids so that we can dedup ids that
           # occur multiple times for a single example.
@@ -218,8 +235,12 @@ class SDCAOptimizer(object):
                                             array_ops.shape(ids)[0]), [-1])
           sparse_feature_with_values.append(
               SparseFeatureColumn(example_ids_filtered, reproject_ids, weights))
-          sparse_feature_with_values_weights.append(
-              columns_to_variables[column][0])
+          # If a partitioner was used during variable creation, we will have a
+          # list of Variables here larger than 1.
+          vars_to_append = columns_to_variables[column][0]
+          if len(columns_to_variables[column]) > 1:
+            vars_to_append = columns_to_variables[column]
+          sparse_feature_with_values_weights.append(vars_to_append)
         else:
           raise ValueError('SDCAOptimizer does not support column type %s.' %
                            type(column).__name__)

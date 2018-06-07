@@ -34,45 +34,39 @@ class TfToPhysicalGpuIdMap {
     return id_map;
   }
 
-  void InsertOrDie(TfGpuId tf_gpu_id, PhysicalGpuId physical_gpu_id)
-      LOCKS_EXCLUDED(mu_) {
+  Status Insert(TfGpuId tf_gpu_id, PhysicalGpuId physical_gpu_id) LOCKS_EXCLUDED(mu_) {
     std::pair<IdMapType::iterator, bool> result;
     {
       mutex_lock lock(mu_);
       result = id_map_.insert({tf_gpu_id.value(), physical_gpu_id.value()});
     }
-    if (!result.second) {
-      CHECK_EQ(physical_gpu_id.value(), result.first->second)
-          << "Mapping the same TfGpuId to a different physical GPU id."
-          << " TfGpuId: " << tf_gpu_id
-          << " Existing mapped physical GPU id: " << result.first->second
-          << " physical GPU id being tried to map to: " << physical_gpu_id;
+    if (!result.second && physical_gpu_id.value() != result.first->second) {
+      return errors::AlreadyExists(
+          "TensorFlow device (GPU:", tf_gpu_id.value(),
+          ") is being mapped to "
+          "multiple CUDA devices (",
+          physical_gpu_id.value(), " now, and ", result.first->second,
+          " previously), which is not supported. "
+          "This may be the result of providing different GPU configurations "
+          "(ConfigProto.gpu_options, for example different visible_device_list)"
+          " when creating multiple Sessions in the same process. This is not "
+          " currently supported, see "
+          "https://github.com/tensorflow/tensorflow/issues/19083");
     }
-  }
-
-  PhysicalGpuId FindOrDie(TfGpuId tf_gpu_id) const LOCKS_EXCLUDED(mu_) {
-    mutex_lock lock(mu_);
-    return FindOrDieLocked(tf_gpu_id);
+    return Status::OK();
   }
 
   bool Find(TfGpuId tf_gpu_id, PhysicalGpuId* physical_gpu_id) const
       LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    if (id_map_.count(tf_gpu_id.value()) == 0) return false;
-    *physical_gpu_id = FindOrDieLocked(tf_gpu_id);
+    auto result = id_map_.find(tf_gpu_id.value());
+    if (result == id_map_.end()) return false;
+    *physical_gpu_id = result->second;
     return true;
   }
 
  private:
   TfToPhysicalGpuIdMap() = default;
-
-  PhysicalGpuId FindOrDieLocked(TfGpuId tf_gpu_id) const
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    auto result = id_map_.find(tf_gpu_id.value());
-    CHECK(result != id_map_.end())
-        << "Could not find the mapping for TfGpuId: " << tf_gpu_id;
-    return PhysicalGpuId(result->second);
-  }
 
   void TestOnlyReset() LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
@@ -88,21 +82,17 @@ class TfToPhysicalGpuIdMap {
 };
 }  // namespace
 
-void GpuIdManager::InsertTfPhysicalGpuIdPair(TfGpuId tf_gpu_id,
-                                         PhysicalGpuId physical_gpu_id) {
-  TfToPhysicalGpuIdMap::singleton()->InsertOrDie(tf_gpu_id, physical_gpu_id);
+Status GpuIdManager::InsertTfPhysicalGpuIdPair(TfGpuId tf_gpu_id,
+                                           PhysicalGpuId physical_gpu_id) {
+  return TfToPhysicalGpuIdMap::singleton()->Insert(tf_gpu_id, physical_gpu_id);
 }
 
 Status GpuIdManager::TfToPhysicalGpuId(TfGpuId tf_gpu_id, PhysicalGpuId* physical_gpu_id) {
   if (TfToPhysicalGpuIdMap::singleton()->Find(tf_gpu_id, physical_gpu_id)) {
     return Status::OK();
   }
-  return errors::NotFound("TF GPU device with id ", tf_gpu_id.value(),
+  return errors::NotFound("TensorFlow device GPU:", tf_gpu_id.value(),
                           " was not registered");
-}
-
-PhysicalGpuId GpuIdManager::TfToPhysicalGpuId(TfGpuId tf_gpu_id) {
-  return TfToPhysicalGpuIdMap::singleton()->FindOrDie(tf_gpu_id);
 }
 
 void GpuIdManager::TestOnlyReset() {

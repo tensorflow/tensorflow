@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_LAYOUT_ASSIGNMENT_H_
 
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -27,12 +28,17 @@ namespace cpu {
 // layout constraints for operands and results of library calls.
 class CpuLayoutAssignment : public LayoutAssignment {
  public:
-  explicit CpuLayoutAssignment(ComputationLayout* entry_computation_layout)
-      : LayoutAssignment(entry_computation_layout) {}
+  explicit CpuLayoutAssignment(
+      ComputationLayout* entry_computation_layout,
+      const TargetMachineFeatures* target_machine_features)
+      : LayoutAssignment(entry_computation_layout),
+        target_machine_features_(*target_machine_features) {}
   ~CpuLayoutAssignment() override {}
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;
+
+  const TargetMachineFeatures& target_machine_features_;
 };
 
 }  // namespace cpu

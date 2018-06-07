@@ -309,7 +309,7 @@ class FunctionTest(test.TestCase):
     def g(x):
       return backprop.gradients_function(f, [0])(x)[0]
 
-    self.assertAllEqual(2, g(constant_op.constant(2)))
+    self.assertAllEqual(2, g(constant_op.constant(2.)))
 
   def testGraphModeEagerGradError(self):
     with context.graph_mode():
@@ -770,6 +770,21 @@ class AutomaticControlDependenciesTest(test.TestCase):
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
+
+  def testDefunWhileLoopWithCapturedLoopVars(self):
+    n = 3
+    x = constant_op.constant(list(range(n)))
+
+    @function.defun
+    def loop():
+      c = lambda i, x: i < n
+      b = lambda i, x: (i + 1, x + 1)
+      i, out = control_flow_ops.while_loop(c, b, (0, x))
+      return i, out
+
+    i, out = loop()
+    self.assertEqual(int(i), 3)
+    self.assertAllEqual(out, [3, 4, 5])
 
   def testDecorator(self):
     with context.graph_mode(), self.test_session():

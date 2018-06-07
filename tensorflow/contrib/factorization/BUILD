@@ -215,7 +215,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
     ],
-    tags = ["noasan"],  # times out b/78588193
+    shard_count = 4,
 )
 
 # Estimators tests

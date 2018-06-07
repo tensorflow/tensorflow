@@ -202,7 +202,7 @@ class _InitializingFunctionObject(object):
         v.handle).numpy() for v in self._call_fn.variables]
     if all(x for x in initialized):
       for v in self._call_fn.variables:
-        if v._trainable:  # pylint: disable=protected-access
+        if v.trainable:
           tape.watch_variable(v)
       return self._call_fn(*args)
     elif all(not x for x in initialized):
@@ -278,8 +278,8 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # variables. As a side-effect this will populate the variable capturing
       # scope's view of which variables exist.
       variable_captures = _VariableCapturingScope()
-      with variable_captures.initializing_scope(), function.capture_tensors(
-          captures), function.AutomaticControlDependencies() as a:
+      with variable_captures.initializing_scope(
+          ), function.AutomaticControlDependencies() as a:
         func_outputs = func(*func_inputs)
         outputs_list = nest.flatten(func_outputs)
         for i, x in enumerate(outputs_list):
@@ -296,8 +296,8 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # placeholders. This assumes the variable capturing scope created above
       # knows about all variables.
       tmp_graph.clear_resource_control_flow_state()
-      with variable_captures.capturing_scope(), function.capture_tensors(
-          captures), function.AutomaticControlDependencies() as a:
+      with variable_captures.capturing_scope(
+          ), function.AutomaticControlDependencies() as a:
         captured_outputs = func(*func_inputs)
       captured_outlist = nest.flatten(captured_outputs)
       for i, x in enumerate(captured_outlist):

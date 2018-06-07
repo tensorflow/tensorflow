@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_HOST_OR_DEVICE_SCALAR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_HOST_OR_DEVICE_SCALAR_H_
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/platform/logging.h"
 
 namespace stream_executor {
 

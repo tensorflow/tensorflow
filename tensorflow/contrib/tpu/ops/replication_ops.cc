@@ -25,6 +25,7 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("TPUReplicateMetadata")
     .Attr("num_replicas: int >= 0")
     .Attr("topology: string = \"\"")
+    .Attr("use_tpu: bool = true")
     .Attr("device_assignment: list(int) = []")
     .Attr("computation_shape: list(int) = []")
     .Attr("host_compute_core: list(string) = []")
@@ -64,10 +65,15 @@ REGISTER_OP("TPUReplicatedOutput")
         "Operator that connects the output of an N-way replicated TPU "
         "computation to N separate outputs.");
 
+REGISTER_OP("TPUCompilationResult")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("TPUReplicate")
     .Attr("computation: func")
     .Attr("num_replicas: int >= 1")
     .Attr("topology: string = \"\"")
+    .Attr("use_tpu: bool = true")
     .Attr("device_assignment: list(int) = []")
     .Attr("host_compute_core: list(string) = []")
     .Attr("computation_shape: list(int) = []")
@@ -89,6 +95,9 @@ computation: a function containing the computation to run.
 num_replicas: the number of replicas of the computation to run.
 topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
 topology.
+use_tpu: a bool indicating if this computation will run on TPU or CPU/GPU.
+Currently, only supports a default placement (computation is placed on GPU
+if one is available, and on CPU if not).
 computation_shape: a [mesh_dimension] array describing the shape of each
   computation replica in numbers of cores in the TPU mesh.
 device_assignment: a flattened array with shape

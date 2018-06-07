@@ -159,7 +159,7 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 	* step_id - Step ID.
 	* request_index - Request index.
 	* remote_addr/rkey - Address/rkey of the reallocated result/proxy tensor.
-* **RDMA_MESSAGE_ERROR_STATUS** - (sender ==> receiver) Notify the receiver that an error had occured on the sender side, so it can propagate it to the upper levels.
+* **RDMA_MESSAGE_ERROR_STATUS** - (sender ==> receiver) Notify the receiver that an error had occurred on the sender side, so it can propagate it to the upper levels.
 	* type - The message type.
 	* name (name_size) - Name of the requested tensor.
 	* step_id - Step ID.

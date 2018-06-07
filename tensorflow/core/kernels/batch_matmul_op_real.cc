@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 
+#if GOOGLE_CUDA
+#include "cuda/include/cuda.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 #if !defined(INTEL_MKL)
@@ -27,10 +31,8 @@ TF_CALL_int32(REGISTER_BATCH_MATMUL_CPU);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_float(REGISTER_BATCH_MATMUL_GPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_GPU);
-// ROCM TODO: check when to enable fp16 batch matmul
-#if CUDA_VERSION >= 7050
-TF_CALL_half(REGISTER_BATCH_MATMUL_GPU);
-#endif
+// TODO(csigg): Implement Stream::ThenBlasGemv for Eigen::half and uncomment.
+// TF_CALL_half(REGISTER_BATCH_MATMUL_GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL

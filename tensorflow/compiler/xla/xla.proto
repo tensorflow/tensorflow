@@ -17,7 +17,6 @@ syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla_data.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
-import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
 
@@ -228,14 +227,6 @@ message ExecutionOptions {
 
 message SnapshotComputationRequest {
   ComputationHandle computation = 1;
-}
-
-message SnapshotComputationResponse {
-  SessionModule module = 1;
-}
-
-message LoadComputationSnapshotRequest {
-  SessionModule module = 1;
 }
 
 message LoadComputationSnapshotResponse {

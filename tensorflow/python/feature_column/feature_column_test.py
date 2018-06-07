@@ -25,6 +25,8 @@ import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -54,8 +56,8 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
 
 
-def _initialized_session():
-  sess = session.Session()
+def _initialized_session(config=None):
+  sess = session.Session(config=config)
   sess.run(variables_lib.global_variables_initializer())
   sess.run(lookup_ops.tables_initializer())
   return sess
@@ -135,6 +137,9 @@ class LazyColumnTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'bbb is not in features dictionary'):
       builder.get('bbb')
+    with self.assertRaisesRegexp(ValueError,
+                                 'bbb is not in features dictionary'):
+      builder.get(u'bbb')
 
   def test_not_supported_feature_column(self):
 
@@ -179,6 +184,10 @@ class NumericColumnTest(test.TestCase):
     self.assertIsNone(a.default_value)
     self.assertEqual(dtypes.float32, a.dtype)
     self.assertIsNone(a.normalizer_fn)
+
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.numeric_column(key=('aaa',))
 
   def test_shape_saved_as_tuple(self):
     a = fc.numeric_column('aaa', shape=[1, 2], default_value=[[3, 2.]])
@@ -642,6 +651,10 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertEqual('aaa', a.key)
     self.assertEqual(10, a.hash_bucket_size)
     self.assertEqual(dtypes.string, a.dtype)
+
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_hash_bucket(('key',), 10)
 
   def test_bucket_size_should_be_given(self):
     with self.assertRaisesRegexp(ValueError, 'hash_bucket_size must be set.'):
@@ -1274,7 +1287,6 @@ def get_keras_linear_model_predictions(features,
   return retval
 
 
-@test_util.with_c_api
 class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -1550,16 +1562,10 @@ class LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          predictions = fc.linear_model(features, [price])
-      else:
-        predictions = fc.linear_model(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            predictions.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        fc.linear_model(features, [price])
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -1923,7 +1929,6 @@ class LinearModelTest(test.TestCase):
         sess.run(net, feed_dict={features['price']: np.array(1)})
 
 
-@test_util.with_c_api
 class _LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -2188,16 +2193,10 @@ class _LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          predictions = get_keras_linear_model_predictions(features, [price])
-      else:
-        predictions = get_keras_linear_model_predictions(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            predictions.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        get_keras_linear_model_predictions(features, [price])
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -2684,7 +2683,6 @@ class InputLayerTest(test.TestCase):
       self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
 
 
-@test_util.with_c_api
 class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -2749,16 +2747,10 @@ class FunctionalInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      if ops._USE_C_API:
-        with self.assertRaisesRegexp(
-            Exception,
-            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
-          net = fc.input_layer(features, [price])
-      else:
-        net = fc.input_layer(features, [price])
-        with _initialized_session():
-          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-            net.eval()
+      with self.assertRaisesRegexp(
+          Exception,
+          r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+        fc.input_layer(features, [price])
 
   def test_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -3325,6 +3317,11 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column._parse_example_spec)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_vocabulary_file(
+          key=('aaa',), vocabulary_file='path_to_file', vocabulary_size=3)
+
   def test_all_constructor_args(self):
     column = fc.categorical_column_with_vocabulary_file(
         key='aaa', vocabulary_file='path_to_file', vocabulary_size=3,
@@ -3750,6 +3747,11 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
     }, column._parse_example_spec)
 
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_vocabulary_list(
+          key=('aaa',), vocabulary_list=('omar', 'stringer', 'marlo'))
+
   def test_defaults_int(self):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa', vocabulary_list=(12, 24, 36))
@@ -4140,6 +4142,10 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, column._parse_example_spec)
+
+  def test_key_should_be_string(self):
+    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+      fc.categorical_column_with_identity(key=('aaa',), num_buckets=3)
 
   def test_deep_copy(self):
     original = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
@@ -5609,6 +5615,72 @@ class SharedEmbeddingColumnTest(test.TestCase):
       self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
       self.assertAllEqual(expected_lookups_b, embedding_lookup_b.eval())
 
+  def test_get_dense_tensor_weight_collections(self):
+    # Inputs.
+    vocabulary_size = 3
+    # -1 values are ignored.
+    input_a = np.array([
+        [2, -1, -1],  # example 0, ids [2]
+        [0, 1, -1]
+    ])  # example 1, ids [0, 1]
+    input_b = np.array([
+        [0, -1, -1],  # example 0, ids [0]
+        [-1, -1, -1]
+    ])  # example 1, ids []
+    input_features = {'aaa': input_a, 'bbb': input_b}
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+        (7., 11.)  # id 2
+    )
+
+    def _initializer(shape, dtype, partition_info):
+      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+      self.assertEqual(dtypes.float32, dtype)
+      self.assertIsNone(partition_info)
+      return embedding_values
+
+    # Expected lookup result, using combiner='mean'.
+    expected_lookups_a = (
+        # example 0:
+        (7., 11.),  # ids [2], embedding = [7, 11]
+        # example 1:
+        (2., 3.5),  # ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
+    )
+    expected_lookups_b = (
+        # example 0:
+        (1., 2.),  # ids [0], embedding = [1, 2]
+        # example 1:
+        (0., 0.),  # ids [], embedding = [0, 0]
+    )
+
+    # Build columns.
+    categorical_column_a = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    categorical_column_b = fc.categorical_column_with_identity(
+        key='bbb', num_buckets=vocabulary_size)
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns(
+        [categorical_column_a, categorical_column_b],
+        dimension=embedding_dimension,
+        initializer=_initializer)
+
+    fc.input_layer(
+        input_features, [embedding_column_a, embedding_column_b],
+        weight_collections=('my_vars',))
+
+    # Assert expected embedding variable and lookups.
+    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+    self.assertItemsEqual(
+        ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
+        tuple(v.name for v in global_vars))
+    my_vars = ops.get_collection('my_vars')
+    self.assertItemsEqual(
+        ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
+        tuple(v.name for v in my_vars))
+
   def test_get_dense_tensor_placeholder_inputs(self):
     # Inputs.
     vocabulary_size = 3
@@ -6191,7 +6263,12 @@ class WeightedCategoricalColumnTest(test.TestCase):
               'values': ((.5,), (1.,))
           }, (column,),
           sparse_combiner='mean')
-      with _initialized_session():
+      # Disabling the constant folding optimizer here since it changes the
+      # error message differently on CPU and GPU.
+      config = config_pb2.ConfigProto()
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      with _initialized_session(config):
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
           predictions.eval()
 
@@ -6284,7 +6361,12 @@ class WeightedCategoricalColumnTest(test.TestCase):
               'values': ((.5,), (1.,))
           }, (column,),
           sparse_combiner='mean')
-      with _initialized_session():
+      # Disabling the constant folding optimizer here since it changes the
+      # error message differently on CPU and GPU.
+      config = config_pb2.ConfigProto()
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      with _initialized_session(config):
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
           predictions.eval()
 

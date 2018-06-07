@@ -78,10 +78,10 @@ def InLabels(labels, substr):
 
 
 def MetadataHasXlaLaunch(run_metadata):
-  """Returns true if there is a _XlaLaunch kernel in run_metadata's timeline."""
+  """Returns true if there is a XlaLaunch kernel in run_metadata's timeline."""
 
   # TODO(phawkins): find a less hacky way to test whether a kernel ran.
-  return InLabels(RunMetadataLabels(run_metadata), "_XlaLaunch")
+  return InLabels(RunMetadataLabels(run_metadata), "XlaLaunch")
 
 
 class JitLaunchTest(test.TestCase):
@@ -90,8 +90,8 @@ class JitLaunchTest(test.TestCase):
   # Verifies that the outputs match and that XLA was invoked. 'fn' must take
   # the same number of tensors as arguments that are in 'args', and must return
   # a tuple of output tensors.
-  # If 'require_kernel_launch' is True, then we verify that a _XlaLaunch node
-  # actually ran. However, it is sometimes possible for _XlaLaunch ops to be
+  # If 'require_kernel_launch' is True, then we verify that a XlaLaunch node
+  # actually ran. However, it is sometimes possible for XlaLaunch ops to be
   # constant-folded away, so the check is optional.
   def _compare(self, fn, args, require_kernel_launch=True, noinline=None):
     with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
@@ -125,7 +125,7 @@ class JitLaunchTest(test.TestCase):
           for (x, y) in zip(compiled, direct):
             self.assertAllClose(x, y, rtol=1e-1)
         else:
-          self.assertAllClose(compiled, direct)
+          self.assertAllClose(compiled, direct, rtol=1e-2)
 
   def testNoOutputs(self):
     with session_lib.Session() as sess:
@@ -441,14 +441,14 @@ class XlaCompilationTest(test.TestCase):
     self.assertFalse(InLabels(labels, "Log"))
     self.assertTrue(InLabels(labels, "Reciprocal"))
     self.assertTrue(InLabels(labels, "Mul"))
-    self.assertFalse(InLabels(labels, "_XlaLaunch"))
+    self.assertFalse(InLabels(labels, "XlaLaunch"))
 
-    # Compile the backprop. One _XlaLaunch.
+    # Compile the backprop. One XlaLaunch.
     labels = _Run(compiled=True)
     self.assertFalse(InLabels(labels, "Log"))
     self.assertFalse(InLabels(labels, "Reciprocal"))
     self.assertFalse(InLabels(labels, "Mul"))
-    self.assertTrue(InLabels(labels, "_XlaLaunch"))
+    self.assertTrue(InLabels(labels, "XlaLaunch"))
 
 
 class ElementWiseFusionTest(test.TestCase):
@@ -482,14 +482,15 @@ class ElementWiseFusionTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
 
       labels = RunMetadataLabels(run_metadata)
-      count = sum("_XlaLaunch(" in x for x in labels)
+      count = sum("XlaLaunch(" in x for x in labels)
 
       return output, count
 
   def testElementWiseClustering(self):
     arg0 = np.random.rand(2, 2).astype(np.float32)
     arg1 = np.random.rand(2, 2).astype(np.float32)
-    os.environ["TF_XLA_FLAGS"] = "--tf_xla_fusion_only=true"
+    os.environ["TF_XLA_FLAGS"] = ("--tf_xla_fusion_only=true "
+                                  "--tf_xla_cpu_global_jit")
     tf_op, tf_count = self.simpleTest(arg0, arg1,
                                       config_pb2.OptimizerOptions.OFF)
     self.assertEqual(0, tf_count)
