@@ -665,6 +665,10 @@ class MatrixMatrixBlockPanelEmitter {
   // the largest vector register we will use).  This can be larger than the
   // largest vector register supported by the machine -- LLVM will legalize
   // these large vector widths into legally sized vectors.
+  //
+  // `max_vector_count` is the maximum number of vectors of size
+  // `max_vectorization_width` that we will attempt to process at once.
+  //
   // `min_vectorization_width` is the smallest vector width the emitter will use
   // -- below that it will devolve to using a scalar loop.
   //
@@ -674,12 +678,13 @@ class MatrixMatrixBlockPanelEmitter {
   class Config {
    public:
     explicit Config(PrimitiveType scalar_type, Dimensions dims,
-                    int64 max_vectorization_width,
+                    int64 max_vectorization_width, int64 max_vector_count,
                     int64 min_vectorization_width, int64 tile_size_m,
                     int64 tile_size_k)
         : scalar_type_(scalar_type),
           dims_(dims),
           max_vectorization_width_(max_vectorization_width),
+          max_vector_count_(max_vector_count),
           min_vectorization_width_(min_vectorization_width),
           tile_size_m_(tile_size_m),
           tile_size_k_(tile_size_k) {}
@@ -694,6 +699,7 @@ class MatrixMatrixBlockPanelEmitter {
     PrimitiveType scalar_type() const { return scalar_type_; }
     Dimensions dims() const { return dims_; }
     int64 max_vectorization_width() const { return max_vectorization_width_; }
+    int64 max_vector_count() const { return max_vector_count_; }
     int64 min_vectorization_width() const { return min_vectorization_width_; }
 
     int64 tile_size_m() const { return tile_size_m_; }
@@ -703,6 +709,7 @@ class MatrixMatrixBlockPanelEmitter {
     PrimitiveType scalar_type_;
     Dimensions dims_;
     int64 max_vectorization_width_;
+    int64 max_vector_count_;
     int64 min_vectorization_width_;
     int64 tile_size_m_;
     int64 tile_size_k_;
@@ -721,29 +728,27 @@ class MatrixMatrixBlockPanelEmitter {
         ksl_(ir_builder_) {
     CHECK(max_vectorization_width() > 0 &&
           IsPowerOfTwo(static_cast<uint64>(max_vectorization_width())));
+    CHECK_GT(max_vector_count(), 0);
     CHECK(min_vectorization_width() > 0 &&
           IsPowerOfTwo(static_cast<uint64>(min_vectorization_width())));
+    CHECK_GE(max_vectorization_width(), min_vectorization_width());
     CHECK_GT(tile_size_k(), 0);
   }
 
   void Emit();
 
  private:
-  // This emits a loop that loops over the `n` dimension in multiples of
-  // `max_vectorization_width` as much as possible and then emits a remainder
-  // epilogue.
-  void EmitLoopOverN();
+  // The HandleResiduesOnX helpers split the iteration space for dimension X
+  // into a multiple of the tile size on dimension X and an epilogue.  These
+  // helpers ultimately call into `EmitTiledReductionLoop` for emitting the
+  // tiled GEMM kernel.
 
-  // This emits a loop that loops over the `k` dimension in multiples of
-  // `tile_size_k` as much as possible and then emits a remainder epilogue.
-  void EmitLoopOverK(VectorSupportLibrary* vsl, llvm::Value* n_start,
-                     llvm::Value* n_end);
-
-  // This emits a loop that loops over the `m` dimension in multiples of
-  // `tile_size_m` as much as possible and then emits a remainder epilogue.
-  void EmitLoopOverM(VectorSupportLibrary* vsl, int64 tile_size_k,
-                     llvm::Value* k_start, llvm::Value* k_end,
-                     llvm::Value* n_start, llvm::Value* n_end);
+  void HandleResiduesOnN();
+  void HandleResiduesOnK(VectorSupportLibrary* vsl, llvm::Value* n_start,
+                         llvm::Value* n_end);
+  void HandleResiduesOnM(VectorSupportLibrary* vsl, int64 tile_size_k,
+                         llvm::Value* k_start, llvm::Value* k_end,
+                         llvm::Value* n_start, llvm::Value* n_end);
 
   // This emits the inner reduction loop.  This inner reduction loop multiplies
   // a tile from the LHS of size [tile_size_m,tile_size_k] and a tile from the
@@ -763,6 +768,7 @@ class MatrixMatrixBlockPanelEmitter {
   int64 max_vectorization_width() const {
     return config().max_vectorization_width();
   }
+  int64 max_vector_count() const { return config().max_vector_count(); }
   int64 min_vectorization_width() const {
     return config().min_vectorization_width();
   }
@@ -779,16 +785,19 @@ class MatrixMatrixBlockPanelEmitter {
   KernelSupportLibrary ksl_;
 };
 
-void MatrixMatrixBlockPanelEmitter::Emit() { EmitLoopOverN(); }
+void MatrixMatrixBlockPanelEmitter::Emit() { HandleResiduesOnN(); }
 
-void MatrixMatrixBlockPanelEmitter::EmitLoopOverN() {
+void MatrixMatrixBlockPanelEmitter::HandleResiduesOnN() {
   // We can only iterate the `n` dimension for an extent that is divisible by
   // the vectorization width.  So we emit an outer loop that first processes the
   // largest extent in `n` that is divisible by max_vectorization_width, then
   // the largest remaining extent that is divisible by max_vectorization_width /
   // 2 etc.
 
-  int64 current_vectorization_width = max_vectorization_width();
+  int64 current_vectorization_width =
+      max_vector_count() * max_vectorization_width();
+  int64 current_vector_count = max_vector_count();
+
   int64 n_start = 0;
   while (n_start != dims().n() &&
          current_vectorization_width >= min_vectorization_width()) {
@@ -796,10 +805,16 @@ void MatrixMatrixBlockPanelEmitter::EmitLoopOverN() {
     if (n_start != n_end) {
       VectorSupportLibrary vsl(scalar_type(), current_vectorization_width,
                                ir_builder_, "gebp");
-      EmitLoopOverK(&vsl, GetInt64(n_start), GetInt64(n_end));
+      HandleResiduesOnK(&vsl, GetInt64(n_start), GetInt64(n_end));
       n_start = n_end;
     }
-    current_vectorization_width /= 2;
+    if (current_vector_count == 1) {
+      current_vectorization_width /= 2;
+    } else {
+      current_vector_count--;
+      current_vectorization_width =
+          current_vector_count * max_vectorization_width();
+    }
   }
 
   if (n_start != dims().n()) {
@@ -807,29 +822,29 @@ void MatrixMatrixBlockPanelEmitter::EmitLoopOverN() {
     ksl_.For("epi.n", n_start, dims().n(), 1, [&](llvm::Value* n_i) {
       llvm::Value* n_i_next =
           ir_builder_->CreateAdd(n_i, ir_builder_->getInt64(1));
-      EmitLoopOverK(&vsl, n_i, n_i_next);
+      HandleResiduesOnK(&vsl, n_i, n_i_next);
     });
   }
 }
 
-void MatrixMatrixBlockPanelEmitter::EmitLoopOverK(VectorSupportLibrary* vsl,
-                                                  llvm::Value* n_start,
-                                                  llvm::Value* n_end) {
+void MatrixMatrixBlockPanelEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
+                                                      llvm::Value* n_start,
+                                                      llvm::Value* n_end) {
   int64 k_start = 0;
   int64 k_end = dims().k() - (dims().k() % tile_size_k());
   if (k_end != k_start) {
-    EmitLoopOverM(vsl, tile_size_k(), GetInt64(k_start), GetInt64(k_end),
-                  n_start, n_end);
+    HandleResiduesOnM(vsl, tile_size_k(), GetInt64(k_start), GetInt64(k_end),
+                      n_start, n_end);
     k_start = k_end;
   }
 
   if (k_start != dims().k()) {
-    EmitLoopOverM(vsl, dims().k() - k_start, GetInt64(k_start),
-                  GetInt64(dims().k()), n_start, n_end);
+    HandleResiduesOnM(vsl, dims().k() - k_start, GetInt64(k_start),
+                      GetInt64(dims().k()), n_start, n_end);
   }
 }
 
-void MatrixMatrixBlockPanelEmitter::EmitLoopOverM(
+void MatrixMatrixBlockPanelEmitter::HandleResiduesOnM(
     VectorSupportLibrary* vsl, int64 tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end) {
   const int64 m_end = dims().m() - dims().m() % tile_size_m();
@@ -1023,16 +1038,21 @@ bool DotOpEmitter::EmitExperimentalGebpDotIfEnabled(
       target, ir_builder_->getInt8(0), size_bytes,
       target_machine_features_.minimum_alignment_for_allocation(size_bytes));
 
-  int64 max_vector_width =
+  int64 max_target_vector_width =
       target_machine_features_.vector_register_num_elements(
           *ir_builder_->GetInsertBlock()->getParent(), primitive_type);
+
+  int64 tile_size_m, tile_size_k, tile_size_n_in_vector_width;
+  std::tie(tile_size_m, tile_size_k, tile_size_n_in_vector_width) =
+      GetGemmTileSize();
 
   MatrixMatrixBlockPanelEmitter::Config config(
       /*scalar_type=*/primitive_type,
       MatrixMatrixBlockPanelEmitter::Dimensions{/*m=*/m, /*k=*/k, /*n=*/n},
-      /*max_vectorization_width=*/max_vector_width,
-      /*min_vectorization_width=*/std::min<int64>(4, max_vector_width),
-      /*tile_size_m=*/3, /*tile_size_k=*/5);
+      /*max_vectorization_width=*/max_target_vector_width,
+      /*max_vector_count=*/tile_size_n_in_vector_width,
+      /*min_vectorization_width=*/std::min<int64>(4, max_target_vector_width),
+      /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k);
 
   VLOG(2) << "Emitting GEBP kernel in LLVM IR with config "
           << config.GetCacheKey();

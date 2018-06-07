@@ -1938,6 +1938,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertRandomUniformOperator(
         model, static_cast<const RandomUniformOperator&>(src_op),
         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowEqual) {
+    ConvertComparisonOperator(model, src_op, "Equal", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowNotEqual) {
+    ConvertComparisonOperator(model, src_op, "NotEqual", tensorflow_graph);
   } else if (src_op.type == OperatorType::kTensorFlowGreater) {
     ConvertComparisonOperator(model, src_op, "Greater", tensorflow_graph);
   } else if (src_op.type == OperatorType::kTensorFlowGreaterEqual) {

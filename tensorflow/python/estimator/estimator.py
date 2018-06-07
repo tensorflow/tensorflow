@@ -893,11 +893,14 @@ class Estimator(object):
             estimator_spec.scaffold.local_init_op or
             monitored_session.Scaffold.default_local_init_op())
 
-        saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
-            sharded=True)
+        # This saver will be used both for restoring variables now,
+        # and in saving out the metagraph below. This ensures that any
+        # Custom Savers stored with the Scaffold are passed through to the
+        # SavedModel for restore later.
+        graph_saver = estimator_spec.scaffold.saver or saver.Saver(sharded=True)
 
         try:
-          saver_for_restore.restore(session, checkpoint_path)
+          graph_saver.restore(session, checkpoint_path)
         except errors.NotFoundError as e:
           msg = ('Could not load all requested variables from the checkpoint. '
                  'Please make sure your model_fn does not expect variables '
@@ -918,7 +921,8 @@ class Estimator(object):
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
             strip_default_attrs=strip_default_attrs,
-            legacy_init_op=local_init_op)
+            legacy_init_op=local_init_op,
+            saver=graph_saver)
 
         if save_variables:
           builder.add_meta_graph_and_variables(
