@@ -80,11 +80,62 @@ struct SubGraphParams {
   const int cuda_gpu_id_;
 };
 
+struct EngineConnections {
+  EngineConnections(const string& outside, int out_id, int out_port,
+                    const string& inside, int in_id, int in_port,
+                    bool input_edge,int port)
+      : outside_node_name(outside),
+        outside_id(out_id),
+        outside_port(out_port),
+        inside_node_name(inside),
+        inside_id(in_id),
+        inside_port(in_port),
+        is_input_edge(input_edge),port_number(port) {}
+  const string outside_node_name;
+  const int outside_id;
+  const int outside_port;
+  tensorflow::PartialTensorShape outside_shape;
+  tensorflow::DataType outside_type;
+  const string inside_node_name;
+  const int inside_id;
+  const int inside_port;
+  tensorflow::PartialTensorShape inside_shape;
+  tensorflow::DataType inside_type;
+  bool is_input_edge;
+  int port_number;
+};
+
+struct EngineInfo {
+  EngineInfo()
+      : engine_type(EngineType::TRTStatic),
+        max_workspace_size_bytes(0),
+        precision_mode(FP32MODE){};
+  string engine_name;
+  string device;
+  tensorflow::GraphDef segment_graph_def;
+  std::vector<EngineConnections> connections;  // order matters!
+  enum class EngineType { TRTStatic = 0, TRTDynamic = 1 };
+  EngineType engine_type;
+  tensorflow::int64 max_workspace_size_bytes;
+  int maximum_cached_engines;
+  std::vector<int> cached_engine_batches;
+  int precision_mode;
+};
 // TODO(sami): Replace references with const reference or pointers
 tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
 tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
 tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,
                                                       tensorflow::Node* c_node);
+tensorflow::Status ConvertSegmentToGraphDef(
+    const tensorflow::Graph* graph,
+    const tensorflow::grappler::GraphProperties& graph_properties,
+    const std::vector<int>& subgraph_node_ids,
+    std::vector<EngineConnections>* connections,
+    tensorflow::GraphDef* segment_def, string* common_scope);
+tensorflow::Status ConvertSubgraphToEngine(
+    const tensorflow::GraphDef& gdef, nvinfer1::IBuilder* builder,
+    const std::vector<tensorflow::PartialTensorShape>& input_shapes,
+    nvinfer1::ICudaEngine** engine, int precision_mode);
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

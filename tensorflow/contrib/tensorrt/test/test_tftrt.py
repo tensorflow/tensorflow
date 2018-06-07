@@ -113,8 +113,10 @@ def user(run_graph=execute_graph, run_calibration=execute_calibration):
       max_batch_size=inp_dims[0],
       max_workspace_size_bytes=1 << 25,
       precision_mode="FP32",  # TRT Engine precision "FP32","FP16" or "INT8"
-      minimum_segment_size=2  # minimum number of nodes in an engine
-  )
+      minimum_segment_size=2,  # minimum number of nodes in an engine
+      is_dynamic_op=False,
+      maximum_cached_engines=1,
+      cached_engine_batches=[])
   o1 = run_graph(orig_graph, dummy_input)
   o2 = run_graph(trt_graph, dummy_input)
   o3 = run_graph(trt_graph, dummy_input)
@@ -126,16 +128,20 @@ def user(run_graph=execute_graph, run_calibration=execute_calibration):
       max_batch_size=inp_dims[0],
       max_workspace_size_bytes=1 << 25,
       precision_mode="FP16",  # TRT Engine precision "FP32","FP16" or "INT8"
-      minimum_segment_size=2  # minimum number of nodes in an engine
-  )
+      minimum_segment_size=2,  # minimum number of nodes in an engine
+      is_dynamic_op=False,
+      maximum_cached_engines=1,
+      cached_engine_batches=[])
   int8_calib_gdef = trt.create_inference_graph(
       input_graph_def=orig_graph,
       outputs=["output"],
       max_batch_size=inp_dims[0],
       max_workspace_size_bytes=1 << 25,
       precision_mode="INT8",  # TRT Engine precision "FP32","FP16" or "INT8"
-      minimum_segment_size=2  # minimum number of nodes in an engine
-  )
+      minimum_segment_size=2,  # minimum number of nodes in an engine
+      is_dynamic_op=False,
+      maximum_cached_engines=1,
+      cached_engine_batches=[])
   o4 = run_graph(fp16_graph, dummy_input)
   _ = run_calibration(int8_calib_gdef, dummy_input)
   int8_graph = trt.calib_graph_to_infer_graph(int8_calib_gdef)

@@ -49,7 +49,6 @@ tf_cuda_cc_test(
 tf_custom_op_library(
     name = "python/ops/_trt_engine_op.so",
     srcs = [
-        "ops/trt_calib_op.cc",
         "ops/trt_engine_op.cc",
     ],
     deps = [
@@ -76,11 +75,9 @@ tf_cuda_library(
 cc_library(
     name = "trt_engine_op_kernel",
     srcs = [
-        "kernels/trt_calib_op.cc",
         "kernels/trt_engine_op.cc",
     ],
     hdrs = [
-        "kernels/trt_calib_op.h",
         "kernels/trt_engine_op.h",
     ],
     copts = tf_copts(),
@@ -89,9 +86,11 @@ cc_library(
         ":trt_logging",
         ":trt_plugins",
         ":trt_resources",
+        ":trt_conversion",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
+        "//tensorflow/core/grappler/costs:graph_properties",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
@@ -102,7 +101,6 @@ cc_library(
 tf_gen_op_libs(
     op_lib_names = [
         "trt_engine_op",
-        "trt_calib_op",
     ],
 )
 
@@ -122,7 +120,6 @@ tf_gen_op_wrapper_py(
     name = "trt_engine_op",
     gen_locally = True,
     deps = [
-        ":trt_calib_op_op_lib",
         ":trt_engine_op_op_lib",
         ":trt_logging",
         ":trt_shape_function",
@@ -140,7 +137,6 @@ tf_custom_op_py_library(
     kernels = [
         ":trt_engine_op_kernel",
         ":trt_engine_op_op_lib",
-        ":trt_calib_op_op_lib",
         ":trt_shape_function",
     ],
     srcs_version = "PY2AND3",
