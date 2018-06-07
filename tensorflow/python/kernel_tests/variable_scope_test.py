@@ -198,6 +198,32 @@ class VariableScopeTest(test.TestCase):
       f()
 
   @test_util.run_in_graph_and_eager_modes()
+  def testEagerVariablesStoreAddsToCollections(self):
+    store = variable_scope.EagerVariableStore()
+    with store.as_default():
+      trainable = variable_scope.get_variable("v1", [], trainable=True)
+      not_trainable = variable_scope.get_variable("v2", [], trainable=False)
+      concat = variable_scope.get_variable(
+          "v3", [], collections=[ops.GraphKeys.CONCATENATED_VARIABLES])
+      self.assertEqual(
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES),
+          [trainable, not_trainable])
+      self.assertEqual(
+          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES),
+          [trainable, concat])
+      self.assertEqual(
+          ops.get_collection(ops.GraphKeys.CONCATENATED_VARIABLES), [concat])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerVariablesOutsideStoreNotAddedToCollections(self):
+    if not context.executing_eagerly():
+      return
+    variable_scope.get_variable("v1", [], trainable=True)
+    variable_scope.get_variable("v2", [], trainable=False)
+    self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+    self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+
+  @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonTensorValue(self):
     v = variable_scope.get_variable("v4", initializer=4, dtype=dtypes.int32)
     self.evaluate(variables_lib.variables_initializer([v]))

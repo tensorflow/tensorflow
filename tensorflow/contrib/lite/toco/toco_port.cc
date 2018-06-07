@@ -18,12 +18,10 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 #include "tensorflow/core/platform/logging.h"
 
-#ifdef __ARM_ARCH_7A__
+#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__)
 namespace std {
-double round(double x) {
-  return ::round(x);
-}
-}
+double round(double x) { return ::round(x); }
+}  // namespace std
 #endif
 
 namespace toco {

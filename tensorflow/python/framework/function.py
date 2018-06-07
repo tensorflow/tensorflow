@@ -720,6 +720,8 @@ class _FuncGraph(ops.Graph):
     if ops._USE_C_SHAPES:
       if isinstance(tensor, ops.EagerTensor):
         handle_data = tensor._handle_data
+        if handle_data:
+          handle_data = handle_data.SerializeToString()
       else:
         handle_data = c_api.GetResourceHandleShapeAndType(
             tensor.graph._c_graph, tensor._as_tf_output())

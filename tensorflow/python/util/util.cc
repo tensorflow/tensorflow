@@ -243,6 +243,9 @@ bool GetNextValuesForIterable(PyObject* nested,
                               std::vector<Safe_PyObjectPtr>* next_values) {
   PyObject* item;
   PyObject* iterator = PyObject_GetIter(nested);
+  if (iterator == nullptr || PyErr_Occurred()) {
+    return false;
+  }
   while ((item = PyIter_Next(iterator)) != nullptr) {
     next_values->emplace_back(item);
   }

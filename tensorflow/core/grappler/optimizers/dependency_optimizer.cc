@@ -581,7 +581,8 @@ void DependencyOptimizer::GroupCrossDeviceControlEdges() {
     for (int j = 0; j < node->input_size(); ++j) {
       if (IsControlInput(node->input(j))) {
         const NodeDef* input = node_map_->GetNode(node->input(j));
-        if (!input->device().empty() && input->device() != node->device()) {
+        if (input != nullptr && !input->device().empty() &&
+            input->device() != node->device()) {
           auto emplace_result = noops.emplace(input->device(), nullptr);
           if (!emplace_result.second &&
               emplace_result.first->second == nullptr) {
@@ -615,14 +616,19 @@ void DependencyOptimizer::GroupCrossDeviceControlEdges() {
       const string& input_name = node->input(pos);
       if (IsControlInput(input_name)) {
         NodeDef* input = node_map_->GetNode(input_name);
-        auto it = noops.find(input->device());
-        if (it == noops.end() || it->second == nullptr) {
+        if (input == nullptr) {
           ++pos;
         } else {
-          node->mutable_input()->SwapElements(pos, node->input_size() - 1);
-          node->mutable_input()->RemoveLast();
-          it->second->add_input(AsControlDependency(*input));
-          node_map_->UpdateOutput(input_name, node->name(), it->second->name());
+          auto it = noops.find(input->device());
+          if (it == noops.end() || it->second == nullptr) {
+            ++pos;
+          } else {
+            node->mutable_input()->SwapElements(pos, node->input_size() - 1);
+            node->mutable_input()->RemoveLast();
+            it->second->add_input(AsControlDependency(*input));
+            node_map_->UpdateOutput(input_name, node->name(),
+                                    it->second->name());
+          }
         }
       } else {
         ++pos;
@@ -669,9 +675,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Dedup control inputs.
     CleanControlInputs();
 
-    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-      GroupCrossDeviceControlEdges();
-    }
+    GroupCrossDeviceControlEdges();
   }
 
   return Status::OK();

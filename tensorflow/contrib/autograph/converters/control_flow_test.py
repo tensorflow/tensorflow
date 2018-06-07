@@ -42,7 +42,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.while_loop) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual((10, 5, 5),
                          sess.run(result.test_fn(constant_op.constant(5))))
@@ -57,7 +57,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.while_loop) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual(0, sess.run(result.test_fn(constant_op.constant(5))))
 
@@ -75,7 +75,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.cond) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual((-1, 0),
                          sess.run(result.test_fn(constant_op.constant(1))))
@@ -92,7 +92,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.cond) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))
 

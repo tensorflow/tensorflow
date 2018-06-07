@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -194,7 +195,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   EXPECT_THAT(root, op::Dot(op::Parameter(0), op::Parameter(1),

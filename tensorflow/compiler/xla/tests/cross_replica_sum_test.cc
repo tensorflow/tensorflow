@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace {
@@ -32,11 +32,19 @@ class TrivialCrossReplicaSumTest : public HloTestBase {};
 XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
   const char* module_str = R"(
   HloModule test
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+  }
+
   ENTRY test_computation {
     p = f32[3] parameter(0)
-    ROOT crs = f32[3] cross-replica-sum(p)
+    ROOT crs = f32[3] cross-replica-sum(p), to_apply=add
   })";
-  auto module = tools::Parse(module_str, GetModuleConfigForTest()).ValueOrDie();
+  auto module =
+      ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
   auto literal = Literal::CreateR1<float>({1, 2, 3});
   EXPECT_EQ(*literal, *ExecuteAndTransfer(std::move(module), {literal.get()}));
 }
@@ -44,12 +52,20 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
 XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
   const char* module_str = R"(
   HloModule test
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+  }
+
   ENTRY test_computation {
     p0 = f32[3] parameter(0)
     p1 = f32[2] parameter(1)
-    ROOT crs = (f32[3], f32[2]) cross-replica-sum(p0, p1)
+    ROOT crs = (f32[3], f32[2]) cross-replica-sum(p0, p1), to_apply=add
   })";
-  auto module = tools::Parse(module_str, GetModuleConfigForTest()).ValueOrDie();
+  auto module =
+      ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
   auto literal0 = Literal::CreateR1<float>({1, 2, 3});
   auto literal1 = Literal::CreateR1<float>({10, 20});
   EXPECT_EQ(
@@ -63,12 +79,20 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
 XLA_TEST_F(TrivialCrossReplicaSumTest, ConstantOperand) {
   const char* module_str = R"(
   HloModule test
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+  }
+
   ENTRY test_computation {
     p0 = f32[3] parameter(0)
     p1 = f32[2] constant({10, 20})
-    ROOT crs = (f32[3], f32[2]) cross-replica-sum(p0, p1)
+    ROOT crs = (f32[3], f32[2]) cross-replica-sum(p0, p1), to_apply=add
   })";
-  auto module = tools::Parse(module_str, GetModuleConfigForTest()).ValueOrDie();
+  auto module =
+      ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
   auto literal0 = Literal::CreateR1<float>({1, 2, 3});
   auto literal1 = Literal::CreateR1<float>({10, 20});
   EXPECT_EQ(*Literal::MakeTuple({literal0.get(), literal1.get()}),
