@@ -1259,6 +1259,7 @@ def sampled_softmax_loss(weights,
                          num_sampled,
                          num_classes,
                          num_true=1,
+                         label_smoothing=0,
                          sampled_values=None,
                          remove_accidental_hits=True,
                          partition_strategy="mod",
@@ -1268,6 +1269,10 @@ def sampled_softmax_loss(weights,
 
   This is a faster way to train a softmax classifier over a huge number of
   classes.
+
+  If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
+    new_onehot_labels = onehot_labels * (1 - label_smoothing)
+                        + label_smoothing / num_classes
 
   This operation is for training only.  It is generally an underestimate of
   the full softmax loss.
@@ -1314,6 +1319,7 @@ def sampled_softmax_loss(weights,
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
+    label_smoothing: If greater than 0 then smooth the labels.
     sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,
         `sampled_expected_count`) returned by a `*_candidate_sampler` function.
         (if None, we default to `log_uniform_candidate_sampler`)
@@ -1345,6 +1351,12 @@ def sampled_softmax_loss(weights,
       partition_strategy=partition_strategy,
       name=name,
       seed=seed)
+  if label_smoothing > 0:
+    num_classes = math_ops.cast(
+        array_ops.shape(labels)[1], logits.dtype)
+    smooth_positives = 1.0 - label_smoothing
+    smooth_negatives = label_smoothing / num_classes
+    labels = labels * smooth_positives + smooth_negatives
   labels = array_ops.stop_gradient(labels, name="labels_stop_gradient")
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits_v2(
       labels=labels, logits=logits)
