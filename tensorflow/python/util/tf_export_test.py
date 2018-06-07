@@ -128,13 +128,6 @@ class ValidateExportTest(test.TestCase):
     with self.assertRaises(tf_export.SymbolAlreadyExposedError):
       export_decorator(_test_function)
 
-  def testEAllowMultipleExports(self):
-    _test_function._tf_api_names = ['name1', 'name2']
-    tf_export.tf_export('nameRed', 'nameBlue', allow_multiple_exports=True)(
-        _test_function)
-    self.assertEquals(['name1', 'name2', 'nameRed', 'nameBlue'],
-                      _test_function._tf_api_names)
-
   def testOverridesFunction(self):
     _test_function2._tf_api_names = ['abc']
 

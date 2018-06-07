@@ -66,14 +66,14 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
 
 
-@tf_export('estimator.Estimator')
+@estimator_export('estimator.Estimator')
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
@@ -566,7 +566,8 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names', '_validate_features_in_predict_input',
+        '_tf_api_names', '_estimator_api_names', '_estimator_api_constants',
+        '_validate_features_in_predict_input',
         '_call_model_fn', '_add_meta_graph_for_mode'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
@@ -1634,11 +1635,12 @@ def _has_dataset_or_queue_runner(maybe_tensor):
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
 
+
 VocabInfo = warm_starting_util.VocabInfo  # pylint: disable=invalid-name
-tf_export('estimator.VocabInfo', allow_multiple_exports=True)(VocabInfo)
+estimator_export('estimator.VocabInfo')(VocabInfo)
 
 
-@tf_export('estimator.WarmStartSettings')
+@estimator_export('estimator.WarmStartSettings')
 class WarmStartSettings(
     collections.namedtuple('WarmStartSettings', [
         'ckpt_to_initialize_from',

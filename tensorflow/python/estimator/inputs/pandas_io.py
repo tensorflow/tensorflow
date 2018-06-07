@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python.estimator.inputs.queues import feeding_functions
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 try:
   # pylint: disable=g-import-not-at-top
@@ -35,7 +35,7 @@ except ImportError:
   HAS_PANDAS = False
 
 
-@tf_export('estimator.inputs.pandas_input_fn')
+@estimator_export('estimator.inputs.pandas_input_fn')
 def pandas_input_fn(x,
                     y=None,
                     batch_size=128,
