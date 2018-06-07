@@ -1118,6 +1118,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
+  ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
+      "EQUAL", OperatorType::kTensorFlowEqual));
+  ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
+      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual));
 
   return ops;
 }

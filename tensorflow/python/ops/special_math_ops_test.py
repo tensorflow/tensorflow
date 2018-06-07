@@ -285,8 +285,8 @@ class EinsumTest(test.TestCase):
     correct_value = np.einsum(axes, *input_vals)
 
     err = np.abs(correct_value - output_value).max()
-    print(axes, err)
-    assert err < 1e-8
+    # print(axes, err)
+    self.assertLess(err, 1e-8)
 
   def test_input_is_placeholder(self):
     with ops.Graph().as_default():
@@ -298,8 +298,7 @@ class EinsumTest(test.TestCase):
             m0: [[1, 2, 3]],
             m1: [[2], [1], [1]],
         }
-        np.testing.assert_almost_equal([[7]], sess.run(
-            out, feed_dict=feed_dict))
+        self.assertAllClose([[7]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(None, 3))
@@ -310,7 +309,7 @@ class EinsumTest(test.TestCase):
             m0: [[1, 2, 3]],
             m1: [2, 1, 1],
         }
-        np.testing.assert_almost_equal([7], sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([7], sess.run(out, feed_dict=feed_dict))
 
     # Tests for placeholders which have two or more None values
     with ops.Graph().as_default():
@@ -322,8 +321,7 @@ class EinsumTest(test.TestCase):
             m0: [[[1, 2]]],
             m1: [[3], [2]],
         }
-        np.testing.assert_almost_equal([[[7]]],
-                                       sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([[[7]]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(2, 1))
@@ -334,8 +332,7 @@ class EinsumTest(test.TestCase):
             m0: [[3], [2]],
             m1: [[[1, 2]]],
         }
-        np.testing.assert_almost_equal([[[7]]],
-                                       sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([[[7]]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(None, None, 2))
@@ -346,8 +343,7 @@ class EinsumTest(test.TestCase):
             m0: [[[1, 2]]],
             m1: [3, 2],
         }
-        np.testing.assert_almost_equal([[7]], sess.run(
-            out, feed_dict=feed_dict))
+        self.assertAllClose([[7]], sess.run(out, feed_dict=feed_dict))
 
     with ops.Graph().as_default():
       m0 = array_ops.placeholder(dtypes.int32, shape=(None, 2, None, 2))
@@ -358,8 +354,7 @@ class EinsumTest(test.TestCase):
             m0: [[[[1, 2]], [[2, 1]]]],
             m1: [[3, 2]],
         }
-        np.testing.assert_almost_equal([[[7, 8]]],
-                                       sess.run(out, feed_dict=feed_dict))
+        self.assertAllClose([[[7, 8]]], sess.run(out, feed_dict=feed_dict))
 
 
 if __name__ == '__main__':

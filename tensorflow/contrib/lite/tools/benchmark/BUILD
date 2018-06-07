@@ -5,6 +5,7 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_linkopts")
 
 common_copts = ["-Wall"]
 
@@ -58,6 +59,7 @@ cc_library(
     ],
     hdrs = ["benchmark_tflite_model.h"],
     copts = common_copts,
+    linkopts = tflite_linkopts(),
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/contrib/lite:framework",
