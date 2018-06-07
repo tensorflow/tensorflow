@@ -38,7 +38,8 @@ class SparseSliceGradOp : public OpKernel {
                 TensorShapeUtils::IsMatrix(input_indices->shape()) &&
                     TensorShapeUtils::IsMatrix(output_indices->shape()),
                 errors::InvalidArgument(
-                    "Input indices should be matrices but received shapes: ",
+                    "Input and output indices should be matrices "
+                    "but received shapes: ",
                     input_indices->shape().DebugString(), " and ",
                     output_indices->shape().DebugString()));
     OP_REQUIRES(
@@ -66,7 +67,7 @@ class SparseSliceGradOp : public OpKernel {
                                 output_indices->dim_size(0)));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_start->shape()),
                 errors::InvalidArgument(
-                    "Input start should be a vector but received shape ",
+                    "The input_start should be a vector but received shape ",
                     input_start->shape().DebugString()));
 
     const int num_dims = input_indices->dim_size(1);
@@ -80,7 +81,7 @@ class SparseSliceGradOp : public OpKernel {
     const T *backprop_val_grad_flat = backprop_val_grad->flat<T>().data();
     memset(val_grad_flat, 0, sizeof(T) * input_nnz);
 
-    // Fill gradients for position where indices of input and ouput are same.
+    // Fill gradients for position where indices of input and output are same.
     const auto input_indices_mat = input_indices->matrix<int64>();
     const auto output_indices_mat = output_indices->matrix<int64>();
     const auto input_start_flat = input_start->flat<int64>();
@@ -104,9 +105,9 @@ class SparseSliceGradOp : public OpKernel {
     }
     OP_REQUIRES(
         ctx, backprop_val_grad->NumElements() == j,
-        errors::Internal("Elements of backprop_val_grad aren't eaten up :", 
-                         "all: ", backprop_val_grad->NumElements(),
-                         " , used: ", j));
+        errors::Internal("Elements of backprop_val_grad aren't all propagated. "
+                         "Num elements:", backprop_val_grad->NumElements(),
+                         ", used: ", j));
   }
 };
 
