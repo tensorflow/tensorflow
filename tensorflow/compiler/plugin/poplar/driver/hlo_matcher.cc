@@ -25,7 +25,7 @@ namespace xla {
 namespace poplarplugin {
 
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
-                       const Annotation& annotations,
+                       const CompilerAnnotations& annotations,
                        bool root_computation_only)
     : root_computation_only_(root_computation_only),
       patterns_(std::move(patterns)),
