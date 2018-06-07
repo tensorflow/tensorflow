@@ -184,7 +184,7 @@ class IfOp : public AsyncOpKernel {
     IfOp* const kernel_;
     OpKernelContext* const ctx_;
     const bool cond_;
-    const DoneCallback done_;
+    DoneCallback done_;
     FunctionLibraryRuntime* const lib_;
     FunctionLibraryRuntime::Options opts_;
     TensorVec args_;
