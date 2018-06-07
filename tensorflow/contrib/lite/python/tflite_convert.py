@@ -114,7 +114,7 @@ def _convert_model(flags):
                        "--input_arrays must be present when specifying "
                        "--std_dev_values and --mean_values with multiple input "
                        "tensors in order to map between names and "
-                       "values".format(",".join(input_arrays)))
+                       "values.".format(",".join(input_arrays)))
     converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
   if flags.default_ranges_min and flags.default_ranges_max:
     converter.default_ranges_stats = (flags.default_ranges_min,

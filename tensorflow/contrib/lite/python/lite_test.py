@@ -401,7 +401,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as error:
       lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
                                            ['add'])
-    self.assertEqual('Please freeze the graph using freeze_graph.py',
+    self.assertEqual('Please freeze the graph using freeze_graph.py.',
                      str(error.exception))
 
   def testPbtxt(self):

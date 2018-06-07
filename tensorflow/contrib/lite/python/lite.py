@@ -207,7 +207,7 @@ class TocoConverter(object):
 
       # Check if graph is frozen.
       if not _is_frozen_graph(sess):
-        raise ValueError("Please freeze the graph using freeze_graph.py")
+        raise ValueError("Please freeze the graph using freeze_graph.py.")
 
       # Create TocoConverter class.
       return cls(sess.graph_def, input_tensors, output_tensors)
