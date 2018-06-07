@@ -2557,13 +2557,19 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
 
   // Otherwise fall back to our slow initializer code.
   std::unique_ptr<KernelThunk> kernel_thunk = BuildKernelThunk(hlo);
-  TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
-      *hlo,
-      [=](const llvm_ir::IrArray::Index& index) {
-        return GetIrArray(*init_value, *hlo)
-            .EmitReadArrayElement(index, &ir_builder_);
-      },
-      kernel_thunk.get()));
+  LaunchDimensions launch_dimensions =
+      CalculateLaunchDimensions(ShapeUtil::GetSubshape(hlo->shape(), index),
+                                ir_emitter_context_->device_description());
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                         ir_emitter_context_->llvm_module());
+  TF_RETURN_IF_ERROR(ParallelLoopEmitter(
+                         [=](const llvm_ir::IrArray::Index& index) {
+                           return GetIrArray(*init_value, *hlo)
+                               .EmitReadArrayElement(index, &ir_builder_);
+                         },
+                         GetIrArray(*hlo, *hlo, index), launch_dimensions,
+                         &ir_builder_)
+                         .EmitLoop(IrName(hlo)));
 
   // Clean up state left behind by emitting the loop above.  (This is normally
   // done in IrEmitterUnnested::Postprocess().)
