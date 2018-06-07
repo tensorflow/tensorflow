@@ -73,9 +73,15 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
-    convert_saved_model.set_tensor_shapes([tensor],
-                                          {"Placeholder:0": [5, 3, 5]})
+    convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [5, 3, 5]})
     self.assertEqual([5, 3, 5], tensor.shape.as_list())
+
+  def testSetTensorShapeNoneValid(self):
+    tensor = array_ops.placeholder(dtype=dtypes.float32)
+    self.assertEqual(None, tensor.shape)
+
+    convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [1, 3, 5]})
+    self.assertEqual([1, 3, 5], tensor.shape.as_list())
 
   def testSetTensorShapeInvalid(self):
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)

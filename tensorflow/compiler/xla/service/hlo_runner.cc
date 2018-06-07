@@ -22,9 +22,9 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -36,7 +36,7 @@ HloRunner::CreateModuleFromString(const tensorflow::StringPiece hlo_string,
                                   const DebugOptions& debug_options) {
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return tools::Parse(hlo_string, config);
+  return ParseHloString(hlo_string, config);
 }
 
 namespace {
@@ -80,7 +80,7 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
                                                   filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return tools::Parse(hlo_string, config);
+  return ParseHloString(hlo_string, config);
 }
 
 HloRunner::HloRunner(se::Platform* platform) {

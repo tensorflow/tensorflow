@@ -58,10 +58,11 @@ from tensorflow.python.ops import rnn
 parser = argparse.ArgumentParser(description="Script to generate TFLite tests.")
 parser.add_argument("output_path",
                     help="Directory where the outputs will be go.")
-parser.add_argument("--zip_to_output",
-                    type=str,
-                    help="Particular zip to output.",
-                    required=False)
+parser.add_argument(
+    "--zip_to_output",
+    type=str,
+    help="Particular zip to output.",
+    required=True)
 parser.add_argument("--toco",
                     type=str,
                     help="Path to toco tool.",
@@ -97,8 +98,6 @@ KNOWN_BUGS = {
     r"fully_connected.*transpose_.=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
-    # SpaceToDepth only supports float32.
-    r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
@@ -118,6 +117,8 @@ class ExtraTocoOptions(object):
     self.allow_custom_ops = False
     # Rnn states that are used to support rnn / lstm cells.
     self.rnn_states = None
+    # Split the LSTM inputs from 5 inoputs to 18 inputs for TFLite.
+    self.split_tflite_lstm_inputs = None
 
 
 def toco_options(data_types,
@@ -155,6 +156,11 @@ def toco_options(data_types,
     s += " --allow_custom_ops"
   if extra_toco_options.rnn_states:
     s += (" --rnn_states='" + extra_toco_options.rnn_states + "'")
+  if extra_toco_options.split_tflite_lstm_inputs is not None:
+    if extra_toco_options.split_tflite_lstm_inputs:
+      s += " --split_tflite_lstm_inputs=true"
+    else:
+      s += " --split_tflite_lstm_inputs=false"
   return s
 
 
@@ -461,6 +467,11 @@ def make_zip_of_tests(zip_path,
             sess,
             tf.global_variables() + inputs +
             outputs) if use_frozen_graph else sess.graph_def
+
+        if "split_tflite_lstm_inputs" in param_dict_real:
+          extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
+              "split_tflite_lstm_inputs"]
+
         tflite_model_binary, toco_log = toco_convert(
             graph_def.SerializeToString(), input_tensors, output_tensors,
             extra_toco_options)
@@ -1609,7 +1620,7 @@ def make_space_to_depth_tests(zip_path):
   """Make a set of tests to do space_to_depth."""
 
   test_parameters = [{
-      "dtype": [tf.float32, tf.float16, tf.int32, tf.uint8, tf.int64],
+      "dtype": [tf.float32, tf.int32, tf.uint8, tf.int64],
       "input_shape": [[2, 12, 24, 1]],
       "block_size": [2, 3, 4],
   }]
@@ -2019,6 +2030,7 @@ def make_lstm_tests(zip_path):
           "time_step_size": [1],
           "input_vec_size": [3],
           "num_cells": [4],
+          "split_tflite_lstm_inputs": [True, False],
       },
   ]
 

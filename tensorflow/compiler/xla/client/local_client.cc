@@ -185,7 +185,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
       run_options, backend_->StreamBorrower(),
       backend_->eigen_intra_op_thread_pool());
 
-  if (executable_->dumping()) {
+  if (executable_->dumping_snapshot()) {
     return ExecuteAndDump(&service_options, arguments);
   }
   return executable_->ExecuteOnStreamWrapper(
@@ -195,36 +195,36 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
 StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
-  executable_->session_module()->set_execution_platform(
+  executable_->hlo_snapshot()->set_execution_platform(
       backend_->platform()->Name());
-  TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->session_module()));
+  TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->hlo_snapshot()));
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer result,
       executable_->ExecuteOnStream(run_options, arguments,
                                    /*hlo_execution_profile=*/nullptr));
-  TF_RETURN_IF_ERROR(RecordResult(&result, executable_->session_module()));
-  TF_RETURN_IF_ERROR(executable_->DumpSessionModule());
+  TF_RETURN_IF_ERROR(RecordResult(&result, executable_->hlo_snapshot()));
+  TF_RETURN_IF_ERROR(executable_->DumpHloSnapshot());
   return std::move(result);
 }
 
 Status LocalExecutable::RecordArguments(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    SessionModule* session_module) {
-  session_module->clear_arguments();
+    HloSnapshot* hlo_snapshot) {
+  hlo_snapshot->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                         LiteralFromShapedBuffer(*argument));
-    *session_module->add_arguments() = literal->ToProto();
+    *hlo_snapshot->add_arguments() = literal->ToProto();
   }
   return Status::OK();
 }
 
 Status LocalExecutable::RecordResult(const ShapedBuffer* result,
-                                     SessionModule* session_module) {
-  session_module->clear_result();
+                                     HloSnapshot* hlo_snapshot) {
+  hlo_snapshot->clear_result();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                       LiteralFromShapedBuffer(*result));
-  *session_module->mutable_result() = literal->ToProto();
+  *hlo_snapshot->mutable_result() = literal->ToProto();
   return Status::OK();
 }
 

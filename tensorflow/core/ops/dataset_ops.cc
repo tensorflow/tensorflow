@@ -718,4 +718,24 @@ REGISTER_OP("DatasetToTFRecord")
     .Input("compression_type: string")
     .SetShapeFn(shape_inference::NoOutputs);
 
+REGISTER_OP("DatasetToGraph")
+    .Input("input_dataset: variant")
+    .Output("graph: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("IdentityDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("OptimizeDataset")
+    .Input("input_dataset: variant")
+    .Input("optimizations: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 }  // namespace tensorflow

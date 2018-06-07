@@ -87,18 +87,10 @@ llvm::Value* EmitCallToIntrinsic(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
     llvm::IRBuilder<>* ir_builder) {
-  std::vector<llvm::Type*> types;
-  for (auto type : overloaded_types) {
-    types.push_back(type);
-  }
   llvm::Module* module = ModuleFromIRBuilder(ir_builder);
-  llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, intrinsic_id, types);
-  std::vector<llvm::Value*> operands_vec;
-  for (auto operand : operands) {
-    operands_vec.push_back(operand);
-  }
-  return ir_builder->CreateCall(intrinsic, operands_vec);
+  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+      module, intrinsic_id, AsArrayRef(overloaded_types));
+  return ir_builder->CreateCall(intrinsic, AsArrayRef(operands));
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,

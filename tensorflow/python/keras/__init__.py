@@ -41,7 +41,11 @@ from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.models import Sequential
 
+from tensorflow.python.util.tf_export import tf_export
+
 __version__ = '2.1.6-tf'
+
+tf_export('keras.__version__').export_constant(__name__, '__version__')
 
 del absolute_import
 del division

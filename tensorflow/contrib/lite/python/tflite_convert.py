@@ -86,6 +86,9 @@ def _convert_model(flags):
 
   Args:
     flags: argparse.Namespace object.
+
+  Raises:
+    ValueError: Invalid flags.
   """
   # Create converter.
   converter = _get_toco_converter(flags)
@@ -99,10 +102,19 @@ def _convert_model(flags):
         flags.output_format)
 
   if flags.mean_values and flags.std_dev_values:
-    input_arrays = _parse_array(flags.input_arrays)
+    input_arrays = converter.get_input_arrays()
     std_dev_values = _parse_int_array(flags.std_dev_values)
     mean_values = _parse_int_array(flags.mean_values)
     quant_stats = zip(mean_values, std_dev_values)
+    if ((not flags.input_arrays and len(input_arrays) > 1) or
+        (len(input_arrays) != len(quant_stats))):
+      raise ValueError("Mismatching --input_arrays, --std_dev_values, and "
+                       "--mean_values. The flags must have the same number of "
+                       "items. The current input arrays are '{0}'. "
+                       "--input_arrays must be present when specifying "
+                       "--std_dev_values and --mean_values with multiple input "
+                       "tensors in order to map between names and "
+                       "values".format(",".join(input_arrays)))
     converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
   if flags.default_ranges_min and flags.default_ranges_max:
     converter.default_ranges_stats = (flags.default_ranges_min,
@@ -149,7 +161,8 @@ def _check_flags(flags, unparsed):
       output += _get_message_unparsed(flag, "--input_file", "--graph_def_file")
       output += _get_message_unparsed(flag, "--std_value", "--std_dev_values")
       output += _get_message_unparsed(flag, "--batch_size", "--input_shapes")
-    raise ValueError(output)
+    if output:
+      raise ValueError(output)
 
   # Check that flags are valid.
   if flags.graph_def_file and (not flags.input_arrays or
@@ -168,13 +181,9 @@ def _check_flags(flags, unparsed):
     if bool(flags.std_dev_values) != bool(flags.mean_values):
       raise ValueError("--std_dev_values and --mean_values must be used "
                        "together")
-    if not flags.input_arrays:
-      raise ValueError("--std_dev_values and --mean_values must be used with "
-                       "--input_arrays")
-    if (flags.std_dev_values.count(",") != flags.mean_values.count(",") or
-        flags.std_dev_values.count(",") != flags.input_arrays.count(",")):
-      raise ValueError("--std_dev_values, --mean_values, and --input_arrays "
-                       "must have the same number of items")
+    if flags.std_dev_values.count(",") != flags.mean_values.count(","):
+      raise ValueError("--std_dev_values, --mean_values must have the same "
+                       "number of items")
 
   if bool(flags.default_ranges_min) != bool(flags.default_ranges_max):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
@@ -277,13 +286,13 @@ def run_main(_):
   # Graph manipulation flags.
   parser.add_argument(
       "--drop_control_dependency",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to drop control dependencies silently. "
             "This is due to TensorFlow not supporting control dependencies. "
             "(default True)"))
   parser.add_argument(
       "--reorder_across_fake_quant",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to reorder FakeQuant nodes in "
             "unexpected locations. Used when the location of the FakeQuant "
             "nodes is preventing graph transformations necessary to convert "
@@ -292,13 +301,13 @@ def run_main(_):
             "behavior. (default False)"))
   parser.add_argument(
       "--change_concat_input_ranges",
-      type=bool,
+      action="store_true",
       help=("Boolean to change behavior of min/max ranges for inputs and "
             "outputs of the concat operator for quantized models. Changes the "
             "ranges of concat operator overlap when true. (default False)"))
   parser.add_argument(
       "--allow_custom_ops",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to allow custom operations. When false "
             "any unknown operation is an error. When true, custom ops are "
             "created for any op that is unknown. The developer will need to "

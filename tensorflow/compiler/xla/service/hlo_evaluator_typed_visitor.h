@@ -1962,7 +1962,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // TODO(b/74360564): This is implementation defined behavior, but is
     // currently respected by all implementations. Change this if we ever decide
-    // to oficially document different behavior.
+    // to officially document different behavior.
     for (int64 i = 0; i < start.size(); ++i) {
       start[i] = std::min<int64>(
           std::max(int64{0}, start[i]),

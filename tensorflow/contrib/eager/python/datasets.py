@@ -106,7 +106,8 @@ class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
             target_device=target,
             buffer_size=10,
             container="",
-            shared_name=_generate_shared_name("function_buffer_resource"))
+            shared_name=_generate_shared_name(
+                "contrib_eager_iterator_function_buffer_resource"))
         self._buffer_resource_deleter = resource_variable_ops.EagerResourceDeleter(  # pylint: disable=line-too-long
             handle=self._buffer_resource_handle,
             handle_device=self._device)

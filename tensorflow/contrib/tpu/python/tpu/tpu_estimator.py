@@ -122,6 +122,33 @@ def _create_global_step(graph):
 
 
 def _create_or_get_iterations_per_loop():
+  """Creates or gets the iterations_per_loop variable.
+
+  In TPUEstimator, the user provided computation, the model_fn, is wrapped
+  inside a tf.while_loop for peak performance. The iterations of the loop are
+  specified by this variable, which adjusts its value on the CPU after each TPU
+  program execution and before the next TPU execution.
+
+  The purpose of using a variable, rather then a constant, is to allow
+  TPUEstimator adapt the TPU training iterations according to the final steps
+  specified by users. For example, if the user sets the iterations_per_loop as 4
+  in TPUConfig and steps as 10 in TPUEstimator.train(), the iterations_per_loop
+  variable will have the following value before each TPU training.
+
+      - 1-th TPU execution: iterations_per_loop = 4
+      - 2-th TPU execution: iterations_per_loop = 4
+      - 3-th TPU execution: iterations_per_loop = 2
+
+  As model_fn increases the global step once per train_op invocation, the global
+  step is 10 after all TPU executions, matching the steps=10 inputs passed in by
+  users.
+
+  Returns:
+    A TF non-trainable resource variable.
+
+  Raises:
+    RuntimeError: If multi iterations_per_loop variables were found.
+  """
   graph = ops.get_default_graph()
   collection_name = '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)
   iter_vars = graph.get_collection(collection_name)
@@ -388,20 +415,21 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
       return
 
     def _cancel_session():
-      # Close the session to avoid the main thread from hanging. If input
-      # pipeline triggers any error, the infeed thread dies but the main thread
-      # for TPU computation waits for the infeed enqueue forever. Close the
-      # Session to cancel the main thread Session.run execution.
-      #
-      # We sleep for a few seconds before closing to give some time
-      # for the TPU compilation error, if any, propagating, from TPU to CPU
-      # host. Compilation errors should be reported by the main thread so that
-      # the program can be interrupted and users can take action.  Due to a race
-      # condition, the infeed thread might see an error first.  Closing the
-      # session here immediately would result in a session cancellation
-      # exception in the main thread, instead of the expected compile error.
-      # User code that depends on having the proper exception type will
-      # therefore be confused.
+      """Close the session to avoid the main thread from hanging.
+
+      If input pipeline triggers any error, the infeed thread dies but the main
+      thread for TPU computation waits for the infeed enqueue forever. Close the
+      Session to cancel the main thread Session.run execution.
+
+      We sleep for a few seconds before closing to give some time for the TPU
+      compilation error, if any, propagating, from TPU to CPU host. Compilation
+      errors should be reported by the main thread so that the program can be
+      interrupted and users can take action.  Due to a race condition, the
+      infeed thread might see an error first.  Closing the session here
+      immediately would result in a session cancellation exception in the main
+      thread, instead of the expected compile error.  User code that depends on
+      having the proper exception type will therefore be confused.
+      """
       time.sleep(5)
 
       # If the main session is still running, the infeed/outfeed errors are
@@ -721,6 +749,15 @@ def generate_per_host_enqueue_ops_fn_for_host(
     tpu_ordinal_function = None
 
   def enqueue_ops_fn():
+    """A Fn returning the TPU infeed enqueue ops.
+
+    By providing as a Fn, it can be invoked inside the tf.while_loop such that
+    the input pipeline for multiple iterations can be executed by one
+    Session.run call.
+
+    Returns:
+      list of dict of ops.
+    """
     with ops.device(device):
       num_of_replicas_per_host = ctx.num_of_replicas_per_host
       # Convert user input to features and labels.  If the user returns a
@@ -1095,10 +1132,16 @@ class _InputPipeline(object):
     return enqueue_ops, all_hooks, run_infeed_loop_on_coordinator
 
   def _validate_input_pipeline(self):
-    # Perform some sanity checks to log user friendly information. We should
-    # error out to give users better error message. But, if
-    # _WRAP_INPUT_FN_INTO_WHILE_LOOP is False (legacy behavior), we cannot break
-    # user code, so, log a warning.
+    """Validates the input pipeline.
+
+    Perform some sanity checks to log user friendly information. We should
+    error out to give users better error message. But, if
+    _WRAP_INPUT_FN_INTO_WHILE_LOOP is False (legacy behavior), we cannot break
+    user code, so, log a warning.
+
+    Raises:
+      RuntimeError: If the validation failed.
+    """
     if ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
       err_msg = ('Input pipeline contains one or more QueueRunners. '
                  'It could be slow and not scalable. Please consider '
@@ -1830,13 +1873,15 @@ class TPUEstimator(estimator_lib.Estimator):
                predict_batch_size=None,
                batch_axis=None,
                eval_on_tpu=True,
+               export_to_tpu=True,
                warm_start_from=None):
     """Constructs an `TPUEstimator` instance.
 
     Args:
       model_fn: Model function as required by `Estimator`. For training, the
         returned `EstimatorSpec` cannot have hooks as it is not supported in
-        `TPUEstimator`.
+        `TPUEstimator`. Instead, the user can pass the training hooks as
+        an argument to `TPUEstimator.train()`.
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model. If `None`, the model_dir in
@@ -1872,6 +1917,8 @@ class TPUEstimator(estimator_lib.Estimator):
         False or `PER_HOST_V2`, batch_axis is ignored.
       eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
         model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
+      export_to_tpu: If True, `export_savedmodel()` exports a metagraph for
+        serving on TPU besides the one on CPU.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
                        warm-start from, or a `tf.estimator.WarmStartSettings`
                        object to fully configure warm-starting.  If the string
@@ -1943,6 +1990,8 @@ class TPUEstimator(estimator_lib.Estimator):
         use_tpu,
         eval_on_tpu)
 
+    self._export_to_tpu = export_to_tpu
+
     self._is_input_fn_invoked = None
 
   def _add_meta_graph_for_mode(self,
@@ -1965,11 +2014,11 @@ class TPUEstimator(estimator_lib.Estimator):
                                                        save_variables,
                                                        mode=mode)
 
-    input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
-                             input_receiver_fn_map[mode]}
-    export_tags = [tag_constants.SERVING, tag_constants.TPU]
-    mode = _REWRITE_FOR_INFERENCE_MODE
-    try:
+    if self._export_to_tpu:
+      input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
+                               input_receiver_fn_map[mode]}
+      export_tags = [tag_constants.SERVING, tag_constants.TPU]
+      mode = _REWRITE_FOR_INFERENCE_MODE
       (super(TPUEstimator, self).
        _add_meta_graph_for_mode(builder,
                                 input_receiver_fn_map,
@@ -1978,9 +2027,6 @@ class TPUEstimator(estimator_lib.Estimator):
                                 save_variables=False,
                                 mode=mode,
                                 export_tags=export_tags))
-    except Exception as error:  # pylint: disable=broad-except
-      logging.warning('Saving meta graph for TPU failed: {}.'
-                      .format(str(error)))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
@@ -2639,7 +2685,7 @@ class _CapturedObject(object):
   def capture(self, o):
     if self._captured:
       raise RuntimeError(
-          'InternalError: Object can be captured only. Please file bug .')
+          'InternalError: Object can capture only once. Please file bug.')
 
     self._captured = True
     self._object = o
@@ -2648,7 +2694,7 @@ class _CapturedObject(object):
     if not self._captured:
       raise RuntimeError(
           'InternalError: Object is not captured properly before `get`. '
-          'Please file bug .')
+          'Please file bug.')
     return self._object
 
 
@@ -2896,6 +2942,7 @@ class _StopSignals(object):
 
   @staticmethod
   def should_stop(scalar_stopping_signal):
+    """Detects whether scalar_stopping_signal indicates stopping."""
     if isinstance(scalar_stopping_signal, ops.Tensor):
       # STOPPING_SIGNAL is a constant True. Here, the logical_and is just the TF
       # way to express the bool check whether scalar_stopping_signal is True.
