@@ -18,18 +18,31 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("TRTCalibOp")
-    .Attr("segment_nodes: list(string)")         // names of the ops in segment
-    .Attr("segment_output_names: list(string)")  // names of the output ops in
-                                                 // segment
-    .Attr("input_names: list(string)")           // names of the inputs for
-                                                 // passing into tensorrt
-    .Attr("resource_name: string")
+    .Attr("serialized_segment: string")
+    .Attr("segment_funcdef_name: string")
+    .Attr("input_shapes: list(shape)")
+    .Attr("output_shapes: list(shape)")
     .Attr("InT: list({int8, float16, float32})")
+    .Attr("OutT: list({int8, float16, float32})")
+    .Attr("workspace_size_bytes: int")
     .Input("in_tensor: InT")
-    .Output("out_tensor: InT")
-    .SetShapeFn([](tensorflow::shape_inference::InferenceContext* c) {
-      for (int i = 0; i < c->num_inputs(); i++) {
-        c->set_output(i, c->input(i));
+    .Output("out_tensor: OutT")
+    .SetShapeFn([](tensorflow::shape_inference::InferenceContext* c)->tensorflow::Status {
+      std::vector<tensorflow::TensorShapeProto> shapes;
+      auto status=c->GetAttr("output_shapes", &shapes);
+      if(!status.ok()){
+        LOG(ERROR)<<"getting output_shapes failed with "<<status;
+        return status;
+      }
+      for (int i = 0; i < shapes.size(); i++) {
+        tensorflow::shape_inference::ShapeHandle shape;
+        status=c->MakeShapeFromShapeProto(shapes.at(i),&shape);
+        if(!status.ok()){
+          LOG(ERROR)<<"stting output shape "<<i<<" failed with "<<status;
+          return status;
+        }
+        
+        c->set_output(i, shape);
       }
       return Status::OK();
     });

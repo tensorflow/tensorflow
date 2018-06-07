@@ -20,8 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -31,31 +34,62 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 class Logger;
-
+class TRTInt8Calibrator;
+class TRTCalibrationResource;
+class AsyncHelper;
 //  TODO(Sami): Remove this file?
-class TRTEngineOp : public OpKernel {
+class TRTEngineOp : public AsyncOpKernel {
  public:
   explicit TRTEngineOp(OpKernelConstruction* context);
 
-  void Compute(OpKernelContext* context) override;
+  void ComputeAsync(OpKernelContext* context,
+                    tensorflow::AsyncOpKernel::DoneCallback done) override;
   ~TRTEngineOp();
 
  private:
   template <typename T>
   struct Destroyer {
-    void operator()(T* d) { d->destroy(); }
+    void operator()(T* d) {
+      if (d) d->destroy();
+    }
   };
 
-  template <typename T>
-  using destroyed_ptr = std::unique_ptr<T, Destroyer<T>>;
-  destroyed_ptr<nvinfer1::ICudaEngine> trt_engine_ptr_;
-  // TODO(samikama): context should go to a resource manager!
-  destroyed_ptr<nvinfer1::IExecutionContext> trt_execution_context_ptr_;
+  tensorflow::Status ConstructFunctionHandle(tensorflow::OpKernelContext* ctx);
+  void ExecuteNativeSegment(tensorflow::OpKernelContext* ctx, AsyncHelper* ah);
+  tensorflow::Status AllocateCalibrationResources(
+      tensorflow::OpKernelContext* ctx,
+      tensorflow::tensorrt::TRTCalibrationResource** cr);
 
+  // TODO(samikama): context should go to a resource manager!
+  // std::shared_ptr<nvinfer1::IExecutionContext> get_execution_context(
+  //     int batch_size);
+  typedef std::pair<std::shared_ptr<nvinfer1::ICudaEngine>,
+                    std::shared_ptr<nvinfer1::IExecutionContext>>
+      EngineCtxPair;
+  EngineCtxPair get_engine(int batch_size, OpKernelContext* ctx,
+                           bool ignore_dim_change = true);
+
+  std::unordered_map<int, EngineCtxPair> engine_map;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
-  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
-  string serialized_engine_;
+  std::unordered_map<string, std::shared_ptr<nvinfer1::IGpuAllocator>>
+      allocators_;
+  string serialized_segment_;
+  string funcdef_name_;
+  string calibration_data_;
+  tensorflow::GraphDef segment_graph_;
+  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
+  std::vector<tensorflow::PersistentTensor> dev_tensors_;
+  int precision_mode;
+  bool static_engine;
+  bool calibration_mode;
+  bool fixed_input_size;
+  std::vector<int> cached_engine_batches;
+  int max_cached_engines;
+  tensorflow::int64 workspace_size_;
+  tensorflow::mutex engine_mutex_;
+  tensorflow::FunctionLibraryRuntime::Handle native_func_;
+  std::unique_ptr<TRTInt8Calibrator> calibrator_;
 };
 
 }  // namespace tensorrt
