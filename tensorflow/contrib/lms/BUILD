@@ -16,6 +16,7 @@ py_library(
         "python/lms.py",
         "python/topos.py",
         "python/lms_session_run_hook.py",
+	"python/keras_callback.py",
 
     ],
     srcs_version = "PY2AND3",

@@ -25,6 +25,7 @@ from tensorflow.contrib.lms.python import lms
 from tensorflow.contrib.lms.python.lms import *
 from tensorflow.contrib.lms.python.lms_session_run_hook import *
 from tensorflow.contrib.lms.python.topos import *
+from tensorflow.contrib.lms.python.keras_callback import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -33,7 +34,8 @@ _allowed_symbols = [
     'LMS',
     'CTRLD_Strategy',
     'LMSHook',
-    'TOPOS'
+    'TOPOS',
+    'LMSKerasCallback'
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

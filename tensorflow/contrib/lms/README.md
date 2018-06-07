@@ -8,7 +8,11 @@ The computational graph is statically modified. Hence, it needs to be done befor
 TFLMS needs to know some information about user-defined models.
 There is one requirement for a user-defined model: it must have scopes for the optimizers/solvers.
 
-Enabling LMS for a model depends on how users write their training. Followings are guidelines for two ways: [Session](https://www.tensorflow.org/programmers_guide/graphs)-based training and [Estimator](https://www.tensorflow.org/programmers_guide/estimators)-based training.
+Enabling LMS for a model depends on how users write their training. The
+following guidelines cover three ways to train:
+- [Session](https://www.tensorflow.org/programmers_guide/graphs)-based training
+- [Estimator](https://www.tensorflow.org/programmers_guide/estimators)-based training
+- [tf.keras](https://www.tensorflow.org/api_docs/python/tf/keras)-based training
 
 ### [Session](https://www.tensorflow.org/programmers_guide/graphs)-based training
 #### Step 1: define optimizer/solver scopes
@@ -72,9 +76,22 @@ For a working example of LMS integration with Estimator based training see:
 `examples/cnn_mnist_lms.py`
 which is an LMS enabled version of `https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/layers/cnn_mnist.py`.
 
-### Parameters for LMS/LMSHook
+### [tf.keras](https://www.tensorflow.org/api_docs/python/tf/keras)-based training
+#### Step 1: define an LMSKerasCallback.
+```python
+from tensorflow.contrib.lms import LMSKerasCallback
+# LMSKerasCallback and LMS share a set of keyword arguments. Here we just
+# use the default options.
+lms_callback = LMSKerasCallback()
+```
+#### Step 2: pass the callback to the Keras `fit` or `fit_generator` function.
+```python
+model.fit_generator(generator=training_gen, callbacks=[lms_callback])
+```
+
+### Parameters for LMS/LMSHook/LMSKerasCallback
 #### Required parameters
-_graph_ :: the graph we will modify for LMS. This should be the graph of user-defined neural network. (not required in LMSHook)
+_graph_ :: the graph we will modify for LMS. This should be the graph of user-defined neural network. (not required in LMSHook and LMSKerasCallback)
 
 _optimizer_scopes_ :: scopes for the optimizers/solvers.
 
@@ -108,7 +125,6 @@ _branch_threshold_ :: If `swap_branches` is enabled and the topological-sort dis
 _debug_ :: Debug mode for LMS. Default `False`.
 
 _debug_level_ :: Debug level for LMS (1 or 2). Default `1`.
-
 
 ### Performance Tuning LMS
 
