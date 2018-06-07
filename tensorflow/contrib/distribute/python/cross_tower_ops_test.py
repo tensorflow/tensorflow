@@ -94,7 +94,7 @@ class CrossTowerOpsTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(type(left), type(right))
       self.assertEqual(left.devices, right.devices)
       if isinstance(list(left._index.values())[0], ops.IndexedSlices):
-        for (d, v) in left._index.iteritems():
+        for (d, v) in left._index.items():
           self._assert_indexed_slices_equal(v, right._index[d])
       elif context.executing_eagerly():
         self.assertEqual([v.numpy() for v in left._index.values()],
