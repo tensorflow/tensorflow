@@ -394,6 +394,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
     HANDLE_OPERATORTYPENAME_CASE(Select)
     HANDLE_OPERATORTYPENAME_CASE(SparseToDense)
+    HANDLE_OPERATORTYPENAME_CASE(TensorFlowEqual)
+    HANDLE_OPERATORTYPENAME_CASE(TensorFlowNotEqual)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE

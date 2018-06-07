@@ -128,6 +128,8 @@ def _convert_model(flags):
     converter.change_concat_input_ranges = flags.change_concat_input_ranges
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
+  if flags.quantize_weights:
+    converter.quantize_weights = flags.quantize_weights
 
   # Convert model.
   output_data = converter.convert()
@@ -282,6 +284,12 @@ def run_main(_):
       help=("Default value for max bound of min/max range values used for all "
             "arrays without a specified range, Intended for experimenting with "
             "quantization via \"dummy quantization\". (default None)"))
+  parser.add_argument(
+      "--quantize_weights",
+      type=bool,
+      help=("Store float weights as quantized weights followed by dequantize "
+            "operations. Inference is still done in FLOAT, but reduces model "
+            "size (at the cost of accuracy and latency)."))
 
   # Graph manipulation flags.
   parser.add_argument(

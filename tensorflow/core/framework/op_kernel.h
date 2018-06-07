@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
@@ -1302,6 +1303,9 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
 // missing kernel errors.
 void LogAllRegisteredKernels();
+
+// Gets a vector of all registered kernels.
+std::vector<KernelDef> GetAllRegisteredKernels();
 
 namespace kernel_factory {
 

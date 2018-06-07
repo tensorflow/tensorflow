@@ -60,7 +60,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowGreaterEqual ||
          type == OperatorType::kTensorFlowLess ||
          type == OperatorType::kTensorFlowLessEqual ||
-         type == OperatorType::kSelect;
+         type == OperatorType::kSelect || type == OperatorType::kArgMax;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {

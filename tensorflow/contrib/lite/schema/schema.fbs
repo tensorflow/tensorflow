@@ -148,6 +148,8 @@ enum BuiltinOperator : byte {
   SPARSE_TO_DENSE = 68,
   TILE = 69,
   EXPAND_DIMS = 70,
+  EQUAL = 71,
+  NOT_EQUAL = 72,
 }
 
 // Options for the builtin operators.
@@ -204,6 +206,8 @@ union BuiltinOptions {
   SparseToDenseOptions,
   TileOptions,
   ExpandDimsOptions,
+  EqualOptions,
+  NotEqualOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -476,6 +480,12 @@ table ExpandDimsOptions {
 
 table SparseToDenseOptions {
   validate_indices:bool;
+}
+
+table EqualOptions {
+}
+
+table NotEqualOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
