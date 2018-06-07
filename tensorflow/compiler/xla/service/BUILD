@@ -269,6 +269,7 @@ cc_library(
         "dfs_hlo_visitor.cc",
         "hlo_computation.cc",
         "hlo_instruction.cc",
+        "hlo_instructions.cc",
         "hlo_module.cc",
         "hlo_opcode.cc",
         "hlo_sharding.cc",
@@ -280,11 +281,13 @@ cc_library(
         "hlo_computation.h",
         "hlo_domain_metadata.h",
         "hlo_instruction.h",
+        "hlo_instructions.h",
         "hlo_module.h",
         "hlo_opcode.h",
         "hlo_sharding.h",
     ],
     deps = [
+        ":hlo_casting_utils",
         ":hlo_module_config",
         ":hlo_proto",
         ":hlo_reachability",
@@ -3015,13 +3018,14 @@ cc_library(
 cc_library(
     name = "hlo_casting_utils",
     hdrs = ["hlo_casting_utils.h"],
-    deps = [":hlo"],
+    deps = ["//tensorflow/core:lib"],
 )
 
 tf_cc_test(
     name = "hlo_casting_utils_test",
     srcs = ["hlo_casting_utils_test.cc"],
     deps = [
+        ":hlo",
         ":hlo_casting_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:test",

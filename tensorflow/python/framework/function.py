@@ -1172,3 +1172,13 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16"
 }
+
+
+def function_def_from_tf_function(c_func):
+  """Converts a SWIG-wrapped TF_Function* to a FunctionDef proto."""
+  with c_api_util.tf_buffer() as buf:
+    c_api.TF_FunctionToFunctionDef(c_func, buf)
+    data = c_api.TF_GetBuffer(buf)
+  fdef = function_pb2.FunctionDef()
+  fdef.ParseFromString(compat.as_bytes(data))
+  return fdef

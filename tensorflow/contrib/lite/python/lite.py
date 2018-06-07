@@ -94,6 +94,10 @@ class TocoConverter(object):
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
+    quantize_weights: Boolean indicating whether to store weights as quantized
+      weights followed by dequantize operations. Computation is still done in
+      float, but reduces model size (at the cost of accuracy and latency).
+      (default False)
 
   Example usage:
 
@@ -135,6 +139,7 @@ class TocoConverter(object):
     self.reorder_across_fake_quant = False
     self.change_concat_input_ranges = False
     self.allow_custom_ops = False
+    self.quantize_weights = False
 
   @classmethod
   def from_session(cls, sess, input_tensors, output_tensors):
@@ -310,7 +315,8 @@ class TocoConverter(object):
         drop_control_dependency=self.drop_control_dependency,
         reorder_across_fake_quant=self.reorder_across_fake_quant,
         change_concat_input_ranges=self.change_concat_input_ranges,
-        allow_custom_ops=self.allow_custom_ops)
+        allow_custom_ops=self.allow_custom_ops,
+        quantize_weights=self.quantize_weights)
     return result
 
   def get_input_arrays(self):

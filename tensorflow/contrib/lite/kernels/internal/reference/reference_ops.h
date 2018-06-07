@@ -3866,6 +3866,16 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline bool EqualFn(T lhs, T rhs) {
+  return lhs == rhs;
+}
+
+template <typename T>
+inline bool NotEqualFn(T lhs, T rhs) {
+  return lhs != rhs;
+}
+
+template <typename T>
 inline bool GreaterFn(T lhs, T rhs) {
   return lhs > rhs;
 }
@@ -4028,6 +4038,8 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
                                      input2_offset, input2_multiplier,        \
                                      input2_shift, output_data, output_dims); \
   }
+TFLITE_COMPARISON_OP(Equal);
+TFLITE_COMPARISON_OP(NotEqual);
 TFLITE_COMPARISON_OP(Greater);
 TFLITE_COMPARISON_OP(GreaterEqual);
 TFLITE_COMPARISON_OP(Less);
