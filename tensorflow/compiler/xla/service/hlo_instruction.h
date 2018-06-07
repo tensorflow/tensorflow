@@ -992,7 +992,7 @@ class HloInstruction {
   string OperandsToString(const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
-  virtual std::vector<string> ExtraAttributesToString(
+  std::vector<string> ExtraAttributesToString(
       const HloPrintOptions& options) const;
 
   // As ToString, but returns a shorter string.
@@ -1011,26 +1011,11 @@ class HloInstruction {
   HloInstruction* tracing() const;
   void set_tracing(HloInstruction* trace_instruction);
 
-  // Returns the channel id associated with the instruction. The id is
-  // shared between each Send/Recv pair and is globally unique to identify each
-  // channel.
-  //
-  // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
-  int64 channel_id() const { return channel_id_; }
-
   // Returns the channel name associated with the instruction. The name is
   // used to identify host Send/Recv operations.
   //
   // Precondition: opcode() == HloOpcode::kHostCompute
   string channel_name() const { return channel_name_; }
-
-  // Delegates to HloBatchNormInstruction::feature_index.
-  // TODO(b/80131774): Remove this code.
-  int64 feature_index() const;
-
-  // Delegates to HloBatchNormInstruction::epsilon.
-  // TODO(b/80131774): Remove this code.
-  float epsilon() const;
 
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
@@ -1318,16 +1303,6 @@ class HloInstruction {
         MakeUnique<ConvolutionDimensionNumbers>(dnums);
   }
 
-  FftType fft_type() const {
-    CHECK_EQ(HloOpcode::kFft, opcode_);
-    return fft_type_;
-  }
-
-  const std::vector<int64>& fft_length() const {
-    CHECK_EQ(HloOpcode::kFft, opcode_);
-    return fft_length_;
-  }
-
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
     CHECK(dot_dimension_numbers_ != nullptr);
@@ -1526,6 +1501,25 @@ class HloInstruction {
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
 
+  // Old methods kept for smooth subclassing transition BEGIN.
+  // TODO(b/80131774): Remove this code.
+
+  // Delegates to HloBatchNormInstruction::feature_index.
+  int64 feature_index() const;
+
+  // Delegates to HloBatchNormInstruction::epsilon.
+  float epsilon() const;
+
+  // Delegates to HloFftInstruction::fft_type.
+  FftType fft_type() const;
+
+  // Delegates to HloFftInstruction::fft_length.
+  const std::vector<int64>& fft_length() const;
+
+  // Delegates to HloSendRecvInstruction::channel_id.
+  int64 channel_id() const;
+  // Old methods kept for smooth subclassing transition END.
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
@@ -1543,6 +1537,12 @@ class HloInstruction {
       HloCloneContext* context) const {
     // TODO(b/80131774): This should be pure virtual.
     LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Implementation for non-common logic of ExtraAttributesToString.
+  virtual std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const {
+    return {};
   }
   // Prints an instruction to a string.
   //
@@ -1675,12 +1675,6 @@ class HloInstruction {
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
 
-  // Describes FFT type for an FFT instruction.
-  FftType fft_type_ = FftType::FFT;
-
-  // Indicates the FFT length for an FFT instruction.
-  std::vector<int64> fft_length_;
-
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
@@ -1754,10 +1748,6 @@ class HloInstruction {
   // The distribution requested for random number generation.
   // Only present for kRng.
   RandomDistribution distribution_;
-
-  // Represents a unique identifier for each Send/Recv instruction pair.
-  // Only present for kSend or kRecv.
-  int64 channel_id_ = -1;
 
   // The string representation of the infeed configuration.
   string infeed_config_;

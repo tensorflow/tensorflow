@@ -32,19 +32,18 @@ class HloBatchNormInstruction : public HloInstruction {
   // number added to the variance to avoid divide-by-zero error.
   float epsilon() const { return epsilon_; }
 
-  // Returns string representation of op-specific attributes.
-  std::vector<string> ExtraAttributesToString(
-      const HloPrintOptions& options) const override;
-
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  protected:
-  HloBatchNormInstruction(HloOpcode opcode, const Shape& shape,
-                          HloInstruction* operand, HloInstruction* scale,
-                          float epsilon, int64 feature_index);
+  explicit HloBatchNormInstruction(HloOpcode opcode, const Shape& shape,
+                                   HloInstruction* operand,
+                                   HloInstruction* scale, float epsilon,
+                                   int64 feature_index);
 
  private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -58,9 +57,11 @@ class HloBatchNormInstruction : public HloInstruction {
 
 class HloBatchNormTrainingInstruction : public HloBatchNormInstruction {
  public:
-  HloBatchNormTrainingInstruction(const Shape& shape, HloInstruction* operand,
-                                  HloInstruction* scale, HloInstruction* offset,
-                                  float epsilon, int64 feature_index);
+  explicit HloBatchNormTrainingInstruction(const Shape& shape,
+                                           HloInstruction* operand,
+                                           HloInstruction* scale,
+                                           HloInstruction* offset,
+                                           float epsilon, int64 feature_index);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -72,11 +73,10 @@ class HloBatchNormTrainingInstruction : public HloBatchNormInstruction {
 
 class HloBatchNormInferenceInstruction : public HloBatchNormInstruction {
  public:
-  HloBatchNormInferenceInstruction(const Shape& shape, HloInstruction* operand,
-                                   HloInstruction* scale,
-                                   HloInstruction* offset, HloInstruction* mean,
-                                   HloInstruction* variance, float epsilon,
-                                   int64 feature_index);
+  explicit HloBatchNormInferenceInstruction(
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
+      float epsilon, int64 feature_index);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -88,11 +88,116 @@ class HloBatchNormInferenceInstruction : public HloBatchNormInstruction {
 
 class HloBatchNormGradInstruction : public HloBatchNormInstruction {
  public:
-  HloBatchNormGradInstruction(const Shape& shape, HloInstruction* operand,
-                              HloInstruction* scale, HloInstruction* mean,
-                              HloInstruction* variance,
-                              HloInstruction* grad_output, float epsilon,
-                              int64 feature_index);
+  explicit HloBatchNormGradInstruction(
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* mean, HloInstruction* variance,
+      HloInstruction* grad_output, float epsilon, int64 feature_index);
+
+ private:
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+};
+
+class HloFftInstruction : public HloInstruction {
+ public:
+  explicit HloFftInstruction(const Shape& shape, HloInstruction* operand,
+                             FftType fft_type,
+                             tensorflow::gtl::ArraySlice<int64> fft_length);
+  FftType fft_type() const { return fft_type_; }
+
+  const std::vector<int64>& fft_length() const { return fft_length_; }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // Describes FFT type for an FFT instruction.
+  FftType fft_type_ = FftType::FFT;
+
+  // Indicates the FFT length for an FFT instruction.
+  std::vector<int64> fft_length_;
+};
+
+class HloSendRecvInstruction : public HloInstruction {
+ public:
+  // Returns the channel id associated with the instruction. The id is
+  // shared between each Send/Recv pair and is globally unique to identify each
+  // channel.
+  int64 channel_id() const { return channel_id_; }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ protected:
+  explicit HloSendRecvInstruction(HloOpcode opcode, const Shape& shape,
+                                  int64 channel_id);
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Represents a unique identifier for each Send/Recv instruction pair.
+  int64 channel_id_;
+};
+
+class HloSendInstruction : public HloSendRecvInstruction {
+ public:
+  explicit HloSendInstruction(HloInstruction* operand, int64 channel_id);
+
+ private:
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+};
+
+class HloSendDoneInstruction : public HloSendRecvInstruction {
+ public:
+  explicit HloSendDoneInstruction(HloSendInstruction* operand);
+
+ private:
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+};
+
+class HloRecvInstruction : public HloSendRecvInstruction {
+ public:
+  explicit HloRecvInstruction(const Shape& shape, int64 channel_id);
+
+ private:
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+};
+
+class HloRecvDoneInstruction : public HloSendRecvInstruction {
+ public:
+  explicit HloRecvDoneInstruction(HloRecvInstruction* operand);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
