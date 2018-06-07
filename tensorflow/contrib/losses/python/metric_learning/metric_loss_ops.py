@@ -87,6 +87,7 @@ def pairwise_distance_cosine(feature, squared=True):
 
   Args:
     feature: 2-D Tensor of size [number of data, feature dimension].
+    squared: Unused argument - only for compatibility with pairwise_distance
 
   Returns:
     pairwise_distances: 2-D Tensor of size [number of data, number of data].
@@ -198,6 +199,8 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0, pairwise_dist_fn=pairw
     embeddings: 2-D float `Tensor` of embedding vectors. Embeddings should
       be l2 normalized.
     margin: Float, margin term in the loss definition.
+    pairwise_dist_fn: Function to use to compute the pairwise distance.
+      Default is Euclidean pairwise distance.
 
   Returns:
     triplet_loss: tf.float32 scalar.
@@ -447,6 +450,8 @@ def lifted_struct_loss(labels, embeddings, margin=1.0, pairwise_dist_fn=pairwise
     embeddings: 2-D float `Tensor` of embedding vectors. Embeddings should not
       be l2 normalized.
     margin: Float, margin term in the loss definition.
+    pairwise_dist_fn: Function to use to compute the pairwise distance.
+      Default is Euclidean pairwise distance.
 
   Returns:
     lifted_loss: tf.float32 scalar.
@@ -988,6 +993,8 @@ def cluster_loss(labels,
       [batch size, embedding dimension]. Embeddings should be l2 normalized.
     margin_multiplier: float32 scalar. multiplier on the structured margin term
       See section 3.2 of paper for discussion.
+    pairwise_dist_fn: Function to use to compute the pairwise distance.
+      Default is Euclidean pairwise distance.
     enable_pam_finetuning: Boolean, Whether to run local pam refinement.
       See section 3.4 of paper for discussion.
     margin_type: Type of structured margin to use. See section 3.2 of
@@ -1004,7 +1011,7 @@ def cluster_loss(labels,
   if not HAS_SKLEARN:
     raise ImportError('Cluster loss depends on sklearn.')
   pairwise_distances = pairwise_dist_fn(embeddings)
-  
+
   labels = array_ops.squeeze(labels)
   all_ids = math_ops.range(array_ops.shape(embeddings)[0])
 
