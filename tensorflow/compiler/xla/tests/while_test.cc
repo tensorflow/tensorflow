@@ -957,22 +957,21 @@ TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithPrngScalarResult)) {
 TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
-  ComputationBuilder outer(client_, "outer");
+  XlaBuilder outer("outer");
   auto p = outer.Parameter(0, element_shape, "param");
   auto t = outer.Tuple({p, outer.ConstantR1<float>({1, 1})});
 
-  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<Shape> tuple_shape,
-                          outer.GetShape(t));
+  TF_ASSERT_OK_AND_ASSIGN(Shape tuple_shape, outer.GetShape(t));
 
-  ComputationBuilder cond(client_, "cond");
-  auto cond_t = cond.Parameter(0, *tuple_shape, "t");
+  XlaBuilder cond("cond");
+  auto cond_t = cond.Parameter(0, tuple_shape, "t");
   TF_ASSERT_OK(Any(cond.Eq(cond.GetTupleElement(cond_t, 0),
                            cond.ConstantR1<float>({42, 42})),
                    &cond)
                    .status());
 
-  ComputationBuilder body(client_, "body");
-  auto body_t = body.Parameter(0, *tuple_shape, "t");
+  XlaBuilder body("body");
+  auto body_t = body.Parameter(0, tuple_shape, "t");
   auto e = body.GetTupleElement(body_t, 1);
   body.Tuple({e, e});
 
@@ -993,15 +992,15 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
 TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
-  ComputationBuilder outer(client_, "outer");
+  XlaBuilder outer("outer");
   auto p = outer.Parameter(0, element_shape, "param");
 
-  ComputationBuilder cond(client_, "cond");
+  XlaBuilder cond("cond");
   auto cond_t = cond.Parameter(0, element_shape, "t");
   TF_ASSERT_OK(
       Any(cond.Eq(cond_t, cond.ConstantR1<float>({42, 42})), &cond).status());
 
-  ComputationBuilder body(client_, "body");
+  XlaBuilder body("body");
   auto body_t = body.Parameter(0, element_shape, "t");
   auto e = body.Broadcast(body.ConstantR0<float>(1.0), {2});
 
@@ -1019,14 +1018,14 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
 TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
   auto element_shape = ShapeUtil::MakeShape(F32, {});
 
-  ComputationBuilder outer(client_, "outer");
+  XlaBuilder outer("outer");
   auto p = outer.Parameter(0, element_shape, "param");
 
-  ComputationBuilder cond(client_, "cond");
+  XlaBuilder cond("cond");
   auto cond_t = cond.Parameter(0, element_shape, "t");
   cond.Eq(cond_t, cond.ConstantR0<float>(42));
 
-  ComputationBuilder body(client_, "body");
+  XlaBuilder body("body");
   auto body_t = body.Parameter(0, element_shape, "t");
   auto tuple =
       body.Tuple({body_t, body.Add(body_t, body.ConstantR0<float>(1))});
@@ -1055,23 +1054,23 @@ TEST_F(WhileTest, WhileWithMixedTupleElements) {
   auto result_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})});
 
-  ComputationBuilder outer(client_, "outer");
+  XlaBuilder outer("outer");
   auto p =
       outer.Tuple({outer.ConstantR0<int32>(0),
                    outer.Parameter(0, ShapeUtil::MakeShape(S32, {}), "t")});
 
-  ComputationBuilder cond(client_, "cond");
+  XlaBuilder cond("cond");
   auto params = cond.Parameter(0, result_shape, "prev");
   auto cond_t = cond.Add(cond.GetTupleElement(params, 1),
                          cond.GetTupleElement(params, 0));
   cond.Lt(cond_t, cond.ConstantR0<int32>(30));
 
-  ComputationBuilder body(client_, "body");
+  XlaBuilder body("body");
   auto body_t = body.Parameter(0, result_shape, "t");
 
   auto tuple = body.Tuple(
-      {body.Add(body.GetTupleElement(params, 0), body.ConstantR0<int32>(1)),
-       body.Add(body.GetTupleElement(params, 1), body.ConstantR0<int32>(1))});
+      {body.Add(body.GetTupleElement(body_t, 0), body.ConstantR0<int32>(1)),
+       body.Add(body.GetTupleElement(body_t, 1), body.ConstantR0<int32>(1))});
 
   TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());

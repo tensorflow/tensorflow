@@ -149,12 +149,12 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   EXPECT_TRUE(OutputsBF16(dot->operand(1)));
   EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConstant);
-  LiteralTestUtil::ExpectEqual(
+  EXPECT_TRUE(LiteralTestUtil::Equal(
       dot->operand(0)->literal(),
-      *LiteralTestUtil::ConvertF32ToBF16(*Literal::CreateFromArray(array_a)));
-  LiteralTestUtil::ExpectEqual(
+      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_a))));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
       dot->operand(1)->literal(),
-      *LiteralTestUtil::ConvertF32ToBF16(*Literal::CreateFromArray(array_b)));
+      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_b))));
 }
 
 // Tests that BF16 can be propagated through nested tuples.
@@ -321,6 +321,37 @@ TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
   EXPECT_TRUE(OutputsBF16(b_f0));
   EXPECT_TRUE(OutputsBF16(a_f1));
   EXPECT_TRUE(OutputsBF16(b_f1));
+}
+
+// Tests that changes to BF16 that cannot be propagated outside a fusion are
+// discarded.
+TEST_F(BFloat16PropagationTest, DiscardFusionInternalBF16Changes) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, param));
+
+  auto builder_f = HloComputation::Builder("fusion");
+  HloInstruction* a_f =
+      builder_f.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b_f =
+      builder_f.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  HloInstruction* add_f = builder_f.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, a_f, b_f));
+  HloInstruction* dot_f = builder_f.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {4, 4}), HloOpcode::kDot, add_f, add_f));
+  auto comp_f = module->AddEmbeddedComputation(builder_f.Build());
+  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      dot_f->shape(), HloInstruction::FusionKind::kCustom, {add, add}, comp_f));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  EXPECT_EQ(computation->root_instruction(), fusion);
 }
 
 // Tests that if 1) the root instruction of a fusion is a tuple, 2) the fusion

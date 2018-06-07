@@ -59,14 +59,14 @@ class ApiDefMap {
   // You can call this method multiple times to load multiple
   // sets of files. Api definitions are merged if the same
   // op definition is loaded multiple times. Later-loaded
-  // definitions take precedense.
+  // definitions take precedence.
   // ApiDefs loaded from files must contain a subset of ops defined
   // in the OpList passed to the constructor.
   Status LoadFileList(Env* env, const std::vector<string>& filenames);
 
   // Load a single file. Api definitions are merged if the same
   // op definition is loaded multiple times. Later-loaded
-  // definitions take precedense.
+  // definitions take precedence.
   // ApiDefs loaded from file must contain a subset of ops defined
   // in the OpList passed to the constructor.
   Status LoadFile(Env* env, const string& filename);

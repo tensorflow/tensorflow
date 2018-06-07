@@ -62,8 +62,8 @@ void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     const string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  ASSERT_TRUE(
-      CompileToAotCompilationResult(std::move(hlo_module), options).ok());
+  TF_ASSERT_OK(
+      CompileToAotCompilationResult(std::move(hlo_module), options).status());
   ResetIrHook();
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);

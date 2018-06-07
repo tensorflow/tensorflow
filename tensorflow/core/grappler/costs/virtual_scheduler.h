@@ -328,7 +328,7 @@ class VirtualScheduler {
   Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
-  // Auxilliary data structures for constructing NodeState and DeviceState.
+  // Auxiliary data structures for constructing NodeState and DeviceState.
   GraphProperties graph_properties_;
   Cluster* cluster_;  // Not owned.
 

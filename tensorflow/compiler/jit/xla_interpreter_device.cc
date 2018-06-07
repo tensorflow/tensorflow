@@ -51,7 +51,9 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(XlaDevice::Create("Interpreter", DEVICE_XLA_INTERPRETER, 0,
                                        DEVICE_INTERPRETER_XLA_JIT, options,
                                        name_prefix, registration,
-                                       /*transfer_as_literal=*/false, &device));
+                                       /*transfer_as_literal=*/false,
+                                       /*shape_representation_fn=*/{},
+                                       /*padded_shape_fn=*/{}, &device));
   devices->push_back(device.release());
   return Status::OK();
 }

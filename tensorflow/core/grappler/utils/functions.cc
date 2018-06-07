@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -380,16 +381,6 @@ GrapplerFunctionItem& GrapplerFunctionItem::SwapFunctionBody(GraphDef&& other) {
   return *this;
 }
 
-std::vector<string> OutputTensors(const GrapplerFunctionItem& item) {
-  std::vector<string> output_tensors;
-  for (const OutputArgExpansion& output : item.outputs()) {
-    for (const string& tensor : output.output_tensors) {
-      output_tensors.push_back(tensor);
-    }
-  }
-  return output_tensors;
-}
-
 bool HasParametrizedType(const FunctionDef& func) {
   const auto is_type_parametrized = [](const OpDef::ArgDef& arg) {
     return !arg.type_attr().empty() || !arg.number_attr().empty() ||
@@ -415,6 +406,63 @@ bool HasParametrizedBody(const FunctionDef& func) {
 
 bool IsParametrized(const FunctionDef& func) {
   return HasParametrizedType(func) || HasParametrizedBody(func);
+}
+
+Status InstantiationTypeParameters(
+    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    std::unordered_map<string, DataType>* type_parameters) {
+  if (!type_parameters->empty()) {
+    return errors::InvalidArgument("Type parameters output map must be empty");
+  }
+
+  GrapplerFunctionItemInstantiation instantiation(&func_instantiation_attr);
+
+  const auto resolve_type_attr = [&](const OpDef::ArgDef& arg) {
+    // Check if it's unknown and unresolved type.
+    if (arg.type() == DT_INVALID &&
+        type_parameters->find(arg.type_attr()) == type_parameters->end()) {
+      DataType data_type;
+      TF_RETURN_IF_ERROR(instantiation.GetArgType(arg, &data_type));
+      type_parameters->insert({arg.type_attr(), data_type});
+    }
+    return Status::OK();
+  };
+
+  for (const auto& input : func.signature().input_arg())
+    TF_RETURN_IF_ERROR(resolve_type_attr(input));
+  for (const auto& output : func.signature().output_arg())
+    TF_RETURN_IF_ERROR(resolve_type_attr(output));
+
+  return Status::OK();
+}
+
+Status InstantiationBodyParameters(
+    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    std::unordered_map<string, AttrValue>* body_parameters) {
+  if (!body_parameters->empty()) {
+    return errors::InvalidArgument("Body parameters output map must be empty");
+  }
+
+  for (const NodeDef& func_body_node : func.node_def()) {
+    for (auto& attr : func_body_node.attr()) {
+      const string& placeholder = attr.second.placeholder();
+
+      if (placeholder.empty() ||
+          body_parameters->find(placeholder) != body_parameters->end()) {
+        continue;
+      }
+
+      auto it = func_instantiation_attr.find(placeholder);
+      if (it != func_instantiation_attr.end()) {
+        body_parameters->emplace(placeholder, it->second);
+      } else {
+        return errors::InvalidArgument("Can't resolve placeholder: ",
+                                       placeholder);
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
@@ -478,7 +526,9 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     NodeDef* placeholder = function_body.add_node();
     placeholder->set_name(input.name());
     placeholder->set_op("Placeholder");
-    (*placeholder->mutable_attr())["T"].set_type(input_data_type);
+    (*placeholder->mutable_attr())["dtype"].set_type(input_data_type);
+    (*placeholder->mutable_attr())["shape"].mutable_shape()->set_unknown_rank(
+        true);
 
     InputArgExpansion input_expansion{/*input_name=*/input.name(),
                                       /*data_type=*/input_data_type,
@@ -566,6 +616,60 @@ Status RegisterGrapplerFunctionConnectivity(
   return Status::OK();
 }
 
+Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
+                             GrapplerFunctionItem* item) {
+  if (!IsConstant(input_const)) {
+    return errors::InvalidArgument("Input node ", input_const.name(),
+                                   " is not a constant");
+  }
+
+  auto& inputs = item->input_arg_expansions_;
+
+  // Find input arg expansion and input placeholder position in it for the
+  // given function input position.
+  InputArgExpansion* input_arg_expansion = nullptr;
+  int placeholder_idx = input_position;
+
+  for (InputArgExpansion& input : inputs) {
+    if (placeholder_idx < input.placeholders.size()) {
+      input_arg_expansion = &input;
+      break;
+    }
+    placeholder_idx -= input.placeholders.size();
+  }
+
+  if (input_arg_expansion == nullptr) {
+    return errors::InvalidArgument(
+        "Input placeholder not found: input_position=", input_position,
+        " function=", item->id);
+  }
+
+  // Delete placeholder from input expansion.
+  string placeholder_name = input_arg_expansion->placeholders[placeholder_idx];
+  item->input_arg_placeholders_.erase(placeholder_name);
+  input_arg_expansion->placeholders.erase(
+      input_arg_expansion->placeholders.begin() + placeholder_idx);
+
+  // Delete empty input expansions.
+  inputs.erase(std::remove_if(inputs.begin(), inputs.end(),
+                              [](const InputArgExpansion& input) {
+                                return input.placeholders.empty();
+                              }),
+               inputs.end());
+
+  // Replace placeholder node in the function body with a const node.
+  for (NodeDef& node : *item->graph.mutable_node()) {
+    if (node.name() == placeholder_name) {
+      node = input_const;
+      node.set_name(placeholder_name);
+      node.clear_input();   // remove potential control inputs
+      node.clear_device();  // device placement is defined by instantiating node
+    }
+  }
+
+  return Status::OK();
+}
+
 Status MakeFunctionDef(const GrapplerFunctionItem& item,
                        const FunctionLibraryDefinition& flib,
                        FunctionDef* func) {
@@ -579,6 +683,9 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
 
   // Add function input arguments.
   for (const InputArgExpansion& input_arg : item.inputs()) {
+    CHECK(input_arg.placeholders.size() == 1)  // do some sanity checking
+        << "Inputs of tensor sequences are not supported";
+
     OpDef::ArgDef arg_def;
     arg_def.set_name(input_arg.input_name);
     arg_def.set_type(input_arg.data_type);
@@ -588,14 +695,14 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
 
   // Add function output arguments.
   for (const OutputArgExpansion& output_arg : item.outputs()) {
+    CHECK(output_arg.output_tensors.size() == 1)  // do some sanity checking
+        << "Outputs of tensor sequences are not supported";
+
     OpDef::ArgDef arg_def;
     arg_def.set_name(output_arg.output_name);
     arg_def.set_type(output_arg.data_type);
     arg_def.set_is_ref(output_arg.is_ref);
     *func->mutable_signature()->add_output_arg() = arg_def;
-
-    CHECK(output_arg.output_tensors.size() == 1)  // do some sanity checking
-        << "Outputs of tensor sequences are not supported";
 
     string ret;
     for (const string& output_tensor : output_arg.output_tensors) {

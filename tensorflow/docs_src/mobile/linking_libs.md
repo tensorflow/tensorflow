@@ -27,12 +27,12 @@ called `libandroid_tensorflow_inference_java.jar`. There are three ways to
 include this functionality in your program:
 
 1. Include the jcenter AAR which contains it, as in this
- [example app](https://github.com/googlecodelabs/tensorflow-for-poets-2/blob/master/android/build.gradle#L59-L65)
+ [example app](https://github.com/googlecodelabs/tensorflow-for-poets-2/blob/master/android/tfmobile/build.gradle#L59-L65)
 
 2. Download the nightly precompiled version from
 [ci.tensorflow.org](http://ci.tensorflow.org/view/Nightly/job/nightly-android/lastSuccessfulBuild/artifact/out/).
 
-3. Build the JAR file yourself using the instructions [in our Android Github repo](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/android)
+3. Build the JAR file yourself using the instructions [in our Android GitHub repo](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/android)
 
 ### iOS
 

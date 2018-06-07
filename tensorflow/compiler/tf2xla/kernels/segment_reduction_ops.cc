@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -62,16 +62,16 @@ class UnsortedSegmentSum : public XlaOpKernel {
                       d, " differs ", data_shape.dim_size(d), " vs. ",
                       indices_shape.dim_size(d)));
     }
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
     TensorShape buffer_shape = data_shape;
     buffer_shape.RemoveDimRange(0, indices_shape.dims());
     buffer_shape.InsertDim(0, num_segments);
     auto buffer = builder->Broadcast(XlaHelpers::Zero(builder, dtype_),
                                      buffer_shape.dim_sizes());
 
-    auto combiner =
-        [](xla::ComputationDataHandle a, xla::ComputationDataHandle b,
-           xla::ComputationBuilder* builder) { return builder->Add(a, b); };
+    auto combiner = [](xla::XlaOp a, xla::XlaOp b, xla::XlaBuilder* builder) {
+      return builder->Add(a, b);
+    };
 
     auto result = XlaScatter(buffer, /*updates=*/data, indices,
                              /*indices_are_vectors=*/false, combiner, builder);

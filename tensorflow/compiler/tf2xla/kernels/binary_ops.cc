@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -34,14 +34,13 @@ namespace {
   class NAME##Op : public XlaBinaryOp {                                 \
    public:                                                              \
     explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}  \
-    xla::ComputationDataHandle Computation(                             \
-        XlaOpKernelContext* ctx, const xla::ComputationDataHandle& lhs, \
-        const gtl::ArraySlice<int64>& lhs_shape,                        \
-        const xla::ComputationDataHandle& rhs,                          \
+    xla::XlaOp Computation(                                             \
+        XlaOpKernelContext* ctx, const xla::XlaOp& lhs,                 \
+        const gtl::ArraySlice<int64>& lhs_shape, const xla::XlaOp& rhs, \
         const gtl::ArraySlice<int64>& rhs_shape,                        \
         const BCast& broadcast_helper,                                  \
         const std::vector<int64>& extend_dimensions) override {         \
-      xla::ComputationBuilder* b = ctx->builder();                      \
+      xla::XlaBuilder* b = ctx->builder();                              \
       return HLO;                                                       \
     }                                                                   \
   };                                                                    \
@@ -63,11 +62,8 @@ XLA_MAKE_BINARY(Complex, b->Complex(lhs, rhs, extend_dimensions));
 // } else {
 //   return x / y;
 // }
-static xla::ComputationDataHandle FloorDivImpl(xla::ComputationBuilder* b,
-                                               DataType dtype,
-                                               xla::ComputationDataHandle x,
-                                               xla::ComputationDataHandle y,
-                                               const BCast& broadcast_helper) {
+static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                               xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
   auto one = XlaHelpers::One(b, dtype);
@@ -87,11 +83,8 @@ XLA_MAKE_BINARY(FloorDiv,
 // Implementation of FloorMod. Pseudo-code:
 // T trunc_mod = std::fmod(x, y);
 // return (x < T(0)) == (y < T(0)) ? trunc_mod : std::fmod(trunc_mod + y, y);
-static xla::ComputationDataHandle FloorModImpl(xla::ComputationBuilder* b,
-                                               DataType dtype,
-                                               xla::ComputationDataHandle x,
-                                               xla::ComputationDataHandle y,
-                                               const BCast& broadcast_helper) {
+static xla::XlaOp FloorModImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                               xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
   auto same_sign = b->Eq(b->Lt(x, zero), b->Lt(y, zero));
@@ -127,8 +120,7 @@ XLA_MAKE_BINARY(SqrtGrad,
                               XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
                        lhs, extend_dimensions));
 
-static xla::ComputationDataHandle Square(xla::ComputationBuilder* builder,
-                                         const xla::ComputationDataHandle& x) {
+static xla::XlaOp Square(xla::XlaBuilder* builder, const xla::XlaOp& x) {
   return builder->Mul(x, x);
 }
 
@@ -175,11 +167,11 @@ class ApproximateEqualOp : public XlaOpKernel {
 
   // Computes the max of the scalar input x and 0.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
     auto abs = b->Abs(b->Sub(ctx->Input(0), ctx->Input(1)));
     auto abs_shape = b->GetShape(abs);
     OP_REQUIRES_OK(ctx, abs_shape.status());
-    auto abs_type = abs_shape.ValueOrDie()->element_type();
+    auto abs_type = abs_shape.ValueOrDie().element_type();
     auto result = b->Lt(
         abs, b->ConvertElementType(b->ConstantR0<float>(tolerance_), abs_type));
     ctx->SetOutput(0, result);

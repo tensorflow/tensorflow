@@ -33,7 +33,7 @@ string JoinPathImpl(std::initializer_list<port::StringPiece> paths) {
     if (path.empty()) continue;
 
     if (result.empty()) {
-      result = path.ToString();
+      result = std::string(path);
       continue;
     }
 

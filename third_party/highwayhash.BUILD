@@ -10,6 +10,7 @@ cc_library(
     srcs = ["highwayhash/sip_hash.cc"],
     hdrs = [
         "highwayhash/sip_hash.h",
+        "highwayhash/endianess.h",
         "highwayhash/state_helpers.h",
     ],
     visibility = ["//visibility:public"],

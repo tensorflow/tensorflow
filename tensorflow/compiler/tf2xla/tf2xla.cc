@@ -251,7 +251,7 @@ Status CreateXlaArgs(const Graph& graph,
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
 Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
-                         xla::Computation* computation) {
+                         xla::XlaComputation* computation) {
   XlaOpRegistry::RegisterCompilationKernels();
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(
@@ -263,8 +263,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
-  DeviceType device_type(DEVICE_CPU_XLA_JIT);
-  compiler_options.device_type = &device_type;
+  compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
@@ -303,7 +302,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
 }
 
 // InitGraph creates a graph based on the graph_def, that may then be converted
-// to an xla::Computation via ConvertGraphToXla.
+// to an xla::XlaComputation via ConvertGraphToXla.
 //
 // The graph is rewritten with _Arg and _Retval nodes, representing the inputs
 // and outputs of the function that will be compiled.  Each feed id causes a new
@@ -348,7 +347,7 @@ Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
 
 Status ConvertGraphDefToXla(const GraphDef& graph_def,
                             const tf2xla::Config& config, xla::Client* client,
-                            xla::Computation* computation) {
+                            xla::XlaComputation* computation) {
   std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
   TF_RETURN_IF_ERROR(ConvertGraphToXla(std::move(graph), client, computation));

@@ -167,6 +167,7 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMinBoundary) {
   EXPECT_EQ(qp.zero_point, 0);
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroNotInRange) {
   // Assumption is that zero is within the range.
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, 30.0), "");
@@ -176,6 +177,7 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangePositive) {
   // Assumption is that zero is within the range.
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(30.0, 30.0), "");
 }
+#endif  // GTEST_HAS_DEATH_TEST
 
 TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangeZero) {
   QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 0.0);
@@ -189,6 +191,7 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMaxBoundary) {
   EXPECT_EQ(qp.zero_point, 255);
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(QuantizationUtilTest, ChooseQuantizationParamsInvalidRange) {
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, -30.0), "");
 }
@@ -261,6 +264,7 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   EXPECT_THAT(quantize(2.0, 16.0, 5), Pair(2147483647, 31));
   EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(1073741824, 31));
 }
+#endif  // GTEST_HAS_DEATH_TEST
 
 TEST(QuantizationUtilTest, CalculateInputRadius) {
   EXPECT_EQ(CalculateInputRadius(4, 27), 15);
