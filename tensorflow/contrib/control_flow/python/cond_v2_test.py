@@ -82,7 +82,6 @@ class NewCondTest(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testSecondDerivative(self):
-    self.skipTest("b/109758172")
     pred = array_ops.placeholder(dtypes.bool, name="pred")
     x = constant_op.constant(3.0, name="x")
 

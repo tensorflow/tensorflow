@@ -23,7 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import function
@@ -93,9 +92,9 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   # graphs. These functions will capture tensors from the forward pass
   # functions.
   true_grad_graph = _create_grad_func(
-      true_graph, grads, "%sgrad" % true_graph.name)
+      true_graph, grads, _get_grad_fn_name(true_graph))
   false_grad_graph = _create_grad_func(
-      false_graph, grads, "%sgrad" % false_graph.name)
+      false_graph, grads, _get_grad_fn_name(false_graph))
 
   assert ([t.dtype for t in true_grad_graph.outputs] ==
           [t.dtype for t in false_grad_graph.outputs])
@@ -260,7 +259,6 @@ def _create_new_tf_function(func_graph):
   Returns:
     The name of the new TF_Function.
   """
-  func_graph.name = "%s_" % func_graph.name
   c_func = c_api.TF_GraphToFunction_wrapper(
       func_graph._c_graph,
       compat.as_str(func_graph.name),
@@ -271,20 +269,15 @@ def _create_new_tf_function(func_graph):
       [],
       None,  # opts
       None)  # description
-  c_func = c_api_util.ScopedTFFunction(c_func)
-  c_api.TF_GraphCopyFunction(
-      ops.get_default_graph()._c_graph, c_func.func, None)
+  _ = c_api_util.ScopedTFFunction(c_func)
 
-  # Add a _DefinedFunction to `Graph._functions` of the outer graph so that
-  # we can access it using `Graph._get_function` later.
-  # TODO(srbs): Consider adding a C API that can return a FunctionDef by name.
-  with c_api_util.tf_buffer() as buffer_:
-    c_api.TF_FunctionToFunctionDef(c_func.func, buffer_)
-    proto_data = c_api.TF_GetBuffer(buffer_)
-  function_def = function_pb2.FunctionDef()
-  function_def.ParseFromString(compat.as_bytes(proto_data))
-  func_graph._outer_graph._functions[
-      func_graph.name] = function._from_definition(function_def)
+  # TODO(b/109833212): this sucks, we're serializing the TF_Function*,
+  # deserializing it into a Python FunctionDef, then reserializing it to create
+  # a new TF_Function that we add to the graph.
+  fdef = function.function_def_from_tf_function(c_func)
+  defined_func = function._from_definition(fdef)
+  defined_func.add_to_graph(ops.get_default_graph())
+
   return func_graph.name
 
 
@@ -408,6 +401,19 @@ def _create_dummy_params(func_graph, template_tensors):
   with func_graph.as_default():
     return [gen_functional_ops.fake_param(dtype=t.dtype, shape=t.shape)
             for t in template_tensors]
+
+
+def _get_grad_fn_name(func_graph):
+  """Returns a unique name to use for the grad function of `func_graph`."""
+  name = "%s_grad" % func_graph.name
+
+  base_name = name
+  counter = 1
+  if ops.get_default_graph()._is_function(name):
+    name = "%s_%s" % (base_name, counter)
+    counter += 1
+
+  return name
 
 
 def _check_same_outputs(true_graph, false_graph):
