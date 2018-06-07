@@ -740,7 +740,7 @@ class MatrixMatrixBlockPanelEmitter {
  private:
   // The HandleResiduesOnX helpers split the iteration space for dimension X
   // into a multiple of the tile size on dimension X and an epilogue.  These
-  // helpers ultimately call into `EmitTiledReductionLoop` for emitting the
+  // helpers ultimately call into `EmitTiledGemm` for emitting the
   // tiled GEMM kernel.
 
   void HandleResiduesOnN();
@@ -750,15 +750,13 @@ class MatrixMatrixBlockPanelEmitter {
                          llvm::Value* k_start, llvm::Value* k_end,
                          llvm::Value* n_start, llvm::Value* n_end);
 
-  // This emits the inner reduction loop.  This inner reduction loop multiplies
-  // a tile from the LHS of size [tile_size_m,tile_size_k] and a tile from the
-  // RHS of size [`tile_size_k`, vls->vector_width()] to update a tile of size
-  // [`tile_size_m`, vls->vector_width()] in the result.
-  void EmitTiledReductionLoop(VectorSupportLibrary* vsl, int64 tile_size_k,
-                              llvm::Value* k_start, llvm::Value* k_end,
-                              llvm::Value* n_start, llvm::Value* n_end,
-                              int64 tile_size_m, llvm::Value* m_start,
-                              llvm::Value* m_end);
+  // This emits a tiled GEMM kernel.  For a detailed description see the comment
+  // on the implementation.
+  void EmitTiledGemm(VectorSupportLibrary* vsl, int64 tile_size_k,
+                     llvm::Value* k_start, llvm::Value* k_end,
+                     llvm::Value* n_start, llvm::Value* n_end,
+                     int64 tile_size_m, llvm::Value* m_start,
+                     llvm::Value* m_end);
 
   llvm::Value* GetInt64(int64 value) { return ir_builder_->getInt64(value); }
 
@@ -848,16 +846,24 @@ void MatrixMatrixBlockPanelEmitter::HandleResiduesOnM(
     VectorSupportLibrary* vsl, int64 tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end) {
   const int64 m_end = dims().m() - dims().m() % tile_size_m();
-  EmitTiledReductionLoop(vsl, tile_size_k, k_start, k_end, n_start, n_end,
-                         tile_size_m(), GetInt64(0), GetInt64(m_end));
+  EmitTiledGemm(vsl, tile_size_k, k_start, k_end, n_start, n_end, tile_size_m(),
+                GetInt64(0), GetInt64(m_end));
 
   if (m_end != dims().m()) {
-    EmitTiledReductionLoop(vsl, tile_size_k, k_start, k_end, n_start, n_end,
-                           dims().m() - m_end, GetInt64(m_end),
-                           GetInt64(dims().m()));
+    EmitTiledGemm(vsl, tile_size_k, k_start, k_end, n_start, n_end,
+                  dims().m() - m_end, GetInt64(m_end), GetInt64(dims().m()));
   }
 }
 
+// The loop structure is:
+//
+// Iterate over dimension M as m:
+//   Iterate over dimension N as n:
+//     Iterate over dimension K as k:
+//       OutputTile[m,n] += Dot(LhsTile[m,k], RhsTile[k,n])
+//
+// I.e. a just a tiled version of a "naive" GEMM.
+//
 // The tiling scheme is as follows:
 //
 // Let the LHS be:
@@ -919,7 +925,7 @@ void MatrixMatrixBlockPanelEmitter::HandleResiduesOnM(
 //   +-------------------+-------------------+-------------------+---------
 //   | a0*p0+b0*q0+c0*r0 | a0*p1+b0*q1+c0*r1 | a0*p2+b0*q2+c0*r2 |  ...
 //   +-------------------+-------------------+-------------------+---------
-void MatrixMatrixBlockPanelEmitter::EmitTiledReductionLoop(
+void MatrixMatrixBlockPanelEmitter::EmitTiledGemm(
     VectorSupportLibrary* vsl, int64 tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end,
     int64 tile_size_m, llvm::Value* m_start, llvm::Value* m_end) {
@@ -933,16 +939,16 @@ void MatrixMatrixBlockPanelEmitter::EmitTiledReductionLoop(
                                /*major_dim_offset=*/m_i,
                                /*tile_size_along_major_dim=*/tile_size_m);
 
-    ksl_.For("dot.k", k_start, k_end, tile_size_k, [&](llvm::Value* k_i) {
-      MemoryTile rhs_memory_tile(vsl, ir_builder_, rhs_, dims().n(), k_i,
-                                 tile_size_k);
-      std::vector<std::vector<llvm::Value*>> lhs_tile =
-          lhs_memory_tile.LoadBroadcastTile(k_i, tile_size_k);
-      ksl_.For(
-          "dot.n", n_start, n_end, vsl->vector_size(), [&](llvm::Value* n_i) {
+    ksl_.For(
+        "dot.n", n_start, n_end, vsl->vector_size(), [&](llvm::Value* n_i) {
+          TileVariable result_tile_var(vsl, result_memory_tile.LoadTile(n_i));
+          ksl_.For("dot.k", k_start, k_end, tile_size_k, [&](llvm::Value* k_i) {
+            MemoryTile rhs_memory_tile(vsl, ir_builder_, rhs_, dims().n(), k_i,
+                                       tile_size_k);
+            std::vector<std::vector<llvm::Value*>> lhs_tile =
+                lhs_memory_tile.LoadBroadcastTile(k_i, tile_size_k);
             std::vector<llvm::Value*> rhs_tile = rhs_memory_tile.LoadTile(n_i);
-            std::vector<llvm::Value*> result_tile =
-                result_memory_tile.LoadTile(n_i);
+            std::vector<llvm::Value*> result_tile = result_tile_var.Get();
             for (int64 r_m_i = 0; r_m_i < tile_size_m; r_m_i++) {
               for (int64 r_k_i = 0; r_k_i < tile_size_k; r_k_i++) {
                 result_tile[r_m_i] =
@@ -950,9 +956,11 @@ void MatrixMatrixBlockPanelEmitter::EmitTiledReductionLoop(
                                 result_tile[r_m_i]);
               }
             }
-            result_memory_tile.StoreTile(result_tile, n_i);
+            result_tile_var.Set(result_tile);
           });
-    });
+
+          result_memory_tile.StoreTile(result_tile_var.Get(), n_i);
+        });
   });
 }
 
