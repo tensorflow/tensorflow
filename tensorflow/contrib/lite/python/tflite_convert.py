@@ -130,6 +130,10 @@ def _convert_model(flags):
     converter.allow_custom_ops = flags.allow_custom_ops
   if flags.quantize_weights:
     converter.quantize_weights = flags.quantize_weights
+  if flags.dump_graphviz_dir:
+    converter.dump_graphviz_dir = flags.dump_graphviz_dir
+  if flags.dump_graphviz_video:
+    converter.dump_graphviz_vode = flags.dump_graphviz_video
 
   # Convert model.
   output_data = converter.convert()
@@ -161,8 +165,12 @@ def _check_flags(flags, unparsed):
     output = ""
     for flag in unparsed:
       output += _get_message_unparsed(flag, "--input_file", "--graph_def_file")
+      output += _get_message_unparsed(flag, "--savedmodel_directory",
+                                      "--saved_model_dir")
       output += _get_message_unparsed(flag, "--std_value", "--std_dev_values")
       output += _get_message_unparsed(flag, "--batch_size", "--input_shapes")
+      output += _get_message_unparsed(flag, "--dump_graphviz",
+                                      "--dump_graphviz_dir")
     if output:
       raise ValueError(output)
 
@@ -321,6 +329,20 @@ def run_main(_):
             "created for any op that is unknown. The developer will need to "
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
+
+  # Logging flags.
+  parser.add_argument(
+      "--dump_graphviz_dir",
+      type=str,
+      help=("Full filepath of folder to dump the graphs at various stages of "
+            "processing GraphViz .dot files. Preferred over --output_format="
+            "GRAPHVIZ_DOT in order to keep the requirements of the output "
+            "file."))
+  parser.add_argument(
+      "--dump_graphviz_video",
+      action="store_true",
+      help=("Boolean indicating whether to dump the graph after every graph "
+            "transformation"))
 
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
   try:
