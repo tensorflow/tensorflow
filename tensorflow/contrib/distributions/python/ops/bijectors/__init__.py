@@ -43,6 +43,7 @@
 @@Softplus
 @@Softsign
 @@Square
+@@TransformDiagonal
 @@Weibull
 
 @@masked_autoregressive_default_template
@@ -83,6 +84,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered impo
 from tensorflow.contrib.distributions.python.ops.bijectors.softplus import *
 from tensorflow.contrib.distributions.python.ops.bijectors.softsign import *
 from tensorflow.contrib.distributions.python.ops.bijectors.square import *
+from tensorflow.contrib.distributions.python.ops.bijectors.transform_diagonal import *
 from tensorflow.python.ops.distributions.bijector import *
 from tensorflow.python.ops.distributions.identity_bijector import Identity
 
