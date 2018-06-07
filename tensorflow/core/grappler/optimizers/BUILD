@@ -793,6 +793,9 @@ tf_cc_test(
     name = "scoped_allocator_optimizer_test",
     size = "small",
     srcs = ["scoped_allocator_optimizer_test.cc"],
+    tags = [
+        "nomsan",
+    ],
     deps = [
         ":scoped_allocator_optimizer",
         "//tensorflow/cc:cc_ops",
