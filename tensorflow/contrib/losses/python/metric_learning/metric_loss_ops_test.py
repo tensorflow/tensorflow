@@ -154,6 +154,68 @@ class TripletSemiHardLossTest(test.TestCase):
       loss_tf = loss_tf.eval()
       self.assertAllClose(loss_np, loss_tf)
 
+class TripletSemiHardLossCosineTest(test.TestCase):
+
+  def testTripletSemiHardCosine(self):
+    with self.test_session():
+      num_data = 10
+      feat_dim = 6
+      margin = 0.5
+      num_classes = 4
+
+      embedding = np.random.rand(num_data, feat_dim).astype(np.float32)
+      labels = np.random.randint(
+          0, num_classes, size=(num_data)).astype(np.float32)
+
+      # Reshape labels to compute adjacency matrix.
+      labels_reshaped = np.reshape(labels, (labels.shape[0], 1))
+      # Compute the loss in NP.
+      adjacency = np.equal(labels_reshaped, labels_reshaped.T)
+
+      # Sklearn Reference matrix
+      pdist_matrix = 1 - metric.pairwise.cosine_similarity(embedding)
+      # Explicitly set diagonals to zero.
+      mask_offdiagonals = np.ones_like(pdist_matrix) - np.diag(
+	     np.ones([num_data]))
+      pdist_matrix = np.multiply(pdist_matrix, mask_offdiagonals)
+
+      loss_np = 0.0
+      num_positives = 0.0
+      for i in range(num_data):
+        for j in range(num_data):
+          if adjacency[i][j] > 0.0 and i != j:
+            num_positives += 1.0
+
+            pos_distance = pdist_matrix[i][j]
+            neg_distances = []
+
+            for k in range(num_data):
+              if adjacency[i][k] == 0:
+                neg_distances.append(pdist_matrix[i][k])
+
+            # Sort by distance.
+            neg_distances.sort()
+            chosen_neg_distance = neg_distances[0]
+
+            for l in range(len(neg_distances)):
+              chosen_neg_distance = neg_distances[l]
+              if chosen_neg_distance > pos_distance:
+                break
+
+            loss_np += np.maximum(
+                0.0, margin - chosen_neg_distance + pos_distance)
+
+      loss_np /= num_positives
+
+      # Compute the loss in TF.
+      loss_tf = metric_loss_ops.triplet_semihard_loss(
+          labels=ops.convert_to_tensor(labels),
+          embeddings=ops.convert_to_tensor(embedding),
+          margin=margin,
+          pairwise_dist_fn=pairwise_distance_cosine))
+      loss_tf = loss_tf.eval()
+      self.assertAllClose(loss_np, loss_tf)
+
 
 class LiftedStructLossTest(test.TestCase):
 
