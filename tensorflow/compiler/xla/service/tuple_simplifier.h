@@ -27,7 +27,7 @@ namespace xla {
 // the module.
 class TupleSimplifier : public HloPassInterface {
  public:
-  TupleSimplifier() : TupleSimplifier(false) {}
+  TupleSimplifier() : TupleSimplifier(/*exclude_entry_computation=*/false) {}
   explicit TupleSimplifier(bool exclude_entry_computation);
   ~TupleSimplifier() override {}
   tensorflow::StringPiece name() const override { return "tuple-simplifier"; }
