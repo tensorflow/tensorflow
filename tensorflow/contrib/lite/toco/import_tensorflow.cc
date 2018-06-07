@@ -1908,6 +1908,12 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertSimpleOperator<SelectOperator, 3>(node, tf_import_flags, model);
   } else if (node.op() == "SparseToDense") {
     ConvertSparseToDenseOperator(node, tf_import_flags, model);
+  } else if (node.op() == "Equal") {
+    ConvertSimpleOperator<TensorFlowEqualOperator, 2>(node, tf_import_flags,
+                                                      model);
+  } else if (node.op() == "NotEqual") {
+    ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>(node, tf_import_flags,
+                                                         model);
   } else {
     ConvertUnsupportedOperator(node, tf_import_flags, model);
   }
