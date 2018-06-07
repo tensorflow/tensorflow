@@ -644,6 +644,7 @@ def assert_no_garbage_created(f):
 
 
 def run_all_in_graph_and_eager_modes(cls):
+  """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes()
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):

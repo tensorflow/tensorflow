@@ -2443,8 +2443,11 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
       case HloOpcode::kReduce:
         return inst->operand(1);
       case HloOpcode::kTuple:
-        CHECK(hlo->IsMultiOutputFusion() &&
-              inst->operand(index.back())->opcode() == HloOpcode::kReduce);
+        CHECK(hlo->IsMultiOutputFusion())
+            << ": " << hlo->ToString() << " is not a multi-output fusion.";
+        CHECK(inst->operand(index.back())->opcode() == HloOpcode::kReduce)
+            << ": Found '" << inst->operand(index.back())->opcode() << "' in "
+            << inst->ToString() << " but expected 'reduce'.";
         // For multi-output fusion look through the tuple.
         return inst->operand(index.back())->operand(1);
       default:

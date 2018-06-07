@@ -106,7 +106,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
     model_layers = model.layers
     save_weights_to_hdf5_group(model_weights_group, model_layers)
 
-    if include_optimizer and hasattr(model, 'optimizer'):
+    if include_optimizer and model.optimizer:
       if isinstance(model.optimizer, optimizers.TFOptimizer):
         logging.warning(
             'TensorFlow optimizers do not '
@@ -323,7 +323,7 @@ def model_from_yaml(yaml_string, custom_objects=None):
       ImportError: if yaml module is not found.
   """
   if yaml is None:
-    raise ImportError('Requires yaml module installed.')
+    raise ImportError('Requires yaml module installed (`pip install pyyaml`).')
   config = yaml.load(yaml_string)
   from tensorflow.python.keras.layers import deserialize  # pylint: disable=g-import-not-at-top
   return deserialize(config, custom_objects=custom_objects)

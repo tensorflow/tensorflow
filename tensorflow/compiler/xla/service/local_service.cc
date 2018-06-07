@@ -108,6 +108,11 @@ ExecutionOptions CreateExecutionOptions(
         ->set_xla_dump_optimized_hlo_proto_to(
             build_options.dump_optimized_hlo_proto_to().value());
   }
+  if (build_options.dump_unoptimized_hlo_proto_to().has_value()) {
+    execution_options.mutable_debug_options()
+        ->set_xla_dump_unoptimized_hlo_proto_to(
+            build_options.dump_unoptimized_hlo_proto_to().value());
+  }
   if (build_options.dump_per_pass_hlo_proto_to().has_value()) {
     execution_options.mutable_debug_options()
         ->set_xla_dump_per_pass_hlo_proto_to(

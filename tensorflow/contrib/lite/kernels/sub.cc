@@ -175,7 +175,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                output);
   } else {
     context->ReportError(
-        context, "output type %d is not support, requires float|uint8 types.",
+        context, "output type %d is not supported, requires float|uint8 types.",
         output->type);
     return kTfLiteError;
   }

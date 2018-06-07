@@ -135,7 +135,7 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/service:session_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:lib",
     ],
 )

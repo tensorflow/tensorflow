@@ -18,12 +18,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -59,7 +59,7 @@ class HloLivenessAnalysisTest : public HloTestBase {
 
 // Test that add instruction at entry root is live at all output shape indices.
 TEST_F(HloLivenessAnalysisTest, AddAtEntryRoot) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -75,7 +75,7 @@ TEST_F(HloLivenessAnalysisTest, AddAtEntryRoot) {
 
 // Test that a dead add instruction is marked as dead by analysis.
 TEST_F(HloLivenessAnalysisTest, DeadAdd) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -94,7 +94,7 @@ TEST_F(HloLivenessAnalysisTest, DeadAdd) {
 // Test that all output shape indices of entry root tuple (and defining
 // instruction in its output) are marked live.
 TEST_F(HloLivenessAnalysisTest, TupleAtEntryRoot) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -113,7 +113,7 @@ TEST_F(HloLivenessAnalysisTest, TupleAtEntryRoot) {
 // Tests that all outputs of nested tuple and entry root (and defining
 // instruction values appearing in its output) are marked live.
 TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(1)
@@ -140,7 +140,7 @@ TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
 // Tests that GTE at entry root of Tuple instruction only propgates liveness
 // to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -162,7 +162,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
 // Tests that GTE at entry root of nested Tuple instruction only propgates
 // liveness to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -199,7 +199,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
 // Tests that GTE of GTE (at entry root) of nested Tuple instruction only
 // propgates liveness to the live elements in tuple.
 TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleModule
   ENTRY SimpleComputation {
     constant.1 = s32[] constant(0)
@@ -240,7 +240,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
 
 // Test that live/dead while tuple elements are marked live/dead correctly.
 TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -291,7 +291,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
 // Tests that a tuple element live in while.cond computation, propagates
 // liveness to while.body.root/while.result/while.operand (where it is unused).
 TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -345,7 +345,7 @@ TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
 // Tests that a use of while.result{0} propagates liveness to
 // while.body.param{1} to while.body.root{1}, and then to while.body.param{2}.
 TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[], s32[]) parameter(0)
