@@ -37,6 +37,7 @@
 @@PowerTransform
 @@RealNVP
 @@Reshape
+@@ScaleTriL
 @@Sigmoid
 @@SinhArcsinh
 @@SoftmaxCentered
@@ -78,6 +79,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *
 from tensorflow.contrib.distributions.python.ops.bijectors.real_nvp import *
 from tensorflow.contrib.distributions.python.ops.bijectors.reshape import *
+from tensorflow.contrib.distributions.python.ops.bijectors.scale_tril import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import *
