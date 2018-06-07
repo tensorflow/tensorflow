@@ -281,7 +281,7 @@ TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
     entry = module->AddEntryComputation(builder.Build());
   }
 
-  Run(module.get(), /*change_expected=*/true, /*exclude_entry*/ true);
+  Run(module.get(), /*change_expected=*/true, /*exclude_entry=*/ true);
 
   EXPECT_THAT(c0->root_instruction(), p0);
   EXPECT_THAT(c1->root_instruction(), p1);
