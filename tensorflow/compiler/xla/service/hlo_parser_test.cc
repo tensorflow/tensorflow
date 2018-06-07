@@ -236,6 +236,17 @@ ENTRY %ShardedTupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f3
 
 )"
 },
+{
+"DomainParsing",
+R"(HloModule DomainParsing_module
+
+ENTRY %DomainParsing (v1: f32[]) -> f32[] {
+  %v1 = f32[] parameter(0)
+  ROOT %dom = f32[] domain(f32[] %v1), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+}
+
+)"
+},
 // int32 result = 0;
 // while (result < 5) { result = result + 1; }
 {
@@ -885,6 +896,24 @@ ENTRY Gather {
   input_tensor = f32[50,49,48,47,46]{4,3,2,1,0} parameter(0)
   gather_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
   ROOT gather = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} gather(input_tensor, gather_indices), output_window_dims={4,5,6,7,8}, elided_window_dims={}, gather_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, window_bounds={30,29,28,27,26}
+}
+
+)"
+},
+// cross-replica-sum
+{
+"CrossReplicaSum",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT crs = f32[8]{0} cross-replica-sum(input), to_apply=add
 }
 
 )"

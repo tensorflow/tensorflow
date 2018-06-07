@@ -72,24 +72,23 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "full_path",
     "if_android",
-    "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
     "if_not_mobile",
-    "if_windows",
     "if_not_windows",
-    "tf_copts",
+    "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_copts",
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
-    "cc_header_only_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -113,11 +112,11 @@ load(
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
+    "tf_additional_lib_hdrs",
+    "tf_additional_lib_srcs",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
     "tf_additional_libdevice_srcs",
-    "tf_additional_lib_hdrs",
-    "tf_additional_lib_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
     "tf_additional_proto_hdrs",
@@ -141,8 +140,8 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
     "if_static",
+    "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
@@ -233,6 +232,7 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
+    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -879,7 +879,6 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
-    deps = [":platform_base"],
 )
 
 cc_library(
@@ -889,6 +888,12 @@ cc_library(
         ":framework_lite",
         ":lib",
     ],
+)
+
+cc_library(
+    name = "exec_on_stall",
+    hdrs = ["util/exec_on_stall.h"],
+    deps = [":framework_lite"],
 )
 
 cc_library(
@@ -1443,6 +1448,7 @@ filegroup(
             "lib/png/**/*",
             "lib/gif/**/*",
             "util/events_writer.*",
+            "util/stats_calculator.*",
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/default/test_benchmark.*",
@@ -1526,6 +1532,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -1566,6 +1573,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -2229,6 +2237,7 @@ tf_proto_library(
     name = "error_codes_proto",
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
+    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2251,6 +2260,7 @@ tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
+    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -3251,6 +3261,18 @@ tf_cc_test(
     deps = [
         ":framework_lite",
         ":overflow",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "exec_on_stall_test",
+    size = "small",
+    srcs = ["util/exec_on_stall_test.cc"],
+    deps = [
+        ":exec_on_stall",
+        ":framework_lite",
         ":test",
         ":test_main",
     ],

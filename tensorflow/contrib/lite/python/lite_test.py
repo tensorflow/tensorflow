@@ -292,7 +292,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
 
-class FromFlatbufferFile(test_util.TensorFlowTestCase):
+class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
     in_tensor = array_ops.placeholder(

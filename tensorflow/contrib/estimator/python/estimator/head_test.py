@@ -36,6 +36,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
@@ -988,6 +989,34 @@ class MultiLabelHead(test.TestCase):
       self.assertEqual(
           six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
           train_result)
+
+  def test_train_with_update_ops(self):
+    head = head_lib.multi_label_head(n_classes=2)
+
+    with ops.Graph().as_default():
+      w = variables.Variable(1)
+      update_op = w.assign_add(1)
+      ops.add_to_collection(ops.GraphKeys.UPDATE_OPS, update_op)
+
+      t = variables.Variable('')
+      expected_train_result = b'my_train_op'
+      def _train_op_fn(loss):
+        del loss
+        return t.assign(expected_train_result)
+
+      spec = head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=np.array([[1, 0], [1, 1]], dtype=np.int64),
+          train_op_fn=_train_op_fn)
+
+      with self.test_session() as sess:
+        _initialize_variables(self, spec.scaffold)
+        sess.run(spec.train_op)
+        w_value, t_value = sess.run([w, t])
+        self.assertEqual(2, w_value)
+        self.assertEqual(expected_train_result, t_value)
 
   def test_train_with_regularization_losses(self):
     head = head_lib.multi_label_head(

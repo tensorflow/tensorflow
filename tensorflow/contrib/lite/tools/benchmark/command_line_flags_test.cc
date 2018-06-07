@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/tools/command_line_flags.h"
+#include "tensorflow/contrib/lite/tools/benchmark/command_line_flags.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/testing/util.h"
@@ -50,6 +50,19 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(true, some_switch);
   EXPECT_EQ("somethingelse", some_name);
   EXPECT_NEAR(42.0f, some_float, 1e-5f);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, EmptyStringFlag) {
+  int argc = 2;
+  std::string some_string = "invalid";
+  const char* argv_strings[] = {"program_name", "--some_string="};
+  bool parsed_ok =
+      Flags::Parse(&argc, reinterpret_cast<const char**>(argv_strings),
+                   {Flag("some_string", &some_string, "some string")});
+
+  EXPECT_EQ(true, parsed_ok);
+  EXPECT_EQ(some_string, "");
   EXPECT_EQ(argc, 1);
 }
 

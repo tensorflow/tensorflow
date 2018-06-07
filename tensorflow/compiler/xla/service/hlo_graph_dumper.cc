@@ -590,15 +590,26 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
 string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
                                         const HloInstruction* parent_instr) {
   VLOG(2) << "Dumping subcomputation " << subcomp->name();
-  const char* computation_fmt = R"(subgraph %s {
-%s
-label = <%s>;
-labelloc = t;
-tooltip = " ";
-%s
-}  // %s
+  // Add an edge from the subcomputation to its parent node.  If subcomp
+  // belongs to a fusion node, it's drawn in place of the fusion instruction,
+  // so there's no need to link those.
+  if (parent_instr->opcode() != HloOpcode::kFusion) {
+    const HloInstruction* from = GetNodeForEdge(subcomp->root_instruction());
+    VLOG(2) << "Edge: from " << from->name() << " to " << parent_instr->name()
+            << " as " << next_edge_id_;
+    edge_ids_.insert({{from, parent_instr}, next_edge_id_++});
+    const char* edge_fmt =
+        R"(%s -> %s [ltail="%s", style="dashed" tooltip="%s -> %s"];)";
+    edges_.push_back(Printf(
+        edge_fmt, InstructionId(from), InstructionId(parent_instr),
+        SubcomputationId(subcomp), subcomp->name(), parent_instr->name()));
+  }
 
-)";
+  // Have we already dumped this subcomputation?  If so, generating the edge
+  // linking it and parent_instr is all we want to do in this function.
+  if (cluster_ids_.find(subcomp) != cluster_ids_.end()) {
+    return "";
+  }
 
   cluster_ids_[subcomp] = next_cluster_id_++;
 
@@ -645,25 +656,16 @@ tooltip = " ";
 
   string comp_body = DumpComputation(subcomp);
 
-  // Add an edge from the subcomputation to its parent node.  If subcomp
-  // belongs to a fusion node, it's drawn in place of the fusion instruction,
-  // so there's no need to link those.
-  if (parent_instr->opcode() != HloOpcode::kFusion) {
-    const HloInstruction* from = GetNodeForEdge(subcomp->root_instruction());
-    VLOG(2) << "Edge: from " << from->name() << " to " << parent_instr->name()
-            << " as " << next_edge_id_;
-    edge_ids_.insert({{from, parent_instr}, next_edge_id_++});
-    const char* edge_fmt =
-        R"(%s -> %s [ltail="%s", style="dashed" tooltip="%s -> %s"];)";
-    edges_.push_back(Printf(
-        edge_fmt, InstructionId(from), InstructionId(parent_instr),
-        SubcomputationId(subcomp), subcomp->name(), parent_instr->name()));
-  }
+  const char* computation_fmt = R"(subgraph %s {
+%s
+label = <%s>;
+labelloc = t;
+tooltip = " ";
+%s
+}  // %s
 
-  string computation =
-      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
-
-  return computation;
+)";
+  return Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 }
 
 string HloDotDumper::DumpComputation(const HloComputation* comp) {
