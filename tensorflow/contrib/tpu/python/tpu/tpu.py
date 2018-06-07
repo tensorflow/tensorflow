@@ -623,6 +623,11 @@ def split_compile_and_replicate(computation,
 
       vscope.set_use_resource(saved_use_resource)
 
+    # If the computation returns `None`, add `no_op` here so that when user
+    # fetches `no_op` returned by this function, the TPUExecute node will be
+    # triggered.
+    if outputs is None:
+      outputs = (control_flow_ops.no_op(),)
     # If the computation only returned one value, makes it a tuple.
     if not isinstance(outputs, (list, tuple)):
       outputs = (outputs,)
