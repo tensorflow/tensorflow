@@ -227,17 +227,17 @@ def run_main(_):
   # Model format flags.
   parser.add_argument(
       "--output_format",
-      type=str,
+      type=str.upper,
       choices=["TFLITE", "GRAPHVIZ_DOT"],
       help="Output file format.")
   parser.add_argument(
       "--inference_type",
-      type=str,
+      type=str.upper,
       choices=["FLOAT", "QUANTIZED_UINT8"],
       help="Target data type of arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
-      type=str,
+      type=str.upper,
       choices=["FLOAT", "QUANTIZED_UINT8"],
       help=("Target data type of input arrays. Allows for a different type for "
             "input arrays in the case of quantization."))
