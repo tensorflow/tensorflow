@@ -1687,20 +1687,77 @@ class BatchDataset(Dataset):
     return self._input_dataset.output_types
 
 
-def _partial_shape_to_tensor(shape_like):
+def _is_padded_shape_compatible_with(padded_shape, input_component_shape):
+  """Returns `True` if `input_component_shape` can be padded to `padded_shape`.
+
+  Args:
+    padded_shape: A `tf.TensorShape`.
+    input_component_shape: A `tf.TensorShape`.
+
+  Returns:
+    `True` if `input_component_shape` can be padded to `padded_shape`, otherwise
+    `False`.
+  """
+
+  if padded_shape.dims is None or input_component_shape.dims is None:
+    return True
+  if len(padded_shape.dims) != len(input_component_shape.dims):
+    return False
+  for padded_dim, input_dim in zip(
+      padded_shape.dims, input_component_shape.dims):
+    if (padded_dim.value is not None and input_dim.value is not None
+        and padded_dim.value < input_dim.value):
+      return False
+  return True
+
+
+def _padded_shape_to_tensor(padded_shape, input_component_shape):
+  """Converts `padded_shape` to a `tf.Tensor` representing that shape.
+
+  Args:
+    padded_shape: A shape-like object, which may be a `tf.TensorShape`, a Python
+      sequence, or a 1-D `tf.Tensor` of `tf.int64` elements.
+    input_component_shape: A `tf.TensorShape`, with which `padded_shape` must
+      be compatible.
+
+  Returns:
+    A 1-D `tf.Tensor` of `tf.int64` elements, representing `padded_shape`.
+
+  Raises:
+    ValueError: If `padded_shape` is not a shape or not compatible with
+      `input_component_shape`.
+    TypeError: If `padded_shape` is not convertible to a `tf.int64` tensor.
+  """
   try:
-    # First attempt to convert the input to a shape, and return the
-    # "canonical" tensor representation, which uses `-1` in place of
-    # `None`.
-    shape_like = tensor_shape.as_shape(shape_like)
-    return ops.convert_to_tensor(
-        [dim if dim is not None else -1 for dim in shape_like.as_list()],
-        dtype=dtypes.int64)
+    # Try to convert the `padded_shape` to a `tf.TensorShape`
+    padded_shape_as_shape = tensor_shape.as_shape(padded_shape)
+    # We will return the "canonical" tensor representation, which uses
+    # `-1` in place of `None`.
+    ret = ops.convert_to_tensor(
+        [dim if dim is not None else -1
+         for dim in padded_shape_as_shape.as_list()], dtype=dtypes.int64)
   except (TypeError, ValueError):
     # The argument was not trivially convertible to a
     # `tf.TensorShape`, so fall back on the conversion to tensor
     # machinery.
-    return ops.convert_to_tensor(shape_like, dtype=dtypes.int64)
+    ret = ops.convert_to_tensor(padded_shape, preferred_dtype=dtypes.int64)
+    if ret.shape.dims is not None and len(ret.shape.dims) != 1:
+      raise ValueError(
+          "Padded shape %s must be a 1-D tensor of tf.int64 values, but its "
+          "shape was %s." % (padded_shape, ret.shape))
+    if ret.dtype != dtypes.int64:
+      raise TypeError(
+          "Padded shape %s must be a 1-D tensor of tf.int64 values, but its "
+          "element type was %s." % (padded_shape, ret.dtype.name))
+    padded_shape_as_shape = tensor_util.constant_value_as_shape(ret)
+
+  if not _is_padded_shape_compatible_with(padded_shape_as_shape,
+                                          input_component_shape):
+    raise ValueError("The padded shape %s is not compatible with the "
+                     "corresponding input component shape %s."
+                     % (padded_shape_as_shape, input_component_shape))
+
+  return ret
 
 
 def _padding_value_to_tensor(value, output_type):
@@ -1755,8 +1812,20 @@ class PaddedBatchDataset(Dataset):
     padding_values = (
         padding_values
         if padding_values is not None else _default_padding(input_dataset))
-    self._padded_shapes = nest.map_structure_up_to(
-        input_dataset.output_shapes, _partial_shape_to_tensor, padded_shapes)
+
+    flat_padded_shapes = nest.flatten_up_to(input_dataset.output_shapes,
+                                            padded_shapes)
+
+    flat_padded_shapes_as_tensors = []
+
+    for input_component_shape, padded_shape in zip(
+        nest.flatten(input_dataset.output_shapes), flat_padded_shapes):
+      flat_padded_shapes_as_tensors.append(
+          _padded_shape_to_tensor(padded_shape, input_component_shape))
+
+    self._padded_shapes = nest.pack_sequence_as(input_dataset.output_shapes,
+                                                flat_padded_shapes_as_tensors)
+
     self._padding_values = nest.map_structure_up_to(
         input_dataset.output_shapes, _padding_value_to_tensor, padding_values,
         input_dataset.output_types)

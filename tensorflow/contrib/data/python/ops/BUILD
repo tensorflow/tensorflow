@@ -144,6 +144,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
     ],

@@ -371,6 +371,44 @@ class BatchDatasetTest(test.TestCase):
     with self.assertRaises(TypeError):
       _ = dataset_ops.Dataset.range(10).map(_map_fn).padded_batch(10)
 
+  def testPaddedBatchShapeError(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(1,\) is not compatible with the '
+        r'corresponding input component shape \(\).'):
+      _ = dataset_ops.Dataset.range(10).padded_batch(5, padded_shapes=[1])
+
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(1,\) is not compatible with the '
+        r'corresponding input component shape \(3,\).'):
+      _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
+          5, padded_shapes=[1])
+
+    with self.assertRaisesRegexp(
+        ValueError, r'Padded shape .* must be a 1-D tensor '
+        r'of tf.int64 values, but its shape was \(2, 2\).'):
+      _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
+          5, padded_shapes=[[1, 1], [1, 1]])
+
+    with self.assertRaisesRegexp(
+        TypeError, r'Padded shape .* must be a 1-D tensor '
+        r'of tf.int64 values, but its element type was float32.'):
+      _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
+          5, padded_shapes=constant_op.constant([1., 2., 3.]))
+
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(1,\) is not compatible with the '
+        r'corresponding input component shape \(\).'):
+      shape_as_tensor = constant_op.constant([1], dtype=dtypes.int64)
+      _ = dataset_ops.Dataset.range(10).padded_batch(
+          5, padded_shapes=shape_as_tensor)
+
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(\?, \?\) is not compatible with the '
+        r'corresponding input component shape \(\).'):
+      shape_as_tensor = array_ops.placeholder(dtypes.int64, shape=[2])
+      _ = dataset_ops.Dataset.range(10).padded_batch(
+          5, padded_shapes=shape_as_tensor)
+
 
 if __name__ == '__main__':
   test.main()

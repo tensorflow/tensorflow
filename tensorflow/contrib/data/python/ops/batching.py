@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework import with_shape
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
@@ -309,7 +310,7 @@ class DenseToSparseBatchDataset(dataset_ops.Dataset):
     return gen_dataset_ops.dense_to_sparse_batch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._batch_size,
-        row_shape=dataset_ops._partial_shape_to_tensor(self._row_shape),  # pylint: disable=protected-access
+        row_shape=convert.partial_shape_to_tensor(self._row_shape),
         output_shapes=nest.flatten(
             sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
         output_types=nest.flatten(
