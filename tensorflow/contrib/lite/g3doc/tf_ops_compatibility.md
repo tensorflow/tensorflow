@@ -417,6 +417,17 @@ Outputs {
 }
 ```
 
+**LOG**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to log(input)
+}
+```
+
 **LOG_SOFTMAX**
 
 ```

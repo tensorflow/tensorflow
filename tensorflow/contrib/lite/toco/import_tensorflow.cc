@@ -1941,6 +1941,8 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertRandomUniform(node, tf_import_flags, model);
   } else if (node.op() == "Sin") {
     ConvertSimpleOperator<SinOperator, 1>(node, tf_import_flags, model);
+  } else if (node.op() == "Log") {
+    ConvertSimpleOperator<LogOperator, 1>(node, tf_import_flags, model);
   } else if (node.op() == "Select") {
     ConvertSimpleOperator<SelectOperator, 3>(node, tf_import_flags, model);
   } else if (node.op() == "SparseToDense") {

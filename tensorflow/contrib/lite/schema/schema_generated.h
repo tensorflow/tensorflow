@@ -325,11 +325,12 @@ enum BuiltinOperator {
   BuiltinOperator_EXPAND_DIMS = 70,
   BuiltinOperator_EQUAL = 71,
   BuiltinOperator_NOT_EQUAL = 72,
+  BuiltinOperator_LOG = 73,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_NOT_EQUAL
+  BuiltinOperator_MAX = BuiltinOperator_LOG
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[72] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[73] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -402,7 +403,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[72] {
     BuiltinOperator_TILE,
     BuiltinOperator_EXPAND_DIMS,
     BuiltinOperator_EQUAL,
-    BuiltinOperator_NOT_EQUAL
+    BuiltinOperator_NOT_EQUAL,
+    BuiltinOperator_LOG
   };
   return values;
 }
@@ -482,6 +484,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "EXPAND_DIMS",
     "EQUAL",
     "NOT_EQUAL",
+    "LOG",
     nullptr
   };
   return names;

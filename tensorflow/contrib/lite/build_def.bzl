@@ -220,6 +220,7 @@ def generated_test_models():
         "less_equal",
         "local_response_norm",
         "log_softmax",
+        "log",
         "lstm",
         "max_pool",
         "maximum",

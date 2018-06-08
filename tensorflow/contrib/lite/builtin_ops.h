@@ -98,6 +98,7 @@ typedef enum {
   kTfLiteBuiltinExpandDims = 70,
   kTfLiteBuiltinEqual = 71,
   kTfLiteBuiltinNotEqual = 72,
+  kTfLiteBuiltinLog = 73,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

@@ -1112,16 +1112,18 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LESS", OperatorType::kTensorFlowLess));
   ops.emplace_back(new SimpleOperator<TensorFlowLessEqualOperator>(
       "LESS_EQUAL", OperatorType::kTensorFlowLessEqual));
+  ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
+      "EQUAL", OperatorType::kTensorFlowEqual));
+  ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
+      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual));
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(
       new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
+  // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
-  ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
-      "EQUAL", OperatorType::kTensorFlowEqual));
-  ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
-      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual));
+  ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));
 
   return ops;
 }
