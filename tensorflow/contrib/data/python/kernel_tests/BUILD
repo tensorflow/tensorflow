@@ -462,6 +462,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -469,6 +470,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
