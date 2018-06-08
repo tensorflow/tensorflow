@@ -1644,8 +1644,8 @@ struct SparseToDenseOperator : Operator {
 // be used for the transient array at hand. The 'start' and 'end' values are
 // offsets from the start of the workspace buffer, expressed in bytes.
 struct Alloc {
-  int start = 0;
-  int end = 0;
+  int64 start = 0;
+  int64 end = 0;
 };
 
 inline bool operator<(const Alloc& a, const Alloc& b) {
