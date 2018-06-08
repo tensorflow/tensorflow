@@ -59,7 +59,7 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
                   bool rewrite_inference_op, bool rewrite_grad_op,
-                  bool use_fusion);
+                  bool use_map_instructions);
 
   // Returns whether any batch norm ops were rewritten.
   const bool changed() const { return changed_; }
@@ -70,12 +70,13 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   explicit BatchNormExpanderVisitor(HloComputation* computation,
                                     bool rewrite_training_op,
                                     bool rewrite_inference_op,
-                                    bool rewrite_grad_op, bool use_fusion)
+                                    bool rewrite_grad_op,
+                                    bool use_map_instructions)
       : computation_(computation),
         rewrite_training_op_(rewrite_training_op),
         rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op),
-        use_fusion_(use_fusion) {}
+        use_map_instructions_(use_map_instructions) {}
 
   HloComputation* GetOrCreateScalarAddComputation(
       PrimitiveType primitive_type) {
@@ -122,10 +123,24 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
     return *scalar_rsqrt_computation;
   }
 
-  std::unique_ptr<HloInstruction> Rsqrt(HloInstruction* operand) {
-    return HloInstruction::CreateMap(
-        operand->shape(), {operand},
-        GetOrCreateScalarRsqrtComputation(operand->shape().element_type()));
+  std::unique_ptr<HloInstruction> Rsqrt(
+      HloInstruction* operand,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          add_instruction) {
+    if (use_map_instructions_) {
+      return HloInstruction::CreateMap(
+          operand->shape(), {operand},
+          GetOrCreateScalarRsqrtComputation(operand->shape().element_type()));
+    }
+    HloInstruction* exponent = add_instruction(HloInstruction::CreateBroadcast(
+        operand->shape(),
+        add_instruction(HloInstruction::CreateConvert(
+            ShapeUtil::MakeShape(operand->shape().element_type(), {}),
+            add_instruction(HloInstruction::CreateConstant(
+                Literal::CreateR0<float>(-0.5f))))),
+        {}));
+    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kPower,
+                                        operand, exponent);
   }
 
   HloComputation* GetOrCreateScalarMeanComputation(PrimitiveType primitive_type,
@@ -152,12 +167,26 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
     return *scalar_mean_computation;
   }
 
-  std::unique_ptr<HloInstruction> Mean(int64 element_count,
-                                       HloInstruction* operand) {
-    return HloInstruction::CreateMap(
-        operand->shape(), {operand},
-        GetOrCreateScalarMeanComputation(operand->shape().element_type(),
-                                         element_count));
+  std::unique_ptr<HloInstruction> Mean(
+      int64 element_count, HloInstruction* operand,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          add_instruction) {
+    if (use_map_instructions_) {
+      return HloInstruction::CreateMap(
+          operand->shape(), {operand},
+          GetOrCreateScalarMeanComputation(operand->shape().element_type(),
+                                           element_count));
+    }
+    HloInstruction* elem_count_recip =
+        add_instruction(HloInstruction::CreateBroadcast(
+            operand->shape(),
+            add_instruction(HloInstruction::CreateConvert(
+                ShapeUtil::MakeShape(operand->shape().element_type(), {}),
+                add_instruction(HloInstruction::CreateConstant(
+                    Literal::CreateR0<float>(1.0 / element_count))))),
+            {}));
+    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kMultiply,
+                                        operand, elem_count_recip);
   }
 
   // Replaces the existing HLO instruction old_instruction, with
@@ -189,7 +218,7 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   bool rewrite_training_op_;
   bool rewrite_inference_op_;
   bool rewrite_grad_op_;
-  bool use_fusion_;
+  bool use_map_instructions_;
 
   // Whether rewrite has occurred.
   bool changed_ = false;
@@ -208,13 +237,14 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
 bool BatchNormExpanderVisitor::Run(HloComputation* computation,
                                    bool rewrite_training_op,
                                    bool rewrite_inference_op,
-                                   bool rewrite_grad_op, bool use_fusion) {
+                                   bool rewrite_grad_op,
+                                   bool use_map_instructions) {
   BatchNormExpanderVisitor visitor(
       computation,
       /*rewrite_training_op=*/rewrite_training_op,
       /*rewrite_inference_op=*/rewrite_inference_op,
       /*rewrite_grad_op=*/rewrite_grad_op,
-      /*use_fusion=*/use_fusion);
+      /*use_map_instructions=*/use_map_instructions);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -290,28 +320,14 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       feature_shape, operand_squared, zero, dimensions_without_feature,
       add_reduce_computation));
 
-  // Fuse two parallel reduces together to improve performance.
-  if (use_fusion_ && !batch_norm->has_sharding()) {
-    auto tuple = add(HloInstruction::CreateTuple({sum, squared_sum}));
-
-    auto fused = computation_->CreateFusionInstruction(
-        {tuple, sum, squared_sum, operand_squared},
-        HloInstruction::FusionKind::kInput);
-
-    sum = add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
-
-    squared_sum =
-        add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
-  }
-
   // E[X].
-  auto mean = add(Mean(elements_per_feature_int64, sum));
+  auto mean = add(Mean(elements_per_feature_int64, sum, add));
 
   auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
 
   // E[X^2].
-  auto square_mean = add(Mean(elements_per_feature_int64, squared_sum));
+  auto square_mean = add(Mean(elements_per_feature_int64, squared_sum, add));
 
   // E^2[X].
   auto mean_square =
@@ -329,7 +345,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add_binary(operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon);
 
   // 1 / Sqrt[Var[X] + epsilon].
-  auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon));
+  auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon, add));
 
   // X - E[X].
   auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
@@ -431,7 +447,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
       add_binary(operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon);
 
   // 1 / Sqrt[Var[X] + epsilon].
-  auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon));
+  auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon, add));
 
   // X - E[X].
   auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
@@ -545,10 +561,12 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   // rsqrt[Var[X] + epsilon].
   auto rsqrt_var_add_epsilon_broadcasted =
       add(Rsqrt(add_binary(activation_shape, HloOpcode::kAdd,
-                           variance_broadcasted, epsilon_activation)));
+                           variance_broadcasted, epsilon_activation),
+                add));
 
   auto rsqrt_var_add_epsilon = add(Rsqrt(
-      add_binary(feature_shape, HloOpcode::kAdd, variance, epsilon_feature)));
+      add_binary(feature_shape, HloOpcode::kAdd, variance, epsilon_feature),
+      add));
 
   // X - E[X].
   auto activation_minus_mean = add_binary(
@@ -572,21 +590,6 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   auto grad_beta = add(HloInstruction::CreateReduce(
       feature_shape, grad_output, zero, dimensions_without_feature,
       add_reduce_computation));
-
-  if (use_fusion_ && !batch_norm->has_sharding()) {
-    auto tuple = add(HloInstruction::CreateTuple(
-        {sum_grad_output_times_activiation_minus_mean, grad_beta}));
-
-    auto fused = computation_->CreateFusionInstruction(
-        {tuple, sum_grad_output_times_activiation_minus_mean, grad_beta},
-        HloInstruction::FusionKind::kInput);
-
-    sum_grad_output_times_activiation_minus_mean =
-        add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
-
-    grad_beta =
-        add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
-  }
 
   // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * rsqrt[Var[X] + epsilon]).
   auto grad_scale = add_binary(feature_shape, HloOpcode::kMultiply,
@@ -616,8 +619,8 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add_binary(activation_shape, HloOpcode::kMultiply, scale_broadcasted,
                  rsqrt_var_add_epsilon_broadcasted);
 
-  scale_times_rsqrt_var_add_epsilon =
-      add(Mean(elements_per_feature_int64, scale_times_rsqrt_var_add_epsilon));
+  scale_times_rsqrt_var_add_epsilon = add(
+      Mean(elements_per_feature_int64, scale_times_rsqrt_var_add_epsilon, add));
 
   auto elements_per_feature_literal =
       Literal::CreateR0<float>(elements_per_feature_int64);
@@ -666,7 +669,7 @@ StatusOr<bool> BatchNormExpander::Run(HloModule* module) {
   for (auto* comp : module->MakeNonfusionComputations()) {
     if (BatchNormExpanderVisitor::Run(comp, rewrite_training_op_,
                                       rewrite_inference_op_, rewrite_grad_op_,
-                                      use_fusion_)) {
+                                      use_map_instructions_)) {
       changed = true;
     }
   }

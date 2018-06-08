@@ -164,7 +164,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,
-          /*use_fusion=*/false);
+          /*use_map_instructions=*/false);
 
       // Rewrite gather ops into smaller ones.
       pass.AddPass<GatherExpander>();
