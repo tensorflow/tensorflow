@@ -201,7 +201,7 @@ def generated_test_models():
         "concat",
         "constant",
         "control_dep",
-        # "conv",
+        "conv",
         "depthwiseconv",
         "div",
         "equal",
