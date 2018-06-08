@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_BATCH_FUSION_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_BATCH_FUSION_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_SHUFFLE_AND_REPEAT_FUSION_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_SHUFFLE_AND_REPEAT_FUSION_H_
 
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 
 namespace tensorflow {
 namespace grappler {
 
-class MapAndBatchFusion : public CustomGraphOptimizer {
+class ShuffleAndRepeatFusion : public CustomGraphOptimizer {
  public:
-  MapAndBatchFusion() = default;
-  ~MapAndBatchFusion() override = default;
+  ShuffleAndRepeatFusion() = default;
+  ~ShuffleAndRepeatFusion() override = default;
 
-  string name() const override { return "map_and_batch_fusion"; };
+  string name() const override { return "shuffle_and_repeat_fusion"; };
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -43,4 +43,4 @@ class MapAndBatchFusion : public CustomGraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_BATCH_FUSION_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_SHUFFLE_AND_REPEAT_FUSION_H_

@@ -204,10 +204,9 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
 }
 
 TEST(MapAndBatchFusionTest, NoChange) {
-  std::vector<std::pair<string, AttrValue>> empty_attributes;
-
   GrapplerItem item;
   GraphDef *graph = &item.graph;
+
   NodeDef *start_node;
   TF_ASSERT_OK(graph_utils::AddScalarConstNode<int64>(0, graph, &start_node));
   NodeDef *stop_node;
@@ -219,9 +218,27 @@ TEST(MapAndBatchFusionTest, NoChange) {
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
+  std::vector<std::pair<string, AttrValue>> range_attrs;
   NodeDef *range_node;
   TF_ASSERT_OK(graph_utils::AddNode("", "RangeDataset", range_inputs,
-                                    empty_attributes, graph, &range_node));
+                                    range_attrs, graph, &range_node));
+
+  NodeDef *batch_size_node;
+  TF_ASSERT_OK(
+      graph_utils::AddScalarConstNode<int64>(5, graph, &batch_size_node));
+  std::vector<string> batch_inputs(2);
+  batch_inputs[0] = range_node->name();
+  batch_inputs[1] = batch_size_node->name();
+  std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+  AttrValue shapes_attr;
+  SetAttrValue("output_shapes", &shapes_attr);
+  batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);
+  AttrValue types_attr;
+  SetAttrValue("output_types", &types_attr);
+  batch_attrs[1] = std::make_pair("output_types", types_attr);
+  NodeDef *batch_node;
+  TF_ASSERT_OK(graph_utils::AddNode("", "BatchDataset", batch_inputs,
+                                    batch_attrs, graph, &batch_node));
 
   MapAndBatchFusion optimizer;
   GraphDef output;
