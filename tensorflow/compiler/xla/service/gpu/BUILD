@@ -424,6 +424,34 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "multi_output_fusion",
+    srcs = ["multi_output_fusion.cc"],
+    hdrs = ["multi_output_fusion.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:multi_output_fusion",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "multi_output_fusion_test",
+    srcs = ["multi_output_fusion_test.cc"],
+    deps = [
+        ":multi_output_fusion",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "gpu_copy_insertion",
     srcs = ["gpu_copy_insertion.cc"],
     hdrs = ["gpu_copy_insertion.h"],
@@ -523,6 +551,7 @@ cc_library(
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
+        ":multi_output_fusion",
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
