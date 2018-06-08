@@ -3888,5 +3888,88 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
       self.assertAllClose(expected_batch, actual_sobel)
 
 
+class DecodeImageTest(test_util.TensorFlowTestCase):
+
+  def testJpegUint16(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/jpeg/testdata"
+      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
+      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
+                                             dtypes.uint16)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testPngUint16(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/png/testdata"
+      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
+      image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
+      image1 = image_ops.convert_image_dtype(
+          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testGifUint16(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/gif/testdata"
+      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+      image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
+      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
+                                             dtypes.uint16)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testBmpUint16(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/bmp/testdata"
+      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
+      image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
+      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
+                                             dtypes.uint16)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testJpegFloat32(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/jpeg/testdata"
+      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
+      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
+                                             dtypes.float32)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testPngFloat32(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/png/testdata"
+      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
+      image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
+      image1 = image_ops.convert_image_dtype(
+          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.float32)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testGifFloat32(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/gif/testdata"
+      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+      image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
+      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
+                                             dtypes.float32)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testBmpFloat32(self):
+    with self.test_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/bmp/testdata"
+      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
+      image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
+      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
+                                             dtypes.float32)
+      image0, image1 = sess.run([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+
 if __name__ == "__main__":
   googletest.main()
