@@ -59,7 +59,7 @@ FIX_MEAN_IDENTITY(double)
 #if GOOGLE_CUDA
 FIX_MEAN_IDENTITY(complex64)
 FIX_MEAN_IDENTITY(complex128)
-#endif:
+#endif
 #undef FIX_MEAN_IDENTITY
 
 template <typename Device, typename OUT_T, typename Reducer>
