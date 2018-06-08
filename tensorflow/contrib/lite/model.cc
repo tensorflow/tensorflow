@@ -689,6 +689,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
+    case BuiltinOperator_EQUAL:
+    case BuiltinOperator_NOT_EQUAL:
     case BuiltinOperator_SELECT: {
       break;
     }

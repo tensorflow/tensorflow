@@ -143,6 +143,13 @@ class DotOpEmitter {
         .value_or(kDefaultTilingFactor);
   }
 
+  std::tuple<int64, int64, int64> GetGemmTileSize() const {
+    const std::tuple<int64, int64, int64> kDefaultTileSize =
+        std::tuple<int64, int64, int64>(3, 5, 1);
+    return options::LlvmIrGemmTileSize(hlo_module_config_)
+        .value_or(kDefaultTileSize);
+  }
+
   // Returns true if we should use an experimental implementation of GEMM
   // (general matrix matrix multiplication) if possible.
   bool EnableExperimentalLlvmIrGemm() const {

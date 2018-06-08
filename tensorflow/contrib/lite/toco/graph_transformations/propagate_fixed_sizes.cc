@@ -1563,6 +1563,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowMaximum:
     case OperatorType::kTensorFlowMinimum:
     case OperatorType::kTensorFlowGreaterEqual:
+    case OperatorType::kTensorFlowEqual:
+    case OperatorType::kTensorFlowNotEqual:
       ProcessSimpleBinaryOperator(model, op);
       break;
     case OperatorType::kAddN:

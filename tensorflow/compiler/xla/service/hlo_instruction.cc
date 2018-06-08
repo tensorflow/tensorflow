@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -60,17 +62,45 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
   TF_RET_CHECK(proto.has_shape());
 
-  auto instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
-  for (const int64 operand_id : proto.operand_ids()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, operand_id))
-        << "No instruction with id " << operand_id;
-    instruction->AppendOperand(instruction_map.at(operand_id));
-  }
-  for (const int64 predecessor_id : proto.control_predecessor_ids()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
-        << "No instruction with id " << predecessor_id;
-    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
-                           ->AddControlDependencyTo(instruction.get()));
+  std::unique_ptr<HloInstruction> instruction;
+  const auto operands = [&instruction_map, &proto](int index) {
+    return instruction_map.at(proto.operand_ids(index));
+  };
+  switch (opcode) {
+    // Ops migrated to subclasses.
+    case HloOpcode::kBatchNormTraining:
+      CHECK_EQ(proto.operand_ids_size(), 3);
+      instruction = CreateBatchNormTraining(
+          proto.shape(), operands(0), operands(1), operands(2), proto.epsilon(),
+          proto.feature_index());
+      break;
+    case HloOpcode::kBatchNormInference:
+      CHECK_EQ(proto.operand_ids_size(), 5);
+      instruction = CreateBatchNormInference(
+          proto.shape(), operands(0), operands(1), operands(2), operands(3),
+          operands(4), proto.epsilon(), proto.feature_index());
+      break;
+    case HloOpcode::kBatchNormGrad:
+      CHECK_EQ(proto.operand_ids_size(), 5);
+      instruction = CreateBatchNormGrad(proto.shape(), operands(0), operands(1),
+                                        operands(2), operands(3), operands(4),
+                                        proto.epsilon(), proto.feature_index());
+      break;
+    default: {
+      instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
+      for (const int64 operand_id : proto.operand_ids()) {
+        TF_RET_CHECK(ContainsKey(instruction_map, operand_id))
+            << "No instruction with id " << operand_id;
+        instruction->AppendOperand(instruction_map.at(operand_id));
+      }
+      for (const int64 predecessor_id : proto.control_predecessor_ids()) {
+        TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
+            << "No instruction with id " << predecessor_id;
+        TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
+                               ->AddControlDependencyTo(instruction.get()));
+      }
+      break;
+    }
   }
 
   // In the proto, fused computations are held exclusively within the
@@ -151,8 +181,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   }
   instruction->outfeed_config_ = proto.outfeed_config();
   instruction->distribution_ = proto.distribution();
-  instruction->epsilon_ = proto.epsilon();
-  instruction->feature_index_ = proto.feature_index();
   instruction->channel_id_ = proto.channel_id();
   instruction->infeed_config_ = proto.infeed_config();
   instruction->custom_call_target_ = proto.custom_call_target();
@@ -423,8 +451,20 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCrossReplicaSum(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  return CreateNary(shape, HloOpcode::kCrossReplicaSum, operands);
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloComputation* reduce_computation,
+    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+    const tensorflow::gtl::optional<int64>& channel_id) {
+  // TODO(b/79737069): Remove the CHECK when supported.
+  CHECK(replica_group_ids.empty());
+  CHECK(!channel_id.has_value());
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kCrossReplicaSum, shape));
+  for (auto operand : operands) {
+    instruction->AppendOperand(operand);
+  }
+  instruction->called_computations_.push_back(reduce_computation);
+  return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -634,14 +674,8 @@ HloInstruction::CreateBatchNormTraining(const Shape& shape,
                                         HloInstruction* scale,
                                         HloInstruction* offset, float epsilon,
                                         int64 feature_index) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBatchNormTraining, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(scale);
-  instruction->AppendOperand(offset);
-  instruction->epsilon_ = epsilon;
-  instruction->feature_index_ = feature_index;
-  return instruction;
+  return WrapUnique<HloInstruction>(new HloBatchNormTrainingInstruction(
+      shape, operand, scale, offset, epsilon, feature_index));
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -649,16 +683,8 @@ HloInstruction::CreateBatchNormInference(
     const Shape& shape, HloInstruction* operand, HloInstruction* scale,
     HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
     float epsilon, int64 feature_index) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBatchNormInference, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(scale);
-  instruction->AppendOperand(offset);
-  instruction->AppendOperand(mean);
-  instruction->AppendOperand(variance);
-  instruction->epsilon_ = epsilon;
-  instruction->feature_index_ = feature_index;
-  return instruction;
+  return WrapUnique<HloInstruction>(new HloBatchNormInferenceInstruction(
+      shape, operand, scale, offset, mean, variance, epsilon, feature_index));
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -667,16 +693,9 @@ HloInstruction::CreateBatchNormGrad(const Shape& shape, HloInstruction* operand,
                                     HloInstruction* variance,
                                     HloInstruction* grad_output, float epsilon,
                                     int64 feature_index) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kBatchNormGrad, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(scale);
-  instruction->AppendOperand(mean);
-  instruction->AppendOperand(variance);
-  instruction->AppendOperand(grad_output);
-  instruction->epsilon_ = epsilon;
-  instruction->feature_index_ = feature_index;
-  return instruction;
+  return WrapUnique<HloInstruction>(
+      new HloBatchNormGradInstruction(shape, operand, scale, mean, variance,
+                                      grad_output, epsilon, feature_index));
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1263,6 +1282,13 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // in the face of code changes than copying fields explicitly. This also
   // properly sets the user fields of the operands.
   switch (opcode_) {
+    // Ops migrated to subclasses.
+    // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormGrad:
+      clone = CloneWithNewOperandsImpl(shape, new_operands, context);
+      break;
     // Unary ops.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
@@ -1374,7 +1400,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateFft(shape, new_operands[0], fft_type_, fft_length_);
       break;
     case HloOpcode::kCrossReplicaSum:
-      clone = CreateCrossReplicaSum(shape, new_operands);
+      clone = CreateCrossReplicaSum(shape, new_operands, to_apply());
       break;
     case HloOpcode::kGetTupleElement:
       CHECK_EQ(new_operands.size(), 1);
@@ -1464,18 +1490,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
       clone = CreateParameter(parameter_number_, shape, name_);
       break;
-    case HloOpcode::kBatchNormTraining:
-      CHECK_EQ(new_operands.size(), 3);
-      clone =
-          CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
-                                  new_operands[2], epsilon(), feature_index());
-      break;
-    case HloOpcode::kBatchNormInference:
-      CHECK_EQ(new_operands.size(), 5);
-      clone = CreateBatchNormInference(
-          shape, new_operands[0], new_operands[1], new_operands[2],
-          new_operands[3], new_operands[4], epsilon(), feature_index());
-      break;
     case HloOpcode::kInfeed:
       CHECK_EQ(new_operands.size(), 0);
       clone = CreateInfeed(shape, infeed_config());
@@ -1483,12 +1497,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kOutfeed:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateOutfeed(outfeed_shape_, new_operands[0], outfeed_config());
-      break;
-    case HloOpcode::kBatchNormGrad:
-      CHECK_EQ(new_operands.size(), 5);
-      clone = CreateBatchNormGrad(shape, new_operands[0], new_operands[1],
-                                  new_operands[2], new_operands[3],
-                                  new_operands[4], epsilon(), feature_index());
       break;
     case HloOpcode::kConditional:
       CHECK_EQ(new_operands.size(), 3);
@@ -1762,7 +1770,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
-    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
@@ -1823,12 +1830,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kParameter:
       return parameter_number() == other.parameter_number();
 
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
-    case HloOpcode::kBatchNormGrad:
-      return feature_index() == other.feature_index() &&
-             epsilon() == other.epsilon();
-
     // A constant is defined by the value in the literal.
     case HloOpcode::kConstant:
       return literal() == other.literal();
@@ -1875,7 +1876,6 @@ bool HloInstruction::IdenticalSlowPath(
              eq_computations(scatter(), other.scatter()) &&
              protobuf_util::ProtobufEquals(window(), other.window());
 
-
     // Remaining instructions with special values.
     case HloOpcode::kGetTupleElement:
       return tuple_index() == other.tuple_index();
@@ -1887,6 +1887,7 @@ bool HloInstruction::IdenticalSlowPath(
              slice_limits_ == other.slice_limits_ &&
              slice_strides_ == other.slice_strides_;
     case HloOpcode::kCall:
+    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kCustomCall:
@@ -1920,6 +1921,14 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSendDone:
     case HloOpcode::kHostCompute:
       return false;
+
+    // Ops migrated to subclasses should never come to this line.
+    // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormGrad:
+      LOG(FATAL) << "Base class impl called for opcode with subclass: "
+                 << opcode();
   }
 }
 
@@ -2034,6 +2043,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kMap:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
+    case HloOpcode::kCrossReplicaSum:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
     default:
@@ -2313,12 +2323,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(
         StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}"));
   }
-  if (opcode() == HloOpcode::kBatchNormTraining ||
-      opcode() == HloOpcode::kBatchNormInference ||
-      opcode() == HloOpcode::kBatchNormGrad) {
-    extra.push_back(StrCat("epsilon=", epsilon()));
-    extra.push_back(StrCat("feature_index=", feature_index()));
-  }
 
   if (convolution_dimension_numbers_ != nullptr) {
     extra.push_back(StrCat(
@@ -2356,7 +2360,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                              PrintName(false_computation()->name(), options)));
     } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
                opcode() == HloOpcode::kReduceWindow ||
-               opcode() == HloOpcode::kReduce) {
+               opcode() == HloOpcode::kReduce ||
+               opcode() == HloOpcode::kCrossReplicaSum) {
       extra.push_back(
           StrCat("to_apply=", PrintName(to_apply()->name(), options)));
     } else if (!called_computations().empty()) {
@@ -2538,8 +2543,6 @@ HloInstructionProto HloInstruction::ToProto() const {
   if (opcode() == HloOpcode::kRng) {
     proto.set_distribution(distribution_);
   }
-  proto.set_epsilon(epsilon_);
-  proto.set_feature_index(feature_index_);
   proto.set_channel_id(channel_id_);
   proto.set_infeed_config(infeed_config_);
   proto.set_custom_call_target(custom_call_target_);
@@ -3603,6 +3606,15 @@ void HloInstruction::RelayoutConstant(const Layout& new_layout,
     literal_ = literal_->Relayout(new_layout, shape_index);
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
+}
+
+// TODO(b/80131774): Remove these temporary methods after transition.
+int64 HloInstruction::feature_index() const {
+  return Cast<HloBatchNormInstruction>(this)->feature_index();
+}
+
+float HloInstruction::epsilon() const {
+  return Cast<HloBatchNormInstruction>(this)->epsilon();
 }
 
 }  // namespace xla
