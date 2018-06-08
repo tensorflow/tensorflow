@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "grpc++/grpc++.h"
-#include "grpc++/security/credentials.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/security/credentials.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
