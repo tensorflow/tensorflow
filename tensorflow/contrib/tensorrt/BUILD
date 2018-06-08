@@ -289,7 +289,7 @@ tf_cc_test(
 )
 
 # Library for the plugin factory
-tf_cuda_library(
+tf_gpu_library(
     name = "trt_plugins",
     srcs = [
         "plugin/trt_plugin.cc",
@@ -309,7 +309,7 @@ tf_cuda_library(
     ]),
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "trt_plugin_factory_test",
     size = "small",
     srcs = ["plugin/trt_plugin_factory_test.cc"],
