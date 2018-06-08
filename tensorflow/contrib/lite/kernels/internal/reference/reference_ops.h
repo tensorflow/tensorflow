@@ -3810,8 +3810,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                           int pad_height, float* output_data,
                           const Dims<4>& output_dims) {
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 3);
-  const int output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
+  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
@@ -3851,8 +3851,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                   float input_value = input_data[Offset(input_dims, in_channel,
                                                         in_x, in_y, batch)];
                   float filter_value =
-                      filter_data[Offset(filter_dims, out_channel, filter_x,
-                                         filter_y, in_channel)];
+                      filter_data[Offset(filter_dims, in_channel, filter_x,
+                                         filter_y, out_channel)];
                   output_data[Offset(output_dims, out_channel, out_x, out_y,
                                      batch)] += input_value * filter_value;
                 }

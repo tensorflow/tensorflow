@@ -1865,18 +1865,15 @@ void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
              output_axes_order == AxesOrder::kHWIO) {
     // 3210 <- 3210
     // HWIO <- OHWI
-    (*shuffle)[0] = 1;
-    (*shuffle)[1] = 2;
-    (*shuffle)[2] = 3;
-    (*shuffle)[3] = 0;
+    *shuffle = {1, 2, 3, 0};
   } else if (input_axes_order == AxesOrder::kHWIO &&
              output_axes_order == AxesOrder::kOHWI) {
     // 3210 <- 3210
     // OHWI <- HWIO
-    (*shuffle)[0] = 3;
-    (*shuffle)[1] = 0;
-    (*shuffle)[2] = 1;
-    (*shuffle)[3] = 2;
+    *shuffle = {3, 0, 1, 2};
+  } else if (input_axes_order == AxesOrder::kOHWI &&
+             output_axes_order == AxesOrder::kHWOI) {
+    *shuffle = {1, 2, 0, 3};
   } else {
     LOG(FATAL) << "Bad shuffle";
   }
@@ -2021,6 +2018,8 @@ int AxesCount(AxesOrder axes_order) {
     case AxesOrder::k1HWO:
       return 4;
     case AxesOrder::kNHWC:
+      return 4;
+    case AxesOrder::kHWOI:
       return 4;
     default:
       LOG(FATAL) << "Bad AxesOrder";

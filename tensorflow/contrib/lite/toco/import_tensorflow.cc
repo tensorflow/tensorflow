@@ -1445,11 +1445,13 @@ void ConvertTransposeConvOperator(const NodeDef& node,
   if (existing_transpose) {
     CHECK(existing_transpose->type == OperatorType::kTranspose);
   } else {
-    // Transpose weights from HWIO order to OHWI order, which is more efficient
-    // for computation
+    // Transpose weights from HWOI order to OHWI order, which is more efficient
+    // for computation. (Note that TensorFlow considers the order as HWIO
+    // because they consider this a backward conv, inverting the sense of
+    // input/output.)
     TransposeOperator* transpose = new TransposeOperator;
     string perm_array = CreateConstArray<ArrayDataType::kInt32>(
-        model, node.name() + "_transpose_perm", {3, 0, 1, 2});
+        model, node.name() + "_transpose_perm", {2, 0, 1, 3});
     transpose->inputs = {weights_name, perm_array};
     transpose->outputs = {transposed_weights_name};
     model->operators.emplace_back(transpose);

@@ -155,6 +155,7 @@ enum class AxesOrder {
   k1HWO,     // Our standard for DepthwiseConv weights
   kHWIM,     // TensorFlow DepthwiseConv weights
   kNHWC,     // TensorFlow activations
+  kHWOI,     // TensorFlow back-prop conv weights
 };
 
 // The type of the scalars in an array.
