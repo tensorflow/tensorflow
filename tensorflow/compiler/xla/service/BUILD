@@ -1149,6 +1149,19 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "multi_output_fusion",
+    srcs = ["multi_output_fusion.cc"],
+    hdrs = ["multi_output_fusion.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "hlo_creation_utils",
     srcs = ["hlo_creation_utils.cc"],
     hdrs = ["hlo_creation_utils.h"],
