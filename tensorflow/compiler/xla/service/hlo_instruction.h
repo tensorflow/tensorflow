@@ -1189,48 +1189,6 @@ class HloInstruction {
     return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
   }
 
-  // Returns the start index in the given dimension for a slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_starts(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_starts_[dimension];
-  }
-  const std::vector<int64>& slice_starts() const { return slice_starts_; }
-
-  // Returns the (exclusive) limit index in the given dimension for a slice
-  // node.
-  //
-  // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_limits(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_limits_[dimension];
-  }
-  const std::vector<int64>& slice_limits() const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_limits_;
-  }
-
-  // Returns the stride in the given dimension for a slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_strides(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_strides_[dimension];
-  }
-  const std::vector<int64>& slice_strides() const { return slice_strides_; }
-
-  // Returns the flag that describes whether a slice must be lowered into an
-  // offset into the original operand.
-  bool IsInPlaceSlice() const { return is_in_place_slice_; }
-
-  // Sets and returns the flag that describes whether a slice must be lowered
-  // into an offset into the original operand.
-  bool SetIsInPlaceSlice(bool value) {
-    is_in_place_slice_ = value;
-    return value;
-  }
-
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
   //
@@ -1526,6 +1484,21 @@ class HloInstruction {
 
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
+
+  // Delegates to HloSliceInstruction::slice_start.
+  int64 slice_starts(int64 dimension) const;
+  const std::vector<int64>& slice_starts() const;
+
+  // Delegates to HloSliceInstruction::slice_limits.
+  int64 slice_limits(int64 dimension) const;
+  const std::vector<int64>& slice_limits() const;
+
+  // Delegates to HloSliceInstruction::slice_strides.
+  int64 slice_strides(int64 dimension) const;
+  const std::vector<int64>& slice_strides() const;
+
+  // Delegates to HloSliceInstruction::IsInPlaceSlice.
+  bool IsInPlaceSlice() const;
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1678,14 +1651,6 @@ class HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
-
-  // Describes the [begin, end) index range for a slice.
-  std::vector<int64> slice_starts_;
-  std::vector<int64> slice_limits_;
-  std::vector<int64> slice_strides_;
-
-  // Describes whether the slice can be lowered to an offset into the operand.
-  bool is_in_place_slice_ = false;
 
   // The bit sizes for a reduce-precision operation.
   int32 exponent_bits_ = 0;

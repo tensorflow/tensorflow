@@ -377,6 +377,62 @@ class HloMapInstruction : public HloInstruction {
   std::vector<int64> dimensions_;
 };
 
+class HloSliceInstruction : public HloInstruction {
+ public:
+  explicit HloSliceInstruction(const Shape& shape, HloInstruction* operand,
+                               tensorflow::gtl::ArraySlice<int64> start_indices,
+                               tensorflow::gtl::ArraySlice<int64> limit_indices,
+                               tensorflow::gtl::ArraySlice<int64> strides);
+
+  HloInstructionProto ToProto() const override;
+
+  // Returns the start index in the given dimension for a slice node.
+  int64 slice_starts(int64 dimension) const { return slice_starts_[dimension]; }
+  const std::vector<int64>& slice_starts() const { return slice_starts_; }
+
+  // Returns the (exclusive) limit index in the given dimension for a slice
+  // node.
+  int64 slice_limits(int64 dimension) const { return slice_limits_[dimension]; }
+  const std::vector<int64>& slice_limits() const { return slice_limits_; }
+
+  // Returns the stride in the given dimension for a slice node.
+  int64 slice_strides(int64 dimension) const {
+    return slice_strides_[dimension];
+  }
+  const std::vector<int64>& slice_strides() const { return slice_strides_; }
+
+  // Returns the flag that describes whether a slice must be lowered into an
+  // offset into the original operand.
+  bool IsInPlaceSlice() const { return is_in_place_slice_; }
+
+  // Sets and returns the flag that describes whether a slice must be lowered
+  // into an offset into the original operand.
+  bool SetIsInPlaceSlice(bool value) {
+    is_in_place_slice_ = value;
+    return value;
+  }
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // Describes the [begin, end) index range for a slice.
+  std::vector<int64> slice_starts_;
+  std::vector<int64> slice_limits_;
+  std::vector<int64> slice_strides_;
+
+  // Describes whether the slice can be lowered to an offset into the operand.
+  bool is_in_place_slice_ = false;
+};
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_

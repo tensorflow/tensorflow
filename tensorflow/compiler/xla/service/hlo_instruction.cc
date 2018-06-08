@@ -165,6 +165,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateMap(proto.shape(), map_operands, computations(0));
       break;
     }
+    case HloOpcode::kSlice: {
+      CHECK_EQ(proto.operand_ids_size(), 1);
+      std::vector<int64> slice_starts, slice_limits, slice_strides;
+      for (const HloInstructionProto::SliceDimensions& slice_dimensions :
+           proto.slice_dimensions()) {
+        slice_starts.push_back(slice_dimensions.start());
+        slice_limits.push_back(slice_dimensions.limit());
+        slice_strides.push_back(slice_dimensions.stride());
+      }
+      instruction = CreateSlice(proto.shape(), operands(0), slice_starts,
+                                slice_limits, slice_strides);
+      break;
+    }
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -241,12 +254,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->dot_dimension_numbers_ =
         MakeUnique<DotDimensionNumbers>(proto.dot_dimension_numbers());
   }
-  for (const HloInstructionProto::SliceDimensions& slice_dimensions :
-       proto.slice_dimensions()) {
-    instruction->slice_starts_.push_back(slice_dimensions.start());
-    instruction->slice_limits_.push_back(slice_dimensions.limit());
-    instruction->slice_strides_.push_back(slice_dimensions.stride());
-  }
+
   instruction->exponent_bits_ = proto.exponent_bits();
   instruction->mantissa_bits_ = proto.mantissa_bits();
   for (int64 dynamic_slice_size : proto.dynamic_slice_sizes()) {
@@ -627,18 +635,8 @@ HloInstruction::CreateGenerateToken(
     tensorflow::gtl::ArraySlice<int64> start_indices,
     tensorflow::gtl::ArraySlice<int64> limit_indices,
     tensorflow::gtl::ArraySlice<int64> strides) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kSlice, shape));
-  instruction->AppendOperand(operand);
-  instruction->slice_starts_.assign(start_indices.begin(), start_indices.end());
-  instruction->slice_limits_.assign(limit_indices.begin(), limit_indices.end());
-  instruction->slice_strides_.assign(strides.begin(), strides.end());
-  // For backward compatibility with old serialized computations: if there are
-  // no strides, assume all strides are 1.
-  // TODO(b/63317920): remove this code.
-  if (instruction->slice_strides_.empty()) {
-    instruction->slice_strides_ = std::vector<int64>(start_indices.size(), 1LL);
-  }
-  return instruction;
+  return MakeUnique<HloSliceInstruction>(shape, operand, start_indices,
+                                         limit_indices, strides);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDynamicSlice(
@@ -1322,6 +1320,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTranspose:
     case HloOpcode::kBroadcast:
     case HloOpcode::kMap:
+    case HloOpcode::kSlice:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1452,11 +1451,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateReshape(shape, new_operands[0]);
-      break;
-    case HloOpcode::kSlice:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_,
-                          slice_strides_);
       break;
     case HloOpcode::kDynamicSlice:
       clone = CreateDynamicSlice(shape, new_operands[0], new_operands[1],
@@ -1838,10 +1832,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kPad:
       return protobuf_util::ProtobufEquals(padding_config(),
                                            other.padding_config());
-    case HloOpcode::kSlice:
-      return slice_starts_ == other.slice_starts_ &&
-             slice_limits_ == other.slice_limits_ &&
-             slice_strides_ == other.slice_strides_;
     case HloOpcode::kCall:
     case HloOpcode::kCrossReplicaSum:
       return eq_computations(to_apply(), other.to_apply());
@@ -1887,6 +1877,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTranspose:
     case HloOpcode::kBroadcast:
     case HloOpcode::kMap:
+    case HloOpcode::kSlice:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2256,19 +2247,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(
         StrCat("padding=", xla::PaddingConfigToString(*padding_config_)));
   }
-  if (opcode() == HloOpcode::kSlice) {
-    std::vector<string> bounds;
-    bounds.reserve(slice_starts_.size());
-    const bool omit_stride =
-        std::all_of(slice_strides_.begin(), slice_strides_.end(),
-                    [](int64 stride) { return stride == 1; });
-    for (int i = 0; i < slice_starts_.size(); ++i) {
-      string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
-      bounds.push_back(StrCat("[", slice_starts_[i], ":", slice_limits_[i],
-                              stride_str, "]"));
-    }
-    extra.push_back(StrCat("slice={", Join(bounds, ", "), "}"));
-  }
+
   if (opcode() == HloOpcode::kDynamicSlice) {
     extra.push_back(
         StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}"));
@@ -2464,12 +2443,7 @@ HloInstructionProto HloInstruction::ToProto() const {
       proto.add_gather_window_bounds(bound);
     }
   }
-  for (int i = 0; i < slice_starts_.size(); ++i) {
-    auto* slice_dimension = proto.add_slice_dimensions();
-    slice_dimension->set_start(slice_starts_[i]);
-    slice_dimension->set_limit(slice_limits_[i]);
-    slice_dimension->set_stride(slice_strides_[i]);
-  }
+
   proto.set_exponent_bits(exponent_bits_);
   proto.set_mantissa_bits(mantissa_bits_);
   for (int64 slice_size : dynamic_slice_sizes_) {
@@ -3571,5 +3545,33 @@ int64 HloInstruction::concatenate_dimension() const {
 bool HloInstruction::IsRank2Transpose() const {
   auto transpose = DynCast<HloTransposeInstruction>(this);
   return transpose != nullptr && transpose->IsRank2Transpose();
+}
+
+int64 HloInstruction::slice_starts(int64 dimension) const {
+  return Cast<HloSliceInstruction>(this)->slice_starts(dimension);
+}
+
+const std::vector<int64>& HloInstruction::slice_starts() const {
+  return Cast<HloSliceInstruction>(this)->slice_starts();
+}
+
+int64 HloInstruction::slice_limits(int64 dimension) const {
+  return Cast<HloSliceInstruction>(this)->slice_limits(dimension);
+}
+
+const std::vector<int64>& HloInstruction::slice_limits() const {
+  return Cast<HloSliceInstruction>(this)->slice_limits();
+}
+
+int64 HloInstruction::slice_strides(int64 dimension) const {
+  return Cast<HloSliceInstruction>(this)->slice_strides(dimension);
+}
+
+const std::vector<int64>& HloInstruction::slice_strides() const {
+  return Cast<HloSliceInstruction>(this)->slice_strides();
+}
+
+bool HloInstruction::IsInPlaceSlice() const {
+  return Cast<HloSliceInstruction>(this)->IsInPlaceSlice();
 }
 }  // namespace xla
