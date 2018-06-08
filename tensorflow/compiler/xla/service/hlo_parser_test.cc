@@ -900,6 +900,24 @@ ENTRY Gather {
 
 )"
 },
+// cross-replica-sum
+{
+"CrossReplicaSum",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT crs = f32[8]{0} cross-replica-sum(input), to_apply=add
+}
+
+)"
+},
   });
   // clang-format on
 }

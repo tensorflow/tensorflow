@@ -426,10 +426,26 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, const int exponent_bits,
       const int mantissa_bits);
 
-  // Creates a cross replica sum op.
+  // Creates a cross replica reduction op.
+  //
+  // `reduction_computation`: the reduction function.
+  //
+  // `replica_group_ids`: maps replica ids to subgroup ids. If empty, all
+  // replicas belong to one group. Allreduce will be applied within subgroups.
+  // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
+  // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
+  //
+  // `channel_id`: for Allreduce nodes from different models, if they have the
+  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
+  // applied cross models.
+  //
+  // TODO(b/79737069): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* reduce_computation,
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
+      const tensorflow::gtl::optional<int64>& channel_id =
+          tensorflow::gtl::nullopt);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -976,14 +992,14 @@ class HloInstruction {
   string OperandsToString(const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
-  std::vector<string> ExtraAttributesToString(
+  virtual std::vector<string> ExtraAttributesToString(
       const HloPrintOptions& options) const;
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
 
   // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const;
+  virtual HloInstructionProto ToProto() const;
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
@@ -1008,19 +1024,13 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kHostCompute
   string channel_name() const { return channel_name_; }
 
-  // Returns feature_index field associated with the instruction. The index
-  // represents the index of the feature dimension.
-  //
-  // Precondition: opcode() is one of kBatchNormTraining, kBatchNormInference,
-  // or kBatchNormGrad.
-  int64 feature_index() const { return feature_index_; }
+  // Delegates to HloBatchNormInstruction::feature_index.
+  // TODO(b/80131774): Remove this code.
+  int64 feature_index() const;
 
-  // Returns a epsilon value associated with the instruction. The is a small
-  // number added to the variance to avoid divide-by-zero error.
-  //
-  // Precondition: opcode() is one of kBatchNormTraining, kBatchNormInference,
-  // or kBatchNormGrad.
-  float epsilon() const { return epsilon_; }
+  // Delegates to HloBatchNormInstruction::epsilon.
+  // TODO(b/80131774): Remove this code.
+  float epsilon() const;
 
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
@@ -1355,7 +1365,8 @@ class HloInstruction {
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
       HloCloneContext* context = nullptr) const;
 
   // Returns the computations this instruction directly calls (if any).
@@ -1520,7 +1531,19 @@ class HloInstruction {
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
+  // Appends operand to the list of operands and adds this instruction as a user
+  // of the operand.
+  void AppendOperand(HloInstruction* operand);
+
  private:
+  // Implementation for non-common logic of CloneWithNewOperands.
+  virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const {
+    // TODO(b/80131774): This should be pure virtual.
+    LOG(FATAL) << "Unimplemented method.";
+  }
   // Prints an instruction to a string.
   //
   // The canonical string representation needs to name operands and instruction
@@ -1545,7 +1568,7 @@ class HloInstruction {
   class FusionReusesParamElements;
 
   // See comments on Identical().
-  bool IdenticalSlowPath(
+  virtual bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const;
@@ -1554,10 +1577,6 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateNary(
       const Shape& shape, HloOpcode opcode,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
-
-  // Appends operand to the list of operands and adds this instruction as a user
-  // of the operand.
-  void AppendOperand(HloInstruction* operand);
 
   // Adds a user for this instruction.
   void AddUser(HloInstruction* user);
@@ -1735,14 +1754,6 @@ class HloInstruction {
   // The distribution requested for random number generation.
   // Only present for kRng.
   RandomDistribution distribution_;
-
-  // A small float number added to the variance to avoid divide-by-zero error.
-  // Only present for kBatchNormTraining.
-  float epsilon_ = 0.0f;
-
-  // An integer value representing the index of the feature dimension.
-  // Only present for kBatchNormTraining.
-  int64 feature_index_ = -1;
 
   // Represents a unique identifier for each Send/Recv instruction pair.
   // Only present for kSend or kRecv.

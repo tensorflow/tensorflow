@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -144,14 +143,6 @@ class Executable {
     return hlo_module_->config().host_entry_computation_layout().result_shape();
   }
 
-  // TODO(b/74197823): Delete the session module dumping helpers.
-  void set_session_module(std::unique_ptr<xla::SessionModule> session_module) {
-    session_module_ = std::move(session_module);
-  }
-  bool dumping() const { return session_module_ != nullptr; }
-  SessionModule* session_module() const { return session_module_.get(); }
-  Status DumpSessionModule();
-
   // Dumping helpers.
   void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
     hlo_snapshot_ = std::move(hlo_snapshot);
@@ -159,10 +150,6 @@ class Executable {
   bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
   HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
   Status DumpHloSnapshot();
-
-  // Dump session_module to directory_path/filename.
-  static Status DumpToDirectory(const string& directory_path, string filename,
-                                const SessionModule& session_module);
 
   // Dump hlo snapshot to directory_path/filename.
   static Status DumpToDirectory(const string& directory_path, string filename,
@@ -178,9 +165,6 @@ class Executable {
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
   const std::unique_ptr<const HloModule> hlo_module_;
-
-  // SessionModule this was compiled from. Null if not dumping executions.
-  std::unique_ptr<SessionModule> session_module_;
 
   // HloSnapshot this was compiled from. Null if not dumping executions.
   std::unique_ptr<HloSnapshot> hlo_snapshot_;

@@ -53,6 +53,19 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(argc, 1);
 }
 
+TEST(CommandLineFlagsTest, EmptyStringFlag) {
+  int argc = 2;
+  std::string some_string = "invalid";
+  const char* argv_strings[] = {"program_name", "--some_string="};
+  bool parsed_ok =
+      Flags::Parse(&argc, reinterpret_cast<const char**>(argv_strings),
+                   {Flag("some_string", &some_string, "some string")});
+
+  EXPECT_EQ(true, parsed_ok);
+  EXPECT_EQ(some_string, "");
+  EXPECT_EQ(argc, 1);
+}
+
 TEST(CommandLineFlagsTest, BadIntValue) {
   int some_int = 10;
   int argc = 2;
@@ -121,9 +134,9 @@ TEST(CommandLineFlagsTest, UsageString) {
   std::string some_name = "something";
   // Don't test float in this case, because precision is hard to predict and
   // match against, and we don't want a flakey test.
-  const string tool_name = "some_tool_name";
-  string usage = Flags::Usage(tool_name + " <flags>",
-                              {Flag("some_int", &some_int, "some int"),
+  const std::string tool_name = "some_tool_name";
+  std::string usage = Flags::Usage(
+      tool_name + " <flags>", {Flag("some_int", &some_int, "some int"),
                                Flag("some_int64", &some_int64, "some int64"),
                                Flag("some_switch", &some_switch, "some switch"),
                                Flag("some_name", &some_name, "some name")});

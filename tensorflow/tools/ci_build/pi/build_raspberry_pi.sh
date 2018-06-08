@@ -102,6 +102,8 @@ bazel build -c opt ${PI_COPTS} \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
   --verbose_failures \
+  //tensorflow:libtensorflow.so \
+  //tensorflow:libtensorflow_framework.so \
   //tensorflow/tools/benchmark:benchmark_model \
   //tensorflow/tools/pip_package:build_pip_package
 

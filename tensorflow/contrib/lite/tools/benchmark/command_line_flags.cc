@@ -35,7 +35,7 @@ bool ParseFlag(const std::string& arg, const std::string& flag,
   if (arg.find(flag_prefix) != 0) {
     return false;
   }
-  bool has_value = (arg.size() >= flag_prefix.size() + 1);
+  bool has_value = arg.size() >= flag_prefix.size();
   *value_parsing_ok = has_value;
   if (has_value) {
     *value_parsing_ok = parse_func(arg.substr(flag_prefix.size()));

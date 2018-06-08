@@ -177,6 +177,12 @@ if __name__ == '__main__':
             MatrixUnaryFunctorGradientTest, 'MatrixDeterminantGradient', name,
             _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_determinant,
                                                dtype, shape))
+        _AddTest(
+            MatrixUnaryFunctorGradientTest, 'LogMatrixDeterminantGradient',
+            name,
+            _GetMatrixUnaryFunctorGradientTest(
+                lambda x: linalg_ops.log_matrix_determinant(x)[1],
+                dtype, shape))
 
   # Tests for gradients of matrix_solve_ls
   for dtype in np.float32, np.float64:
