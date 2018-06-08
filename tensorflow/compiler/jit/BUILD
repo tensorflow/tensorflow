@@ -342,6 +342,7 @@ cc_library(
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:bounds_check",
     ],
 )
