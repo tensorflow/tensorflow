@@ -58,7 +58,6 @@ cc_library(
         "@llvm//:scalar",
         "@llvm//:support",
         "@llvm//:target",
-        "@llvm//:transform_utils",
     ],
 )
 

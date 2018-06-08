@@ -620,8 +620,8 @@ void LaunchDepthwiseConv2dGPUSmall(const GpuDevice& device,
                                             kKnownFilterHeight, kBlockDepth,
                                             kKnownEvenHeight>;
       break;
-    case FORMAT_NCHW_VECT_C:
-      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+    default:
+      LOG(ERROR) << "FORMAT_" << ToString(data_format) << " is not supported";
       return;
   }
   const int tile_width = args.in_cols + args.filter_cols - 1;
@@ -699,8 +699,8 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& device,
           DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
                                        kKnownDepthMultiplier>;
       break;
-    case FORMAT_NCHW_VECT_C:
-      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+    default:
+      LOG(ERROR) << "FORMAT_" << ToString(data_format) << " is not supported";
       return;
   }
   const int num_outputs =
@@ -933,8 +933,8 @@ void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& device,
       kernel = DepthwiseConv2dBackpropInputGPUKernelNCHW<
           T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
       break;
-    case FORMAT_NCHW_VECT_C:
-      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+    default:
+      LOG(ERROR) << "FORMAT_" << ToString(data_format) << " is not supported";
       return;
   }
   const int num_in_backprop =
@@ -1586,8 +1586,8 @@ bool TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
       kernel = DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall<
           T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
       break;
-    case FORMAT_NCHW_VECT_C:
-      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+    default:
+      LOG(ERROR) << "FORMAT_" << ToString(data_format) << " is not supported";
       return false;
   }
   const int num_out_backprop = args.out_rows * args.out_cols * block_count;
@@ -1691,8 +1691,8 @@ void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& device,
       kernel = DepthwiseConv2dBackpropFilterGPUKernelNCHW<
           T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
       break;
-    case FORMAT_NCHW_VECT_C:
-      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+    default:
+      LOG(ERROR) << "FORMAT_" << ToString(data_format) << " is not supported";
       return;
   }
   const int num_out_backprop =

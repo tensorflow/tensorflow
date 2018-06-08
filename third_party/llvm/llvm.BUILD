@@ -8,10 +8,10 @@ exports_files(["LICENSE.TXT"])
 
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
-    "gentbl",
-    "expand_cmake_vars",
-    "llvm_target_cmake_vars",
     "cmake_var_string",
+    "expand_cmake_vars",
+    "gentbl",
+    "llvm_target_cmake_vars",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -262,7 +262,7 @@ genrule(
 # Rules that apply the LLVM tblgen tool.
 gentbl(
     name = "intrinsics_gen",
-    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.gen")],
+    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Intrinsics.td",
     td_srcs = glob([
@@ -273,7 +273,7 @@ gentbl(
 
 gentbl(
     name = "attributes_gen",
-    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.gen")],
+    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Attributes.td",
     td_srcs = ["include/llvm/IR/Attributes.td"],
@@ -368,6 +368,7 @@ llvm_target_list = [
             ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
             ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
             ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
+            ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
             # XXX FIXME this rule has to be explicitly disabled
             #("-gen-tgt-intrinsic", "lib/Target/AMDGPU/AMDGPUGenIntrinsics.inc"),
         ],

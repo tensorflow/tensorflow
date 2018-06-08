@@ -33,8 +33,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* axis = GetInput(context, node, kAxis);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* axis = GetInput(context, node, kAxis);
   // Make sure the axis is only 1 dimension.
   TF_LITE_ENSURE_EQ(context, NumElements(axis), 1);
 
@@ -52,7 +52,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       output->type = kTfLiteInt64;
       break;
     default:
-      context->ReportError(context, "Unknown index output data type");
+      context->ReportError(context, "Unknown index output data type: %d",
+                           params->output_type);
       return kTfLiteError;
   }
 
@@ -64,7 +65,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(context, "Only float32 and int types are supported");
+      context->ReportError(
+          context,
+          "Unkonwn input type: %d, only float32 and int types are supported",
+          input->type);
       return kTfLiteError;
   }
 
@@ -79,12 +83,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 // The current impl actually ignores the axis argument.
 // Only determine the index of the maximum value in the last dimension.
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* axis = GetInput(context, node, kAxis);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* axis = GetInput(context, node, kAxis);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
 #define TF_LITE_ARG_MAX(data_type, axis_type, output_type)                     \
-  TF_LITE_ENSURE_EQ(context, GetTensorData<axis_type>(axis)[0], 3);            \
   optimized_ops::ArgMax(GetTensorData<axis_type>(axis),                        \
                         GetTensorData<data_type>(input), GetTensorDims(input), \
                         GetTensorData<output_type>(output),                    \

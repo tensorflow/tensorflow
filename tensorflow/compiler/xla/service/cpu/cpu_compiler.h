@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
@@ -76,9 +77,15 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
-  CpuAotCompilationResult(ObjectFileData object_file_data,
-                          BufferSizes buffer_sizes, int64 result_buffer_index);
+  CpuAotCompilationResult(
+      ObjectFileData object_file_data, BufferSizes buffer_sizes,
+      int64 result_buffer_index,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult();
+
+  HloProfilePrinterData* hlo_profile_printer_data() const {
+    return hlo_profile_printer_data_.get();
+  }
 
   const ObjectFileData& object_file_data() const { return object_file_data_; }
   const BufferSizes& buffer_sizes() const { return buffer_sizes_; }
@@ -97,6 +104,10 @@ class CpuAotCompilationResult : public AotCompilationResult {
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
   const int64 result_buffer_index_;
+
+  // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
+  // otherwise is nullptr.
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
 };
 
 // CPU-targeting implementation of the XLA Compiler interface.
@@ -138,7 +149,8 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* module, bool is_aot_compile);
+  Status RunHloPasses(HloModule* module, bool is_aot_compile,
+                      llvm::TargetMachine* target_machine);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

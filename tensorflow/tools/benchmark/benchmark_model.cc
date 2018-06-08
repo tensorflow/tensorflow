@@ -262,6 +262,10 @@ Status InitializeSession(int num_threads, const string& graph,
   tensorflow::GraphDef tensorflow_graph;
   Status s = ReadBinaryProto(Env::Default(), graph, graph_def->get());
   if (!s.ok()) {
+    s = ReadTextProto(Env::Default(), graph, graph_def->get());
+  }
+
+  if (!s.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return s;
   }
@@ -663,12 +667,12 @@ int Main(int argc, char** argv) {
         output_prefix, benchmark_name, "meta-init-plus-first-inference", 1,
         initialization_time_s + (warmup_time_us / 1000000.0) / warmup_runs);
 
-    std::map<string, int64> node_type_map_count;
-    std::map<string, int64> node_type_map_time;
-    std::map<string, int64> node_type_map_memory;
-    std::map<string, int64> node_type_map_times_called;
+    std::map<std::string, int64_t> node_type_map_count;
+    std::map<std::string, int64_t> node_type_map_time;
+    std::map<std::string, int64_t> node_type_map_memory;
+    std::map<std::string, int64_t> node_type_map_times_called;
 
-    int64 accumulated_us;
+    int64_t accumulated_us;
     stats->ComputeStatsByType(&node_type_map_count, &node_type_map_time,
                               &node_type_map_memory,
                               &node_type_map_times_called, &accumulated_us);

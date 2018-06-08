@@ -66,11 +66,16 @@ enum PrimitiveType {
   // in the dimensions field.
   TUPLE = 13;
 
-  // An opaque type used for passing context specific data to a custom
-  // operation.
+  // An opaque type used for passing context-specific data to a custom
+  // operation. Shapes of this primitive type will have empty dimensions and
+  // tuple_shapes fields.
   OPAQUE = 14;
 
-  // Next = 17
+  // A token type threaded between side-effecting operations. Shapes of this
+  // primitive type will have empty dimensions and tuple_shapes fields.
+  TOKEN = 17;
+
+  // Next = 18
 }
 
 // Describes the value held inside padding elements.
@@ -134,6 +139,8 @@ enum Format {
 // example, Convert) are ignored.
 //
 // See the XLA documentation for more information on shapes and layouts.
+//
+// LINT.IfChange
 message Layout {
   // The method used to store the data in memory. The format determines which of
   // the other fields are used by the layout.
@@ -159,9 +166,12 @@ message Layout {
   // memory.  This field must be unset unless the format is SPARSE.
   int64 max_sparse_elements = 5;
 
-  // Important: if any field is added, be sure to modify ShapeUtil::Equal()
-  // appropriately to account for the new field.
+  // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
+  // LayoutUtil::Hash appropriately to account for the new field.
 }
+// LINT.ThenChange( \
+//     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \
+//     https://www.tensorflow.org/code/tensorflow/compiler/xla/layout_util.cc)
 
 // A shape describes the number of dimensions in the array, the size of each
 // dimension, and the primitive component type.
@@ -170,6 +180,8 @@ message Layout {
 // defined.
 //
 // See the XLA documentation for more information on shapes and layouts.
+//
+// LINT.IfChange
 message Shape {
   reserved 1;
   reserved "rank";
@@ -190,9 +202,12 @@ message Shape {
   // The layout used to back this shape.
   Layout layout = 5;
 
-  // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
-  // ShapeUtil::Compatible() appropriately to account for the new field.
+  // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
+  // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for
+  // the new field.
 }
+// LINT.ThenChange( \
+//     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc)
 
 // Shape of the parameters and output of a computation (like a traditional
 // function signature).
@@ -804,6 +819,12 @@ enum UnaryOperation {
 
   // Elementwise, computes clz(x).
   UNOP_CLZ = 17;
+
+  // Elementwise, computes exp(x)-1.
+  UNOP_EXPM1 = 18;
+
+  // Elementwise, computes log(x+1).
+  UNOP_LOG1P = 19;
 }
 
 message UnaryOpRequest {

@@ -2320,6 +2320,24 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha,
+    const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
+    const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
+    float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+  return false;
+  //port::Status status = DoBlasGemmBatchedInternal(
+  //    wrap::hipblasCgemmBatched, stream, transa, transb, m, n, k, alpha, a_array,
+  //    lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  //if (!status.ok()) {
+  //  LOG(ERROR) << status;
+  //}
+  //return status.ok();
+}
+
+
+bool ROCMBlas::DoBlasGemmBatched(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, float alpha,
     const port::ArraySlice<DeviceMemory<float> *> &a_array, int lda,
     const port::ArraySlice<DeviceMemory<float> *> &b_array, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<float> *> &c_array, int ldc,

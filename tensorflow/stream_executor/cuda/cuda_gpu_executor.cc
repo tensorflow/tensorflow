@@ -609,10 +609,10 @@ port::Status CUDAExecutor::WaitForEvent(Stream *stream, Event *event) {
                                     AsCUDAEvent(event)->cuda_event())) {
     return port::Status::OK();
   } else {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf("error recording waiting for CUDA event on stream %p",
-                     stream)};
+                     stream));
   }
 }
 

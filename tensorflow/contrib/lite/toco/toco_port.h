@@ -33,14 +33,37 @@ limitations under the License.
 #define TFLITE_PROTO_NS google::protobuf
 #endif
 
+#ifdef __ANDROID__
+#include <sstream>
+namespace std {
+
+template <typename T>
+std::string to_string(T value)
+{
+    std::ostringstream os ;
+    os << value ;
+    return os.str() ;
+}
+
+#ifdef __ARM_ARCH_7A__
+double round(double x);
+#endif
+}
+#endif
+
 namespace toco {
 namespace port {
 
 class Status {
  public:
+  static Status OK() { return Status(true, ""); }
+
+  // Create a failed status with no message.
   Status() {}
 
   Status(bool ok, const string& message) : ok_(ok), message_(message) {}
+
+  void AppendMessage(const string& message) { message_ += message; }
 
   bool ok() const { return ok_; }
 

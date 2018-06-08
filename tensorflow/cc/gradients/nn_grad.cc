@@ -255,6 +255,53 @@ Status LRNGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("LRN", LRNGradHelper);
 
+Status SoftplusGradHelper(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
+  auto dx = internal::SoftplusGrad(scope, grad_inputs[0], op.input(0));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Softplus", SoftplusGradHelper);
+
+Status SoftsignGradHelper(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
+  auto dx = internal::SoftsignGrad(scope, grad_inputs[0], op.input(0));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Softsign", SoftsignGradHelper);
+
+Status FractionalAvgPoolGradHelper(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  bool overlapping;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), "overlapping", &overlapping));
+  auto dx = internal::FractionalAvgPoolGrad(
+      scope, Shape(scope, op.input(0), Shape::OutType(DT_INT64)),
+      grad_inputs[0], op.output(1), op.output(2),
+      internal::FractionalAvgPoolGrad::Overlapping(overlapping));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("FractionalAvgPool", FractionalAvgPoolGradHelper);
+
+Status FractionalMaxPoolGradHelper(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  bool overlapping;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), "overlapping", &overlapping));
+  auto dx = internal::FractionalMaxPoolGrad(
+      scope, op.input(0), op.output(0), grad_inputs[0], op.output(1),
+      op.output(2), internal::FractionalMaxPoolGrad::Overlapping(overlapping));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("FractionalMaxPool", FractionalMaxPoolGradHelper);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

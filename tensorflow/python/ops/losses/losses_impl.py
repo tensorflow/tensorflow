@@ -334,8 +334,11 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
 
   Args:
     labels: The ground truth output tensor. Its shape should match the shape of
-      logits. The values of the tensor are expected to be 0.0 or 1.0.
-    logits: The logits, a float tensor.
+      logits. The values of the tensor are expected to be 0.0 or 1.0. Internally
+      the {0,1} labels are converted to {-1,1} when calculating the hinge loss.
+    logits: The logits, a float tensor. Note that logits are assumed to be
+      unbounded and 0-centered. A value > 0 (resp. < 0) is considered a positive
+      (resp. negative) binary prediction.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `losses` dimension).

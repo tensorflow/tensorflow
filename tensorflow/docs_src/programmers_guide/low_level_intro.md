@@ -9,7 +9,7 @@ This guide gets you started programming in the low-level TensorFlow APIs
   * Use high level components ([datasets](#datasets), [layers](#layers), and
     [feature_columns](#feature_columns)) in this low level environment.
   * Build your own training loop, instead of using the one
-    @{$get_started/premade_estimators$provided by Estimators}.
+    @{$premade_estimators$provided by Estimators}.
 
 We recommend using the higher level APIs to build models when possible.
 Knowing TensorFlow Core is valuable for the following reasons:
@@ -398,7 +398,7 @@ and layer reuse impossible.
 
 The easiest way to experiment with feature columns is using the
 @{tf.feature_column.input_layer} function. This function only accepts
-@{$get_started/feature_columns$dense columns} as inputs, so to view the result
+@{$feature_columns$dense columns} as inputs, so to view the result
 of a categorical column you must wrap it in an
 @{tf.feature_column.indicator_column}. For example:
 
@@ -589,7 +589,7 @@ print(sess.run(y_pred))
 
 To learn more about building models with TensorFlow consider the following:
 
-* @{$get_started/custom_estimators$Custom Estimators}, to learn how to build
+* @{$custom_estimators$Custom Estimators}, to learn how to build
   customized models with TensorFlow. Your knowledge of TensorFlow Core will
   help you understand and debug your own models.
 

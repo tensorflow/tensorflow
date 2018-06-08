@@ -40,7 +40,7 @@ class SelectOp : public XlaOpKernel {
             "'then' and 'else' must have the same size.  but received: ",
             then_shape.DebugString(), " vs. ", else_shape.DebugString()));
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     auto cond_handle = ctx->Input(0);
     auto then_handle = ctx->Input(1);

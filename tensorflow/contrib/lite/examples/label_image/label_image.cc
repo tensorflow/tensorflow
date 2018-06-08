@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -68,6 +69,22 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
     result->emplace_back();
   }
   return kTfLiteOk;
+}
+
+void PrintProfilingInfo(const profiling::ProfileEvent* e, uint32_t op_index,
+                        TfLiteRegistration registration) {
+  // output something like
+  // time (ms) , Node xxx, OpCode xxx, symblic name
+  //      5.352, Node   5, OpCode   4, DEPTHWISE_CONV_2D
+
+  LOG(INFO) << std::fixed << std::setw(10) << std::setprecision(3)
+            << (e->end_timestamp_us - e->begin_timestamp_us) / 1000.0
+            << ", Node " << std::setw(3) << std::setprecision(3) << op_index
+            << ", OpCode " << std::setw(3) << std::setprecision(3)
+            << registration.builtin_code << ", "
+            << EnumNameBuiltinOperator(
+                   static_cast<BuiltinOperator>(registration.builtin_code))
+            << "\n";
 }
 
 void RunInference(Settings* s) {
@@ -166,18 +183,35 @@ void RunInference(Settings* s) {
       exit(-1);
   }
 
+  profiling::Profiler* profiler = new profiling::Profiler();
+  interpreter->SetProfiler(profiler);
+
+  if (s->profiling) profiler->StartProfiling();
+
   struct timeval start_time, stop_time;
-  gettimeofday(&start_time, NULL);
+  gettimeofday(&start_time, nullptr);
   for (int i = 0; i < s->loop_count; i++) {
     if (interpreter->Invoke() != kTfLiteOk) {
       LOG(FATAL) << "Failed to invoke tflite!\n";
     }
   }
-  gettimeofday(&stop_time, NULL);
+  gettimeofday(&stop_time, nullptr);
   LOG(INFO) << "invoked \n";
   LOG(INFO) << "average time: "
             << (get_us(stop_time) - get_us(start_time)) / (s->loop_count * 1000)
             << " ms \n";
+
+  if (s->profiling) {
+    profiler->StopProfiling();
+    auto profile_events = profiler->GetProfileEvents();
+    for (int i = 0; i < profile_events.size(); i++) {
+      auto op_index = profile_events[i]->event_metadata;
+      const auto node_and_registration =
+          interpreter->node_and_registration(op_index);
+      const TfLiteRegistration registration = node_and_registration->second;
+      PrintProfilingInfo(profile_events[i], op_index, registration);
+    }
+  }
 
   const int output_size = 1000;
   const size_t num_results = 5;
@@ -217,13 +251,14 @@ void RunInference(Settings* s) {
 
 void display_usage() {
   LOG(INFO) << "label_image\n"
-            << "--accelerated, -a: [0|1], use Android NNAPI or note\n"
+            << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
             << "--count, -c: loop interpreter->Invoke() for certain times\n"
             << "--input_mean, -b: input mean\n"
             << "--input_std, -s: input standard deviation\n"
             << "--image, -i: image_name.bmp\n"
             << "--labels, -l: labels for the model\n"
             << "--tflite_model, -m: model_name.tflite\n"
+            << "--profiling, -p: [0|1], profiling or not\n"
             << "--threads, -t: number of threads\n"
             << "--verbose, -v: [0|1] print more information\n"
             << "\n";
@@ -235,21 +270,22 @@ int Main(int argc, char** argv) {
   int c;
   while (1) {
     static struct option long_options[] = {
-        {"accelerated", required_argument, 0, 'a'},
-        {"count", required_argument, 0, 'c'},
-        {"verbose", required_argument, 0, 'v'},
-        {"image", required_argument, 0, 'i'},
-        {"labels", required_argument, 0, 'l'},
-        {"tflite_model", required_argument, 0, 'm'},
-        {"threads", required_argument, 0, 't'},
-        {"input_mean", required_argument, 0, 'b'},
-        {"input_std", required_argument, 0, 's'},
-        {0, 0, 0, 0}};
+        {"accelerated", required_argument, nullptr, 'a'},
+        {"count", required_argument, nullptr, 'c'},
+        {"verbose", required_argument, nullptr, 'v'},
+        {"image", required_argument, nullptr, 'i'},
+        {"labels", required_argument, nullptr, 'l'},
+        {"tflite_model", required_argument, nullptr, 'm'},
+        {"profiling", required_argument, nullptr, 'p'},
+        {"threads", required_argument, nullptr, 't'},
+        {"input_mean", required_argument, nullptr, 'b'},
+        {"input_std", required_argument, nullptr, 's'},
+        {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv, "a:b:c:f:i:l:m:s:t:v:", long_options,
+    c = getopt_long(argc, argv, "a:b:c:f:i:l:m:p:s:t:v:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -257,15 +293,14 @@ int Main(int argc, char** argv) {
 
     switch (c) {
       case 'a':
-        s.accel = strtol(  // NOLINT(runtime/deprecated_fn)
-            optarg, (char**)NULL, 10);
+        s.accel = strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'b':
-        s.input_mean = strtod(optarg, NULL);
+        s.input_mean = strtod(optarg, nullptr);
         break;
       case 'c':
-        s.loop_count = strtol(  // NOLINT(runtime/deprecated_fn)
-            optarg, (char**)NULL, 10);
+        s.loop_count =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'i':
         s.input_bmp_name = optarg;
@@ -276,16 +311,20 @@ int Main(int argc, char** argv) {
       case 'm':
         s.model_name = optarg;
         break;
+      case 'p':
+        s.profiling =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
       case 's':
-        s.input_std = strtod(optarg, NULL);
+        s.input_std = strtod(optarg, nullptr);
         break;
       case 't':
         s.number_of_threads = strtol(  // NOLINT(runtime/deprecated_fn)
-            optarg, (char**)NULL, 10);
+            optarg, nullptr, 10);
         break;
       case 'v':
-        s.verbose = strtol(  // NOLINT(runtime/deprecated_fn)
-            optarg, (char**)NULL, 10);
+        s.verbose =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'h':
       case '?':

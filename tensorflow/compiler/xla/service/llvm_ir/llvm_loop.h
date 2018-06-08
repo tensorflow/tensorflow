@@ -174,7 +174,7 @@ class ForLoopNest {
       : ForLoopNest(/*name=*/"", ir_builder) {}
 
   ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* ir_builder)
-      : name_(name.ToString()),
+      : name_(std::string(name)),
         outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),

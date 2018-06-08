@@ -66,9 +66,6 @@ namespace dnn {
 class BatchDescriptor;
 class FilterDescriptor;
 class ConvolutionDescriptor;
-class BatchDescriptor;
-class FilterDescriptor;
-class ConvolutionDescriptor;
 class ProfileResult;
 class AlgorithmDesc;
 }  // namespace dnn
@@ -1481,6 +1478,13 @@ class Stream {
       blas::ProfileResult *output_profile_result);
 
   // See BlasSupport::DoBlasGemmBatched.
+  Stream &ThenBlasGemmBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
+      int ldc, int batch_count);
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64 m, uint64 n, uint64 k, float alpha,
                               const port::ArraySlice<DeviceMemory<float> *> &a,
@@ -1513,6 +1517,13 @@ class Stream {
       std::complex<double> beta,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c, int ldc,
       int batch_count);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
       uint64 k, float alpha, const port::ArraySlice<DeviceMemory<float> *> &a,
@@ -2012,7 +2023,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock{mu_};
+    tf_shared_lock lock(mu_);
     return !ok_;
   }
 
@@ -2022,7 +2033,7 @@ class Stream {
     if (operation_retcode) {
       return;
     }
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     ok_ = false;
   }
 

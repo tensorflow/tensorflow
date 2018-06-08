@@ -54,11 +54,11 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import momentum
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -717,7 +717,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
       inputs = 3. * array_ops.ones([num_applications, num_layers, input_size],
                                    dtype=dtypes.float32)
       cudnn_output, _ = cudnn_layer(inputs)
-      status.assert_consumed().run_restore_ops()
+      status.run_restore_ops()
     second_save_path = cudnn_checkpoint.save(checkpoint_prefix)
     restore_layer = compatible_cell_fn()
     restore_layer_checkpoint = checkpointable_utils.Checkpoint(
@@ -728,7 +728,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
       restore_layer_output, current_state = restore_layer(
           inputs=3. * array_ops.ones([1, input_size]),
           state=current_state)
-    status.assert_consumed().run_restore_ops()
+    status.run_restore_ops()
     self.assertTrue(restore_layer.variables)
     for variable, expected_value in zip(
         restore_layer.variables, expected_variable_values):

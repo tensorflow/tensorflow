@@ -29,28 +29,28 @@ from tensorflow.python.platform import test
 class ForLoopTest(test.TestCase):
 
   def test_tensor(self):
-    s = control_flow.for_loop(
+    s = control_flow.for_stmt(
         constant_op.constant([1, 2, 3, 4]),
-        extra_cond=lambda s: True,
-        loop_body=lambda i, s: (s + i,),
+        extra_test=lambda s: True,
+        body=lambda i, s: (s + i,),
         init_state=(0,))
     with self.test_session() as sess:
       self.assertEqual((10,), sess.run(s))
 
   def test_python(self):
-    s = control_flow.for_loop(
+    s = control_flow.for_stmt(
         range(5),
-        extra_cond=lambda s: True,
-        loop_body=lambda i, s: (s + i,),
+        extra_test=lambda s: True,
+        body=lambda i, s: (s + i,),
         init_state=(0,))
     self.assertEqual(10, s)
 
   def test_dataset(self):
     to_int32 = lambda i: math_ops.cast(i, dtypes.int32)
-    s = control_flow.for_loop(
+    s = control_flow.for_stmt(
         dataset_ops.Dataset.range(5).map(to_int32),
-        extra_cond=lambda s: True,
-        loop_body=lambda i, s: (s + i,),
+        extra_test=lambda s: True,
+        body=lambda i, s: (s + i,),
         init_state=(0,))
     with self.test_session() as sess:
       self.assertEqual((10,), sess.run(s))
@@ -60,9 +60,9 @@ class WhileLoopTest(test.TestCase):
 
   def test_tensor(self):
     n = constant_op.constant(5)
-    results = control_flow.while_loop(
-        loop_cond=lambda i, s: i < n,
-        loop_body=lambda i, s: (i + 1, s + i,),
+    results = control_flow.while_stmt(
+        test=lambda i, s: i < n,
+        body=lambda i, s: (i + 1, s + i,),
         init_state=(0, 0),
         extra_deps=(n,))
     with self.test_session() as sess:
@@ -70,9 +70,9 @@ class WhileLoopTest(test.TestCase):
 
   def test_python(self):
     n = 5
-    results = control_flow.while_loop(
-        loop_cond=lambda i, s: i < n,
-        loop_body=lambda i, s: (i + 1, s + i),
+    results = control_flow.while_stmt(
+        test=lambda i, s: i < n,
+        body=lambda i, s: (i + 1, s + i),
         init_state=(0, 0),
         extra_deps=(n,))
     self.assertEqual((5, 10), results)

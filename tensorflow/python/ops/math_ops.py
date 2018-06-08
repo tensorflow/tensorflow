@@ -15,136 +15,6 @@
 """Basic arithmetic operators.
 
 See the @{$python/math_ops} guide.
-
-@@add
-@@subtract
-@@multiply
-@@scalar_mul
-@@div
-@@divide
-@@truediv
-@@floordiv
-@@realdiv
-@@truncatediv
-@@floor_div
-@@truncatemod
-@@floormod
-@@mod
-@@cross
-@@add_n
-@@abs
-@@negative
-@@sign
-@@reciprocal
-@@square
-@@round
-@@sqrt
-@@rsqrt
-@@pow
-@@exp
-@@expm1
-@@log
-@@log1p
-@@sinh
-@@cosh
-@@asinh
-@@acosh
-@@atanh
-@@ceil
-@@floor
-@@maximum
-@@minimum
-@@cos
-@@sin
-@@lbeta
-@@tan
-@@acos
-@@asin
-@@atan
-@@atan2
-@@lgamma
-@@digamma
-@@erf
-@@erfc
-@@squared_difference
-@@igamma
-@@igammac
-@@zeta
-@@polygamma
-@@betainc
-@@rint
-@@diag
-@@diag_part
-@@trace
-@@transpose
-@@eye
-@@matrix_diag
-@@matrix_diag_part
-@@matrix_band_part
-@@matrix_set_diag
-@@matrix_transpose
-@@matmul
-@@norm
-@@matrix_determinant
-@@matrix_inverse
-@@cholesky
-@@cholesky_solve
-@@matrix_solve
-@@matrix_triangular_solve
-@@matrix_solve_ls
-@@qr
-@@self_adjoint_eig
-@@self_adjoint_eigvals
-@@svd
-@@tensordot
-@@complex
-@@conj
-@@imag
-@@angle
-@@real
-@@fft
-@@ifft
-@@fft2d
-@@ifft2d
-@@fft3d
-@@ifft3d
-@@reduce_sum
-@@reduce_prod
-@@reduce_min
-@@reduce_max
-@@reduce_mean
-@@reduce_all
-@@reduce_any
-@@reduce_logsumexp
-@@count_nonzero
-@@accumulate_n
-@@einsum
-@@bincount
-@@cumsum
-@@cumprod
-@@segment_sum
-@@segment_prod
-@@segment_min
-@@segment_max
-@@segment_mean
-@@to_complex128
-@@to_complex64
-@@unsorted_segment_sum
-@@unsorted_segment_max
-@@unsorted_segment_mean
-@@unsorted_segment_min
-@@unsorted_segment_prod
-@@unsorted_segment_sqrt_n
-@@sparse_segment_sum
-@@sparse_segment_mean
-@@sparse_segment_sqrt_n
-@@argmin
-@@argmax
-@@setdiff1d
-@@where
-@@unique
-@@edit_distance
-@@invert_permutation
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -255,8 +125,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`,
-      `int64`, `complex64` or `complex128`.
+    x: A `Tensor` or `SparseTensor` of type `float16`, `float32`, `float64`,
+      `int32`, `int64`, `complex64` or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -560,10 +430,10 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-     or `complex128`.
-    y: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-     or `complex128`.
+    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, `int64`,
+     `complex64`, or `complex128`.
+    y: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, `int64`,
+     `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -730,7 +600,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float32` or `float64`.
+    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1387,7 +1257,7 @@ def reduce_sum(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1415,7 +1285,7 @@ def reduce_sum(input_tensor,
     The reduced tensor, of the same dtype as the input_tensor.
 
   @compatibility(numpy)
-  Equivalent to np.sum appart the fact that numpy upcast uint8 and int32 to
+  Equivalent to np.sum apart the fact that numpy upcast uint8 and int32 to
   int64 while tensorflow returns the same dtype as the input.
   @end_compatibility
   """
@@ -1527,7 +1397,7 @@ def reduce_mean(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1599,7 +1469,7 @@ def reduce_prod(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1649,7 +1519,7 @@ def reduce_min(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1698,7 +1568,7 @@ def reduce_max(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1747,7 +1617,7 @@ def reduce_all(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1805,7 +1675,7 @@ def reduce_any(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1898,6 +1768,7 @@ def reduce_logsumexp(input_tensor,
                                                     "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
+  input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(
         input_tensor,
@@ -1910,13 +1781,13 @@ def reduce_logsumexp(input_tensor,
             array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
-            gen_math_ops.exp(input_tensor - my_max),
+            gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
             axis,
             keepdims=keepdims,
             reduction_indices=reduction_indices))
     if not keepdims:
       my_max = array_ops.reshape(my_max, array_ops.shape(result))
-    result += my_max
+    result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
@@ -2616,6 +2487,12 @@ def reduced_shape(input_shape, axes):
   """
   # Example:
   # cast needed for SparseTensor reductions
+  if context.executing_eagerly():
+    input_shape = input_shape.numpy()
+    axes = axes.numpy()
+    input_shape[axes] = 1
+    return input_shape
+
   input_shape = to_int32(input_shape)  # [2, 3, 5, 7]
   axes = to_int32(axes)  # [1, 2]
 
@@ -2638,7 +2515,8 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
       of segment entries with 0-entries set to 1 to allow division by N.
   """
   # bincount doesn't support negative indices so we use unsorted_segment_sum
-  ones_tensor = array_ops.ones(segment_ids.shape, dtype=data.dtype)
+  segment_ids_shape = array_ops.shape_internal(segment_ids)
+  ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
   N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
   # add dimensions for all non-reduced axes
   ndims_output = data.shape.ndims - segment_ids.shape.ndims

@@ -19,11 +19,32 @@ conditionals and loops, implemented in functional form, using for example
 closures for the body.
 """
 
+# Naming conventions:
+#  * operator names match the name usually used for the respective Python
+#    idiom; examples: for_stmt, list_append
+#  * operator arguments match either of:
+#    - the corresponding Python AST attribute (e.g. the condition of an if
+#      statement is called test) if the operator represents an AST construct
+#    - the names used in the Python docs, if the operator is a function (e.g.
+#      list_ and x for append, see
+#      https://docs.python.org/3.7/tutorial/datastructures.html)
+#
+# All operators may accept a final argument named "opts", of a type that
+# subclasses namedtuple and contains any arguments that are only required
+# for some specializations of the operator.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# TODO(mdan): Add a container for implementation-specific toggles (throughout).
-
-from tensorflow.contrib.autograph.operators.control_flow import for_loop
-from tensorflow.contrib.autograph.operators.control_flow import while_loop
+from tensorflow.contrib.autograph.operators.control_flow import for_stmt
+from tensorflow.contrib.autograph.operators.control_flow import while_stmt
+from tensorflow.contrib.autograph.operators.data_structures import list_append
+from tensorflow.contrib.autograph.operators.data_structures import list_pop
+from tensorflow.contrib.autograph.operators.data_structures import list_stack
+from tensorflow.contrib.autograph.operators.data_structures import ListPopOpts
+from tensorflow.contrib.autograph.operators.data_structures import ListStackOpts
+from tensorflow.contrib.autograph.operators.data_structures import new_list
+from tensorflow.contrib.autograph.operators.slices import get_item
+from tensorflow.contrib.autograph.operators.slices import GetItemOpts
+from tensorflow.contrib.autograph.operators.slices import set_item

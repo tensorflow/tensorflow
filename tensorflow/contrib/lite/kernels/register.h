@@ -23,24 +23,9 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 
-class BuiltinOpResolver : public OpResolver {
+class BuiltinOpResolver : public MutableOpResolver {
  public:
   BuiltinOpResolver();
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override;
-  TfLiteRegistration* FindOp(const char* op) const override;
-  void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration);
-  void AddCustom(const char* name, TfLiteRegistration* registration);
-
- private:
-  struct BuiltinOperatorHasher {
-    size_t operator()(const tflite::BuiltinOperator& x) const {
-      return std::hash<size_t>()(static_cast<size_t>(x));
-    }
-  };
-  std::unordered_map<tflite::BuiltinOperator, TfLiteRegistration*,
-                     BuiltinOperatorHasher>
-      builtins_;
-  std::unordered_map<std::string, TfLiteRegistration*> custom_ops_;
 };
 
 }  // namespace builtin

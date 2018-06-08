@@ -18,8 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
@@ -88,17 +86,6 @@ class ComputeConstantTest : public ::testing::Test {
     return literal->Get<Scalar>({});
   }
 
-  template <class Scalar>
-  StatusOr<Scalar> ComputeConstantScalar(
-      Client* client, const ComputationDataHandle& operand,
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<Literal> parameters = {}) {
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        builder->ComputeConstant(
-                            operand, /*output_layout=*/nullptr, parameters));
-    return literal->Get<Scalar>({});
-  }
-
   bool IsConstant(const XlaOp& operand, XlaBuilder* builder) {
     StatusOr<bool> result = builder->IsConstant(operand);
     EXPECT_TRUE(result.ok()) << result.status();
@@ -147,26 +134,6 @@ TEST_F(ComputeConstantTest, ScalarRng) {
     auto value = ComputeConstantScalar<float>(client, computation, &b);
     ASSERT_FALSE(value.ok())
         << "computing a RNG value should not be considered a constant";
-  }
-}
-
-TEST_F(ComputeConstantTest, Param) {
-  for (ClientType client_type : client_types) {
-    Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
-    auto param = b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "lhs");
-    auto computation = b.Add(param, b.ConstantR0<float>(1.5f));
-
-    std::vector<Literal> arguments;
-    arguments.push_back(std::move(*Literal::CreateR0(42.5f)));
-    TF_ASSERT_OK_AND_ASSIGN(bool is_constant,
-                            b.IsConstant(computation, arguments.size()));
-    EXPECT_TRUE(is_constant);
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto value,
-        ComputeConstantScalar<float>(client, computation, &b, arguments));
-    EXPECT_EQ(value, 44.0f);
   }
 }
 
@@ -241,7 +208,7 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
                             ComputeConstantLiteral(client, computation, &b));
     std::unique_ptr<Literal> expected_literal =
         Literal::CreateR1<int32>({4, 6});
-    LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
 
@@ -255,7 +222,7 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
     std::unique_ptr<Literal> expected_literal = Literal::CreateR0<int32>(5);
-    LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
 
@@ -277,9 +244,9 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
       std::unique_ptr<Literal> expected_literal =
           Literal::CreateR2WithLayout<int32>({{11, 22}, {33, 44}},
                                              LayoutUtil::MakeLayout(layout));
-      LiteralTestUtil::AssertEqualShapesAndLayouts(expected_literal->shape(),
-                                                   computed->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
+          expected_literal->shape(), computed->shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
     }
   }
 }
