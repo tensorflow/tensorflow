@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import threading
+import warnings
 
 import numpy as np
 import six
@@ -1865,6 +1866,24 @@ def _should_unpack_args(args):
   return type(args) is tuple  # pylint: disable=unidiomatic-typecheck
 
 
+def _warn_if_collections(transformation_name):
+  """Prints warning message if the current graph uses common graph collections.
+
+  NOTE(mrry): Currently a warning is only generated for lookup tables. Any
+  variables created will be automatically hoisted out to the outermost scope
+  using `init_scope()`. Some collections (such as for control-flow contexts)
+  are benign and should not generate a warning.
+
+  Args:
+    transformation_name: A human-readable name for the transformation.
+  """
+  if ops.get_default_graph().get_collection(ops.GraphKeys.TABLE_INITIALIZERS):
+    warnings.warn("Creating lookup tables inside a function passed to %s is not"
+                  " supported. Create each table outside the function, and "
+                  "capture it inside the function to use it."
+                  % transformation_name)
+
+
 class MapDataset(Dataset):
   """A `Dataset` that maps a function over elements in its input."""
 
@@ -1923,6 +1942,8 @@ class MapDataset(Dataset):
           ret, [t.get_shape() for t in nest.flatten(ret)])
       self._output_types = nest.pack_sequence_as(
           ret, [t.dtype for t in nest.flatten(ret)])
+
+      _warn_if_collections("Dataset.map()")
 
       # Serialize any sparse tensors.
       ret = nest.pack_sequence_as(
@@ -2012,6 +2033,8 @@ class FlatMapDataset(Dataset):
       if not isinstance(dataset, Dataset):
         raise TypeError("`map_func` must return a `Dataset` object.")
 
+      _warn_if_collections(self._transformation_name())
+
       self._output_classes = dataset.output_classes
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
@@ -2043,6 +2066,9 @@ class FlatMapDataset(Dataset):
   def output_types(self):
     return self._output_types
 
+  def _transformation_name(self):
+    return "Dataset.flat_map()"
+
 
 class InterleaveDataset(FlatMapDataset):
   """A `Dataset` that maps a function over its input and interleaves the result.
@@ -2067,6 +2093,9 @@ class InterleaveDataset(FlatMapDataset):
             sparse.as_dense_types(self.output_types, self.output_classes)),
         output_shapes=nest.flatten(
             sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+
+  def _transformation_name(self):
+    return "Dataset.interleave()"
 
 
 class FilterDataset(Dataset):
@@ -2101,6 +2130,8 @@ class FilterDataset(Dataset):
       if not (ret.dtype == dtypes.bool and
               ret.shape.is_compatible_with(tensor_shape.scalar())):
         raise ValueError("`predicate` must return a scalar boolean tensor.")
+
+      _warn_if_collections("Dataset.filter()")
 
       return ret
 
