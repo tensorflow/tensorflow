@@ -200,8 +200,8 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
         }
       }
       if (optimizable) {
-        std::cout << "Optimizing fused batch norm node " << node.DebugString()
-                  << std::endl;
+        VLOG(2) << "Optimizing fused batch norm node " << node.DebugString()
+                << std::endl;
         AddBatchNormNodes(optimized_graph, node);
         continue;
       }
