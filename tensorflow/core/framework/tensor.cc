@@ -431,12 +431,7 @@ struct ProtoHelper<Eigen::half> {
   static void Fill(const Eigen::half* data, size_t n, TensorProto* proto) {
     proto->mutable_half_val()->Reserve(n);
     for (size_t i = 0; i < n; ++i) {
-#if defined(TENSORFLOW_USE_ROCM_HIP_FP16)
-      // Implementation of Eigen::half is different when using HIP FP16 on the GPU 
-      proto->mutable_half_val()->AddAlreadyReserved(__half_as_ushort(data[i].x));
-#else
       proto->mutable_half_val()->AddAlreadyReserved(data[i].x);
-#endif
     }
   }
 };

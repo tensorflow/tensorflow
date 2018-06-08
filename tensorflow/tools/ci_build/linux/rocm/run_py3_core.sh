@@ -35,7 +35,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchmark-test -k \
     --test_lang_filters=py --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
-    --build_tests_only --test_output=errors --local_test_jobs=1 --config=opt \
+    --build_tests_only --test_output=errors --local_test_jobs=4 --config=opt \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
     -//tensorflow/python/eager:backprop_test \
@@ -44,18 +44,15 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python/feature_column:feature_column_test \
     -//tensorflow/python/keras:activations_test \
     -//tensorflow/python/keras:core_test \
-    -//tensorflow/python/keras:cudnn_recurrent_test \
     -//tensorflow/python/keras:gru_test \
     -//tensorflow/python/keras:local_test \
     -//tensorflow/python/keras:lstm_test \
     -//tensorflow/python/keras:model_subclassing_test \
-    -//tensorflow/python/keras:models_test \
     -//tensorflow/python/keras:normalization_test \
     -//tensorflow/python/keras:pooling_test \
     -//tensorflow/python/keras:sequential_test \
     -//tensorflow/python/keras:simplernn_test \
     -//tensorflow/python/keras:training_eager_test \
-    -//tensorflow/python/keras:training_test \
     -//tensorflow/python/keras:wrappers_test \
     -//tensorflow/python/kernel_tests:atrous_conv2d_test \
     -//tensorflow/python/kernel_tests:batch_matmul_op_test \
@@ -100,9 +97,6 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python/kernel_tests:tensor_array_ops_test \
     -//tensorflow/python/kernel_tests:tensordot_op_test \
     -//tensorflow/python/kernel_tests:variable_scope_test \
-    -//tensorflow/python/kernel_tests/distributions:beta_test \
-    -//tensorflow/python/kernel_tests/distributions:dirichlet_test \
-    -//tensorflow/python/kernel_tests/distributions:student_t_test \
     -//tensorflow/python/profiler/internal:run_metadata_test \
     -//tensorflow/python/profiler:profile_context_test \
     -//tensorflow/python/profiler:profiler_test \
@@ -110,9 +104,7 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python:cluster_test \
     -//tensorflow/python:cost_analyzer_test \
     -//tensorflow/python:function_test \
-    -//tensorflow/python:function_def_to_graph_test \
     -//tensorflow/python:gradient_checker_test \
-    -//tensorflow/python:gradient_descent_test \
     -//tensorflow/python:gradients_test \
     -//tensorflow/python:histogram_ops_test \
     -//tensorflow/python:image_grad_test \
@@ -122,9 +114,18 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python:learning_rate_decay_test \
     -//tensorflow/python:math_ops_test \
     -//tensorflow/python:memory_optimizer_test \
-    -//tensorflow/python:momentum_test \
     -//tensorflow/python:nn_fused_batchnorm_test \
     -//tensorflow/python:timeline_test \
     -//tensorflow/python:virtual_gpu_test
+    -//tensorflow/python:function_def_to_graph_test \
+    -//tensorflow/python:gradient_descent_test \
+    -//tensorflow/python:momentum_test \
+    -//tensorflow/python/keras:models_test \
+    -//tensorflow/python/keras:training_test \
+    -//tensorflow/python/keras:cudnn_recurrent_test \
+    -//tensorflow/python/kernel_tests/distributions:beta_test \
+    -//tensorflow/python/kernel_tests/distributions:dirichlet_test \
+    -//tensorflow/python/kernel_tests/distributions:student_t_test \
+
 
 # Note: temp. disabling 88 unit tests in order to esablish a CI baseline (2018/06/07)
