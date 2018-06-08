@@ -28,7 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary import summary
-
+from tensorflow.contrib.coder.python.layers import entropybottleneck
 
 def import_to_tensorboard(model_dir, log_dir):
   """View an imported protobuf model (`.pb` file) as a graph in Tensorboard.

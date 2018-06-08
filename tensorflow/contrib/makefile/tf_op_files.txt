@@ -4,6 +4,12 @@ tensorflow/contrib/boosted_trees/ops/quantile_ops.cc
 tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc
 tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc
 tensorflow/contrib/boosted_trees/ops/training_ops.cc
+tensorflow/contrib/coder/ops/coder_ops.cc
+tensorflow/contrib/coder/kernels/pmf_to_cdf_op.cc
+tensorflow/contrib/coder/kernels/range_coder.cc
+tensorflow/contrib/coder/kernels/range_coder_ops.cc
+tensorflow/contrib/coder/kernels/range_coder_ops_util.cc
+tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc
 tensorflow/core/kernels/xent_op.cc
 tensorflow/core/kernels/where_op.cc
 tensorflow/core/kernels/variable_ops.cc
@@ -295,6 +301,10 @@ tensorflow/core/ops/candidate_sampling_ops.cc
 tensorflow/core/ops/boosted_trees_ops.cc
 tensorflow/core/ops/array_ops.cc
 tensorflow/core/ops/array_grad.cc
+tensorflow/core/ops/lookup_ops.cc
+tensorflow/core/ops/bitwise_ops.cc
+tensorflow/core/ops/decode_proto_ops.cc
+tensorflow/core/ops/encode_proto_ops.cc
 tensorflow/core/kernels/spacetobatch_functor.cc
 tensorflow/core/kernels/spacetobatch_op.cc
 tensorflow/core/kernels/batchtospace_op.cc

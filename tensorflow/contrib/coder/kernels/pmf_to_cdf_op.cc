@@ -65,7 +65,7 @@ class PmfToCdfOp : public OpKernel {
     CHECK_EQ(pmf.dimension(1) + 1, cdf.dimension(1));
 
     const double n = pmf.dimension(1);
-    const int64 cost_per_unit = static_cast<int64>(50.0 * n * std::log2(n));
+    const int64 cost_per_unit = static_cast<int64>(50.0 * n * log2(n));
     thread::ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     thread_pool->ParallelFor(
@@ -99,7 +99,7 @@ class PmfToCdfOp : public OpKernel {
       if (*pointer <= 1) {
         return std::numeric_limits<double>::infinity();
       }
-      return mass * (std::log2(*pointer) - std::log2(*pointer - 1));
+      return mass * (log2(*pointer) - log2(*pointer - 1));
     }
 
     int32* pointer;
@@ -127,7 +127,7 @@ class PmfToCdfOp : public OpKernel {
       if (*pointer < 1) {
         return -std::numeric_limits<double>::infinity();
       }
-      return mass * (std::log2(*pointer + 1) - std::log2(*pointer));
+      return mass * (log2(*pointer + 1) - log2(*pointer));
     }
 
     int32* pointer;
@@ -142,7 +142,7 @@ class PmfToCdfOp : public OpKernel {
     const int32 normalizer = 1 << precision_;
     std::transform(pmf.begin(), pmf.end(), cdf.begin(),
                    [normalizer](float mass) {
-                     int32 value = std::rint(mass * normalizer);
+                     int32 value = rint(mass * normalizer);
                      // NOTE: Consider checking if mass > 0.
                      value = std::max(value, 1);
                      return value;

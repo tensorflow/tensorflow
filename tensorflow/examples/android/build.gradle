@@ -84,7 +84,7 @@ android {
     if (nativeBuildSystem == 'cmake') {
         defaultConfig {
             applicationId = 'org.tensorflow.demo'
-            minSdkVersion 21
+            minSdkVersion 23
             targetSdkVersion 27
             ndk {
                 abiFilters "${cpuType}"
@@ -191,6 +191,7 @@ apply from: "download-models.gradle"
 
 dependencies {
     if (nativeBuildSystem == 'cmake' || nativeBuildSystem == 'none') {
-        implementation 'org.tensorflow:tensorflow-android:+'
+        //implementation 'org.tensorflow:tensorflow-android:+'
+        implementation project(':Tensorflow-Android-Inference')
     }
 }

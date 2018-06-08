@@ -363,6 +363,7 @@ $(MARCH_OPTION) \
 	AR := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-ar
 	ARFLAGS := r
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
+	CXXFLAGS += -D__ANDROID_TYPES_FULL__
 
 	ifdef HEXAGON_LIBS
 		INCLUDES += -I$(HEXAGON_INCLUDE)

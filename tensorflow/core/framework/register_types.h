@@ -88,14 +88,14 @@ limitations under the License.
 
 #elif defined(__ANDROID_TYPES_FULL__)
 
-// Only string, half, float, int32, int64, bool, and quantized types
+// Only string, half, float, int16, int32, int64, bool, and quantized types
 // supported.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m)
 #define TF_CALL_int32(m) m(::tensorflow::int32)
 #define TF_CALL_uint32(m)
 #define TF_CALL_uint8(m)
-#define TF_CALL_int16(m)
+#define TF_CALL_int16(m) m(::tensorflow::int16)
 
 #define TF_CALL_int8(m)
 #define TF_CALL_string(m) m(string)
