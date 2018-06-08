@@ -975,7 +975,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       }
       return kGreen;
     case HloOpcode::kConcatenate:
-    case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kGather:
     case HloOpcode::kPad:
@@ -996,6 +995,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
         return kWhite;
       }
+      return kGreen;
+    case HloOpcode::kCopy:
+      // Emphasize copy nodes, which are either physical transposes (and thus
+      // significant), or copies of read-only buffers (and thus dead weight).
       return kGreen;
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:

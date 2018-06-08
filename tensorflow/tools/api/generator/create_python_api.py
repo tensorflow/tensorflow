@@ -25,10 +25,10 @@ import os
 import sys
 
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_export
 
+API_ATTRS = tf_export.API_ATTRS
 
-_API_CONSTANTS_ATTR = '_tf_api_constants'
-_API_NAMES_ATTR = '_tf_api_names'
 _DEFAULT_PACKAGE = 'tensorflow.python'
 _GENFILES_DIR_SUFFIX = 'genfiles/'
 _SYMBOLS_TO_SKIP_EXPLICITLY = {
@@ -159,12 +159,13 @@ __all__.remove('print_function')
     return module_text_map
 
 
-def get_api_init_text(package):
+def get_api_init_text(package, api_name):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
     package: Base python package containing python with target tf_export
       decorators.
+    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
 
   Returns:
     A dictionary where
@@ -192,7 +193,7 @@ def get_api_init_text(package):
       attr = getattr(module, module_contents_name)
 
       # If attr is _tf_api_constants attribute, then add the constants.
-      if module_contents_name == _API_CONSTANTS_ATTR:
+      if module_contents_name == API_ATTRS[api_name].constants:
         for exports, value in attr:
           for export in exports:
             names = export.split('.')
@@ -201,15 +202,12 @@ def get_api_init_text(package):
                 -1, dest_module, module.__name__, value, names[-1])
         continue
 
-      try:
-        _, attr = tf_decorator.unwrap(attr)
-      except Exception as e:
-        print('5555: %s %s' % (module, module_contents_name), file=sys.stderr)
-        raise e
+      _, attr = tf_decorator.unwrap(attr)
       # If attr is a symbol with _tf_api_names attribute, then
       # add import for it.
-      if hasattr(attr, '__dict__') and _API_NAMES_ATTR in attr.__dict__:
-        for export in attr._tf_api_names:  # pylint: disable=protected-access
+      if (hasattr(attr, '__dict__') and
+          API_ATTRS[api_name].names in attr.__dict__):
+        for export in getattr(attr, API_ATTRS[api_name].names):  # pylint: disable=protected-access
           names = export.split('.')
           dest_module = '.'.join(names[:-1])
           module_code_builder.add_import(
@@ -246,7 +244,7 @@ def get_module(dir_path, relative_to_dir):
     relative_to_dir: Get module relative to this directory.
 
   Returns:
-    module that corresponds to the given directory.
+    Name of module that corresponds to the given directory.
   """
   dir_path = dir_path[len(relative_to_dir):]
   # Convert path separators to '/' for easier parsing below.
@@ -255,7 +253,7 @@ def get_module(dir_path, relative_to_dir):
 
 
 def create_api_files(
-    output_files, package, root_init_template, output_dir):
+    output_files, package, root_init_template, output_dir, api_name):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -267,6 +265,7 @@ def create_api_files(
       "#API IMPORTS PLACEHOLDER" comment in the template file will be replaced
       with imports.
     output_dir: output API root directory.
+    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
 
   Raises:
     ValueError: if an output file is not under api/ directory,
@@ -283,7 +282,7 @@ def create_api_files(
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_text_map = get_api_init_text(package)
+  module_text_map = get_api_init_text(package, api_name)
 
   # Add imports to output files.
   missing_output_files = []
@@ -334,6 +333,10 @@ def main():
       help='Directory where generated output files are placed. '
            'gendir should be a prefix of apidir. Also, apidir '
            'should be a prefix of every directory in outputs.')
+  parser.add_argument(
+      '--apiname', required=True, type=str,
+      choices=API_ATTRS.keys(),
+      help='The API you want to generate.')
 
   args = parser.parse_args()
 
@@ -347,8 +350,8 @@ def main():
 
   # Populate `sys.modules` with modules containing tf_export().
   importlib.import_module(args.package)
-  create_api_files(
-      outputs, args.package, args.root_init_template, args.apidir)
+  create_api_files(outputs, args.package, args.root_init_template,
+                   args.apidir, args.apiname)
 
 
 if __name__ == '__main__':

@@ -980,6 +980,23 @@ TEST_F(HloInstructionTest, FullyElementwise) {
   }
 }
 
+TEST_F(HloInstructionTest, MapIsElementwise) {
+  auto module = CreateNewModule();
+  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  HloComputation::Builder builder(TestName());
+  HloComputation::Builder map_builder("id");
+  map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  auto map_computation = module->AddEmbeddedComputation(map_builder.Build());
+  auto x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32, "x"));
+  auto map = builder.AddInstruction(
+      HloInstruction::CreateMap(r2f32, {x}, map_computation));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(map->IsElementwise());
+}
+
 TEST_F(HloInstructionTest, PartiallyElementwise) {
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {5});
   const Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 5});

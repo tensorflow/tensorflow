@@ -86,6 +86,31 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                         operands(2), operands(3), operands(4),
                                         proto.epsilon(), proto.feature_index());
       break;
+    case HloOpcode::kFft: {
+      CHECK_EQ(proto.operand_ids_size(), 1);
+      std::vector<int64> fft_length(proto.fft_length().begin(),
+                                    proto.fft_length().end());
+      instruction = CreateFft(proto.shape(), operands(0), proto.fft_type(),
+                              tensorflow::gtl::ArraySlice<int64>(fft_length));
+      break;
+    }
+    case HloOpcode::kSend:
+      CHECK_EQ(proto.operand_ids_size(), 1);
+      instruction = CreateSend(operands(0), proto.channel_id());
+      break;
+    case HloOpcode::kSendDone:
+      CHECK_EQ(proto.operand_ids_size(), 1);
+      instruction = CreateSendDone(operands(0));
+      break;
+    case HloOpcode::kRecv:
+      CHECK_EQ(proto.operand_ids_size(), 0);
+      instruction =
+          CreateRecv(proto.shape().tuple_shapes(0), proto.channel_id());
+      break;
+    case HloOpcode::kRecvDone:
+      CHECK_EQ(proto.operand_ids_size(), 1);
+      instruction = CreateRecvDone(operands(0));
+      break;
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -181,14 +206,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   }
   instruction->outfeed_config_ = proto.outfeed_config();
   instruction->distribution_ = proto.distribution();
-  instruction->channel_id_ = proto.channel_id();
   instruction->infeed_config_ = proto.infeed_config();
   instruction->custom_call_target_ = proto.custom_call_target();
   instruction->outfeed_shape_ = proto.outfeed_shape();
-  instruction->fft_type_ = proto.fft_type();
-  for (int64 fft_len : proto.fft_length()) {
-    instruction->fft_length_.push_back(fft_len);
-  }
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(const auto& sharding,
@@ -378,6 +398,11 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     instruction->AppendOperand(operand);
   }
   instruction->called_computations_.push_back(map_computation);
+  // TODO(b/65689298) Remove code below once Map is generalized to accept
+  // arbitrary map dimensions.
+  instruction->dimensions_.resize(ShapeUtil::Rank(shape));
+  std::iota(instruction->dimensions_.begin(), instruction->dimensions_.end(),
+            0);
   return instruction;
 }
 
@@ -404,11 +429,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
     const Shape& shape, HloInstruction* operand, FftType fft_type,
     tensorflow::gtl::ArraySlice<int64> fft_length) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFft, shape));
-  instruction->AppendOperand(operand);
-  instruction->fft_type_ = fft_type;
-  instruction->fft_length_.assign(fft_length.begin(), fft_length.end());
-  return instruction;
+  return MakeUnique<HloFftInstruction>(shape, operand, fft_type, fft_length);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
@@ -490,48 +511,28 @@ HloInstruction::CreateCrossReplicaSum(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
     HloInstruction* operand, int64 channel_id) {
-  // Send instruction produces a tuple of {aliased operand, U32 context}.
-  Shape output_shape = ShapeUtil::MakeTupleShape(
-      {operand->shape(), ShapeUtil::MakeShape(U32, {})});
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kSend, output_shape));
-  instruction->AppendOperand(operand);
-  instruction->channel_id_ = channel_id;
-  return instruction;
+  return MakeUnique<HloSendInstruction>(operand, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
     HloInstruction* operand) {
-  CHECK(operand->opcode() == HloOpcode::kSend)
+  auto send_operand = DynCast<HloSendInstruction>(operand);
+  CHECK(send_operand != nullptr)
       << "SendDone must take the context operand from Send";
-  auto instruction = WrapUnique(
-      new HloInstruction(HloOpcode::kSendDone, ShapeUtil::MakeNil()));
-  instruction->AppendOperand(operand);
-  instruction->channel_id_ = operand->channel_id();
-  return instruction;
+  return MakeUnique<HloSendDoneInstruction>(send_operand);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
     const Shape& shape, int64 channel_id) {
-  // Recv instruction produces a tuple of {receive buffer, U32 context}.
-  Shape output_shape =
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kRecv, output_shape));
-  instruction->channel_id_ = channel_id;
-  return instruction;
+  return MakeUnique<HloRecvInstruction>(shape, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(
     HloInstruction* operand) {
-  CHECK(operand->opcode() == HloOpcode::kRecv)
+  auto recv_operand = DynCast<HloRecvInstruction>(operand);
+  CHECK(recv_operand != nullptr)
       << "RecvDone must take the context operand from Recv";
-  Shape output_shape = ShapeUtil::GetTupleElementShape(operand->shape(), 0);
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kRecvDone, output_shape));
-  instruction->AppendOperand(operand);
-  instruction->channel_id_ = operand->channel_id();
-  return instruction;
+  return MakeUnique<HloRecvDoneInstruction>(recv_operand);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReverse(
@@ -674,8 +675,8 @@ HloInstruction::CreateBatchNormTraining(const Shape& shape,
                                         HloInstruction* scale,
                                         HloInstruction* offset, float epsilon,
                                         int64 feature_index) {
-  return WrapUnique<HloInstruction>(new HloBatchNormTrainingInstruction(
-      shape, operand, scale, offset, epsilon, feature_index));
+  return MakeUnique<HloBatchNormTrainingInstruction>(
+      shape, operand, scale, offset, epsilon, feature_index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -683,8 +684,8 @@ HloInstruction::CreateBatchNormInference(
     const Shape& shape, HloInstruction* operand, HloInstruction* scale,
     HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
     float epsilon, int64 feature_index) {
-  return WrapUnique<HloInstruction>(new HloBatchNormInferenceInstruction(
-      shape, operand, scale, offset, mean, variance, epsilon, feature_index));
+  return MakeUnique<HloBatchNormInferenceInstruction>(
+      shape, operand, scale, offset, mean, variance, epsilon, feature_index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -693,9 +694,9 @@ HloInstruction::CreateBatchNormGrad(const Shape& shape, HloInstruction* operand,
                                     HloInstruction* variance,
                                     HloInstruction* grad_output, float epsilon,
                                     int64 feature_index) {
-  return WrapUnique<HloInstruction>(
-      new HloBatchNormGradInstruction(shape, operand, scale, mean, variance,
-                                      grad_output, epsilon, feature_index));
+  return MakeUnique<HloBatchNormGradInstruction>(shape, operand, scale, mean,
+                                                 variance, grad_output, epsilon,
+                                                 feature_index);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -843,12 +844,12 @@ HloInstruction::CreateBroadcastSequence(
   return instruction;
 }
 
-void HloInstruction::set_device_sharding(int64 device) {
-  HloSharding device_sharding = HloSharding::AssignDevice(device);
+void HloInstruction::set_single_sharding(const HloSharding& sharding) {
+  CHECK(!sharding.IsTuple()) << sharding;
   if (ShapeUtil::IsTuple(shape())) {
-    set_sharding(HloSharding::Tuple(device_sharding.GetAsShapeTree(shape())));
+    set_sharding(HloSharding::Tuple(sharding.GetAsShapeTree(shape())));
   } else {
-    set_sharding(device_sharding);
+    set_sharding(sharding);
   }
 }
 
@@ -1287,6 +1288,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kFft:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1395,10 +1401,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateDot(shape, new_operands[0], new_operands[1],
                         *dot_dimension_numbers_);
       break;
-    case HloOpcode::kFft:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateFft(shape, new_operands[0], fft_type_, fft_length_);
-      break;
     case HloOpcode::kCrossReplicaSum:
       clone = CreateCrossReplicaSum(shape, new_operands, to_apply());
       break;
@@ -1504,24 +1506,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                 true_computation(), new_operands[2],
                                 false_computation());
       break;
-    case HloOpcode::kSend:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateSend(new_operands[0], channel_id());
-      break;
-    case HloOpcode::kSendDone:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateSendDone(new_operands[0]);
-      break;
-    case HloOpcode::kRecv:
-      CHECK_EQ(new_operands.size(), 0);
-      // The shape is a tuple, but CreateRecv() wants the raw data shape.
-      clone =
-          CreateRecv(ShapeUtil::GetTupleElementShape(shape, 0), channel_id());
-      break;
-    case HloOpcode::kRecvDone:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateRecvDone(new_operands[0]);
-      break;
     case HloOpcode::kGather:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateGather(shape, new_operands[0], new_operands[1],
@@ -1624,7 +1608,7 @@ bool HloInstruction::HasLiteral() const { return literal_ != nullptr; }
 
 bool HloInstruction::CanHaveDimensionsField() const {
   return (opcode() == HloOpcode::kReverse ||
-          opcode() == HloOpcode::kConcatenate ||
+          opcode() == HloOpcode::kConcatenate || opcode() == HloOpcode::kMap ||
           opcode() == HloOpcode::kReduce || opcode() == HloOpcode::kBroadcast ||
           opcode() == HloOpcode::kTranspose);
 }
@@ -1855,11 +1839,6 @@ bool HloInstruction::IdenticalSlowPath(
                                            other.gather_dimension_numbers()) &&
              gather_window_bounds() == other.gather_window_bounds();
 
-    // FFT has various types & lengths.
-    case HloOpcode::kFft:
-      return fft_type() == other.fft_type() &&
-             fft_length() == other.fft_length();
-
     // Reduction results are determined by the reduction dimension and the
     // reduction computation.
     case HloOpcode::kReduce:
@@ -1915,10 +1894,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
     case HloOpcode::kHostCompute:
       return false;
 
@@ -1927,6 +1902,11 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kFft:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2292,7 +2272,8 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
 
 std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
-  std::vector<string> extra;
+  std::vector<string> extra = ExtraAttributesToStringImpl(options);
+
   if (opcode() == HloOpcode::kFusion) {
     extra.push_back(StrCat("kind=", xla::ToString(fusion_kind())));
   }
@@ -2336,10 +2317,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(GatherDimensionNumbersToString());
     extra.push_back(
         StrCat("window_bounds={", Join(gather_window_bounds(), ","), "}"));
-  }
-  if (opcode() == HloOpcode::kFft) {
-    extra.push_back(StrCat("fft_type=", FftType_Name(fft_type())));
-    extra.push_back(StrCat("fft_length={", Join(fft_length(), ","), "}"));
   }
 
   if (options.print_subcomputation_mode() ==
@@ -2410,10 +2387,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
         }
         break;
     }
-  }
-  if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv ||
-      opcode() == HloOpcode::kSendDone || opcode() == HloOpcode::kRecvDone) {
-    extra.push_back(StrCat("channel_id=", channel_id_));
   }
 
   if (opcode() == HloOpcode::kGetTupleElement) {
@@ -2543,14 +2516,9 @@ HloInstructionProto HloInstruction::ToProto() const {
   if (opcode() == HloOpcode::kRng) {
     proto.set_distribution(distribution_);
   }
-  proto.set_channel_id(channel_id_);
   proto.set_infeed_config(infeed_config_);
   proto.set_custom_call_target(custom_call_target_);
   *proto.mutable_outfeed_shape() = outfeed_shape_;
-  proto.set_fft_type(fft_type_);
-  for (int64 fft_len : fft_length_) {
-    proto.add_fft_length(fft_len);
-  }
 
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
@@ -3188,7 +3156,19 @@ bool HloInstruction::IsElementwise() const {
 
     // Other operations.
     case HloOpcode::kRng:
+      return true;
     case HloOpcode::kMap:
+      if (!dimensions().empty()) {
+        // Check that the map is executed in elementwise compatible dimensions.
+        if (dimensions().size() != operand(0)->shape().dimensions_size()) {
+          return false;
+        }
+        for (int i = 0; i < dimensions().size(); ++i) {
+          if (dimensions()[i] != i) {
+            return false;
+          }
+        }
+      }
       return true;
     case HloOpcode::kFusion:
       if (fusion_kind() != FusionKind::kLoop) {
@@ -3617,4 +3597,15 @@ float HloInstruction::epsilon() const {
   return Cast<HloBatchNormInstruction>(this)->epsilon();
 }
 
+FftType HloInstruction::fft_type() const {
+  return Cast<HloFftInstruction>(this)->fft_type();
+}
+
+const std::vector<int64>& HloInstruction::fft_length() const {
+  return Cast<HloFftInstruction>(this)->fft_length();
+}
+
+int64 HloInstruction::channel_id() const {
+  return Cast<HloSendRecvInstruction>(this)->channel_id();
+}
 }  // namespace xla

@@ -330,6 +330,26 @@ py_test(
     ],
 )
 
+py_library(
+    name = "reader_dataset_ops_test_base",
+    testonly = 1,
+    srcs = [
+        "reader_dataset_ops_test_base.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:readers",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:readers",
+    ],
+)
+
 py_test(
     name = "reader_dataset_ops_test",
     size = "medium",
@@ -339,8 +359,8 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
+        ":reader_dataset_ops_test_base",
         "//tensorflow/contrib/data/python/ops:readers",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -352,6 +372,7 @@ py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:readers",
         "//third_party/py/numpy",
     ],
 )
@@ -441,6 +462,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -448,6 +470,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
@@ -478,10 +501,15 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
+        ":reader_dataset_ops_test_base",
         "//tensorflow/contrib/data/python/ops:stats_ops",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 

@@ -172,7 +172,8 @@ Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSlice(const HloInstruction*) {
+Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
+  current_properties_[kBytesAccessedKey] = shape_size_(slice->shape()) * 2;
   return Status::OK();
 }
 

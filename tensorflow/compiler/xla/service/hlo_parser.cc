@@ -777,6 +777,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
