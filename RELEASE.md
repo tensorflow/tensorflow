@@ -26,8 +26,7 @@
   * Move Keras code out of _impl folder and remove API files.
   * `tf.keras.Model.save_weights` now saves in TensorFlow format by default.
   * Enable dataset iterators to be passed to `tf.keras.Model` training/eval methods.
-* Accelerated Linear Algebra (XLA):
-* TensorFlow Debugger (tfdbg) CLI:
+* TensorFlow Debugger (tfdbg) CLI: fix an issue in which the TensorBoard Debugger Plugin could not handle total source file size exceeding gRPC message size limit (4 MB).
 * `tf.contrib`:
   * `tf.contrib.framework.zero_initializer` supports ResourceVariable.
   * Adding "constrained_optimization" to tensorflow/contrib.
