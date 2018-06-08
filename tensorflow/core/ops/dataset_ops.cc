@@ -355,6 +355,22 @@ REGISTER_OP("BatchDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("BatchDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("batch_size: int64")
+    .Input("drop_remainder: bool")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // batch_size should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // drop_remainder should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 // TODO(mrry): move SlideDataset to contrib in the future.
 REGISTER_OP("SlideDataset")
     .Input("input_dataset: variant")
@@ -371,6 +387,10 @@ REGISTER_OP("SlideDataset")
       return shape_inference::ScalarShape(c);
     });
 
+// TODO(mrry): Validate that `padded_shapes` are all vectors, the lengths of
+// `output_types` and `output_shapes` are `N` the `output_shapes` are (as far as
+// possible to tell statically) compatible with `padded_shapes`, and that
+// `padding_values` are all scalars.
 REGISTER_OP("PaddedBatchDataset")
     .Input("input_dataset: variant")
     .Input("batch_size: int64")
@@ -380,17 +400,32 @@ REGISTER_OP("PaddedBatchDataset")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate that
-                                                // `padded_shapes` are all
-                                                // vectors, the lengths of
-                                                // `output_types` and
-                                                // `output_shapes` are `N`,
-                                                // the `output_shapes` are (as
-                                                // far as possible to tell
-                                                // statically) compatible with
-                                                // `padded_shapes`, and
-                                                // that `padding_values` are
-                                                // all scalars.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // batch_size should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("PaddedBatchDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("batch_size: int64")
+    .Input("padded_shapes: N * int64")
+    .Input("padding_values: Toutput_types")
+    .Input("drop_remainder: bool")
+    .Output("handle: variant")
+    .Attr("Toutput_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("N: int >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // batch_size should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // drop_remainder should be a scalar.
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(c->num_inputs() - 1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
 
 REGISTER_OP("DenseToSparseBatchDataset")
     .Input("input_dataset: variant")

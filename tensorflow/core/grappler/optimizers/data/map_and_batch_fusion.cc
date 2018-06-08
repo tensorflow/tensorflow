@@ -40,7 +40,7 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
   GraphView graph(output);
   std::set<string> nodes_to_delete;
   for (const NodeDef& node : item.graph.node()) {
-    if (node.op() != "BatchDataset") {
+    if (node.op() != "BatchDataset" && node.op() != "BatchDatasetV2") {
       continue;
     }
 
@@ -93,7 +93,9 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     // Set the `drop_remainder` input argument.
-    {
+    if (batch_node.op() == "BatchDatasetV2") {
+      new_node->add_input(batch_node.input(2));
+    } else {
       NodeDef* tmp;
       TF_RETURN_IF_ERROR(
           graph_utils::AddScalarConstNode<bool>(false, output, &tmp));

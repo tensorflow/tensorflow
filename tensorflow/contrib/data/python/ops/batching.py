@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 
 
 def dense_to_sparse_batch(batch_size, row_shape):
@@ -219,6 +220,8 @@ def filter_irregular_batches(batch_size):
   return _apply_fn
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.batch(..., drop_remainder=True)`.")
 def batch_and_drop_remainder(batch_size):
   """A batching transformation that omits the final small batch (if present).
 
@@ -251,12 +254,16 @@ def batch_and_drop_remainder(batch_size):
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
+    # TODO(jsimsa): Switch to using `batch(..., drop_remainder=True)` any time
+    # after 6/30/2018.
     batched = dataset.batch(batch_size)
     return filter_irregular_batches(batch_size)(batched)
 
   return _apply_fn
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.padded_batch(..., drop_remainder=True)`.")
 def padded_batch_and_drop_remainder(batch_size,
                                     padded_shapes,
                                     padding_values=None):
@@ -285,6 +292,8 @@ def padded_batch_and_drop_remainder(batch_size,
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
+    # TODO(jsimsa): Switch to using `padded_batch(..., drop_remainder=True)`
+    # any time after 6/30/2018.
     batched = dataset.padded_batch(
         batch_size, padded_shapes=padded_shapes, padding_values=padding_values)
     return filter_irregular_batches(batch_size)(batched)
