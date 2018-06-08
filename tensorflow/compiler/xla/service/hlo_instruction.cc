@@ -583,6 +583,17 @@ HloInstruction::CreateCrossReplicaSum(
   return MakeUnique<HloReverseInstruction>(shape, operand, dimensions);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateGenerateToken(
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  auto instruction = WrapUnique(new HloInstruction(
+      HloOpcode::kGenerateToken, ShapeUtil::MakeTokenShape()));
+  for (auto operand : operands) {
+    instruction->AppendOperand(operand);
+  }
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateWhile(
     const Shape& shape, HloComputation* condition, HloComputation* body,
     HloInstruction* init) {
@@ -1512,6 +1523,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
           CreateDomain(shape, new_operands[0], operand_side_metadata_->Clone(),
                        user_side_metadata_->Clone());
       break;
+    case HloOpcode::kGenerateToken:
+      clone = CreateGenerateToken(new_operands);
+      break;
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1776,6 +1790,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kRng:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
+    case HloOpcode::kGenerateToken:
       return false;
 
     case HloOpcode::kParameter:
@@ -2776,6 +2791,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleGather(this);
     case HloOpcode::kDomain:
       return visitor->HandleDomain(this);
+    case HloOpcode::kGenerateToken:
+      return visitor->HandleGenerateToken(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:

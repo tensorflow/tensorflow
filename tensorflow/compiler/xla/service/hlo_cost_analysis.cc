@@ -387,6 +387,10 @@ Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleGenerateToken(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   auto lhs = convolution->operand(0);
   auto rhs = convolution->operand(1);

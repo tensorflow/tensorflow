@@ -606,6 +606,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateReshape(shape, operands[0]));
       break;
     }
+    case HloOpcode::kGenerateToken: {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateGenerateToken(operands));
+      break;
+    }
     case HloOpcode::kTuple: {
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
