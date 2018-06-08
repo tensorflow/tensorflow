@@ -844,12 +844,12 @@ HloInstruction::CreateBroadcastSequence(
   return instruction;
 }
 
-void HloInstruction::set_device_sharding(int64 device) {
-  HloSharding device_sharding = HloSharding::AssignDevice(device);
+void HloInstruction::set_single_sharding(const HloSharding& sharding) {
+  CHECK(!sharding.IsTuple()) << sharding;
   if (ShapeUtil::IsTuple(shape())) {
-    set_sharding(HloSharding::Tuple(device_sharding.GetAsShapeTree(shape())));
+    set_sharding(HloSharding::Tuple(sharding.GetAsShapeTree(shape())));
   } else {
-    set_sharding(device_sharding);
+    set_sharding(sharding);
   }
 }
 

@@ -1119,8 +1119,11 @@ class HloInstruction {
   void set_sharding(const HloSharding& sharding) {
     sharding_ = MakeUnique<HloSharding>(sharding);
   }
+  void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
-  void set_device_sharding(int64 device);
+  void set_device_sharding(int64 device) {
+    set_single_sharding(HloSharding::AssignDevice(device));
+  }
   // Remove any sharding from this operator.
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
