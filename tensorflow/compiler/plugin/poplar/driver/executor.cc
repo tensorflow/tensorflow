@@ -231,7 +231,8 @@ Status PoplarExecutor::BlockHostUntilDone(se::Stream* stream) {
 se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
   se::internal::DeviceDescriptionBuilder builder;
 
-  // This is never used
+  builder.set_name("Poplar");
+  builder.set_platform_version("1.0");
 
   auto built = builder.Build();
   return built.release();
@@ -262,10 +263,9 @@ Status PoplarExecutor::InitializePoplarDevice(
         profile_execution_ = cfg.profiling().enable_execution_trace();
         profile_io_ = cfg.profiling().enable_io_trace();
       } catch (std::logic_error) {
-        return Status {
-            tensorflow::error::INTERNAL, tensorflow::strings::Printf(
-                "No IPU devices found on ordinal %d", ordinal_)
-        };
+        return Status{tensorflow::error::INTERNAL,
+                      tensorflow::strings::Printf(
+                          "No IPU devices found on ordinal %d", ordinal_)};
       }
     }
     case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
@@ -298,21 +298,22 @@ Status PoplarExecutor::InitializePoplarDevice(
           system_type = "_TEST_SYSTEM_FOUR_TILES";
           break;
         default:
-          return Status {
-              tensorflow::error::INTERNAL, tensorflow::strings::Printf(
+          return Status{
+              tensorflow::error::INTERNAL,
+              tensorflow::strings::Printf(
                   "Invalid number of tiles %d on IPU simulator device for "
-                  "ordinal %d (must be 1 or 4)", num_tiles, ordinal_)
-          };
+                  "ordinal %d (must be 1 or 4)",
+                  num_tiles, ordinal_)};
       }
       try {
         auto target = poplar::Target::createIPUTarget(num_ipus, system_type);
         poplar_device_ = poplar::Device::createSimulatorDevice(target);
       } catch (const std::logic_error&) {
-        return Status {
-            tensorflow::error::INTERNAL, tensorflow::strings::Printf(
+        return Status{
+            tensorflow::error::INTERNAL,
+            tensorflow::strings::Printf(
                 "Failed to connect to IPU simulator device for ordinal %d",
-                ordinal_)
-        };
+                ordinal_)};
       }
       profile_compilation_ = false;
       profile_execution_ = false;
@@ -326,18 +327,17 @@ Status PoplarExecutor::InitializePoplarDevice(
       profile_io_ = false;
       break;
     default:
-      return Status {
-          tensorflow::error::INTERNAL, tensorflow::strings::Printf(
-              "Unrecognized poplar device type for ordinal %d: %d", ordinal_,
-              type)
-      };
+      return Status{tensorflow::error::INTERNAL,
+                    tensorflow::strings::Printf(
+                        "Unrecognized poplar device type for ordinal %d: %d",
+                        ordinal_, type)};
   }
 
   if (!poplar_device_.tryToAcquire()) {
-    return Status {
-        tensorflow::error::RESOURCE_EXHAUSTED, tensorflow::strings::Printf(
-            "Unable to acquire poplar device type for ordinal %d", ordinal_)
-    };
+    return Status{
+        tensorflow::error::RESOURCE_EXHAUSTED,
+        tensorflow::strings::Printf(
+            "Unable to acquire poplar device type for ordinal %d", ordinal_)};
   }
 
   random_type_ = cfg.random_type();
@@ -411,15 +411,14 @@ void PoplarExecutor::FlattenedDeviceMemoryList(InputPairList& list,
   }
 }
 
-void PoplarExecutor::CreateArgsHandleMap(
-    ArgsHandleMap& arg_map, const Args& args,
-    const std::vector<xla::Shape>& shapes,
-    const std::vector<bool>& streamed) {
+void PoplarExecutor::CreateArgsHandleMap(ArgsHandleMap& arg_map,
+                                         const Args& args,
+                                         const std::vector<xla::Shape>& shapes,
+                                         const std::vector<bool>& streamed) {
   for (unsigned int a = 0; a < args.size(); a++) {
     InputPairList bufs;
     FlattenedDeviceMemoryList(bufs, shapes[a],
-                              const_cast<void*>(args[a].opaque()),
-                              streamed[a]);
+                              const_cast<void*>(args[a].opaque()), streamed[a]);
     for (unsigned i = 0; i < bufs.size(); i++) {
       arg_map[GetInputCopyHandle(a, i)] = bufs[i];
     }
@@ -536,9 +535,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::GetTupleBufferByIndex(
   return se::DeviceMemoryBase(bufs[value], size);
 }
 
-void PoplarExecutor::FlattenedOutputDeviceMemoryList(
-    std::vector<void*>& list, const xla::Shape& shape,
-    void* base) {
+void PoplarExecutor::FlattenedOutputDeviceMemoryList(std::vector<void*>& list,
+                                                     const xla::Shape& shape,
+                                                     void* base) {
   TensorControl* tc = static_cast<TensorControl*>(base);
   if (xla::ShapeUtil::IsTuple(shape)) {
     void** ptrs = reinterpret_cast<void**>(tc->data);
@@ -668,6 +667,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         if (profile_execution_) {
           poplar::OptionFlags opts;
           opts.set("doLayerWiseBreakdown", "true");
+          // opts.set("doLayerWisePerIPUBreakdown", "true");
+          // opts.set("doLayerWisePerTileBreakdown", "true");
 
           std::stringstream stream;
           if (executable.DumpReport()) {
