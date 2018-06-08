@@ -398,6 +398,11 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     instruction->AppendOperand(operand);
   }
   instruction->called_computations_.push_back(map_computation);
+  // TODO(b/65689298) Remove code below once Map is generalized to accept
+  // arbitrary map dimensions.
+  instruction->dimensions_.resize(ShapeUtil::Rank(shape));
+  std::iota(instruction->dimensions_.begin(), instruction->dimensions_.end(),
+            0);
   return instruction;
 }
 
@@ -1603,7 +1608,7 @@ bool HloInstruction::HasLiteral() const { return literal_ != nullptr; }
 
 bool HloInstruction::CanHaveDimensionsField() const {
   return (opcode() == HloOpcode::kReverse ||
-          opcode() == HloOpcode::kConcatenate ||
+          opcode() == HloOpcode::kConcatenate || opcode() == HloOpcode::kMap ||
           opcode() == HloOpcode::kReduce || opcode() == HloOpcode::kBroadcast ||
           opcode() == HloOpcode::kTranspose);
 }
@@ -3151,7 +3156,19 @@ bool HloInstruction::IsElementwise() const {
 
     // Other operations.
     case HloOpcode::kRng:
+      return true;
     case HloOpcode::kMap:
+      if (!dimensions().empty()) {
+        // Check that the map is executed in elementwise compatible dimensions.
+        if (dimensions().size() != operand(0)->shape().dimensions_size()) {
+          return false;
+        }
+        for (int i = 0; i < dimensions().size(); ++i) {
+          if (dimensions()[i] != i) {
+            return false;
+          }
+        }
+      }
       return true;
     case HloOpcode::kFusion:
       if (fusion_kind() != FusionKind::kLoop) {
