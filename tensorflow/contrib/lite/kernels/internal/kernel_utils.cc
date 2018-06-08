@@ -409,7 +409,7 @@ void LstmStep(
   }
 
   // Save quantization and matmul computation for all zero input.
-  const bool is_cell_state_all_zeros =
+  bool is_cell_state_all_zeros =
       tensor_utils::IsZeroVector(cell_state_ptr, n_batch * n_cell);
 
   // For each batch and cell: update input gate.
@@ -455,6 +455,8 @@ void LstmStep(
                              params->cell_clip, cell_state_ptr);
   }
 
+  is_cell_state_all_zeros =
+      tensor_utils::IsZeroVector(cell_state_ptr, n_batch * n_cell);
   // For each batch and cell: update the output gate.
   if (use_peephole && !is_cell_state_all_zeros) {
     VectorMultiply(cell_to_output_weights_ptr, n_cell,
