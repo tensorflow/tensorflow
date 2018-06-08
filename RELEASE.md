@@ -22,7 +22,7 @@
   * `tf.keras.Model.save_weights` now saves in TensorFlow format by default.
   * Enable dataset iterators to be passed to `tf.keras.Model` training/eval methods.
 * Accelerated Linear Algebra (XLA):
-* TensorFlow Debugger (tfdbg) CLI:
+* TensorFlow Debugger (tfdbg): fix an issue in which the TensorBoard Debugger Plugin could not handle total source file size exceeding gRPC message size limit (4 MB).
 * `tf.contrib`:
   * Add `tf.contrib.data.choose_from_datasets()`.
   * `tf.contrib.data.make_csv_dataset()` now supports line breaks in quoted strings. Two arguments were removed from `make_csv_dataset`.
