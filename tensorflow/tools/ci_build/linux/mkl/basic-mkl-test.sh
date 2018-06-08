@@ -26,4 +26,4 @@ function upsearch () {
 # Set up WORKSPACE.
 WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 
-BUILD_TAG=mkl-ci-test CI_BUILD_USER_FORCE_BADNAME=yes ${WORKSPACE}/tensorflow/tools/ci_build/ci_build.sh cpu tensorflow/tools/ci_build/linux/mkl/run_mkl.sh
+BUILD_TAG=mkl-ci-test CI_BUILD_USER_FORCE_BADNAME=yes ${WORKSPACE}/tensorflow/tools/ci_build/ci_build.sh cpu tensorflow/tools/ci_build/linux/cpu/run_mkl.sh
