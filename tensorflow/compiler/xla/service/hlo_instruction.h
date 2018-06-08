@@ -802,9 +802,6 @@ class HloInstruction {
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
 
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
-
   // Replaces the use of this instruction in "user" with "new_producer". Note
   // that there might be multiple uses of this instruction in "user"; all will
   // be replaced.
@@ -888,17 +885,6 @@ class HloInstruction {
     CHECK_EQ(HloOpcode::kParameter, opcode_);
     return parameter_number_;
   }
-
-  // Returns the dimension sizes or numbers associated with this instruction.
-  //
-  // Precondition: opcode() is one of: concatenate, reduce, broadcast, reshape,
-  // and reverse.
-  const std::vector<int64>& dimensions() const;
-  int64 dimensions(int64 index) const;
-
-  // Accessor for the dimension in which a concatenate HLO should occur.
-  // Precondition: opcode() == HloOpcode::kConcatenate
-  int64 concatenate_dimension() const;
 
   // Returns the tuple index associated with this instruction.
   //
@@ -1385,7 +1371,7 @@ class HloInstruction {
   bool IsElementwiseOnOperand(int64 operand_idx) const;
 
   // Returns true if this instruction is elementwise on all its operands.
-  bool IsElementwise() const;
+  virtual bool IsElementwise() const;
 
   // Returns true if this elementwise instruction implicitly broadcasts operand
   // `operand_idx`.
@@ -1521,6 +1507,20 @@ class HloInstruction {
 
   // Delegates to HloSendRecvInstruction::channel_id.
   int64 channel_id() const;
+
+  // Returns the dimension sizes or numbers associated with this instruction.
+  virtual const std::vector<int64>& dimensions() const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+  virtual int64 dimensions(int64 index) const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Delegates to HloConcatenateInstruction::concatenate_dimension.
+  int64 concatenate_dimension() const;
+
+  // Returns whether this instruction does a rank-2 transposition.
+  bool IsRank2Transpose() const;
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1531,6 +1531,10 @@ class HloInstruction {
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
   void AppendOperand(HloInstruction* operand);
+
+  void AppendComputation(HloComputation* computation) {
+    called_computations_.push_back(computation);
+  }
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -1615,10 +1619,6 @@ class HloInstruction {
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloCloneContext* context = nullptr) const;
 
-  // Returns true if this instruction can legally have the dimensions field
-  // set. Used for checking precondition of dimensions field accessors.
-  bool CanHaveDimensionsField() const;
-
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
 
@@ -1661,10 +1661,6 @@ class HloInstruction {
 
   // Constant index, only present for kGetTupleElement.
   int64 tuple_index_ = -1;
-
-  // Dimensions present for some operations that require reshaping or
-  // broadcasting, including Reshape, Reduce, ReduceWindow, and Reverse.
-  std::vector<int64> dimensions_;
 
   // Describes the window in a windowed operation such as convolution.
   std::unique_ptr<Window> window_;

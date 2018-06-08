@@ -207,6 +207,176 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
       HloCloneContext* context) const override;
 };
 
+class HloReverseInstruction : public HloInstruction {
+ public:
+  explicit HloReverseInstruction(const Shape& shape, HloInstruction* operand,
+                                 tensorflow::gtl::ArraySlice<int64> dimensions);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  const std::vector<int64>& dimensions() const override { return dimensions_; }
+  int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<int64> dimensions_;
+};
+
+class HloConcatenateInstruction : public HloInstruction {
+ public:
+  explicit HloConcatenateInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      int64 dimension);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  const std::vector<int64>& dimensions() const override { return dimensions_; }
+  int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  // Accessor for the dimension in which a concatenate HLO should occur.
+  int64 concatenate_dimension() const { return dimensions(0); }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<int64> dimensions_;
+};
+
+class HloReduceInstruction : public HloInstruction {
+ public:
+  explicit HloReduceInstruction(
+      const Shape& shape, HloInstruction* arg, HloInstruction* init_value,
+      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+      HloComputation* reduce_computation);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  const std::vector<int64>& dimensions() const override { return dimensions_; }
+  int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<int64> dimensions_;
+};
+
+class HloTransposeInstruction : public HloInstruction {
+ public:
+  explicit HloTransposeInstruction(
+      const Shape& shape, HloInstruction* operand,
+      tensorflow::gtl::ArraySlice<int64> dimensions);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  const std::vector<int64>& dimensions() const override { return dimensions_; }
+  int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  // Returns whether this instruction does a rank-2 transposition.
+  bool IsRank2Transpose() const;
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<int64> dimensions_;
+};
+
+class HloBroadcastInstruction : public HloInstruction {
+ public:
+  explicit HloBroadcastInstruction(
+      const Shape& shape, HloInstruction* operand,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimension);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  const std::vector<int64>& dimensions() const override { return dimensions_; }
+  int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<int64> dimensions_;
+};
+
+class HloMapInstruction : public HloInstruction {
+ public:
+  explicit HloMapInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* map_computation,
+      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands = {});
+  // Returns the dimension sizes or numbers associated with this instruction.
+  const std::vector<int64>& dimensions() const override { return dimensions_; }
+  int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  // Returns true if this instruction is binary and elementwise.
+  bool IsElementwise() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<int64> dimensions_;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
