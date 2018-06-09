@@ -47,8 +47,7 @@ class HloScheduleTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return MakeUnique<HloModule>("test_module", VersionedComputationHandle(),
-                                 config);
+    return MakeUnique<HloModule>("test_module", config);
   }
 
   HloVec RemoveHlo(const HloVec& input,

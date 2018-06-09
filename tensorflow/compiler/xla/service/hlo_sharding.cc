@@ -141,6 +141,20 @@ StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
   }
 }
 
+StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
+  if (IsTuple()) {
+    // TODO(b/109903108): An empty tuple has one leaf for ShapeTree, while it
+    // has zero leaves for ShapeUtil. This needs cleanup.
+    int64 shape_leaves =
+        ShapeUtil::IsEmptyTuple(shape) ? 1 : ShapeUtil::GetLeafCount(shape);
+    TF_RET_CHECK(shape_leaves == tuple_elements_.size())
+        << "Shape " << ShapeUtil::HumanString(shape) << " has " << shape_leaves
+        << " leaf nodes while this sharding has " << tuple_elements_.size();
+    return *this;
+  }
+  return Tuple(ShapeTree<HloSharding>(shape, *this));
+}
+
 StatusOr<int64> HloSharding::UniqueDevice() const {
   if (IsTuple()) {
     if (tuple_elements_.empty()) {
@@ -387,6 +401,19 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
   sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
   return ShapeUtil::IsTuple(sub_shape) ? Tuple(sub_shape_tree)
                                        : sub_shape_tree.element(ShapeIndex({}));
+}
+
+tensorflow::gtl::optional<HloSharding> HloSharding::ExtractSingleSharding()
+    const {
+  if (!IsTuple()) {
+    return *this;
+  }
+  for (int64 i = 1; i < tuple_elements_.size(); ++i) {
+    if (tuple_elements_[0] != tuple_elements_[i]) {
+      return tensorflow::gtl::optional<HloSharding>();
+    }
+  }
+  return tuple_elements_.front();
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {

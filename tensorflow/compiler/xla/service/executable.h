@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -130,12 +129,6 @@ class Executable {
   const bool has_module() const { return hlo_module_ != nullptr; }
 
   const HloModuleConfig& module_config() const { return hlo_module_->config(); }
-
-  // Returns the versioned computation handle of the computation computed by
-  // this executable.
-  const VersionedComputationHandle& entry_computation_handle() const {
-    return hlo_module_->entry_computation_handle();
-  }
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.

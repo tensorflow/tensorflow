@@ -57,8 +57,9 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
-        "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/tools:freeze_graph_lib",
     ],
 )
