@@ -214,7 +214,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   //                           max_workspace_size_bytes, new_graph_def,
   //                           precision_mode, minimum_segment_size,
   //                           static_graph_properties, nullptr);
-  ConvertAfterShapes(cp);
+  return ConvertAfterShapes(cp);
 }
 
 // Function to get subsegment information structure.
