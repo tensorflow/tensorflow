@@ -464,8 +464,8 @@ BENCHMARK(BM_executor)->ArgPair(1024, 1024);
 static void BM_FeedInputFetchOutput(int iters) {
   Graph* g = new Graph(OpRegistry::Global());
   // z = x + y: x and y are provided as benchmark inputs.  z is the
-  // output of the benchmark.  Conceptually, the caller is "a", the
-  // benchmark is "b".
+  // output of the benchmark.  Conceptually, the caller is ALICE, the
+  // benchmark is BOB.
   Node* x = test::graph::Recv(g, "x", "float", ALICE, 1, BOB);
   Node* y = test::graph::Recv(g, "y", "float", ALICE, 1, BOB);
   Node* sum = test::graph::Add(g, x, y);
