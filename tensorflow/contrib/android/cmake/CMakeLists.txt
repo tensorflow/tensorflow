@@ -16,6 +16,10 @@
 cmake_minimum_required(VERSION 3.4.1)
 include(ExternalProject)
 
+# SET ANDROID ARCHITECHTURE HERE
+set(ANDROID_ARCH arm64-v8a)
+#set(ANDROID_ARCH armeabi-v7a)
+
 # TENSORFLOW_ROOT_DIR:
 #    root directory of tensorflow repo
 #    used for shared source files and pre-built libs
@@ -25,15 +29,15 @@ set(TARGET_NSYNC_LIB ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/download
 
 add_library(lib_proto STATIC IMPORTED )
 set_target_properties(lib_proto PROPERTIES IMPORTED_LOCATION
-    ${PREBUILT_DIR}/protobuf_android/armeabi-v7a/lib/libprotobuf.a)
+    ${PREBUILT_DIR}/protobuf_android/${ANDROID_ARCH}/lib/libprotobuf.a)
 
 add_library(lib_nsync STATIC IMPORTED )
 set_target_properties(lib_nsync PROPERTIES IMPORTED_LOCATION
-    ${TARGET_NSYNC_LIB}/builds/armeabi-v7a.android.c++11/libnsync.a)
+    ${TARGET_NSYNC_LIB}/builds/${ANDROID_ARCH}.android.c++11/libnsync.a)
 
 add_library(lib_tf STATIC IMPORTED )
 set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
-        ${PREBUILT_DIR}/lib/android_armeabi-v7a/libtensorflow-core.a)
+        ${PREBUILT_DIR}/lib/android_${ANDROID_ARCH}/libtensorflow-core.a)
 
 
 # Change to compile flags should be replicated into bazel build file
@@ -42,7 +46,8 @@ set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIS_SLIM_BUILD \
                      -std=c++11 -fno-rtti -fno-exceptions \
                      -O2 -Wno-narrowing -fomit-frame-pointer \
-                     -mfpu=neon -mfloat-abi=softfp -fPIE -fPIC \
+                     -mfpu=neon -mfloat-abi=softfp \
+                      -fPIE -fPIC \
                      -ftemplate-depth=900 \
                      -DGOOGLE_PROTOBUF_NO_RTTI \
                      -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
@@ -78,7 +83,7 @@ target_link_libraries(tensorflow_inference
 include_directories(
     ${PREBUILT_DIR}/proto
     ${PREBUILT_DIR}/proto_text
-    ${PREBUILT_DIR}/protobuf_android/armeabi-v7a/include
+    ${PREBUILT_DIR}/protobuf_android/${ANDROID_ARCH}/include
     ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/downloads/eigen
     ${TENSORFLOW_ROOT_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..)

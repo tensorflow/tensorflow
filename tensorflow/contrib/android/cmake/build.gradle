@@ -1,6 +1,8 @@
 buildscript {
     repositories {
         mavenCentral()
+        google()
+        jcenter()
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:3.1.2'
@@ -27,7 +29,8 @@ android {
         versionCode 1
         versionName "1.0"
         ndk {
-            abiFilters  'armeabi-v7a'
+            //abiFilters  'armeabi-v7a'
+            abiFilters  'arm64-v8a'
         }
         externalNativeBuild {
             cmake {
@@ -111,4 +114,10 @@ if(! Os.isFamily(Os.FAMILY_WINDOWS)) {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'org.codehaus.groovy:groovy-all:2.4.12'
+}
+
+repositories {
+    google()
+    jcenter()
 }
