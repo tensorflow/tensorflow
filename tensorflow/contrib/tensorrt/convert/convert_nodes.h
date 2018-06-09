@@ -38,69 +38,27 @@ const int FP32MODE = 0;
 const int FP16MODE = 1;
 const int INT8MODE = 2;
 
-struct SubGraphParams {
-  SubGraphParams(
-      tensorflow::Graph& inp_graph,
-      const std::set<int>& subgraph_node_id_numbers,
-      const std::vector<std::pair<int, int>>& input_indices,
-      const std::vector<std::pair<int, int>>& output_indices,
-      size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
-      const tensorflow::grappler::GraphProperties& current_graph_properties,
-      std::unordered_map<string, std::pair<int, string>>* output_edges,
-      tensorflow::NodeDef* constructed_trt_node,
-      int engine_precision_mode = FP32MODE, const string& device_name = "",
-      std::shared_ptr<nvinfer1::IGpuAllocator> allocator = nullptr,
-      int cuda_gpu_id = 0)
-      : graph(inp_graph),
-        subgraph_node_ids(subgraph_node_id_numbers),
-        input_inds(input_indices),
-        output_inds(output_indices),
-        max_batch_size(max_supported_batch_size),
-        max_workspace_size_bytes(max_consumed_workspace_size_bytes),
-        graph_properties(current_graph_properties),
-        output_edge_map(output_edges),
-        trt_node(constructed_trt_node),
-        precision_mode(engine_precision_mode),
-        device_name_(device_name),
-        allocator_(allocator),
-        cuda_gpu_id_(cuda_gpu_id) {}
-
-  tensorflow::Graph& graph;
-  const std::set<int>& subgraph_node_ids;
-  const std::vector<std::pair<int, int>>& input_inds;   // {node_id, output_idx}
-  const std::vector<std::pair<int, int>>& output_inds;  // {node_id, output_idx}
-  size_t max_batch_size;
-  size_t max_workspace_size_bytes;
-  const tensorflow::grappler::GraphProperties& graph_properties;
-  std::unordered_map<string, std::pair<int, string>>* output_edge_map;
-  tensorflow::NodeDef* trt_node;
-  const int precision_mode;
-  const string device_name_;
-  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
-  const int cuda_gpu_id_;
-};
-
 struct EngineConnections {
   EngineConnections(const string& outside, int out_id, int out_port,
                     const string& inside, int in_id, int in_port,
-                    bool input_edge,int port)
+                    bool input_edge, int port)
       : outside_node_name(outside),
         outside_id(out_id),
         outside_port(out_port),
         inside_node_name(inside),
         inside_id(in_id),
         inside_port(in_port),
-        is_input_edge(input_edge),port_number(port) {}
+        is_input_edge(input_edge),
+        port_number(port) {}
   const string outside_node_name;
   const int outside_id;
   const int outside_port;
   tensorflow::PartialTensorShape outside_shape;
-  tensorflow::DataType outside_type;
+  tensorflow::DataType connection_type;
   const string inside_node_name;
   const int inside_id;
   const int inside_port;
   tensorflow::PartialTensorShape inside_shape;
-  tensorflow::DataType inside_type;
   bool is_input_edge;
   int port_number;
 };
@@ -121,17 +79,15 @@ struct EngineInfo {
   std::vector<int> cached_engine_batches;
   int precision_mode;
 };
-// TODO(sami): Replace references with const reference or pointers
-tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
-tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
-tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,
-                                                      tensorflow::Node* c_node);
+;
+
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
     const std::vector<int>& subgraph_node_ids,
     std::vector<EngineConnections>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope);
+
 tensorflow::Status ConvertSubgraphToEngine(
     const tensorflow::GraphDef& gdef, nvinfer1::IBuilder* builder,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
