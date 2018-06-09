@@ -116,7 +116,7 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python:memory_optimizer_test \
     -//tensorflow/python:nn_fused_batchnorm_test \
     -//tensorflow/python:timeline_test \
-    -//tensorflow/python:virtual_gpu_test
+    -//tensorflow/python:virtual_gpu_test \
     -//tensorflow/python:function_def_to_graph_test \
     -//tensorflow/python:gradient_descent_test \
     -//tensorflow/python:momentum_test \
