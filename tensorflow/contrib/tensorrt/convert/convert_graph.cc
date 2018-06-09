@@ -59,9 +59,13 @@ namespace tensorrt {
 namespace convert {
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
+
+// Returns compiled TRT version information {Maj, Min, Patch}
 std::vector<int> GetLinkedTensorRTVersion() {
   return {NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH};
 }
+
+// Returns loaded TRT library version {Maj, Min, Patch}
 std::vector<int> GetLoadedTensorRTVersion() {
   int ver = getInferLibVersion();
   int ver_major = ver / 1000;
@@ -102,229 +106,6 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
           PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
 }
 
-void GetSubGraphIncomingEdges(const tensorflow::Graph& graph,
-                              const std::set<int>& subgraph_node_ids,
-                              tensorflow::EdgeSet* incoming_edges) {
-  for (int node_id : subgraph_node_ids) {
-    const tensorflow::Node* node = graph.FindNodeId(node_id);
-    for (const tensorflow::Edge* edge : node->in_edges()) {
-      if (!subgraph_node_ids.count(edge->src()->id()) &&
-          !edge->src()->IsSource() && !edge->IsControlEdge()) {
-        incoming_edges->insert(edge);
-        VLOG(2) << "INCOMING " << edge->src()->name() << " -> " << node->name()
-                << " Y, ";
-      } else {
-        VLOG(2) << "INCOMING " << edge->src()->name() << " -> " << node->name()
-                << " N, ";
-      }
-    }
-  }
-}
-
-void GetSubGraphOutgoingEdges(const tensorflow::Graph& graph,
-                              const std::set<int>& subgraph_node_ids,
-                              tensorflow::EdgeSet* outgoing_edges) {
-  for (int node_id : subgraph_node_ids) {
-    const tensorflow::Node* node = graph.FindNodeId(node_id);
-    for (const tensorflow::Edge* edge : node->out_edges()) {
-      if (!subgraph_node_ids.count(edge->dst()->id()) &&
-          !edge->dst()->IsSink() && !edge->IsControlEdge()) {
-        VLOG(2) << "OUTGOING " << node->name() << " -> " << edge->dst()->name()
-                << " Y, ";
-        outgoing_edges->insert(edge);
-      } else {
-        VLOG(2) << "OUTGOING " << node->name() << " -> " << edge->dst()->name()
-                << " N, ";
-      }
-    }
-  }
-}
-
-std::pair<string, int> ParseTensorName(const string& name,
-                                       int default_idx = 0) {
-  string name_no_idx = name;
-  int idx = default_idx;
-  const size_t sep = name_no_idx.find_last_of(':');
-  if (sep != string::npos) {
-    name_no_idx = name_no_idx.substr(0, sep);
-    idx = std::stoi(name.substr(sep + 1));
-  }
-  return std::make_pair(name_no_idx, idx);
-}
-
-std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
-    const std::vector<string>& tensor_names) {
-  std::unordered_map<string, std::vector<int>> result;
-  for (const string& tensor_name : tensor_names) {
-    string node_name;
-    int index;
-    std::tie(node_name, index) = ParseTensorName(tensor_name);
-    result[node_name].push_back(index);
-  }
-  return result;
-}
-
-// TODO(sami): convert references to pointers
-struct ConvertGraphParams {
-  ConvertGraphParams(
-      tensorflow::Graph& inp_graph,
-      const std::vector<string>& output_node_names,
-      const std::set<int>& subgraph_node_id_numbers,
-      size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
-      const tensorflow::grappler::GraphProperties& current_graph_properties,
-      std::unordered_map<string, std::pair<int, string>>* output_edges,
-      int engine_precision_mode, const string& device_name,
-      std::shared_ptr<nvinfer1::IGpuAllocator> allocator, int cuda_gpu_id)
-      : graph(inp_graph),
-        output_names(output_node_names),
-        subgraph_node_ids(subgraph_node_id_numbers),
-        max_batch_size(max_supported_batch_size),
-        max_workspace_size_bytes(max_consumed_workspace_size_bytes),
-        graph_properties(current_graph_properties),
-        output_edge_map(output_edges),
-        precision_mode(engine_precision_mode),
-        device_name_(device_name),
-        allocator_(allocator),
-        cuda_gpu_id_(cuda_gpu_id) {}
-  tensorflow::Graph& graph;
-  const std::vector<string>& output_names;
-  const std::set<int>& subgraph_node_ids;
-  size_t max_batch_size;
-  size_t max_workspace_size_bytes;
-  const tensorflow::grappler::GraphProperties& graph_properties;
-  std::unordered_map<string, std::pair<int, string>>* output_edge_map;
-  int precision_mode;
-  string device_name_;
-  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
-  int cuda_gpu_id_;
-  std::vector<std::pair<int, int>> subgraph_inputs;
-  std::vector<std::pair<int, int>> subgraph_outputs;
-  tensorflow::EdgeSet subgraph_incoming_edges;
-  tensorflow::EdgeSet subgraph_outgoing_edges;
-};
-
-static tensorflow::Status FillSubGraphEdgeSets(ConvertGraphParams* p) {
-  GetSubGraphIncomingEdges(p->graph, p->subgraph_node_ids,
-                           &p->subgraph_incoming_edges);
-
-  std::set<std::pair<int, int>> unique_tensors;
-  // Add only unique input source nodes. If output of an outside node is shared
-  // between multiple nodes inside the engine, only one edge should be created
-  for (const tensorflow::Edge* edge : p->subgraph_incoming_edges) {
-    unique_tensors.insert({edge->src()->id(), edge->src_output()});
-  }
-  p->subgraph_inputs.insert(p->subgraph_inputs.begin(), unique_tensors.begin(),
-                            unique_tensors.end());
-  GetSubGraphOutgoingEdges(p->graph, p->subgraph_node_ids,
-                           &p->subgraph_outgoing_edges);
-  unique_tensors.clear();
-  // Similar to above, if multiple ouside nodes are sharing the output of an
-  // internal node only one output port should be created and shared between
-  // outputs
-  for (const tensorflow::Edge* edge : p->subgraph_outgoing_edges) {
-    unique_tensors.insert({edge->src()->id(), edge->src_output()});
-  }
-  p->subgraph_outputs.reserve(unique_tensors.size());
-  p->subgraph_outputs.insert(p->subgraph_outputs.begin(),
-                             unique_tensors.begin(), unique_tensors.end());
-  return tensorflow::Status::OK();
-}
-
-tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
-  TF_RETURN_IF_ERROR(FillSubGraphEdgeSets(params));
-  tensorflow::NodeDef trt_node_def;
-  SubGraphParams s(params->graph, params->subgraph_node_ids,
-                   params->subgraph_inputs, params->subgraph_outputs,
-                   params->max_batch_size, params->max_workspace_size_bytes,
-                   params->graph_properties, params->output_edge_map,
-                   &trt_node_def, params->precision_mode, params->device_name_,
-                   params->allocator_, params->cuda_gpu_id_);
-  TF_RETURN_IF_ERROR(InjectCalibrationNode(s));
-  tensorflow::Status status;
-  tensorflow::Node* trt_node = params->graph.AddNode(trt_node_def, &status);
-
-  TF_RETURN_IF_ERROR(status);
-
-  for (auto in_edge :
-       params->subgraph_incoming_edges) {  // loop over incoming edges and
-                                           // attach them to calib node
-    auto src_output = in_edge->src_output();
-    auto dst_node = in_edge->dst();
-    auto dst_input = in_edge->dst_input();
-    VLOG(0) << " update edge " << trt_node->name() << ":" << src_output
-            << " -> " << dst_node->name() << ":" << dst_input;
-    TF_RETURN_IF_ERROR(
-        params->graph.UpdateEdge(trt_node, src_output, dst_node, dst_input));
-  }
-  return tensorflow::Status::OK();
-}
-
-tensorflow::Status ConvertSubGraphToTensorRT(ConvertGraphParams* params) {
-  TF_RETURN_IF_ERROR(FillSubGraphEdgeSets(params));
-  tensorflow::NodeDef trt_node_def;
-
-  SubGraphParams s(params->graph, params->subgraph_node_ids,
-                   params->subgraph_inputs, params->subgraph_outputs,
-                   params->max_batch_size, params->max_workspace_size_bytes,
-                   params->graph_properties, params->output_edge_map,
-                   &trt_node_def, params->precision_mode, params->device_name_,
-                   params->allocator_, params->cuda_gpu_id_);
-  TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(s));
-  tensorflow::Status status;
-  tensorflow::Node* trt_node = params->graph.AddNode(trt_node_def, &status);
-
-  // AddNode does not wire edges.
-  // Re-map incoming edges to use the new TRT node instead of the orig subgraph
-  std::map<std::pair<int, int>, int> subgraph_edge_to_input_map;
-  for (size_t i = 0; i < params->subgraph_inputs.size(); ++i) {
-    subgraph_edge_to_input_map.insert({params->subgraph_inputs.at(i), i});
-  }
-  std::set<std::pair<int, int>> unique_tensors;
-  for (const tensorflow::Edge* edge : params->subgraph_incoming_edges) {
-    std::pair<int, int> old_src = {edge->src()->id(), edge->src_output()};
-    if (unique_tensors.count(old_src)) continue;
-    unique_tensors.insert(old_src);
-    int new_src_output = subgraph_edge_to_input_map.at(old_src);
-    params->graph.AddEdge(edge->src(), edge->src_output(), trt_node,
-                          new_src_output);
-    VLOG(1) << "Wire " << edge->src()->name() << ":" << edge->src_output()
-            << " -> " << trt_node->name() << ":" << new_src_output;
-    params->graph.RemoveEdge(edge);
-  }
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << "new edge count: " << trt_node->in_edges().size();
-    for (const tensorflow::Edge* edge : trt_node->in_edges()) {
-      VLOG(2) << edge->src()->name() << " port: " << edge->src_output();
-    }
-  }
-  TF_RETURN_IF_ERROR(status);
-
-  // Re-map outgoing edges to use the new TRT node instead of the orig subgraph
-  std::map<std::pair<int, int>, int> subgraph_edge_to_output_map;
-  for (size_t i = 0; i < params->subgraph_outputs.size(); ++i) {
-    subgraph_edge_to_output_map.insert({params->subgraph_outputs.at(i), i});
-  }
-  TF_RETURN_IF_ERROR(status);
-  for (const tensorflow::Edge* edge : params->subgraph_outgoing_edges) {
-    std::pair<int, int> old_src = {edge->src()->id(), edge->src_output()};
-    int new_src_output = subgraph_edge_to_output_map.at(old_src);
-    TF_RETURN_IF_ERROR(params->graph.UpdateEdge(
-        trt_node, new_src_output, edge->dst(), edge->dst_input()));
-    VLOG(1) << "Wire " << trt_node->name() << ":" << new_src_output << " -> "
-            << edge->dst()->name() << ":" << edge->dst_input();
-  }
-  // Remove the original subgraph
-  for (int node_id : params->subgraph_node_ids) {
-    tensorflow::Node* node = params->graph.FindNodeId(node_id);
-    // Don't remove the input placeholders
-    if (node->type_string() == "Placeholder") {
-      continue;
-    }
-    params->graph.RemoveNode(node);
-  }
-  return tensorflow::Status::OK();
-}
-
 tensorflow::Status BuildNodeMap(
     const tensorflow::Graph& graph,
     std::unordered_map<string, tensorflow::Node*>* node_map) {
@@ -338,17 +119,18 @@ tensorflow::Status BuildNodeMap(
 }
 
 }  // namespace
+// Function to get calibration from ResourceMgr and put them into nodedef.
 tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph) {
   VLOG(0) << "Starting Calib Conversion";
   infer_graph->CopyFrom(graph_def);
   auto trt_rm = tensorflow::tensorrt::TRTResourceManager::instance();
   auto calib_rm = trt_rm->getManager("TRTCalibration");
-  int num_nodes=infer_graph->node_size();
-  for (int i=0;i<num_nodes;++i){
-    auto n=infer_graph->mutable_node(i);
+  int num_nodes = infer_graph->node_size();
+  for (int i = 0; i < num_nodes; ++i) {
+    auto n = infer_graph->mutable_node(i);
     if (n->op() == "TRTEngineOp") {
-      VLOG(1)<<"Processing "<<n->name();
+      VLOG(1) << "Processing " << n->name();
       string container_name = n->attr().at("segment_funcdef_name").s();
       tensorflow::tensorrt::TRTCalibrationResource* cres = nullptr;
       auto status = calib_rm->Lookup(container_name, "Calibrator", &cres);
@@ -380,6 +162,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
   return tensorflow::Status::OK();
 }
 
+// Entry function from Python.
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
@@ -394,8 +177,11 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   tensorflow::DeviceProperties device_properties;
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
-  tensorflow::grappler::Cluster* cluster =
-      new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
+  device_properties.set_num_cores(3584);
+  device_properties.set_frequency(1531);
+  std::unique_ptr<tensorflow::grappler::Cluster> cluster(
+      new tensorflow::grappler::VirtualCluster(
+          {{"/GPU:0", device_properties}}));
 
   // single machine
   int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
@@ -405,7 +191,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   tensorflow::RewriterConfig rw_cfg;
   tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
   tensorflow::GraphDef gdef;
-  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster, item, &gdef));
+  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, &gdef));
   item.graph = gdef;
 
   // AJ refactoring shape inference through grappler/GraphProperties.
@@ -428,9 +214,10 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   //                           max_workspace_size_bytes, new_graph_def,
   //                           precision_mode, minimum_segment_size,
   //                           static_graph_properties, nullptr);
-  return ConvertAfterShapes(cp);
+  ConvertAfterShapes(cp);
 }
 
+// Function to get subsegment information structure.
 EngineInfo GetEngineInfo(
     const tensorflow::Graph* g,
     const tensorflow::grappler::GraphProperties& graph_properties,
@@ -472,9 +259,12 @@ EngineInfo GetEngineInfo(
             created_edges.insert({s, port});
             input_port++;
           }
-          info.connections.emplace_back(input_node->name(), input_node->id(),
-                                        edge->src_output(), node_name, node_id,
-                                        edge->dst_input(), true, port);
+          EngineConnections ec(input_node->name(), input_node->id(),
+                               edge->src_output(), node_name, node_id,
+                               edge->dst_input(), true, port);
+          ec.connection_type = input_node->output_type(edge->src_output());
+
+          info.connections.emplace_back(std::move(ec));
         }
       }
     }
@@ -512,6 +302,7 @@ EngineInfo GetEngineInfo(
   return info;
 }
 
+// Function to insert a TRT node into the graph.
 tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
                                  const std::vector<EngineInfo>& infos, int pos,
                                  tensorflow::NodeDef* trtNode,
@@ -534,7 +325,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
         out_types.resize(conn.port_number + 1);
       }
       out_shapes.at(conn.port_number) = out_shape;
-      out_types.at(conn.port_number) = conn.inside_type;
+      out_types.at(conn.port_number) = conn.connection_type;
       continue;
     } else {  // input edge
       tensorflow::TensorShapeProto in_shape;
@@ -549,8 +340,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     }
     string input_node = conn.outside_node_name;
     int input_port = conn.outside_port;
-    auto dtype =
-        graph->FindNodeId(conn.outside_id)->output_type(conn.outside_port);
+    auto dtype = conn.connection_type;
     bool found_engine = false;
     // Rewire the inputs to other engines if they contain original input node
     for (size_t t = 0; t < infos.size(); ++t) {
@@ -708,13 +498,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   return status;
 }
 
-// tensorflow::Status ConvertAfterShapes(
-//     const tensorflow::GraphDef& gdef, const std::vector<string>&
-//     output_names, size_t max_batch_size, size_t max_workspace_size_bytes,
-//     tensorflow::GraphDef* new_graph_def, int precision_mode,
-//     int minimum_segment_size,
-//     const tensorflow::grappler::GraphProperties& graph_properties,
-//     const tensorflow::grappler::Cluster* cluster) {
+// Function to construct a funcdef from the segment and add it to the graph.
 tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     tensorflow::Graph* graph, const tensorflow::GraphDef& segment,
     const string& name) {
@@ -722,11 +506,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   tensorflow::GraphConstructorOptions gcopts;
   TF_RETURN_IF_ERROR(
       tensorflow::ConvertGraphDefToGraph(gcopts, segment, &sgraph));
-  VLOG(1) << " SAMI OPNODES  ";
   std::map<string, tensorflow::Node*> io_nodes;
   int num_inputs = 0;
   for (auto n : sgraph.op_nodes()) {
-    VLOG(1) << n->type_string();
     if (tensorflow::str_util::StartsWith(n->name(), "InputPH_")) {
       num_inputs++;
       io_nodes.insert({n->name(), n});
@@ -734,6 +516,7 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
       io_nodes.insert({n->name(), n});
     }
   }
+
   for (int i = 0; i < num_inputs; ++i) {
     auto name = StrCat("InputPH_", i);
     auto node = io_nodes[name];
@@ -759,6 +542,7 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     }
     sgraph.RemoveNode(node);
   }
+
   for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
     auto name = StrCat("OutputPH_", i);
     auto node = io_nodes[name];
@@ -795,18 +579,6 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(tensorflow::GraphToFunctionDef(
       sgraph, StrCat(name, "_native_segment"), native_segment));
-  // for (int i = 0; i < num_inputs; i++) {
-  //   auto arg = native_segment->mutable_signature()->add_input_arg();
-  //   arg->set_type(io_nodes[StrCat("InputPH_", i)]->output_type(0));
-  //   arg->set_name(io_nodes[StrCat("InputPH_", i)]->name());
-  // }
-  // for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
-  //   auto arg = native_segment->mutable_signature()->add_output_arg();
-  //   arg->set_type(io_nodes[StrCat("OutputPH_", i)]->output_type(0));
-  //   arg->set_name(io_nodes[StrCat("OutputPH_", i)]->name());
-  //   (*native_segment->mutable_ret())[StrCat("OutputPH_", i)] =
-  //       StrCat("OutputPH_", i, ":", 0);
-  // }
   if (VLOG_IS_ON(3)) {
     VLOG(3) << name << " Function_Def ";
     VLOG(3) << native_segment->DebugString();
@@ -815,6 +587,7 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   return tensorflow::Status::OK();
 }
 
+// Entry function from optimization pass.
 tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   // Segment the graph into subgraphs that can be converted to TensorRT
   tensorflow::tensorrt::segment::SegmentOptions segment_options;

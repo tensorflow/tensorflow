@@ -59,6 +59,9 @@ struct ConversionParams {
   int max_cached_engines;
   std::vector<int> cached_engine_batches;
 };
+
+// This method extracts calibration information from the resource managers
+// and puts them in to engine nodedefs.
 tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def);
 
@@ -70,12 +73,17 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
-    int precision_mode=1, int minimum_segment_size=3, bool is_dyn_op = false,
-    int max_cached_engines = 1, std::vector<int> cached_engine_batches={});
+    int precision_mode = 1, int minimum_segment_size = 3,
+    bool is_dyn_op = false, int max_cached_engines = 1,
+    std::vector<int> cached_engine_batches = {});
 
 // Method to call from optimization pass
 tensorflow::Status ConvertAfterShapes(ConversionParams& params);
+
+// Return compile time TensorRT library version information.
 std::vector<int> GetLinkedTensorRTVersion();
+
+// Return runtime time TensorRT library version information.
 std::vector<int> GetLoadedTensorRTVersion();
 }  // namespace convert
 }  // namespace tensorrt

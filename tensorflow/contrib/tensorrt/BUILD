@@ -187,7 +187,7 @@ tf_py_wrap_cc(
     deps = [
         ":trt_conversion",
         ":trt_engine_op_kernel",
-        "//tensorflow/core:framework_lite",
+        #"//tensorflow/core:framework_lite",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -238,7 +238,6 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",

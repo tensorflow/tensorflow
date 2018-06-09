@@ -83,13 +83,13 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
   std::thread* thr_;
 };
 
-class TRTWeightStore : public tensorflow::ResourceBase {
+class TRTWeightStore {
  public:
   TRTWeightStore() {}
 
   virtual ~TRTWeightStore() { VLOG(1) << "Destroying store" << DebugString(); }
 
-  string DebugString() override {
+  string DebugString() {
     std::stringstream oss;
     size_t len_bytes = 0;
     for (const auto& v : store_) {
