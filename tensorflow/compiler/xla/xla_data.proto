@@ -484,112 +484,6 @@ message DotDimensionNumbers {
   repeated int64 rhs_batch_dimensions = 4;
 };
 
-enum UnaryOperation {
-  UNOP_INVALID = 0;
-
-  // Elementwise, logical negation on booleans and bitwise negation on ints.
-  UNOP_NOT = 1;
-
-  // Elementwise, computes e^x.
-  UNOP_EXP = 2;
-
-  // Elementwise, computes -x.
-  UNOP_NEGATE = 3;
-
-  // Puts the elements in the operand into sorted order.
-  UNOP_SORT = 4;
-
-  // Elementwise, computes tanh(x).
-  UNOP_TANH = 5;
-
-  // Elementwise, computes the natural logarithm of x.
-  UNOP_LOG = 6;
-
-  // Elementwise, computes the floor of x.
-  UNOP_FLOOR = 7;
-
-  // Elementwise, computes the ceil of x.
-  UNOP_CEIL = 8;
-
-  // Elementwise, computes the abs of x.
-  UNOP_ABS = 9;
-
-  // Elementwise, computes the sign of x.
-  UNOP_SIGN = 10;
-
-  // Elementwise, tests if values are finite (not NaN or inf)
-  UNOP_IS_FINITE = 11;
-
-  // Elementwise, computes the cosine of x.
-  UNOP_COS = 12;
-
-  // Elementwise, computes the sine of x.
-  UNOP_SIN = 13;
-
-  // Elementwise, rounds x to nearest integral value, rounding half-way cases
-  // away from zero.
-  UNOP_ROUND_NEAREST_AFZ = 14;
-
-  // Elementwise, extract real component of complex x.
-  UNOP_REAL = 15;
-
-  // Elementwise, extract real component of complex x.
-  UNOP_IMAG = 16;
-
-  // Elementwise, computes clz(x).
-  UNOP_CLZ = 17;
-
-  // Elementwise, computes exp(x)-1.
-  UNOP_EXPM1 = 18;
-
-  // Elementwise, computes log(x+1).
-  UNOP_LOG1P = 19;
-}
-
-enum BinaryOperation {
-  BINOP_INVALID = 0;
-
-  // Arithmetic operations.
-  BINOP_ADD = 1;
-  BINOP_DIV = 2;
-  BINOP_MUL = 3;
-  BINOP_SUB = 4;
-
-  // Comparison operators.
-  BINOP_EQ = 5;
-  BINOP_GE = 6;
-  BINOP_GT = 7;
-  BINOP_LE = 8;
-  BINOP_LT = 9;
-  BINOP_NE = 10;
-
-  // Element-wise maximum.
-  BINOP_MAX = 14;
-
-  // Element-wise minimum.
-  BINOP_MIN = 15;
-
-  // Raises the left-hand-side to the right-hand-side power.
-  BINOP_POW = 16;
-
-  // Remainder operation.
-  BINOP_REM = 17;
-
-  // Element-wise, logical operators on booleans and bitwise operators on ints.
-  BINOP_AND = 18;
-  BINOP_OR = 19;
-
-  BINOP_SHIFT_LEFT = 20;
-  BINOP_SHIFT_RIGHT_ARITHMETIC = 21;
-  BINOP_SHIFT_RIGHT_LOGICAL = 22;
-
-  // Complex from real, imag.
-  BINOP_COMPLEX = 23;
-
-  // Computes the 4-quadrant arctangent of the y, x input arguments.
-  BINOP_ATAN2 = 24;
-}
-
 enum RandomDistribution {
   RNG_INVALID = 0;
 
@@ -602,26 +496,6 @@ enum RandomDistribution {
   RNG_NORMAL = 2;
 
   // Next: 4
-}
-
-enum TernaryOperation {
-  TRIOP_INVALID = 0;
-
-  // Given a predicate and two operands, selects operand0 if the predicate is
-  // true and operand1 if the predicate is false.
-  TRIOP_SELECT = 1;
-
-  // Given a min, max and an operand returns the operand if between min and max,
-  // else returns min if operand is less than min or max if operand is greater
-  // than max.
-  TRIOP_CLAMP = 3;
-}
-
-enum VariadicOperation {
-  VAROP_INVALID = 0;
-
-  // Creates a tuple from its operands.
-  VAROP_TUPLE = 1;
 }
 
 message OpSharding {
