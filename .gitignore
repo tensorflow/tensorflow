@@ -35,3 +35,13 @@ xcuserdata/**
 *.iml
 local.properties
 gradleBuild
+tensorflow/contrib/android/cmake/.externalNativeBuild/**
+tensorflow/contrib/android/cmake/build/**
+tensorflow/examples/android/assets/**
+tensorflow/contrib/android/cmake/gradle/wrapper/gradle-wrapper.jar
+tensorflow/contrib/android/cmake/gradle/wrapper/gradle-wrapper.properties
+tensorflow/contrib/android/cmake/gradlew
+tensorflow/contrib/android/cmake/gradlew.bat
+tensorflow/examples/android/Tensorflow-Android-Inference/Tensorflow-Android-Inference.aar
+tensorflow/examples/android/Tensorflow-Android-Inference/build.gradle
+tensorflow/examples/android/settings.gradle
