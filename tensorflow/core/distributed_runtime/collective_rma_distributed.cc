@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
@@ -27,45 +28,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-// Supports client side cancellation of WorkerInterface calls via
-// registration with a CancellationManager.
-//
-// TODO(tucker): Maybe unify this with CancellableCall in
-// collective_param_resolver_distributed.cc.
-class CancellableCall {
- public:
-  CancellableCall(CancellationManager* cancel_mgr, const string& remote_worker,
-                  WorkerCacheInterface* wc)
-      : cancel_mgr_(cancel_mgr), remote_worker_(remote_worker), wc_(wc) {
-    wi_ = wc_->CreateWorker(remote_worker_);
-  }
-  virtual ~CancellableCall() { wc_->ReleaseWorker(remote_worker_, wi_); }
-
-  virtual void IssueCall(const StatusCallback& done) = 0;
-
-  void Start(const StatusCallback& done) {
-    CancellationToken token = cancel_mgr_->get_cancellation_token();
-    const bool not_yet_cancelled = cancel_mgr_->RegisterCallback(
-        token, [this, token]() { opts_.StartCancel(); });
-    if (not_yet_cancelled) {
-      IssueCall([this, token, done](const Status& s) {
-        cancel_mgr_->DeregisterCallback(token);
-        done(s);
-      });
-    } else {
-      done(errors::Cancelled("RPC Request was cancelled"));
-    }
-  }
-
- protected:
-  mutable mutex mu_;
-  CancellationManager* cancel_mgr_;  // Not owned
-  const string remote_worker_;
-  WorkerCacheInterface* wc_;  // Not owned
-  WorkerInterface* wi_;       // Owned by wc_, must be released.
-  CallOptions opts_;
-};
 
 class RecvBufCall : public CancellableCall {
  public:
@@ -119,7 +81,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   };
   State* state = new State;
 
-  // Logic to be executed on the RecvBufferAsync callback.
+  // Logic to be executed on the RecvBufAsync callback.
   auto recv_buf_callback = [this, state, peer_task, to_device, to_alloc_attr,
                             to_device_ctx, to_tensor, done](const Status& s) {
     if (s.ok()) {
