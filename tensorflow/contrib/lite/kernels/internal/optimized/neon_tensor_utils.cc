@@ -352,6 +352,30 @@ void NeonSub1Vector(const float* vector, int v_size, float* result) {
   }
 }
 
+bool NeonIsZeroVector(const float* vector, int v_size) {
+  // If v_size is not divisible by kFloatWeightsPerNeonLane, we cannot
+  // use the main vectorized loop, and we need to process sequentially.
+  // postamble_start shows the start index where this should happen.
+  const int postamble_start =
+      v_size - (v_size & (kFloatWeightsPerNeonLane - 1));
+
+  const float32x4_t zero_x4_float = vmovq_n_f32(0.0f);
+  for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
+    const float32x4_t i_x4_float = vld1q_f32(vector + v);
+    uint32x4_t cmp_result = vceqq_f32(i_x4_float, zero_x4_float);
+    if (vgetq_lane_u32(cmp_result, 0) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 1) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 2) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 3) == 0) return false;
+  }
+
+  // Postamble loop
+  for (int v = postamble_start; v < v_size; ++v) {
+    if (vector[v] != 0.0) return false;
+  }
+  return true;
+}
+
 void NeonClipVector(const float* vector, int v_size, float abs_limit,
                     float* result) {
   // If v_size is not divisible by kWeightsPerNeonLane, we cannot use the main

@@ -114,6 +114,13 @@ class SingleOpModel {
   SingleOpModel() {}
   ~SingleOpModel() {}
 
+  // Set a function callback that is run right after graph is prepared
+  // that allows applying external delegates. This is useful for testing
+  // other runtimes like NN API or GPU.
+  void SetApplyDelegate(std::function<void(Interpreter*)> apply_delegate_fn) {
+    apply_delegate_fn_ = apply_delegate_fn;
+  }
+
   // Copying or assignment is disallowed to simplify ownership semantics.
   SingleOpModel(const SingleOpModel&) = delete;
   SingleOpModel& operator=(const SingleOpModel&) = delete;
@@ -317,6 +324,9 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
+  // A function pointer that gets called after the interpreter is created but
+  // before evaluation happens. This is useful for applying a delegate.
+  std::function<void(Interpreter*)> apply_delegate_fn_;
 };
 
 // Base class for single op unit tests.

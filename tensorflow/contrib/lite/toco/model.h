@@ -135,6 +135,9 @@ enum class OperatorType {
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
   kSelect,
+  kSparseToDense,
+  kTensorFlowEqual,
+  kTensorFlowNotEqual,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -526,7 +529,15 @@ struct LstmCellOperator : Operator {
     ACTIV_TEMP = 3,
     NUM_OUTPUTS = 4
   };
-  LstmCellOperator() : Operator(OperatorType::kLstmCell) {}
+  enum KernelType {
+    KERNEL_BASIC = 0,
+    KERNEL_FULL = 1,
+  };
+
+  LstmCellOperator()
+      : Operator(OperatorType::kLstmCell), kernel_type(KERNEL_BASIC) {}
+
+  KernelType kernel_type;
 };
 
 // Element-wise multiplication operator.
@@ -1349,6 +1360,22 @@ struct TensorFlowGreaterEqualOperator : Operator {
       : Operator(OperatorType::kTensorFlowGreaterEqual) {}
 };
 
+// TensorFlow Equal equivalent. Refer to TensorFlow documentation for
+// details.
+// Not fully supported, just a placeholder to handle TensorFlow graphs and
+// support graph transformations to other operator types by matching sub-graphs.
+// Typically, this is only used as an input to an Assert node, so can be
+// removed as an unused node as we drop Assert nodes.
+struct TensorFlowEqualOperator : Operator {
+  TensorFlowEqualOperator() : Operator(OperatorType::kTensorFlowEqual) {}
+};
+
+// TensorFlow Not Equal equivalent. Refer to TensorFlow documentation for
+// details.
+struct TensorFlowNotEqualOperator : Operator {
+  TensorFlowNotEqualOperator() : Operator(OperatorType::kTensorFlowNotEqual) {}
+};
+
 // Global max reduction: computes the max of all of entries in the input array.
 // Thus the output is "0-dimensional": it consists of a single scalar value.
 //
@@ -1596,6 +1623,19 @@ struct DynamicPartitionOperator : Operator {
 struct DynamicStitchOperator : Operator {
   DynamicStitchOperator() : Operator(OperatorType::kDynamicStitch) {}
   int num_partitions;
+};
+
+// SparseToDense operator:
+//
+// Inputs:
+// Inputs[0]: required: sparse_indices.
+// Inputs[1]: required: output_shape.
+// Inputs[2]: required: sparse_values.
+//
+// TensorFlow equivalent: SparseToDense.
+struct SparseToDenseOperator : Operator {
+  SparseToDenseOperator() : Operator(OperatorType::kSparseToDense) {}
+  bool validate_indices;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

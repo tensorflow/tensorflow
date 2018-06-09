@@ -1846,10 +1846,7 @@ class FactoryKeyCreator {
 
   ~FactoryKeyCreator() {}
 
-  void AddAsKey(const string &str) {
-    auto buffer = reinterpret_cast<const char *>(str.c_str());
-    Append(buffer, str.length());
-  }
+  void AddAsKey(const string& str) { Append(str); }
 
   void AddAsKey(const mkldnn::memory::dims &dims) {
     for (unsigned int i = 0; i < dims.size(); i++) {
@@ -1860,7 +1857,7 @@ class FactoryKeyCreator {
   template <typename T>
   void AddAsKey(const T data) {
     auto buffer = reinterpret_cast<const char *>(&data);
-    Append(buffer, sizeof(T));
+    Append(absl::string_view(buffer, sizeof(T)));
   }
 
   std::string GetKey() {
@@ -1871,8 +1868,8 @@ class FactoryKeyCreator {
   string key_;
   const char delimiter = 'x';
   const int kMaxKeyLength = 256;
-  void Append(const char* data, int len) {
-    key_.append(data, len);
+  void Append(absl::string_view s) {
+    key_.append(string(s));
     key_.append(1, delimiter);
   }
 };

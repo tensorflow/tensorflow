@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/util.h"
 
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -31,6 +32,8 @@ namespace {
 // Type object for collections.Sequence. This is set by RegisterSequenceClass.
 PyObject* CollectionsSequenceType = nullptr;
 PyTypeObject* SparseTensorValueType = nullptr;
+
+const int kMaxItemsInCache = 1024;
 
 bool WarnedThatSetIsNotSequence = false;
 
@@ -171,17 +174,20 @@ int IsSequenceHelper(PyObject* o) {
   // Try not to return to Python - see if the type has already been seen
   // before.
 
-  // NOTE: It's not clear whether the lock is required (we should be holding the
-  // python GIL in this code already).
-  mutex_lock l(g_type_to_sequence_map);
   auto* type_to_sequence_map = IsTypeSequenceMap();
   auto* type = Py_TYPE(o);
 
-  auto it = type_to_sequence_map->find(type);
-  if (it != type_to_sequence_map->end()) {
-    return it->second;
+  {
+    mutex_lock l(g_type_to_sequence_map);
+    auto it = type_to_sequence_map->find(type);
+    if (it != type_to_sequence_map->end()) {
+      return it->second;
+    }
   }
 
+  // NOTE: We explicitly release the g_type_to_sequence_map mutex,
+  // because PyObject_IsInstance() may release the GIL, allowing another thread
+  // concurrent entry to this function.
   int is_instance = PyObject_IsInstance(o, CollectionsSequenceType);
 
   // Don't cache a failed is_instance check.
@@ -192,9 +198,15 @@ int IsSequenceHelper(PyObject* o) {
   // NOTE: This is never decref'd, but we don't want the type to get deleted
   // as long as it is in the map. This should not be too much of a
   // leak, as there should only be a relatively small number of types in the
-  // map, and an even smaller number that are eligible for decref.
-  Py_INCREF(type);
-  type_to_sequence_map->insert({type, is_sequence});
+  // map, and an even smaller number that are eligible for decref. As a
+  // precaution, we limit the size of the map to 1024.
+  {
+    mutex_lock l(g_type_to_sequence_map);
+    if (type_to_sequence_map->size() < kMaxItemsInCache) {
+      Py_INCREF(type);
+      type_to_sequence_map->insert({type, is_sequence});
+    }
+  }
 
   return is_sequence;
 }
@@ -236,6 +248,9 @@ bool GetNextValuesForIterable(PyObject* nested,
                               std::vector<Safe_PyObjectPtr>* next_values) {
   PyObject* item;
   PyObject* iterator = PyObject_GetIter(nested);
+  if (iterator == nullptr || PyErr_Occurred()) {
+    return false;
+  }
   while ((item = PyIter_Next(iterator)) != nullptr) {
     next_values->emplace_back(item);
   }

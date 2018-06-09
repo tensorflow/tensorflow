@@ -197,7 +197,8 @@ class WALSModel(object):
                row_weights=1,
                col_weights=1,
                use_factors_weights_cache=True,
-               use_gramian_cache=True):
+               use_gramian_cache=True,
+               use_scoped_vars=False):
     """Creates model for WALS matrix factorization.
 
     Args:
@@ -239,6 +240,8 @@ class WALSModel(object):
         weights cache to take effect.
       use_gramian_cache: When True, the Gramians will be cached on the workers
         before the updates start. Defaults to True.
+      use_scoped_vars: When True, the factor and weight vars will also be nested
+        in a tf.name_scope.
     """
     self._input_rows = input_rows
     self._input_cols = input_cols
@@ -251,25 +254,46 @@ class WALSModel(object):
         regularization * linalg_ops.eye(self._n_components)
         if regularization is not None else None)
     assert (row_weights is None) == (col_weights is None)
-    self._row_weights = WALSModel._create_weights(
-        row_weights, self._input_rows, self._num_row_shards, "row_weights")
-    self._col_weights = WALSModel._create_weights(
-        col_weights, self._input_cols, self._num_col_shards, "col_weights")
     self._use_factors_weights_cache = use_factors_weights_cache
     self._use_gramian_cache = use_gramian_cache
-    self._row_factors = self._create_factors(
-        self._input_rows, self._n_components, self._num_row_shards, row_init,
-        "row_factors")
-    self._col_factors = self._create_factors(
-        self._input_cols, self._n_components, self._num_col_shards, col_init,
-        "col_factors")
+
+    if use_scoped_vars:
+      with ops.name_scope("row_weights"):
+        self._row_weights = WALSModel._create_weights(
+            row_weights, self._input_rows, self._num_row_shards, "row_weights")
+      with ops.name_scope("col_weights"):
+        self._col_weights = WALSModel._create_weights(
+            col_weights, self._input_cols, self._num_col_shards, "col_weights")
+      with ops.name_scope("row_factors"):
+        self._row_factors = self._create_factors(
+            self._input_rows, self._n_components, self._num_row_shards,
+            row_init, "row_factors")
+      with ops.name_scope("col_factors"):
+        self._col_factors = self._create_factors(
+            self._input_cols, self._n_components, self._num_col_shards,
+            col_init, "col_factors")
+    else:
+      self._row_weights = WALSModel._create_weights(
+          row_weights, self._input_rows, self._num_row_shards, "row_weights")
+      self._col_weights = WALSModel._create_weights(
+          col_weights, self._input_cols, self._num_col_shards, "col_weights")
+      self._row_factors = self._create_factors(
+          self._input_rows, self._n_components, self._num_row_shards, row_init,
+          "row_factors")
+      self._col_factors = self._create_factors(
+          self._input_cols, self._n_components, self._num_col_shards, col_init,
+          "col_factors")
+
     self._row_gramian = self._create_gramian(self._n_components, "row_gramian")
     self._col_gramian = self._create_gramian(self._n_components, "col_gramian")
-    self._row_update_prep_gramian = self._prepare_gramian(
-        self._col_factors, self._col_gramian)
-    self._col_update_prep_gramian = self._prepare_gramian(
-        self._row_factors, self._row_gramian)
-    self._create_transient_vars()
+    with ops.name_scope("row_prepare_gramian"):
+      self._row_update_prep_gramian = self._prepare_gramian(
+          self._col_factors, self._col_gramian)
+    with ops.name_scope("col_prepare_gramian"):
+      self._col_update_prep_gramian = self._prepare_gramian(
+          self._row_factors, self._row_gramian)
+    with ops.name_scope("transient_vars"):
+      self._create_transient_vars()
 
   @property
   def row_factors(self):

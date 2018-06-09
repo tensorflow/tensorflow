@@ -409,7 +409,15 @@ class GraphModeFunction(object):
         backward_outputs, in_gradients, output_shapes, attrs=self._attrs)
 
   def _backprop_call(self, args):
-    """Calls the wrapped function and records the result on a tape."""
+    """Calls the wrapped function and records the result on a tape.
+
+    (Only records results on a tape if the function has outputs)
+
+    Args:
+      args: The tensor inputs to the function.
+    Returns:
+      The call output.
+    """
     all_args = args + self._extra_inputs
     signature = self._forward_fdef.signature
     ctx = context.context()
@@ -420,6 +428,8 @@ class GraphModeFunction(object):
           inputs=all_args,
           attrs=None,
           ctx=ctx)
+      if not outputs:
+        return None
     else:
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
@@ -431,8 +441,9 @@ class GraphModeFunction(object):
           name="FunctionCall",
           compute_shapes=False)
       outputs = op.outputs
-      outputs = [outputs] if isinstance(
-          outputs, (ops.Tensor, type(None))) else list(outputs)
+      if not outputs:
+        return op
+      outputs = [outputs] if isinstance(outputs, ops.Tensor) else list(outputs)
       for i, s in enumerate(self._output_shapes):
         outputs[i].set_shape(s)
     real_outputs = outputs[:len(self._returns)]
@@ -494,7 +505,7 @@ class GraphModeFunction(object):
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
     for v in self._variables:
-      if v._trainable:  # pylint: disable=protected-access
+      if v.trainable:
         tape.watch_variable(v)
 
     tensor_inputs = [x for x in nest.flatten(args) if isinstance(x, ops.Tensor)]
@@ -777,7 +788,7 @@ def defun(func=None, compiled=False):
   def h():
     return f(x, y)
 
-  assert h().numpy() == f(x, y)
+  assert (h().numpy() == f(x, y).numpy()).all()
 
   # `defun` automatically lifts variables out of the graphs it creates,
   # allowing you to compile the `call` methods of `tf.keras.layers.Layer` and
@@ -785,6 +796,7 @@ def defun(func=None, compiled=False):
   class MyModel(tf.keras.Model):
 
     def __init__(self, keep_probability=0.2):
+      super(MyModel, self).__init__()
       self.dense1 = tf.keras.layers.Dense(4, activation=tf.nn.relu)
       self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
       self.keep_probability = keep_probability
@@ -804,7 +816,7 @@ def defun(func=None, compiled=False):
   # `defun`-compiled functions are differentiable.
   optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
   with tf.GradientTape() as tape:
-    outputs = model(inputs)
+    outputs = model(x)
   gradient = tape.gradient(outputs, model.trainable_variables)
   optimizer.apply_gradients((grad, var) for grad, var in zip(gradient,
                             model.trainable_variables))
@@ -840,6 +852,8 @@ def defun(func=None, compiled=False):
   import tensorflow as tf
   import numpy as np
 
+  tf.enable_eager_execution()
+
   matrix = tf.eye(5)
   # `matrix` is assumed to be a Tensor
   def add_noise():
@@ -862,12 +876,17 @@ def defun(func=None, compiled=False):
   ```python
   import tensorflow as tf
 
+  tf.enable_eager_execution()
+
   @tf.contrib.eager.defun
   def lossy_matmul(W, x, training=True):
     outputs = tf.matmul(W, x)
     if training:
       outputs = tf.nn.dropout(outputs, keep_probability=0.2)
     return outputs
+
+  W = tf.random_normal((3, 5))
+  x = tf.random_normal((5, 1))
 
   # Executes a graph that applies dropout.
   lossy_outputs = lossy_matmul(W, x, training=True)
@@ -919,14 +938,14 @@ def defun(func=None, compiled=False):
 
   # `fn` is a Python function, so x is created, initialized, and destroyed upon
   # every invocation
-  assert(fn().numpy() == fn().numpy() == 1.0)
+  assert fn().numpy() == fn().numpy() == 1.0
 
   compiled = tf.contrib.eager.defun(fn)
 
   # Compiling `fn` with `defun` hoists all variables outside of the generated
   # graph, so initialization happens exactly once.
-  assert(compiled().numpy() == 1.0)
-  assert(compiled().numpy() == 2.0)
+  assert compiled().numpy() == 1.0
+  assert compiled().numpy() == 2.0
   ```
 
   Finally, because each input signature is bound to a unique graph, if your
@@ -1207,6 +1226,9 @@ class AutomaticControlDependencies(object):
     # test that it works. Support while loops. Support init_scope escaping from
     # this.
     for op in new_operations:
+      # TODO(apassos) make this code safely support while loops.
+      if isinstance(op._control_flow_context, control_flow_ops.WhileContext):  # pylint: disable=protected-access
+        continue
       control_inputs = set()
       # Ensure stateful ops run
       if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access

@@ -845,7 +845,7 @@ TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(flr0_, &g);
   const char* e0 = R"P(
-(n3:float, n2:float) -> (n3:float) {
+(n2:float, n3:float) -> (n2:float) {
 }
 )P";
   EXPECT_EQ(e0, DebugString(g.get()));

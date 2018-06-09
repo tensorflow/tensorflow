@@ -287,11 +287,11 @@ class BestExporter(Exporter):
              is_the_final_export):
     export_result = None
 
-    if self._model_dir != estimator.model_dir() and self._event_file_pattern:
+    if self._model_dir != estimator.model_dir and self._event_file_pattern:
       # Loads best metric from event files.
       tf_logging.info('Loading best metric from event files.')
 
-      self._model_dir = estimator.model_dir()
+      self._model_dir = estimator.model_dir
       full_event_file_pattern = os.path.join(self._model_dir,
                                              self._event_file_pattern)
       self._best_eval_result = self._get_best_eval_result(
@@ -360,9 +360,10 @@ class BestExporter(Exporter):
           for value in event.summary.value:
             if value.HasField('simple_value'):
               event_eval_result[value.tag] = value.simple_value
-          if best_eval_result is None or self._compare_fn(
-              best_eval_result, event_eval_result):
-            best_eval_result = event_eval_result
+          if event_eval_result:
+            if best_eval_result is None or self._compare_fn(
+                best_eval_result, event_eval_result):
+              best_eval_result = event_eval_result
     return best_eval_result
 
 

@@ -452,11 +452,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/638915a37f90f26599941977846408864f70ab35.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/638915a37f90f26599941977846408864f70ab35.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/40c66c3d40377cf85640b3a35e6ec5c5b1cbc41f.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/40c66c3d40377cf85640b3a35e6ec5c5b1cbc41f.tar.gz",
       ],
-      sha256 = "aae3cacefa318cef030b4ca1e81ee9906752bbd89013cf9d47e156b5ad04b3a5",
-      strip_prefix = "llvm-638915a37f90f26599941977846408864f70ab35",
+      sha256 = "6f782a0d2e9d7946bdf20807e0fcd8f5eaed8afd93bdd610cdefbe9435ca551f",
+      strip_prefix = "llvm-40c66c3d40377cf85640b3a35e6ec5c5b1cbc41f",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
@@ -820,7 +820,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # Needed by Protobuf
   native.bind(
       name = "python_headers",
-      actual = clean_dep("//util/python:python_headers"),
+      actual = clean_dep("//third_party/python_runtime:headers"),
   )
 
   # Needed by Protobuf

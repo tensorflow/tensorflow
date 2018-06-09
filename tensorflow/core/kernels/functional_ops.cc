@@ -518,5 +518,24 @@ REGISTER_KERNEL_BUILDER(Name("For")
                             .HostMemory("delta"),
                         ForOp);
 
+class FakeParamOp : public OpKernel {
+ public:
+  explicit FakeParamOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // We must produce something (only Switch and Recvs are allowed to output
+    // dead tensors). This output is not expected to be consumed by anything.
+    Tensor output_tensor(dtype_, TensorShape({}));
+    context->set_output(0, output_tensor);
+  }
+
+ private:
+  DataType dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
+
 }  // namespace
 }  // namespace tensorflow

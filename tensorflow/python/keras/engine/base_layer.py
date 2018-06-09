@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import enum  # pylint: disable=g-bad-import-order
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 
 import numpy as np
@@ -48,6 +49,20 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+
+class CallConvention(enum.Enum):
+  """Calling conventions for passing `Layer` inputs to `Layer.call`."""
+  # The Layer takes inputs as its first argument, named "inputs" for
+  # compatibility with the signature of Layer.__call__. This is the mode assumed
+  # for Layers which are not subclassed Models.
+  EXPLICIT_INPUTS_ARGUMENT = 1
+  # The Layer takes a single positional argument, not named "inputs". It's
+  # treated like an "inputs" argument.
+  SINGLE_POSITIONAL_ARGUMENT = 2
+  # The Layer has multiple positional arguments to which its inputs should be
+  # bound.
+  POSITIONAL_ARGUMENTS_ARE_INPUTS = 3
 
 
 @tf_export('keras.layers.Layer')
@@ -149,7 +164,7 @@ class Layer(checkpointable.CheckpointableBase):
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
                                    hasattr(self, 'compute_mask'))
-    self._uses_inputs_arg = True
+    self._call_convention = CallConvention.EXPLICIT_INPUTS_ARGUMENT
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -793,12 +808,22 @@ class Layer(checkpointable.CheckpointableBase):
           pass  # C type such as dict. Masking not supported in this case.
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
-    if args and getattr(self, '_uses_inputs_arg', True):
-      raise TypeError(
-          'This Layer takes an `inputs` argument to call(), and only the '
-          '`inputs` argument may be specified as a positional argument. '
-          'Pass everything else as a keyword argument (those arguments will'
-          ' not be tracked as inputs to the Layer).')
+    call_convention = getattr(self, '_call_convention',
+                              CallConvention.EXPLICIT_INPUTS_ARGUMENT)
+    if args:
+      if call_convention == CallConvention.EXPLICIT_INPUTS_ARGUMENT:
+        raise TypeError(
+            'This Layer takes an `inputs` argument to call(), and only the '
+            '`inputs` argument may be specified as a positional argument. '
+            'Pass everything else as a keyword argument (those arguments will'
+            ' not be tracked as inputs to the Layer).')
+      elif call_convention == CallConvention.SINGLE_POSITIONAL_ARGUMENT:
+        raise TypeError(
+            'This Layer takes a single positional argument to call(), which is '
+            'by convention the inputs argument, and only this argument may be '
+            'specified as a positional argument. Pass everything else as a '
+            'keyword argument (those arguments will not be tracked as inputs '
+            'to the Layer).')
 
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
@@ -834,7 +859,11 @@ class Layer(checkpointable.CheckpointableBase):
       A tuple of (inputs, non_input_kwargs). These may be the same objects as
       were passed in (call_args and call_kwargs).
     """
-    if getattr(self, '_uses_inputs_arg', True):
+    call_convention = getattr(self, '_call_convention',
+                              CallConvention.EXPLICIT_INPUTS_ARGUMENT)
+    if (call_convention in (
+        CallConvention.EXPLICIT_INPUTS_ARGUMENT,
+        CallConvention.SINGLE_POSITIONAL_ARGUMENT)):
       assert len(call_args) == 1  # TypeError raised earlier in __call__.
       return call_args[0], call_kwargs
     else:

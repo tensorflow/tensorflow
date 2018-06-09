@@ -63,6 +63,8 @@ def model_builder(features, labels, mode, params, config):
   num_trees = params["num_trees"]
   use_core_libs = params["use_core_libs"]
   logits_modifier_function = params["logits_modifier_function"]
+  output_leaf_index = params["output_leaf_index"]
+
   if features is None:
     raise ValueError("At least one feature must be specified.")
 
@@ -96,7 +98,8 @@ def model_builder(features, labels, mode, params, config):
       feature_columns=feature_columns,
       logits_dimension=head.logits_dimension,
       features=training_features,
-      use_core_columns=use_core_libs)
+      use_core_columns=use_core_libs,
+      output_leaf_index=output_leaf_index)
   with ops.name_scope("gbdt", "gbdt_optimizer"):
     predictions_dict = gbdt_model.predict(mode)
     logits = predictions_dict["predictions"]
@@ -127,6 +130,9 @@ def model_builder(features, labels, mode, params, config):
         labels=labels,
         train_op_fn=_train_op_fn,
         logits=logits)
+  if output_leaf_index and gbdt_batch.LEAF_INDEX in predictions_dict:
+    model_fn_ops.predictions[gbdt_batch.LEAF_INDEX] = predictions_dict[
+        gbdt_batch.LEAF_INDEX]
   if num_trees:
     if center_bias:
       num_trees += 1

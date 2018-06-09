@@ -36,6 +36,10 @@ class LayoutUtil {
   // convenience function for protobuf construction.)
   static Layout MakeLayout(tensorflow::gtl::ArraySlice<int64> minor_to_major);
 
+  // Similar to MakeLayout, but take indices in reverse order.
+  static Layout MakeLayoutFromMajorToMinor(
+      tensorflow::gtl::ArraySlice<int64> major_to_minor);
+
   // Creates a sparse layout with the given maximum number of elements. (This is
   // a convenience function for protobuf construction.)
   static Layout MakeSparseLayout(int64 max_sparse_elements);

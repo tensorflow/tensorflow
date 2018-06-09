@@ -222,6 +222,9 @@ class ShapeTree {
                     /*iterate_leaves_only=*/false);
   }
 
+  // Returns the number of leaf nodes in the tree.
+  int64 leaf_count() const { return std::distance(leaf_begin(), leaf_end()); }
+
   // Recursively traverses the shape and calls the given function at each
   // element. The function has the following arguments:
   //

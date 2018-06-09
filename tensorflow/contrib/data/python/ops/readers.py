@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import csv
 
 import numpy as np
@@ -467,11 +468,11 @@ def make_csv_dataset(
     Args:
       *columns: list of `Tensor`s corresponding to one csv record.
     Returns:
-      A dictionary of feature names to values for that particular record. If
+      An OrderedDict of feature names to values for that particular record. If
       label_name is provided, extracts the label feature to be returned as the
       second element of the tuple.
     """
-    features = dict(zip(column_names, columns))
+    features = collections.OrderedDict(zip(column_names, columns))
     if label_name is not None:
       label = features.pop(label_name)
       return features, label

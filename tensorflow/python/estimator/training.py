@@ -129,7 +129,7 @@ class TrainSpec(
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
@@ -193,7 +193,7 @@ class EvalSpec(
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
@@ -295,6 +295,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   model will be trained with three epochs of training data instead of one epoch.
 
   Example of local (non-distributed) training:
+
   ```python
   # Set up feature columns.
   categorial_feature_a = categorial_column_with_hash_bucket(...)
@@ -339,12 +340,14 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   Setting environment variable depends on the platform. For example, on Linux,
   it can be done as follows (`$` is the shell prompt):
+
   ```
   $ TF_CONFIG='<replace_with_real_content>' python train_model.py
   ```
 
   For the content in `TF_CONFIG`, assume that the training cluster spec looks
   like:
+
   ```
   cluster = {"chief": ["host0:2222"],
              "worker": ["host1:2222", "host2:2222", "host3:2222"],
@@ -352,6 +355,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   ```
 
   Example of `TF_CONFIG` for chief training worker (must have one and only one):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -371,6 +375,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   Example of `TF_CONFIG` for non-chief training worker (optional, could be
   multiple):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -387,6 +392,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   for non-chief training workers.
 
   Example of `TF_CONFIG` for parameter server, aka ps (could be multiple):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -405,6 +411,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   Example of `TF_CONFIG` for evaluator task. Evaluator is a special task that is
   not part of the training cluster. There could be only one. It is used for
   model evaluation.
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -444,7 +451,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
         'For distributed training, there can only be one `evaluator` task '
         '(with task id 0).  Given task id {}'.format(config.task_id))
 
-  executor.run()
+  return executor.run()
 
 
 class _StopAtSecsHook(session_run_hook.SessionRunHook):

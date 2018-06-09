@@ -51,6 +51,13 @@ using reference_ops::LessEqual;
 using reference_ops::RankOneSelect;
 using reference_ops::Select;
 
+// TODO(b/80247582) Remove this constant.
+// This will be phased out as the shifts are revised with more thought. Use of a
+// constant enables us to track progress on this work.
+//
+// Used mainly to convert from old-style shifts (right) to new-style (left).
+static constexpr int kReverseShift = -1;
+
 // Make a local VectorMap typedef allowing to map a float array
 // as a Eigen vector expression. The std::conditional here is to
 // construct the suitable Eigen type for the constness of the
@@ -138,6 +145,45 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   }
   TFLITE_DCHECK(matched_rows);
   return MatrixMap<Scalar>(data, rows, cols);
+}
+
+// This is like the template-parameter version, except that the power-of-two is
+// passed as a function parameter. The template version is to be preferred,
+// since some target hardware optimizations depend on the range of the exponent.
+template <typename IntegerType>
+IntegerType SaturatingRoundingMultiplyByPOTParam(IntegerType x, int exponent) {
+  if (exponent == 0) {
+    return x;
+  }
+  using ScalarIntegerType =
+      typename gemmlowp::FixedPointRawTypeTraits<IntegerType>::ScalarRawType;
+  const IntegerType min =
+      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::min());
+  const IntegerType max =
+      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::max());
+  const int ScalarIntegerTypeBits = 8 * sizeof(ScalarIntegerType);
+
+  const std::int32_t threshold =
+      ((1 << (ScalarIntegerTypeBits - 1 - exponent)) - 1);
+  const IntegerType positive_mask =
+      gemmlowp::MaskIfGreaterThan(x, gemmlowp::Dup<IntegerType>(threshold));
+  const IntegerType negative_mask =
+      gemmlowp::MaskIfLessThan(x, gemmlowp::Dup<IntegerType>(-threshold));
+
+  IntegerType result = gemmlowp::ShiftLeft(x, exponent);
+  result = gemmlowp::SelectUsingMask(positive_mask, max, result);
+  result = gemmlowp::SelectUsingMask(negative_mask, min, result);
+  return result;
+}
+
+// This is like the template-parameter version, except that the power-of-two is
+// passed as a function parameter. See raw-integer version for further comments.
+template <typename tRawType, int tIntegerBits>
+gemmlowp::FixedPoint<tRawType, tIntegerBits>
+SaturatingRoundingMultiplyByPOTParam(
+    gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
+  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
+      SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
 // DO NOT USE THIS STRUCT FOR NEW FUNCTIONALITY BEYOND IMPLEMENTING ELEMENT-WISE
@@ -1731,6 +1777,100 @@ inline void ExtractPatchIntoBufferColumn(
 }
 
 template <typename T>
+void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
+                   const Dims<4>& filter_dims, int stride_width,
+                   int stride_height, int dilation_width_factor,
+                   int dilation_height_factor, int pad_width, int pad_height,
+                   const Dims<4>& output_dims, uint8 byte_zero,
+                   T* im2col_data) {
+  // For dilated convolution, the input pixels are not contiguous therefore we
+  // can't use the same opitimizations as Im2Col(). Though note this code would
+  // work fine for the non-dilated case too (though likely a bit slower).
+  gemmlowp::ScopedProfilingLabel label("DilatedIm2col");
+  TFLITE_DCHECK(dilation_width_factor != 1 || dilation_height_factor != 1);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  TFLITE_DCHECK(im2col_data);
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
+  const int filter_height = ArraySize(filter_dims, 2);
+  const int filter_width = ArraySize(filter_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
+  MatchingArraySize(output_dims, 0, filter_dims, 3);
+
+  // Construct the MxN sized im2col matrix.
+  // The rows M, are sub-ordered B x H x W
+  Dims<4> row_dims;
+  row_dims.sizes[0] = output_width;
+  row_dims.sizes[1] = output_height;
+  row_dims.sizes[2] = batches;
+  row_dims.sizes[3] = 1;
+  ComputeStrides(&row_dims);
+
+  // The columns, N, are sub-ordered Kh x Kw x Din
+  Dims<4> col_dims;
+  col_dims.sizes[0] = input_depth;
+  col_dims.sizes[1] = filter_width;
+  col_dims.sizes[2] = filter_height;
+  col_dims.sizes[3] = 1;
+  ComputeStrides(&col_dims);
+
+  // Use dimensions M and N to construct dims for indexing directly into im2col
+  Dims<4> im2col_dims;
+  im2col_dims.sizes[0] = col_dims.strides[3];
+  im2col_dims.sizes[1] = row_dims.strides[3];
+  im2col_dims.sizes[2] = 1;
+  im2col_dims.sizes[3] = 1;
+  ComputeStrides(&im2col_dims);
+
+  // Loop through the output rows (B x H x W)
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        // Each row is an output pixel. Arrange the input data into this row in
+        // an order we can conveniently multiply with the filter data.
+        int row_offset = Offset(row_dims, out_x, out_y, batch, 0);
+        const int in_x_origin = (out_x * stride_width) - pad_width;
+        const int in_y_origin = (out_y * stride_height) - pad_height;
+        // Loop through all the pixels of the filter (Kh x Kw)
+        for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+          const int in_y = in_y_origin + dilation_height_factor * filter_y;
+          if ((in_y >= 0) && (in_y < input_height)) {
+            // Filter row is within the input data.
+            // Loop through all the filter pixels in this row.
+            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              const int in_x = in_x_origin + dilation_width_factor * filter_x;
+              int col_offset = Offset(col_dims, 0, filter_x, filter_y, 0);
+              T* dst = im2col_data +
+                       Offset(im2col_dims, col_offset, row_offset, 0, 0);
+              if ((in_x >= 0) && (in_x < input_width)) {
+                // Filter pixel is within the input, copy the data.
+                T const* src =
+                    input_data + Offset(input_dims, 0, in_x, in_y, batch);
+                memcpy(dst, src, input_depth * sizeof(T));
+              } else {
+                // Filter pixel is outside the input, zero it out.
+                memset(dst, byte_zero, input_depth * sizeof(T));
+              }
+            }
+          } else {
+            // Filter row is outside the input, zero out the entire im2col row.
+            int col_offset = Offset(col_dims, 0, 0, filter_y, 0);
+            T* dst =
+                im2col_data + Offset(im2col_dims, col_offset, row_offset, 0, 0);
+            memset(dst, byte_zero, filter_width * input_depth * sizeof(T));
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
 void Im2col(const T* input_data, const Dims<4>& input_dims, int stride_width,
             int stride_height, int pad_width, int pad_height, int kheight,
             int kwidth, uint8 byte_zero, T* output_data,
@@ -1770,74 +1910,6 @@ void Im2col(const T* input_data, const Dims<4>& input_dims, int stride,
          kwidth, byte_zero, output_data, output_dims);
 }
 
-inline void DilatedConv(const float* input_data, const Dims<4>& input_dims,
-                        const float* filter_data, const Dims<4>& filter_dims,
-                        const float* bias_data, const Dims<4>& bias_dims,
-                        int stride_width, int stride_height,
-                        int dilation_width_factor, int dilation_height_factor,
-                        int pad_width, int pad_height,
-                        float output_activation_min,
-                        float output_activation_max, float* output_data,
-                        const Dims<4>& output_dims, float* im2col_data,
-                        const Dims<4>& im2col_dims) {
-  gemmlowp::ScopedProfilingLabel label("DilatedConv");
-  // This is a copy of the reference Conv implementation. We do not currently
-  // have an optimized path for dilation.
-  (void)im2col_data;  // only used in optimized code.
-  (void)im2col_dims;  // only used in optimized code.
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
-  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
-  if (bias_data) {
-    TFLITE_DCHECK_EQ(ArraySize(filter_dims, 3), ArraySize(bias_dims, 0));
-  }
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int filter_height = ArraySize(filter_dims, 2);
-  const int filter_width = ArraySize(filter_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
-          float total = 0.f;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // If the location is outside the bounds of the input image,
-                // use zero as a default value.
-                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height)) {
-                  float input_value = input_data[Offset(input_dims, in_channel,
-                                                        in_x, in_y, batch)];
-                  float filter_value =
-                      filter_data[Offset(filter_dims, in_channel, filter_x,
-                                         filter_y, out_channel)];
-                  total += (input_value * filter_value);
-                }
-              }
-            }
-          }
-          float bias_value = 0.0f;
-          if (bias_data) {
-            bias_value = bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
-          }
-          output_data[Offset(output_dims, out_channel, out_x, out_y, batch)] =
-              ActivationFunctionWithMinMax(total + bias_value,
-                                           output_activation_min,
-                                           output_activation_max);
-        }
-      }
-    }
-  }
-}
-
 inline void Conv(const float* input_data, const Dims<4>& input_dims,
                  const float* filter_data, const Dims<4>& filter_dims,
                  const float* bias_data, const Dims<4>& bias_dims,
@@ -1846,29 +1918,32 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
                  float output_activation_min, float output_activation_max,
                  float* output_data, const Dims<4>& output_dims,
                  float* im2col_data, const Dims<4>& im2col_dims) {
-  if ((dilation_width_factor != 1) || (dilation_height_factor != 1)) {
-    return DilatedConv(input_data, input_dims, filter_data, filter_dims,
-                       bias_data, bias_dims, stride_width, stride_height,
-                       dilation_width_factor, dilation_height_factor, pad_width,
-                       pad_height, output_activation_min, output_activation_max,
-                       output_data, output_dims, im2col_data, im2col_dims);
-  }
-
   (void)im2col_data;
   (void)im2col_dims;
   gemmlowp::ScopedProfilingLabel label("Conv");
 
+  // A float set to 0x00000000h == 0.0f
+  const uint8 float_zero_byte = 0x00;
   const float* gemm_input_data = nullptr;
   const Dims<4>* gemm_input_dims = nullptr;
   const int filter_width = ArraySize(filter_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
-  if (need_im2col) {
+  if (need_dilated_im2col) {
+    DilatedIm2col(input_data, input_dims, filter_dims, stride_width,
+                  stride_height, dilation_width_factor, dilation_height_factor,
+                  pad_width, pad_height, output_dims, float_zero_byte,
+                  im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_dims = &im2col_dims;
+  } else if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
     Im2col(input_data, input_dims, stride_width, stride_height, pad_width,
-           pad_height, filter_height, filter_width, 0, im2col_data,
-           im2col_dims);
+           pad_height, filter_height, filter_width, float_zero_byte,
+           im2col_data, im2col_dims);
     gemm_input_data = im2col_data;
     gemm_input_dims = &im2col_dims;
   } else {
@@ -1979,11 +2054,23 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   }
 
   const int gemm_input_rows = gemm_input_dims->sizes[0];
-  const int gemm_input_cols = FlatSizeSkipDim(*gemm_input_dims, 0);
+  // Using FlatSizeSkipDim causes segfault in some contexts (see b/79927784).
+  // The root cause has not yet been identified though. Same applies below for
+  // the other calls commented out. This is a partial rollback of cl/196819423.
+  // const int gemm_input_cols = FlatSizeSkipDim(*gemm_input_dims, 0);
+  const int gemm_input_cols = gemm_input_dims->sizes[1] *
+                              gemm_input_dims->sizes[2] *
+                              gemm_input_dims->sizes[3];
   const int filter_rows = filter_dims.sizes[3];
-  const int filter_cols = FlatSizeSkipDim(filter_dims, 3);
+  // See b/79927784.
+  // const int filter_cols = FlatSizeSkipDim(filter_dims, 3);
+  const int filter_cols =
+      filter_dims.sizes[0] * filter_dims.sizes[1] * filter_dims.sizes[2];
   const int output_rows = output_dims.sizes[0];
-  const int output_cols = FlatSizeSkipDim(output_dims, 0);
+  // See b/79927784.
+  // const int output_cols = FlatSizeSkipDim(output_dims, 0);
+  const int output_cols =
+      output_dims.sizes[1] * output_dims.sizes[2] * output_dims.sizes[3];
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
   TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
@@ -2353,24 +2440,27 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
   const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
   const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  TFLITE_DCHECK_EQ(outer_size, 1);
-  int32 square_l2_norm = 0;
-  for (int i = 0; i < depth; i++) {
-    int32 diff = input_data[i] - input_zero_point;
-    square_l2_norm += diff * diff;
-  }
-  int32 inv_l2norm_multiplier;
-  int inv_l2norm_shift;
-  GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
-                                &inv_l2norm_shift);
+  for (int i = 0; i < outer_size; ++i) {
+    int32 square_l2_norm = 0;
+    for (int c = 0; c < depth; c++) {
+      int32 diff = input_data[c] - input_zero_point;
+      square_l2_norm += diff * diff;
+    }
+    int32 inv_l2norm_multiplier;
+    int inv_l2norm_shift;
+    GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
+                                  &inv_l2norm_shift);
 
-  for (int i = 0; i < depth; i++) {
-    int32 diff = input_data[i] - input_zero_point;
-    int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOne(
-        128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
-    int32 unclamped_output_val = 128 + rescaled_diff;
-    int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-    output_data[i] = static_cast<uint8>(output_val);
+    for (int c = 0; c < depth; c++) {
+      int32 diff = *input_data - input_zero_point;
+      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          128 * diff, inv_l2norm_multiplier, kReverseShift * inv_l2norm_shift);
+      int32 unclamped_output_val = 128 + rescaled_diff;
+      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
+      *output_data = static_cast<uint8>(output_val);
+      ++input_data;
+      ++output_data;
+    }
   }
 }
 
@@ -2506,14 +2596,19 @@ inline void AddElementwise(int size, int left_shift, const uint8* input1_data,
     const int32 input2_val = input2_offset + input2_data[i];
     const int32 shifted_input1_val = input1_val * (1 << left_shift);
     const int32 shifted_input2_val = input2_val * (1 << left_shift);
-    const int32 scaled_input1_val = MultiplyByQuantizedMultiplierSmallerThanOne(
-        shifted_input1_val, input1_multiplier, input1_shift);
-    const int32 scaled_input2_val = MultiplyByQuantizedMultiplierSmallerThanOne(
-        shifted_input2_val, input2_multiplier, input2_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, input1_multiplier,
+            kReverseShift * input1_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, input2_multiplier,
+            kReverseShift * input2_shift);
     const int32 raw_sum = scaled_input1_val + scaled_input2_val;
-    const int32 raw_output = MultiplyByQuantizedMultiplierSmallerThanOne(
-                                 raw_sum, output_multiplier, output_shift) +
-                             output_offset;
+    const int32 raw_output =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            raw_sum, output_multiplier, kReverseShift * output_shift) +
+        output_offset;
     const int32 clamped_output = std::min(
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = static_cast<uint8>(clamped_output);
@@ -2732,15 +2827,17 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sum = scaled_input1_val + scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -3081,9 +3178,9 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
           const int32 input2_val =
               input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
           const int32 unclamped_result =
-              output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  input1_val * input2_val, output_multiplier, output_shift);
+              output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                                  input1_val * input2_val, output_multiplier,
+                                  kReverseShift * output_shift);
           const int32 clamped_output =
               std::min(output_activation_max,
                        std::max(output_activation_min, unclamped_result));
@@ -3265,15 +3362,17 @@ inline void BroadcastSub(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sub = scaled_input1_val - scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sub, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sub, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -4556,6 +4655,119 @@ inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+template <int OutputIntegerBits, int InputIntegerBits>
+inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+log_x_for_x_greater_than_or_equal_to_1_impl(
+    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
+  // assert(__builtin_clz(0u) >= std::numeric_limits<uint32>::digits - 1);
+  // assert(__builtin_clz(0u) <= std::numeric_limits<uint32>::digits);
+  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+  // The reason for accumulating the result with an extra bit of headroom is
+  // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
+  // recip_denom will otherwise introduce an error.
+  static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
+  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
+
+  const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1488522236, std::log(2.0));
+  const FixedPoint0 sqrt_sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1805811301, std::sqrt(std::sqrt(0.5)));
+  const FixedPoint0 sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1518500250, std::sqrt(0.5));
+  const FixedPoint0 one_quarter =
+      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(FixedPoint0, 536870912, 1.0 / 4.0);
+
+  const FixedPoint0 alpha_n = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 117049297, 11.0 / 240.0 * std::sqrt(std::sqrt(2.0)));
+  const FixedPoint0 alpha_d = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 127690142, 1.0 / 20.0 * std::sqrt(std::sqrt(2.0)));
+  const FixedPoint0 alpha_i = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1057819769,
+      2.0 / std::sqrt(std::sqrt(2.0)) - std::sqrt(std::sqrt(2.0)));
+  const FixedPoint0 alpha_f = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 638450708, 1.0 / 4.0 * std::sqrt(std::sqrt(2.0)));
+
+  const FixedPointAccum shifted_quarter =
+      gemmlowp::Rescale<kAccumIntegerBits>(one_quarter);
+
+  // Reinterpret the input value as Q0.31, because we will figure out the
+  // required shift "ourselves" instead of using, say, Rescale.
+  FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
+  // z_a_pow_2 = input_integer_bits - z_a_headroom;
+  int z_a_headroom_plus_1 = __builtin_clz(static_cast<uint32>(z_a.raw()));
+  FixedPoint0 r_a_tmp =
+      SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
+  const int32 r_a_raw =
+      SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
+  // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
+  // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
+  //                   InputIntegerBits - z_b_headroom - 0.25);
+  const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
+      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
+          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
+      shifted_quarter);
+
+  // z_b is treated like z_a, but premultiplying by sqrt(0.5).
+  FixedPoint0 z_b = z_a * sqrt_half;
+  int z_b_headroom = __builtin_clz(static_cast<uint32>(z_b.raw())) - 1;
+  const int32 r_b_raw =
+      SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
+  const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
+      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
+          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
+      shifted_quarter);
+
+  const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
+  const FixedPointAccum z_pow_2_adj = FixedPointAccum::FromRaw(
+      std::max(z_a_pow_2_adj.raw(), z_b_pow_2_adj.raw()));
+
+  const FixedPoint0 p = gemmlowp::RoundingHalfSum(r, sqrt_sqrt_half);
+  FixedPoint0 q = r - sqrt_sqrt_half;
+  q = q + q;
+
+  const FixedPoint0 common_sq = q * q;
+  const FixedPoint0 num = q * r + q * common_sq * alpha_n;
+  const FixedPoint0 denom_minus_one_0 =
+      p * (alpha_i + q + alpha_d * common_sq) + alpha_f * q;
+  const FixedPoint0 recip_denom =
+      one_over_one_plus_x_for_x_in_0_1(denom_minus_one_0);
+
+  const FixedPointAccum num_scaled = gemmlowp::Rescale<kAccumIntegerBits>(num);
+  return gemmlowp::Rescale<OutputIntegerBits>(z_pow_2_adj * log_2 +
+                                              num_scaled * recip_denom);
+}
+
+// Minimum output bits to accommodate log of maximum input range.  It actually
+// does not matter if one considers, say, [-64,64] or [-64,64).
+//
+// For example, run this through Octave:
+// [0:127; ...
+//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
+//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
+constexpr int min_log_x_output_bits(int input_bits) {
+  return input_bits > 90
+             ? 7
+             : input_bits > 44
+                   ? 6
+                   : input_bits > 21
+                         ? 5
+                         : input_bits > 10
+                               ? 4
+                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
+}
+
+template <int OutputIntegerBits, int InputIntegerBits>
+inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+log_x_for_x_greater_than_or_equal_to_1(
+    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
+  static_assert(
+      OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
+      "Output integer bits must be sufficent to accommodate logs of inputs.");
+  return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
+                                                     InputIntegerBits>(
+      input_val);
+}
+
 // Currently just a copy of the reference code.
 inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
                        int32 input_multiplier, int32 input_left_shift,
@@ -4601,13 +4813,10 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
       }
     }
 
-    // TODO(b/77858996): Implement fixed-point log().
-    // Not a fully-quantized implementation: floating-point log().
-    const float float_log_sum_of_exps =
-        std::log(static_cast<float>(sum_of_exps.raw()) /
-                 (1 << (31 - kAccumulationIntegerBits)));
-    const int32 fixed_log_sum_of_exps = static_cast<int32>(TfLiteRound(
-        float_log_sum_of_exps * (1 << (31 - kScaledDiffIntegerBits))));
+    const int32 fixed_log_sum_of_exps =
+        log_x_for_x_greater_than_or_equal_to_1<kScaledDiffIntegerBits>(
+            sum_of_exps)
+            .raw();
 
     // rescaled_diff_min is smallest representable in
     // Q(kScaledDiffIntegerBits).(31-kScaledDiffIntegerBits) plus the
@@ -4618,9 +4827,9 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
         fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
     const int adjusted_diff_min =
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOne(
+                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     reverse_scaling_right_shift));
+                     kReverseShift * reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;

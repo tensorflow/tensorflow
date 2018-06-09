@@ -83,7 +83,6 @@ def _OpsBetween(to_ops, from_ops):
   return between_ops
 
 
-@test_util.with_c_api
 class GradientsTest(test_util.TensorFlowTestCase):
 
   def _OpNames(self, op_list):
@@ -944,6 +943,54 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       variables.global_variables_initializer().run()
       self.assertAllEqual(g.eval(), [2.0])
       self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
+
+
+class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+
+  def _assert_indexed_slices_equal(self, left, right):
+    self.assertAllEqual(
+        self.evaluate(ops.convert_to_tensor(left)),
+        self.evaluate(ops.convert_to_tensor(right)))
+
+  def testNoGradients(self):
+    self.assertIsNone(gradients_impl._AggregateIndexedSlicesGradients([]))
+
+  def testOneGradient(self):
+    t = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    result = gradients_impl._AggregateIndexedSlicesGradients([t])
+    self._assert_indexed_slices_equal(t, result)
+
+  def testMultipleGradients(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]]))
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMultipleGradientsWithNones(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]]))
+    t3 = None
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1, t3])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMixedTensorAndIndexedSlices(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]])
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
 
 
 if __name__ == "__main__":

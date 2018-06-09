@@ -558,6 +558,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(lstm_params->fused_activation_function());
         params->cell_clip = lstm_params->cell_clip();
         params->proj_clip = lstm_params->proj_clip();
+        switch (lstm_params->kernel_type()) {
+          case LSTMKernelType_FULL:
+            params->kernel_type = kTfLiteLSTMFullKernel;
+            break;
+          case LSTMKernelType_BASIC:
+            params->kernel_type = kTfLiteLSTMBasicKernel;
+            break;
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -681,6 +689,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
+    case BuiltinOperator_EQUAL:
+    case BuiltinOperator_NOT_EQUAL:
     case BuiltinOperator_SELECT: {
       break;
     }
@@ -699,10 +709,24 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SPARSE_TO_DENSE: {
+      TfLiteSparseToDenseParams* params =
+          MallocPOD<TfLiteSparseToDenseParams>();
+      if (auto* sparse_to_dense_params =
+              op->builtin_options_as_SparseToDenseOptions()) {
+        params->validate_indices = sparse_to_dense_params->validate_indices();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
+    }
+    case BuiltinOperator_EXPAND_DIMS:
+    case BuiltinOperator_TILE: {
+      break;
     }
   }
   return kTfLiteOk;

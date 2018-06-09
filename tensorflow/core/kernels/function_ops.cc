@@ -254,6 +254,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
+    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {

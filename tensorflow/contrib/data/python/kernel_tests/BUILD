@@ -128,6 +128,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:error_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//third_party/py/numpy",
     ],
@@ -208,6 +209,23 @@ py_test(
     ],
 )
 
+py_test(
+    name = "directed_interleave_dataset_test",
+    size = "medium",
+    srcs = ["directed_interleave_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_py_test(
     name = "get_single_element_test",
     size = "small",
@@ -259,6 +277,19 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "optimize_dataset_op_test",
+    size = "small",
+    srcs = ["optimize_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 

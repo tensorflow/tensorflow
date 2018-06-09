@@ -1782,9 +1782,7 @@ class _EmbeddingColumnLayer(base.Layer):
     Args:
       embedding_shape: Shape of the embedding variable used for lookup.
       initializer: A variable initializer function to be used in embedding
-        variable initialization. If not specified, defaults to
-        `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
-        `1/sqrt(dimension)`.
+        variable initialization.
       weight_collections: A list of collection names to which the Variable will
         be added. Note that, variables will also be added to collections
         `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
@@ -1797,6 +1795,15 @@ class _EmbeddingColumnLayer(base.Layer):
         trainable=trainable, name=name, **kwargs)
     self._embedding_shape = embedding_shape
     self._initializer = initializer
+    self._weight_collections = weight_collections
+
+  def set_weight_collections(self, weight_collections):
+    """Sets the weight collections for the layer.
+
+    Args:
+      weight_collections: A list of collection names to which the Variable will
+        be added.
+    """
     self._weight_collections = weight_collections
 
   def build(self, _):
@@ -2163,7 +2170,7 @@ class _LazyBuilder(object):
       self._feature_tensors[key] = feature_tensor
       return feature_tensor
 
-    if isinstance(key, str):
+    if isinstance(key, six.string_types):
       raise ValueError('Feature {} is not in features dictionary.'.format(key))
 
     if not isinstance(key, _FeatureColumn):
@@ -2604,6 +2611,7 @@ class _SharedEmbeddingColumn(
       sparse_ids = sparse_tensors.id_tensor
       sparse_weights = sparse_tensors.weight_tensor
 
+      self._layer.set_weight_collections(weight_collections)
       embedding_weights = self._layer(
           None, scope=variable_scope.get_variable_scope())
       # If we're in graph mode and this is called with a different graph,
@@ -2612,6 +2620,7 @@ class _SharedEmbeddingColumn(
           ops.get_default_graph() !=
           _get_graph_for_variable(embedding_weights)):
         self._reset_config()
+        self._layer.set_weight_collections(weight_collections)
         embedding_weights = self._layer(
             None, scope=variable_scope.get_variable_scope())
 
