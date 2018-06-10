@@ -454,8 +454,8 @@ class _LayerMatch(object):
     return self._bias_add_op
 
 
-def _FollowedByFakeQuant(tensor):
-  """Returns True if the tensor is followed by a FakeQuant."""
+def _GetFollowingFakeQuantOp(tensor):
+  """Returns the following FakeQuant op if it exists else None."""
   fake_quant_ops = set([
       'FakeQuantWithMinMaxVars', 'FakeQuantWithMinMaxArgs',
       'FakeQuantWithMinMaxVarsPerChannel'
@@ -465,11 +465,11 @@ def _FollowedByFakeQuant(tensor):
   while consumers:
     c = consumers.pop()
     if c.type in fake_quant_ops:
-      return True
+      return c
     elif c.type in pass_through_ops:
       for output in c.outputs:
         consumers.extend(output.consumers())
-  return False
+  return None
 
 
 def _InsertQuantOp(context,
@@ -552,43 +552,47 @@ def _InsertQuantOp(context,
   # Prevent ops from being quantized multiple times. Bypass ops can sometimes
   # overlap between multiple matches, so we need to ensure that we don't
   # add duplicate FakeQuant operations.
-  if _FollowedByFakeQuant(inputs):
+  fake_quant_op = _GetFollowingFakeQuantOp(inputs)
+  if fake_quant_op is not None and name == 'act_quant':
     return
 
-  if moving_avg:
-    quant = (
-        quant_ops.MovingAvgQuantize(
-            inputs,
-            init_min=init_min,
-            init_max=init_max,
-            ema_decay=ema_decay,
-            is_training=is_training,
-            num_bits=bits,
-            narrow_range=narrow_range,
-            vars_collection=vars_collection,
-            name_prefix=name_prefix))
-  else:
-    quant = (
-        quant_ops.LastValueQuantize(
-            inputs,
-            init_min=init_min,
-            init_max=init_max,
-            is_training=is_training,
-            num_bits=bits,
-            narrow_range=narrow_range,
-            vars_collection=vars_collection,
-            name_prefix=name_prefix))
+  if fake_quant_op is None:
+    if moving_avg:
+      quant = (
+          quant_ops.MovingAvgQuantize(
+              inputs,
+              init_min=init_min,
+              init_max=init_max,
+              ema_decay=ema_decay,
+              is_training=is_training,
+              num_bits=bits,
+              narrow_range=narrow_range,
+              vars_collection=vars_collection,
+              name_prefix=name_prefix))
+    else:
+      quant = (
+          quant_ops.LastValueQuantize(
+              inputs,
+              init_min=init_min,
+              init_max=init_max,
+              is_training=is_training,
+              num_bits=bits,
+              narrow_range=narrow_range,
+              vars_collection=vars_collection,
+              name_prefix=name_prefix))
 
-  if quant_delay and quant_delay > 0:
-    activate_quant = math_ops.greater_equal(
-        common.CreateOrGetQuantizationStep(),
-        quant_delay,
-        name=name_prefix + '/activate_quant')
-    quant = control_flow_ops.cond(
-        activate_quant,
-        lambda: quant,
-        lambda: inputs,
-        name=name_prefix + '/delayed_quant')
+    if quant_delay and quant_delay > 0:
+      activate_quant = math_ops.greater_equal(
+          common.CreateOrGetQuantizationStep(),
+          quant_delay,
+          name=name_prefix + '/activate_quant')
+      quant = control_flow_ops.cond(
+          activate_quant,
+          lambda: quant,
+          lambda: inputs,
+          name=name_prefix + '/delayed_quant')
+  else:
+    quant = fake_quant_op.outputs[0]
 
   if consumers:
     tensors_modified_count = common.RerouteTensor(
