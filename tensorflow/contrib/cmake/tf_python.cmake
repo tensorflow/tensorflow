@@ -743,6 +743,16 @@ set(api_init_list_file "${tensorflow_source_dir}/api_init_files_list.txt")
 file(WRITE "${api_init_list_file}" "${api_init_files}")
 
 # Run create_python_api.py to generate __init__.py files.
+
+### TODO
+In order to download and compile MKL/MKL-DNN automatically in cmake script, mkl-built libraries should be added to system path
+to be loaded by python executor. However `add_custom_command` has an issue with `COMMAND ${CMAKE_COMMAND} -E env PATH=`, where
+arguments of multiple paths (such as D:/;D:/mkl) will be parsed in to seperate string without semicolon and that command fail to
+recongnize paths. As CUDA isn't built with MKL, the MKL built directory is the only path to this command to work around that issue.
+To not override the CUDA and system path in other circumstances, `if-else` branch used here to handle this problem,
+and should be removed if the path issue can be resolved.
+###
+
 if (tensorflow_ENABLE_MKL_SUPPORT)
     # add mkl dist dlls to system path for python
     # TODO: In current cmake version, PY_RUNTIME_ENV behaves strange with multiple paths,
