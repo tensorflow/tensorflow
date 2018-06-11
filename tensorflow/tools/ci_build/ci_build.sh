@@ -28,8 +28,8 @@
 # COMMAND: Command to be executed in the docker container, e.g.,
 #          tensorflow/tools/ci_build/builds/pip.sh gpu -c opt --config=cuda
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/builds/builds_common.sh"
+SCRIPT_DIR="$ cd ~hendsaleh/Documents/Github/tensorflow/ci_build/ci_build.sh 
+source $ ~hendsaleh/Documents/Github/tensorflow/ci_build/builds/pip.sh gpu -c opt --config=cuda
 
 # Get the command line arguments.
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
@@ -134,7 +134,7 @@ if [[ $? != "0" ]]; then
   die "ERROR: docker build failed. Dockerfile is at ${DOCKERFILE_PATH}"
 fi
 
-# If caller wants the with_the_same_user script to allow bad usernames, 
+# If caller wants the with_the_same_user script to allow bad usernames,
 # pass the var to the docker environment
 if [ -n "${CI_BUILD_USER_FORCE_BADNAME}" ]; then
         CI_BUILD_USER_FORCE_BADNAME_ENV="-e CI_BUILD_USER_FORCE_BADNAME=yes"

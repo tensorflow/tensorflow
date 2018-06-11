@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+set -e ~hendisaleh/Documents/Github/tensorflow/tensorflow/tools/ci_build/builds/cmake.sh
 
 
 # Determine the number of cores, for parallel make.
