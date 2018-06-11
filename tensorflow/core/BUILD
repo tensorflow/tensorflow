@@ -146,7 +146,7 @@ load(
     "if_static",
     "tf_gpu_tests_tags",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configured")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -2862,9 +2862,7 @@ tf_gpu_library(
         "platform/device_tracer.h",
     ],
     copts = tf_copts(),
-    # ROCM TODO figure this out
-    #gpu_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
-    gpu_deps = [],
+    gpu_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
     visibility = ["//visibility:private"],
     deps = [
         ":core_cpu_internal",
