@@ -309,13 +309,19 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
 
   def testWithSharedWeights(self):
     self._RunTestOverAllRewrites(self._TestWithSharedWeights)
+    self._RunTestOverTrainingRewrites(
+        lambda rewrite_fn: self._TestWithSharedWeights(rewrite_fn,
+                                                       quant_delay=1))
 
-  def _TestWithSharedWeights(self, rewrite_fn):
+  def _TestWithSharedWeights(self, rewrite_fn, quant_delay=None):
     with ops.Graph().as_default() as g:
       conv = template.make_template('shared_weights_conv', self._ConvLayer)
       conv()
       conv()
-      rewrite_fn()
+      if quant_delay is None:
+        rewrite_fn()
+      else:
+        rewrite_fn(quant_delay=quant_delay)
 
     conv_ops = [op for op in g.get_operations() if op.type == 'Conv2D']
     weights_quants = [
@@ -324,8 +330,15 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     ]
     # Check that the shared weights variable is not quantized multiple times
     self.assertTrue(len(weights_quants) == 1)
-    # Check that the Conv2D operations get the quantized weights
     weights_quant_tensor = weights_quants[0].outputs[0]
+    if quant_delay:
+      delayed_weights_quants = [
+          op for op in g.get_operations()
+          if 'weights_quant' in op.name and op.type == 'Merge'
+      ]
+      self.assertTrue(len(delayed_weights_quants) == 1)
+      weights_quant_tensor = delayed_weights_quants[0].outputs[0]
+    # Check that the Conv2D operations get the quantized weights
     self.assertTrue(all(weights_quant_tensor in op.inputs for op in conv_ops))
 
   def _ConvLayer(

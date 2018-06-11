@@ -593,6 +593,10 @@ def _InsertQuantOp(context,
           name=name_prefix + '/delayed_quant')
   else:
     quant = fake_quant_op.outputs[0]
+    if quant_delay and quant_delay > 0:
+      name_prefix = '/'.join(quant.name.split('/')[:-1])
+      quant = quant.graph.get_tensor_by_name(
+          name_prefix + '/delayed_quant/Merge:0')
 
   if consumers:
     tensors_modified_count = common.RerouteTensor(
