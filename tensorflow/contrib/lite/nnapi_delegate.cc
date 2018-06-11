@@ -490,6 +490,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_SELECT:
       case tflite::BuiltinOperator_SLICE:
       case tflite::BuiltinOperator_SIN:
+      case tflite::BuiltinOperator_LOG:
       case tflite::BuiltinOperator_TRANSPOSE_CONV:
       case tflite::BuiltinOperator_TILE:
       case tflite::BuiltinOperator_EXPAND_DIMS:

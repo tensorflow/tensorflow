@@ -300,6 +300,7 @@ class GroupByReducerDataset(dataset_ops.Dataset):
         raise ValueError(
             "`key_func` must return a single tf.int64 tensor. "
             "Got type=%s and shape=%s" % (ret.dtype, ret.get_shape()))
+      dataset_ops._warn_if_collections("tf.contrib.data.group_by_reducer()")  # pylint: disable=protected-access
       return ret
 
     self._key_func = tf_key_func
@@ -326,6 +327,8 @@ class GroupByReducerDataset(dataset_ops.Dataset):
           ret, [t.get_shape() for t in nest.flatten(ret)])
       self._state_types = nest.pack_sequence_as(
           ret, [t.dtype for t in nest.flatten(ret)])
+
+      dataset_ops._warn_if_collections("tf.contrib.data.group_by_reducer()")  # pylint: disable=protected-access
 
       # Serialize any sparse tensors.
       ret = nest.pack_sequence_as(
@@ -398,6 +401,8 @@ class GroupByReducerDataset(dataset_ops.Dataset):
                  nest.pack_sequence_as(self._state_types,
                                        [t.dtype for t in flat_new_state])))
 
+        dataset_ops._warn_if_collections("tf.contrib.data.group_by_reducer()")  # pylint: disable=protected-access
+
         # Serialize any sparse tensors.
         ret = nest.pack_sequence_as(
             ret,
@@ -464,6 +469,8 @@ class GroupByReducerDataset(dataset_ops.Dataset):
       self._output_types = nest.pack_sequence_as(
           ret, [t.dtype for t in nest.flatten(ret)])
 
+      dataset_ops._warn_if_collections("tf.contrib.data.group_by_reducer()")  # pylint: disable=protected-access
+
       # Serialize any sparse tensors.
       ret = nest.pack_sequence_as(
           ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
@@ -525,6 +532,7 @@ class GroupByWindowDataset(dataset_ops.Dataset):
       if window_size.dtype != dtypes.int64:
         raise ValueError(
             "`window_size_func` must return a single tf.int64 tensor.")
+      dataset_ops._warn_if_collections("tf.contrib.data.group_by_window()")  # pylint: disable=protected-access
       return window_size
 
     self._window_size_func = tf_window_size_func
@@ -557,6 +565,7 @@ class GroupByWindowDataset(dataset_ops.Dataset):
       ret = ops.convert_to_tensor(ret, dtype=dtypes.int64)
       if ret.dtype != dtypes.int64:
         raise ValueError("`key_func` must return a single tf.int64 tensor.")
+      dataset_ops._warn_if_collections("tf.contrib.data.group_by_window()")  # pylint: disable=protected-access
       return ret
 
     self._key_func = tf_key_func
@@ -580,6 +589,7 @@ class GroupByWindowDataset(dataset_ops.Dataset):
       self._output_classes = output_dataset.output_classes
       self._output_types = output_dataset.output_types
       self._output_shapes = output_dataset.output_shapes
+      dataset_ops._warn_if_collections("tf.contrib.data.group_by_window()")  # pylint: disable=protected-access
       return output_dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._reduce_func = tf_reduce_func

@@ -64,10 +64,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
   struct InputLayerInfo {
     std::string name;
-    TfLiteType data_type;
     std::vector<int> shape;
-    // Note that initialization_values is currently unused.
-    std::vector<float> initialization_values;
   };
 
  private:
@@ -78,7 +75,6 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   std::string input_layer_type_string;
   std::string input_layer_shape_string;
   std::string input_layer_values_string;
-  std::string output_layer_string;
   std::vector<InputLayerInfo> inputs;
   bool use_nnapi;
   ProfilingListener profiling_listener_;

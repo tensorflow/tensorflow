@@ -1,334 +1,304 @@
 # Keras
 
-## What's Keras?
+Keras is a high-level API to build and train deep learning models. It's used for
+fast prototyping, advanced research, and production, with three key advantages:
 
-Keras is a high-level API specification for building and training deep learning
-models, suitable for fast prototyping, advanced research, and production.
-It offers three key advantages:
+- *User friendly*<br>
+  Keras has a simple, consistent interface optimized for common use cases. It
+  provides clear and actionable feedback for user errors.
+- *Modular and composable*<br>
+  Keras models are made by connecting configurable building blocks together,
+  with few restrictions.
+- *Easy to extend*<br> Write custom building blocks to express new ideas for
+  research. Create new layers, loss functions, and develop state-of-the-art
+  models.
 
-- **User friendliness.** Keras follows best practices for reducing
-    cognitive load: it offers consistent & simple interfaces,
-    it minimizes the number of user actions required for common use cases,
-    and it provides clear and actionable feedback upon user error.
-- **Modularity and composability.** A Keras model is composed of
-    fully-configurable building blocks that can be plugged together
-    with as few restrictions as possible -- like Lego bricks.
-- **Easy extensibility.** You can easily write your own building blocks
-    (such as new layers, new loss functions, new models where you write
-    the forward pass from scratch). This allows for total expressiveness,
-    making Keras suitable for advanced research.
+## Import tf.keras
 
+`tf.keras` is TensorFlow's implementation of the
+[Keras API specification](https://keras.io){:.external}. This is a high-level
+API to build and train models that includes first-class support for
+TensorFlow-specific functionality, such as [eager execution](#eager_execution),
+`tf.data` pipelines, and [Estimators](/programmers_guide/estimators).
+`tf.keras` makes TensorFlow easier to use without sacrificing flexibility and
+performance.
 
-## What's tf.keras?
-
-`tf.keras` is TensorFlow's implementation of the Keras API specification, that
-serves as the TensorFlow high-level API: it's how you build models in TensorFlow.
-`tf.keras` seamlessly integrates with the rest of the TensorFlow API
-(such as `tf.data` input pipelines), bringing you the full power and flexibility
-of TensorFlow through an easy-to-use interface.
-
-You can import `tf.keras` via:
-
-```python
-from tensorflow import keras
-```
-
-What follows is a quick introduction to the basics of `tf.keras`.
-
-
-## Table of contents
-
-- [Getting started: the Sequential model](#getting-started-the-sequential-model)
-- [Configuring layers](#configuring-layers)
-- [Configuring training](#configuring-training)
-- [Training and evaluation](#training-and-evaluation)
-- [Building advanced models: the functional API](#building-advanced-models-the-functional-api)
-- [Building fully-customizable research models: the Model subclassing API](#building-fully-customizable-research-models-the-model-subclassing-api)
-- [Callbacks](#callbacks)
-- [Saving and serialization](#saving-and-serialization)
-- [Developing custom layers](#developing-custom-layers)
-- [Eager execution](#eager-execution)
-- [Further reading](#further-reading)
-- [FAQ](#faq)
-
-
----
-
-## Getting started: the Sequential model
-
-In `tf.keras`, you're assembling together **layers** to build **models**.
-A model is generally a graph of layers.
-The most common type of model is just a stack of layers: the `Sequential` class.
-
-Here's how to build a simple fully-connected network (multi-layer perceptron):
-
-```python
-from tensorflow import keras
-from tensorflow.keras import layers
-
-model = keras.Sequential()
-# This adds to the model a densely-connected layer with 64 units:
-model.add(Dense(64, activation='relu'))
-# Another one:
-model.add(Dense(64, activation='relu'))
-# This adds a softmax layer with 10 output units:
-model.add(Dense(10, activation='softmax'))
-```
-
----
-
-## Configuring layers
-
-Each layer may have unique constructor arguments, but some common arguments include:
-
-- `activation`: the activation function to be used.
-    It could be specified by name, as a string (for built-in functions)
-    or as a callable object. By default, no activation is applied.
-- `kernel_initializer` and `bias_initializer`: the initialization schemes to use
-    to create the layer's weights (kernel and bias).
-    Likewise, they may be passed either by name or by specifying a callable.
-    By default, the "Glorot uniform" initializer is used.
-- `kernel_regularizer` and `bias_regularizer`: the regularization schemes to
-    apply to the layer's weights (kernel and bias), such as L1
-    or L2 regularization. By default, no regularization is applied.
-
-
-### Examples
+To get started, import `tf.keras` as part of your TensorFlow program setup:
 
 ```python
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
-from tensorflow.keras import regularizers
-from tensorflow.keras import initializers
+from tensorflow import keras
+```
 
-# A sigmoid layer:
-Dense(64, activation='sigmoid')
-# Another way to define the same sigmoid layer:
-Dense(64, activation=tf.sigmoid)
+`tf.keras` can run any Keras-compatible code, but keep in mind:
 
-# A linear layer with L1 regularization of factor 0.01
-# applied to the kernel matrix:
-Dense(64, kernel_regularizer=regularizers.l1(0.01))
-# A linear layer with L2 regularization of factor 0.01
-# applied to the bias vector:
-Dense(64, bias_regularizer=regularizers.l2(0.01))
+* The `tf.keras` version in the latest TensorFlow release might not be the same
+  as the latest `keras` version from PyPI. Check `tf.keras.__version__`.
+* When [saving a model's weights](#weights_only), `tf.keras` defaults to the
+  [checkpoint format](/get_started/checkpoints). Pass `save_format='h5'` to use
+  HDF5.
+
+## Build a simple model
+
+### Sequential model
+
+In Keras, you assemble *layers* to build *models*. A model is (usually) a graph
+of layers. The most common type of model is a stack of layers: the
+`tf.keras.Sequential` model.
+
+To build a simple, fully-connected network (i.e. multi-layer perceptron):
+
+```python
+model = keras.Sequential()
+# Adds a densely-connected layer with 64 units to the model:
+model.add(keras.layers.Dense(64, activation='relu'))
+# Add another:
+model.add(keras.layers.Dense(64, activation='relu'))
+# Add a softmax layer with 10 output units:
+model.add(keras.layers.Dense(10, activation='softmax'))
+```
+
+### Configure the layers
+
+There are many `tf.keras.layers` available with some common constructor
+parameters:
+
+* `activation`: Set the activation function for the layer. This parameter is
+  specified by the name of a built-in function or as a callable object. By
+  default, no activation is applied.
+* `kernel_initializer` and `bias_initializer`: The initialization schemes
+  that create the layer's weights (kernel and bias). This parameter is a name or
+  a callable object. This defaults to the `"Glorot uniform"` initializer.
+* `kernel_regularizer` and `bias_regularizer`: The regularization schemes
+  that apply the layer's weights (kernel and bias), such as L1 or L2
+  regularization. By default, no regularization is applied.
+
+The following instantiates `tf.keras.layers.Dense` layers using constructor
+arguments:
+
+```python
+# Create a sigmoid layer:
+layers.Dense(64, activation='sigmoid')
+# Or:
+layers.Dense(64, activation=tf.sigmoid)
+
+# A linear layer with L1 regularization of factor 0.01 applied to the kernel matrix:
+layers.Dense(64, kernel_regularizer=keras.regularizers.l1(0.01))
+# A linear layer with L2 regularization of factor 0.01 applied to the bias vector:
+layers.Dense(64, bias_regularizer=keras.regularizers.l2(0.01))
 
 # A linear layer with a kernel initialized to a random orthogonal matrix:
-Dense(64, kernel_initializer='orthogonal')
+layers.Dense(64, kernel_initializer='orthogonal')
 # A linear layer with a bias vector initialized to 2.0s:
-Dense(64, bias_initializer=initializers.constant(2.0))
+layers.Dense(64, bias_initializer=keras.initializers.constant(2.0))
 ```
 
----
+## Train and evaluate
 
-## Configuring training
+### Set up training
 
-Once your model looks good, configure its learning process by calling `compile`:
+After the model is constructed, configure its learning process by calling the
+`compile` method:
 
 ```python
-import tensorflow as tf
-
 model.compile(optimizer=tf.train.AdamOptimizer(0.001),
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 ```
 
-There are three key arguments that you need to specify:
+`tf.keras.Model.compile` takes three important arguments:
 
-- An `optimizer`: this object specifies the training procedure.
-    We recommend that you pass instances of optimizers from the `tf.train` module
-    (such as [`AdamOptimizer`](https://www.tensorflow.org/api_docs/python/tf/train/AdamOptimizer),
-    [`RMSPropOptimizer`](https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer),
-    or [`GradientDescentOptimizer`](https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer)).
-- A `loss` function to minimize: this specifies the optimization objective.
-    Common choices include mean square error (`mse`), `categorical_crossentropy`
-    and `binary_crossentropy`. Loss functions may be specified by name
-    or by passing a callable (e.g. from the `tf.keras.losses` module).
-- Some `metrics` to monitor during training: again, you can pass these as either
-    string names or callables (e.g. from the `tf.keras.metrics` module).
+* `optimizer`: This object specifies the training procedure. Pass it optimizer
+  instances from the `tf.train` module, such as
+  [`AdamOptimizer`](/api_docs/python/tf/train/AdamOptimizer),
+  [`RMSPropOptimizer`](/api_docs/python/tf/train/RMSPropOptimizer), or
+  [`GradientDescentOptimizer`](/api_docs/python/tf/train/GradientDescentOptimizer).
+* `loss`: The function to minimize during optimization. Common choices include
+  mean square error (`mse`), `categorical_crossentropy`, and
+  `binary_crossentropy`. Loss functions are specified by name or by
+  passing a callable object from the `tf.keras.losses` module.
+* `metrics`: Used to monitor training. These are string names or callables from
+  the `tf.keras.metrics` module.
 
-
-### Examples
+The following shows a few examples of configuring a model for training:
 
 ```python
-# Configures a model to do mean-squared error regression.
+# Configure a model for mean-squared error regression.
 model.compile(optimizer=tf.train.AdamOptimizer(0.01),
-              loss='mse',  # mean squared error
+              loss='mse',       # mean squared error
               metrics=['mae'])  # mean absolute error
-```
-```python
-# Configures a model to do categorical classification.
+
+# Configure a model for categorical classification.
 model.compile(optimizer=tf.train.RMSPropOptimizer(0.01),
-              loss=tf.keras.losses.categorical_crossentropy,
-              metrics=[tf.keras.metrics.categorical_accuracy])
+              loss=keras.losses.categorical_crossentropy,
+              metrics=[keras.metrics.categorical_accuracy])
 ```
 
----
+### Input NumPy data
 
-## Training and evaluation
-
-### From Numpy data
-
-When running locally on small datasets, the easiest way to do training and
-evaluation is to pass data to your model as Numpy arrays of inputs and targets.
-You can "fit" your model to some training data using the `model.fit()` method:
+For small datasets, use in-memory [NumPy](https://www.numpy.org/){:.external}
+arrays to train and evaluate a model. The model is "fit" to the training data
+using the `fit` method:
 
 ```python
 import numpy as np
 
-data = np.random.random(shape=(1000, 32))
-targets = np.random.random(shape=(1000, 10))
+data = np.random.random((1000, 32))
+labels = np.random.random((1000, 10))
 
-model.fit(data, targets, epochs=10, batch_size=32)
+model.fit(data, labels, epochs=10, batch_size=32)
 ```
 
-Here are some key arguments you can pass to the `fit` method:
+`tf.keras.Model.fit` takes three important arguments:
 
-- `epochs`: Training is structured into **epochs**. An epoch is one iteration
-    over the entire input data (which is done in smaller batches).
-- `batch_size`: when passing Numpy data, the model will slice the data into
-    smaller batches and iterate over these batches during training.
-    This integer specifies the size of each batch
-    (the last batch may be smaller if the total number of samples is not
-    divisible by the batch size).
-- `validation_data`: when prototyping a model, you want to be able to quickly
-    monitor its performance on some validation data.
-    When you pass this argument (it expects a tuple of inputs and targets),
-    the model will display the loss and metrics in inference mode on the data
-    you passed, at the end of each epoch.
+* `epochs`: Training is structured into *epochs*. An epoch is one iteration over
+  the entire input data (this is done in smaller batches).
+* `batch_size`: When passed NumPy data, the model slices the data into smaller
+  batches and iterates over these batches during training. This integer
+  specifies the size of each batch. Be aware that the last batch may be smaller
+  if the total number of samples is not divisible by the batch size.
+* `validation_data`: When prototyping a model, you want to easily monitor its
+  performance on some validation data. Passing this argument—a tuple of inputs
+  and labels—allows the model to display the loss and metrics in inference mode
+  for the passed data, at the end of each epoch.
 
 Here's an example using `validation_data`:
 
 ```python
 import numpy as np
 
-data = np.random.random(shape=(1000, 32))
-targets = np.random.random(shape=(1000, 10))
+data = np.random.random((1000, 32))
+labels = np.random.random((1000, 10))
 
-val_data = np.random.random(shape=(100, 32))
-val_targets = np.random.random(shape=(100, 10))
+val_data = np.random.random((100, 32))
+val_labels = np.random.random((100, 10))
 
-model.fit(data, targets, epochs=10, batch_size=32,
-          validation_data=(val_data, val_targets))
+model.fit(data, labels, epochs=10, batch_size=32,
+          validation_data=(val_data, val_labels))
 ```
 
-### From tf.data datasets
+### Input tf.data datasets
 
-When you need to scale to large datasets or multi-device training,
-training from Numpy arrays in memory will not be ideal.
-In such cases, you should use [the `tf.data` API](https://www.tensorflow.org/programmers_guide/datasets).
-You can pass a `tf.data.Dataset` instance to the `fit` method:
+Use the [Datasets API](/programmers_guide/datasets) to scale to large datasets
+or multi-device training. Pass a `tf.data.Dataset` instance to the `fit`
+method:
 
 ```python
-import tensorflow as tf
-
 # Instantiates a toy dataset instance:
-dataset = tf.data.Dataset.from_tensor_slices((data, targets)).batch(32)
+dataset = tf.data.Dataset.from_tensor_slices((data, labels))
+dataset = dataset.batch(32)
+dataset = dataset.repeat()
 
 # Don't forget to specify `steps_per_epoch` when calling `fit` on a dataset.
 model.fit(dataset, epochs=10, steps_per_epoch=30)
 ```
 
-When doing so, the dataset itself will yield batches of data,
-so the model does not need to be passed `batch_size` information.
-Instead, the model needs to know for how many steps (or batches of data)
-it should run at each epoch.
-You specify this with the `steps_per_epoch` argument: it's the number of
-training steps the model will run before moving on the next epoch.
+Here, the `fit` method uses the `steps_per_epoch` argument—this is the number of
+training steps the model runs before it moves to the next epoch. Since the
+`Dataset` yields batches of data, this snippet does not require a `batch_size`.
 
-You can also pass datasets for validation:
+Datasets can also be used for validation:
 
 ```python
-dataset = tf.data.Dataset.from_tensor_slices((data, targets)).batch(32)
-val_dataset = tf.data.Dataset.from_tensor_slices((val_data, val_targets)).batch(32)
+dataset = tf.data.Dataset.from_tensor_slices((data, labels))
+dataset = dataset.batch(32).repeat()
 
-model.fit(dataset, epochs=10, steps_per_epoch=30, validation_data=val_dataset, validation_steps=3)
+val_dataset = tf.data.Dataset.from_tensor_slices((val_data, val_labels))
+val_dataset = val_dataset.batch(32).repeat()
+
+model.fit(dataset, epochs=10, steps_per_epoch=30,
+          validation_data=val_dataset,
+          validation_steps=3)
 ```
 
 ### Evaluate and predict
 
-In addition, you get access to the following methods
-(both with Numpy data and dataset instances):
+The `tf.keras.Model.evaluate` and `tf.keras.Model.predict` methods can use NumPy
+data and a `tf.data.Dataset`.
 
-- `model.evaluate(x, y, batch_size=32)` or `model.evaluate(dataset, steps=30)`
-    will return the inference-mode loss and metrics for the data provided.
-- `model.predict(x, y, batch_size=32)` or `model.predict(dataset, steps=30)`
-    will return the output(s) of the last layer(s) in inference on the data
-    provided, as Numpy array(s).
-
----
-
-## Building advanced models: the functional API
-
-The `Sequential` model cannot represent arbitrary models -- only simple stacks
-of layers. If you need to use more complex model topologies,
-such as multi-input models, multi-output models,
-models with a same layer called several times (shared layers),
-or models with non-sequential data flows (e.g. residual connections),
-you can use the 'functional API'.
-
-Here's how it works:
-
-- A layer instance is callable (on a tensor), and it returns a tensor.
-- Input tensor(s) and output tensor(s) can then be used to define a `Model` instance.
-- Such a model can be trained just like the `Sequential` model.
-
-Here's a basic example showing the same model we previously defined,
-built using the functional API:
-
+To *evaluate* the inference-mode loss and metrics for the data provided:
 
 ```python
-from tensorflow import keras
-from tensorflow.keras import layers
+model.evaluate(x, y, batch_size=32)
 
-# This returns a placeholder tensor:
-inputs = keras.Input(shape=(784,))
+model.evaluate(dataset, steps=30
+```
+
+And to *predict* the output of the last layer in inference for the data provided,
+as a NumPy array:
+
+```
+model.predict(x, batch_size=32)
+
+model.predict(dataset, steps=30)
+```
+
+
+## Build advanced models
+
+### Functional API
+
+The `tf.keras.Sequential` model is a simple stack of layers that cannot
+represent arbitrary models. Use the
+[Keras functional API](https://keras.io/getting-started/functional-api-guide/){:.external}
+to build complex model topologies such as:
+
+* Multi-input models,
+* Multi-output models,
+* Models with shared layers (the same layer called several times),
+* Models with non-sequential data flows (e.g. residual connections).
+
+Building a model with the functional API works like this:
+
+1. A layer instance is callable and returns a tensor.
+2. Input tensors and output tensors are used to define a `tf.keras.Model`
+   instance.
+3. This model is trained just like the `Sequential` model.
+
+The following example uses the functional API to build a simple, fully-connected
+network:
+
+```python
+inputs = keras.Input(shape=(32,))  # Returns a placeholder tensor
 
 # A layer instance is callable on a tensor, and returns a tensor.
-x = layers.Dense(64, activation='relu')(inputs)
-x = layers.Dense(64, activation='relu')(x)
-predictions = layers.Dense(10, activation='softmax')(x)
+x = keras.layers.Dense(64, activation='relu')(inputs)
+x = keras.layers.Dense(64, activation='relu')(x)
+predictions = keras.layers.Dense(10, activation='softmax')(x)
 
-# Instantiates the model given inputs and outputs.
+# Instantiate the model given inputs and outputs.
 model = keras.Model(inputs=inputs, outputs=predictions)
 
-# The "compile" step specifies the training configuration.
-model.compile(optimizer='rmsprop',
+# The compile step specifies the training configuration.
+model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
-# Trains for 5 epochs.
+# Trains for 5 epochs
 model.fit(data, labels, batch_size=32, epochs=5)
 ```
 
-This API enables you to create models with multiple inputs and outputs,
-and to "share" layers across different inputs
-(i.e. to reuse a same instance multiple times).
-For examples of these use cases,
-please see [this guide to the functional API in Keras](https://keras.io/getting-started/functional-api-guide/).
+### Model subclassing
 
----
+Build a fully-customizable model by subclassing `tf.keras.Model` and defining
+your own forward pass. Create layers in the `__init__` method and set them as
+attributes of the class instance. Define the forward pass in the `call` method.
 
-## Building fully-customizable research models: the Model subclassing API
+Model subclassing is particularly useful when
+[eager execution](/programmers_guide/eager) is enabled since the forward pass
+can be written imperatively.
 
-Besides `Sequential` and the functional API, one last, more flexible way to
-define models is to directly subclass the `Model` class and define your own
-forward pass manually.
+Key Point: Use the right API for the job. While model subclassing offers
+flexibility, it comes at a cost of greater complexity and more opportunities for
+user errors. If possible, prefer the functional API.
 
-In this API, you instante layers in `__init__` and set them as attribute of the
-class instance. Then you specify the forward pass in `call`.
-This API is particularly valuable when using TensorFlow with [eager execution](https://www.tensorflow.org/programmers_guide/eager),
-since eager execution allows you to write your forward pass in an
-imperative fashion (as if you were writing Numpy code, for instance).
+The following example shows a subclassed `tf.keras.Model` using a custom forward
+pass:
 
 ```python
-import tensorflow as tf
-from tensorflow import keras
-
-
 class MyModel(keras.Model):
 
-  def __init__(self, num_classes=2):
+  def __init__(self, num_classes=10):
     super(MyModel, self).__init__(name='my_model')
     self.num_classes = num_classes
     # Define your layers here.
@@ -351,10 +321,10 @@ class MyModel(keras.Model):
 
 
 # Instantiates the subclassed model.
-model = MyModel(num_classes=2)
+model = MyModel(num_classes=10)
 
-# The "compile" step specifies the training configuration.
-model.compile(optimizer='rmsprop',
+# The compile step specifies the training configuration.
+model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
@@ -362,353 +332,291 @@ model.compile(optimizer='rmsprop',
 model.fit(data, labels, batch_size=32, epochs=5)
 ```
 
-**Remember:** use the right API for the right job.
-Using the `Model` subclassing API offers more flexibility,
-but at the cost of greater complexity and a larger potential user error surface.
-Prefer using the functional API when possible.
 
----
+### Custom layers
+
+Create a custom layer by subclassing `tf.keras.layers.Layer` and implementing
+the following methods:
+
+* `build`: Create the weights of the layer. Add weights with the `add_weight`
+  method.
+* `call`: Define the forward pass.
+* `compute_output_shape`: Specify how to compute the output shape of the layer
+  given the input shape.
+* Optionally, a layer can be serialized by implementing the `get_config` method
+  and the `from_config` class method.
+
+Here's an example of a custom layer that implements a `matmul` of an input with
+a kernel matrix:
+
+```python
+class MyLayer(keras.layers.Layer):
+
+  def __init__(self, output_dim, **kwargs):
+    self.output_dim = output_dim
+    super(MyLayer, self).__init__(**kwargs)
+
+  def build(self, input_shape):
+    shape = tf.TensorShape((input_shape[1], self.output_dim))
+    # Create a trainable weight variable for this layer.
+    self.kernel = self.add_weight(name='kernel',
+                                  shape=shape,
+                                  initializer='uniform',
+                                  trainable=True)
+    # Be sure to call this at the end
+    super(MyLayer, self).build(input_shape)
+
+  def call(self, inputs):
+    return tf.matmul(inputs, self.kernel)
+
+  def compute_output_shape(self, input_shape):
+    shape = tf.TensorShape(input_shape).as_list()
+    shape[-1] = self.output_dim
+    return tf.TensorShape(shape)
+
+  def get_config(self):
+    base_config = super(MyLayer, self).get_config()
+    base_config['output_dim'] = self.output_dim
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(**config)
+
+
+# Create a model using the custom layer
+model = keras.Sequential([MyLayer(10),
+                          keras.layers.Activation('softmax')])
+
+# The compile step specifies the training configuration
+model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Trains for 5 epochs.
+model.fit(data, targets, batch_size=32, epochs=5)
+```
+
 
 ## Callbacks
 
-Callbacks are objects that you can pass to your model that customize and extend
-its behavior during training.
-There are callbacks for saving checkpoints of your model at regular intervals
-(`tf.keras.callbacks.ModelCheckpoint`),
-to dynamically change the learning rate (`tf.keras.callbacks.LearningRateScheduler`)
-or to interrupt training when validation performance has stopped improving
-(`tf.keras.callbacks.EarlyStopping`).
-You can also use a callback to monitor your model's behavior using
-[TensorBoard](https://www.tensorflow.org/programmers_guide/summaries_and_tensorboard)
-(`tf.keras.callbacks.TensorBoard`).
-You can also write your own custom callbacks.
+A callback is an object passed to a model to customize and extend its behavior
+during training. You can write your own custom callback, or use the built-in
+`tf.keras.callbacks` that include:
 
-Different built-in callback are found in `tf.keras.callbacks`.
-You use them by passing a `Callback` instance to `fit`:
+* `tf.keras.callbacks.ModelCheckpoint`: Save checkpoints of your model at
+  regular intervals.
+* `tf.keras.callbacks.LearningRateScheduler`: Dynamically change the learning
+  rate.
+* `tf.keras.callbacks.EarlyStopping`: Interrupt training when validation
+  performance has stopped improving.
+* `tf.keras.callbacks.TensorBoard`: Monitor the model's behavior using
+  [TensorBoard](/programmers_guide/summaries_and_tensorboard).
+
+To use a `tf.keras.callbacks.Callback`, pass it to the model's `fit` method:
 
 ```python
-from tensorflow import keras
-
 callbacks = [
-    # Interrupt training if `val_loss` stops improving for over 2 epochs
-    keras.callbacks.EarlyStopping(patience=2, monitor='val_loss'),
-    # Write TensorBoard logs to `./logs` directory
-    keras.callbacks.TensorBoard(log_dir='./logs')
+  # Interrupt training if `val_loss` stops improving for over 2 epochs
+  keras.callbacks.EarlyStopping(patience=2, monitor='val_loss'),
+  # Write TensorBoard logs to `./logs` directory
+  keras.callbacks.TensorBoard(log_dir='./logs')
 ]
-model.fit(data, labels, batch_size=32, epochs=5, callbacks=callbacks)
+model.fit(data, labels, batch_size=32, epochs=5, callbacks=callbacks,
+          validation_data=(val_data, val_targets))
 ```
 
----
 
-## Saving and serialization
+## Save and restore
 
-### Weights-only saving
+### Weights only
 
-You can save the weight values of a model via `model.save_weights(filepath)`:
+Save and load the weights of a model using `tf.keras.Model.save_weights`:
 
 ```python
-# Saves weights to a SavedModel file.
-model.save_weights('my_model')
+# Save weights to a TensorFlow Checkpoint file
+model.save_weights('./my_model')
 
-# Restores the model's state
-# (this requires a model that has the same architecture).
+# Restore the model's state,
+# this requires a model with the same architecture.
 model.load_weights('my_model')
 ```
 
-By default, this saves the weight in the TensorFlow
-[`SavedModel`](https://www.tensorflow.org/programmers_guide/saved_model) format.
-You could also save them in the Keras HDF5 format
-(which is the default in the multi-backend implementation of Keras):
+By default, this saves the model's weights in the
+[TensorFlow checkpoint](/get_started/checkpoints) file format. Weights can also
+be saved to the Keras HDF5 format (the default for the multi-backend
+implementation of Keras):
 
 ```python
-# Saves weights to a HDF5 file.
-model.save_weights('my_model.h5', format='h5')
+# Save weights to a HDF5 file
+model.save_weights('my_model.h5', save_format='h5')
 
-# Restores the model's state.
+# Restore the model's state
 model.load_weights('my_model.h5')
 ```
 
-### Configuration-only saving (serialization)
 
-You can also save the model's configuration
-(its architecture, without any weight values),
-which allows you to recreate the same model later (freshly initialized) even if
-you don't have the code that defined it anymore.
-Two possible serialization formats are JSON and YAML:
+### Configuration only
+
+A model's configuration can be saved—this serializes the model architecture
+without any weights. A saved configuration can recreate and initialize the same
+model, even without the code that defined the original model. Keras supports
+JSON and YAML serialization formats:
 
 ```python
-from tensorflow.keras import models
-
-# Serializes a model to JSON.
+# Serialize a model to JSON format
 json_string = model.to_json()
-# Recreates the model (freshly initialized).
-fresh_model = models.from_json(json_string)
 
-# Serializes a model to YAML.
+# Recreate the model (freshly initialized)
+fresh_model = keras.models.from_json(json_string)
+
+# Serializes a model to YAML format
 yaml_string = model.to_yaml()
-# Recreates the model.
-fresh_model = models.from_yaml(yaml_string)
+
+# Recreate the model
+fresh_model = keras.models.from_yaml(yaml_string)
 ```
 
-Note that this feature is not available with subclassed models,
-because they are simply not serializable:
-their architecture is defined as Python code
-(the body of the `call` method of the model).
+Caution: Subclassed models are not serializable because their architecture is
+defined by the Python code in the body of the `call` method.
 
-### Whole-model saving
 
-Finally, you can also save a model wholesale, to a file that will contain both
-the weight values, the model's configuration,
-and even the optimizer's configuration.
-The allows you to checkpoint a model and resume training later --
-from the exact same state -- even if you don't have access to the original code.
+### Entire model
+
+The entire model can be saved to a file that contains the weight values, the
+model's configuration, and even the optimizer's configuration. This allows you
+to checkpoint a model and resume training later—from the exact same
+state—without access to the original code.
 
 ```python
-from tensorflow.keras import models
+# Create a trivial model
+model = keras.Sequential([
+  keras.layers.Dense(10, activation='softmax', input_shape=(32,)),
+  keras.layers.Dense(10, activation='softmax')
+])
+model.compile(optimizer='rmsprop',
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+model.fit(data, targets, batch_size=32, epochs=5)
 
+
+# Save entire model to a HDF5 file
 model.save('my_model.h5')
 
-# Recreates the exact same model, complete with weights and optimizer.
-model = models.load_model('my_model.h5')
+# Recreate the exact same model, including weights and optimizer.
+model = keras.models.load_model('my_model.h5')
 ```
 
----
-
-## Developing custom layers
-
-You can write your own custom layers by subclassing the class
-`tf.keras.layers.Layer`. You will need to implement the following three methods:
-
-- `build`: Creates the weights of the layer.
-    Weights should be added via the `add_weight` method.
-- `call`: Specifies the forward pass.
-- `compute_output_shape`: Specifies how to compute the output shape of the layer 
-    given the input shape.
-
-Optionally, you may also implement the method `get_config()` and the
-class method `from_config()` if you want your layer to be serializable.
-
-Here's a simple example of a custom layer that implements a `matmul`
-of an input with a kernel matrix:
-
-```python
-import tensorflow as tf
-from tensorflow.keras import layers
-
-class MyLayer(layers.Layer):
-
-    def __init__(self, output_dim, **kwargs):
-        self.output_dim = output_dim
-        super(MyLayer, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # Create a trainable weight variable for this layer.
-        self.kernel = self.add_weight(name='kernel', 
-                                      shape=(input_shape[1], self.output_dim),
-                                      initializer='uniform',
-                                      trainable=True)
-        # Be sure to call this at the end
-        super(MyLayer, self).build(input_shape)
-
-    def call(self, inputs):
-        return tf.matmul(inputs, self.kernel)
-
-    def compute_output_shape(self, input_shape):
-        shape = tf.TensorShape(input_shape).as_list()
-        shape[-1] = self.output_dim
-        return tf.TensorShape(shape)
-
-    def get_config(self):
-        base_config = super(MyLayer, self).get_config()
-        base_config['output_dim'] = self.output_dim
-
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
-```
-
----
 
 ## Eager execution
 
-[Eager execution](https://www.tensorflow.org/programmers_guide/eager)
-is a way to write TensorFlow code imperatively.
+[Eager execution](/programmers_guide/eager) is an imperative programming
+environment that evaluates operations immediately. This is not required for
+Keras, but is supported by `tf.keras` and useful for inspecting your program and
+debugging.
 
-All three `tf.keras` model-building APIs
-(`Sequential`, the functional API `Model(inputs, outputs)`,
-and the subclassing API `MyModel(Model)`) are compatible with eager execution.
-When using `Sequential` or the functional API, it makes no difference to the
-user experience whether the model is executing eagerly or not.
-Eager execution is most beneficial when used with the `Model` subclassing API,
-or when prototyping a custom layer -- that is to say, in APIs that require you
-to *write a forward pass as code*, rather than in APIs that allow you to create
-models by assembling together existing layers.
+All of the `tf.keras` model-building APIs are compatible with eager execution.
+And while the `Sequential` and functional APIs can be used, eager execution
+especially benefits *model subclassing* and building *custom layers*—the APIs
+that require you to write the forward pass as code (instead of the APIs that
+create models by assembling existing layers).
 
-While the same training and evaluating APIs presented in this guide work
-as usual with eager execution, you can in addition
-write custom training loops using the eager `GradientTape`
-and define-by-run autodifferentiation:
+See the [eager execution guide](/programmers_guide/eager#build_a_model) for
+examples of using Keras models with custom training loops and `tf.GradientTape`.
+
+
+## Distribution
+
+### Estimators
+
+The [Estimators](/programmers_guide/estimators) API is used for training models
+for distributed environments. This targets industry use cases such as
+distributed training on large datasets that can export a model for production.
+
+A `tf.keras.Model` can be trained with the `tf.estimator` API by converting the
+model to an `tf.estimator.Estimator` object with
+`tf.keras.estimator.model_to_estimator`. See
+[Creating Estimators from Keras models](/programmers_guide/estimators#creating_estimators_from_keras_models).
 
 ```python
-import tensorflow as tf
-from tensorflow.contrib import eager as tfe
+model = keras.Sequential([layers.Dense(10,activation='softmax'),
+                          layers.Dense(10,activation='softmax')])
 
-# This call begins the eager execution session.
-tf.enable_eager_execution()
+model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
 
-model = ...  # Defines a Keras model (we recommend Model subclassing in this case).
-dataset = ...  # Defines a `tf.data` dataset.
-
-optimizer = tf.train.AdamOptimizer(0.01)
-
-for data, labels in dataset:
-    # Runs the forward pass and loss computation under a `GradientTape` scope,
-    # which will record all operations in order to prepare for the backward pass.
-    with tfe.GradientTape() as tape:
-      predictions = model(data)
-      loss = loss_function(labels, predictions)
-
-    # Runs the backward pass manually using the operations recorded
-    # by the gradient tape.
-    grads = tape.gradient(loss, model.trainable_weights)
-    optimizer.apply_gradients(zip(grads, model.trainable_weights),
-                              global_step=tf.train.get_or_create_global_step())
+estimator = keras.estimator.model_to_estimator(model)
 ```
 
----
+Note: Enable [eager execution](/programmers_guide/eager) for debugging
+[Estimator input functions](/programmers_guide/premade_estimators#create_input_functions)
+and inspecting data.
 
-## Further reading
+### Multiple GPUs
 
-### Documentation
+`tf.keras` models can run on multiple GPUs using
+`tf.contrib.distribute.DistributionStrategy`. This API provides distributed
+training on multiple GPUs with almost no changes to existing code.
 
-- [tf.keras documentation](https://www.tensorflow.org/api_docs/python/tf/keras)
-- [keras.io](https://keras.io/)
+Currently, `tf.contrib.distribute.MirroredStrategy` is the only supported
+distribution strategy. `MirroredStrategy` does in-graph replication with
+synchronous training using all-reduce on a single machine. To use
+`DistributionStrategy` with Keras, convert the `tf.keras.Model` to a
+`tf.estimator.Estimator` with `tf.keras.estimator.model_to_estimator`, then
+train the estimator
 
-### tf.keras tutorials and examples
+The following example distributes a `tf.keras.Model` across multiple GPUs on a
+single machine.
 
-- [Fashion-MNIST with tf.Keras](https://medium.com/tensorflow/hello-deep-learning-fashion-mnist-with-keras-50fcff8cd74a)
-- [Predicting the price of wine with the Keras Functional API and TensorFlow](
-    https://medium.com/tensorflow/predicting-the-price-of-wine-with-the-keras-functional-api-and-tensorflow-a95d1c2c1b03)
-
-
----
-
-## FAQ
-
-### What are the differences between tf.keras and the multi-backend Keras implementation?
-
-`tf.keras` includes first-class support for important TensorFlow-specific
-functionality not found in other Keras implementations, in particular:
-
-- Support for eager execution.
-- Support for the `tf.data` API.
-- Integration with the
-    [`tf.estimator` API](https://www.tensorflow.org/programmers_guide/estimators),
-    via `tf.keras.estimator.model_to_estimator`.
-
-In terms of API differences: `tf.keras` is a full implementation of the
-Keras API, so any code targeting the Keras API will run on `tf.keras`.
-However, keep in mind that:
-
-- The `tf.keras` API version in the latest TensorFlow release might not be the
-    same as the latest `keras` version from PyPI.
-    Check out `tf.keras.__version__` if in doubt.
-- In `tf.keras`, the default file format saved by `model.save_weights` is the
-    TensorFlow `SavedModel` format.
-    To use HDF5, you can pass the `format='h5'` argument.
-
-
-### What is the relationship between tf.keras and tf.estimator?
-
-The [`tf.estimator` API](https://www.tensorflow.org/programmers_guide/estimators)
-is a high-level TensorFlow API for training "estimator" models,
-in particular in distributed settings.
-This API targets industry use cases, such as distributed training
-on large datasets with a focus on eventually exporting a production model.
-
-If you have a `tf.keras` model that would like to train with the `tf.estimator`
-API, you can convert your model to an `Estimator` object via the
-`model_to_estimator` utility](https://www.tensorflow.org/programmers_guide/estimators#creating_estimators_from_keras_models):
-
+First, define a simple model:
 
 ```python
-estimator = tf.keras.estimator.model_to_estimator(model)
-```
+model = keras.Sequential()
+model.add(keras.layers.Dense(16, activation='relu', input_shape=(10,)))
+model.add(keras.layers.Dense(1, activation='sigmoid'))
 
-When using `model_to_estimator`, enabling eager execution is helpful for
-developing and debugging your `input_fn`
-(as it allows you to easily print your data).
-
-
-### How can I run tf.keras models on multiple GPUs?
-
-You can run tf.keras models on multiple GPUs using the
-[`DistributionStrategy API`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/DistributionStrategy).
-The `DistributionStrategy` API allow you to distribute training on multiple GPUs
-with almost no changes to your existing code.
-
-Currently [`MirroredStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/MirroredStrategy)
-is the only supported strategy.
-`MirroredStrategy` allows you to do in-graph replication with synchronous
-training using all-reduce on a single machine.
-To use `DistributionStrategy` with a `tf.keras` model,
-you can use the `model_to_estimator` utility to convert a `tf.keras` model to
-an `Estimator` and then train the estimator.
-
-Here is a simple example of distributing a `tf.keras` model across multiple GPUs
-on a single machine.
-
-Let's first define a simple model:
-
-```python
-model = tf.keras.Sequential()
-model.add(tf.keras.layers.Dense(16, activation='relu', input_shape=(10,)))
-model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 optimizer = tf.train.GradientDescentOptimizer(0.2)
+
 model.compile(loss='binary_crossentropy', optimizer=optimizer)
 model.summary()
 ```
 
-Let's use `model_to_estimator` to create an `Estimator` instance from the
-`tf.keras` model defined above.
+Convert the Keras model to a `tf.estimator.Estimator` instance:
 
 ```python
-keras_estimator = tf.keras.estimator.model_to_estimator(
-    keras_model=model,
-    config=config,
-    model_dir='/tmp/model_dir')
+keras_estimator = keras.estimator.model_to_estimator(
+  keras_model=model,
+  config=config,
+  model_dir='/tmp/model_dir')
 ```
 
-We'll use `tf.data.Datasets` to define our input pipeline.
-Our `input_fn` returns a `tf.data.Dataset` object that we then use to distribute
-the data across multiple devices with each device processing
+Define an *input pipeline*. The `input_fn` returns a `tf.data.Dataset` object
+used to distribute the data across multiple devices—with each device processing
 a slice of the input batch.
 
 ```python
 def input_fn():
-    x = np.random.random((1024, 10))
-    y = np.random.randint(2, size=(1024, 1))
-    x = tf.cast(x, tf.float32)
-    dataset = tf.data.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.repeat(10)
-    dataset = dataset.batch(32)
-    return dataset
+  x = np.random.random((1024, 10))
+  y = np.random.randint(2, size=(1024, 1))
+  x = tf.cast(x, tf.float32)
+  dataset = tf.data.Dataset.from_tensor_slices((x, y))
+  dataset = dataset.repeat(10)
+  dataset = dataset.batch(32)
+  return dataset
 ```
 
-The next step is to create a `RunConfig` and set the train_distribute argument
-to the new `MirroredStrategy` instance.
-You can specify a list of devices or the `num_gpus` argument when creating
-a `MirroredStrategy` instance.
-Not specifying any arguments defaults to using all the available GPUs like we do
-in this example.
+Next, create a `tf.estimator.RunConfig` and set the `train_distribute` argument
+to the `tf.contrib.distribute.MirroredStrategy` instance. When creating
+`MirroredStrategy`, you can specify a list of devices or set the `num_gpus`
+argument. The default uses all available GPUs, like the following:
 
 ```python
 strategy = tf.contrib.distribute.MirroredStrategy()
 config = tf.estimator.RunConfig(train_distribute=strategy)
 ```
 
-Call train on the `Estimator` instance providing the `input_fn` and `steps`
-arguments as input:
+Finally, train the `Estimator` instance by providing the `input_fn` and `steps`
+arguments:
 
 ```python
 keras_estimator.train(input_fn=input_fn, steps=10)

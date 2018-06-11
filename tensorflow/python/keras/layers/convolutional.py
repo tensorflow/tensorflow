@@ -151,21 +151,23 @@ class Conv(Layer):
     input_dim = int(input_shape[channel_axis])
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
-    self.kernel = self.add_variable(name='kernel',
-                                    shape=kernel_shape,
-                                    initializer=self.kernel_initializer,
-                                    regularizer=self.kernel_regularizer,
-                                    constraint=self.kernel_constraint,
-                                    trainable=True,
-                                    dtype=self.dtype)
+    self.kernel = self.add_weight(
+        name='kernel',
+        shape=kernel_shape,
+        initializer=self.kernel_initializer,
+        regularizer=self.kernel_regularizer,
+        constraint=self.kernel_constraint,
+        trainable=True,
+        dtype=self.dtype)
     if self.use_bias:
-      self.bias = self.add_variable(name='bias',
-                                    shape=(self.filters,),
-                                    initializer=self.bias_initializer,
-                                    regularizer=self.bias_regularizer,
-                                    constraint=self.bias_constraint,
-                                    trainable=True,
-                                    dtype=self.dtype)
+      self.bias = self.add_weight(
+          name='bias',
+          shape=(self.filters,),
+          initializer=self.bias_initializer,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
+          trainable=True,
+          dtype=self.dtype)
     else:
       self.bias = None
     self.input_spec = InputSpec(ndim=self.rank + 2,
@@ -720,21 +722,23 @@ class Conv2DTranspose(Conv2D):
     self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
-    self.kernel = self.add_variable(name='kernel',
-                                    shape=kernel_shape,
-                                    initializer=self.kernel_initializer,
-                                    regularizer=self.kernel_regularizer,
-                                    constraint=self.kernel_constraint,
-                                    trainable=True,
-                                    dtype=self.dtype)
+    self.kernel = self.add_weight(
+        name='kernel',
+        shape=kernel_shape,
+        initializer=self.kernel_initializer,
+        regularizer=self.kernel_regularizer,
+        constraint=self.kernel_constraint,
+        trainable=True,
+        dtype=self.dtype)
     if self.use_bias:
-      self.bias = self.add_variable(name='bias',
-                                    shape=(self.filters,),
-                                    initializer=self.bias_initializer,
-                                    regularizer=self.bias_regularizer,
-                                    constraint=self.bias_constraint,
-                                    trainable=True,
-                                    dtype=self.dtype)
+      self.bias = self.add_weight(
+          name='bias',
+          shape=(self.filters,),
+          initializer=self.bias_initializer,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
+          trainable=True,
+          dtype=self.dtype)
     else:
       self.bias = None
     self.built = True
@@ -961,7 +965,7 @@ class Conv3DTranspose(Conv3D):
     kernel_shape = self.kernel_size + (self.filters, input_dim)
     self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
 
-    self.kernel = self.add_variable(
+    self.kernel = self.add_weight(
         'kernel',
         shape=kernel_shape,
         initializer=self.kernel_initializer,
@@ -970,7 +974,7 @@ class Conv3DTranspose(Conv3D):
         trainable=True,
         dtype=self.dtype)
     if self.use_bias:
-      self.bias = self.add_variable(
+      self.bias = self.add_weight(
           'bias',
           shape=(self.filters,),
           initializer=self.bias_initializer,
@@ -1222,7 +1226,7 @@ class SeparableConv(Conv):
     pointwise_kernel_shape = (
         1,) * self.rank + (self.depth_multiplier * input_dim, self.filters)
 
-    self.depthwise_kernel = self.add_variable(
+    self.depthwise_kernel = self.add_weight(
         name='depthwise_kernel',
         shape=depthwise_kernel_shape,
         initializer=self.depthwise_initializer,
@@ -1230,7 +1234,7 @@ class SeparableConv(Conv):
         constraint=self.depthwise_constraint,
         trainable=True,
         dtype=self.dtype)
-    self.pointwise_kernel = self.add_variable(
+    self.pointwise_kernel = self.add_weight(
         name='pointwise_kernel',
         shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
@@ -1239,13 +1243,14 @@ class SeparableConv(Conv):
         trainable=True,
         dtype=self.dtype)
     if self.use_bias:
-      self.bias = self.add_variable(name='bias',
-                                    shape=(self.filters,),
-                                    initializer=self.bias_initializer,
-                                    regularizer=self.bias_regularizer,
-                                    constraint=self.bias_constraint,
-                                    trainable=True,
-                                    dtype=self.dtype)
+      self.bias = self.add_weight(
+          name='bias',
+          shape=(self.filters,),
+          initializer=self.bias_initializer,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
+          trainable=True,
+          dtype=self.dtype)
     else:
       self.bias = None
     self.built = True
