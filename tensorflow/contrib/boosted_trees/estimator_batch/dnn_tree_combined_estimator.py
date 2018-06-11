@@ -232,7 +232,13 @@ def _dnn_tree_combined_model_fn(features,
         return update_op
 
   if predict_with_tree_only:
-    tree_train_logits = tree_logits
+    if mode == model_fn.ModeKeys.TRAIN or mode == model_fn.ModeKeys.PREDICT:
+      tree_train_logits = tree_logits
+    else:
+      tree_train_logits = control_flow_ops.cond(
+          global_step > dnn_steps_to_train,
+          lambda: tree_logits,
+          lambda: dnn_logits)
   else:
     tree_train_logits = dnn_logits + tree_logits
 
