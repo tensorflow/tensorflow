@@ -1364,9 +1364,14 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Gets/sets the string identifier for this instruction.
+  // Gets the string identifier for this instruction.
   const string& name() const { return name_; }
-  void set_name(tensorflow::StringPiece name) { name_ = std::string(name); }
+
+  // Sets the string identifier for this instruction. Name will be sanitized to
+  // match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
+  void SetAndSanitizeName(const string& name) {
+    name_ = NameUniquer::GetSanitizedName(name);
+  }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.

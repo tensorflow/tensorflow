@@ -342,7 +342,7 @@ TEST_F(HloInstructionTest, TrivialMap) {
   // Builds a parameter and feeds it to the map.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto map = builder.AddInstruction(
       HloInstruction::CreateMap(f32a100x10, {param0}, add_f32));
   module->AddEntryComputation(builder.Build());
@@ -381,7 +381,7 @@ TEST_F(HloInstructionTest, TrivialReduce) {
   // Builds a parameter and an initial value and feeds them to the reduce.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   builder.AddInstruction(

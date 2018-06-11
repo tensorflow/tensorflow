@@ -231,7 +231,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   }
 
   TF_RET_CHECK(!proto.name().empty());
-  instruction->name_ = proto.name();
+  instruction->SetAndSanitizeName(proto.name());
 
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
@@ -295,7 +295,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
   instruction->parameter_number_ = parameter_number;
-  instruction->name_ = name;
+  instruction->SetAndSanitizeName(name);
   return instruction;
 }
 

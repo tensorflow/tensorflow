@@ -1148,7 +1148,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                HloOpcodeString(opcode)));
   }
 
-  instruction->set_name(name);
+  instruction->SetAndSanitizeName(name);
+  if (instruction->name() != name) {
+    return Error(name_loc,
+                 StrCat("illegal instruction name: ", name,
+                        "; suggest renaming to: ", instruction->name()));
+  }
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {

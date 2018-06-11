@@ -390,7 +390,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
         // as a parameter in the new function.
         arguments.push_back(old_operand);
         *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
-            parameter_count, old_operand->shape(), ""));
+            parameter_count, old_operand->shape(), "p"));
         ++parameter_count;
       }
       TF_CHECK_OK(
