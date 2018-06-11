@@ -5,10 +5,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.python.platform import googletest
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 
 import numpy as np
 
@@ -16,34 +21,34 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
 
     def testBatchNormalize1(self):
 
-        vscope = tf.get_variable_scope()
-        vscope.set_use_resource(True)
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                with variable_scope.variable_scope("ascope", use_resource=True):
+                    x = array_ops.placeholder(np.float32, [1,64,64,4], name="a")
 
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                x = tf.placeholder(tf.float32, [1,64,64,4], name="a")
+                    beta = variable_scope.get_variable("x", shape=[4],
+                            dtype=np.float32,
+                            initializer=init_ops.constant_initializer(0.0))
+                    gamma = variable_scope.get_variable("y", shape=[4],
+                            dtype=np.float32,
+                            initializer=init_ops.constant_initializer(1.0))
 
-                beta = tf.get_variable("x", shape=[4], dtype=tf.float32,
-                        initializer=tf.constant_initializer(0.0))
-                gamma = tf.get_variable("y", shape=[4], dtype=tf.float32,
-                        initializer=tf.constant_initializer(1.0))
+                    b_mean, b_var = nn.moments(x, [0,1,2], name='moments')
 
-                b_mean, b_var = tf.nn.moments(x, [0,1,2], name='moments')
+                    normed = nn.batch_normalization(x,
+                                                       b_mean, b_var,
+                                                       beta, gamma,
+                                                       1e-3)
 
-                normed = tf.nn.batch_normalization(x,
-                                                   b_mean, b_var,
-                                                   beta, gamma,
-                                                   1e-3)
+                    fd = {
+                        x: np.zeros([1,64,64,4])
+                    }
 
-                fd = {
-                    x: np.zeros([1,64,64,4])
-                }
+                    sess.run(variables.global_variables_initializer())
 
-                sess.run(tf.global_variables_initializer())
-
-                result = sess.run(normed, fd)
-                self.assertAllClose(result,
-                                    np.zeros([1,64,64,4]))
+                    result = sess.run(normed, fd)
+                    self.assertAllClose(result,
+                                        np.zeros([1,64,64,4]))
 
 if __name__ == "__main__":
     googletest.main()

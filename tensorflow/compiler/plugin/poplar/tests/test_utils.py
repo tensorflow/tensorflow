@@ -5,13 +5,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import numpy as np
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import ops
-from tensorflow.core.framework import summary_pb2
 from tensorflow.python.ops.summary_ops import tensor_summary
 
 import contextlib
@@ -27,7 +28,8 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
   dev.profiling.enable_io_trace = io_trace
   dev.profiling.enable_execution_trace = execution_trace
   dev.profiling.enable_poplar_reports_text = True
-  with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
+  with session_lib.Session(
+      config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
     yield sess
 
 def get_compute_sets_from_report(report):

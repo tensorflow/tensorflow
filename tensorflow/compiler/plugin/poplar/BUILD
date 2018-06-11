@@ -327,7 +327,7 @@ py_test(
     size = "small",
     srcs = ["tests/device_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
     ],
     srcs_version = "PY2AND3",
 )
@@ -337,7 +337,12 @@ py_test(
     size = "medium",
     srcs = ["tests/ipu_model_device_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
     ],
     srcs_version = "PY2AND3",
 )
@@ -347,7 +352,13 @@ py_test(
     size = "small",
     srcs = ["tests/simple_network_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
     ],
     srcs_version = "PY2AND3",
 )
@@ -357,7 +368,14 @@ py_test(
     size = "small",
     srcs = ["tests/matmul_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
     ],
     srcs_version = "PY2AND3",
 )
@@ -367,7 +385,11 @@ py_test(
     size = "large",
     srcs = ["tests/conv_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:nn_ops",
     ],
     srcs_version = "PY2AND3",
 )
@@ -377,7 +399,11 @@ py_test(
     size = "large",
     srcs = ["tests/conv3d_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:nn_ops",
     ],
     srcs_version = "PY2AND3",
 )
@@ -387,7 +413,18 @@ py_test(
     size = "small",
     srcs = ["tests/variable_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
     ],
     srcs_version = "PY2AND3",
 )
@@ -397,7 +434,10 @@ py_test(
     size = "small",
     srcs = ["tests/multi_run_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
     srcs_version = "PY2AND3",
 )
@@ -407,7 +447,8 @@ py_test(
     size = "small",
     srcs = ["tests/reduce_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
     ],
     srcs_version = "PY2AND3",
 )
@@ -417,7 +458,10 @@ py_test(
     size = "small",
     srcs = ["tests/f16_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
     srcs_version = "PY2AND3",
 )
@@ -427,7 +471,10 @@ py_test(
     size = "small",
     srcs = ["tests/64_bit_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
     srcs_version = "PY2AND3",
 )
@@ -437,7 +484,13 @@ py_test(
     size = "small",
     srcs = ["tests/batch_norm_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
     ],
     srcs_version = "PY2AND3",
 )
@@ -447,7 +500,12 @@ py_test(
     size = "medium",
     srcs = ["tests/fuse_ops_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
     ],
     srcs_version = "PY2AND3",
 )
@@ -457,7 +515,14 @@ py_test(
     size = "small",
     srcs = ["tests/tensor_array_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
     ],
     srcs_version = "PY2AND3",
 )
@@ -467,7 +532,12 @@ py_test(
     size = "small",
     srcs = ["tests/monitored_session_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
     ],
     srcs_version = "PY2AND3",
 )
@@ -477,7 +547,14 @@ py_test(
     size = "small",
     srcs = ["tests/conditional_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
     ],
     srcs_version = "PY2AND3",
 )
@@ -487,7 +564,13 @@ py_test(
     size = "small",
     srcs = ["tests/while_loop_perf_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
     ],
     srcs_version = "PY2AND3",
 )
@@ -497,7 +580,19 @@ py_test(
     size = "medium",
     srcs = ["tests/estimator_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+        "//tensorflow/python:layers",
     ],
     srcs_version = "PY2AND3",
 )

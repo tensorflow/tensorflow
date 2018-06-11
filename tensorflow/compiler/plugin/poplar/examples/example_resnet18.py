@@ -6,7 +6,7 @@
 import tensorflow as tf
 import numpy as np
 
-datatype = tf.float16
+datatype = np.float16
 
 def _get_variable(name, shape, init):
   return tf.get_variable(name, shape, initializer=init, dtype=datatype)

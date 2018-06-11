@@ -5,20 +5,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import numpy as np
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variables
 
 class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
 
     def testAdd(self):
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                pa = tf.placeholder(tf.float32, [2,2], name="a")
-                pb = tf.placeholder(tf.float32, [2,2], name="b")
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                pa = array_ops.placeholder(np.float32, [2,2], name="a")
+                pb = array_ops.placeholder(np.float32, [2,2], name="b")
                 output = pa + pb
 
                 fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
@@ -30,13 +34,13 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
                 self.assertAllClose(result, [[2.,1.],[5.,6.]])
 
     def testTransposeNegate(self):
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                pa = tf.placeholder(tf.float32, [2,2,3], name="a")
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                pa = array_ops.placeholder(np.float32, [2,2,3], name="a")
                 a = array_ops.transpose(pa, [2, 1, 0])
                 b = math_ops.negative(a)
 
-                sess.run(tf.global_variables_initializer())
+                sess.run(variables.global_variables_initializer())
 
                 fd = {
                     pa: [[[1, 2, 3], [3, 4, 5]],[[5,6,7],[7,8,9]]]
@@ -48,13 +52,13 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
                                      [[-3,-7],[-5,-9]]])
 
     def testTransposeNegate2(self):
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                pa = tf.placeholder(tf.float32, [2,2,3], name="a")
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                pa = array_ops.placeholder(np.float32, [2,2,3], name="a")
                 a = array_ops.transpose(pa, [1, 2, 0])
                 b = math_ops.negative(a)
 
-                sess.run(tf.global_variables_initializer())
+                sess.run(variables.global_variables_initializer())
 
                 fd = {
                     pa: [[[1, 2, 3], [3, 4, 5]],[[5,6,7],[7,8,9]]]
@@ -65,12 +69,12 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
                                      [[-3,-7],[-4,-8],[-5,-9]]])
 
     def testReshape(self):
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                pa = tf.placeholder(tf.float32, [2,1,3], name="a")
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                pa = array_ops.placeholder(np.float32, [2,1,3], name="a")
                 a = array_ops.reshape(pa, [1,3,2])
 
-                sess.run(tf.global_variables_initializer())
+                sess.run(variables.global_variables_initializer())
 
                 fd = {
                     pa: [[[1,2,3]],[[5,6,7]]]
@@ -88,12 +92,12 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
         #
         # It has an output which doesn't match it's inputs.  (and it doesn't
         # have any meta-information either)
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                a = tf.placeholder(tf.float32, [])
-                b = tf.placeholder(tf.float32, [2])
-                c = tf.placeholder(tf.float32, [2])
-                d = tf.placeholder(tf.float32, [])
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                a = array_ops.placeholder(np.float32, [])
+                b = array_ops.placeholder(np.float32, [2])
+                c = array_ops.placeholder(np.float32, [2])
+                d = array_ops.placeholder(np.float32, [])
                 e = ( a / b ) / ( c / d )
 
                 fd = {
@@ -107,36 +111,36 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
                                     [1.0, 1.0])
 
     def testDropout(self):
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                pa = tf.placeholder(tf.float32, [2,2], name="a")
-                output = tf.nn.dropout(pa, 0.5)
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                pa = array_ops.placeholder(np.float32, [2,2], name="a")
+                output = nn.dropout(pa, 0.5)
 
                 result = sess.run(output, {pa: [[1.,1.],[2.,3.]]})
 
     def testControlDependencies(self):
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                a = tf.placeholder(tf.float32, [1])
-                b = tf.placeholder(tf.float32, [1])
-                c = tf.placeholder(tf.float32, [1])
-                d = tf.placeholder(tf.float32, [1])
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                a = array_ops.placeholder(np.float32, [1])
+                b = array_ops.placeholder(np.float32, [1])
+                c = array_ops.placeholder(np.float32, [1])
+                d = array_ops.placeholder(np.float32, [1])
 
                 e = a + b
                 f = c * d
                 g = a - c
 
-                with tf.control_dependencies([e, f, g]):
+                with ops.control_dependencies([e, f, g]):
                     h = e + f
                     i = h + g
 
                 result = sess.run(i, {a: [1], b: [2], c: [3], d: [4]})
 
     def testSigmoid(self):
-        with tf.device("/device:IPU:0"):
-            with tf.Session() as sess:
-                a = tf.placeholder(tf.float32, [2,2])
-                b = tf.sigmoid(a)
+        with ops.device("/device:IPU:0"):
+            with session_lib.Session() as sess:
+                a = array_ops.placeholder(np.float32, [2,2])
+                b = math_ops.sigmoid(a)
 
                 result = sess.run(b, {a: [[0,0],[0,0]]})
                 self.assertAllClose(result, [[0.5,0.5],[0.5,0.5]])

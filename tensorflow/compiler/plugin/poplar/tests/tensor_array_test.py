@@ -5,11 +5,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import numpy as np
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.ops import tensor_array_ops
 
@@ -17,15 +19,15 @@ from tensorflow.python.ops import tensor_array_ops
 class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
 
   def testTensorArrayWriteRead(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as session:
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as session:
 
-        in1 = tf.placeholder(tf.float32, [1, 2])
-        in2 = tf.placeholder(tf.float32, [1, 2])
-        in3 = tf.placeholder(tf.float32, [1, 2])
+        in1 = array_ops.placeholder(np.float32, [1, 2])
+        in2 = array_ops.placeholder(np.float32, [1, 2])
+        in3 = array_ops.placeholder(np.float32, [1, 2])
 
         ta = tensor_array_ops.TensorArray(
-            dtype=tf.float32,
+            dtype=np.float32,
             tensor_array_name="foo",
             size=3)
 
@@ -48,19 +50,19 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
 
 
   def testTensorArrayScatterGather(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as session:
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as session:
 
-        in1 = tf.placeholder(tf.float32, [5, 2])
-        in2 = tf.placeholder(tf.float32, [2])
+        in1 = array_ops.placeholder(np.float32, [5, 2])
+        in2 = array_ops.placeholder(np.float32, [2])
 
         ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32,
+          dtype=np.float32,
           tensor_array_name="ta",
           size=5)
 
         tb = tensor_array_ops.TensorArray(
-          dtype=tf.float32,
+          dtype=np.float32,
           tensor_array_name="tb",
           size=5)
 

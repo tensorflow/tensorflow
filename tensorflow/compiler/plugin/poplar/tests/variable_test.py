@@ -1,14 +1,21 @@
 # Copyright 2017 Graphcore Ltd
 #
 
-import tensorflow as tf
 import numpy as np
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
-
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.training import gradient_descent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 import test_utils as tu
@@ -16,15 +23,15 @@ import test_utils as tu
 class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
   def testInitializeSimpleVariables(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
 
         x = resource_variable_ops.ResourceVariable(
-          tf.random_normal([5,5], stddev=0.1), name="x")
+          random_ops.random_normal([5,5], stddev=0.1), name="x")
         y = resource_variable_ops.ResourceVariable(
-          tf.random_normal([1], stddev=0.1), name="y")
+          random_ops.random_normal([1], stddev=0.1), name="y")
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
 
         r1, r2 = sess.run([x,y])
 
@@ -32,16 +39,16 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r2, [0.0], atol=1.0)
 
   def testInitializeSharedVariables(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          x = tf.get_variable("x", shape=[], dtype=tf.float32,
-                              initializer=tf.constant_initializer(1))
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          x = variable_scope.get_variable("x", shape=[], dtype=np.float32,
+                              initializer=init_ops.constant_initializer(1))
 
-          y = tf.get_variable("y", shape=[], dtype=tf.float32,
-                               initializer=tf.constant_initializer(2))
+          y = variable_scope.get_variable("y", shape=[], dtype=np.float32,
+                               initializer=init_ops.constant_initializer(2))
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
 
         r1, r2 = sess.run([x,y])
 
@@ -49,56 +56,56 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r2, 2)
 
   def testRead(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          z = tf.get_variable("z", shape=[], dtype=tf.float32,
-                              initializer=tf.constant_initializer(3))
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          z = variable_scope.get_variable("z", shape=[], dtype=np.float32,
+                              initializer=init_ops.constant_initializer(3))
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
 
         r = sess.run(z.read_value())
 
         self.assertAllClose(r, 3)
 
   def testAssign(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          z = tf.get_variable("z", shape=[], dtype=tf.float32,
-                              initializer=tf.constant_initializer(0))
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          z = variable_scope.get_variable("z", shape=[], dtype=np.float32,
+                              initializer=init_ops.constant_initializer(0))
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
 
-        sess.run(tf.assign(z, 2))
+        sess.run(state_ops.assign(z, 2))
         r = sess.run(z)
         self.assertAllClose(r, 2)
 
-        sess.run(tf.assign_add(z, 6))
+        sess.run(state_ops.assign_add(z, 6))
         r = sess.run(z)
         self.assertAllClose(r, 8)
 
   def testGradientDescent(self):
-    with tf.device("/device:IPU:0"):
-      with tf.variable_scope("vs", use_resource=True):
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
 
-        w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
-          initializer=tf.constant_initializer(
+        w = variable_scope.get_variable("w", shape=[4, 2], dtype=np.float32,
+          initializer=init_ops.constant_initializer(
             np.array([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=np.float32)))
-        b = tf.get_variable("b", shape=[2], dtype=tf.float32,
-          initializer=tf.constant_initializer(
+        b = variable_scope.get_variable("b", shape=[2], dtype=np.float32,
+          initializer=init_ops.constant_initializer(
             np.array([2, 3], dtype=np.float32)))
 
-      x = tf.placeholder(tf.float32, shape=[1, 4])
-      y = tf.matmul(x, w) + b
+      x = array_ops.placeholder(np.float32, shape=[1, 4])
+      y = math_ops.matmul(x, w) + b
 
-      loss = tf.reduce_sum(y)
-      optimizer = tf.train.GradientDescentOptimizer(0.1)
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
       train = optimizer.minimize(loss)
 
-    with tf.Session() as sess:
+    with session_lib.Session() as sess:
 
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
 
       vw, vb = sess.run([w, b])
@@ -111,27 +118,27 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np.array([1.9, 2.9], dtype=np.float32), vb, rtol=1e-4)
 
   def testRepeatedGradientDescent(self):
-    with tf.device("/device:IPU:0"):
-      with tf.variable_scope("vs", use_resource=True):
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
 
-        w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
-                            initializer=tf.constant_initializer(
+        w = variable_scope.get_variable("w", shape=[4, 2], dtype=np.float32,
+                            initializer=init_ops.constant_initializer(
                               np.array([[1, 2], [3, 4], [5, 6], [7, 8]],
                                        dtype=np.float32)))
-        b = tf.get_variable("b", shape=[2], dtype=tf.float32,
-                            initializer=tf.constant_initializer(
+        b = variable_scope.get_variable("b", shape=[2], dtype=np.float32,
+                            initializer=init_ops.constant_initializer(
                               np.array([2, 3], dtype=np.float32)))
 
-      x = tf.placeholder(tf.float32, shape=[1, 4])
-      y = tf.matmul(x, w) + b
+      x = array_ops.placeholder(np.float32, shape=[1, 4])
+      y = math_ops.matmul(x, w) + b
 
-      loss = tf.reduce_sum(y)
-      optimizer = tf.train.GradientDescentOptimizer(0.1)
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
       train = optimizer.minimize(loss)
 
-    with tf.Session() as sess:
+    with session_lib.Session() as sess:
 
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
       sess.run(train, {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
       sess.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
@@ -149,15 +156,15 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
 
   def testMultipleUpdate(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          z = tf.get_variable("z", shape=[], dtype=tf.float32,
-                              initializer=tf.constant_initializer(0))
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          z = variable_scope.get_variable("z", shape=[], dtype=np.float32,
+                              initializer=init_ops.constant_initializer(0))
 
-        updater = tf.assign_add(z, 1.0)
+        updater = state_ops.assign_add(z, 1.0)
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
 
         sess.run(updater)
         sess.run(updater)
@@ -174,95 +181,101 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r, 10.0)
 
   def testRandomNormalInitalizer(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          i = tf.random_normal_initializer(mean=2.0, stddev=0.01)
-          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          i = init_ops.random_normal_initializer(mean=2.0, stddev=0.01)
+          z = variable_scope.get_variable(
+              "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         o = sess.run(z)
         self.assertAllClose(o, 2.0, 0.2, 0.2)
 
   def testDefaultRandomNormalInitalizer(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          i = tf.random_normal_initializer()
-          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          i = init_ops.random_normal_initializer()
+          z = variable_scope.get_variable(
+              "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         o = sess.run(z)
         self.assertAllClose(o, 0.0, 1.0, 3.0)
 
   def testTruncatedNormalInitalizer(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          i = tf.truncated_normal_initializer(mean=1.0, stddev=0.01)
-          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          i = init_ops.truncated_normal_initializer(mean=1.0, stddev=0.01)
+          z = variable_scope.get_variable(
+              "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         o = sess.run(z)
         self.assertAllClose(o, 1.0, 0.2, 0.2)
 
   def testDefaultTruncatedNormalInitalizer(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          i = tf.truncated_normal_initializer()
-          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          i = init_ops.truncated_normal_initializer()
+          z = variable_scope.get_variable(
+              "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         o = sess.run(z)
         self.assertAllClose(o, 1.0, 2.0, 2.0)
 
   def testUniformRandomInitalizer(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          i = tf.random_uniform_initializer(minval=-2.0, maxval=2.0)
-          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          i = init_ops.random_uniform_initializer(minval=-2.0, maxval=2.0)
+          z = variable_scope.get_variable(
+              "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         o = sess.run(z)
         self.assertAllClose(o, 0.0, 2.0, 2.0)
 
   def testDefaultUniformRandomInitalizer(self):
-    with tf.device("/device:IPU:0"):
-      with tf.Session() as sess:
-        with tf.variable_scope("vs", use_resource=True):
-          i = tf.random_uniform_initializer()
-          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+    with ops.device("/device:IPU:0"):
+      with session_lib.Session() as sess:
+        with variable_scope.variable_scope("vs", use_resource=True):
+          i = init_ops.random_uniform_initializer()
+          z = variable_scope.get_variable(
+              "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(tf.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         o = sess.run(z)
         self.assertAllClose(o, 0.5, 0.5, 0.5)
 
   def testVariablesRemainResident(self):
-    with tf.device("/device:IPU:0"):
-      with tf.variable_scope("vs", use_resource=True):
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
 
-        w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
-                            initializer=tf.constant_initializer(
+        w = variable_scope.get_variable("w", shape=[4, 2], dtype=np.float32,
+                            initializer=init_ops.constant_initializer(
                               np.array([[1, 2], [3, 4], [5, 6], [7, 8]],
                                        dtype=np.float32)))
-        b = tf.get_variable("b", shape=[2], dtype=tf.float32,
-                            initializer=tf.constant_initializer(
+        b = variable_scope.get_variable("b", shape=[2], dtype=np.float32,
+                            initializer=init_ops.constant_initializer(
                               np.array([2, 3], dtype=np.float32)))
 
-      x = tf.placeholder(tf.float32, shape=[1, 4])
-      y = tf.matmul(x, w) + b
+      x = array_ops.placeholder(np.float32, shape=[1, 4])
+      y = math_ops.matmul(x, w) + b
 
-      loss = tf.reduce_sum(y)
-      optimizer = tf.train.GradientDescentOptimizer(0.1)
+      loss = math_ops.reduce_sum(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
       train = optimizer.minimize(loss)
 
-      with tf.device('cpu'):
+      with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session(True, True, True) as sess:
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
 
       sess.run(report)
 

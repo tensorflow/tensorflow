@@ -5,26 +5,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import numpy as np
 import test_utils as tu
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-
-import numpy as np
 
 
 class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
   def test3DConv1x1x1_Stride2x1x1_In1x1x5(self):
-    with tf.device("/device:IPU:0"):
-      pa = tf.placeholder(tf.float32, [1,1,1,5,1], name="a")
-      pb = tf.placeholder(tf.float32, [1,1,1,1,1], name="b")
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [1,1,1,5,1], name="a")
+      pb = array_ops.placeholder(np.float32, [1,1,1,1,1], name="b")
       output = nn_ops.convolution(pa, pb, strides=[1,1,2], padding="VALID")
 
-    with tf.Session() as sess:
+    with session_lib.Session() as sess:
       fd = {
         pa: [[[[[1], [2], [3], [4], [5]]]]],
         pb: [[[[[10]]]]]
@@ -33,12 +35,12 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, [[[[[10], [30], [50]]]]])
 
   def test3DConv3x3x3_Pad1x1x1(self):
-    with tf.device("/device:IPU:0"):
-      pa = tf.placeholder(tf.float32, [1,14,14,14,64], name="a")
-      pb = tf.placeholder(tf.float32, [3,3,3,64,128], name="b")
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [1,14,14,14,64], name="a")
+      pb = array_ops.placeholder(np.float32, [3,3,3,64,128], name="b")
       output = nn_ops.convolution(pa, pb, padding="SAME")
 
-    with tf.Session() as sess:
+    with session_lib.Session() as sess:
       fd = {
         pa: np.zeros([1,14,14,14,64]),
         pb: np.zeros([3,3,3,64,128])
@@ -47,14 +49,14 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([1,14,14,14,128]))
 
   def test3DConv3x3x3_WithBias(self):
-    with tf.device("/device:IPU:0"):
-      pa = tf.placeholder(tf.float32, [1,14,14,14,16], name="a")
-      pb = tf.placeholder(tf.float32, [3,3,3,16,32], name="b")
-      bi = tf.placeholder(tf.float32, [32], name="b")
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [1,14,14,14,16], name="a")
+      pb = array_ops.placeholder(np.float32, [3,3,3,16,32], name="b")
+      bi = array_ops.placeholder(np.float32, [32], name="b")
       output = nn_ops.convolution(pa, pb, padding="SAME")
       output = nn_ops.bias_add(output, bi)
 
-    with tf.device('cpu'):
+    with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
@@ -79,14 +81,14 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def test3DConv8x8x8_WithBias(self):
-    with tf.device("/device:IPU:0"):
-      inp = tf.placeholder(tf.float32, [1,84,84,84,2], name="inp")
-      wei = tf.placeholder(tf.float32, [8,8,8,2,4], name="wei")
-      bia = tf.placeholder(tf.float32, [4], name="bia")
+    with ops.device("/device:IPU:0"):
+      inp = array_ops.placeholder(np.float32, [1,84,84,84,2], name="inp")
+      wei = array_ops.placeholder(np.float32, [8,8,8,2,4], name="wei")
+      bia = array_ops.placeholder(np.float32, [4], name="bia")
       output = nn_ops.conv3d(inp, wei, strides=[1,4,4,4,1], padding="VALID")
       output = nn_ops.bias_add(output, bia)
 
-    with tf.device('cpu'):
+    with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
@@ -110,14 +112,14 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def test3DConv1x1x1_WithBias(self):
-    with tf.device("/device:IPU:0"):
-      inp = tf.placeholder(tf.float32, [1,1,1,1,4], name="inp")
-      wei = tf.placeholder(tf.float32, [1,1,1,4,8], name="wei")
-      bia = tf.placeholder(tf.float32, [8], name="bia")
+    with ops.device("/device:IPU:0"):
+      inp = array_ops.placeholder(np.float32, [1,1,1,1,4], name="inp")
+      wei = array_ops.placeholder(np.float32, [1,1,1,4,8], name="wei")
+      bia = array_ops.placeholder(np.float32, [8], name="bia")
       output = nn_ops.conv3d(inp, wei, strides=[1,1,1,1,1], padding="VALID")
       output = output + bia
 
-    with tf.device('cpu'):
+    with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
@@ -142,15 +144,15 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def test3DConvBackpropInput(self):
-    with tf.device("/device:IPU:0"):
-      ins = tf.constant([2,8,8,8,3], tf.int32)
-      fil = tf.placeholder(tf.float32, [2,2,2,3,5], name="inp")
-      bck = tf.placeholder(tf.float32, [2,8,8,8,5], name="wei")
+    with ops.device("/device:IPU:0"):
+      ins = constant_op.constant([2,8,8,8,3], np.int32)
+      fil = array_ops.placeholder(np.float32, [2,2,2,3,5], name="inp")
+      bck = array_ops.placeholder(np.float32, [2,8,8,8,5], name="wei")
 
       output = nn_ops.conv3d_backprop_input_v2(ins, fil, bck, strides=[1,1,1,1,1],
                                             padding="SAME")
 
-    with tf.device('cpu'):
+    with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
@@ -175,15 +177,15 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
 
   def test3DConvBackpropFilter(self):
-    with tf.device("/device:IPU:0"):
-      inp = tf.placeholder(tf.float32, [2,8,8,8,3])
-      fil = tf.constant([2,2,2,3,5], tf.int32)
-      bck = tf.placeholder(tf.float32, [2,8,8,8,5], name="wei")
+    with ops.device("/device:IPU:0"):
+      inp = array_ops.placeholder(np.float32, [2,8,8,8,3])
+      fil = constant_op.constant([2,2,2,3,5], np.int32)
+      bck = array_ops.placeholder(np.float32, [2,8,8,8,5], name="wei")
 
       output = nn_ops.conv3d_backprop_filter_v2(inp, fil, bck, strides=[1,1,1,1,1],
                                             padding="SAME")
 
-    with tf.device('cpu'):
+    with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
