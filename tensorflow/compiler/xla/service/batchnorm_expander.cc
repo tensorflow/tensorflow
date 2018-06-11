@@ -58,8 +58,7 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
-                  bool rewrite_inference_op, bool rewrite_grad_op,
-                  bool use_map_instructions);
+                  bool rewrite_inference_op, bool rewrite_grad_op);
 
   // Returns whether any batch norm ops were rewritten.
   const bool changed() const { return changed_; }
@@ -70,22 +69,14 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   explicit BatchNormExpanderVisitor(HloComputation* computation,
                                     bool rewrite_training_op,
                                     bool rewrite_inference_op,
-                                    bool rewrite_grad_op,
-                                    bool use_map_instructions)
+                                    bool rewrite_grad_op)
       : computation_(computation),
         rewrite_training_op_(rewrite_training_op),
         rewrite_inference_op_(rewrite_inference_op),
-        rewrite_grad_op_(rewrite_grad_op),
-        use_map_instructions_(use_map_instructions) {}
+        rewrite_grad_op_(rewrite_grad_op) {}
 
   HloComputation* GetOrCreateScalarAddComputation(
       PrimitiveType primitive_type) {
-    HloComputation** scalar_add_computation =
-        &scalar_add_computations_[primitive_type];
-    if (*scalar_add_computation) {
-      return *scalar_add_computation;
-    }
-
     HloComputation::Builder b("scalar_add_computation");
     Shape shape = ShapeUtil::MakeShape(primitive_type, {});
     auto scalar_lhs = b.AddInstruction(
@@ -94,44 +85,13 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
         HloInstruction::CreateParameter(1, shape, "scalar_rhs"));
     auto scalar_op = b.AddInstruction(HloInstruction::CreateBinary(
         shape, HloOpcode::kAdd, scalar_lhs, scalar_rhs));
-    *scalar_add_computation =
-        computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
-    return *scalar_add_computation;
-  }
-
-  // TODO(b/80534766): Remove maps after performance issues with scalar
-  // broadcasts are resolved on all backends.
-  HloComputation* GetOrCreateScalarRsqrtComputation(
-      PrimitiveType primitive_type) {
-    HloComputation** scalar_rsqrt_computation =
-        &scalar_rsqrt_computations_[primitive_type];
-    if (*scalar_rsqrt_computation) {
-      return *scalar_rsqrt_computation;
-    }
-
-    HloComputation::Builder b("scalar_add_computation");
-    Shape shape = ShapeUtil::MakeShape(primitive_type, {});
-    auto scalar_lhs = b.AddInstruction(
-        HloInstruction::CreateParameter(0, shape, "scalar_lhs"));
-    auto scalar_rhs = b.AddInstruction(HloInstruction::CreateConvert(
-        shape, b.AddInstruction(HloInstruction::CreateConstant(
-                   Literal::CreateR0<float>(-0.5f)))));
-    auto scalar_op = b.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kPower, scalar_lhs, scalar_rhs));
-    *scalar_rsqrt_computation =
-        computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
-    return *scalar_rsqrt_computation;
+    return computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
   }
 
   std::unique_ptr<HloInstruction> Rsqrt(
       HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    if (use_map_instructions_) {
-      return HloInstruction::CreateMap(
-          operand->shape(), {operand},
-          GetOrCreateScalarRsqrtComputation(operand->shape().element_type()));
-    }
     HloInstruction* exponent = add_instruction(HloInstruction::CreateBroadcast(
         operand->shape(),
         add_instruction(HloInstruction::CreateConvert(
@@ -143,40 +103,10 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
                                         operand, exponent);
   }
 
-  HloComputation* GetOrCreateScalarMeanComputation(PrimitiveType primitive_type,
-                                                   int64 element_count) {
-    HloComputation** scalar_mean_computation =
-        &scalar_mean_computations_[std::pair<PrimitiveType, int64>(
-            primitive_type, element_count)];
-    if (*scalar_mean_computation) {
-      return *scalar_mean_computation;
-    }
-
-    HloComputation::Builder b("scalar_add_computation");
-    Shape shape = ShapeUtil::MakeShape(primitive_type, {});
-    auto scalar_lhs = b.AddInstruction(
-        HloInstruction::CreateParameter(0, shape, "scalar_lhs"));
-    auto scalar_rhs = b.AddInstruction(HloInstruction::CreateConvert(
-        shape, b.AddInstruction(
-                   HloInstruction::CreateConstant(Literal::CreateR0<float>(
-                       1.0f / static_cast<float>(element_count))))));
-    auto scalar_op = b.AddInstruction(HloInstruction::CreateBinary(
-        shape, HloOpcode::kMultiply, scalar_lhs, scalar_rhs));
-    *scalar_mean_computation =
-        computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
-    return *scalar_mean_computation;
-  }
-
   std::unique_ptr<HloInstruction> Mean(
       int64 element_count, HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    if (use_map_instructions_) {
-      return HloInstruction::CreateMap(
-          operand->shape(), {operand},
-          GetOrCreateScalarMeanComputation(operand->shape().element_type(),
-                                           element_count));
-    }
     HloInstruction* elem_count_recip =
         add_instruction(HloInstruction::CreateBroadcast(
             operand->shape(),
@@ -218,18 +148,9 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   bool rewrite_training_op_;
   bool rewrite_inference_op_;
   bool rewrite_grad_op_;
-  bool use_map_instructions_;
 
   // Whether rewrite has occurred.
   bool changed_ = false;
-
-  // Cached computations for adding two scalars.
-  tensorflow::gtl::FlatMap<PrimitiveType, HloComputation*>
-      scalar_add_computations_;
-  tensorflow::gtl::FlatMap<PrimitiveType, HloComputation*>
-      scalar_rsqrt_computations_;
-  tensorflow::gtl::FlatMap<std::pair<PrimitiveType, int64>, HloComputation*>
-      scalar_mean_computations_;
 };
 
 }  // namespace
@@ -237,14 +158,12 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
 bool BatchNormExpanderVisitor::Run(HloComputation* computation,
                                    bool rewrite_training_op,
                                    bool rewrite_inference_op,
-                                   bool rewrite_grad_op,
-                                   bool use_map_instructions) {
+                                   bool rewrite_grad_op) {
   BatchNormExpanderVisitor visitor(
       computation,
       /*rewrite_training_op=*/rewrite_training_op,
       /*rewrite_inference_op=*/rewrite_inference_op,
-      /*rewrite_grad_op=*/rewrite_grad_op,
-      /*use_map_instructions=*/use_map_instructions);
+      /*rewrite_grad_op=*/rewrite_grad_op);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -668,8 +587,8 @@ StatusOr<bool> BatchNormExpander::Run(HloModule* module) {
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
     if (BatchNormExpanderVisitor::Run(comp, rewrite_training_op_,
-                                      rewrite_inference_op_, rewrite_grad_op_,
-                                      use_map_instructions_)) {
+                                      rewrite_inference_op_,
+                                      rewrite_grad_op_)) {
       changed = true;
     }
   }
