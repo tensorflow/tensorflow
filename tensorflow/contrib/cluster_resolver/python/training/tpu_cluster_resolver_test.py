@@ -158,6 +158,50 @@ class TPUClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
+  @mock.patch.object(TPUClusterResolver, '_requestComputeMetadata',
+                     mock_request_compute_metadata)
+  def testUnhealthyCloudTpu(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'health': 'UNHEALTHY'
+        }
+    }
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project=None,
+        zone=None,
+        tpu='test-tpu-1',
+        coordinator_name=None,
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    with self.assertRaises(RuntimeError):
+      tpu_cluster_resolver.cluster_spec()
+
+  @mock.patch.object(TPUClusterResolver, '_requestComputeMetadata',
+                     mock_request_compute_metadata)
+  def testNotReadyCloudTpu(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'CREATING'
+        }
+    }
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project=None,
+        zone=None,
+        tpu='test-tpu-1',
+        coordinator_name=None,
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    with self.assertRaises(RuntimeError):
+      tpu_cluster_resolver.cluster_spec()
+
   def testSimpleSuccessfulRetrieval(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {

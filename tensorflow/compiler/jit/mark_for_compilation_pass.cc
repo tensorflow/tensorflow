@@ -44,12 +44,6 @@ namespace tensorflow {
 
 namespace {
 
-// Returns true if, when executed in TensorFlow, `node` is guaranteed to forward
-// a ref tensor input to its output.
-static bool AlwaysForwardsRefInput(const Node& node) {
-  return node.IsIdentity();
-}
-
 bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
@@ -68,20 +62,8 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   // XLA does not offer guaranteed aliasing between the input and output of the
   // XLA cluster so it can't implement the forward-tensor-ref semantic.  Leave
   // such nodes out of XLA clusters.
-  if (AlwaysForwardsRefInput(node)) {
-    for (const Edge* incoming_edge : node.in_edges()) {
-      if (incoming_edge->IsControlEdge()) {
-        continue;
-      }
-
-      Node* incoming_node = incoming_edge->src();
-      if (IsRefType(incoming_node->output_type(incoming_edge->src_output()))) {
-        VLOG(2) << "Not clustering " << node.def().ShortDebugString()
-                << " because of ref input " << incoming_node->name() << " "
-                << incoming_node->type_string();
-        return false;
-      }
-    }
+  if (HasForwardedRefInput(node)) {
+    return false;
   }
 
   return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();

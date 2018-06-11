@@ -57,7 +57,8 @@ class CreatePythonApiTest(test.TestCase):
 
   def testFunctionImportIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE)
+        package=create_python_api._DEFAULT_PACKAGE,
+        api_name='tensorflow')
     expected_import = (
         'from tensorflow.python.test_module '
         'import test_op as test_op1')
@@ -73,7 +74,8 @@ class CreatePythonApiTest(test.TestCase):
 
   def testClassImportIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE)
+        package=create_python_api._DEFAULT_PACKAGE,
+        api_name='tensorflow')
     expected_import = ('from tensorflow.python.test_module '
                        'import TestClass')
     self.assertTrue(
@@ -82,7 +84,8 @@ class CreatePythonApiTest(test.TestCase):
 
   def testConstantIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE)
+        package=create_python_api._DEFAULT_PACKAGE,
+        api_name='tensorflow')
     expected = ('from tensorflow.python.test_module '
                 'import _TEST_CONSTANT')
     self.assertTrue(expected in str(imports),

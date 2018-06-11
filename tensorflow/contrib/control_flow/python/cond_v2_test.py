@@ -81,6 +81,21 @@ class NewCondTest(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  def testNoInputs(self):
+    pred = array_ops.placeholder(dtypes.bool, name="pred")
+
+    def true_fn():
+      return constant_op.constant(1.0)
+
+    def false_fn():
+      return constant_op.constant(2.0)
+
+    out = cond_v2.cond_v2(pred, true_fn, false_fn)
+
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(out, {pred: True}), [1.0])
+      self.assertEqual(sess.run(out, {pred: False}), [2.0])
+
   def testSecondDerivative(self):
     pred = array_ops.placeholder(dtypes.bool, name="pred")
     x = constant_op.constant(3.0, name="x")

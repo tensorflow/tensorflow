@@ -12,6 +12,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite/toco:model_flags_proto_cc",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_cc",
+        "//tensorflow/contrib/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/contrib/lite/toco:toco_port",
         "//tensorflow/contrib/lite/toco:toco_tooling",
         "//tensorflow/core:lib",

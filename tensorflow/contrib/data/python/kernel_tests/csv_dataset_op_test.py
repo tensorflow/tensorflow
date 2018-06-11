@@ -162,9 +162,28 @@ class CsvDatasetOpTest(test.TestCase):
         expected_err_re='Unquoted fields cannot have quotes inside',
         record_defaults=record_defaults)
 
+  def testCsvDataset_errWithUnescapedQuotes(self):
+    record_defaults = [['']] * 3
+    inputs = [['"a"b","c","d"']]
+    self._test_dataset(
+        inputs,
+        expected_err_re=
+        'Quote inside a string has to be escaped by another quote',
+        record_defaults=record_defaults)
+
+  def testCsvDataset_ignoreErrWithUnescapedQuotes(self):
+    record_defaults = [['']] * 3
+    inputs = [['1,"2"3",4', '1,"2"3",4",5,5', 'a,b,"c"d"', 'e,f,g']]
+    filenames = self.setup_files(inputs)
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
+        dataset = dataset.apply(error_ops.ignore_errors())
+        self._verify_output_or_err(sess, dataset, [['e', 'f', 'g']])
+
   def testCsvDataset_ignoreErrWithUnquotedQuotes(self):
     record_defaults = [['']] * 3
-    inputs = [['1,2"3,4', 'a,b,c"d', 'e,f,g']]
+    inputs = [['1,2"3,4', 'a,b,c"d', '9,8"7,6,5', 'e,f,g']]
     filenames = self.setup_files(inputs)
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:

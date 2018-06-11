@@ -28,6 +28,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+namespace {
+
+constexpr char kFusedOpName[] = "MapAndBatchDatasetV2";
+
+}  // namespace
 
 Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* output) {
@@ -35,25 +40,24 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
   GraphView graph(output);
   std::set<string> nodes_to_delete;
   for (const NodeDef& node : item.graph.node()) {
-    if (node.op() != "BatchDataset") {
+    if (node.op() != "BatchDataset" && node.op() != "BatchDatasetV2") {
       continue;
     }
 
-    // Use a more descriptive variable name now that we now the node type.
-    NodeDef batch_node(node);
+    // Use a more descriptive variable name now that we know the node type.
+    const NodeDef batch_node(node);
     GraphView::InputPort input_port = graph.GetInputPort(batch_node.name(), 0);
     NodeDef* node2 = graph.GetRegularFanin(input_port).node;
     if (node2->op() != "MapDataset" && node2->op() != "ParallelMapDataset") {
       continue;
     }
 
-    // Use a more descriptive variable name now that we now the node type.
-    NodeDef* map_node = node2;
-    NodeDef* new_node = output->mutable_node()->Add();
-    new_node->set_op("MapAndBatchDatasetV2");
-    new_node->set_name(
-        strings::StrCat("MapAndBatchDatasetV2/_", output->node_size()));
+    NodeDef* new_node = output->add_node();
+    new_node->set_op(kFusedOpName);
+    graph_utils::SetUniqueName(kFusedOpName, output, new_node);
 
+    // Use a more descriptive variable name now that we know the node type.
+    NodeDef* map_node = node2;
     // Set the `input` input argument.
     new_node->add_input(map_node->input(0));
 
@@ -89,7 +93,9 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 
     // Set the `drop_remainder` input argument.
-    {
+    if (batch_node.op() == "BatchDatasetV2") {
+      new_node->add_input(batch_node.input(2));
+    } else {
       NodeDef* tmp;
       TF_RETURN_IF_ERROR(
           graph_utils::AddScalarConstNode<bool>(false, output, &tmp));

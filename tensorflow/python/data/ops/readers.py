@@ -156,6 +156,9 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
             sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
     # pylint: enable=protected-access
 
+  def _transformation_name(self):
+    return "tf.contrib.data.parallel_interleave()"
+
 
 @tf_export("data.TFRecordDataset")
 class TFRecordDataset(dataset_ops.Dataset):

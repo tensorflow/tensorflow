@@ -369,8 +369,8 @@ class MklInputConversionOp : public OpKernel {
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
                                            op_data_type, has_avx512f_,
                                            kInputIndex_1);
-      SetDummyMklShapeOutput(context, kInputIndex_0);
-      SetDummyMklShapeOutput(context, kInputIndex_1);
+      SetDummyMklDnnShapeOutput(context, kInputIndex_0);
+      SetDummyMklDnnShapeOutput(context, kInputIndex_1);
       return;
     }
 
@@ -458,7 +458,7 @@ class MklInputConversionOp : public OpKernel {
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
                                            op_data_type, has_avx512f_,
                                            mkl_tensor_index);
-      SetDummyMklShapeOutput(context, mkl_tensor_index);
+      SetDummyMklDnnShapeOutput(context, mkl_tensor_index);
 
       // The tensor in TF format passes through
       ForwardTfTensorInToOut(context, tf_tensor_index, tf_tensor_index);
