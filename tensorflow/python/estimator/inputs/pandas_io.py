@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import uuid
 
 import numpy as np
 from tensorflow.python.estimator.inputs.queues import feeding_functions
@@ -46,8 +47,8 @@ def _get_unique_target_key(features, target_column_name):
     A unique key that can be used to insert the target into
       features.
   """
-  while target_column_name in features:
-    target_column_name += '_n'
+  if target_column_name in features:
+    target_column_name += '_' + str(uuid.uuid4())
   return target_column_name
 
 
