@@ -40,16 +40,17 @@ class LocallyConnectedLayersTest(test.TestCase):
       for strides in [1]:
         if padding == 'same' and strides != 1:
           continue
-
-        testing_utils.layer_test(
-            keras.layers.LocallyConnected1D,
-            kwargs={
-                'filters': filters,
-                'kernel_size': filter_length,
-                'padding': padding,
-                'strides': strides
-            },
-            input_shape=(num_samples, num_steps, input_dim))
+        for data_format in ['channels_first', 'channels_last']:
+          testing_utils.layer_test(
+              keras.layers.LocallyConnected1D,
+              kwargs={
+                  'filters': filters,
+                  'kernel_size': filter_length,
+                  'padding': padding,
+                  'strides': strides,
+                  'data_format': data_format
+              },
+              input_shape=(num_samples, num_steps, input_dim))
 
   def test_locallyconnected_1d_regularization(self):
     num_samples = 2
@@ -57,35 +58,39 @@ class LocallyConnectedLayersTest(test.TestCase):
     input_dim = 5
     filter_length = 3
     filters = 4
-    kwargs = {
-        'filters': filters,
-        'kernel_size': filter_length,
-        'kernel_regularizer': 'l2',
-        'bias_regularizer': 'l2',
-        'activity_regularizer': 'l2',
-    }
+    for data_format in ['channels_first', 'channels_last']:
+      kwargs = {
+          'filters': filters,
+          'kernel_size': filter_length,
+          'kernel_regularizer': 'l2',
+          'bias_regularizer': 'l2',
+          'activity_regularizer': 'l2',
+          'data_format': data_format
+      }
 
-    with self.test_session():
-      layer = keras.layers.LocallyConnected1D(**kwargs)
-      layer.build((num_samples, num_steps, input_dim))
-      self.assertEqual(len(layer.losses), 2)
-      layer(
-          keras.backend.variable(np.ones((num_samples, num_steps, input_dim))))
-      self.assertEqual(len(layer.losses), 3)
+      with self.test_session():
+        layer = keras.layers.LocallyConnected1D(**kwargs)
+        layer.build((num_samples, num_steps, input_dim))
+        self.assertEqual(len(layer.losses), 2)
+        layer(
+            keras.backend.variable(np.ones((num_samples,
+                                            num_steps,
+                                            input_dim))))
+        self.assertEqual(len(layer.losses), 3)
 
-    k_constraint = keras.constraints.max_norm(0.01)
-    b_constraint = keras.constraints.max_norm(0.01)
-    kwargs = {
-        'filters': filters,
-        'kernel_size': filter_length,
-        'kernel_constraint': k_constraint,
-        'bias_constraint': b_constraint,
-    }
-    with self.test_session():
-      layer = keras.layers.LocallyConnected1D(**kwargs)
-      layer.build((num_samples, num_steps, input_dim))
-      self.assertEqual(layer.kernel.constraint, k_constraint)
-      self.assertEqual(layer.bias.constraint, b_constraint)
+      k_constraint = keras.constraints.max_norm(0.01)
+      b_constraint = keras.constraints.max_norm(0.01)
+      kwargs = {
+          'filters': filters,
+          'kernel_size': filter_length,
+          'kernel_constraint': k_constraint,
+          'bias_constraint': b_constraint,
+      }
+      with self.test_session():
+        layer = keras.layers.LocallyConnected1D(**kwargs)
+        layer.build((num_samples, num_steps, input_dim))
+        self.assertEqual(layer.kernel.constraint, k_constraint)
+        self.assertEqual(layer.bias.constraint, b_constraint)
 
   @tf_test_util.run_in_graph_and_eager_modes()
   def test_locallyconnected_2d(self):

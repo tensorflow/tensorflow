@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+class CollectiveExecutorMgrInterface;
 class Device;
 class DeviceSet;
 class Env;
@@ -90,6 +91,10 @@ struct MasterEnv {
   std::function<Status(const WorkerCacheFactoryOptions&,
                        WorkerCacheInterface**)>
       worker_cache_factory;
+
+  // Generates per-step CollectiveExecutors and has access to utilities
+  // supporting collective operations.
+  CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr;
 };
 
 }  // end namespace tensorflow

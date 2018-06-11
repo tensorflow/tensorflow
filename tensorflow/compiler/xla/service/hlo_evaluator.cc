@@ -910,6 +910,14 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleGenerateToken(HloInstruction* token) {
+  // Literals cannot represent a TOKEN shape so just create an empty tuple as
+  // the "result" of the kGenerateToken operation.
+  // TODO(b/109929053): Add support for TOKENs in Literals.
+  evaluated_[token] = Literal::MakeTuple({});
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   const auto result_shape = get_tuple_element->shape();
   const int64 index = get_tuple_element->tuple_index();

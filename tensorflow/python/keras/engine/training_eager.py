@@ -255,6 +255,8 @@ def iterator_fit_loop(model,
     # Validate and standardize data.
     x, y, sample_weights = model._standardize_user_data(
         x, y, class_weight=class_weight)
+    x = training_utils.cast_if_floating_dtype(x)
+    y = training_utils.cast_if_floating_dtype(y)
     if sample_weights:
       sample_weights = [
           ops.convert_to_tensor(val, dtype=backend.floatx())
@@ -471,6 +473,8 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
 
     # Validate and standardize data.
     x, y, sample_weights = model._standardize_user_data(x, y)
+    x = training_utils.cast_if_floating_dtype(x)
+    y = training_utils.cast_if_floating_dtype(y)
 
     # Calculate model output, loss values.
     loss_outs, loss, loss_metrics = _model_loss(
@@ -639,6 +643,7 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
 
     # Validate and standardize data.
     x, _, _ = model._standardize_user_data(x)
+    x = training_utils.cast_if_floating_dtype(x)
 
     if model._expects_training_arg:
       batch_outs = model.call(x[0] if len(x) == 1 else x, training=False)
@@ -814,7 +819,10 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss and the loss associated with each output.
   """
-  if len(inputs) and not tensor_util.is_tensor(inputs[0]):
+  if len(inputs) and tensor_util.is_tensor(inputs[0]):
+    inputs = training_utils.cast_if_floating_dtype(inputs)
+    targets = training_utils.cast_if_floating_dtype(targets)
+  else:
     inputs = [
         ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
     ]
@@ -849,7 +857,10 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss, loss and metrics associated with each output.
   """
-  if len(inputs) and not tensor_util.is_tensor(inputs[0]):
+  if len(inputs) and tensor_util.is_tensor(inputs[0]):
+    inputs = training_utils.cast_if_floating_dtype(inputs)
+    targets = training_utils.cast_if_floating_dtype(targets)
+  else:
     inputs = [
         ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
     ]
