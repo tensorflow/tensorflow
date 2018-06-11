@@ -322,21 +322,13 @@ def _get_rocm_config(repository_ctx):
   Returns:
     A struct containing the following fields:
       rocm_toolkit_path: The ROCm toolkit installation directory.
-      rocm_version: The version of ROCm on the system.
-      miopen_version: The version of MIOpen on the system.
       amdgpu_targets: A list of the system's AMDGPU targets.
       cpu_value: The name of the host operating system.
   """
   cpu_value = _cpu_value(repository_ctx)
   rocm_toolkit_path = _rocm_toolkit_path(repository_ctx)
-  # XXX FIXME properly implement ROCM version detection logic
-  rocm_version = "1.6.4"
-  # XXX FIXME properly implement MIOpen version detection logic
-  miopen_version = "1.1.3"
   return struct(
       rocm_toolkit_path = rocm_toolkit_path,
-      rocm_version = rocm_version,
-      miopen_version = miopen_version,
       amdgpu_targets = _amdgpu_targets(repository_ctx),
       cpu_value = cpu_value)
 
@@ -582,8 +574,6 @@ def _create_local_rocm_repository(repository_ctx):
 
   _tpl(repository_ctx, "crosstool:CROSSTOOL_hipcc", rocm_defines, out="crosstool/CROSSTOOL")
 
-  # FIXME enable this once CUDA clang for AMDGPU target is enabled
-  #_tpl(repository_ctx, "crosstool:CROSSTOOL_clang", rocm_defines, out="crosstool/CROSSTOOL")
   _tpl(repository_ctx,
        "crosstool:clang/bin/crosstool_wrapper_driver_rocm",
        {
@@ -598,8 +588,6 @@ def _create_local_rocm_repository(repository_ctx):
   # tensorflow/stream_executor/dso_loader.cc.
   _tpl(repository_ctx, "rocm:rocm_config.h",
        {
-           "%{rocm_version}": rocm_config.rocm_version,
-           "%{miopen_version}": rocm_config.miopen_version,
            "%{rocm_amdgpu_targets}": ",".join(
                ["\"%s\"" % c for c in rocm_config.amdgpu_targets]),
            "%{rocm_toolkit_path}": rocm_config.rocm_toolkit_path,
