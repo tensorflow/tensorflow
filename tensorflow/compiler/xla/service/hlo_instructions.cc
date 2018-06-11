@@ -20,6 +20,7 @@ limitations under the License.
 namespace xla {
 
 using ::tensorflow::str_util::Join;
+using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
 HloBatchNormInstruction::HloBatchNormInstruction(
@@ -585,5 +586,106 @@ std::unique_ptr<HloInstruction> HloSliceInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloSliceInstruction>(shape, new_operands[0], slice_starts_,
                                          slice_limits_, slice_strides_);
+}
+
+HloConstantInstruction::HloConstantInstruction(std::unique_ptr<Literal> literal)
+    : HloInstruction(HloOpcode::kConstant, CHECK_NOTNULL(literal)->shape()),
+      literal_(std::move(literal)) {}
+
+HloInstructionProto HloConstantInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_literal() = literal_->ToProto();
+  return proto;
+}
+
+bool HloConstantInstruction::IsElementwise() const { return true; }
+
+void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
+                                              const ShapeIndex& shape_index) {
+  Shape* mutable_array_subshape =
+      ShapeUtil::GetMutableSubshape(mutable_shape(), shape_index);
+  CHECK(ShapeUtil::IsArray(*mutable_array_subshape));
+
+  // Normally array_subshape will always have a layout, but this invariant is
+  // temporarily broken in LayoutAssignment::AssignLayouts.
+
+  if (!mutable_array_subshape->has_layout() ||
+      !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
+    literal_ = literal_->Relayout(new_layout, shape_index);
+    *mutable_array_subshape->mutable_layout() = new_layout;
+  }
+}
+
+bool HloConstantInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& other_slice = static_cast<const HloSliceInstruction&>(other);
+  return literal() == other_slice.literal();
+}
+
+std::unique_ptr<HloInstruction>
+HloConstantInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  return MakeUnique<HloConstantInstruction>(literal_->CloneToUnique());
+}
+
+string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
+    const HloPrintOptions& options,
+    CanonicalNameMap* canonical_name_map) const {
+  string operands;
+  // For constants, show the actual value in place of an empty operand list.
+  if ((!ShapeUtil::IsTuple(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
+      options.print_large_constants()) {
+    // Literal::ToString emits multidimensional arrays over multiple
+    // lines. Compact this into one line by stripping out white space.
+    string tmp = literal().ToString();
+    std::replace(tmp.begin(), tmp.end(), '\n', ' ');
+    std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
+    bool first = true;
+    // Concatenate elements in "v" with spaces separating them, but ignoring
+    // empty entries.
+    for (const auto& s : v) {
+      if (s.empty()) {
+        continue;
+      }
+      StrAppend(&operands, (first ? "" : " "), s);
+      first = false;
+    }
+  } else {
+    // Do not show large constants or tuples.
+    operands = "{...}";
+  }
+  return operands;
+}
+
+HloTraceInstruction::HloTraceInstruction(const string& tag,
+                                         HloInstruction* operand)
+    : HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()),
+      literal_(Literal::CreateR1U8(tag)) {
+  AppendOperand(operand);
+  operand->set_tracing(this);
+}
+
+HloInstructionProto HloTraceInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_literal() = literal_->ToProto();
+  return proto;
+}
+
+bool HloTraceInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  return false;
+}
+
+std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode());
 }
 }  // namespace xla

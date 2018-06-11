@@ -875,14 +875,6 @@ class HloInstruction {
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
 
-  // Returns the literal associated with this instruction.
-  //
-  // Note: only constant and parameter opcodes have an associated literal.
-  const Literal& literal() const;
-
-  // Returns whether there is literal associated with this instruction.
-  bool HasLiteral() const;
-
   // Returns the parameter number associated with this instruction.
   //
   // Note: only parameter opcodes have an associated parameter number.
@@ -1013,14 +1005,6 @@ class HloInstruction {
   // and is target-dependent.
   string infeed_config() const { return infeed_config_; }
   void set_infeed_config(const string& config) { infeed_config_ = config; }
-
-  // Returns a tag to be used in tracing.
-  //
-  // Precondition: opcode() == HloOpcode::kTrace
-  string TracingTag() const;
-
-  // Returns whether the instruction is a constant.
-  bool IsConstant() const;
 
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
@@ -1452,12 +1436,6 @@ class HloInstruction {
   void set_outer_dimension_partitions(
       const std::vector<int64>& outer_dimension_partitions);
 
-  // Change the layout for an Constant Hlo instruction to match new_layout.  For
-  // tuple shaped constants shape_index is the path to the internal array
-  // subshape whose layout needs to be changed.
-  void RelayoutConstant(const Layout& new_layout,
-                        const ShapeIndex& shape_index = {});
-
   // Old methods kept for smooth subclassing transition BEGIN.
   // TODO(b/80131774): Remove this code.
 
@@ -1504,6 +1482,19 @@ class HloInstruction {
 
   // Delegates to HloSliceInstruction::IsInPlaceSlice.
   bool IsInPlaceSlice() const;
+
+  // Returns the literal associated with this instruction.
+  const Literal& literal() const;
+
+  // Returns whether the instruction is a constant.
+  bool IsConstant() const;
+
+  // Delegate to HloConstantInstruction::RelayoutConstant.
+  void RelayoutConstant(const Layout& new_layout,
+                        const ShapeIndex& shape_index = {});
+
+  // Delegates to HloTraceInstruction::TracingTag.
+  string TracingTag() const;
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1544,7 +1535,7 @@ class HloInstruction {
       CanonicalNameMap* canonical_name_map) const;
 
   // Prints an operand to a string.
-  string OperandsToStringWithCanonicalNameMap(
+  virtual string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
@@ -1638,9 +1629,6 @@ class HloInstruction {
 
   // Result shape of this instruction.
   Shape shape_;
-
-  // Literal, only present for kConstant.
-  std::unique_ptr<Literal> literal_;
 
   // Constant index, only present for kGetTupleElement.
   int64 tuple_index_ = -1;
