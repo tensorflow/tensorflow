@@ -12358,7 +12358,6 @@ op {
     name: "Tin"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "Tout"
