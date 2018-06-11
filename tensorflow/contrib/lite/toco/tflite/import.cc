@@ -113,15 +113,34 @@ void ImportOperators(
                  << operators_table.size();
     }
     string opname = operators_table.at(index);
-    if (ops_by_name.count(opname) == 0) {
-      LOG(FATAL) << "Op '" << opname << "' not supported";
-    }
 
-    auto new_op = ops_by_name.at(opname)->Deserialize(
-        input_op->builtin_options(), input_op->custom_options());
+    // Find and use the appropriate operator deserialization factory.
+    std::unique_ptr<Operator> new_op = nullptr;
+    if (ops_by_name.count(opname) == 0) {
+      string effective_opname = "TENSORFLOW_UNSUPPORTED";
+      if (ops_by_name.count(effective_opname) == 0) {
+        LOG(FATAL) << "Internal logic error: TENSORFLOW_UNSUPPORTED not found.";
+      }
+      new_op = ops_by_name.at(effective_opname)
+                   ->Deserialize(input_op->builtin_options(),
+                                 input_op->custom_options());
+      if (TensorFlowUnsupportedOperator* unsupported_op =
+              dynamic_cast<TensorFlowUnsupportedOperator*>(new_op.get())) {
+        unsupported_op->tensorflow_op = opname;
+        // TODO(b/109932940): Remove this when quantized is removed.
+        // For now, we assume all ops are quantized.
+        unsupported_op->quantized = true;
+      } else {
+        LOG(FATAL) << "Expected a TensorFlowUnsupportedOperator";
+      }
+    } else {
+      new_op = ops_by_name.at(opname)->Deserialize(input_op->builtin_options(),
+                                                   input_op->custom_options());
+    }
     model->operators.emplace_back(new_op.release());
     auto* op = model->operators.back().get();
 
+    // Make sure all the inputs and outputs are hooked up.
     auto inputs = input_op->inputs();
     for (int i = 0; i < inputs->Length(); i++) {
       auto input_index = inputs->Get(i);

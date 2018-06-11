@@ -664,6 +664,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
+  // Creates a token instruction used for joining or creating token types which
+  // thread through side-effecting operations.
+  static std::unique_ptr<HloInstruction> CreateGenerateToken(
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+
   // Creates an instance of GatherDimensionNumbers.
   static GatherDimensionNumbers MakeGatherDimNumbers(
       tensorflow::gtl::ArraySlice<int64> output_window_dims,
@@ -802,9 +807,6 @@ class HloInstruction {
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
 
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
-
   // Replaces the use of this instruction in "user" with "new_producer". Note
   // that there might be multiple uses of this instruction in "user"; all will
   // be replaced.
@@ -888,17 +890,6 @@ class HloInstruction {
     CHECK_EQ(HloOpcode::kParameter, opcode_);
     return parameter_number_;
   }
-
-  // Returns the dimension sizes or numbers associated with this instruction.
-  //
-  // Precondition: opcode() is one of: concatenate, reduce, broadcast, reshape,
-  // and reverse.
-  const std::vector<int64>& dimensions() const;
-  int64 dimensions(int64 index) const;
-
-  // Accessor for the dimension in which a concatenate HLO should occur.
-  // Precondition: opcode() == HloOpcode::kConcatenate
-  int64 concatenate_dimension() const;
 
   // Returns the tuple index associated with this instruction.
   //
@@ -992,7 +983,7 @@ class HloInstruction {
   string OperandsToString(const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
-  virtual std::vector<string> ExtraAttributesToString(
+  std::vector<string> ExtraAttributesToString(
       const HloPrintOptions& options) const;
 
   // As ToString, but returns a shorter string.
@@ -1011,26 +1002,11 @@ class HloInstruction {
   HloInstruction* tracing() const;
   void set_tracing(HloInstruction* trace_instruction);
 
-  // Returns the channel id associated with the instruction. The id is
-  // shared between each Send/Recv pair and is globally unique to identify each
-  // channel.
-  //
-  // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
-  int64 channel_id() const { return channel_id_; }
-
   // Returns the channel name associated with the instruction. The name is
   // used to identify host Send/Recv operations.
   //
   // Precondition: opcode() == HloOpcode::kHostCompute
   string channel_name() const { return channel_name_; }
-
-  // Delegates to HloBatchNormInstruction::feature_index.
-  // TODO(b/80131774): Remove this code.
-  int64 feature_index() const;
-
-  // Delegates to HloBatchNormInstruction::epsilon.
-  // TODO(b/80131774): Remove this code.
-  float epsilon() const;
 
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
@@ -1134,8 +1110,11 @@ class HloInstruction {
   void set_sharding(const HloSharding& sharding) {
     sharding_ = MakeUnique<HloSharding>(sharding);
   }
+  void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
-  void set_device_sharding(int64 device);
+  void set_device_sharding(int64 device) {
+    set_single_sharding(HloSharding::AssignDevice(device));
+  }
   // Remove any sharding from this operator.
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
@@ -1210,48 +1189,6 @@ class HloInstruction {
     return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
   }
 
-  // Returns the start index in the given dimension for a slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_starts(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_starts_[dimension];
-  }
-  const std::vector<int64>& slice_starts() const { return slice_starts_; }
-
-  // Returns the (exclusive) limit index in the given dimension for a slice
-  // node.
-  //
-  // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_limits(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_limits_[dimension];
-  }
-  const std::vector<int64>& slice_limits() const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_limits_;
-  }
-
-  // Returns the stride in the given dimension for a slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_strides(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kSlice, opcode_);
-    return slice_strides_[dimension];
-  }
-  const std::vector<int64>& slice_strides() const { return slice_strides_; }
-
-  // Returns the flag that describes whether a slice must be lowered into an
-  // offset into the original operand.
-  bool IsInPlaceSlice() const { return is_in_place_slice_; }
-
-  // Sets and returns the flag that describes whether a slice must be lowered
-  // into an offset into the original operand.
-  bool SetIsInPlaceSlice(bool value) {
-    is_in_place_slice_ = value;
-    return value;
-  }
-
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
   //
@@ -1316,16 +1253,6 @@ class HloInstruction {
       const ConvolutionDimensionNumbers& dnums) {
     convolution_dimension_numbers_ =
         MakeUnique<ConvolutionDimensionNumbers>(dnums);
-  }
-
-  FftType fft_type() const {
-    CHECK_EQ(HloOpcode::kFft, opcode_);
-    return fft_type_;
-  }
-
-  const std::vector<int64>& fft_length() const {
-    CHECK_EQ(HloOpcode::kFft, opcode_);
-    return fft_length_;
   }
 
   // Returns data on the dimension numbers used for a dot operation.
@@ -1407,7 +1334,7 @@ class HloInstruction {
   bool IsElementwiseOnOperand(int64 operand_idx) const;
 
   // Returns true if this instruction is elementwise on all its operands.
-  bool IsElementwise() const;
+  virtual bool IsElementwise() const;
 
   // Returns true if this elementwise instruction implicitly broadcasts operand
   // `operand_idx`.
@@ -1437,9 +1364,14 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Gets/sets the string identifier for this instruction.
+  // Gets the string identifier for this instruction.
   const string& name() const { return name_; }
-  void set_name(tensorflow::StringPiece name) { name_ = std::string(name); }
+
+  // Sets the string identifier for this instruction. Name will be sanitized to
+  // match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
+  void SetAndSanitizeName(const string& name) {
+    name_ = NameUniquer::GetSanitizedName(name);
+  }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
@@ -1526,6 +1458,54 @@ class HloInstruction {
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
 
+  // Old methods kept for smooth subclassing transition BEGIN.
+  // TODO(b/80131774): Remove this code.
+
+  // Delegates to HloBatchNormInstruction::feature_index.
+  int64 feature_index() const;
+
+  // Delegates to HloBatchNormInstruction::epsilon.
+  float epsilon() const;
+
+  // Delegates to HloFftInstruction::fft_type.
+  FftType fft_type() const;
+
+  // Delegates to HloFftInstruction::fft_length.
+  const std::vector<int64>& fft_length() const;
+
+  // Delegates to HloSendRecvInstruction::channel_id.
+  int64 channel_id() const;
+
+  // Returns the dimension sizes or numbers associated with this instruction.
+  virtual const std::vector<int64>& dimensions() const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+  virtual int64 dimensions(int64 index) const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Delegates to HloConcatenateInstruction::concatenate_dimension.
+  int64 concatenate_dimension() const;
+
+  // Returns whether this instruction does a rank-2 transposition.
+  bool IsRank2Transpose() const;
+
+  // Delegates to HloSliceInstruction::slice_start.
+  int64 slice_starts(int64 dimension) const;
+  const std::vector<int64>& slice_starts() const;
+
+  // Delegates to HloSliceInstruction::slice_limits.
+  int64 slice_limits(int64 dimension) const;
+  const std::vector<int64>& slice_limits() const;
+
+  // Delegates to HloSliceInstruction::slice_strides.
+  int64 slice_strides(int64 dimension) const;
+  const std::vector<int64>& slice_strides() const;
+
+  // Delegates to HloSliceInstruction::IsInPlaceSlice.
+  bool IsInPlaceSlice() const;
+  // Old methods kept for smooth subclassing transition END.
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
@@ -1535,6 +1515,10 @@ class HloInstruction {
   // of the operand.
   void AppendOperand(HloInstruction* operand);
 
+  void AppendComputation(HloComputation* computation) {
+    called_computations_.push_back(computation);
+  }
+
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1543,6 +1527,12 @@ class HloInstruction {
       HloCloneContext* context) const {
     // TODO(b/80131774): This should be pure virtual.
     LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Implementation for non-common logic of ExtraAttributesToString.
+  virtual std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const {
+    return {};
   }
   // Prints an instruction to a string.
   //
@@ -1612,10 +1602,6 @@ class HloInstruction {
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloCloneContext* context = nullptr) const;
 
-  // Returns true if this instruction can legally have the dimensions field
-  // set. Used for checking precondition of dimensions field accessors.
-  bool CanHaveDimensionsField() const;
-
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
 
@@ -1659,10 +1645,6 @@ class HloInstruction {
   // Constant index, only present for kGetTupleElement.
   int64 tuple_index_ = -1;
 
-  // Dimensions present for some operations that require reshaping or
-  // broadcasting, including Reshape, Reduce, ReduceWindow, and Reverse.
-  std::vector<int64> dimensions_;
-
   // Describes the window in a windowed operation such as convolution.
   std::unique_ptr<Window> window_;
 
@@ -1674,20 +1656,6 @@ class HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
-
-  // Describes FFT type for an FFT instruction.
-  FftType fft_type_ = FftType::FFT;
-
-  // Indicates the FFT length for an FFT instruction.
-  std::vector<int64> fft_length_;
-
-  // Describes the [begin, end) index range for a slice.
-  std::vector<int64> slice_starts_;
-  std::vector<int64> slice_limits_;
-  std::vector<int64> slice_strides_;
-
-  // Describes whether the slice can be lowered to an offset into the operand.
-  bool is_in_place_slice_ = false;
 
   // The bit sizes for a reduce-precision operation.
   int32 exponent_bits_ = 0;
@@ -1754,10 +1722,6 @@ class HloInstruction {
   // The distribution requested for random number generation.
   // Only present for kRng.
   RandomDistribution distribution_;
-
-  // Represents a unique identifier for each Send/Recv instruction pair.
-  // Only present for kSend or kRecv.
-  int64 channel_id_ = -1;
 
   // The string representation of the infeed configuration.
   string infeed_config_;

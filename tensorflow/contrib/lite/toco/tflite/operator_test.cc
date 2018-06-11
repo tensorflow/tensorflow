@@ -123,6 +123,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                OperatorType::kTensorFlowEqual);
   CheckSimpleOperator<TensorFlowNotEqualOperator>(
       "NOT_EQUAL", OperatorType::kTensorFlowNotEqual);
+  CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

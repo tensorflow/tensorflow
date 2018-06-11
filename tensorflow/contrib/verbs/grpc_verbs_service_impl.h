@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_
 #define TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_
 
-#include "grpc++/impl/codegen/async_stream.h"
-#include "grpc++/impl/codegen/async_unary_call.h"
-#include "grpc++/impl/codegen/proto_utils.h"
-#include "grpc++/impl/codegen/rpc_method.h"
-#include "grpc++/impl/codegen/service_type.h"
-#include "grpc++/impl/codegen/status.h"
-#include "grpc++/impl/codegen/stub_options.h"
-#include "grpc++/impl/codegen/sync_stream.h"
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/proto_utils.h"
+#include "grpcpp/impl/codegen/rpc_method.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/status.h"
+#include "grpcpp/impl/codegen/stub_options.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
 
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
 

@@ -2914,6 +2914,82 @@ func GuaranteeConst(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// Splits a tensor into `num_split` tensors along one dimension.
+//
+// Arguments:
+//	value: The tensor to split.
+//	size_splits: list containing the sizes of each output tensor along the split
+// dimension. Must sum to the dimension of value along split_dim.
+// Can contain one -1 indicating that dimension is to be inferred.
+//	axis: 0-D.  The dimension along which to split.  Must be in the range
+// `[-rank(value), rank(value))`.
+//
+//
+// Returns Tensors whose shape matches that of `value`
+// except along `axis`, where their sizes are
+// `size_splits[i]`.
+func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output, num_split int64) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_split": num_split}
+	opspec := tf.OpSpec{
+		Type: "SplitV",
+		Input: []tf.Input{
+			value, size_splits, axis,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("SplitV", err)
+		return
+	}
+	return output
+}
+
+// Splits a tensor into `num_split` tensors along one dimension.
+//
+// Arguments:
+//	axis: 0-D.  The dimension along which to split.  Must be in the range
+// `[-rank(value), rank(value))`.
+//	value: The tensor to split.
+//	num_split: The number of ways to split.  Must evenly divide
+// `value.shape[split_dim]`.
+//
+// Returns They are identically shaped tensors, whose shape matches that of `value`
+// except along `axis`, where their sizes are
+// `values.shape[split_dim] / num_split`.
+func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_split": num_split}
+	opspec := tf.OpSpec{
+		Type: "Split",
+		Input: []tf.Input{
+			axis, value,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("Split", err)
+		return
+	}
+	return output
+}
+
 // Creates a sequence of numbers.
 //
 // This operation creates a sequence of numbers that begins at `start` and
@@ -7572,6 +7648,69 @@ func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_s
 		Type: "DepthwiseConv2dNativeBackpropFilter",
 		Input: []tf.Input{
 			input, filter_sizes, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns immutable tensor from memory region.
+//
+// The current implementation memmaps the tensor from a file.
+//
+// Arguments:
+//	dtype: Type of the returned tensor.
+//	shape: Shape of the returned tensor.
+//	memory_region_name: Name of readonly memory region used by the tensor, see
+// NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
+func ImmutableConst(scope *Scope, dtype tf.DataType, shape tf.Shape, memory_region_name string) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype, "shape": shape, "memory_region_name": memory_region_name}
+	opspec := tf.OpSpec{
+		Type: "ImmutableConst",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StringJoinAttr is an optional argument to StringJoin.
+type StringJoinAttr func(optionalAttr)
+
+// StringJoinSeparator sets the optional separator attribute to value.
+//
+// value: string, an optional join separator.
+// If not specified, defaults to ""
+func StringJoinSeparator(value string) StringJoinAttr {
+	return func(m optionalAttr) {
+		m["separator"] = value
+	}
+}
+
+// Joins the strings in the given list of string tensors into one tensor;
+//
+// with the given separator (default is an empty separator).
+//
+// Arguments:
+//	inputs: A list of string tensors.  The tensors must all have the same shape,
+// or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
+// of non-scalar inputs.
+func StringJoin(scope *Scope, inputs []tf.Output, optional ...StringJoinAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringJoin",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
 		},
 		Attrs: attrs,
 	}
@@ -17648,69 +17787,6 @@ func DeserializeManySparse(scope *Scope, serialized_sparse tf.Output, dtype tf.D
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// StringJoinAttr is an optional argument to StringJoin.
-type StringJoinAttr func(optionalAttr)
-
-// StringJoinSeparator sets the optional separator attribute to value.
-//
-// value: string, an optional join separator.
-// If not specified, defaults to ""
-func StringJoinSeparator(value string) StringJoinAttr {
-	return func(m optionalAttr) {
-		m["separator"] = value
-	}
-}
-
-// Joins the strings in the given list of string tensors into one tensor;
-//
-// with the given separator (default is an empty separator).
-//
-// Arguments:
-//	inputs: A list of string tensors.  The tensors must all have the same shape,
-// or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
-// of non-scalar inputs.
-func StringJoin(scope *Scope, inputs []tf.Output, optional ...StringJoinAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StringJoin",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns immutable tensor from memory region.
-//
-// The current implementation memmaps the tensor from a file.
-//
-// Arguments:
-//	dtype: Type of the returned tensor.
-//	shape: Shape of the returned tensor.
-//	memory_region_name: Name of readonly memory region used by the tensor, see
-// NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
-func ImmutableConst(scope *Scope, dtype tf.DataType, shape tf.Shape, memory_region_name string) (tensor tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype, "shape": shape, "memory_region_name": memory_region_name}
-	opspec := tf.OpSpec{
-		Type: "ImmutableConst",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Inverse real-valued fast Fourier transform.
 //
 // Computes the inverse 1-dimensional discrete Fourier transform of a real-valued
@@ -25053,6 +25129,41 @@ func LatencyStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, o
 	return op.Output(0)
 }
 
+// Runs multiple additive regression ensemble predictors on input instances and
+//
+// computes the update to cached logits. It is designed to be used during training.
+// It traverses the trees starting from cached tree id and cached node id and
+// calculates the updates to be pushed to the cache.
+//
+// Arguments:
+//
+//	cached_tree_ids: Rank 1 Tensor containing cached tree ids which is the starting
+// tree of prediction.
+//	cached_node_ids: Rank 1 Tensor containing cached node id which is the starting
+// node of prediction.
+//	bucketized_features: A list of rank 1 Tensors containing bucket id for each
+// feature.
+//	logits_dimension: scalar, dimension of the logits, to be used for partial logits
+// shape.
+//
+// Returns Rank 2 Tensor containing logits update (with respect to cached
+// values stored) for each example.Rank 1 Tensor containing new tree ids for each example.Rank 1 Tensor containing new node ids in the new tree_ids.
+func BoostedTreesTrainingPredict(scope *Scope, tree_ensemble_handle tf.Output, cached_tree_ids tf.Output, cached_node_ids tf.Output, bucketized_features []tf.Output, logits_dimension int64) (partial_logits tf.Output, tree_ids tf.Output, node_ids tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesTrainingPredict",
+		Input: []tf.Input{
+			tree_ensemble_handle, cached_tree_ids, cached_node_ids, tf.OutputList(bucketized_features),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // MapSizeAttr is an optional argument to MapSize.
 type MapSizeAttr func(optionalAttr)
 
@@ -29812,41 +29923,6 @@ func BoostedTreesDeserializeEnsemble(scope *Scope, tree_ensemble_handle tf.Outpu
 	return scope.AddOperation(opspec)
 }
 
-// Runs multiple additive regression ensemble predictors on input instances and
-//
-// computes the update to cached logits. It is designed to be used during training.
-// It traverses the trees starting from cached tree id and cached node id and
-// calculates the updates to be pushed to the cache.
-//
-// Arguments:
-//
-//	cached_tree_ids: Rank 1 Tensor containing cached tree ids which is the starting
-// tree of prediction.
-//	cached_node_ids: Rank 1 Tensor containing cached node id which is the starting
-// node of prediction.
-//	bucketized_features: A list of rank 1 Tensors containing bucket id for each
-// feature.
-//	logits_dimension: scalar, dimension of the logits, to be used for partial logits
-// shape.
-//
-// Returns Rank 2 Tensor containing logits update (with respect to cached
-// values stored) for each example.Rank 1 Tensor containing new tree ids for each example.Rank 1 Tensor containing new node ids in the new tree_ids.
-func BoostedTreesTrainingPredict(scope *Scope, tree_ensemble_handle tf.Output, cached_tree_ids tf.Output, cached_node_ids tf.Output, bucketized_features []tf.Output, logits_dimension int64) (partial_logits tf.Output, tree_ids tf.Output, node_ids tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesTrainingPredict",
-		Input: []tf.Input{
-			tree_ensemble_handle, cached_tree_ids, cached_node_ids, tf.OutputList(bucketized_features),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
 // Elementwise computes the bitwise AND of `x` and `y`.
 //
 // The result will have those bits set, that are set in both `x` and `y`. The
@@ -30633,80 +30709,4 @@ func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset
 		return
 	}
 	return offset
-}
-
-// Splits a tensor into `num_split` tensors along one dimension.
-//
-// Arguments:
-//	axis: 0-D.  The dimension along which to split.  Must be in the range
-// `[-rank(value), rank(value))`.
-//	value: The tensor to split.
-//	num_split: The number of ways to split.  Must evenly divide
-// `value.shape[split_dim]`.
-//
-// Returns They are identically shaped tensors, whose shape matches that of `value`
-// except along `axis`, where their sizes are
-// `values.shape[split_dim] / num_split`.
-func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_split": num_split}
-	opspec := tf.OpSpec{
-		Type: "Split",
-		Input: []tf.Input{
-			axis, value,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("Split", err)
-		return
-	}
-	return output
-}
-
-// Splits a tensor into `num_split` tensors along one dimension.
-//
-// Arguments:
-//	value: The tensor to split.
-//	size_splits: list containing the sizes of each output tensor along the split
-// dimension. Must sum to the dimension of value along split_dim.
-// Can contain one -1 indicating that dimension is to be inferred.
-//	axis: 0-D.  The dimension along which to split.  Must be in the range
-// `[-rank(value), rank(value))`.
-//
-//
-// Returns Tensors whose shape matches that of `value`
-// except along `axis`, where their sizes are
-// `size_splits[i]`.
-func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output, num_split int64) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_split": num_split}
-	opspec := tf.OpSpec{
-		Type: "SplitV",
-		Input: []tf.Input{
-			value, size_splits, axis,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("SplitV", err)
-		return
-	}
-	return output
 }

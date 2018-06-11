@@ -222,11 +222,16 @@ class Sequential(Model):
       for layer in self._layers:
         x = layer(x)
       self.outputs = [x]
+      # Make sure that the model's input shape will be preserved during
+      # serialization.
+      if self._layers:
+        self._layers[0]._batch_input_shape = batch_shape
 
     if self.inputs:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
-    self._track_layers(self._layers)
+    if self._layers:
+      self._track_layers(self._layers)
 
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.

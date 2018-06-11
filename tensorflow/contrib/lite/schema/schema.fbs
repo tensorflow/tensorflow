@@ -150,6 +150,7 @@ enum BuiltinOperator : byte {
   EXPAND_DIMS = 70,
   EQUAL = 71,
   NOT_EQUAL = 72,
+  LOG = 73,
 }
 
 // Options for the builtin operators.
