@@ -74,6 +74,44 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that Reduce(Reduce(A)) -> Reduce(A)
+TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
+  HloComputation::Builder builder(TestName());
+  // Create add computation.
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+  HloComputation* add_computation = nullptr;
+  {
+    HloComputation::Builder builder(TestName() + ".add");
+    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    HloInstruction* p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
+    add_computation = module().AddEmbeddedComputation(builder.Build());
+  }
+  Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r4f32, "param"));
+  std::vector<int64> dims0({0});
+  Shape r3f32 = ShapeUtil::MakeShape(F32, {5, 6, 7});
+  HloInstruction* reduce0 = builder.AddInstruction(
+      HloInstruction::CreateReduce(r3f32, param, zero, dims0, add_computation));
+  std::vector<int64> dims1({1, 2});
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {5});
+  builder.AddInstruction(HloInstruction::CreateReduce(r1f32, reduce0, zero,
+                                                      dims1, add_computation));
+  module().AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  HloInstruction* root = module().entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reduce(param, zero));
+  EXPECT_EQ(root->dimensions(), std::vector<int64>({0, 2, 3}));
+}
+
 // Test that Const + A is canonicalized to A + Const.
 TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
