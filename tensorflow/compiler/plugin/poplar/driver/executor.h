@@ -236,11 +236,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   const poprand::RandomGenMode GetRandomGenMode() const;
 
-  const poplar::OptionFlags& GetOptionsFlags() const {
-    return option_flags_;
-  }
+  const poplar::OptionFlags &GetOptionsFlags() const { return option_flags_; }
 
   bool CompilerReportingEnabled() const { return profile_compilation_; }
+  bool CompilerReportingTextFormat() const { return profile_poplar_text_; }
 
   void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
                       const std::string &module_name,
@@ -271,10 +270,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     bool streamed;
 
     InputDef() {}
-    InputDef(TensorControl* tc, ConversionFn fn, bool streamed) :
-        tc(tc), fn(fn), streamed(streamed) {}
-    InputDef(const InputDef& other) :
-        tc(other.tc), fn(other.fn), streamed(other.streamed) {}
+    InputDef(TensorControl *tc, ConversionFn fn, bool streamed)
+        : tc(tc), fn(fn), streamed(streamed) {}
+    InputDef(const InputDef &other)
+        : tc(other.tc), fn(other.fn), streamed(other.streamed) {}
   };
   using InputPairList = std::vector<InputDef>;
   using ArgsHandleMap = std::map<std::string, InputDef>;
@@ -282,9 +281,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   static void FlattenedDeviceMemoryList(InputPairList &, const xla::Shape &,
                                         void *, bool);
 
-  static void FlattenedOutputDeviceMemoryList(std::vector<void*>& list,
-                                              const xla::Shape& shape,
-                                              void* base);
+  static void FlattenedOutputDeviceMemoryList(std::vector<void *> &list,
+                                              const xla::Shape &shape,
+                                              void *base);
 
   static void CreateArgsHandleMap(ArgsHandleMap &, const Args &,
                                   const std::vector<xla::Shape> &,
@@ -293,12 +292,12 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   std::tuple<se::DeviceMemoryBase, int64> AllocateSingleOutput(
       xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
       const int64 n, const OutputMap &map, const Args &args,
-      const std::vector<bool>& streamed);
+      const std::vector<bool> &streamed);
 
   std::tuple<se::DeviceMemoryBase, int64> AllocateOutputBuffer(
       xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
       const int64 n, const OutputMap &map, const Args &args,
-      const std::vector<bool>& streamed);
+      const std::vector<bool> &streamed);
 
   std::tuple<se::DeviceMemoryBase, int64> RemapArgs(const xla::Shape &,
                                                     const int64,
@@ -322,6 +321,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   std::list<TensorControl *> allocations_;
 
   bool profile_compilation_;
+  bool profile_poplar_text_;
   bool profile_execution_;
   bool profile_io_;
 

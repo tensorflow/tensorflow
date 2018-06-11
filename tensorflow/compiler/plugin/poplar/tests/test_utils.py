@@ -26,6 +26,7 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
   dev.profiling.enable_compilation_trace = compilation_trace
   dev.profiling.enable_io_trace = io_trace
   dev.profiling.enable_execution_trace = execution_trace
+  dev.profiling.enable_poplar_reports_text = True
   with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
     yield sess
 

@@ -411,10 +411,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     if (poplarExecutor->CompilerReportingEnabled()) {
       poplar::OptionFlags opts;
+      opts.set("includeVarStorageReport", "true");
 
       std::stringstream stream;
       auto rep = engine->getGraphReport(opts);
-      rep.printSummary(stream);
+      if (poplarExecutor->CompilerReportingTextFormat()) {
+        rep.printSummary(stream);
+      } else {
+        rep.serialize(stream, poplar::SerializationFormat::JSON);
+      }
 
       uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
 

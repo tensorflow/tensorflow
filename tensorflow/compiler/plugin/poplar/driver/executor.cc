@@ -109,6 +109,7 @@ PoplarExecutor::PoplarExecutor()
       poplar_device_(poplar::Device::createCPUDevice()),
       active_xla_device_(nullptr),
       profile_compilation_(false),
+      profile_poplar_text_(false),
       profile_execution_(false),
       profile_io_(false) {}
 
@@ -260,6 +261,7 @@ Status PoplarExecutor::InitializePoplarDevice(
         poplar_device_ = ds.getDevice(poplar::TargetType::IPU,
                                       cfg.ipu_model_config().num_ipus());
         profile_compilation_ = cfg.profiling().enable_compilation_trace();
+        profile_poplar_text_ = cfg.profiling().enable_poplar_reports_text();
         profile_execution_ = cfg.profiling().enable_execution_trace();
         profile_io_ = cfg.profiling().enable_io_trace();
       } catch (std::logic_error) {
@@ -278,6 +280,7 @@ Status PoplarExecutor::InitializePoplarDevice(
       }
       poplar_device_ = model.createDevice();
       profile_compilation_ = cfg.profiling().enable_compilation_trace();
+      profile_poplar_text_ = cfg.profiling().enable_poplar_reports_text();
       profile_execution_ = cfg.profiling().enable_execution_trace();
       profile_io_ = cfg.profiling().enable_io_trace();
       break;
@@ -323,6 +326,7 @@ Status PoplarExecutor::InitializePoplarDevice(
     case tensorflow::IPUOptions::DeviceConfig::CPU:
       poplar_device_ = poplar::Device::createCPUDevice();
       profile_compilation_ = false;
+      profile_poplar_text_ = false;
       profile_execution_ = false;
       profile_io_ = false;
       break;
