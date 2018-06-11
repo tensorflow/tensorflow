@@ -15,12 +15,13 @@
 
 """Ops related to the Graphcore IPU."""
 
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import string_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.core.framework import summary_pb2
-from tensorflow.python.ops.summary_ops import tensor_summary
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.core.framework import summary_pb2
+from tensorflow.python.framework import ops
+from tensorflow.python.ops.variable_scope import variable_scope
+from tensorflow.python.ops.summary_ops import tensor_summary
+from tensorflow.python.util import tf_contextlib
+from tensorflow.contrib.compiler.jit import experimental_jit_scope
 
 def ipu_compile_summary(name, op, collections=None):
   """Create an IPU compiler summary operation.
@@ -48,3 +49,10 @@ def ipu_compile_summary(name, op, collections=None):
                                  collections=collections, display_name=name)
 
   return t_summary
+
+@tf_contextlib.contextmanager
+def ipu_scope(device):
+  with variable_scope('', use_resource=True):
+    with ops.device(device):
+      with experimental_jit_scope() as scope:
+        yield scope

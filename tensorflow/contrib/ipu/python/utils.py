@@ -21,13 +21,15 @@ from tensorflow.core.protobuf import config_pb2
 import time
 
 
-def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None):
+def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
+                      use_poplar_text_report=False):
   """Create the IPU options for an IPU model device.
 
   Args:
     profiling: Enable all IPU profiling
     num_ipus: Number of IPUs in the model
     tiles_per_ipu: Number of tiles per IPU in the model
+    use_poplar_text_report: Enable the poplar textual report summary
 
   Returns:
     An IPUOptions configuration protobuf, suitable for using in the creation
@@ -47,6 +49,7 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None):
   dev.profiling.enable_compilation_trace = profiling
   dev.profiling.enable_io_trace = profiling
   dev.profiling.enable_execution_trace = profiling
+  dev.profiling.enable_poplar_reports_text = use_poplar_text_report
 
   if num_ipus:
     dev.ipu_model_config.num_ipus = num_ipus

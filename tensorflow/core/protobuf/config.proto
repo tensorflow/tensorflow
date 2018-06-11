@@ -176,11 +176,14 @@ message IPUOptions {
       // Set to enable compilation trace
       bool enable_compilation_trace = 1;
 
+      // Set to have the poplar reports in text, not JSON
+      bool enable_poplar_reports_text = 2;
+
       // Set to enable I/O trace
-      bool enable_io_trace = 2;
+      bool enable_io_trace = 3;
 
       // Set to enable execution trace
-      bool enable_execution_trace = 3;
+      bool enable_execution_trace = 4;
     };
     Profiling profiling = 3;
 
@@ -198,6 +201,9 @@ message IPUOptions {
       string value = 2;
     };
     repeated CompilationOption compilation_options = 4;
+
+    // Set to a directory in which to establish a cache of compiled executables
+    string engine_cache_directory = 6;
   };
 
   // Options controlling the configuration of each IPU device

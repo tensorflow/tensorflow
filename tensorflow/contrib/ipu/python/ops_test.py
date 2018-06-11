@@ -40,6 +40,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = tf.contrib.ipu.utils.create_ipu_config(True)
     with tf.Session(config=tf.ConfigProto(ipu_options=cfg)) as sess:
+      # Discard any existing events
+      sess.run(events)
+
       fd = {
         a: [1.0],
         b: [2.0],
@@ -54,7 +57,54 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       dump = tf.contrib.ipu.utils.extract_all_strings_from_event_trace(e);
       self.assertTrue(len(dump) > 100)
 
-      print(dump)
+  def testIpuScope(self):
+    # 1: design is targetted at the device
+    # 2: variables are resource variables
+    # 3: training a while_loop is possible
+    def RNN(x):
+      lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(1, forget_bias=1.0)
+      outputs, states = tf.nn.dynamic_rnn(lstm_cell, x, dtype=tf.float32)
+      return outputs[-1]
+
+    with tf.contrib.ipu.ops.ipu_scope("/device:IPU:0"):
+
+      a = tf.placeholder(tf.float32, [1,8,1], name="a")
+      b = tf.placeholder(tf.float32, [1,8,1], name="b")
+
+      c = tf.get_variable('c', shape=[1],
+                          initializer=tf.constant_initializer(1.0))
+
+      logits = RNN(a) * c
+
+      res = tf.reshape(logits, [1,8,1])
+
+      l = tf.losses.mean_squared_error(res, b)
+
+      optimizer = tf.train.GradientDescentOptimizer(0.1)
+      train = optimizer.minimize(l)
+
+    self.assertTrue("ResourceVariable" in str(type(c)))
+    self.assertEqual(logits.device, "/device:IPU:0")
+
+    cfg = tf.contrib.ipu.utils.create_ipu_config(True)
+    with tf.Session(config=tf.ConfigProto(ipu_options=cfg)) as sess:
+      # Initialize and then discard events relating to initialization
+      sess.run(tf.global_variables_initializer())
+
+      fd = {
+        a: [[[1.],[1.],[1.],[1.],[1.],[1.],[1.],[1.]]],
+        b: [[[1.],[1.],[1.],[1.],[1.],[1.],[1.],[1.]]],
+      }
+
+      l_initial, _ = sess.run([l, train], fd)
+
+      for _ in range(100):
+        _, _ = sess.run([l, train], fd)
+
+      l_final, _ = sess.run([l, train], fd)
+
+      self.assertTrue(l_initial > l_final)
+
 
 if __name__ == "__main__":
     googletest.main()
